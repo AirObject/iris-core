@@ -1,0 +1,30 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/capabilities.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "api_version": {
+      "pattern": "^v[0-9]+$",
+      "type": "string"
+    },
+    "capabilities": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "schema_version": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "api_version",
+    "schema_version",
+    "capabilities"
+  ],
+  "title": "CapabilitiesEnvelope",
+  "type": "object"
+}

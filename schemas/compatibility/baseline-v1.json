@@ -1,0 +1,34 @@
+{
+  "paths": {
+    "/health/live": [
+      "get"
+    ],
+    "/health/ready": [
+      "get"
+    ],
+    "/v1/capabilities": [
+      "get"
+    ],
+    "/v1/negotiation": [
+      "post"
+    ]
+  },
+  "required_schema_fields": {
+    "CapabilitiesEnvelope": [
+      "api_version",
+      "capabilities",
+      "schema_version"
+    ],
+    "ErrorEnvelope": [
+      "error",
+      "request_id"
+    ],
+    "VersionManifest": [
+      "api_version",
+      "contract_source_sha256",
+      "contract_version",
+      "package_version",
+      "schema_version"
+    ]
+  }
+}

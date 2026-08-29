@@ -1,0 +1,17 @@
+{
+  "api_version": "v1",
+  "capabilities": [
+    "contract.negotiation",
+    "error-envelope.v1",
+    "health.v1"
+  ],
+  "contract_version": "1.0.0",
+  "error_codes": [
+    "internal_error",
+    "invalid_request",
+    "not_ready",
+    "unsupported_version"
+  ],
+  "package_version": "0.1.0",
+  "schema_version": 1
+}

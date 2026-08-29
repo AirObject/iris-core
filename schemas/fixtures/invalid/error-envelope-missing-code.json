@@ -1,0 +1,7 @@
+{
+  "error": {
+    "message": "The request is invalid.",
+    "retryable": false
+  },
+  "request_id": "req_bad"
+}

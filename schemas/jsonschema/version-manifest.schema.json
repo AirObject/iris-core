@@ -1,0 +1,33 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/version-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "api_version": {
+      "type": "string"
+    },
+    "contract_source_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "contract_version": {
+      "type": "string"
+    },
+    "package_version": {
+      "type": "string"
+    },
+    "schema_version": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "api_version",
+    "contract_source_sha256",
+    "contract_version",
+    "package_version",
+    "schema_version"
+  ],
+  "title": "VersionManifest",
+  "type": "object"
+}

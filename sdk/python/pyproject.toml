@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "iris-memory-sdk"
+version = "0.1.0"
+description = "Async Python client for Iris Memory Core"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "AGPL-3.0-only"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/iris_memory_sdk"]

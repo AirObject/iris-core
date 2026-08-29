@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "invalid_request",
+    "details": {
+      "field": "api_versions"
+    },
+    "message": "The request is invalid.",
+    "retryable": false
+  },
+  "request_id": "req_01"
+}

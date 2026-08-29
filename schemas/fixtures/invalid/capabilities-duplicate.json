@@ -1,0 +1,8 @@
+{
+  "api_version": "v1",
+  "capabilities": [
+    "health.v1",
+    "health.v1"
+  ],
+  "schema_version": 1
+}

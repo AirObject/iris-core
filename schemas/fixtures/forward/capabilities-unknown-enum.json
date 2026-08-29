@@ -1,0 +1,8 @@
+{
+  "api_version": "v1",
+  "capabilities": [
+    "contract.negotiation",
+    "future.route.v9"
+  ],
+  "schema_version": 1
+}

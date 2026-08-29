@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "not_ready",
+    "diagnostic_ref": "diag_01",
+    "message": "The service is not ready.",
+    "retryable": true
+  },
+  "future_optional": {
+    "safe": true
+  },
+  "request_id": "req_02"
+}

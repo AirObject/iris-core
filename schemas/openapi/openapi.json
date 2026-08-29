@@ -1,0 +1,246 @@
+{
+  "components": {
+    "schemas": {
+      "CapabilitiesEnvelope": {
+        "$id": "https://schemas.iris-memory-core.local/v1/capabilities.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "api_version": {
+            "pattern": "^v[0-9]+$",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "schema_version": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "api_version",
+          "schema_version",
+          "capabilities"
+        ],
+        "title": "CapabilitiesEnvelope",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "$id": "https://schemas.iris-memory-core.local/v1/error-envelope.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "error": {
+            "additionalProperties": true,
+            "properties": {
+              "code": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "message": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "retryable"
+            ],
+            "type": "object"
+          },
+          "request_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "request_id"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "VersionManifest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/version-manifest.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "type": "string"
+          },
+          "contract_source_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "package_version": {
+            "type": "string"
+          },
+          "schema_version": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "api_version",
+          "contract_source_sha256",
+          "contract_version",
+          "package_version",
+          "schema_version"
+        ],
+        "title": "VersionManifest",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Phase 0 contract and capability surface",
+    "license": {
+      "identifier": "AGPL-3.0-only",
+      "name": "AGPL-3.0-only"
+    },
+    "title": "Iris Memory Core API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health/live": {
+      "get": {
+        "operationId": "getLiveness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "const": "live"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Process is alive"
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "responses": {
+          "200": {
+            "description": "Phase 0 scaffold is ready"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesEnvelope"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/negotiation": {
+      "post": {
+        "operationId": "negotiateCapabilities",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "api_versions": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "api_versions"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesEnvelope"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    }
+  }
+}

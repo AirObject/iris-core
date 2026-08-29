@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "iris-memory-core"
+version = "0.1.0"
+description = "Host-independent cognitive memory service"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "AGPL-3.0-only"
+authors = [{ name = "Iris Memory Core contributors" }]
+dependencies = []
+
+[project.scripts]
+iris-memory-core = "iris_memory_core.cli:main"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<8",
+  "ruff>=0.11,<0.15",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/iris_memory_core"]
+
+[tool.uv]
+required-version = ">=0.11.29,<0.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".uv-cache", ".venv", "node_modules", "sdk/typescript/dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+pretty = true
+mypy_path = ["src", "sdk/python/src"]
+files = ["src", "sdk/python/src", "tools", "tests"]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+  "--cov=iris_memory_core",
+  "--cov=iris_memory_sdk",
+  "--cov-report=term-missing",
+  "--cov-fail-under=80",
+]
+pythonpath = [".", "src", "sdk/python/src"]
+testpaths = ["tests", "sdk/python/tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/iris_memory_core", "sdk/python/src/iris_memory_sdk"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+]

@@ -1,0 +1,42 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/error-envelope.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "error": {
+      "additionalProperties": true,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        },
+        "message": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "request_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "error",
+    "request_id"
+  ],
+  "title": "ErrorEnvelope",
+  "type": "object"
+}

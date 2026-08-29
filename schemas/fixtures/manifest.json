@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "expected": "accept",
+      "file": "valid/capabilities.json",
+      "schema": "capabilities"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/error-envelope.json",
+      "schema": "error-envelope"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/error-envelope-unknown-field.json",
+      "schema": "error-envelope"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/capabilities-unknown-enum.json",
+      "schema": "capabilities"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/error-envelope-missing-code.json",
+      "schema": "error-envelope"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/capabilities-duplicate.json",
+      "schema": "capabilities"
+    }
+  ]
+}
