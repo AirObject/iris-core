@@ -1,10 +1,11 @@
 # 阶段 0：架构冻结与工程骨架
 
-> 状态：Planned  
+> 状态：Completed  
 > 前置阶段：无  
 > 负责人：Iris Memory Core Team  
 > 目标版本：0.1.0  
 > 开始日期：2026-08-29  
+> 完成日期：2026-08-29  
 > 架构依据：[§2 架构原则](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#2-架构原则与不变量)、[§4 公共约定](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#4-公共约定)、[§28 SDK](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#28-sdk-与契约发布)、[§33 仓库组织](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#33-仓库与代码组织)、[§36 阶段 0](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-0架构冻结与工程骨架)
 
 ## 阶段目标
@@ -70,21 +71,21 @@
 
 ## 退出门禁
 
-- [ ] 七项基础 ADR 与 Persona Bootstrap seam 已接受，没有影响 Phase 1 的开放架构冲突。
-- [ ] Domain import-boundary 测试能够主动捕获一次非法框架依赖。
-- [ ] OpenAPI/JSON Schema 可重复生成，工作区无未提交生成漂移。
-- [ ] Python 与 TypeScript 同时接受合法 Fixture、拒绝非法 Fixture。
-- [ ] 空库 Migration 可从 0 升级到当前版本，并拒绝校验和被篡改的 Migration。
-- [ ] CI 在干净环境一次完成，README 能让新开发者复现。
-- [ ] 需求追踪、交付证据、已知限制和下一阶段迁移约束均已更新。
+- [x] 七项基础 ADR 与 Persona Bootstrap seam 已接受，没有影响 Phase 1 的开放架构冲突。
+- [x] Domain import-boundary 测试能够主动捕获一次非法框架依赖。
+- [x] OpenAPI/JSON Schema 可重复生成，工作区无未提交生成漂移。
+- [x] Python 与 TypeScript 同时接受合法 Fixture、拒绝非法 Fixture。
+- [x] 空库 Migration 可从 0 升级到当前版本，并拒绝校验和被篡改的 Migration。
+- [x] CI 在干净环境一次完成，README 能让新开发者复现。
+- [x] 需求追踪、交付证据、已知限制和下一阶段迁移约束均已更新。
 
 ## 交付证据
 
-- 代码/变更：待补充
-- ADR：待补充
-- Schema/Migration：待补充
-- 测试报告：待补充
-- 已知限制：待补充
+- 代码/变更：本地提交 `a3a3e1d5dba70dbb3b2a385fd443a2ca8cf6c557`；[工程入口](../../README.md)、[CI](../../.github/workflows/ci.yml)、[质量门禁](../../Makefile)
+- ADR：[ADR 索引及八项 Accepted 决策](../adr/README.md)
+- Schema/Migration：[Version Manifest](../../schemas/version-manifest.json)、[OpenAPI 3.1](../../schemas/openapi/openapi.json)、[`0001_phase0_metadata.sql`](../../migrations/0001_phase0_metadata.sql)
+- 测试报告：[Phase 0 Verification Report](../reports/phase-00-verification.md)
+- 已知限制：仅交付 Phase 0 基础设施；业务领域表和端点、生产部署及远端 GitHub Actions 运行均属于后续交付或首次推送验证，不影响本地与干净副本门禁结论。
 
 ## 明确不做
 

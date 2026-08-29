@@ -7,7 +7,7 @@
 | 文档 | 定位 | 状态 |
 | --- | --- | --- |
 | [架构与完整实施计划](./IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md) | 架构、领域、协议和实施顺序的唯一当前基线 | Baseline v1.0 |
-| [分阶段开发路线图](./development/README.md) | 阶段导航、依赖、里程碑和统一执行规则 | Planned |
+| [分阶段开发路线图](./development/README.md) | 阶段导航、依赖、里程碑和统一执行规则 | In progress（Phase 0 Completed） |
 
 其他早期草案不作为新实现的需求来源。若历史材料与当前基线冲突，以当前基线和已接受 ADR 为准。
 
