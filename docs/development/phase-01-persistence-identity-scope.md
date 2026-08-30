@@ -87,7 +87,7 @@
 
 ## 交付证据
 
-- 代码/变更：Phase 1 实现提交（哈希在完成证据提交中固化）；[Runtime/UoW](../../src/iris_memory_core/storage/uow.py)、[Repositories](../../src/iris_memory_core/storage/repositories.py)、[Backup](../../src/iris_memory_core/storage/backup.py)、[Provisioning](../../src/iris_memory_core/application/provisioning.py)、[Identity](../../src/iris_memory_core/application/identity.py)
+- 代码/变更：Phase 1 实现提交 `aecedd379669ae6a21319fd0fc80551dfd75c2d6`；[Runtime/UoW](../../src/iris_memory_core/storage/uow.py)、[Repositories](../../src/iris_memory_core/storage/repositories.py)、[Backup](../../src/iris_memory_core/storage/backup.py)、[Provisioning](../../src/iris_memory_core/application/provisioning.py)、[Identity](../../src/iris_memory_core/application/identity.py)
 - ADR：无新增冻结边界决策；沿用 [ADR-0002](../adr/0002-scope-null-semantics.md)、[ADR-0003](../adr/0003-identity-and-binding.md)、[ADR-0004](../adr/0004-immutable-revisions.md)、[ADR-0005](../adr/0005-tombstone-priority.md)、[ADR-0007](../adr/0007-repository-boundaries.md)、[ADR-0008](../adr/0008-persona-bootstrap-seam.md)
 - Schema/Migration：[`0002_phase1_kernel.sql`](../../migrations/0002_phase1_kernel.sql)（SHA-256 `7fcd0883…2267c`，online_safe=true）；Schema Version 2；包版本 0.2.0；稳定错误码仅新增；0001 保持已发布字节不变，Phase 0→1 升级由测试覆盖
 - 测试报告：[Phase 1 Verification Report](../reports/phase-01-verification.md)（完整

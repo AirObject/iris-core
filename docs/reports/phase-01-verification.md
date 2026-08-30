@@ -2,7 +2,7 @@
 
 > Result: Passed（`make ci` exit 0）  
 > Date: 2026-08-29（评审修复：2026-08-30、2026-08-31 ×2）  
-> Implementation commit: 待提交（变更保留在工作区，按约定未提交）
+> Implementation commit: `aecedd379669ae6a21319fd0fc80551dfd75c2d6`
 
 ## Environment
 
