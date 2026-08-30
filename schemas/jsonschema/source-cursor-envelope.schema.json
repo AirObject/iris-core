@@ -1,0 +1,31 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/source-cursor-envelope.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "cursor_position": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "gap_policy": {
+      "enum": [
+        "accept",
+        "reject",
+        "mark"
+      ]
+    },
+    "source_stream": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_stream",
+    "gap_policy"
+  ],
+  "title": "SourceCursorEnvelope",
+  "type": "object"
+}

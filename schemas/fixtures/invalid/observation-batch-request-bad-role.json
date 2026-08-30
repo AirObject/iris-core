@@ -1,0 +1,12 @@
+{
+  "records": [
+    {
+      "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa615",
+      "role": "pending",
+      "kind": "message.text",
+      "idempotency_key": "send-3",
+      "occurred_us": 1700000000000000,
+      "committed_us": 1700000000100000
+    }
+  ]
+}

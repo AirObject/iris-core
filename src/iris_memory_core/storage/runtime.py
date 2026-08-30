@@ -73,9 +73,10 @@ def check_runtime(
 
 
 #: Application binary compatibility window for schema versions (§20.7). Outside
-#: this window Ready fails with ``schema_incompatible``.
+#: this window Ready fails with ``schema_incompatible``. The 0.3.0 binary reads
+#: Schema 2 (Phase 1) databases and migrates them forward to Schema 3.
 SUPPORTED_SCHEMA_MIN = 2
-SUPPORTED_SCHEMA_MAX = 2
+SUPPORTED_SCHEMA_MAX = 3
 
 
 def verify_schema_compatible(schema_version: int) -> None:

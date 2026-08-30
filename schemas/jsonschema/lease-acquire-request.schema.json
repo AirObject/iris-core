@@ -1,0 +1,46 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/lease-acquire-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "allow_preempt": {
+      "type": "boolean"
+    },
+    "holder_app_instance_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "holder_space_id": {
+      "maxLength": 128,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "priority": {
+      "maximum": 100,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "ttl_us": {
+      "maximum": 600000000,
+      "minimum": 1000000,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "agent_id",
+    "holder_app_instance_id",
+    "ttl_us"
+  ],
+  "title": "LeaseAcquireRequest",
+  "type": "object"
+}

@@ -1,0 +1,71 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/admin-job.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "attempt_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "job_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "job_kind": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "lane": {
+      "enum": [
+        "normal",
+        "safety"
+      ]
+    },
+    "last_error_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lease_generation": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "max_attempts": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "priority": {
+      "maximum": 9,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "replay_of": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "leased",
+        "completed",
+        "retryable",
+        "dead"
+      ]
+    },
+    "tenant_id_hash": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "job_kind",
+    "status",
+    "lane"
+  ],
+  "title": "AdminJob",
+  "type": "object"
+}

@@ -1,0 +1,58 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/observation-batch-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "accepted_observation_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "agent_watermark": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "cursors": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "duplicate_observation_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "lease_warning": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outbox_enqueued": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "source_watermark": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "accepted_observation_ids",
+    "duplicate_observation_ids",
+    "outbox_enqueued"
+  ],
+  "title": "ObservationBatchResponse",
+  "type": "object"
+}

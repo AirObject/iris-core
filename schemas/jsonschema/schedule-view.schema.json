@@ -1,0 +1,71 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/schedule-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "catch_up_policy": {
+      "enum": [
+        "all",
+        "latest",
+        "coalesce",
+        "skip"
+      ]
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "job_kind": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "max_ticks_per_run": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "misfire_grace_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "next_tick_at_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "policy_version": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "schedule_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "schedule_spec": {
+      "type": "object"
+    },
+    "tenant_id_hash": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "timezone": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schedule_id",
+    "job_kind",
+    "catch_up_policy",
+    "enabled"
+  ],
+  "title": "ScheduleView",
+  "type": "object"
+}

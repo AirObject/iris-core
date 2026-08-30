@@ -97,6 +97,297 @@ def version_manifest_schema() -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Phase 2 schemas (application-layer contract surface, ADR-0006 additive)
+
+
+def _id() -> dict[str, Any]:
+    return {"type": "string", "minLength": 1}
+
+
+def observation_batch_request_schema() -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "additionalProperties": True,
+        "properties": {
+            "agent_id": _id(),
+            "role": {"enum": ["user", "assistant", "tool", "system", "external"]},
+            "kind": {"type": "string", "minLength": 1, "maxLength": 128},
+            "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 256},
+            "effect_state": {"enum": ["committed", "partial"]},
+            "occurred_us": {"type": "integer", "minimum": 0},
+            "committed_us": {"type": "integer", "minimum": 0},
+            "space_group_id": _id(),
+            "space_id": _id(),
+            "session_id": _id(),
+            "source_stream": {"type": "string", "minLength": 1, "maxLength": 256},
+            "source_cursor": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,17})$",
+            },
+            "source_event_id": _id(),
+            "occurrence_id": _id(),
+            "actor_external_identity_id": _id(),
+            "actor_entity_id_at_ingest": {
+                **_id(),
+                "description": (
+                    "Server-resolved actor snapshot. Only accepted together with "
+                    "actor_external_identity_id and must match that identity's "
+                    "confirmed binding (ADR-0009 §1); supplying it alone is "
+                    "invalid_request."
+                ),
+            },
+            "content": {"type": "string"},
+            "structured_payload": {"type": "object"},
+            "artifact_refs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "properties": {
+                        "artifact_id": _id(),
+                        "kind": {"type": "string", "minLength": 1, "maxLength": 64},
+                    },
+                    "required": ["artifact_id", "kind"],
+                },
+            },
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "effect_proof": {"type": "object"},
+        },
+        "required": [
+            "agent_id",
+            "role",
+            "kind",
+            "idempotency_key",
+            "occurred_us",
+            "committed_us",
+        ],
+        # §5.2 Scope structure: a session-scoped record must also name its
+        # space — a session alone cannot construct a legal Scope.
+        "dependentRequired": {"session_id": ["space_id"]},
+        "type": "object",
+    }
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/observation-batch-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "records": {"type": "array", "minItems": 1, "maxItems": 1000, "items": record},
+            "lease_id": _id(),
+            "lease_epoch": {"type": "integer", "minimum": 0},
+        },
+        "required": ["records"],
+        "title": "ObservationBatchRequest",
+        "type": "object",
+    }
+
+
+def observation_batch_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/observation-batch-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "accepted_observation_ids": {"type": "array", "items": _id()},
+            "duplicate_observation_ids": {"type": "array", "items": _id()},
+            "source_watermark": {"type": ["integer", "null"], "minimum": 0},
+            "agent_watermark": {"type": ["integer", "null"], "minimum": 0},
+            "outbox_enqueued": {"type": "integer", "minimum": 0},
+            "cursors": {"type": "object", "additionalProperties": {"type": "integer"}},
+            "lease_warning": {"type": ["string", "null"]},
+        },
+        "required": [
+            "accepted_observation_ids",
+            "duplicate_observation_ids",
+            "outbox_enqueued",
+        ],
+        "title": "ObservationBatchResponse",
+        "type": "object",
+    }
+
+
+def source_cursor_envelope_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/source-cursor-envelope.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "source_stream": {"type": "string", "minLength": 1},
+            "cursor_position": {"type": ["integer", "null"], "minimum": 0},
+            "gap_policy": {"enum": ["accept", "reject", "mark"]},
+        },
+        "required": ["source_stream", "gap_policy"],
+        "title": "SourceCursorEnvelope",
+        "type": "object",
+    }
+
+
+def lease_acquire_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/lease-acquire-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "agent_id": _id(),
+            "holder_app_instance_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "holder_space_id": {"type": ["string", "null"], "maxLength": 128},
+            "ttl_us": {"type": "integer", "minimum": 1000000, "maximum": 600000000},
+            "priority": {"type": "integer", "minimum": 0, "maximum": 100},
+            "allow_preempt": {"type": "boolean"},
+            "reason": {"type": "string"},
+        },
+        "required": ["agent_id", "holder_app_instance_id", "ttl_us"],
+        "title": "LeaseAcquireRequest",
+        "type": "object",
+    }
+
+
+def lease_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/lease-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "lease_id": _id(),
+            "tenant_id": _id(),
+            "agent_id": _id(),
+            "holder_space_id": {"type": ["string", "null"]},
+            "holder_app_instance_id": {"type": "string", "minLength": 1},
+            "lease_epoch": {"type": "integer", "minimum": 0},
+            "priority": {"type": "integer", "minimum": 0},
+            "status": {"enum": ["active", "draining", "released", "expired"]},
+            "acquired_us": {"type": "integer", "minimum": 0},
+            "expires_us": {"type": "integer", "minimum": 0},
+            "last_heartbeat_us": {"type": "integer", "minimum": 0},
+            "revision": {"type": "integer", "minimum": 1},
+        },
+        "required": [
+            "lease_id",
+            "tenant_id",
+            "agent_id",
+            "holder_app_instance_id",
+            "lease_epoch",
+            "status",
+            "expires_us",
+        ],
+        "title": "LeaseView",
+        "type": "object",
+    }
+
+
+def readiness_report_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/readiness-report.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "status": {"enum": ["ready", "degraded", "not_ready"]},
+            "checks": {
+                "type": "object",
+                "additionalProperties": True,
+                "properties": {
+                    "storage_writable": {"type": "boolean"},
+                    "disk_free_bytes": {"type": "integer", "minimum": 0},
+                    "queue_lag_us": {"type": ["integer", "null"], "minimum": 0},
+                    "oldest_pending_age_us": {"type": ["integer", "null"], "minimum": 0},
+                    "dead_letters": {"type": "integer", "minimum": 0},
+                    "pending_jobs": {"type": "integer", "minimum": 0},
+                    "storage_error_code": {"type": "string"},
+                },
+            },
+            "reasons": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["status", "checks"],
+        "title": "ReadinessReport",
+        "type": "object",
+    }
+
+
+def admin_job_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/admin-job.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "job_id": _id(),
+            "tenant_id_hash": {"type": "string", "minLength": 1},
+            "job_kind": {"type": "string", "minLength": 1},
+            "status": {"enum": ["pending", "leased", "completed", "retryable", "dead"]},
+            "priority": {"type": "integer", "minimum": 0, "maximum": 9},
+            "lane": {"enum": ["normal", "safety"]},
+            "attempt_count": {"type": "integer", "minimum": 0},
+            "max_attempts": {"type": "integer", "minimum": 1},
+            "lease_generation": {"type": "integer", "minimum": 0},
+            "last_error_code": {"type": ["string", "null"]},
+            "replay_of": {"type": ["string", "null"]},
+        },
+        "required": ["job_id", "job_kind", "status", "lane"],
+        "title": "AdminJob",
+        "type": "object",
+    }
+
+
+def schedule_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/schedule-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "schedule_id": _id(),
+            "tenant_id_hash": {"type": "string", "minLength": 1},
+            "agent_id_hash": {"type": ["string", "null"]},
+            "job_kind": {"type": "string", "minLength": 1},
+            "schedule_spec": {"type": "object"},
+            "timezone": {"type": "string", "minLength": 1},
+            "catch_up_policy": {"enum": ["all", "latest", "coalesce", "skip"]},
+            "misfire_grace_us": {"type": "integer", "minimum": 0},
+            "max_ticks_per_run": {"type": "integer", "minimum": 1},
+            "enabled": {"type": "boolean"},
+            "next_tick_at_us": {"type": "integer", "minimum": 0},
+            "policy_version": {"type": "integer", "minimum": 1},
+            "revision": {"type": "integer", "minimum": 1},
+        },
+        "required": ["schedule_id", "job_kind", "catch_up_policy", "enabled"],
+        "title": "ScheduleView",
+        "type": "object",
+    }
+
+
+PHASE2_COMPONENTS: dict[str, dict[str, Any]] = {}
+
+
+def phase2_components() -> dict[str, dict[str, Any]]:
+    global PHASE2_COMPONENTS
+    if not PHASE2_COMPONENTS:
+        PHASE2_COMPONENTS = {
+            "ObservationBatchRequest": observation_batch_request_schema(),
+            "ObservationBatchResponse": observation_batch_response_schema(),
+            "SourceCursorEnvelope": source_cursor_envelope_schema(),
+            "LeaseAcquireRequest": lease_acquire_request_schema(),
+            "LeaseView": lease_view_schema(),
+            "ReadinessReport": readiness_report_schema(),
+            "AdminJob": admin_job_schema(),
+            "ScheduleView": schedule_view_schema(),
+        }
+    return PHASE2_COMPONENTS
+
+
+def phase2_json_schema_files() -> dict[Path, dict[str, Any]]:
+    names = {
+        "observation-batch-request": "ObservationBatchRequest",
+        "observation-batch-response": "ObservationBatchResponse",
+        "source-cursor-envelope": "SourceCursorEnvelope",
+        "lease-acquire-request": "LeaseAcquireRequest",
+        "lease-view": "LeaseView",
+        "readiness-report": "ReadinessReport",
+        "admin-job": "AdminJob",
+        "schedule-view": "ScheduleView",
+    }
+    return {
+        JSON_SCHEMA_DIRECTORY / f"{slug}.schema.json": phase2_components()[title]
+        for slug, title in names.items()
+    }
+
+
 def _json_response(
     schema_reference: str, description: str = "Successful response"
 ) -> dict[str, Any]:
@@ -108,89 +399,455 @@ def _json_response(
 
 def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
     error_response = _json_response("#/components/schemas/ErrorEnvelope", "Stable error envelope")
-    return {
-        "components": {
-            "schemas": {
-                "CapabilitiesEnvelope": capabilities_schema(),
-                "ErrorEnvelope": error_envelope_schema(),
-                "VersionManifest": version_manifest_schema(),
+    schemas = {
+        "CapabilitiesEnvelope": capabilities_schema(),
+        "ErrorEnvelope": error_envelope_schema(),
+        "VersionManifest": version_manifest_schema(),
+        **phase2_components(),
+    }
+    batch_request_body = {
+        "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/ObservationBatchRequest"}}
+        },
+        "required": True,
+    }
+    lease_request_body = {
+        "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/LeaseAcquireRequest"}}
+        },
+        "required": True,
+    }
+    paths: dict[str, Any] = {
+        "/health/live": {
+            "get": {
+                "operationId": "getLiveness",
+                "responses": {
+                    "200": {
+                        "description": "Process is alive",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": False,
+                                    "properties": {"status": {"const": "live"}},
+                                    "required": ["status"],
+                                    "type": "object",
+                                }
+                            }
+                        },
+                    }
+                },
             }
         },
-        "info": {
-            "description": "Phase 0 contract and capability surface",
-            "license": {"identifier": "AGPL-3.0-only", "name": "AGPL-3.0-only"},
-            "title": "Iris Memory Core API",
-            "version": str(source["contract_version"]),
+        "/health/ready": {
+            "get": {
+                "operationId": "getReadiness",
+                "responses": {
+                    "200": _json_response(
+                        "#/components/schemas/ReadinessReport",
+                        "Readiness report: schema window, storage writability, "
+                        "queue/scheduler lag, dead letters (Phase 2)",
+                    ),
+                    "503": error_response,
+                },
+            }
         },
-        "openapi": "3.1.0",
-        "paths": {
-            "/health/live": {
-                "get": {
-                    "operationId": "getLiveness",
-                    "responses": {
-                        "200": {
-                            "description": "Process is alive",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "additionalProperties": False,
-                                        "properties": {"status": {"const": "live"}},
-                                        "required": ["status"],
-                                        "type": "object",
-                                    }
-                                }
-                            },
-                        }
-                    },
-                }
-            },
-            "/health/ready": {
-                "get": {
-                    "operationId": "getReadiness",
-                    "responses": {
-                        "200": {"description": "Phase 0 scaffold is ready"},
-                        "503": error_response,
-                    },
-                }
-            },
-            "/v1/capabilities": {
-                "get": {
-                    "operationId": "getCapabilities",
-                    "responses": {
-                        "200": _json_response("#/components/schemas/CapabilitiesEnvelope"),
-                        "500": error_response,
-                    },
-                }
-            },
-            "/v1/negotiation": {
-                "post": {
-                    "operationId": "negotiateCapabilities",
-                    "requestBody": {
+        "/metrics": {
+            "get": {
+                "operationId": "getMetrics",
+                "responses": {
+                    "200": {
+                        "description": "Low-cardinality metrics snapshot (JSON)",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "additionalProperties": True,
                                     "properties": {
-                                        "api_versions": {
-                                            "items": {"type": "string"},
-                                            "minItems": 1,
-                                            "type": "array",
-                                        }
+                                        "counters": {"type": "array"},
+                                        "gauges": {"type": "array"},
                                     },
-                                    "required": ["api_versions"],
+                                    "required": ["counters", "gauges"],
                                     "type": "object",
                                 }
                             }
                         },
-                        "required": True,
-                    },
-                    "responses": {
-                        "200": _json_response("#/components/schemas/CapabilitiesEnvelope"),
-                        "400": error_response,
-                    },
-                }
-            },
+                    }
+                },
+            }
         },
+        "/v1/capabilities": {
+            "get": {
+                "operationId": "getCapabilities",
+                "responses": {
+                    "200": _json_response("#/components/schemas/CapabilitiesEnvelope"),
+                    "500": error_response,
+                },
+            }
+        },
+        "/v1/negotiation": {
+            "post": {
+                "operationId": "negotiateCapabilities",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": True,
+                                "properties": {
+                                    "api_versions": {
+                                        "items": {"type": "string"},
+                                        "minItems": 1,
+                                        "type": "array",
+                                    }
+                                },
+                                "required": ["api_versions"],
+                                "type": "object",
+                            }
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/CapabilitiesEnvelope"),
+                    "400": error_response,
+                },
+            }
+        },
+        "/v1/observations:batch": {
+            "post": {
+                "operationId": "observeBatch",
+                "parameters": [
+                    {
+                        "description": "Transport-retry safety for the whole batch",
+                        "in": "header",
+                        "name": "Idempotency-Key",
+                        "required": False,
+                        "schema": {"type": "string", "maxLength": 256},
+                    }
+                ],
+                "requestBody": batch_request_body,
+                "responses": {
+                    "200": _json_response("#/components/schemas/ObservationBatchResponse"),
+                    "400": error_response,
+                    "409": error_response,
+                    "507": error_response,
+                },
+            }
+        },
+        "/v1/observations/cursors/{source_stream}": {
+            "get": {
+                "operationId": "getSourceCursor",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "source_stream",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/SourceCursorEnvelope"),
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/active-surfaces:acquire": {
+            "post": {
+                "operationId": "acquireSurfaceLease",
+                "requestBody": lease_request_body,
+                "responses": {
+                    "200": _json_response(
+                        "#/components/schemas/LeaseView",
+                        "Acquired lease (possibly after preemption)",
+                    ),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/active-surfaces/{lease_id}:heartbeat": {
+            "post": {
+                "operationId": "heartbeatSurfaceLease",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "lease_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": True,
+                                "properties": {
+                                    "lease_epoch": {"type": "integer", "minimum": 0},
+                                    "holder_app_instance_id": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                    },
+                                    "ttl_us": {
+                                        "type": "integer",
+                                        "minimum": 1000000,
+                                        "maximum": 600000000,
+                                    },
+                                },
+                                "required": [
+                                    "lease_epoch",
+                                    "holder_app_instance_id",
+                                    "ttl_us",
+                                ],
+                                "type": "object",
+                            }
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/LeaseView"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/active-surfaces/{lease_id}:release": {
+            "post": {
+                "operationId": "releaseSurfaceLease",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "lease_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": True,
+                                "properties": {
+                                    "lease_epoch": {"type": "integer", "minimum": 0},
+                                    "holder_app_instance_id": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                    },
+                                    "reason": {"type": "string"},
+                                },
+                                "required": ["lease_epoch", "holder_app_instance_id"],
+                                "type": "object",
+                            }
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/LeaseView"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/active-surfaces/current": {
+            "get": {
+                "operationId": "getCurrentSurfaceLease",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The active lease, or null when none is held",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "oneOf": [
+                                        {"$ref": "#/components/schemas/LeaseView"},
+                                        {"type": "null"},
+                                    ]
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        },
+        "/v1/admin/jobs": {
+            "get": {
+                "operationId": "listAdminJobs",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "status",
+                        "required": False,
+                        "schema": {"enum": ["pending", "leased", "completed", "retryable", "dead"]},
+                    },
+                    {
+                        "in": "query",
+                        "name": "job_kind",
+                        "required": False,
+                        "schema": {"type": "string"},
+                    },
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Outbox job listing (admin plane)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": True,
+                                    "properties": {
+                                        "jobs": {
+                                            "type": "array",
+                                            "items": {"$ref": "#/components/schemas/AdminJob"},
+                                        }
+                                    },
+                                    "required": ["jobs"],
+                                    "type": "object",
+                                }
+                            }
+                        },
+                    },
+                    "403": error_response,
+                },
+            }
+        },
+        "/v1/admin/jobs/{job_id}:retry": {
+            "post": {
+                "operationId": "replayDeadLetter",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "job_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": True,
+                                "properties": {"reason": {"type": "string", "minLength": 1}},
+                                "required": ["reason"],
+                                "type": "object",
+                            }
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/AdminJob"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/admin/schedules": {
+            "post": {
+                "operationId": "createSchedule",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": True,
+                                "properties": {
+                                    "agent_id": {"type": ["string", "null"]},
+                                    "job_kind": {"type": "string", "minLength": 1},
+                                    "schedule_spec": {"type": "object"},
+                                    "timezone": {"type": "string"},
+                                    "catch_up_policy": {
+                                        "enum": ["all", "latest", "coalesce", "skip"]
+                                    },
+                                    "misfire_grace_us": {"type": "integer", "minimum": 0},
+                                    "max_ticks_per_run": {"type": "integer", "minimum": 1},
+                                    "reason": {"type": "string", "minLength": 1},
+                                },
+                                "required": ["job_kind", "schedule_spec", "reason"],
+                                "type": "object",
+                            }
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "201": _json_response("#/components/schemas/ScheduleView"),
+                    "400": error_response,
+                },
+            }
+        },
+        "/v1/admin/schedules/{schedule_id}:run": {
+            "post": {
+                "operationId": "runScheduleNow",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "schedule_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": True,
+                                "properties": {"reason": {"type": "string", "minLength": 1}},
+                                "required": ["reason"],
+                                "type": "object",
+                            }
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": {
+                        "description": "The tick ledger entry created by the manual run",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": True,
+                                    "properties": {
+                                        "tick_id": {"type": "string", "minLength": 1},
+                                        "schedule_id": {"type": "string", "minLength": 1},
+                                        "scheduled_at_us": {"type": "integer", "minimum": 0},
+                                        "occurrence_key": {"type": "string", "minLength": 1},
+                                        "status": {
+                                            "enum": [
+                                                "pending",
+                                                "enqueued",
+                                                "completed",
+                                                "skipped",
+                                                "failed",
+                                            ]
+                                        },
+                                    },
+                                    "required": ["tick_id", "occurrence_key", "status"],
+                                    "type": "object",
+                                }
+                            }
+                        },
+                    },
+                    "403": error_response,
+                },
+            }
+        },
+    }
+    return {
+        "components": {"schemas": schemas},
+        "info": {
+            "description": "Phase 2 contract and capability surface",
+            "license": {"identifier": "AGPL-3.0-only", "name": "AGPL-3.0-only"},
+            "title": "Iris Memory Core API",
+            "version": str(source["contract_version"]),
+        },
+        "openapi": "3.1.0",
+        "paths": paths,
     }
 
 
@@ -229,13 +886,15 @@ def compatibility_snapshot(openapi: Mapping[str, Any]) -> dict[str, Any]:
 
 def generated_documents(source: Mapping[str, Any]) -> dict[Path, dict[str, Any]]:
     openapi = build_openapi(source)
-    return {
+    documents: dict[Path, dict[str, Any]] = {
         OPENAPI_PATH: openapi,
         JSON_SCHEMA_DIRECTORY / "capabilities.schema.json": capabilities_schema(),
         JSON_SCHEMA_DIRECTORY / "error-envelope.schema.json": error_envelope_schema(),
         JSON_SCHEMA_DIRECTORY / "version-manifest.schema.json": version_manifest_schema(),
         VERSION_MANIFEST_PATH: build_version_manifest(source),
     }
+    documents.update(phase2_json_schema_files())
+    return documents
 
 
 def _write_or_check(documents: Mapping[Path, Mapping[str, Any]], check: bool) -> list[Path]:

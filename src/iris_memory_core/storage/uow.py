@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager, suppress
 
 from iris_memory_core.application.ports import (
@@ -51,6 +51,12 @@ from iris_memory_core.storage.repositories import (
     SpaceRepository,
 )
 from iris_memory_core.storage.runtime import SQLiteRuntime
+from iris_memory_core.storage.spine import (
+    ObservationRepository,
+    OutboxRepository,
+    ScheduleRepository,
+    SurfaceRepository,
+)
 
 BUSY_MESSAGES = ("database is locked", "database table is locked")
 
@@ -80,6 +86,10 @@ class Transaction:
         self.spaces = SpaceRepository(connection, clock, ids)
         self.identities = IdentityRepository(connection, clock, ids)
         self.ledger = LedgerRepository(connection, clock, ids)
+        self.observations = ObservationRepository(connection, clock, ids)
+        self.outbox = OutboxRepository(connection, clock, ids)
+        self.schedules = ScheduleRepository(connection, clock, ids)
+        self.surfaces = SurfaceRepository(connection, clock, ids)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}
@@ -583,12 +593,19 @@ class Store:
         ids: IdentifierGenerator | None = None,
         busy_retry_attempts: int = 8,
         busy_backoff_ms: float = 25.0,
+        busy_observer: Callable[[str], None] | None = None,
     ) -> None:
         self.runtime = runtime
         self.clock: Clock = clock or SystemClock()
         self.ids: IdentifierGenerator = ids or Uuid7Generator()
         self._busy_retry_attempts = busy_retry_attempts
         self._busy_backoff_ms = busy_backoff_ms
+        self._busy_observer = busy_observer
+
+    def _note_busy(self, operation_class: str) -> None:
+        if self._busy_observer is not None:
+            with suppress(Exception):
+                self._busy_observer(operation_class)
 
     def write(self) -> AbstractContextManager[Transaction]:
         """Short write transaction behind the process-wide writer gate.
@@ -622,6 +639,7 @@ class Store:
                 connection.close()
                 if not _is_busy(error):
                     raise
+                self._note_busy("begin_immediate")
                 last_error = error
                 time.sleep(delay)
                 delay = min(delay * 2, 0.5)
@@ -638,6 +656,7 @@ class Store:
             except sqlite3.OperationalError as error:
                 if not _is_busy(error) or not connection.in_transaction:
                     raise
+                self._note_busy("commit")
                 if attempt == self._busy_retry_attempts - 1:
                     raise OperationalBusyError(
                         "commit stayed busy beyond the retry budget", details={"cause": str(error)}

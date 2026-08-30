@@ -1,0 +1,9 @@
+{
+  "accepted_observation_ids": ["01a050fd-6cc2-7d1b-86ef-86d5150fa616"],
+  "duplicate_observation_ids": [],
+  "source_watermark": 42,
+  "agent_watermark": 7,
+  "outbox_enqueued": 1,
+  "cursors": {"platform:main": 42},
+  "lease_warning": null
+}

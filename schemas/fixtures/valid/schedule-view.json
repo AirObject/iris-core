@@ -1,0 +1,15 @@
+{
+  "schedule_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa61b",
+  "tenant_id_hash": "h_0011223344556677",
+  "agent_id_hash": null,
+  "job_kind": "maintenance.selfcheck",
+  "schedule_spec": {"kind": "interval", "every_seconds": 3600},
+  "timezone": "UTC",
+  "catch_up_policy": "latest",
+  "misfire_grace_us": 60000000,
+  "max_ticks_per_run": 100,
+  "enabled": true,
+  "next_tick_at_us": 1700003600000000,
+  "policy_version": 1,
+  "revision": 1
+}

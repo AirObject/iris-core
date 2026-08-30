@@ -166,7 +166,7 @@ def test_repository_migrations_apply_on_empty_database(tmp_path: Path) -> None:
 
     runner = MigrationRunner(tmp_path / "db.sqlite3", default_migrations_path())
     applied = runner.migrate()
-    assert [item.version for item in applied] == [1, 2]
+    assert [item.version for item in applied] == [1, 2, 3]
     assert runner.migrate() == ()
 
 
@@ -208,8 +208,8 @@ def test_phase0_database_upgrades_to_phase1(tmp_path: Path) -> None:
     assert MigrationRunner(database, legacy_dir).current_version() == 1
 
     upgraded = MigrationRunner(database, default_migrations_path()).migrate()
-    assert [item.version for item in upgraded] == [2]
-    assert MigrationRunner(database, default_migrations_path()).current_version() == 2
+    assert [item.version for item in upgraded] == [2, 3]
+    assert MigrationRunner(database, default_migrations_path()).current_version() == 3
 
 
 def test_migration_meta_enforces_app_version_window(tmp_path: Path) -> None:

@@ -29,6 +29,81 @@
       "expected": "reject",
       "file": "invalid/capabilities-duplicate.json",
       "schema": "capabilities"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/observation-batch-request.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/observation-batch-response.json",
+      "schema": "observation-batch-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/source-cursor-envelope.json",
+      "schema": "source-cursor-envelope"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/lease-acquire-request.json",
+      "schema": "lease-acquire-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/lease-view.json",
+      "schema": "lease-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/readiness-report.json",
+      "schema": "readiness-report"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/admin-job.json",
+      "schema": "admin-job"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/schedule-view.json",
+      "schema": "schedule-view"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/observation-batch-request-unknown-field.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/lease-view-unknown-status.json",
+      "schema": "lease-view"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/observation-batch-request-bad-role.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/observation-batch-request-bad-cursor.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/observation-batch-request-session-without-space.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/readiness-report-bad-status.json",
+      "schema": "readiness-report"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/lease-acquire-request-bad-ttl.json",
+      "schema": "lease-acquire-request"
     }
   ]
 }

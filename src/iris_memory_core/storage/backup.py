@@ -861,6 +861,48 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
             ).fetchone()
             if tombstone_dupes is not None and int(tombstone_dupes[0]) > 0:
                 problems.append("duplicate tombstones")
+        # Phase 2 spine invariants (§21 restore step 3): skipped for older
+        # snapshots whose schema predates these tables.
+        if _has("schedule_ticks") and _has("outbox_jobs"):
+            orphan_ticks = connection.execute(
+                "SELECT COUNT(*) FROM schedule_ticks t WHERE t.outbox_id IS NOT NULL "
+                "AND t.outbox_id NOT IN (SELECT id FROM outbox_jobs)"
+            ).fetchone()
+            if orphan_ticks is not None and int(orphan_ticks[0]) > 0:
+                problems.append("ticks referencing missing outbox jobs")
+            unfulfilled_ticks = connection.execute(
+                "SELECT COUNT(*) FROM schedule_ticks WHERE status = 'enqueued' "
+                "AND outbox_id IS NULL"
+            ).fetchone()
+            if unfulfilled_ticks is not None and int(unfulfilled_ticks[0]) > 0:
+                problems.append("enqueued ticks without an outbox job")
+        if _has("outbox_jobs"):
+            bad_completion = connection.execute(
+                "SELECT COUNT(*) FROM outbox_jobs WHERE status = 'completed' "
+                "AND completed_us IS NULL"
+            ).fetchone()
+            if bad_completion is not None and int(bad_completion[0]) > 0:
+                problems.append("completed outbox jobs without completion time")
+            fenced_residue = connection.execute(
+                "SELECT COUNT(*) FROM outbox_jobs WHERE status = 'completed' "
+                "AND (lease_owner IS NOT NULL OR lease_expires_us IS NOT NULL)"
+            ).fetchone()
+            if fenced_residue is not None and int(fenced_residue[0]) > 0:
+                problems.append("completed outbox jobs still holding lease fields")
+        if _has("surface_leases") and _has("surface_lease_state"):
+            double_active = connection.execute(
+                "SELECT COUNT(*) FROM (SELECT tenant_id, agent_id, COUNT(*) c "
+                "FROM surface_leases WHERE status = 'active' GROUP BY 1, 2 HAVING c > 1)"
+            ).fetchone()
+            if double_active is not None and int(double_active[0]) > 0:
+                problems.append("more than one active surface lease per agent")
+            epoch_regression = connection.execute(
+                "SELECT COUNT(*) FROM surface_lease_state s WHERE s.current_epoch < "
+                "(SELECT COALESCE(MAX(l.lease_epoch), 0) FROM surface_leases l "
+                "WHERE l.tenant_id = s.tenant_id AND l.agent_id = s.agent_id)"
+            ).fetchone()
+            if epoch_regression is not None and int(epoch_regression[0]) > 0:
+                problems.append("surface lease epoch regressed below issued epochs")
     finally:
         connection.close()
     return tuple(problems)

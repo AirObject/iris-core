@@ -1,0 +1,4 @@
+{
+  "status": "exploded",
+  "checks": {"storage_writable": true}
+}

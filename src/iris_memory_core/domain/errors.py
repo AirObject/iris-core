@@ -126,6 +126,67 @@ class OperationalBusyError(DomainError):
         self.retryable = True
 
 
+class StorageFullError(DomainError):
+    """A hard backpressure threshold (queue or disk) blocks normal-lane writes.
+
+    Safety-lane operations (Forget, Correct, security) keep a bounded priority
+    channel and remain available; the condition never silently drops jobs,
+    rewinds cursors or skips audit (§16.5).
+    """
+
+    code = "storage_full"
+
+    def __init__(self, message: str, *, details: dict[str, object] | None = None) -> None:
+        super().__init__(message, details=details)
+        self.retryable = True
+
+
+class CursorGapError(DomainError):
+    """A source cursor jumped forward under a gap-reject connector policy (§8.3)."""
+
+    code = "cursor_gap"
+
+    def __init__(self, message: str, *, details: dict[str, object] | None = None) -> None:
+        super().__init__(message, details=details)
+
+
+class NotReadyError(DomainError):
+    """A dependency the request depends on is unavailable, so it fails closed.
+
+    The canonical case is the surface coordinator under ``required`` mode
+    (§25.4): an unreachable coordinator can neither verify a lease nor prove
+    the mode is ``off``/``advisory``, so the online plane rejects with the
+    stable ``not_ready`` code instead of proceeding on unverifiable state.
+    """
+
+    code = "not_ready"
+    retryable = True
+
+
+class LeaseHeldError(DomainError):
+    """Another holder owns the active lease for this agent (§25.2)."""
+
+    code = "lease_held"
+
+
+class LeaseExpiredError(DomainError):
+    """The lease exists but its expiry has passed (§25.4)."""
+
+    code = "lease_expired"
+
+
+class LeaseFencedError(DomainError):
+    """A stale owner/generation/epoch attempted to commit (§16.3, §25.2)."""
+
+    code = "lease_fenced"
+
+
+class InvalidRequestError(DomainError):
+    """Malformed or semantically invalid request payload (contract code)."""
+
+    code = "invalid_request"
+
+
 def require_reason(reason: str | None) -> str:
     """Management-plane and high-risk operations must carry a reason code."""
     if reason is None or not reason.strip():

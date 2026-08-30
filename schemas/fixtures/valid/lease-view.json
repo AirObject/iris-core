@@ -1,0 +1,13 @@
+{
+  "lease_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa618",
+  "tenant_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa619",
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa617",
+  "holder_app_instance_id": "host-1",
+  "lease_epoch": 3,
+  "priority": 10,
+  "status": "active",
+  "acquired_us": 1700000000000000,
+  "expires_us": 1700000030000000,
+  "last_heartbeat_us": 1700000000000000,
+  "revision": 1
+}

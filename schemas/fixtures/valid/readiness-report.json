@@ -1,0 +1,12 @@
+{
+  "status": "degraded",
+  "checks": {
+    "storage_writable": true,
+    "disk_free_bytes": 900000000000,
+    "queue_lag_us": 400000000,
+    "oldest_pending_age_us": 400000000,
+    "dead_letters": 0,
+    "pending_jobs": 12
+  },
+  "reasons": ["queue_lag_exceeded"]
+}

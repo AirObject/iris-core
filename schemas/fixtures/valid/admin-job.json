@@ -1,0 +1,13 @@
+{
+  "job_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa61a",
+  "tenant_id_hash": "h_0011223344556677",
+  "job_kind": "observation.recorded",
+  "status": "pending",
+  "priority": 2,
+  "lane": "normal",
+  "attempt_count": 0,
+  "max_attempts": 8,
+  "lease_generation": 0,
+  "last_error_code": null,
+  "replay_of": null
+}

@@ -21,6 +21,7 @@ from iris_memory_core.domain.identity import (
     ExternalIdentityKey,
     FieldAuthority,
 )
+from iris_memory_core.domain.jobs import NewOutboxJob, OutboxJob
 from iris_memory_core.domain.model import (
     Agent,
     AttributeWrite,
@@ -42,6 +43,13 @@ from iris_memory_core.domain.model import (
     Tombstone,
     WatermarkState,
 )
+from iris_memory_core.domain.observation import (
+    GapPolicy,
+    ObservationDraft,
+    StoredObservation,
+)
+from iris_memory_core.domain.schedule import ScheduleRecord, TickRecord
+from iris_memory_core.domain.surface import LeaseView, SurfaceMode
 
 
 class Clock(Protocol):
@@ -58,6 +66,30 @@ class SystemClock:
 
     def now_us(self) -> int:
         return time.time_ns() // 1000
+
+
+class MonotonicClock(Protocol):
+    """Injectable monotonic clock for schedule/tick observations (§17.3)."""
+
+    def monotonic_us(self) -> int: ...
+
+
+class SystemMonotonicClock:
+    def monotonic_us(self) -> int:
+        return time.monotonic_ns() // 1000
+
+
+class FixedMonotonicClock:
+    """Test double: manually advanced monotonic time (sleep/restart tests)."""
+
+    def __init__(self, start_us: int = 0) -> None:
+        self._us = start_us
+
+    def monotonic_us(self) -> int:
+        return self._us
+
+    def advance(self, delta_us: int) -> None:
+        self._us += delta_us
 
 
 class IdentifierGenerator(Protocol):
@@ -82,8 +114,210 @@ class Uuid7Generator:
         return uuid.UUID(bytes=bytes(raw))
 
 
+class ObservationSurface(Protocol):
+    """Repository surface for the observation journal and source cursors."""
+
+    def get(self, observation_id: str) -> StoredObservation: ...
+    def record_fingerprint(self, observation_id: str) -> str: ...
+    def find_by_idempotency_key(
+        self, tenant_id: str, agent_id: str, idempotency_key: str
+    ) -> StoredObservation | None: ...
+    def find_by_cursor(
+        self, tenant_id: str, agent_id: str, source_stream: str, cursor: int
+    ) -> StoredObservation | None: ...
+    def find_by_occurrence(
+        self, tenant_id: str, agent_id: str, occurrence_id: str
+    ) -> StoredObservation | None: ...
+    def find_by_source_event(
+        self, tenant_id: str, agent_id: str, source_event_id: str
+    ) -> StoredObservation | None: ...
+    def insert(self, draft: ObservationDraft, fingerprint: str) -> StoredObservation: ...
+    def cursor_state(
+        self, tenant_id: str, agent_id: str, source_stream: str
+    ) -> tuple[int | None, GapPolicy]: ...
+    def advance_cursor(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        source_stream: str,
+        position: int,
+        gap_policy: GapPolicy,
+    ) -> None: ...
+
+
+class OutboxSurface(Protocol):
+    def enqueue(self, job: NewOutboxJob) -> tuple[OutboxJob, bool]: ...
+    def replay(self, original: OutboxJob, *, available_at_us: int) -> OutboxJob: ...
+    def release_expired_leases(self, now_us: int, *, requeue_delay_us: int) -> int: ...
+    def claim(
+        self,
+        *,
+        owner: str,
+        now_us: int,
+        lease_us: int,
+        batch_size: int,
+        enabled_kinds: tuple[str, ...] | frozenset[str],
+        max_per_tenant: int,
+        supported_payload_version: int = 1,
+    ) -> tuple[OutboxJob, ...]: ...
+    def heartbeat(
+        self, job_id: str, *, owner: str, generation: int, now_us: int, extend_us: int
+    ) -> int: ...
+    def complete(
+        self,
+        job_id: str,
+        *,
+        owner: str,
+        generation: int,
+        now_us: int,
+        source_revision: int,
+    ) -> int: ...
+    def mark_retryable(
+        self,
+        job_id: str,
+        *,
+        owner: str,
+        generation: int,
+        now_us: int,
+        available_at_us: int,
+        error_code: str,
+        source_revision: int,
+    ) -> int: ...
+    def mark_dead(
+        self,
+        job_id: str,
+        *,
+        owner: str,
+        generation: int,
+        now_us: int,
+        error_code: str,
+        source_revision: int,
+    ) -> int: ...
+    def get(self, job_id: str) -> OutboxJob: ...
+    def active_replay(self, original_id: str) -> OutboxJob | None: ...
+    def by_dedupe_key(self, tenant_id: str, dedupe_key: str) -> OutboxJob | None: ...
+    def by_coalesce_key(
+        self, tenant_id: str, agent_id: str | None, job_kind: str, coalesce_key: str
+    ) -> OutboxJob | None: ...
+    def leased_count(self, owner: str) -> int: ...
+    def list_jobs(
+        self,
+        *,
+        tenant_id: str | None = None,
+        status: str | None = None,
+        job_kind: str | None = None,
+        limit: int = 100,
+    ) -> tuple[OutboxJob, ...]: ...
+    def pressure(
+        self,
+        tenant_id: str | None = None,
+        agent_id: str | None = None,
+        *,
+        lane: str | None = None,
+    ) -> dict[str, int]: ...
+    def oldest_pending_us(self) -> int | None: ...
+    def status_counts(self) -> dict[str, int]: ...
+    def tick_completion(self, tick_id: str, *, now_us: int, error_code: str | None) -> None: ...
+
+
+class ScheduleSurface(Protocol):
+    def insert(self, record: ScheduleRecord) -> ScheduleRecord: ...
+    def get(self, schedule_id: str) -> ScheduleRecord: ...
+    def due(self, now_us: int, *, limit: int = 100) -> tuple[ScheduleRecord, ...]: ...
+    def due_lag_by_kind(self, now_us: int) -> dict[str, int]: ...
+    def advance(
+        self,
+        schedule_id: str,
+        *,
+        expected_revision: int,
+        next_tick_at_us: int,
+        last_tick_at_us: int | None,
+    ) -> ScheduleRecord: ...
+    def set_enabled(
+        self, schedule_id: str, *, enabled: bool, expected_revision: int
+    ) -> ScheduleRecord: ...
+    def record_tick(
+        self,
+        *,
+        schedule_id: str,
+        scheduled_at_us: int,
+        occurrence_key: str,
+        status: str,
+        observed_wall_us: int | None,
+        observed_monotonic_delta_us: int | None,
+        outbox_id: str | None,
+        reason_code: str | None,
+    ) -> TickRecord: ...
+    def get_tick(self, tick_id: str) -> TickRecord: ...
+    def tick_by_occurrence(self, schedule_id: str, occurrence_key: str) -> TickRecord: ...
+    def attach_outbox(self, tick_id: str, outbox_id: str) -> None: ...
+
+
+class SurfaceLeaseSurface(Protocol):
+    def state(self, tenant_id: str, agent_id: str) -> tuple[str, int, int]: ...
+    def set_mode(
+        self, tenant_id: str, agent_id: str, mode: SurfaceMode, *, expected_revision: int
+    ) -> int: ...
+    def next_epoch(self, tenant_id: str, agent_id: str) -> int: ...
+    def insert_lease(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        holder_space_id: str | None,
+        holder_app_instance_id: str,
+        lease_epoch: int,
+        priority: int,
+        ttl_us: int,
+    ) -> LeaseView: ...
+    def get_lease(self, lease_id: str) -> LeaseView: ...
+    def active_lease(self, tenant_id: str, agent_id: str) -> LeaseView | None: ...
+    def expire_stale(self, tenant_id: str, agent_id: str, *, now_us: int) -> int: ...
+    def fence(
+        self, lease_id: str, *, expected_epoch: int, expected_revision: int, now_us: int
+    ) -> int: ...
+    def heartbeat(
+        self,
+        lease_id: str,
+        *,
+        expected_epoch: int,
+        expected_owner: str,
+        now_us: int,
+        ttl_us: int,
+    ) -> int: ...
+    def release(
+        self, lease_id: str, *, expected_epoch: int, expected_owner: str, now_us: int
+    ) -> int: ...
+    def record_event(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        lease_id: str,
+        lease_epoch: int,
+        event: str,
+        actor: str,
+        reason_code: str = "",
+        details: dict[str, object] | None = None,
+    ) -> None: ...
+    def event_count(self, tenant_id: str, agent_id: str) -> int: ...
+    def lease_counts(self) -> dict[str, int]: ...
+
+
 class Transaction(Protocol):
     """Repository surface available inside one unit of work."""
+
+    @property
+    def observations(self) -> ObservationSurface: ...
+
+    @property
+    def outbox(self) -> OutboxSurface: ...
+
+    @property
+    def schedules(self) -> ScheduleSurface: ...
+
+    @property
+    def surfaces(self) -> SurfaceLeaseSurface: ...
 
     # --- tenants, agents, spaces -------------------------------------
     def insert_tenant(self, tenant_id: str, *, status: str) -> Tenant: ...

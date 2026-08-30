@@ -1,6 +1,77 @@
 {
   "components": {
     "schemas": {
+      "AdminJob": {
+        "$id": "https://schemas.iris-memory-core.local/v1/admin-job.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "attempt_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "job_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "job_kind": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "lane": {
+            "enum": [
+              "normal",
+              "safety"
+            ]
+          },
+          "last_error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lease_generation": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_attempts": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "priority": {
+            "maximum": 9,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "replay_of": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "leased",
+              "completed",
+              "retryable",
+              "dead"
+            ]
+          },
+          "tenant_id_hash": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "job_kind",
+          "status",
+          "lane"
+        ],
+        "title": "AdminJob",
+        "type": "object"
+      },
       "CapabilitiesEnvelope": {
         "$id": "https://schemas.iris-memory-core.local/v1/capabilities.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -73,6 +144,504 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "LeaseAcquireRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/lease-acquire-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "allow_preempt": {
+            "type": "boolean"
+          },
+          "holder_app_instance_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "holder_space_id": {
+            "maxLength": 128,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ttl_us": {
+            "maximum": 600000000,
+            "minimum": 1000000,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agent_id",
+          "holder_app_instance_id",
+          "ttl_us"
+        ],
+        "title": "LeaseAcquireRequest",
+        "type": "object"
+      },
+      "LeaseView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/lease-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "acquired_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "holder_app_instance_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "holder_space_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_heartbeat_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "priority": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "draining",
+              "released",
+              "expired"
+            ]
+          },
+          "tenant_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "lease_id",
+          "tenant_id",
+          "agent_id",
+          "holder_app_instance_id",
+          "lease_epoch",
+          "status",
+          "expires_us"
+        ],
+        "title": "LeaseView",
+        "type": "object"
+      },
+      "ObservationBatchRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/observation-batch-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "additionalProperties": true,
+              "dependentRequired": {
+                "session_id": [
+                  "space_id"
+                ]
+              },
+              "properties": {
+                "actor_entity_id_at_ingest": {
+                  "description": "Server-resolved actor snapshot. Only accepted together with actor_external_identity_id and must match that identity's confirmed binding (ADR-0009 §1); supplying it alone is invalid_request.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "actor_external_identity_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "agent_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "artifact_refs": {
+                  "items": {
+                    "additionalProperties": true,
+                    "properties": {
+                      "artifact_id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "kind": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "artifact_id",
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "committed_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "effect_proof": {
+                  "type": "object"
+                },
+                "effect_state": {
+                  "enum": [
+                    "committed",
+                    "partial"
+                  ]
+                },
+                "idempotency_key": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "kind": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "occurred_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "occurrence_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "privacy_labels": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "role": {
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "tool",
+                    "system",
+                    "external"
+                  ]
+                },
+                "session_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_cursor": {
+                  "pattern": "^(0|[1-9][0-9]{0,17})$",
+                  "type": "string"
+                },
+                "source_event_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_stream": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "space_group_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "space_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "structured_payload": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "agent_id",
+                "role",
+                "kind",
+                "idempotency_key",
+                "occurred_us",
+                "committed_us"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "title": "ObservationBatchRequest",
+        "type": "object"
+      },
+      "ObservationBatchResponse": {
+        "$id": "https://schemas.iris-memory-core.local/v1/observation-batch-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "accepted_observation_ids": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "agent_watermark": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cursors": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "duplicate_observation_ids": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "lease_warning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outbox_enqueued": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source_watermark": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "accepted_observation_ids",
+          "duplicate_observation_ids",
+          "outbox_enqueued"
+        ],
+        "title": "ObservationBatchResponse",
+        "type": "object"
+      },
+      "ReadinessReport": {
+        "$id": "https://schemas.iris-memory-core.local/v1/readiness-report.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "checks": {
+            "additionalProperties": true,
+            "properties": {
+              "dead_letters": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "disk_free_bytes": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "oldest_pending_age_us": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "pending_jobs": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "queue_lag_us": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "storage_error_code": {
+                "type": "string"
+              },
+              "storage_writable": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "degraded",
+              "not_ready"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessReport",
+        "type": "object"
+      },
+      "ScheduleView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/schedule-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "catch_up_policy": {
+            "enum": [
+              "all",
+              "latest",
+              "coalesce",
+              "skip"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "job_kind": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "max_ticks_per_run": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "misfire_grace_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next_tick_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "policy_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "schedule_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "schedule_spec": {
+            "type": "object"
+          },
+          "tenant_id_hash": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "timezone": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "schedule_id",
+          "job_kind",
+          "catch_up_policy",
+          "enabled"
+        ],
+        "title": "ScheduleView",
+        "type": "object"
+      },
+      "SourceCursorEnvelope": {
+        "$id": "https://schemas.iris-memory-core.local/v1/source-cursor-envelope.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "cursor_position": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "gap_policy": {
+            "enum": [
+              "accept",
+              "reject",
+              "mark"
+            ]
+          },
+          "source_stream": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_stream",
+          "gap_policy"
+        ],
+        "title": "SourceCursorEnvelope",
+        "type": "object"
+      },
       "VersionManifest": {
         "$id": "https://schemas.iris-memory-core.local/v1/version-manifest.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -109,13 +678,13 @@
     }
   },
   "info": {
-    "description": "Phase 0 contract and capability surface",
+    "description": "Phase 2 contract and capability surface",
     "license": {
       "identifier": "AGPL-3.0-only",
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -150,9 +719,546 @@
         "operationId": "getReadiness",
         "responses": {
           "200": {
-            "description": "Phase 0 scaffold is ready"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessReport"
+                }
+              }
+            },
+            "description": "Readiness report: schema window, storage writability, queue/scheduler lag, dead letters (Phase 2)"
           },
           "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "getMetrics",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "counters": {
+                      "type": "array"
+                    },
+                    "gauges": {
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "counters",
+                    "gauges"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Low-cardinality metrics snapshot (JSON)"
+          }
+        }
+      }
+    },
+    "/v1/active-surfaces/current": {
+      "get": {
+        "operationId": "getCurrentSurfaceLease",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/LeaseView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "The active lease, or null when none is held"
+          }
+        }
+      }
+    },
+    "/v1/active-surfaces/{lease_id}:heartbeat": {
+      "post": {
+        "operationId": "heartbeatSurfaceLease",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "holder_app_instance_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "lease_epoch": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "ttl_us": {
+                    "maximum": 600000000,
+                    "minimum": 1000000,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "lease_epoch",
+                  "holder_app_instance_id",
+                  "ttl_us"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/active-surfaces/{lease_id}:release": {
+      "post": {
+        "operationId": "releaseSurfaceLease",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "holder_app_instance_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "lease_epoch": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "lease_epoch",
+                  "holder_app_instance_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/active-surfaces:acquire": {
+      "post": {
+        "operationId": "acquireSurfaceLease",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaseAcquireRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseView"
+                }
+              }
+            },
+            "description": "Acquired lease (possibly after preemption)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/admin/jobs": {
+      "get": {
+        "operationId": "listAdminJobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "pending",
+                "leased",
+                "completed",
+                "retryable",
+                "dead"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "job_kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "jobs": {
+                      "items": {
+                        "$ref": "#/components/schemas/AdminJob"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "jobs"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Outbox job listing (admin plane)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/admin/jobs/{job_id}:retry": {
+      "post": {
+        "operationId": "replayDeadLetter",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminJob"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/admin/schedules": {
+      "post": {
+        "operationId": "createSchedule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "agent_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "catch_up_policy": {
+                    "enum": [
+                      "all",
+                      "latest",
+                      "coalesce",
+                      "skip"
+                    ]
+                  },
+                  "job_kind": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "max_ticks_per_run": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "misfire_grace_us": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "schedule_spec": {
+                    "type": "object"
+                  },
+                  "timezone": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "job_kind",
+                  "schedule_spec",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/admin/schedules/{schedule_id}:run": {
+      "post": {
+        "operationId": "runScheduleNow",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "occurrence_key": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "schedule_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "scheduled_at_us": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "enum": [
+                        "pending",
+                        "enqueued",
+                        "completed",
+                        "skipped",
+                        "failed"
+                      ]
+                    },
+                    "tick_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tick_id",
+                    "occurrence_key",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The tick ledger entry created by the manual run"
+          },
+          "403": {
             "content": {
               "application/json": {
                 "schema": {
@@ -230,6 +1336,122 @@
             "description": "Successful response"
           },
           "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/observations/cursors/{source_stream}": {
+      "get": {
+        "operationId": "getSourceCursor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_stream",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCursorEnvelope"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/observations:batch": {
+      "post": {
+        "operationId": "observeBatch",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for the whole batch",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationBatchResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "507": {
             "content": {
               "application/json": {
                 "schema": {

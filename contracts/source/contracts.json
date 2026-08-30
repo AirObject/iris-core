@@ -3,13 +3,21 @@
   "capabilities": [
     "contract.negotiation",
     "error-envelope.v1",
-    "health.v1"
+    "health.v1",
+    "health.readiness.v2",
+    "observe.batch.v1",
+    "source-cursor.v1",
+    "outbox.jobs.v1",
+    "schedules.v1",
+    "active-surface.v1",
+    "metrics.v1"
   ],
-  "contract_version": "1.0.0",
+  "contract_version": "1.1.0",
   "error_codes": [
     "access_denied",
     "binding_conflict",
     "conflict",
+    "cursor_gap",
     "database_busy",
     "history_unavailable",
     "idempotency_in_progress",
@@ -19,6 +27,9 @@
     "invalid_request",
     "invalid_scope",
     "invalid_state_transition",
+    "lease_expired",
+    "lease_fenced",
+    "lease_held",
     "not_found",
     "not_ready",
     "reason_required",
@@ -28,8 +39,9 @@
     "schema_incompatible",
     "scope_violation",
     "sqlite_runtime_not_allowed",
+    "storage_full",
     "unsupported_version"
   ],
-  "package_version": "0.2.0",
-  "schema_version": 2
+  "package_version": "0.3.0",
+  "schema_version": 3
 }

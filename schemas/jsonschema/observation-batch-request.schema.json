@@ -1,0 +1,156 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/observation-batch-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "records": {
+      "items": {
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "actor_entity_id_at_ingest": {
+            "description": "Server-resolved actor snapshot. Only accepted together with actor_external_identity_id and must match that identity's confirmed binding (ADR-0009 §1); supplying it alone is invalid_request.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "actor_external_identity_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "artifact_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "artifact_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "kind": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifact_id",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "committed_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content": {
+            "type": "string"
+          },
+          "effect_proof": {
+            "type": "object"
+          },
+          "effect_state": {
+            "enum": [
+              "committed",
+              "partial"
+            ]
+          },
+          "idempotency_key": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "occurred_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "occurrence_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant",
+              "tool",
+              "system",
+              "external"
+            ]
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_cursor": {
+            "pattern": "^(0|[1-9][0-9]{0,17})$",
+            "type": "string"
+          },
+          "source_event_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_stream": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "space_group_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "structured_payload": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "agent_id",
+          "role",
+          "kind",
+          "idempotency_key",
+          "occurred_us",
+          "committed_us"
+        ],
+        "type": "object"
+      },
+      "maxItems": 1000,
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "records"
+  ],
+  "title": "ObservationBatchRequest",
+  "type": "object"
+}

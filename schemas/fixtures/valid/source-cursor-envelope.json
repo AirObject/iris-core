@@ -1,0 +1,5 @@
+{
+  "source_stream": "platform:main",
+  "cursor_position": 42,
+  "gap_policy": "reject"
+}

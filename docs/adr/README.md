@@ -12,5 +12,7 @@ Phase 0 freezes the boundaries required by Phase 1. Accepted decisions are immut
 | [0006](./0006-api-version-and-compatibility.md) | API version and compatibility | Accepted |
 | [0007](./0007-repository-boundaries.md) | Repository and dependency boundaries | Accepted |
 | [0008](./0008-persona-bootstrap-seam.md) | Persona Bootstrap seam | Accepted |
+| [0009](./0009-phase2-reliability-spine.md) | Phase 2 reliability spine (observation identity, integer cursors, outbox fencing, bounded catch-up) | Accepted |
+| [0010](./0010-active-surface-coordinator.md) | Active Surface Coordinator (lease/epoch/modes) | Accepted |
 
 Open conflicts blocking Phase 1: **none**.

@@ -1,0 +1,64 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/readiness-report.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "checks": {
+      "additionalProperties": true,
+      "properties": {
+        "dead_letters": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "disk_free_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "oldest_pending_age_us": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pending_jobs": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queue_lag_us": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "storage_error_code": {
+          "type": "string"
+        },
+        "storage_writable": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "reasons": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "degraded",
+        "not_ready"
+      ]
+    }
+  },
+  "required": [
+    "status",
+    "checks"
+  ],
+  "title": "ReadinessReport",
+  "type": "object"
+}
