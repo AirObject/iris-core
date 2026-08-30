@@ -2,7 +2,8 @@
 
 > 状态：Planned  
 > 前置阶段：[阶段 6](./phase-06-fts-recall.md)  
-> 架构依据：[Embedding、FAISS Generation、Provider 边界与阶段 7](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)
+> 目标版本：0.8.0  
+> 架构依据：[§22.2 Embedding](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#222-embedding)、[§22.3 FAISS Generation](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#223-faiss-generation)、[§22.4 并发规则](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#224-并发规则)、[§24 Provider 边界](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#24-provider-边界)、[§30 性能与容量](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#30-性能与容量目标)、[§36 阶段 7](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-7vector-recall)
 
 ## 阶段目标
 
@@ -15,6 +16,16 @@
 - 不同 Model/Dimension/Normalization/Template 不得混入同一 Generation。
 - 新 Generation 完整构建、Flush、校验后才原子切换；失败继续使用上一已验证版本并标记降级。
 - Vector Candidate 仍受最终 Canonical Rehydrate 和 Tombstone 优先级约束。
+
+## 需求追踪
+
+| 需求 ID | 基线要求 | 工作包 | 验证门禁 |
+| --- | --- | --- | --- |
+| P7-EMBED-01 | Provider Port、启动 Probe、输入最小化与输出验证 | 7.1 | Mock Provider、维度/数值、超时和泄漏测试 |
+| P7-IDMAP-01 | UUID 与 signed `int64` 映射唯一、持久、可恢复 | 7.2 | 唯一性、边界、快照和重建一致性测试 |
+| P7-GEN-01 | 不可变 Generation、Manifest/Checksum 与原子切换 | 7.3 | 构建、损坏、孤儿目录、重启和回退测试 |
+| P7-CONCURRENCY-01 | Search 与 Build/Swap 隔离，旧 Handle 安全释放 | 7.3 | 并发压测、Fencing 与引用生命周期测试 |
+| P7-HYBRID-01 | Vector Route 可降级并沿用 Rehydrate/预算/Usage 契约 | 7.4 | 混合排序、删除竞态、Deadline 与性能测试 |
 
 ## 工作包
 
@@ -42,6 +53,22 @@
 - 实现 FTS/Vector/Structured 的版本化融合、去重、稳定排序和 Route 权重。
 - Vector 不可用时保留结构化与 FTS，响应明确报告所用回退。
 
+## 数据、契约与回退策略
+
+- Vector ID Map、Delta Ledger 和 Generation Pointer 通过增量 Migration 引入；公共 UUID 不暴露 FAISS ID，surrogate ID 由服务端分配并以唯一约束防止复用或碰撞。
+- 每个 Generation 的 Manifest 固定 Model、Dimension、Metric、Normalization、Template/Builder Version、Source/Tombstone Watermark、数量和 Checksum；不同向量空间永不共用索引或 Delta。
+- Embedding/Vector Capability 先通过 Negotiate 和 Fixture 作为可选能力发布；Vector 缺失、熔断或不兼容时继续返回 Phase 6 结构化/FTS 结果，并在 `degraded_routes` 指明原因和回退。
+- 模型切换采用双 Generation：构建、Flush、完整性/抽样验证后原子更新 Pointer，进程内 Copy-on-write Swap；旧 Generation 在无在途引用且超过回退窗口后才按受控策略清理。
+- 回退到上一已验证 Generation 时必须重新验证其模型配置、Watermark 与 Tombstone；没有可信 Generation 时禁用 Vector Route，不尝试修补当前只读 Handle，也不阻塞 Observe/Correct/Forget。
+
+## 量化验收基线
+
+- Hybrid Recall 在声明硬件、语料规模、维度、并发、Candidate/Token 上限及冷/热 Handle 条件下 p95 ≤ 250 ms；分别报告 Embed、FAISS Search、Rehydrate 和融合耗时。
+- UUID↔`int64` 映射边界、唯一性、删除/失效和快照恢复性质每项至少运行 200 个固定种子案例，映射碰撞或错误复用数必须为 0。
+- 50 个并发 Search 与至少 10 轮 Build/Validate/Swap 交错运行，不得读取临时 Generation、混合模型空间、出现 Use-after-close 或返回未 Rehydrate Candidate。
+- 对 Manifest 缺失、Checksum 错误、截断文件、数量不符、错误维度、NaN/Inf、加载异常和孤儿临时目录分别至少执行 20 次；当前可信 Route 不受损或显式降级。
+- 模型/维度/Normalization/Template 切换前后各抽样至少 1,000 个已知 Resource Revision，ID Map、Content Hash、检索空间与 Canonical Rehydrate 结果全部匹配。
+
 ## 退出门禁
 
 - [ ] UUID↔int64 映射唯一、可恢复、可校验，重建前后 Resource Revision 一致。
@@ -50,6 +77,7 @@
 - [ ] 重启只加载完整已验证 Generation，临时或孤儿目录不影响 Ready。
 - [ ] Vector 中残留的已删除/越权/旧 Revision Candidate 被 Rehydrate 剔除。
 - [ ] Hybrid Recall 在目标条件下 p95 ≤ 250 ms，并报告 Route 延迟与降级。
+- [ ] Schema/Capability/Generation 兼容和回退方案、需求追踪及交付证据已完成评审。
 
 ## 交付证据
 

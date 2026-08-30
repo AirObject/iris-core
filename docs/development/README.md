@@ -43,7 +43,7 @@ flowchart LR
 | 里程碑 | 阶段 | 可验证结果 | 状态 |
 | --- | --- | --- | --- |
 | M0 工程与可靠性脊柱 | [00 架构冻结与工程骨架](./phase-00-architecture-scaffold.md) | 契约、工程和 CI 可持续演进 | Completed |
-| M0 工程与可靠性脊柱 | [01 持久化内核、身份与空间](./phase-01-persistence-identity-scope.md) | Canonical Store 与权限边界成立 | Planned |
+| M0 工程与可靠性脊柱 | [01 持久化内核、身份与空间](./phase-01-persistence-identity-scope.md) | Canonical Store 与权限边界成立 | Completed |
 | M0 工程与可靠性脊柱 | [02 Observation、Outbox 与持久调度](./phase-02-observation-outbox-scheduler.md) | 已确认事件可可靠落库并异步推进 | Planned |
 | M1 认知领域闭环 | [03 近期上下文、State 与 Focus](./phase-03-recent-state-focus.md) | 有界短期上下文和认知关注可恢复 | Planned |
 | M1 认知领域闭环 | [04 Note、Task 与 CognitiveEvent](./phase-04-notes-tasks-events.md) | 捕获、计划、提醒和 ACK 语义闭环 | Planned |

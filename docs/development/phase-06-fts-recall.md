@@ -2,7 +2,8 @@
 
 > 状态：Planned  
 > 前置阶段：[阶段 5](./phase-05-long-term-memory.md)  
-> 架构依据：[Recall 协议、FTS5、HTTP API、性能目标与阶段 6](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)
+> 目标版本：0.7.0  
+> 架构依据：[§18 Recall 协议](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#18-recall-协议)、[§22.1 FTS5](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#221-fts5)、[§23 HTTP API](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#23-http-api-与能力协商)、[§30 性能与容量](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#30-性能与容量目标)、[§36 阶段 6](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-6fts-recall)
 
 ## 阶段目标
 
@@ -15,6 +16,17 @@
 - Persona 通过响应顶层 Revision/Hash 协调，不作为普通 Memory Candidate。
 - Deadline 使用单调时钟；任一 Route 超时不能阻塞已完成 Route。
 - 排序器版本化、确定性且区分缺失分值；Token 裁剪保障 Due Task、Focus 和当前说话人必要身份。
+
+## 需求追踪
+
+| 需求 ID | 基线要求 | 工作包 | 验证门禁 |
+| --- | --- | --- | --- |
+| P6-FTS-01 | FTS 绑定 Resource Revision、版本化 Builder 与影子重建 | 6.1 | 重建、切换、旧 Revision 与损坏测试 |
+| P6-RECALL-01 | Recall Request/Response、Route、Deadline、Watermark 与 Partial | 6.2 | Schema/Fixture、超时和一致性测试 |
+| P6-REHYDRATE-01 | 所有派生候选最终回读 Canonical 并重做硬过滤 | 6.3 | 删除、越权、过期、历史与旧版本竞态 |
+| P6-RANK-01 | 版本化确定性排序、冲突/去重、Layer/Token Budget | 6.3 | 重放、边界、缺失分值和 Tie-breaker 测试 |
+| P6-USAGE-01 | Usage 四阶段、子集验证和幂等合并 | 6.4 | 伪造、重复、跨 Tenant 与隐私测试 |
+| P6-PERF-01 | 结构化/FTS 延迟、容量保护和可解释降级 | 6.5 | 性能基线、故障注入与低敏 Trace |
 
 ## 工作包
 
@@ -48,6 +60,22 @@
 - 覆盖 FTS 落后/损坏、Minimum Watermark 不可达、Route 超时和允许/禁止 Partial 的行为。
 - Trace 只返回安全摘要，不暴露隐私过滤前候选。
 
+## 数据、契约与回退策略
+
+- FTS 文档、Projection State、Builder Manifest 与 Cache 仅保存 ResourceRef/Revision/Hash/Watermark 等可重建数据；Canonical 表不因搜索优化改变写入语义。
+- Tokenizer、规范化、停用词、语言和 Builder 版本变化使用新影子表。只有数量、Checksum、抽样查询、Source/Tombstone Watermark 全部验证后才原子切换 Current Pointer。
+- `/v1/recall`、Usage、Search、Capabilities/Negotiate、错误 Envelope、OpenAPI/JSON Schema、Fixture 和 Python/TypeScript SDK 同一 Release Train 发布；旧客户端不支持必需字段时通过协商失败，不静默更改语义。
+- 排序器与 Token Estimator 显式版本化；兼容窗口内保留上一版本重放能力。缓存键完整包含 Scope/Actor/Purpose/Query、Source/Tombstone Watermark、Persona Revision 与 Schema Version。
+- 回退时可关闭 FTS Capability 并保留结构化 Route；加载或切换失败继续使用上一已验证 FTS Generation，若其 Watermark/Builder 不可信则禁用该 Route，绝不跳过 Canonical Rehydrate。
+
+## 量化验收基线
+
+- 结构化 Recall p95 ≤ 50 ms、FTS Recall p95 ≤ 100 ms；报告必须声明硬件、数据规模、文本长度、并发、Candidate/Token 上限及冷/热索引状态。
+- 相同 Request、Canonical Snapshot、排序器和 Token Estimator 版本重放 100 次，Candidate 顺序、分数、冲突标记和裁剪结果完全一致。
+- 每个硬过滤维度（Tenant/Agent/SpaceGroup/Space/Session、Privacy、Status、Time、Tombstone、Revision、`as_of`）至少覆盖 200 个性质案例。
+- FTS 落后、损坏、Route 超时、Minimum Watermark 不可达、允许/禁止 Partial 各场景至少重复 20 次；响应 Envelope 与稳定原因码一致。
+- Usage 的 `model_visible ⊆ host_selected ⊆ returned` 性质至少运行 200 个生成案例；跨 Tenant/Request 伪造成功数必须为 0，重复 Report 100 次只产生一次逻辑累计。
+
 ## 退出门禁
 
 - [ ] FTS Builder 版本变化可影子重建并无中断切换，旧 Revision 不再被采用。
@@ -56,6 +84,7 @@
 - [ ] Route 超时、索引落后和 Minimum Watermark 场景返回准确 Partial/Degraded Envelope。
 - [ ] Usage 子集伪造、跨 Tenant Candidate 和重复 Report 被拒绝或幂等处理。
 - [ ] 在声明的硬件/数据集/并发条件下达到结构化与 FTS p95 目标。
+- [ ] Schema/SDK/Builder 兼容和 FTS 回退方案、需求追踪及交付证据已完成评审。
 
 ## 交付证据
 

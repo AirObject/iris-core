@@ -7,11 +7,29 @@
   ],
   "contract_version": "1.0.0",
   "error_codes": [
+    "access_denied",
+    "binding_conflict",
+    "conflict",
+    "database_busy",
+    "history_unavailable",
+    "idempotency_in_progress",
+    "idempotency_key_reused",
+    "idempotency_unavailable",
     "internal_error",
     "invalid_request",
+    "invalid_scope",
+    "invalid_state_transition",
+    "not_found",
     "not_ready",
+    "reason_required",
+    "redirect_cycle",
+    "redirect_depth_exceeded",
+    "revision_mismatch",
+    "schema_incompatible",
+    "scope_violation",
+    "sqlite_runtime_not_allowed",
     "unsupported_version"
   ],
-  "package_version": "0.1.0",
-  "schema_version": 1
+  "package_version": "0.2.0",
+  "schema_version": 2
 }

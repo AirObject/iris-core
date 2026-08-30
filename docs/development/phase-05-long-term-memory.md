@@ -2,7 +2,8 @@
 
 > 状态：Planned  
 > 前置阶段：[阶段 4](./phase-04-notes-tasks-events.md)  
-> 架构依据：[长期记忆、Remember/Correct/Forget、保留与阶段 5](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)
+> 目标版本：0.6.0  
+> 架构依据：[§13 长期记忆模型](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#13-长期记忆模型)、[§19 Remember/Correct/Forget](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#19-remembercorrectforget-与保留)、[§21 备份恢复与导出](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#21-备份恢复与导出)、[§29 安全与隐私](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#29-安全与隐私)、[§36 阶段 5](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-5显式长期记忆与-episode)
 
 ## 阶段目标
 
@@ -15,6 +16,17 @@
 - Forget 先同步影响 Canonical 读取，投影清理由 Outbox 异步完成；所有未来 Builder 必须比较 Tombstone Watermark。
 - Confidence、Importance、Accessibility、Activation 和情感分值分开演化，召回使用不能提高 Confidence。
 - Episode 不等于 Session，不允许跨 Space 拼接原始内容；Procedure Claim 不保存可执行代码。
+
+## 需求追踪
+
+| 需求 ID | 基线要求 | 工作包 | 验证门禁 |
+| --- | --- | --- | --- |
+| P5-MEMORY-01 | Episode、Claim、Evidence 的来源、Revision 与有效状态 | 5.1 | 领域、引用完整性、并发与权限测试 |
+| P5-RESOURCE-01 | Relation/Artifact 的 Evidence、Scope 与安全存储 | 5.2 | 关系约束、路径、哈希、配额和授权测试 |
+| P5-COMMAND-01 | Remember/Correct/Forget/Search 的幂等与权限语义 | 5.3 | API/Schema、竞争写和错误契约测试 |
+| P5-HISTORY-01 | 双时态、`as_of` 和发生时/当前身份读取 | 5.4 | 时间边界、历史窗口与不可用测试 |
+| P5-ERASURE-01 | Tombstone 同步生效且在后台、缓存和恢复路径不可复活 | 5.5 | 删除竞态、重建、导入和 Restore 测试 |
+| P5-RETENTION-01 | Retention、Legal Hold、Archive 与隐私删除分离 | 5.5 | Policy 矩阵、审计和保护资源测试 |
 
 ## 工作包
 
@@ -48,6 +60,22 @@
 - 区分 Accessibility 衰减、Archive 与合规删除；实现 Legal Hold 和不可普通遗忘资源规则。
 - 扩展备份/恢复、导入接口和后台 Job，使 Tombstone Watermark 始终优先。
 
+## 数据、契约与回退策略
+
+- 使用 Expand/Backfill/Validate/Cutover 引入 Episode、Claim/Evidence、Relation、Artifact 和双时态字段；Active Claim 的有效 Evidence、Current Pointer 与 Tombstone 优先级在数据库约束和领域校验中同时成立。
+- Remember/Correct/Forget/Search Schema 先以结构化 Subject、Scope、Privacy、Evidence 和 `as_of` Fixture 冻结；错误码只新增，省略主体只在契约明确的自我/当前 Actor 场景补全。
+- Correct/Forget 在单事务内更新 Canonical Revision、Agent/Tombstone Watermark、Audit 与投影失效 Outbox；未来 FTS/Vector/Profile/Graph Job Payload 以版本化 ResourceRef 消费，不能依赖正文快照。
+- Artifact 从 inline/local_blob/external_ref 分阶段启用；回退时先停止新 Blob Ingest，保留引用和内容哈希。外部 URL 永不由读取或 Recall 路径自动抓取。
+- 回退优先使用能理解新 Revision 的兼容二进制；若必须恢复备份，先在隔离目录回放切换后 Tombstone，再验证 Current/History、Artifact 引用和权限，禁止用 Down Migration 丢弃修正/删除历史。
+
+## 量化验收基线
+
+- Forget 的 Canonical 生效在声明硬件、Selector 规模和并发下 p95 ≤ 100 ms；此指标不等待投影物理清理，但提交后所有当前读取必须立即拒绝目标。
+- Claim/Evidence、双时态、Scope/Privacy、Retention/Legal Hold 和 Tombstone 不可复活性质每项至少运行 200 个固定种子案例。
+- 并发 Recall/Correct/Forget 每类竞争场景至少重复 50 次；Forget 成功后的当前读取命中数必须为 0，历史读取仅按授权和保留策略返回。
+- 对 Cache 占位、旧 Outbox、旧索引 Candidate、Artifact、导入和 Backup Restore 六条复活路径分别执行至少 20 次故障/重放测试，目标内容返回数必须为 0。
+- Backup → 隔离 Restore → Tombstone/Pointer/Foreign Key/Artifact/Smoke Recall 校验连续通过 3 次；报告记录数据规模、RPO、RTO 与待重建投影。
+
 ## 退出门禁
 
 - [ ] Active Claim 无 Evidence、未知 Entity、越权 Scope 或非法 ResourceRef 均被拒绝。
@@ -56,6 +84,7 @@
 - [ ] 删除后通过 Cache 占位、Outbox 重试、备份恢复和模拟索引旧结果均不可复活。
 - [ ] Artifact 路径穿越、超限、哈希不符和未授权读取测试通过。
 - [ ] 自动保留策略不会处理 Persona Core、Pinned Note、Active Task、未兑现承诺和 Tombstone。
+- [ ] Migration/契约兼容/恢复回退方案、需求追踪和交付证据已完成评审。
 
 ## 交付证据
 

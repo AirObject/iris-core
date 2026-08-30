@@ -1,8 +1,10 @@
 # 阶段 1：持久化内核、身份与空间
 
-> 状态：Planned  
+> 状态：Completed  
 > 前置阶段：[阶段 0](./phase-00-architecture-scaffold.md)  
 > 目标版本：0.2.0  
+> 开始日期：2026-08-29  
+> 完成日期：2026-08-29  
 > 架构依据：[§5 租户与空间](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#5-租户agent-与空间模型)、[§6 身份](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#6-身份与实体模型)、[§20 SQLite](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#20-sqlite-canonical-store)、[§21 备份恢复](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#21-备份恢复与导出)、[§36 阶段 1](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-1持久化内核身份与空间)
 
 ## 阶段目标
@@ -75,21 +77,54 @@
 
 ## 退出门禁
 
-- [ ] Scope Null、SpaceGroup/Space、Privacy 交集和 Body 提权性质测试通过。
-- [ ] 并发相同 Expected Revision 只有一个写入成功，失败返回稳定 `revision_mismatch`。
-- [ ] Binding 冲突、撤销、Redirect 环及发生时/当前身份历史测试通过。
-- [ ] 同幂等键同 Payload 回放原结果，不同 Payload 返回 `idempotency_key_reused`。
-- [ ] 跨 Tenant/Agent/Space/Entity 横向越权测试通过，审计与错误无敏感正文。
-- [ ] Online Backup → 隔离恢复 → Smoke Read/Write 验证通过。
-- [ ] Migration/兼容/回退方案、需求追踪和交付证据已完成评审。
+- [x] Scope Null、SpaceGroup/Space、Privacy 交集和 Body 提权性质测试通过（每条性质 250 个固定种子生成案例）。
+- [x] 并发相同 Expected Revision 只有一个写入成功，失败返回稳定 `revision_mismatch`（50 线程：1 成功 / 49 mismatch）。
+- [x] Binding 冲突、撤销、Redirect 环及发生时/当前身份历史测试通过。
+- [x] 同幂等键同 Payload 回放原结果，不同 Payload 返回 `idempotency_key_reused`（含崩溃恢复两分支）。
+- [x] 跨 Tenant/Agent/Space/Entity 横向越权测试通过，审计与错误无敏感正文。
+- [x] Online Backup → 隔离恢复 → Smoke Read/Write 验证通过（连续 3 轮 + 篡改拒绝 + 不变量拒绝）。
+- [x] Migration/兼容/回退方案、需求追踪和交付证据已完成评审。
 
 ## 交付证据
 
-- 代码/变更：待补充
-- ADR：待补充
-- Schema/Migration：待补充
-- 测试报告：待补充
-- 已知限制：待补充
+- 代码/变更：Phase 1 实现提交（哈希在完成证据提交中固化）；[Runtime/UoW](../../src/iris_memory_core/storage/uow.py)、[Repositories](../../src/iris_memory_core/storage/repositories.py)、[Backup](../../src/iris_memory_core/storage/backup.py)、[Provisioning](../../src/iris_memory_core/application/provisioning.py)、[Identity](../../src/iris_memory_core/application/identity.py)
+- ADR：无新增冻结边界决策；沿用 [ADR-0002](../adr/0002-scope-null-semantics.md)、[ADR-0003](../adr/0003-identity-and-binding.md)、[ADR-0004](../adr/0004-immutable-revisions.md)、[ADR-0005](../adr/0005-tombstone-priority.md)、[ADR-0007](../adr/0007-repository-boundaries.md)、[ADR-0008](../adr/0008-persona-bootstrap-seam.md)
+- Schema/Migration：[`0002_phase1_kernel.sql`](../../migrations/0002_phase1_kernel.sql)（SHA-256 `7fcd0883…2267c`，online_safe=true）；Schema Version 2；包版本 0.2.0；稳定错误码仅新增；0001 保持已发布字节不变，Phase 0→1 升级由测试覆盖
+- 测试报告：[Phase 1 Verification Report](../reports/phase-01-verification.md)（完整
+  `make ci` exit 0；139 个 Python 测试和 TypeScript SDK 测试通过，覆盖率 89.66%；含
+  四轮针对性评审修复与回归测试）
+- 已知限制：本地开发 SQLite 3.50.4 不在官方 Allowlist（集成测试显式 Pin，生产 Ready 仍用官方清单）；挑战码仅契约位；Redirect 撤销未建模；备份 artifacts/faiss 清单留待对应阶段；详见验证报告。
+
+## 本轮评审固化的语义
+
+- **字段权威授权**：断言 `platform_verified`/`admin_confirmed`/`explicit_correction`
+  需要对应 capability（`platform_ingest`/`manage`/`identity.correct`）**或**管理平面
+  （`admin=True`）。`admin` 由服务端从认证凭据派生，请求体不可自授，代表平台运营方
+  全权——这是设计上的第二授权通道，不是越权漏洞。
+- **备份完整性 vs 真实性**：目录内 checksums 证明意外损坏；对抗性篡改（改库并重算
+  checksums）由操作员保管的外部密钥签发的 `authenticity.tag`（HMAC）拒绝。CLI 以
+  `--backup-key-file` 提供密钥；`--with-backup` 仅在备份**验证通过**后才满足
+  `recovery=backup` 前置条件。
+- **恢复切换**：journal 化两段 rename + 文件/目录 fsync；中断后由
+  `iris-memory-core recover-switch`（或 `recover_pending_switch()`）确定性完成或回滚，
+  服务路径不会停留在"目标目录缺失"状态。
+- **版本列车**：核心、Python SDK、TypeScript SDK 同步发布 0.2.0；如未来需要 SDK 独立
+  版本策略，以 ADR 记录后再拆分。
+- **水印推进**：每个写事务每 (tenant, agent) 恰好推进一次 `current_seq`，条目记录该事务
+  内聚合的最终 revision（如创建+绑定 Space 记 `space/rev2`）。
+- **Ready 门**：应用 `Store` 打开的每个连接都校验 Schema 兼容窗口，越界/未迁移库在
+  事务开始前抛稳定 `schema_incompatible`——包括被恢复切换换入的数据库。
+- **恢复信任边界**：备份目录使用精确文件白名单，未知文件、SQLite sidecar、目录和
+  symlink 一律拒绝；恢复只复制白名单文件到 `0700` staging，并在不变量检查后再次完整
+  校验将要切换的字节（无 verify→copy 窗口）；journal 只信任本模块命名模式；整段操作
+  以 flock 串行化；journal 原子发布且仅在 staging/aside 清理成功后删除。
+- **备份发布**：完整备份集在临时目录构建（逐文件 fsync）后单次 rename 原子发布，
+  catalog 不可能指向半写状态。
+- **幂等快照**：带格式版本信封，未知版本显式拒绝；新记录字段必须带默认值
+  （`record_restore` 的前向兼容契约）；业务异常立即释放租约，失败可重试，仅已提交
+  结果被回放。
+- **lock_ms**：`busy_timeout` 约束锁获取；观测事务窗口（等待+执行+提交）超预算时，
+  已提交迁移保持成功并通过 run 记录、Runner 与 CLI 发出告警。
 
 ## 明确不做
 

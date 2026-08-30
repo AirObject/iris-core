@@ -2,7 +2,8 @@
 
 > 状态：Planned  
 > 前置阶段：[阶段 3](./phase-03-recent-state-focus.md)  
-> 架构依据：[Note、Task、CognitiveEvent 与阶段 4](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)
+> 目标版本：0.5.0  
+> 架构依据：[§10 Note](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#10-note)、[§11 Task 与前瞻记忆](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#11-tasktaskstep-与前瞻记忆)、[§12 CognitiveEvent](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#12-cognitiveevent-与宿主投递)、[§17 Schedule/Tick](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#17-持久化-scheduletick-与认知时钟)、[§36 阶段 4](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-4notetask-与-cognitiveevent)
 
 ## 阶段目标
 
@@ -15,6 +16,16 @@
 - Task/Step 完成需要独立状态转换；外部效果要求实际成功 Observation/Evidence。
 - CognitiveEvent 采用 At-least-once；ACK 只表示宿主承担处理责任，不表示 Task 完成。
 - Trigger 只允许声明式语法和操作符，禁止任意代码、脚本或隐式工具执行。
+
+## 需求追踪
+
+| 需求 ID | 基线要求 | 工作包 | 验证门禁 |
+| --- | --- | --- | --- |
+| P4-NOTE-01 | Note 独立生命周期、复查、保留与晋升 | 4.1 | 状态机、保留、Schedule 与 Promotion 测试 |
+| P4-TASK-01 | Task/Step Revision、Evidence、状态转换与依赖 | 4.2 | 性质、并发、环检测和 Evidence 测试 |
+| P4-TRIGGER-01 | 受限 Trigger、时区、Occurrence 幂等与 Misfire | 4.3 | DST、Catch-up、重复 Tick 与重启测试 |
+| P4-EVENT-01 | CognitiveEvent At-least-once、ACK、重投与过期 | 4.4 | Holder 切换、重复 ACK、过期和摘要测试 |
+| P4-SAFETY-01 | ACK/投递/失败不得伪造 Task 完成或外部效果 | 4.2–4.4 | 端到端负向契约和审计测试 |
 
 ## 工作包
 
@@ -42,6 +53,21 @@
 - 实现拉取、ACK 幂等、过期、摘要合并以及未 ACK 时向新 Holder 重投同一 Event ID。
 - 将 Due Task/Event 加入结构化 Recall 高优先级 Route 和 `pending_event_ids`。
 
+## 数据、契约与回退策略
+
+- 以增量 Migration 新增 Note、Task、TaskStep、Dependency、Trigger、Occurrence 与 CognitiveEvent Revision 表和 Current Pointer；Occurrence 唯一键包含 Trigger Revision 与计划时刻。
+- 状态转换只通过领域命令完成，并在同一事务写 Revision、Audit、Watermark 和 Outbox。旧 Worker 不领取未知 Trigger/Event Kind，新 Worker 至少兼容上一 Job Payload 版本。
+- 先冻结 Note/Task/Event API、错误码、Schema 与双 SDK Fixture，再启用 Scheduler Handler；新增状态或枚举只有在旧客户端可安全忽略时才进入 `/v1`。
+- 回退时先停用新 Trigger Handler 和投递领取，保留 Pending Event、Tick 与 Occurrence Ledger；使用兼容旧二进制或切换前备份恢复，不删除任务历史或把 Delivered/ACK 反推为 Completed。
+
+## 量化验收基线
+
+- Note、Task、TaskStep、CognitiveEvent 各状态机以及 Dependency 无环性质每项至少运行 200 个固定种子生成序列。
+- 50 个并发相同 Expected Revision 转换必须恰好一个成功；其余稳定返回 `revision_mismatch`，且只产生一组 Audit/Outbox 逻辑效果。
+- 同一 Trigger Revision/计划时刻重复计算或投递 100 次，只生成一个 Occurrence 和一个逻辑 CognitiveEvent；重复 ACK 100 次结果幂等。
+- 时间测试覆盖 UTC、至少两个含 DST 的相反时区和一个无 DST 时区，并覆盖缺失时刻、重复时刻、前跳、回拨、休眠与重启 Catch-up。
+- Event 在 20 次 Holder Fence/崩溃恢复场景中可向新 Holder 重投同一 Event ID；ACK、Delivered、Expired 均不得改变 Task/Step 完成状态。
+
 ## 退出门禁
 
 - [ ] Note Pin/Snooze/Review/Promotion/Forget 状态机和保留规则测试通过。
@@ -50,6 +76,7 @@
 - [ ] Event 重投和重复 ACK 幂等，ACK、Delivered 均不会推进 Task/Step 完成。
 - [ ] 发送或工具执行失败不会产生完成 Evidence；成功 Observation 后仍需显式转换。
 - [ ] 时区、DST、Catch-up 和过期 Policy 测试通过。
+- [ ] Migration/Job 兼容/回退方案、需求追踪和交付证据已完成评审。
 
 ## 交付证据
 

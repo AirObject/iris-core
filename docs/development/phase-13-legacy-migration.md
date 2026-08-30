@@ -2,7 +2,8 @@
 
 > 状态：Planned  
 > 前置阶段：[阶段 11](./phase-11-bellis-adapter.md)、[阶段 12](./phase-12-astrbot-bridge.md)  
-> 架构依据：[旧 Iris 数据迁移与阶段 13](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)
+> 目标版本：Migration Toolkit 0.1.0（目标 Core Schema/SDK/Adapter 版本在演练 Manifest 中锁定）  
+> 架构依据：[§21 备份恢复与导出](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#21-备份恢复与导出)、[§22 派生投影](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#22-fts5faiss-与派生投影)、[§36 阶段 13](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-13旧-iris-数据迁移)、[§37 旧 Iris 数据迁移](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#37-旧-iris-数据迁移)
 
 ## 阶段目标
 
@@ -15,6 +16,17 @@
 - L1/L2/L3 只作为迁移输入概念，不进入新公共协议。
 - 无法证明主体、Scope、时间或来源的内容进入 Restricted Quarantine，不能自动成为 Active Claim。
 - FTS/FAISS/Profile/Graph 不作为事实迁移，从新 Canonical 数据重建。
+
+## 需求追踪
+
+| 需求 ID | 基线要求 | 工作包 | 验证门禁 |
+| --- | --- | --- | --- |
+| P13-DISCOVERY-01 | 源库只读、Schema/编码/时区/删除与异常盘点 | 13.1 | 前后 Hash、权限、统计与风险报告 |
+| P13-MAPPING-01 | 身份/空间/领域对象显式映射与 Quarantine | 13.2 | 映射 Fixture、冲突、未知值和人工审核测试 |
+| P13-IDEMPOTENCY-01 | Dry Run/Import 稳定 Manifest、Legacy Ref 与幂等键 | 13.3 | 重跑、断点续传、批次和引用完整性测试 |
+| P13-REBUILD-01 | 仅迁移 Canonical，投影按 Builder/Watermark 重建 | 13.4 | FTS/FAISS/Profile/Graph 一致性与 Tombstone 测试 |
+| P13-CUTOVER-01 | 增量追平、切换、停止条件和可回退旧路径 | 13.5 | 双写/冻结、Cursor、备份和回退演练 |
+| P13-AUDIT-01 | 每个结果可追溯源 ID、Hash、转换版本和决策 | 13.1–13.5 | Manifest 签名、审计查询和抽样复核 |
 
 ## 工作包
 
@@ -48,6 +60,22 @@
 - 切换前创建一致性备份，记录 Migration Manifest、Schema/Adapter 版本和验证签名。
 - 演练在切换失败时恢复旧只读/写路径，并防止双端重复写入或旧删除复活。
 
+## 数据、契约与回退策略
+
+- 扫描器以操作系统权限和数据库只读模式双重约束源库；运行前后记录源文件、Schema 与抽样页 Hash，任何变化立即中止并保留诊断。
+- Mapping Spec、Transformation Version、Legacy Ref、Source Hash、Batch Range、幂等键和 Quarantine Reason 属于迁移契约；Manifest 锁定源快照、目标 Schema、Core/SDK/Adapter、Builder 和工具版本。
+- Dry Run 不写目标库；正式导入按 Tombstone → 身份/空间 → Observation → 长期对象 → Persona Candidate 顺序执行短批次事务。失败批次保持明确断点，不把部分成功伪装为整批完成。
+- 旧索引和 Profile/Graph 仅用于盘点/比对，不写入目标事实层；目标投影从通过 Tombstone/Scope/Privacy 校验的 Canonical Revision 重建并记录 Source/Tombstone Watermark。
+- 切换前创建并隔离验证目标备份；回退保留旧服务和源库，但任一时刻只允许一个写路径。回退后停止新 Adapter、Fence 旧 Epoch、保存增量 Cursor，并阻止已导入 Tombstone 被旧数据覆盖。
+
+## 量化验收基线
+
+- 每次只读扫描前后的源文件、Schema 和抽样页 Hash 必须 100% 一致；同一源快照和 Mapping Spec 连续 Dry Run 3 次生成字节一致的 Manifest 与统计摘要。
+- 同一 Migration Manifest 完整导入 2 次及在每个批次边界中断/续跑后，目标逻辑资源、Revision、Legacy Ref 和 Source Hash 集合一致，重复逻辑资源数必须为 0。
+- 对 Tombstone、身份/空间映射、Observation 引用、Active Claim Evidence、Persona 隔离和 Quarantine 执行 100% 自动校验；非关键正文/时间映射至少分层抽样 `max(总量的 1%, 200)` 条并记录批准阈值。
+- 从 Canonical 连续重建 Recent/FTS/FAISS/Profile/Graph 3 次，Builder/Tombstone Watermark、Resource Revision 和校验摘要一致；旧 Tombstone 目标的 Recall 命中数必须为 0。
+- 在代表性全量数据上至少完成 3 次“增量追平 → 备份 → Adapter 切换 → Smoke → 回退/再切换”演练，记录 RPO、RTO、Cursor 差异和人工决策清单。
+
 ## 退出门禁
 
 - [ ] 只读扫描前后源库/文件校验和一致。
@@ -56,6 +84,7 @@
 - [ ] 代表性数据集的数量、哈希、引用、时间、身份和 Recall 抽样达到批准阈值。
 - [ ] 旧 Tombstone 在导入、索引重建和备份恢复后仍优先。
 - [ ] 双写/冻结、Cursor 追平、切换和回退全流程演练通过并留存报告。
+- [ ] Mapping/Manifest/版本兼容和回退方案、需求追踪及交付证据已完成评审。
 
 ## 交付证据
 
