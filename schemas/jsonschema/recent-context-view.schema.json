@@ -1,0 +1,140 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/recent-context-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "builder_version": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "expires_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "head_observation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hot_observation_refs": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "observation_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "observation_id",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "result_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source": {
+      "enum": [
+        "generation",
+        "canonical"
+      ]
+    },
+    "source_watermark": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "space_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "summary_segments": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "covers": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "segment_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "observation_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "observation_id",
+                "revision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "token_estimate": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "segment_id",
+          "source_refs"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "tail_observation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "token_estimate": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "agent_id",
+    "space_id",
+    "builder_version",
+    "source_watermark",
+    "source",
+    "token_estimate",
+    "result_hash"
+  ],
+  "title": "RecentContextView",
+  "type": "object"
+}

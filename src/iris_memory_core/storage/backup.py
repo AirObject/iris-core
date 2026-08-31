@@ -903,6 +903,144 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
             ).fetchone()
             if epoch_regression is not None and int(epoch_regression[0]) > 0:
                 problems.append("surface lease epoch regressed below issued epochs")
+        # Phase 3 invariants (§9, ADR-0004): skipped for older snapshots whose
+        # schema predates these tables.
+        if _has("state_records") and _has("state_record_revisions"):
+            dangling_state = connection.execute(
+                "SELECT COUNT(*) FROM state_records r WHERE r.current_revision_id = '' "
+                "OR r.current_revision_id NOT IN (SELECT id FROM state_record_revisions)"
+            ).fetchone()
+            if dangling_state is not None and int(dangling_state[0]) > 0:
+                problems.append("state current pointers without their revision row")
+            state_pointer_mismatch = connection.execute(
+                "SELECT COUNT(*) FROM state_records r JOIN state_record_revisions v "
+                "ON v.id = r.current_revision_id WHERE v.revision <> r.current_revision "
+                "OR v.record_id <> r.id"
+            ).fetchone()
+            if state_pointer_mismatch is not None and int(state_pointer_mismatch[0]) > 0:
+                problems.append("state current pointer revision mismatch")
+        if _has("focus_items") and _has("focus_item_revisions"):
+            dangling_focus = connection.execute(
+                "SELECT COUNT(*) FROM focus_items f WHERE f.current_revision_id = '' "
+                "OR f.current_revision_id NOT IN (SELECT id FROM focus_item_revisions)"
+            ).fetchone()
+            if dangling_focus is not None and int(dangling_focus[0]) > 0:
+                problems.append("focus current pointers without their revision row")
+            focus_pointer_mismatch = connection.execute(
+                "SELECT COUNT(*) FROM focus_items f JOIN focus_item_revisions v "
+                "ON v.id = f.current_revision_id WHERE v.revision <> f.current_revision "
+                "OR v.item_id <> f.id"
+            ).fetchone()
+            if focus_pointer_mismatch is not None and int(focus_pointer_mismatch[0]) > 0:
+                problems.append("focus current pointer revision mismatch")
+        if _has("recent_context_current") and _has("recent_context_generations"):
+            dangling_generation = connection.execute(
+                "SELECT COUNT(*) FROM recent_context_current c WHERE "
+                "c.current_generation_id NOT IN (SELECT id FROM recent_context_generations)"
+            ).fetchone()
+            if dangling_generation is not None and int(dangling_generation[0]) > 0:
+                problems.append("recent context pointers without their generation")
+            unverified_pointer = connection.execute(
+                "SELECT COUNT(*) FROM recent_context_current c JOIN "
+                "recent_context_generations g ON g.id = c.current_generation_id "
+                "WHERE g.status <> 'verified'"
+            ).fetchone()
+            if unverified_pointer is not None and int(unverified_pointer[0]) > 0:
+                problems.append("recent context pointer references an unverified generation")
+            misbound_pointer = connection.execute(
+                "SELECT COUNT(*) FROM recent_context_current c JOIN "
+                "recent_context_generations g ON g.id = c.current_generation_id WHERE "
+                "c.target_key <> g.target_key OR c.tenant_id <> g.tenant_id "
+                "OR c.agent_id <> g.agent_id OR c.space_id <> g.space_id "
+                "OR COALESCE(c.session_id, '') <> COALESCE(g.session_id, '') "
+                "OR COALESCE(c.space_group_id, '') <> COALESCE(g.space_group_id, '')"
+            ).fetchone()
+            if misbound_pointer is not None and int(misbound_pointer[0]) > 0:
+                problems.append("recent context pointer target does not match its generation")
+        if _has("recent_context_generations") and _has("observations"):
+            import json as _json
+
+            from iris_memory_core.domain.recent import (
+                BuiltProjection,
+                ObservationRef,
+                SummarySegment,
+                projection_invariants,
+            )
+
+            for row in connection.execute(
+                "SELECT tenant_id, agent_id, space_id, session_id, builder_version, "
+                "source_watermark, head_observation_id, tail_observation_id, "
+                "hot_observation_refs, summary_segments, token_estimate, result_hash "
+                "FROM recent_context_generations WHERE status = 'verified'"
+            ).fetchall():
+                try:
+                    hot_raw = _json.loads(row[8])
+                    segments_raw = _json.loads(row[9])
+                    hot = tuple(
+                        ObservationRef(
+                            observation_id=item["observation_id"],
+                            revision=int(item["revision"]),
+                            occurred_us=int(item["occurred_us"]),
+                            token_estimate=int(item["token_estimate"]),
+                        )
+                        for item in hot_raw
+                    )
+                    segments = tuple(
+                        SummarySegment(
+                            segment_id=segment["segment_id"],
+                            source_refs=tuple(
+                                ObservationRef(
+                                    observation_id=ref["observation_id"],
+                                    revision=int(ref["revision"]),
+                                    occurred_us=int(ref["occurred_us"]),
+                                    token_estimate=int(ref["token_estimate"]),
+                                )
+                                for ref in segment["source_refs"]
+                            ),
+                            token_estimate=int(segment["token_estimate"]),
+                        )
+                        for segment in segments_raw
+                    )
+                    projection = BuiltProjection(
+                        builder_version=int(row[4]),
+                        source_watermark=int(row[5]),
+                        head_observation_id=row[6],
+                        tail_observation_id=row[7],
+                        hot_observation_refs=hot,
+                        summary_segments=segments,
+                        token_estimate=int(row[10]),
+                        result_hash=str(row[11]),
+                    )
+                except (KeyError, TypeError, ValueError, _json.JSONDecodeError):
+                    problems.append("verified recent generation has invalid projection encoding")
+                    break
+                if projection_invariants(projection):
+                    problems.append("verified recent generation failed projection invariants")
+                    break
+                missing_or_mismatched = 0
+                for ref in projection.referenced_refs():
+                    found = connection.execute(
+                        "SELECT COUNT(*) FROM observations WHERE id = ? AND tenant_id = ? "
+                        "AND agent_id = ? AND space_id = ? "
+                        "AND COALESCE(session_id, '') = COALESCE(?, '') "
+                        "AND revision = ? AND occurred_us = ?",
+                        (
+                            ref.observation_id,
+                            row[0],
+                            row[1],
+                            row[2],
+                            row[3],
+                            ref.revision,
+                            ref.occurred_us,
+                        ),
+                    ).fetchone()
+                    if found is None or int(found[0]) != 1:
+                        missing_or_mismatched += 1
+                if missing_or_mismatched:
+                    problems.append(
+                        "verified recent generation references missing or mismatched observations"
+                    )
+                    break
     finally:
         connection.close()
     return tuple(problems)

@@ -1,0 +1,75 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/state-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "expires_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "key": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "namespace": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "observed_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "record_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_authority": {
+      "enum": [
+        "host",
+        "platform",
+        "adapter",
+        "system",
+        "user",
+        "model"
+      ]
+    },
+    "space_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "value": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "record_id",
+    "namespace",
+    "key",
+    "agent_id",
+    "revision",
+    "value"
+  ],
+  "title": "StateView",
+  "type": "object"
+}

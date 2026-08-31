@@ -16,6 +16,7 @@ from pathlib import Path
 
 from iris_memory_core.application.outbox import JobCommit, JobWork
 from iris_memory_core.application.ports import Transaction
+from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.jobs import NewOutboxJob, OutboxJob
 from iris_memory_core.storage.uow import Store
 
@@ -173,10 +174,140 @@ def scenario_tick(db_path: str, crash_at: str) -> None:
         _self_kill()
 
 
+class Phase3Spine(Spine):
+    """The Phase 3 services on top of the Phase 2 spine."""
+
+    def __init__(self, db_path: str) -> None:
+        super().__init__(db_path)
+        from iris_memory_core.application.focus import FocusService
+        from iris_memory_core.application.recent import RecentContextService
+        from iris_memory_core.application.state import StateService
+        from iris_memory_core.storage.idempotency import IdempotencyManager
+
+        self.idem = IdempotencyManager(self.store)
+        self.states = StateService(
+            self.store, self.store.clock, gauge=self.gauge, idempotency=self.idem
+        )
+        self.recent = RecentContextService(self.store, self.store.clock)
+        self.focus = FocusService(self.store, self.store.clock, idempotency=self.idem)
+        with self.store.write() as tx:
+            self.space_id = tx.insert_space("t1", "chat_group").id
+            self.session_id = tx.insert_session("t1", self.space_id, actor="fault").id
+        self.access = AccessContext(
+            tenant_id="t1",
+            app_instance_id="app-1",
+            admin=True,
+            agent_ids=frozenset({self.agent_id}),
+            allowed_space_ids=frozenset({self.space_id}),
+        )
+
+
+def _die_on(method_owner: type, method_name: str) -> None:
+    """Kill right BEFORE a repository method executes inside the open tx."""
+
+    def die_first(*args: object, **kwargs: object) -> None:
+        _self_kill()
+
+    setattr(method_owner, method_name, die_first)
+
+
+def scenario_state_put(db_path: str, crash_at: str) -> None:
+    """State PUT at: pre-tx / pre-pointer-CAS / pre-commit / post-commit."""
+    from iris_memory_core.storage import cognitive
+
+    ctx = Phase3Spine(db_path)
+    if crash_at == "pre_tx":
+        _self_kill()
+    if crash_at == "pre_pointer":
+        # Creation wires its pointer through set_initial_pointer; the CAS
+        # path (advance_pointer) only serves updates.
+        _die_on(cognitive.StateRepository, "set_initial_pointer")
+    if crash_at == "pre_commit":
+        _die_before_commit(ctx.store)
+    ctx.states.put(
+        ctx.access,
+        "environment",
+        "fault.key",
+        agent_id=ctx.agent_id,
+        value={"v": 1},
+        source_authority="host",
+        idempotency_key="state-fault",
+        observed_us=1_000,
+        ttl_us=0,
+    )
+    if crash_at == "post_commit":
+        _self_kill()
+
+
+def scenario_focus_transition(db_path: str, crash_at: str) -> None:
+    """Focus create+transition at: pre-commit rollback / post-commit."""
+    ctx = Phase3Spine(db_path)
+    created = ctx.focus.create(
+        ctx.access,
+        agent_id=ctx.agent_id,
+        kind="goal",
+        summary="fault item",
+        idempotency_key="focus-fault-1",
+    )
+    if crash_at == "pre_commit":
+        _die_before_commit(ctx.store)
+    ctx.focus.transition(
+        ctx.access,
+        created.item_id,
+        "dormant",
+        expected_revision=1,
+        reason="fault",
+        idempotency_key="ik-fx-1",
+    )
+    if crash_at == "post_commit":
+        _self_kill()
+
+
+def scenario_recent_rebuild(db_path: str, crash_at: str) -> None:
+    """Projection shadow swap at: pre-generation / pre-swap / post-commit."""
+    from iris_memory_core.storage import cognitive
+
+    ctx = Phase3Spine(db_path)
+    ctx.observations.observe_batch(
+        ctx.access,
+        [
+            {
+                "agent_id": ctx.agent_id,
+                "role": "user",
+                "kind": "message.text",
+                "idempotency_key": "recent-fault",
+                "occurred_us": 1,
+                "committed_us": 2,
+                "content": "window content",
+                "space_id": ctx.space_id,
+                "session_id": ctx.session_id,
+            }
+        ],
+    )
+    if crash_at == "pre_generation":
+        _die_on(cognitive.RecentContextRepository, "insert_generation")
+    if crash_at == "pre_swap":
+        _die_on(cognitive.RecentContextRepository, "swap_pointer")
+    if crash_at == "pre_commit":
+        _die_before_commit(ctx.store)
+    ctx.recent.rebuild(
+        ctx.access,
+        agent_id=ctx.agent_id,
+        space_id=ctx.space_id,
+        session_id=ctx.session_id,
+        reason="fault",
+    )
+    if crash_at == "post_commit":
+        _self_kill()
+
+
 SCENARIOS = {
     "observe": scenario_observe,
     "worker": scenario_worker,
     "tick": scenario_tick,
+    "state_put": scenario_state_put,
+    "focus_transition": scenario_focus_transition,
+    "recent_rebuild": scenario_recent_rebuild,
 }
 
 

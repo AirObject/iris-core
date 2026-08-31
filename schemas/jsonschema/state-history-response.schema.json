@@ -1,0 +1,73 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/state-history-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "key": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "namespace": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "record_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "revisions": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "created_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "observed_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "source_authority": {
+            "enum": [
+              "host",
+              "platform",
+              "adapter",
+              "system",
+              "user",
+              "model"
+            ]
+          },
+          "value": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "revision",
+          "value",
+          "source_authority"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "record_id",
+    "namespace",
+    "key",
+    "revisions"
+  ],
+  "title": "StateHistoryResponse",
+  "type": "object"
+}

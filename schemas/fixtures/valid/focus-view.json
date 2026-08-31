@@ -1,0 +1,29 @@
+{
+  "activation": 0.7,
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "created_us": 1700000000000000,
+  "expires_us": null,
+  "focus_item_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa650",
+  "importance": 0.9,
+  "kind": "goal",
+  "last_activated_us": 1700000000000000,
+  "privacy_labels": [
+    "agent:01a050fd-6cc2-7d1b-86ef-86d5150fa630"
+  ],
+  "promotion_policy": "promote_to_task_when_confirmed",
+  "promotion_target_id": null,
+  "promotion_target_type": null,
+  "revision": 1,
+  "salience": 0.8,
+  "session_id": null,
+  "source_refs": [
+    {
+      "resource_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "resource_type": "observation",
+      "revision": 1
+    }
+  ],
+  "space_id": null,
+  "status": "active",
+  "summary": "Finish the phase 3 verification report"
+}

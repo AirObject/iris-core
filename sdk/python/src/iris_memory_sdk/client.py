@@ -150,6 +150,229 @@ class AsyncIrisMemoryClient:
         )
         return cast(dict[str, Any] | None, value)
 
+    # -- Phase 3: recent context / state / focus --------------------------
+
+    async def recent_context(
+        self,
+        agent_id: str,
+        space_id: str,
+        *,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = f"agent_id={quote(agent_id, safe='')}&space_id={quote(space_id, safe='')}"
+        if session_id is not None:
+            query += f"&session_id={quote(session_id, safe='')}"
+        value = await asyncio.to_thread(
+            self._request_json, "GET", f"/v1/recent-context?{query}", None
+        )
+        return cast(dict[str, Any], value)
+
+    async def put_state(
+        self,
+        namespace: str,
+        key: str,
+        *,
+        agent_id: str,
+        value: dict[str, Any],
+        source_authority: str,
+        idempotency_key: str,
+        space_id: str | None = None,
+        session_id: str | None = None,
+        ttl_us: int | None = None,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        body: dict[str, Any] = {
+            "agent_id": agent_id,
+            "value": value,
+            "source_authority": source_authority,
+        }
+        if space_id is not None:
+            body["space_id"] = space_id
+        if session_id is not None:
+            body["session_id"] = session_id
+        if ttl_us is not None:
+            body["ttl_us"] = ttl_us
+        if expected_revision is not None:
+            body["expected_revision"] = expected_revision
+        result = await asyncio.to_thread(
+            self._request_json,
+            "PUT",
+            f"/v1/state/{quote(namespace, safe='')}/{quote(key, safe='')}",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], result)
+
+    async def get_state(
+        self,
+        namespace: str,
+        key: str,
+        *,
+        agent_id: str,
+        space_id: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        from urllib.parse import quote
+
+        query = f"agent_id={quote(agent_id, safe='')}"
+        if space_id is not None:
+            query += f"&space_id={quote(space_id, safe='')}"
+        if session_id is not None:
+            query += f"&session_id={quote(session_id, safe='')}"
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/state/{quote(namespace, safe='')}/{quote(key, safe='')}?{query}",
+            None,
+        )
+        return cast(dict[str, Any] | None, value)
+
+    async def list_states(
+        self,
+        agent_id: str,
+        *,
+        namespace: str | None = None,
+        space_id: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = f"agent_id={quote(agent_id, safe='')}"
+        if namespace is not None:
+            query += f"&namespace={quote(namespace, safe='')}"
+        if space_id is not None:
+            query += f"&space_id={quote(space_id, safe='')}"
+        if session_id is not None:
+            query += f"&session_id={quote(session_id, safe='')}"
+        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/state?{query}", None)
+        return cast(dict[str, Any], value)
+
+    async def state_history(
+        self,
+        namespace: str,
+        key: str,
+        *,
+        agent_id: str,
+        space_id: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = f"agent_id={quote(agent_id, safe='')}"
+        if space_id is not None:
+            query += f"&space_id={quote(space_id, safe='')}"
+        if session_id is not None:
+            query += f"&session_id={quote(session_id, safe='')}"
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/state/{quote(namespace, safe='')}/{quote(key, safe='')}/history?{query}",
+            None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_focus_item(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/focus-items",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def get_focus_item(self, focus_item_id: str) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/focus-items/{quote(focus_item_id, safe='')}",
+            None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def list_focus_items(
+        self,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        kind: str | None = None,
+        space_id: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = f"agent_id={quote(agent_id, safe='')}"
+        if status is not None:
+            query += f"&status={quote(status, safe='')}"
+        if kind is not None:
+            query += f"&kind={quote(kind, safe='')}"
+        if space_id is not None:
+            query += f"&space_id={quote(space_id, safe='')}"
+        if session_id is not None:
+            query += f"&session_id={quote(session_id, safe='')}"
+        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/focus-items?{query}", None)
+        return cast(dict[str, Any], value)
+
+    async def focus_transition(
+        self,
+        focus_item_id: str,
+        action: str,
+        *,
+        expected_revision: int,
+        reason: str,
+        idempotency_key: str,
+        promotion_target_type: str | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        if action not in ("activate", "dormant", "dismiss", "expire", "promote"):
+            raise ValueError(f"unknown focus action: {action!r}")
+        body: dict[str, Any] = {
+            "expected_revision": expected_revision,
+            "reason": reason,
+        }
+        if promotion_target_type is not None:
+            body["promotion_target_type"] = promotion_target_type
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/focus-items/{quote(focus_item_id, safe='')}:{action}",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def rebuild_recent_context(
+        self,
+        agent_id: str,
+        space_id: str,
+        *,
+        reason: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "agent_id": agent_id,
+            "space_id": space_id,
+            "reason": reason,
+        }
+        if session_id is not None:
+            body["session_id"] = session_id
+        value = await asyncio.to_thread(
+            self._request_json, "POST", "/v1/admin/recent-context:rebuild", body
+        )
+        return cast(dict[str, Any], value)
+
     # -- Phase 2: health -----------------------------------------------------
 
     async def readiness(self) -> dict[str, Any]:

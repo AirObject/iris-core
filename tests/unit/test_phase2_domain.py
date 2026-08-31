@@ -158,7 +158,20 @@ class TestJobKindRegistry:
             spec_for("nope.nope")
 
     def test_only_safe_handlers_enabled(self) -> None:
-        assert frozenset({"maintenance.selfcheck"}) == ENABLED_JOB_KINDS
+        # Phase 3 enabled set: all five kinds have implemented + tested
+        # handlers; no other kind is claimable (fail closed, §16).
+        assert (
+            frozenset(
+                {
+                    "maintenance.selfcheck",
+                    "observation.recorded",
+                    "recent_context.maintenance",
+                    "focus.maintenance",
+                    "state.projection",
+                }
+            )
+            == ENABLED_JOB_KINDS
+        )
 
     def test_default_catch_up_matches_baseline(self) -> None:
         assert spec_for("note.review").default_catch_up == "all"

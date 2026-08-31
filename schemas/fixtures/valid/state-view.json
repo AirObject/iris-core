@@ -1,0 +1,16 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "expires_us": 1700003600000000,
+  "key": "obs.scene",
+  "namespace": "environment",
+  "observed_us": 1700000000000000,
+  "record_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa640",
+  "revision": 4,
+  "session_id": null,
+  "source_authority": "host",
+  "space_id": null,
+  "value": {
+    "map": "dust2",
+    "scene": "gaming"
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/focus-create-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "dependentRequired": {
+    "session_id": [
+      "space_id"
+    ]
+  },
+  "properties": {
+    "activation": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "expires_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "importance": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "kind": {
+      "enum": [
+        "goal",
+        "question",
+        "entity",
+        "clue",
+        "concern",
+        "affect",
+        "pending_input"
+      ]
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "promotion_policy": {
+      "maxLength": 256,
+      "type": "string"
+    },
+    "salience": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "session_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_refs": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "space_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "structured_payload": {
+      "type": "object"
+    },
+    "summary": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "agent_id",
+    "kind",
+    "summary"
+  ],
+  "title": "FocusCreateRequest",
+  "type": "object"
+}

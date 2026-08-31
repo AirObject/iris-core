@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iris-memory-core"
-version = "0.3.0"
+version = "0.4.0"
 description = "Host-independent cognitive memory service"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -17,10 +17,12 @@ iris-memory-core = "iris_memory_core.cli:main"
 
 [dependency-groups]
 dev = [
+  "jsonschema>=4.23,<5",
   "mypy>=1.15,<2",
   "pytest>=8.3,<9",
   "pytest-cov>=6,<8",
   "ruff>=0.11,<0.15",
+  "types-jsonschema>=4.26.0.20260518",
 ]
 
 [tool.hatch.build.targets.wheel]

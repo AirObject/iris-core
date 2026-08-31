@@ -22,6 +22,11 @@ BOUNDARIES = {
     "observe": ["pre_tx", "post_write_pre_commit", "post_commit"],
     "worker": ["post_claim", "post_work_pre_commit"],
     "tick": ["post_tick_pre_commit", "post_advance"],
+    # Phase 3: transaction commit boundaries, current-pointer CAS boundaries
+    # and the projection shadow-swap boundaries (§32.3, P3-RECOVERY-01).
+    "state_put": ["pre_tx", "pre_pointer", "pre_commit", "post_commit"],
+    "focus_transition": ["pre_commit", "post_commit"],
+    "recent_rebuild": ["pre_generation", "pre_swap", "pre_commit", "post_commit"],
 }
 
 
@@ -249,3 +254,215 @@ class TestTickKill9:
         with store.read() as tx:
             row = tx.raw().execute("SELECT next_tick_at_us FROM schedules LIMIT 1").fetchone()
         scheduler.advance(now_us=(row[0] if row else 0) + delta_us)
+
+
+def _phase3_counts(database: Path) -> dict[str, int]:
+    import sqlite3
+
+    connection = sqlite3.connect(database)
+    try:
+        counts: dict[str, int] = {}
+        for table in (
+            "state_records",
+            "state_record_revisions",
+            "focus_items",
+            "focus_item_revisions",
+            "recent_context_generations",
+            "recent_context_current",
+            "observations",
+            "audit_events",
+            "agent_watermark_entries",
+            "outbox_jobs",
+        ):
+            counts[table] = int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        counts["state_watermark_entries"] = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM agent_watermark_entries WHERE aggregate_type = 'state_record'"
+            ).fetchone()[0]
+        )
+        counts["focus_watermark_entries"] = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM agent_watermark_entries WHERE aggregate_type = 'focus_item'"
+            ).fetchone()[0]
+        )
+    finally:
+        connection.close()
+    return counts
+
+
+def _no_dangling_pointers(database: Path) -> list[str]:
+    from iris_memory_core.storage.backup import verify_database_invariants
+
+    return list(verify_database_invariants(database))
+
+
+class TestStatePutKill9:
+    @pytest.mark.parametrize("crash_at", BOUNDARIES["state_put"])
+    def test_state_write_atomicity(self, crash_at: str, tmp_path: Path) -> None:
+        for iteration in range(REPETITIONS):
+            database = tmp_path / f"state-{crash_at}-{iteration}.sqlite3"
+            _run_crash("state_put", crash_at, database)
+            counts = _phase3_counts(database)
+            if crash_at in ("pre_tx", "pre_pointer", "pre_commit"):
+                # Nothing from the write may have landed: no record, no
+                # revision, no pointer, no watermark, no audit, no job.
+                assert counts["state_records"] == 0, (iteration, counts)
+                assert counts["state_record_revisions"] == 0, iteration
+                assert counts["state_watermark_entries"] == 0, iteration
+            else:
+                assert counts["state_records"] == 1, (iteration, counts)
+                assert counts["state_record_revisions"] == 1, iteration
+                assert counts["state_watermark_entries"] == 1, iteration
+            assert _no_dangling_pointers(database) == [], iteration
+            # Replay converges to exactly one revision-1 record.
+            self._replay(database)
+            recovered = _phase3_counts(database)
+            assert recovered["state_records"] == 1, iteration
+            assert recovered["state_record_revisions"] == 1, iteration
+
+    @staticmethod
+    def _replay(database: Path) -> None:
+        # The §20.5 protocol commits the in_progress marker BEFORE the
+        # business transaction; a crash in between leaves a live lease the
+        # recovery must let lapse before replaying the same logical put.
+        import sqlite3 as _sqlite3
+
+        from iris_memory_core.application.state import StateService
+        from iris_memory_core.storage.idempotency import IdempotencyManager
+        from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_version
+        from iris_memory_core.storage.uow import Store
+        from tests.conftest import access_for
+
+        connection = _sqlite3.connect(database)
+        try:
+            connection.execute(
+                "UPDATE idempotency_records SET expires_us = 0 "
+                "WHERE idempotency_key = 'state-fault'"
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        store = Store(SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)))
+        with store.read() as tx:
+            agent_id = tx.raw().execute("SELECT id FROM agents LIMIT 1").fetchone()[0]
+            space_id = (
+                tx.raw()
+                .execute("SELECT id FROM spaces WHERE kind = 'chat_group' LIMIT 1")
+                .fetchone()[0]
+            )
+        access = access_for("t1", agent_ids=frozenset({agent_id}), space_ids=frozenset({space_id}))
+        service = StateService(store, store.clock, idempotency=IdempotencyManager(store))
+        service.put(
+            access,
+            "environment",
+            "fault.key",
+            agent_id=agent_id,
+            value={"v": 1},
+            source_authority="host",
+            idempotency_key="state-fault",
+            observed_us=1_000,
+            ttl_us=0,
+        )
+
+
+class TestFocusTransitionKill9:
+    @pytest.mark.parametrize("crash_at", BOUNDARIES["focus_transition"])
+    def test_focus_pointer_atomicity(self, crash_at: str, tmp_path: Path) -> None:
+        for iteration in range(REPETITIONS):
+            database = tmp_path / f"focus-{crash_at}-{iteration}.sqlite3"
+            _run_crash("focus_transition", crash_at, database)
+            counts = _phase3_counts(database)
+            if crash_at == "pre_commit":
+                # The create committed earlier; the transition did not land:
+                # still revision 1 with status active.
+                assert counts["focus_items"] == 1, iteration
+                assert counts["focus_item_revisions"] == 1, iteration
+            else:
+                assert counts["focus_items"] == 1, iteration
+                assert counts["focus_item_revisions"] == 2, iteration
+            assert _no_dangling_pointers(database) == [], iteration
+            self._replay(database)
+            recovered = _phase3_counts(database)
+            assert recovered["focus_item_revisions"] == 2, iteration
+
+    @staticmethod
+    def _replay(database: Path) -> None:
+        from iris_memory_core.application.focus import FocusService
+        from iris_memory_core.storage.idempotency import IdempotencyManager
+        from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_version
+        from iris_memory_core.storage.uow import Store
+        from tests.conftest import access_for
+
+        store = Store(SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)))
+        with store.read() as tx:
+            agent_id = tx.raw().execute("SELECT id FROM agents LIMIT 1").fetchone()[0]
+            space_id = (
+                tx.raw()
+                .execute("SELECT id FROM spaces WHERE kind = 'chat_group' LIMIT 1")
+                .fetchone()[0]
+            )
+            item_id = tx.raw().execute("SELECT id FROM focus_items LIMIT 1").fetchone()[0]
+        access = access_for("t1", agent_ids=frozenset({agent_id}), space_ids=frozenset({space_id}))
+        service = FocusService(store, store.clock, idempotency=IdempotencyManager(store))
+        current = service.get(access, item_id)
+        assert current is not None
+        item, revision = current
+        if revision.status == "active":
+            service.transition(
+                access,
+                item_id,
+                "dormant",
+                expected_revision=item.current_revision,
+                reason="replay",
+                idempotency_key="ik-fx-1",
+            )
+
+
+class TestRecentRebuildKill9:
+    @pytest.mark.parametrize("crash_at", BOUNDARIES["recent_rebuild"])
+    def test_projection_swap_atomicity(self, crash_at: str, tmp_path: Path) -> None:
+        for iteration in range(REPETITIONS):
+            database = tmp_path / f"recent-{crash_at}-{iteration}.sqlite3"
+            _run_crash("recent_rebuild", crash_at, database)
+            counts = _phase3_counts(database)
+            if crash_at in ("pre_generation", "pre_swap", "pre_commit"):
+                # No generation and no pointer may exist; the observation
+                # itself committed earlier and must be intact.
+                assert counts["recent_context_generations"] == 0, (iteration, counts)
+                assert counts["recent_context_current"] == 0, iteration
+                assert counts["observations"] == 1, iteration
+            else:
+                assert counts["recent_context_generations"] == 1, iteration
+                assert counts["recent_context_current"] == 1, iteration
+                assert counts["observations"] == 1, iteration
+            assert _no_dangling_pointers(database) == [], iteration
+            # Recovery rebuild converges to exactly one serving generation.
+            self._rebuild(database)
+            recovered = _phase3_counts(database)
+            assert recovered["recent_context_current"] == 1, iteration
+            assert recovered["recent_context_generations"] >= 1, iteration
+            assert _no_dangling_pointers(database) == [], iteration
+
+    @staticmethod
+    def _rebuild(database: Path) -> None:
+        from iris_memory_core.application.recent import RecentContextService
+        from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_version
+        from iris_memory_core.storage.uow import Store
+        from tests.conftest import access_for
+
+        store = Store(SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)))
+        with store.read() as tx:
+            agent_id = tx.raw().execute("SELECT id FROM agents LIMIT 1").fetchone()[0]
+            space_id = (
+                tx.raw()
+                .execute("SELECT id FROM spaces WHERE kind = 'chat_group' LIMIT 1")
+                .fetchone()[0]
+            )
+            session_row = tx.raw().execute("SELECT session_id FROM observations LIMIT 1").fetchone()
+        session_id = session_row[0] if session_row else None
+        access = access_for(
+            "t1", admin=True, agent_ids=frozenset({agent_id}), space_ids=frozenset({space_id})
+        )
+        RecentContextService(store, store.clock).rebuild(
+            access, agent_id=agent_id, space_id=space_id, session_id=session_id, reason="recovery"
+        )

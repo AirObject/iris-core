@@ -1,0 +1,10 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "expected_revision": 3,
+  "source_authority": "host",
+  "ttl_us": 60000000,
+  "value": {
+    "map": "dust2",
+    "scene": "gaming"
+  }
+}

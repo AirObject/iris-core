@@ -104,6 +104,76 @@
       "expected": "reject",
       "file": "invalid/lease-acquire-request-bad-ttl.json",
       "schema": "lease-acquire-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/recent-context-view.json",
+      "schema": "recent-context-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/state-put-request.json",
+      "schema": "state-put-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/state-view.json",
+      "schema": "state-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/state-history-response.json",
+      "schema": "state-history-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/focus-create-request.json",
+      "schema": "focus-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/focus-view.json",
+      "schema": "focus-view"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/focus-view-unknown-status.json",
+      "schema": "focus-view"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/state-view-unknown-field.json",
+      "schema": "state-view"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/state-put-request-bad-authority.json",
+      "schema": "state-put-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/state-put-request-value-missing.json",
+      "schema": "state-put-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/state-put-request-session-without-space.json",
+      "schema": "state-put-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/focus-create-request-bad-kind.json",
+      "schema": "focus-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/focus-create-request-bad-scores.json",
+      "schema": "focus-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recent-context-view-bad-hash.json",
+      "schema": "recent-context-view"
     }
   ]
 }

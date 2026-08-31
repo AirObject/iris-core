@@ -1,0 +1,19 @@
+{
+  "activation": 0.7,
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "importance": 0.9,
+  "kind": "goal",
+  "privacy_labels": [
+    "agent:01a050fd-6cc2-7d1b-86ef-86d5150fa630"
+  ],
+  "promotion_policy": "promote_to_task_when_confirmed",
+  "salience": 0.8,
+  "source_refs": [
+    {
+      "resource_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "resource_type": "observation",
+      "revision": 1
+    }
+  ],
+  "summary": "Finish the phase 3 verification report"
+}

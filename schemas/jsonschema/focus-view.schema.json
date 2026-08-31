@@ -1,0 +1,126 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/focus-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "activation": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "created_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "expires_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "focus_item_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "importance": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "kind": {
+      "enum": [
+        "goal",
+        "question",
+        "entity",
+        "clue",
+        "concern",
+        "affect",
+        "pending_input"
+      ]
+    },
+    "last_activated_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "promotion_policy": {
+      "type": "string"
+    },
+    "promotion_target_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "promotion_target_type": {
+      "enum": [
+        "note",
+        "task",
+        "episode",
+        "claim",
+        null
+      ],
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "salience": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_refs": {
+      "type": "array"
+    },
+    "space_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "active",
+        "dormant",
+        "promoted",
+        "dismissed",
+        "expired"
+      ]
+    },
+    "summary": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "focus_item_id",
+    "agent_id",
+    "kind",
+    "summary",
+    "status",
+    "revision"
+  ],
+  "title": "FocusView",
+  "type": "object"
+}

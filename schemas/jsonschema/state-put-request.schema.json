@@ -1,0 +1,74 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/state-put-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "dependentRequired": {
+    "session_id": [
+      "space_id"
+    ]
+  },
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "coalesce_key": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "expected_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "expires_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "observed_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_authority": {
+      "enum": [
+        "host",
+        "platform",
+        "adapter",
+        "system",
+        "user",
+        "model"
+      ]
+    },
+    "source_ref": {
+      "type": "string"
+    },
+    "space_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ttl_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "value": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "agent_id",
+    "value",
+    "source_authority"
+  ],
+  "title": "StatePutRequest",
+  "type": "object"
+}

@@ -388,12 +388,320 @@ def phase2_json_schema_files() -> dict[Path, dict[str, Any]]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Phase 3 schemas (recent context, state, focus; §9, Phase 3.4 contract list)
+
+
+_FOCUS_KINDS = ["goal", "question", "entity", "clue", "concern", "affect", "pending_input"]
+_FOCUS_STATUSES = ["active", "dormant", "promoted", "dismissed", "expired"]
+_AUTHORITIES = ["host", "platform", "adapter", "system", "user", "model"]
+
+
+def _observation_ref_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "observation_id": _id(),
+            "revision": {"type": "integer", "minimum": 1},
+        },
+        "required": ["observation_id", "revision"],
+    }
+
+
+def recent_context_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/recent-context-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "agent_id": _id(),
+            "space_id": _id(),
+            "session_id": {"type": ["string", "null"]},
+            "builder_version": {"type": "integer", "minimum": 1},
+            "source_watermark": {"type": "integer", "minimum": 0},
+            "source": {"enum": ["generation", "canonical"]},
+            "head_observation_id": {"type": ["string", "null"]},
+            "tail_observation_id": {"type": ["string", "null"]},
+            "hot_observation_refs": {"type": "array", "items": _observation_ref_schema()},
+            "summary_segments": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "properties": {
+                        "segment_id": {"type": "string", "minLength": 1},
+                        "source_refs": {"type": "array", "items": _observation_ref_schema()},
+                        "covers": {"type": "integer", "minimum": 0},
+                        "token_estimate": {"type": "integer", "minimum": 0},
+                    },
+                    "required": ["segment_id", "source_refs"],
+                },
+            },
+            "token_estimate": {"type": "integer", "minimum": 0},
+            "result_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "expires_us": {"type": ["integer", "null"], "minimum": 0},
+        },
+        "required": [
+            "agent_id",
+            "space_id",
+            "builder_version",
+            "source_watermark",
+            "source",
+            "token_estimate",
+            "result_hash",
+        ],
+        "title": "RecentContextView",
+        "type": "object",
+    }
+
+
+def state_put_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/state-put-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "agent_id": _id(),
+            "space_id": {"type": ["string", "null"], "minLength": 1},
+            "session_id": {"type": ["string", "null"], "minLength": 1},
+            "value": {"type": "object"},
+            "source_authority": {"enum": _AUTHORITIES},
+            "source_ref": {"type": "string"},
+            "observed_us": {"type": "integer", "minimum": 0},
+            "ttl_us": {"type": "integer", "minimum": 0},
+            "expires_us": {"type": "integer", "minimum": 0},
+            "coalesce_key": {"type": "string", "minLength": 1, "maxLength": 256},
+            "expected_revision": {"type": "integer", "minimum": 1},
+        },
+        "required": ["agent_id", "value", "source_authority"],
+        # §5.2: a session-scoped state write must also name its space.
+        "dependentRequired": {"session_id": ["space_id"]},
+        "title": "StatePutRequest",
+        "type": "object",
+    }
+
+
+def state_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/state-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "record_id": _id(),
+            "namespace": {"type": "string", "minLength": 1, "maxLength": 128},
+            "key": {"type": "string", "minLength": 1, "maxLength": 256},
+            "agent_id": _id(),
+            "space_id": {"type": ["string", "null"]},
+            "session_id": {"type": ["string", "null"]},
+            "revision": {"type": "integer", "minimum": 1},
+            "value": {"type": "object"},
+            "source_authority": {"enum": _AUTHORITIES},
+            "observed_us": {"type": "integer", "minimum": 0},
+            "expires_us": {"type": ["integer", "null"], "minimum": 0},
+        },
+        "required": ["record_id", "namespace", "key", "agent_id", "revision", "value"],
+        "title": "StateView",
+        "type": "object",
+    }
+
+
+def state_history_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/state-history-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "record_id": _id(),
+            "namespace": {"type": "string", "minLength": 1},
+            "key": {"type": "string", "minLength": 1},
+            "revisions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "properties": {
+                        "revision": {"type": "integer", "minimum": 1},
+                        "value": {"type": "object"},
+                        "source_authority": {"enum": _AUTHORITIES},
+                        "observed_us": {"type": "integer", "minimum": 0},
+                        "expires_us": {"type": ["integer", "null"], "minimum": 0},
+                        "created_us": {"type": "integer", "minimum": 0},
+                    },
+                    "required": ["revision", "value", "source_authority"],
+                },
+            },
+        },
+        "required": ["record_id", "namespace", "key", "revisions"],
+        "title": "StateHistoryResponse",
+        "type": "object",
+    }
+
+
+def focus_create_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/focus-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "agent_id": _id(),
+            "kind": {"enum": _FOCUS_KINDS},
+            "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+            "space_id": {"type": ["string", "null"], "minLength": 1},
+            "session_id": {"type": ["string", "null"], "minLength": 1},
+            "salience": {"type": "number", "minimum": 0, "maximum": 1},
+            "importance": {"type": "number", "minimum": 0, "maximum": 1},
+            "activation": {"type": "number", "minimum": 0, "maximum": 1},
+            "promotion_policy": {"type": "string", "maxLength": 256},
+            "expires_us": {"type": "integer", "minimum": 0},
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "source_refs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "properties": {
+                        "resource_type": {"type": "string", "minLength": 1},
+                        "resource_id": _id(),
+                        "revision": {"type": "integer", "minimum": 1},
+                    },
+                    "required": ["resource_type", "resource_id"],
+                },
+            },
+            "structured_payload": {"type": "object"},
+        },
+        "required": ["agent_id", "kind", "summary"],
+        "dependentRequired": {"session_id": ["space_id"]},
+        "title": "FocusCreateRequest",
+        "type": "object",
+    }
+
+
+def focus_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/focus-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "focus_item_id": _id(),
+            "agent_id": _id(),
+            "kind": {"enum": _FOCUS_KINDS},
+            "summary": {"type": "string", "minLength": 1},
+            "status": {"enum": _FOCUS_STATUSES},
+            "space_id": {"type": ["string", "null"]},
+            "session_id": {"type": ["string", "null"]},
+            "salience": {"type": "number", "minimum": 0, "maximum": 1},
+            "activation": {"type": "number", "minimum": 0, "maximum": 1},
+            "importance": {"type": "number", "minimum": 0, "maximum": 1},
+            "promotion_policy": {"type": "string"},
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "source_refs": {"type": "array"},
+            "last_activated_us": {"type": "integer", "minimum": 0},
+            "expires_us": {"type": ["integer", "null"], "minimum": 0},
+            "revision": {"type": "integer", "minimum": 1},
+            "created_us": {"type": "integer", "minimum": 0},
+            "promotion_target_type": {
+                # Nullable: everything except a promote revision carries null
+                # (the target id stays null even then — Phase 3 seam).
+                "type": ["string", "null"],
+                "enum": ["note", "task", "episode", "claim", None],
+            },
+            "promotion_target_id": {"type": ["string", "null"]},
+        },
+        "required": ["focus_item_id", "agent_id", "kind", "summary", "status", "revision"],
+        "title": "FocusView",
+        "type": "object",
+    }
+
+
+PHASE3_COMPONENTS: dict[str, dict[str, Any]] = {}
+
+
+def phase3_components() -> dict[str, dict[str, Any]]:
+    global PHASE3_COMPONENTS
+    if not PHASE3_COMPONENTS:
+        PHASE3_COMPONENTS = {
+            "RecentContextView": recent_context_view_schema(),
+            "StatePutRequest": state_put_request_schema(),
+            "StateView": state_view_schema(),
+            "StateHistoryResponse": state_history_response_schema(),
+            "FocusCreateRequest": focus_create_request_schema(),
+            "FocusView": focus_view_schema(),
+        }
+    return PHASE3_COMPONENTS
+
+
+def phase3_json_schema_files() -> dict[Path, dict[str, Any]]:
+    names = {
+        "recent-context-view": "RecentContextView",
+        "state-put-request": "StatePutRequest",
+        "state-view": "StateView",
+        "state-history-response": "StateHistoryResponse",
+        "focus-create-request": "FocusCreateRequest",
+        "focus-view": "FocusView",
+    }
+    return {
+        JSON_SCHEMA_DIRECTORY / f"{slug}.schema.json": phase3_components()[title]
+        for slug, title in names.items()
+    }
+
+
 def _json_response(
     schema_reference: str, description: str = "Successful response"
 ) -> dict[str, Any]:
     return {
         "description": description,
         "content": {"application/json": {"schema": {"$ref": schema_reference}}},
+    }
+
+
+def _focus_transition_op(
+    operation: str, with_target: bool, error_response: dict[str, Any]
+) -> dict[str, Any]:
+    properties: dict[str, Any] = {
+        "expected_revision": {"type": "integer", "minimum": 1},
+        "reason": {"type": "string", "minLength": 1},
+    }
+    required = ["expected_revision", "reason"]
+    if with_target:
+        properties["promotion_target_type"] = {
+            "enum": ["note", "task", "episode", "claim"],
+        }
+        required.append("promotion_target_type")
+    return {
+        "operationId": operation,
+        "parameters": [
+            {
+                "in": "path",
+                "name": "focus_item_id",
+                "required": True,
+                "schema": {"type": "string", "minLength": 1},
+            },
+            {
+                "description": "Transport-retry safety for this write",
+                "in": "header",
+                "name": "Idempotency-Key",
+                "required": True,
+                "schema": {"type": "string", "maxLength": 256},
+            },
+        ],
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "additionalProperties": True,
+                        "properties": properties,
+                        "required": required,
+                        "type": "object",
+                    }
+                }
+            },
+            "required": True,
+        },
+        "responses": {
+            "200": _json_response("#/components/schemas/FocusView"),
+            "409": error_response,
+        },
     }
 
 
@@ -404,6 +712,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
         "ErrorEnvelope": error_envelope_schema(),
         "VersionManifest": version_manifest_schema(),
         **phase2_components(),
+        **phase3_components(),
     }
     batch_request_body = {
         "content": {
@@ -781,6 +1090,393 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
                 },
             }
         },
+        # -- Phase 3: recent context, state, focus (§9, Phase 3.4) ----------
+        "/v1/recent-context": {
+            "get": {
+                "operationId": "getRecentContext",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "space_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "session_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/RecentContextView"),
+                    "403": error_response,
+                },
+            }
+        },
+        "/v1/state/{namespace}/{key}": {
+            "put": {
+                "operationId": "putState",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "namespace",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1, "maxLength": 128},
+                    },
+                    {
+                        "in": "path",
+                        "name": "key",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1, "maxLength": 256},
+                    },
+                    {
+                        "description": "Transport-retry safety for this write",
+                        "in": "header",
+                        "name": "Idempotency-Key",
+                        "required": True,
+                        "schema": {"type": "string", "maxLength": 256},
+                    },
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/StatePutRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/StateView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            },
+            "get": {
+                "operationId": "getState",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "namespace",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "path",
+                        "name": "key",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "space_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "session_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/StateView"),
+                    "404": error_response,
+                },
+            },
+        },
+        "/v1/state": {
+            "get": {
+                "operationId": "listStates",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "namespace",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "space_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "session_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Current, non-expired state values",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": True,
+                                    "properties": {
+                                        "items": {
+                                            "type": "array",
+                                            "items": {"$ref": "#/components/schemas/StateView"},
+                                        }
+                                    },
+                                    "required": ["items"],
+                                    "type": "object",
+                                }
+                            }
+                        },
+                    },
+                    "403": error_response,
+                },
+            }
+        },
+        "/v1/state/{namespace}/{key}/history": {
+            "get": {
+                "operationId": "getStateHistory",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "namespace",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "path",
+                        "name": "key",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "description": "Space-scoped record address (§5.2)",
+                        "in": "query",
+                        "name": "space_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "description": "Session-scoped record address; requires space_id",
+                        "in": "query",
+                        "name": "session_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/StateHistoryResponse"),
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/focus-items": {
+            "post": {
+                "operationId": "createFocusItem",
+                "parameters": [
+                    {
+                        "description": "Transport-retry safety for this write",
+                        "in": "header",
+                        "name": "Idempotency-Key",
+                        "required": True,
+                        "schema": {"type": "string", "maxLength": 256},
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/FocusCreateRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/FocusView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            },
+            "get": {
+                "operationId": "listFocusItems",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "description": "Space-scoped items plus agent items visible downward",
+                        "in": "query",
+                        "name": "space_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "description": "Narrow to a session; requires space_id",
+                        "in": "query",
+                        "name": "session_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "status",
+                        "required": False,
+                        "schema": {"enum": _FOCUS_STATUSES},
+                    },
+                    {
+                        "in": "query",
+                        "name": "kind",
+                        "required": False,
+                        "schema": {"enum": _FOCUS_KINDS},
+                    },
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Focus items visible at the requested scope",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": True,
+                                    "properties": {
+                                        "items": {
+                                            "type": "array",
+                                            "items": {"$ref": "#/components/schemas/FocusView"},
+                                        }
+                                    },
+                                    "required": ["items"],
+                                    "type": "object",
+                                }
+                            }
+                        },
+                    },
+                    "403": error_response,
+                },
+            },
+        },
+        "/v1/focus-items/{focus_item_id}": {
+            "get": {
+                "operationId": "getFocusItem",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "focus_item_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/FocusView"),
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/focus-items/{focus_item_id}:activate": {
+            "post": {
+                "operationId": "activateFocusItem",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "focus_item_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "description": "Transport-retry safety for this write",
+                        "in": "header",
+                        "name": "Idempotency-Key",
+                        "required": True,
+                        "schema": {"type": "string", "maxLength": 256},
+                    },
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": True,
+                                "properties": {
+                                    "expected_revision": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                    },
+                                    "reason": {"type": "string", "minLength": 1},
+                                },
+                                "required": ["expected_revision", "reason"],
+                                "type": "object",
+                            }
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/FocusView"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/focus-items/{focus_item_id}:dormant": {
+            "post": _focus_transition_op("setFocusDormant", False, error_response)
+        },
+        "/v1/focus-items/{focus_item_id}:dismiss": {
+            "post": _focus_transition_op("dismissFocusItem", False, error_response)
+        },
+        "/v1/focus-items/{focus_item_id}:expire": {
+            "post": _focus_transition_op("expireFocusItem", False, error_response)
+        },
+        "/v1/focus-items/{focus_item_id}:promote": {
+            "post": _focus_transition_op("promoteFocusItem", True, error_response)
+        },
+        "/v1/admin/recent-context:rebuild": {
+            "post": {
+                "operationId": "rebuildRecentContext",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": True,
+                                "properties": {
+                                    "agent_id": {"type": "string", "minLength": 1},
+                                    "space_id": {"type": "string", "minLength": 1},
+                                    "session_id": {"type": "string"},
+                                    "reason": {"type": "string", "minLength": 1},
+                                },
+                                "required": ["agent_id", "space_id", "reason"],
+                                "type": "object",
+                            }
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/RecentContextView"),
+                    "403": error_response,
+                },
+            }
+        },
         "/v1/admin/schedules/{schedule_id}:run": {
             "post": {
                 "operationId": "runScheduleNow",
@@ -841,7 +1537,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "components": {"schemas": schemas},
         "info": {
-            "description": "Phase 2 contract and capability surface",
+            "description": "Phase 3 contract and capability surface",
             "license": {"identifier": "AGPL-3.0-only", "name": "AGPL-3.0-only"},
             "title": "Iris Memory Core API",
             "version": str(source["contract_version"]),
@@ -894,6 +1590,7 @@ def generated_documents(source: Mapping[str, Any]) -> dict[Path, dict[str, Any]]
         VERSION_MANIFEST_PATH: build_version_manifest(source),
     }
     documents.update(phase2_json_schema_files())
+    documents.update(phase3_json_schema_files())
     return documents
 
 

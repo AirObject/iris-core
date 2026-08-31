@@ -1,0 +1,27 @@
+{
+  "key": "obs.scene",
+  "namespace": "environment",
+  "record_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa640",
+  "revisions": [
+    {
+      "created_us": 1700000001000000,
+      "expires_us": 1700003600000000,
+      "observed_us": 1700000000000000,
+      "revision": 4,
+      "source_authority": "host",
+      "value": {
+        "scene": "gaming"
+      }
+    },
+    {
+      "created_us": 1699999001000000,
+      "expires_us": null,
+      "observed_us": 1699999000000000,
+      "revision": 3,
+      "source_authority": "host",
+      "value": {
+        "scene": "idle"
+      }
+    }
+  ]
+}

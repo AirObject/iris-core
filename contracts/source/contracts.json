@@ -1,18 +1,21 @@
 {
   "api_version": "v1",
   "capabilities": [
+    "active-surface.v1",
     "contract.negotiation",
     "error-envelope.v1",
-    "health.v1",
+    "focus-items.v1",
     "health.readiness.v2",
+    "health.v1",
+    "metrics.v1",
     "observe.batch.v1",
-    "source-cursor.v1",
     "outbox.jobs.v1",
+    "recent-context.v1",
     "schedules.v1",
-    "active-surface.v1",
-    "metrics.v1"
+    "source-cursor.v1",
+    "state.v1"
   ],
-  "contract_version": "1.1.0",
+  "contract_version": "1.2.0",
   "error_codes": [
     "access_denied",
     "binding_conflict",
@@ -42,6 +45,6 @@
     "storage_full",
     "unsupported_version"
   ],
-  "package_version": "0.3.0",
-  "schema_version": 3
+  "package_version": "0.4.0",
+  "schema_version": 4
 }

@@ -1,0 +1,9 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "builder_version": 1,
+  "result_hash": "not-a-hash",
+  "source": "generation",
+  "source_watermark": 1,
+  "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631",
+  "token_estimate": 10
+}

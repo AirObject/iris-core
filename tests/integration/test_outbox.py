@@ -635,4 +635,18 @@ class TestAdminListing:
 
 
 def test_enabled_kinds_only_safe_seed() -> None:
-    assert frozenset({"maintenance.selfcheck"}) == ENABLED_JOB_KINDS
+    # Phase 3: every enabled kind has a real, tested handler (rebuild, decay
+    # sweep, pointer check, observation→rebuild scheduling, spine selfcheck);
+    # everything else stays disabled and unclaimable.
+    assert (
+        frozenset(
+            {
+                "maintenance.selfcheck",
+                "observation.recorded",
+                "recent_context.maintenance",
+                "focus.maintenance",
+                "state.projection",
+            }
+        )
+        == ENABLED_JOB_KINDS
+    )

@@ -45,6 +45,11 @@ from iris_memory_core.domain.model import (
     Tombstone,
     WatermarkState,
 )
+from iris_memory_core.storage.cognitive import (
+    FocusRepository,
+    RecentContextRepository,
+    StateRepository,
+)
 from iris_memory_core.storage.repositories import (
     IdentityRepository,
     LedgerRepository,
@@ -90,6 +95,9 @@ class Transaction:
         self.outbox = OutboxRepository(connection, clock, ids)
         self.schedules = ScheduleRepository(connection, clock, ids)
         self.surfaces = SurfaceRepository(connection, clock, ids)
+        self.recent = RecentContextRepository(connection, clock, ids)
+        self.states = StateRepository(connection, clock, ids)
+        self.focus = FocusRepository(connection, clock, ids)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}

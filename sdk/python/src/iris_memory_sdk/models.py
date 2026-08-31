@@ -130,6 +130,24 @@ _LEASE_STATUSES = frozenset({"active", "draining", "released", "expired"})
 _JOB_STATUSES = frozenset({"pending", "leased", "completed", "retryable", "dead"})
 _CATCH_UP_POLICIES = frozenset({"all", "latest", "coalesce", "skip"})
 _READINESS_STATUSES = frozenset({"ready", "degraded", "not_ready"})
+_FOCUS_KINDS = frozenset(
+    {"goal", "question", "entity", "clue", "concern", "affect", "pending_input"}
+)
+_KNOWN_FOCUS_STATUSES = frozenset({"active", "dormant", "promoted", "dismissed", "expired"})
+_AUTHORITIES = frozenset({"host", "platform", "adapter", "system", "user", "model"})
+_PROMOTION_TARGETS = frozenset({"note", "task", "episode", "claim"})
+_RECENT_SOURCES = frozenset({"generation", "canonical"})
+_HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _require_non_empty_str(value: object, key: str, errors: list[str]) -> None:
+    if not isinstance(value, str) or not value:
+        errors.append(f"{key} must be a non-empty string")
+
+
+def _require_unit_interval(value: object, key: str, errors: list[str], prefix: str = "") -> None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0 <= value <= 1:
+        errors.append(f"{prefix}{key} must be a number within [0, 1]")
 
 
 def _validate_observation_batch_request(value: object) -> tuple[str, ...]:
@@ -280,6 +298,164 @@ def _validate_schedule_view(value: object) -> tuple[str, ...]:
     return tuple(errors)
 
 
+def _validate_recent_context_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("agent_id", "space_id"):
+        _require_non_empty_str(value.get(key), key, errors)
+    builder_version = value.get("builder_version")
+    if type(builder_version) is not int or builder_version < 1:
+        errors.append("builder_version must be a positive integer")
+    watermark = value.get("source_watermark")
+    if type(watermark) is not int or watermark < 0:
+        errors.append("source_watermark must be a non-negative integer")
+    if value.get("source") not in _RECENT_SOURCES:
+        errors.append("source must be generation or canonical")
+    token_estimate = value.get("token_estimate")
+    if type(token_estimate) is not int or token_estimate < 0:
+        errors.append("token_estimate must be a non-negative integer")
+    result_hash = value.get("result_hash")
+    if not isinstance(result_hash, str) or _HASH_PATTERN.fullmatch(result_hash) is None:
+        errors.append("result_hash must be a SHA-256 hex string")
+    hot_refs = value.get("hot_observation_refs")
+    if hot_refs is not None:
+        if not isinstance(hot_refs, list):
+            errors.append("hot_observation_refs must be an array")
+        else:
+            for index, ref in enumerate(hot_refs):
+                if not isinstance(ref, Mapping) or not isinstance(ref.get("observation_id"), str):
+                    errors.append(f"hot_observation_refs[{index}].observation_id must be a string")
+    segments = value.get("summary_segments")
+    if segments is not None and not isinstance(segments, list):
+        errors.append("summary_segments must be an array")
+    expires = value.get("expires_us")
+    if expires is not None and (type(expires) is not int or expires < 0):
+        errors.append("expires_us must be null or a non-negative integer")
+    return tuple(errors)
+
+
+def _validate_state_put_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    if not isinstance(value.get("value"), Mapping):
+        errors.append("value must be an object")
+    if value.get("source_authority") not in _AUTHORITIES:
+        errors.append("source_authority must be a known authority")
+    for key in ("observed_us", "ttl_us", "expires_us", "expected_revision"):
+        item = value.get(key)
+        if item is not None and (type(item) is not int or item < 0):
+            errors.append(f"{key} must be null or a non-negative integer")
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append("session_id requires space_id")
+    return tuple(errors)
+
+
+def _validate_state_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("record_id", "namespace", "key", "agent_id"):
+        _require_non_empty_str(value.get(key), key, errors)
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    if not isinstance(value.get("value"), Mapping):
+        errors.append("value must be an object")
+    authority = value.get("source_authority")
+    if authority not in _AUTHORITIES and (not isinstance(authority, str) or not authority):
+        # Forward compatibility: an authority added after this SDK build is
+        # tolerated on read paths (the server remains authoritative).
+        errors.append("source_authority must be a non-empty string")
+    return tuple(errors)
+
+
+def _validate_state_history_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("record_id", "namespace", "key"):
+        _require_non_empty_str(value.get(key), key, errors)
+    revisions = value.get("revisions")
+    if not isinstance(revisions, list):
+        errors.append("revisions must be an array")
+        return tuple(errors)
+    for index, item in enumerate(revisions):
+        if not isinstance(item, Mapping):
+            errors.append(f"revisions[{index}] must be an object")
+            continue
+        revision = item.get("revision")
+        if type(revision) is not int or revision < 1:
+            errors.append(f"revisions[{index}].revision must be a positive integer")
+        if not isinstance(item.get("value"), Mapping):
+            errors.append(f"revisions[{index}].value must be an object")
+        if item.get("source_authority") not in _AUTHORITIES:
+            errors.append(f"revisions[{index}].source_authority must be a known authority")
+    return tuple(errors)
+
+
+def _validate_focus_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    if value.get("kind") not in _FOCUS_KINDS:
+        errors.append("kind must be a known focus kind")
+    summary = value.get("summary")
+    if not isinstance(summary, str) or not summary or len(summary) > 2000:
+        errors.append("summary must be 1..2000 characters")
+    for key in ("salience", "importance", "activation"):
+        if key in value:
+            _require_unit_interval(value.get(key), key, errors)
+    refs = value.get("source_refs")
+    if refs is not None:
+        if not isinstance(refs, list):
+            errors.append("source_refs must be an array")
+        else:
+            for index, ref in enumerate(refs):
+                if not isinstance(ref, Mapping):
+                    errors.append(f"source_refs[{index}] must be an object")
+                    continue
+                for key in ("resource_type", "resource_id"):
+                    _require_non_empty_str(ref.get(key), f"source_refs[{index}].{key}", errors)
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append("session_id requires space_id")
+    return tuple(errors)
+
+
+def _validate_focus_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("focus_item_id", "agent_id", "summary"):
+        _require_non_empty_str(value.get(key), key, errors)
+    if value.get("kind") not in _FOCUS_KINDS:
+        errors.append("kind must be a known focus kind")
+    # Forward compatibility on views: a status added after this SDK build is
+    # tolerated (the server owns the state machine); known ones are checked.
+    status = value.get("status")
+    if not isinstance(status, str) or not status:
+        errors.append("status must be a non-empty string")
+    elif status not in _KNOWN_FOCUS_STATUSES:
+        pass  # unknown future status — ignored, never fatal on a view
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    for key in ("salience", "activation", "importance"):
+        if key in value:
+            _require_unit_interval(value.get(key), key, errors)
+    promotion_target = value.get("promotion_target_type")
+    if (
+        promotion_target is not None
+        and promotion_target not in _PROMOTION_TARGETS
+        and (not isinstance(promotion_target, str) or not promotion_target)
+    ):
+        errors.append("promotion_target_type must be a non-empty string")
+    return tuple(errors)
+
+
 def validate_contract(schema: str, value: object) -> tuple[str, ...]:
     validators = {
         "capabilities": _validate_capabilities,
@@ -293,6 +469,12 @@ def validate_contract(schema: str, value: object) -> tuple[str, ...]:
         "readiness-report": _validate_readiness_report,
         "admin-job": _validate_admin_job,
         "schedule-view": _validate_schedule_view,
+        "recent-context-view": _validate_recent_context_view,
+        "state-put-request": _validate_state_put_request,
+        "state-view": _validate_state_view,
+        "state-history-response": _validate_state_history_response,
+        "focus-create-request": _validate_focus_create_request,
+        "focus-view": _validate_focus_view,
     }
     validator = validators.get(schema)
     if validator is None:

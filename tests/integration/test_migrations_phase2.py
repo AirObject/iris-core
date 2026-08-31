@@ -112,7 +112,7 @@ class TestPublishedMigrationIntegrity:
             ).fetchall()
         finally:
             connection.close()
-        assert len(rows) == 3
+        assert len(rows) == 4
         on_disk = hashlib.sha256(
             (REPOSITORY_ROOT / "migrations" / "0003_phase2_reliability_spine.sql").read_bytes()
         ).hexdigest()
@@ -127,7 +127,9 @@ class TestSchemaUpgrade:
         assert current_schema_version(sqlite3.connect(database)) == 2
 
         applied = MigrationRunner(database).migrate()
-        assert [item.version for item in applied] == [3]
+        # The 0.4.0 runner walks a Schema 2 database through 0003 AND 0004
+        # (staged multi-version upgrades migrate through intermediates).
+        assert [item.version for item in applied] == [3, 4]
 
         connection = sqlite3.connect(database)
         try:
@@ -154,24 +156,26 @@ class TestSchemaUpgrade:
         ):
             assert table in tables
 
-    def test_empty_database_installs_all_three(self, database: Path) -> None:
+    def test_empty_database_installs_all_four(self, database: Path) -> None:
         MigrationRunner(database).migrate()
         connection = sqlite3.connect(database)
         try:
-            assert current_schema_version(connection) == 3
+            assert current_schema_version(connection) == 4
         finally:
             connection.close()
 
-    def test_schema_window_is_2_to_3(self) -> None:
+    def test_schema_window_is_3_to_4(self) -> None:
         from iris_memory_core.domain.errors import SchemaIncompatibleError
 
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (2, 3)
-        verify_schema_compatible(2)
+        # The 0.4.0 binary window: Schema 3 (Phase 2) databases upgrade
+        # forward online; Schema 2 needs a 0.3.0 binary first (staged path).
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (3, 4)
         verify_schema_compatible(3)
+        verify_schema_compatible(4)
         with pytest.raises(SchemaIncompatibleError):
-            verify_schema_compatible(4)
+            verify_schema_compatible(5)
         with pytest.raises(SchemaIncompatibleError):
-            verify_schema_compatible(1)
+            verify_schema_compatible(2)
 
     def test_upgraded_database_openable_by_runtime(self, tmp_path: Path) -> None:
         database = tmp_path / "runtime.sqlite3"
@@ -293,7 +297,7 @@ class TestPhase2BackupRestore:
             source = self._phase2_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 3
+            assert report["schema_version"] == 4
             assert verify_backup(backup_dir).ok
 
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
@@ -338,4 +342,4 @@ class TestPhase2BackupRestore:
         service = BackupService(store)
         backup_dir = tmp_path / "catalog-backup"
         report = service.create_backup(backup_dir)
-        assert report.schema_version == 3
+        assert report.schema_version == 4

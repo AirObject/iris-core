@@ -144,6 +144,242 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "FocusCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/focus-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "activation": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "goal",
+              "question",
+              "entity",
+              "clue",
+              "concern",
+              "affect",
+              "pending_input"
+            ]
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "promotion_policy": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "salience": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "structured_payload": {
+            "type": "object"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "kind",
+          "summary"
+        ],
+        "title": "FocusCreateRequest",
+        "type": "object"
+      },
+      "FocusView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/focus-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "activation": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "created_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "focus_item_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "goal",
+              "question",
+              "entity",
+              "clue",
+              "concern",
+              "affect",
+              "pending_input"
+            ]
+          },
+          "last_activated_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "promotion_policy": {
+            "type": "string"
+          },
+          "promotion_target_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "promotion_target_type": {
+            "enum": [
+              "note",
+              "task",
+              "episode",
+              "claim",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "salience": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_refs": {
+            "type": "array"
+          },
+          "space_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "active",
+              "dormant",
+              "promoted",
+              "dismissed",
+              "expired"
+            ]
+          },
+          "summary": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "focus_item_id",
+          "agent_id",
+          "kind",
+          "summary",
+          "status",
+          "revision"
+        ],
+        "title": "FocusView",
+        "type": "object"
+      },
       "LeaseAcquireRequest": {
         "$id": "https://schemas.iris-memory-core.local/v1/lease-acquire-request.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -540,6 +776,146 @@
         "title": "ReadinessReport",
         "type": "object"
       },
+      "RecentContextView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/recent-context-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "builder_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "head_observation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hot_observation_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "observation_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "observation_id",
+                "revision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "result_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "enum": [
+              "generation",
+              "canonical"
+            ]
+          },
+          "source_watermark": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "summary_segments": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "covers": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "segment_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_refs": {
+                  "items": {
+                    "additionalProperties": true,
+                    "properties": {
+                      "observation_id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "revision": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "observation_id",
+                      "revision"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "token_estimate": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "segment_id",
+                "source_refs"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "tail_observation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_estimate": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agent_id",
+          "space_id",
+          "builder_version",
+          "source_watermark",
+          "source",
+          "token_estimate",
+          "result_hash"
+        ],
+        "title": "RecentContextView",
+        "type": "object"
+      },
       "ScheduleView": {
         "$id": "https://schemas.iris-memory-core.local/v1/schedule-view.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -642,6 +1018,228 @@
         "title": "SourceCursorEnvelope",
         "type": "object"
       },
+      "StateHistoryResponse": {
+        "$id": "https://schemas.iris-memory-core.local/v1/state-history-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "key": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "namespace": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "record_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revisions": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "created_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "expires_us": {
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "observed_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "source_authority": {
+                  "enum": [
+                    "host",
+                    "platform",
+                    "adapter",
+                    "system",
+                    "user",
+                    "model"
+                  ]
+                },
+                "value": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "revision",
+                "value",
+                "source_authority"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "record_id",
+          "namespace",
+          "key",
+          "revisions"
+        ],
+        "title": "StateHistoryResponse",
+        "type": "object"
+      },
+      "StatePutRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/state-put-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "coalesce_key": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "observed_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_authority": {
+            "enum": [
+              "host",
+              "platform",
+              "adapter",
+              "system",
+              "user",
+              "model"
+            ]
+          },
+          "source_ref": {
+            "type": "string"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ttl_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "value": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "agent_id",
+          "value",
+          "source_authority"
+        ],
+        "title": "StatePutRequest",
+        "type": "object"
+      },
+      "StateView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/state-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "key": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "namespace": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "observed_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "record_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_authority": {
+            "enum": [
+              "host",
+              "platform",
+              "adapter",
+              "system",
+              "user",
+              "model"
+            ]
+          },
+          "space_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "record_id",
+          "namespace",
+          "key",
+          "agent_id",
+          "revision",
+          "value"
+        ],
+        "title": "StateView",
+        "type": "object"
+      },
       "VersionManifest": {
         "$id": "https://schemas.iris-memory-core.local/v1/version-manifest.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -678,13 +1276,13 @@
     }
   },
   "info": {
-    "description": "Phase 2 contract and capability surface",
+    "description": "Phase 3 contract and capability surface",
     "license": {
       "identifier": "AGPL-3.0-only",
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1099,6 +1697,66 @@
         }
       }
     },
+    "/v1/admin/recent-context:rebuild": {
+      "post": {
+        "operationId": "rebuildRecentContext",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "agent_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "space_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_id",
+                  "space_id",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentContextView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
     "/v1/admin/schedules": {
       "post": {
         "operationId": "createSchedule",
@@ -1298,6 +1956,575 @@
         }
       }
     },
+    "/v1/focus-items": {
+      "get": {
+        "operationId": "listFocusItems",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Space-scoped items plus agent items visible downward",
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Narrow to a session; requires space_id",
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "active",
+                "dormant",
+                "promoted",
+                "dismissed",
+                "expired"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "enum": [
+                "goal",
+                "question",
+                "entity",
+                "clue",
+                "concern",
+                "affect",
+                "pending_input"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/FocusView"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Focus items visible at the requested scope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createFocusItem",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FocusCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/focus-items/{focus_item_id}": {
+      "get": {
+        "operationId": "getFocusItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "focus_item_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/focus-items/{focus_item_id}:activate": {
+      "post": {
+        "operationId": "activateFocusItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "focus_item_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "expected_revision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/focus-items/{focus_item_id}:dismiss": {
+      "post": {
+        "operationId": "dismissFocusItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "focus_item_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "expected_revision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/focus-items/{focus_item_id}:dormant": {
+      "post": {
+        "operationId": "setFocusDormant",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "focus_item_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "expected_revision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/focus-items/{focus_item_id}:expire": {
+      "post": {
+        "operationId": "expireFocusItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "focus_item_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "expected_revision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/focus-items/{focus_item_id}:promote": {
+      "post": {
+        "operationId": "promoteFocusItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "focus_item_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "expected_revision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "promotion_target_type": {
+                    "enum": [
+                      "note",
+                      "task",
+                      "episode",
+                      "claim"
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "reason",
+                  "promotion_target_type"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
     "/v1/negotiation": {
       "post": {
         "operationId": "negotiateCapabilities",
@@ -1452,6 +2679,366 @@
             "description": "Stable error envelope"
           },
           "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/recent-context": {
+      "get": {
+        "operationId": "getRecentContext",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentContextView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/state": {
+      "get": {
+        "operationId": "listStates",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/StateView"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Current, non-expired state values"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/state/{namespace}/{key}": {
+      "get": {
+        "operationId": "getState",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putState",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatePutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/state/{namespace}/{key}/history": {
+      "get": {
+        "operationId": "getStateHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Space-scoped record address (§5.2)",
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session-scoped record address; requires space_id",
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {

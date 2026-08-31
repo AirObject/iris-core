@@ -1,3 +1,8 @@
 # Iris Memory TypeScript SDK
 
-The Phase 0 SDK exposes capability negotiation, stable error types, and forward-compatible contract validators. Run `npm test` to compile and validate the shared fixtures.
+Dependency-free client for Iris Memory Core: capability negotiation, stable
+error types, and forward-compatible contract validators. Client methods
+follow the release train (Phase 2: observation batches, cursors, surface
+leases, admin jobs/schedules; Phase 3: recent context, state records, focus
+items and transitions). Run `npm test` to compile and validate the shared
+fixtures.

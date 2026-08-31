@@ -13,6 +13,7 @@ from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from typing import Protocol
 
+from iris_memory_core.domain.focus import FocusItemCurrent, FocusRevision
 from iris_memory_core.domain.identity import (
     BindingMethod,
     BindingState,
@@ -48,7 +49,14 @@ from iris_memory_core.domain.observation import (
     ObservationDraft,
     StoredObservation,
 )
+from iris_memory_core.domain.recent import BuiltProjection, StoredGeneration
 from iris_memory_core.domain.schedule import ScheduleRecord, TickRecord
+from iris_memory_core.domain.state import (
+    StateEntry,
+    StateNamespacePolicy,
+    StateRecord,
+    StateRevision,
+)
 from iris_memory_core.domain.surface import LeaseView, SurfaceMode
 
 
@@ -304,6 +312,183 @@ class SurfaceLeaseSurface(Protocol):
     def lease_counts(self) -> dict[str, int]: ...
 
 
+class RecentContextSurface(Protocol):
+    """Repository surface for recent-context generations and pointers."""
+
+    def observation_window(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        space_id: str,
+        session_id: str | None,
+        limit: int,
+    ) -> Sequence[StoredObservation]: ...
+    def insert_generation(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        space_group_id: str | None,
+        space_id: str,
+        session_id: str | None,
+        target_key: str,
+        projection: BuiltProjection,
+        expires_us: int | None,
+    ) -> str: ...
+    def current(self, target_key: str) -> StoredGeneration | None: ...
+    def swap_pointer(
+        self,
+        *,
+        target_key: str,
+        tenant_id: str,
+        agent_id: str,
+        space_group_id: str | None,
+        space_id: str,
+        session_id: str | None,
+        current_generation_id: str,
+    ) -> None: ...
+    def retire_pointer(self, target_key: str) -> bool: ...
+    def expire_stale(self, now_us: int) -> int: ...
+
+
+class StateSurface(Protocol):
+    """Repository surface for state namespace policies, records, revisions."""
+
+    def policy(self, tenant_id: str, namespace: str) -> StateNamespacePolicy | None: ...
+    def upsert_policy(self, policy: StateNamespacePolicy, *, tenant_id: str) -> None: ...
+    def find(self, scope_key: str, namespace: str, key: str) -> StateRecord | None: ...
+    def get(self, record_id: str) -> StateRecord: ...
+    def current_revision(self, revision_id: str) -> StateRevision: ...
+    def insert(
+        self,
+        *,
+        scope_key: str,
+        tenant_id: str,
+        agent_id: str | None,
+        space_group_id: str | None,
+        space_id: str | None,
+        session_id: str | None,
+        namespace: str,
+        key: str,
+        revision_id: str,
+        revision: int,
+    ) -> str: ...
+    def insert_revision(
+        self,
+        *,
+        record_id: str,
+        tenant_id: str,
+        revision: int,
+        value_json: str,
+        source_ref: str | None,
+        source_authority: str,
+        observed_us: int,
+        expires_us: int | None,
+        coalesce_key: str | None,
+    ) -> str: ...
+    def advance_pointer(
+        self, record_id: str, *, expected_revision: int, revision: int, revision_id: str
+    ) -> int: ...
+    def set_initial_pointer(self, record_id: str, revision_id: str) -> int: ...
+    def revision_count(self, record_id: str) -> int: ...
+    def prune_history(self, record_id: str, *, keep: int) -> int: ...
+    def history(self, record_id: str, *, limit: int = 50) -> Sequence[StateRevision]: ...
+    def list_scope(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str | None,
+        namespace: str | None,
+        space_id: str | None,
+        session_id: str | None,
+        prefix: str | None,
+        limit: int = 100,
+    ) -> Sequence[StateEntry]: ...
+
+
+class FocusSurface(Protocol):
+    """Repository surface for focus current rows and immutable revisions."""
+
+    def get(self, item_id: str) -> FocusItemCurrent: ...
+    def get_revision(self, revision_id: str) -> FocusRevision: ...
+    def current_revision_row(self, item_id: str) -> FocusRevision: ...
+    def insert(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        space_group_id: str | None,
+        space_id: str | None,
+        session_id: str | None,
+        scope_key: str,
+        kind: str,
+        summary: str,
+        status: str,
+        revision_id: str,
+        activation: float,
+        activation_base: float,
+        last_activated_us: int,
+        expires_us: int | None,
+    ) -> str: ...
+    def insert_revision(
+        self,
+        *,
+        item_id: str,
+        tenant_id: str,
+        revision: int,
+        kind: str,
+        summary: str,
+        structured_payload: dict[str, object] | None,
+        privacy_labels: tuple[str, ...],
+        source_refs: tuple[dict[str, object], ...],
+        salience: float,
+        activation: float,
+        activation_base: float,
+        importance: float,
+        status: str,
+        promotion_policy: str,
+        promotion_target_type: str | None,
+        promotion_target_id: str | None,
+        last_activated_us: int,
+        expires_us: int | None,
+        created_by: str,
+    ) -> str: ...
+    def advance_pointer(
+        self,
+        item_id: str,
+        *,
+        expected_revision: int,
+        revision: int,
+        revision_id: str,
+        status: str,
+        activation: float | None = None,
+        activation_base: float | None = None,
+        last_activated_us: int | None = None,
+    ) -> int: ...
+    def set_initial_pointer(self, item_id: str, revision_id: str) -> int: ...
+    def raise_pointer_mismatch(self, item_id: str, expected: int) -> None: ...
+    def active_items(self, tenant_id: str, agent_id: str) -> Sequence[FocusItemCurrent]: ...
+    def items_for_agent(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        statuses: tuple[str, ...] = ("active", "dormant"),
+        kind: str | None = None,
+        limit: int = 500,
+    ) -> Sequence[FocusItemCurrent]: ...
+    def maintenance_items(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        now_us: int,
+        limit: int = 500,
+    ) -> Sequence[FocusItemCurrent]: ...
+    def history(self, item_id: str, *, limit: int = 100) -> Sequence[FocusRevision]: ...
+
+
 class Transaction(Protocol):
     """Repository surface available inside one unit of work."""
 
@@ -318,6 +503,15 @@ class Transaction(Protocol):
 
     @property
     def surfaces(self) -> SurfaceLeaseSurface: ...
+
+    @property
+    def recent(self) -> RecentContextSurface: ...
+
+    @property
+    def states(self) -> StateSurface: ...
+
+    @property
+    def focus(self) -> FocusSurface: ...
 
     # --- tenants, agents, spaces -------------------------------------
     def insert_tenant(self, tenant_id: str, *, status: str) -> Tenant: ...

@@ -17,8 +17,11 @@ from __future__ import annotations
 
 import uuid
 
+from iris_memory_core.application.backpressure import BackpressureGauge
+from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.outbox import JobCommit, JobWork, OutboxService
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.domain.errors import LeaseFencedError
 from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS, OutboxJob
 
@@ -43,6 +46,31 @@ def selfcheck_handler(job: OutboxJob) -> JobCommit:
 DEFAULT_HANDLERS: dict[str, JobWork] = {
     "maintenance.selfcheck": selfcheck_handler,
 }
+
+
+def phase3_handlers(
+    uow: UnitOfWork,
+    clock: Clock,
+    *,
+    recent: RecentContextService,
+    focus: FocusService,
+    gauge: BackpressureGauge | None = None,
+) -> dict[str, JobWork]:
+    """Phase 3 handlers bound to one store's services (§16.3 commit closures)."""
+    from iris_memory_core.jobs.handlers import (
+        focus_maintenance_handler,
+        observation_recorded_handler,
+        recent_context_maintenance_handler,
+        state_projection_handler,
+    )
+
+    return {
+        "observation.recorded": observation_recorded_handler(uow, clock, gauge),
+        "recent_context.maintenance": recent_context_maintenance_handler(recent, clock),
+        "focus.maintenance": focus_maintenance_handler(focus, clock),
+        "state.projection": state_projection_handler(),
+        "maintenance.selfcheck": selfcheck_handler,
+    }
 
 
 class OutboxWorker:

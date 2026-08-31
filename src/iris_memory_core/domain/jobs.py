@@ -86,7 +86,15 @@ def _spec(
 # forget and audit-adjacent work must never be discarded.
 _KINDS: dict[str, JobKindSpec] = dict(
     [
-        _spec("recent_context.maintenance", priority=5, coalesce=CoalesceClass.STATE),
+        # Phase 3: enabled with real, safe handlers (rebuild/decay/pointer
+        # checks); coalescing merges pending PROJECTION work only.
+        _spec(
+            "recent_context.maintenance",
+            priority=5,
+            coalesce=CoalesceClass.STATE,
+            enabled=True,
+            notes="Phase 3: deterministic rebuild of one target's window.",
+        ),
         # §17.4: Focus Maintenance catch-up default is "coalesce", matching
         # Memory Reconciliation (decay/tidy work collapses to the newest run).
         _spec(
@@ -94,6 +102,16 @@ _KINDS: dict[str, JobKindSpec] = dict(
             priority=5,
             coalesce=CoalesceClass.STATE,
             catch_up="coalesce",
+            enabled=True,
+            notes="Phase 3: idempotent decay/dormant/expiry sweep per agent.",
+        ),
+        _spec(
+            "state.projection",
+            priority=6,
+            coalesce=CoalesceClass.STATE,
+            enabled=True,
+            notes="Phase 3: state current-pointer invariant check (no derived "
+            "state table exists yet; the job validates the pointer it names).",
         ),
         _spec("profile.refresh", priority=6, coalesce=CoalesceClass.PROFILE),
         _spec("graph.refresh", priority=6, coalesce=CoalesceClass.GRAPH),
@@ -109,7 +127,10 @@ _KINDS: dict[str, JobKindSpec] = dict(
         _spec(
             "observation.recorded",
             priority=2,
-            notes="Emitted atomically with each accepted observation.",
+            enabled=True,
+            notes="Emitted atomically with each accepted observation; Phase 3 "
+            "handler verifies the committed fact and schedules the target's "
+            "recent-context rebuild.",
         ),
         _spec(
             "forget.execute",

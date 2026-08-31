@@ -1,0 +1,36 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "builder_version": 1,
+  "expires_us": 1700003600000000,
+  "head_observation_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+  "hot_observation_refs": [
+    {
+      "observation_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "revision": 1
+    },
+    {
+      "observation_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa634",
+      "revision": 1
+    }
+  ],
+  "result_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+  "source": "generation",
+  "source_watermark": 12,
+  "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631",
+  "summary_segments": [
+    {
+      "covers": 1,
+      "segment_id": "seg:0",
+      "source_refs": [
+        {
+          "observation_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa635",
+          "revision": 1
+        }
+      ],
+      "token_estimate": 8
+    }
+  ],
+  "tail_observation_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa634",
+  "token_estimate": 128
+}
