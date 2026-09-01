@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "TaskStepView": {
+      "additionalProperties": true,
+      "properties": {
+        "completed_us": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "completion_evidence_refs": {
+          "type": "array"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_effect": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ordinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "stable_key": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "started_us": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "ready",
+            "in_progress",
+            "waiting",
+            "blocked",
+            "completed",
+            "skipped",
+            "cancelled"
+          ]
+        },
+        "task_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "task_step_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_step_id",
+        "task_id",
+        "stable_key",
+        "title",
+        "status",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://schemas.iris-memory-core.local/v1/task-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "completed_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "created_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "due_at_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "goal": {
+      "type": "string"
+    },
+    "next_action": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "owner_entity_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "owner_kind": {
+      "enum": [
+        "agent",
+        "joint",
+        "entity",
+        "space_group"
+      ]
+    },
+    "parent_task_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "priority": {
+      "maximum": 9,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "progress_note": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_refs": {
+      "type": "array"
+    },
+    "space_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "active",
+        "waiting",
+        "blocked",
+        "completed",
+        "cancelled",
+        "archived"
+      ]
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/TaskStepView"
+      },
+      "type": "array"
+    },
+    "task_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "title": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "updated_us": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "task_id",
+    "agent_id",
+    "title",
+    "status",
+    "revision"
+  ],
+  "title": "TaskView",
+  "type": "object"
+}

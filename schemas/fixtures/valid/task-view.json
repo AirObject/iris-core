@@ -1,0 +1,38 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "completed_us": null,
+  "created_us": 1700000000000000,
+  "due_at_us": 1700086400000000,
+  "goal": "Deliver the phase 4 slice end to end",
+  "next_action": "Write the migration",
+  "owner_entity_id": null,
+  "owner_kind": "agent",
+  "parent_task_id": null,
+  "priority": 3,
+  "privacy_labels": [],
+  "progress_note": null,
+  "revision": 2,
+  "session_id": null,
+  "source_refs": [],
+  "space_id": null,
+  "status": "active",
+  "steps": [
+    {
+      "completed_us": null,
+      "completion_evidence_refs": [],
+      "description": "Draft 0005_phase4_notes_tasks_events.sql",
+      "expected_effect": null,
+      "ordinal": 0,
+      "revision": 1,
+      "stable_key": "migration",
+      "started_us": null,
+      "status": "ready",
+      "task_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa641",
+      "task_step_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa642",
+      "title": "Write the migration"
+    }
+  ],
+  "task_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa641",
+  "title": "Deliver phase 4",
+  "updated_us": 1700000000000001
+}

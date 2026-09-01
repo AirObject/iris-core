@@ -1,16 +1,20 @@
-"""Structured Recall Orchestrator skeleton (§18, Phase 3.4 — internal only).
+"""Structured Recall Orchestrator skeleton (§18 — internal only).
 
-Phase 3 composes EXACTLY three routes — ``recent_context``, ``state`` and
-``focus`` — with per-route sub-deadlines measured on the MONOTONIC clock,
-per-route candidate caps, a unified candidate conversion, deterministic
-versioned ranking, layer/token budget trimming and a FINAL canonical
-rehydrate that re-verifies Scope/Privacy/Status/Expiry/Revision/Tombstone for
-every candidate. Persona is never a candidate here.
+Phase 3 composes the three short-term routes — ``recent_context``, ``state``
+and ``focus``. Phase 4 adds the ``tasks`` route (due, non-terminal tasks,
+the highest-priority structured signal) and advertises
+``pending_event_ids`` — undelivered CognitiveEvents at the request scope
+(§12). All routes run under per-route sub-deadlines measured on the
+MONOTONIC clock, with per-route candidate caps, a unified candidate
+conversion, deterministic versioned ranking, layer/token budget trimming
+and a FINAL canonical rehydrate that re-verifies
+Scope/Privacy/Status/Expiry/Revision/Tombstone for every candidate. Persona
+is never a candidate here.
 
 Phase 6 owns the full `/v1/recall` protocol: this module deliberately stops
 short of FTS/vector/graph routes, cache and usage reporting, and its request/
 envelope types stay internal and extensible so Phase 6 can add routes without
-redefining these three.
+redefining the existing ones.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from iris_memory_core.application.events import CognitiveEventService
 from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.ports import (
     Clock,
@@ -30,6 +35,7 @@ from iris_memory_core.application.ports import (
 )
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.state import StateService
+from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
@@ -42,25 +48,37 @@ from iris_memory_core.domain.observation import StoredObservation
 from iris_memory_core.domain.privacy import evaluate_privacy
 from iris_memory_core.domain.recent import DefaultTokenEstimator, TokenEstimator
 from iris_memory_core.domain.scope import Scope, scope_allows
+from iris_memory_core.domain.task import TaskStatus
 
 #: Bump when scoring weights, category priorities or budget logic change.
 RECALL_RANKER_VERSION = 1
 
+ROUTE_TASKS = "tasks"
 ROUTE_RECENT = "recent_context"
 ROUTE_STATE = "state"
 ROUTE_FOCUS = "focus"
-DEFAULT_ROUTES = (ROUTE_RECENT, ROUTE_STATE, ROUTE_FOCUS)
+DEFAULT_ROUTES = (ROUTE_TASKS, ROUTE_RECENT, ROUTE_STATE, ROUTE_FOCUS)
 
-#: Fixed category priorities for the stable sort tie-breaker (§18.6).
-CATEGORY_PRIORITY = {ROUTE_RECENT: 0, ROUTE_STATE: 1, ROUTE_FOCUS: 2}
+#: Fixed category priorities for the stable sort tie-breaker (§18.6). Due
+#: tasks outrank everything: prospective memory is the highest-priority
+#: structured signal (Phase 4).
+CATEGORY_PRIORITY = {ROUTE_TASKS: 0, ROUTE_RECENT: 1, ROUTE_STATE: 2, ROUTE_FOCUS: 3}
 
 #: Equal share of the remaining budget per route; the last route runs to the
 #: total deadline with whatever budget the earlier routes returned.
-_ROUTE_SHARES = {ROUTE_RECENT: 1.0 / 3.0, ROUTE_STATE: 1.0 / 3.0, ROUTE_FOCUS: 1.0 / 3.0}
+_ROUTE_SHARES = {
+    ROUTE_TASKS: 1.0 / 4.0,
+    ROUTE_RECENT: 1.0 / 4.0,
+    ROUTE_STATE: 1.0 / 4.0,
+    ROUTE_FOCUS: 1.0 / 4.0,
+}
 
+DEFAULT_TASKS_CANDIDATES = 10
 DEFAULT_RECENT_CANDIDATES = 12
 DEFAULT_STATE_CANDIDATES = 8
 DEFAULT_FOCUS_CANDIDATES = 10
+#: Upper bound of pending event ids advertised on one recall response (§12).
+DEFAULT_PENDING_EVENT_IDS = 50
 
 #: Recency reference window for score normalization — deterministic given the
 #: injected clock; replay tests pin the clock.
@@ -171,6 +189,9 @@ class StructuredRecallResult:
     candidates: tuple[RecallCandidate, ...]
     dropped_by_rehydrate: int
     trace: RecallTrace | None = None
+    #: Undelivered CognitiveEvents visible at the request scope (§12). The
+    #: host pulls them via the events endpoint; recall only advertises ids.
+    pending_event_ids: tuple[str, ...] = ()
 
 
 class RecallRoute(Protocol):
@@ -411,6 +432,78 @@ class FocusRoute:
         return tuple(candidates)
 
 
+class DueTaskRoute:
+    """Due, non-terminal tasks — the highest-priority structured route.
+
+    Phase 4 addition (§18/§11): prospective memory outranks recency. Only
+    active/waiting tasks whose due time has arrived; the final rehydrate
+    re-checks status, due time, scope, privacy and tombstone again.
+    """
+
+    def __init__(
+        self,
+        service: TaskService,
+        estimator: TokenEstimator | None = None,
+        *,
+        monotonic: MonotonicClock | None = None,
+    ) -> None:
+        self.name = ROUTE_TASKS
+        self._service = service
+        self._estimator = estimator or DefaultTokenEstimator()
+        self._monotonic = monotonic or SystemMonotonicClock()
+
+    def collect(
+        self,
+        tx: Transaction,
+        request: StructuredRecallRequest,
+        access: AccessContext,
+        deadline_us: int,
+        now_us: int,
+    ) -> tuple[RecallCandidate, ...]:
+        check_deadline(self._monotonic, deadline_us)
+        limit = request.candidate_limits.get(ROUTE_TASKS, DEFAULT_TASKS_CANDIDATES)
+        pairs = self._service.due_tasks_for_route(
+            tx,
+            access,
+            agent_id=request.agent_id,
+            space_id=request.space_id,
+            session_id=request.session_id,
+            limit=limit,
+        )
+        check_deadline(self._monotonic, deadline_us)
+        candidates: list[RecallCandidate] = []
+        for task, revision in pairs:
+            check_deadline(self._monotonic, deadline_us)
+            overdue = 0.0
+            if task.due_at_us is not None and task.due_at_us < now_us:
+                overdue = min(1.0, (now_us - task.due_at_us) / RECENCY_WINDOW_US)
+            final = round(0.7 + 0.2 * (1 - task.priority / 9) + 0.1 * overdue, 6)
+            candidates.append(
+                RecallCandidate(
+                    candidate_id=_candidate_id(ROUTE_TASKS, task.id, revision.revision),
+                    route=ROUTE_TASKS,
+                    resource_type="task",
+                    resource_id=task.id,
+                    resource_revision=revision.revision,
+                    text=revision.next_action or revision.title,
+                    scores={"overdue": round(overdue, 6)},
+                    final_score=final,
+                    token_estimate=self._estimator.estimate(revision.next_action or revision.title),
+                    occurred_us=task.due_at_us or task.created_us,
+                    scope=Scope(
+                        tenant_id=task.tenant_id,
+                        agent_id=task.agent_id,
+                        space_group_id=task.space_group_id,
+                        space_id=task.space_id,
+                        session_id=task.session_id,
+                    ),
+                    privacy_labels=revision.privacy_labels,
+                )
+            )
+        check_deadline(self._monotonic, deadline_us)
+        return tuple(candidates[:limit])
+
+
 def _candidate_id(route: str, resource_id: str, revision: int) -> str:
     """Deterministic candidate id — identical across replays of one snapshot."""
     digest = hashlib.sha256(f"{route}:{resource_id}:{revision}".encode()).hexdigest()[:16]
@@ -428,7 +521,7 @@ def stable_sort_key(candidate: RecallCandidate) -> tuple[float, int, int, str]:
 
 
 class StructuredRecallOrchestrator:
-    """Runs the three structured routes under one deadline and budget."""
+    """Runs the structured routes under one deadline and budget."""
 
     def __init__(
         self,
@@ -438,19 +531,33 @@ class StructuredRecallOrchestrator:
         focus: FocusService,
         *,
         clock: Clock,
+        tasks: TaskService | None = None,
+        events: CognitiveEventService | None = None,
         monotonic: MonotonicClock | None = None,
         estimator: TokenEstimator | None = None,
         routes: tuple[RecallRoute, ...] | None = None,
     ) -> None:
         self._uow = uow
         self._clock = clock
+        self._events = events
         self._monotonic = monotonic or SystemMonotonicClock()
         self._estimator = estimator or DefaultTokenEstimator()
-        self._routes: tuple[RecallRoute, ...] = routes or (
-            RecentContextRoute(recent, self._monotonic, self._estimator),
-            StateRoute(states, self._estimator, monotonic=self._monotonic),
-            FocusRoute(focus, self._estimator, monotonic=self._monotonic),
-        )
+        if routes is not None:
+            self._routes: tuple[RecallRoute, ...] = routes
+        else:
+            # Default composition: due tasks FIRST (prospective memory is the
+            # highest-priority structured signal), then the Phase 3 routes.
+            composed: list[RecallRoute] = []
+            if tasks is not None:
+                composed.append(DueTaskRoute(tasks, self._estimator, monotonic=self._monotonic))
+            composed.extend(
+                (
+                    RecentContextRoute(recent, self._monotonic, self._estimator),
+                    StateRoute(states, self._estimator, monotonic=self._monotonic),
+                    FocusRoute(focus, self._estimator, monotonic=self._monotonic),
+                )
+            )
+            self._routes = tuple(composed)
 
     def recall(
         self, access: AccessContext, request: StructuredRecallRequest
@@ -578,6 +685,22 @@ class StructuredRecallOrchestrator:
                 else:
                     dropped += 1
             trimmed = self._apply_budgets(rehydrated, request)
+            # Pending CognitiveEvents at this scope (§12): ids only — the
+            # body stays behind the events endpoint's own authorization.
+            pending_event_ids: tuple[str, ...] = ()
+            if self._events is not None:
+                # The request scope — not the wider access envelope — decides
+                # which pending ids this recall may broadcast: agent-level
+                # events enter a space request, the matching space's events
+                # enter it, other spaces/sessions never do (P0 round-3 gate).
+                pending_event_ids = self._events.pending_event_ids_for_request_scope(
+                    tx,
+                    access,
+                    agent_id=request.agent_id,
+                    space_id=request.space_id,
+                    session_id=request.session_id,
+                    limit=DEFAULT_PENDING_EVENT_IDS,
+                )
         # A partial response requires at least one successful key Route (§18.3).
         # All-degraded is a stable error even when partial results were allowed:
         # there is no result whose partiality could be useful or trustworthy.
@@ -601,6 +724,7 @@ class StructuredRecallOrchestrator:
             trace=self._trace(request_hash, started, tuple(route_traces), dropped)
             if request.include_trace
             else None,
+            pending_event_ids=pending_event_ids,
         )
 
     @staticmethod
@@ -657,6 +781,34 @@ class StructuredRecallOrchestrator:
             session_id=request.session_id,
         )
         now_us = self._clock.now_us()
+        if candidate.resource_type == "task":
+            try:
+                task = tx.tasks.get_task(candidate.resource_id)
+            except Exception:
+                return "task_missing"
+            if task.current_revision != candidate.resource_revision:
+                return "stale_revision"
+            if tx.is_tombstoned(access.tenant_id, "task", task.id):
+                return "tombstoned"
+            if task.status not in (TaskStatus.ACTIVE.value, TaskStatus.WAITING.value):
+                return "status_not_due"
+            if task.due_at_us is None or task.due_at_us > now_us:
+                return "not_due"
+            task_revision = tx.tasks.current_task_revision_row(task.id)
+            data_scope = Scope(
+                tenant_id=task.tenant_id,
+                agent_id=task.agent_id,
+                space_group_id=task.space_group_id,
+                space_id=task.space_id,
+                session_id=task.session_id,
+            )
+            if not scope_allows(data_scope, request_scope):
+                return "scope_mismatch"
+            if not evaluate_privacy(
+                task_revision.privacy_labels, data_scope, request_scope, access
+            ):
+                return "privacy_blocked"
+            return None
         if candidate.resource_type == "observation":
             try:
                 observation = tx.observations.get(candidate.resource_id)
@@ -773,7 +925,9 @@ __all__ = [
     "ROUTE_FOCUS",
     "ROUTE_RECENT",
     "ROUTE_STATE",
+    "ROUTE_TASKS",
     "DegradedRoute",
+    "DueTaskRoute",
     "FocusRoute",
     "RecallCandidate",
     "RecallRoute",

@@ -98,6 +98,12 @@ class InvalidTransitionError(ConflictError):
     code = "invalid_state_transition"
 
 
+class TaskDependencyCycleError(ConflictError):
+    """Adding a task dependency would create a cycle (§11.3)."""
+
+    code = "task_dependency_cycle"
+
+
 class RedirectCycleError(ConflictError):
     code = "redirect_cycle"
 

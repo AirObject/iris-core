@@ -301,6 +301,115 @@ def scenario_recent_rebuild(db_path: str, crash_at: str) -> None:
         _self_kill()
 
 
+class Phase4Spine:
+    """Typed bundle of the Phase 4 services each scenario drives."""
+
+    def __init__(self, db_path: str) -> None:
+        from iris_memory_core.application.events import CognitiveEventService
+        from iris_memory_core.application.notes import NoteService
+        from iris_memory_core.application.tasks import TaskService
+        from iris_memory_core.storage.idempotency import IdempotencyManager
+
+        base = Phase3Spine(db_path)
+        self.store = base.store
+        self.agent_id = base.agent_id
+        self.space_id = base.space_id
+        self.access = base.access
+        idem = IdempotencyManager(self.store)
+        self.notes = NoteService(self.store, self.store.clock, idempotency=idem)
+        self.tasks = TaskService(self.store, self.store.clock, idempotency=idem)
+        self.events = CognitiveEventService(self.store, self.store.clock, idempotency=idem)
+
+
+def scenario_task_transition(db_path: str, crash_at: str) -> None:
+    """Task create+activate at: pre-revision / pre-pointer / pre-commit / post."""
+    from iris_memory_core.storage import plans
+
+    ctx = Phase4Spine(db_path)
+    created = ctx.tasks.create(
+        ctx.access,
+        agent_id=ctx.agent_id,
+        title="fault task",
+        origin="conversation",
+        idempotency_key="task-fault-1",
+    )
+    if crash_at == "pre_revision":
+        _die_on(plans.TaskRepository, "insert_task_revision")
+    if crash_at == "pre_pointer":
+        _die_on(plans.TaskRepository, "advance_task_pointer")
+    if crash_at == "pre_commit":
+        _die_before_commit(ctx.store)
+    ctx.tasks.transition(
+        ctx.access,
+        created.task_id,
+        "activate",
+        expected_revision=1,
+        origin="explicit_tool",
+        reason="fault",
+        idempotency_key="task-fault-2",
+    )
+    if crash_at == "post_commit":
+        _self_kill()
+
+
+def scenario_trigger_scan(db_path: str, crash_at: str) -> None:
+    """Occurrence + event creation at: pre-occurrence / pre-event / post."""
+    from iris_memory_core.storage import plans
+
+    ctx = Phase4Spine(db_path)
+    task = ctx.tasks.create(
+        ctx.access,
+        agent_id=ctx.agent_id,
+        title="scan task",
+        origin="explicit_tool",
+        idempotency_key="scan-fault-1",
+    )
+    ctx.tasks.create_trigger(
+        ctx.access,
+        task.task_id,
+        kind="at_time",
+        schedule_spec={"at_us": ctx.store.clock.now_us() - 1},
+        idempotency_key="scan-fault-2",
+    )
+    if crash_at == "pre_occurrence":
+        _die_on(plans.TaskRepository, "insert_occurrence")
+    if crash_at == "pre_commit":
+        _die_before_commit(ctx.store)
+    with ctx.store.write() as tx:
+        ctx.tasks.trigger_scan(tx, tenant_id=ctx.access.tenant_id, agent_id=ctx.agent_id)
+    if crash_at == "post_commit":
+        _self_kill()
+
+
+def scenario_event_ack(db_path: str, crash_at: str) -> None:
+    """Pull + ACK at: pre-commit / post-commit."""
+    ctx = Phase4Spine(db_path)
+    now = ctx.store.clock.now_us()
+    with ctx.store.write() as tx:
+        from iris_memory_core.application.events import CognitiveEventService
+
+        event_id = CognitiveEventService.create_internal(
+            tx,
+            tenant_id=ctx.access.tenant_id,
+            agent_id=ctx.agent_id,
+            space_group_id=None,
+            space_id=None,
+            session_id=None,
+            kind="task.due",
+            object_type="task",
+            object_id="kill9",
+            occurrence_id=None,
+            scheduled_at_us=now,
+            deliver_after_us=now,
+        )
+    ctx.events.pull(ctx.access, agent_id=ctx.agent_id)
+    if crash_at == "pre_commit":
+        _die_before_commit(ctx.store)
+    ctx.events.ack(ctx.access, event_id, idempotency_key="ack-fault-1")
+    if crash_at == "post_commit":
+        _self_kill()
+
+
 SCENARIOS = {
     "observe": scenario_observe,
     "worker": scenario_worker,
@@ -308,6 +417,9 @@ SCENARIOS = {
     "state_put": scenario_state_put,
     "focus_transition": scenario_focus_transition,
     "recent_rebuild": scenario_recent_rebuild,
+    "task_transition": scenario_task_transition,
+    "trigger_scan": scenario_trigger_scan,
+    "event_ack": scenario_event_ack,
 }
 
 

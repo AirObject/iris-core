@@ -1,0 +1,136 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/note-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "archived_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "body": {
+      "type": "string"
+    },
+    "created_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "due_at_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "importance": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "kind": {
+      "enum": [
+        "important",
+        "idea",
+        "follow_up",
+        "promise",
+        "question",
+        "observation"
+      ]
+    },
+    "note_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "promotion_target_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "promotion_target_type": {
+      "enum": [
+        "task",
+        "claim",
+        "episode",
+        null
+      ],
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "review_after_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "snooze_until_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "source_refs": {
+      "type": "array"
+    },
+    "space_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "inbox",
+        "pinned",
+        "snoozed",
+        "archived",
+        "promoted",
+        "tombstoned"
+      ]
+    },
+    "title": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "updated_us": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "note_id",
+    "agent_id",
+    "kind",
+    "title",
+    "status",
+    "revision"
+  ],
+  "title": "NoteView",
+  "type": "object"
+}

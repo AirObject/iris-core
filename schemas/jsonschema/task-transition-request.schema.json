@@ -1,0 +1,74 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/task-transition-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "completion_evidence_refs": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "expected_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "origin": {
+      "enum": [
+        "explicit_tool",
+        "admin",
+        "policy",
+        "conversation",
+        "background"
+      ]
+    },
+    "reason": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "target": {
+      "enum": [
+        "activate",
+        "wait",
+        "block",
+        "complete",
+        "cancel",
+        "archive"
+      ]
+    }
+  },
+  "required": [
+    "target",
+    "expected_revision",
+    "reason"
+  ],
+  "title": "TaskTransitionRequest",
+  "type": "object"
+}

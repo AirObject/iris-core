@@ -4,6 +4,7 @@ import threading
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from iris_memory_sdk.client import AsyncIrisMemoryClient, IrisMemoryApiError
@@ -446,3 +447,299 @@ def test_admin_recent_context_rebuild_round_trip(mock_base_url: str) -> None:
         )
     )
     assert validate_contract("recent-context-view", view) == ()
+
+
+# -- Phase 4: notes, tasks, triggers, cognitive events -------------------------
+
+_AGENT = "01a050fd-6cc2-7d1b-86ef-86d5150fa630"
+_NOTE = "01a050fd-6cc2-7d1b-86ef-86d5150fa640"
+_TASK = "01a050fd-6cc2-7d1b-86ef-86d5150fa641"
+_STEP = "01a050fd-6cc2-7d1b-86ef-86d5150fa642"
+_EVENT = "01a050fd-6cc2-7d1b-86ef-86d5150fa644"
+
+
+def test_note_create_list_update_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    created = asyncio.run(
+        client.create_note(
+            {"agent_id": _AGENT, "kind": "follow_up", "title": "ship phase 4"},
+            idempotency_key="note-1",
+        )
+    )
+    assert validate_contract("note-view", created) == ()
+    listed = asyncio.run(client.list_notes(_AGENT, status="inbox"))
+    assert validate_contract("note-view", listed["items"][0]) == ()
+    updated = asyncio.run(
+        client.update_note(
+            _NOTE, {"expected_revision": 1, "title": "renamed"}, idempotency_key="note-2"
+        )
+    )
+    assert validate_contract("note-view", updated) == ()
+    assert updated["revision"] == 2
+
+
+def test_note_archive_and_promote_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    archived = asyncio.run(
+        client.note_action(
+            _NOTE,
+            "archive",
+            {"expected_revision": 1, "reason": "done"},
+            idempotency_key="note-3",
+        )
+    )
+    assert archived["status"] == "archived"
+    promoted = asyncio.run(
+        client.note_action(
+            _NOTE,
+            "promote",
+            {
+                "expected_revision": 1,
+                "reason": "actionable",
+                "promotion_target_type": "task",
+            },
+            idempotency_key="note-4",
+        )
+    )
+    assert promoted["status"] == "promoted"
+    assert promoted["promotion_target_id"] == _TASK
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(
+            client.note_action(
+                _NOTE,
+                "promote",
+                {"expected_revision": 1, "reason": "x"},
+                idempotency_key="note-5",
+            )
+        )
+    assert captured.value.envelope.code == "invalid_request"
+
+
+def test_task_create_list_transition_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    created = asyncio.run(
+        client.create_task(
+            {"agent_id": _AGENT, "title": "deliver phase 4", "origin": "explicit_tool"},
+            idempotency_key="task-1",
+        )
+    )
+    assert validate_contract("task-view", created) == ()
+    assert created["status"] == "active"
+    listed = asyncio.run(client.list_tasks(_AGENT, status="active"))
+    assert validate_contract("task-view", listed["items"][0]) == ()
+    updated = asyncio.run(
+        client.update_task(
+            _TASK, {"expected_revision": 1, "next_action": "write tests"}, idempotency_key="task-2"
+        )
+    )
+    assert updated["next_action"] == "write tests"
+    completed = asyncio.run(
+        client.transition_task(
+            _TASK,
+            {
+                "target": "complete",
+                "expected_revision": 1,
+                "reason": "done",
+                "origin": "explicit_tool",
+            },
+            idempotency_key="task-3",
+        )
+    )
+    assert completed["status"] == "completed"
+    assert completed["completed_us"] is not None
+
+
+def test_task_create_accepts_the_contract_minimum(mock_base_url: str) -> None:
+    """P2 audit gate: the JSON Schema requires only agent_id+title and the
+    server defaults origin/owner_kind — the SDK validator and the mock must
+    accept that same minimum, not impose extra required fields."""
+    assert validate_contract("task-create-request", {"agent_id": _AGENT, "title": "minimal"}) == ()
+    client = AsyncIrisMemoryClient(mock_base_url)
+    created = asyncio.run(
+        client.create_task({"agent_id": _AGENT, "title": "minimal"}, idempotency_key="task-min")
+    )
+    assert validate_contract("task-view", created) == ()
+    assert created["status"] == "active"  # server default origin: explicit_tool
+
+
+def test_task_conversation_origin_stays_proposed_and_cannot_activate(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    created = asyncio.run(
+        client.create_task(
+            {"agent_id": _AGENT, "title": "maybe later", "origin": "conversation"},
+            idempotency_key="task-4",
+        )
+    )
+    assert created["status"] == "proposed"
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(
+            client.transition_task(
+                _TASK,
+                {
+                    "target": "activate",
+                    "expected_revision": 1,
+                    "reason": "go",
+                    "origin": "conversation",
+                },
+                idempotency_key="task-5",
+            )
+        )
+    assert captured.value.envelope.code == "access_denied"
+
+
+def test_task_step_and_dependency_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    step = asyncio.run(
+        client.create_task_step(
+            _TASK,
+            {"stable_key": "migration", "title": "write 0005"},
+            idempotency_key="step-1",
+        )
+    )
+    assert validate_contract("task-view", step) == () or step["stable_key"] == "migration"
+    started = asyncio.run(
+        client.transition_task_step(
+            _TASK,
+            _STEP,
+            {"target": "start", "expected_revision": 1, "reason": "go"},
+            idempotency_key="step-2",
+        )
+    )
+    assert started["status"] == "in_progress"
+    dependency = asyncio.run(
+        client.create_task_dependency(
+            _TASK,
+            {
+                "predecessor_step_id": _STEP,
+                "successor_step_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa699",
+                "condition": "completed",
+            },
+            idempotency_key="dep-1",
+        )
+    )
+    assert dependency["predecessor_step_id"] == _STEP
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(
+            client.create_task_dependency(
+                _TASK,
+                {
+                    "predecessor_step_id": _STEP,
+                    "successor_step_id": _STEP,
+                    "condition": "completed",
+                },
+                idempotency_key="dep-2",
+            )
+        )
+    assert captured.value.envelope.code == "task_dependency_cycle"
+
+
+def test_task_trigger_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    trigger = asyncio.run(
+        client.create_task_trigger(
+            _TASK,
+            {
+                "kind": "recurrence",
+                "schedule_spec": {"kind": "daily", "at": "09:00"},
+                "timezone": "Europe/Berlin",
+            },
+            idempotency_key="trigger-1",
+        )
+    )
+    assert validate_contract("trigger-view", trigger) == ()
+    assert trigger["next_fire_at_us"] is not None
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(
+            client.create_task_trigger(
+                _TASK,
+                {"kind": "cron", "schedule_spec": {"expr": "* * * * *"}},
+                idempotency_key="trigger-2",
+            )
+        )
+    assert captured.value.envelope.code == "invalid_request"
+
+
+def test_cognitive_event_list_pull_and_ack_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    listed = asyncio.run(client.list_cognitive_events(_AGENT, status="pending"))
+    assert validate_contract("cognitive-event-view", listed["items"][0]) == ()
+    pulled = asyncio.run(
+        client.list_cognitive_events(_AGENT, pull=True, lease_id="lease-1", lease_epoch=3)
+    )
+    view = pulled["items"][0]
+    assert view["status"] == "delivered"
+    assert view["delivered_lease_id"] == "lease-1"
+    assert view["delivered_lease_epoch"] == 3
+    acked = asyncio.run(client.ack_cognitive_event(_EVENT, idempotency_key="ack-1"))
+    assert acked["status"] == "acknowledged"
+    assert acked["ack_id"] is not None
+
+
+@pytest.fixture
+def recorded_mock_server() -> Iterator[Any]:
+    """A mock server that keeps the parsed request bodies it received, so
+    contract tests can assert what the SDK ACTUALLY put on the wire."""
+    server = create_server()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_ack_cognitive_event_carries_the_lease_proof_on_the_wire(
+    recorded_mock_server: Any,
+) -> None:
+    """Round-4 P1: the official Python SDK can ACK under required surface
+    mode — lease_id/lease_epoch are method parameters and really reach the
+    request body (asserted against the recorded wire copy, not a standalone
+    schema validator)."""
+    client = AsyncIrisMemoryClient(f"http://127.0.0.1:{recorded_mock_server.server_port}")
+    acked = asyncio.run(
+        client.ack_cognitive_event(
+            _EVENT,
+            idempotency_key="ack-lease-proof",
+            ack_token="token-1",
+            lease_id="lease-7",
+            lease_epoch=4,
+        )
+    )
+    assert acked["status"] == "acknowledged"
+    ack_bodies = [
+        body
+        for method, path, body in recorded_mock_server.received_requests
+        if method == "POST" and path.endswith(":ack")
+    ]
+    assert len(ack_bodies) == 1
+    assert ack_bodies[0]["ack_token"] == "token-1"
+    assert ack_bodies[0]["lease_id"] == "lease-7"
+    assert ack_bodies[0]["lease_epoch"] == 4
+
+
+def test_phase4_writes_require_idempotency_header(mock_base_url: str) -> None:
+    request = urllib.request.Request(
+        f"{mock_base_url}/v1/tasks/{_TASK}:transition",
+        data=b'{"target": "wait", "expected_revision": 1, "reason": "raw"}',
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request):
+            raise AssertionError("mutation without Idempotency-Key must be rejected")
+    except urllib.error.HTTPError as error:
+        assert error.code == 400
+        body = json.loads(error.read())
+        assert body["error"]["code"] == "invalid_request"
+
+
+def test_phase4_lists_reject_session_without_space(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(client.list_notes(_AGENT, session_id="01a050fd-6cc2-7d1b-86ef-86d5150fa632"))
+    assert captured.value.envelope.code == "invalid_request"
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(client.list_tasks(_AGENT, session_id="01a050fd-6cc2-7d1b-86ef-86d5150fa632"))
+    assert captured.value.envelope.code == "invalid_request"

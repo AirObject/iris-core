@@ -1,0 +1,20 @@
+{
+  "catch_up_policy": "all",
+  "condition_spec": null,
+  "enabled": true,
+  "kind": "recurrence",
+  "max_occurrences_per_run": 100,
+  "misfire_grace_us": 86400000000,
+  "next_fire_at_us": 1700048400000000,
+  "revision": 1,
+  "schedule_spec": {
+    "at": "09:00",
+    "dst_ambiguous": "first",
+    "dst_missing": "skip",
+    "kind": "daily"
+  },
+  "task_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa641",
+  "task_step_id": null,
+  "timezone": "Europe/Berlin",
+  "trigger_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa643"
+}

@@ -91,6 +91,20 @@ export function validateContract(schema: string, value: unknown): readonly strin
   if (schema === "state-history-response") return validateStateHistoryResponse(value);
   if (schema === "focus-create-request") return validateFocusCreateRequest(value);
   if (schema === "focus-view") return validateFocusView(value);
+  if (schema === "note-create-request") return validateNoteCreateRequest(value);
+  if (schema === "note-update-request") return validateNoteUpdateRequest(value);
+  if (schema === "note-view") return validateNoteView(value);
+  if (schema === "task-create-request") return validateTaskCreateRequest(value);
+  if (schema === "task-update-request") return validateTaskUpdateRequest(value);
+  if (schema === "task-transition-request") return validateTaskTransitionRequest(value);
+  if (schema === "task-view") return validateTaskView(value);
+  if (schema === "task-step-create-request") return validateTaskStepCreateRequest(value);
+  if (schema === "task-step-transition-request") return validateTaskStepTransitionRequest(value);
+  if (schema === "task-dependency-create-request") return validateTaskDependencyCreateRequest(value);
+  if (schema === "task-trigger-create-request") return validateTaskTriggerCreateRequest(value);
+  if (schema === "trigger-view") return validateTriggerView(value);
+  if (schema === "cognitive-event-view") return validateCognitiveEventView(value);
+  if (schema === "cognitive-event-ack-request") return validateCognitiveEventAckRequest(value);
   return [`unknown schema: ${schema}`];
 }
 
@@ -115,6 +129,45 @@ const AUTHORITIES = new Set(["host", "platform", "adapter", "system", "user", "m
 const PROMOTION_TARGETS = new Set(["note", "task", "episode", "claim"]);
 const RECENT_SOURCES = new Set(["generation", "canonical"]);
 const HASH_RE = /^[0-9a-f]{64}$/;
+const NOTE_KINDS = new Set([
+  "important",
+  "idea",
+  "follow_up",
+  "promise",
+  "question",
+  "observation",
+]);
+const TASK_ORIGINS = new Set([
+  "explicit_tool",
+  "admin",
+  "policy",
+  "conversation",
+  "background",
+]);
+const TASK_TRANSITION_TARGETS = new Set([
+  "activate",
+  "wait",
+  "block",
+  "complete",
+  "cancel",
+  "archive",
+]);
+const STEP_TRANSITION_TARGETS = new Set([
+  "start",
+  "wait",
+  "block",
+  "complete",
+  "skip",
+  "cancel",
+  "requeue",
+]);
+const TRIGGER_KINDS = new Set([
+  "at_time",
+  "recurrence",
+  "observation_kind",
+  "state_condition",
+  "task_transition",
+]);
 
 function requireNonEmptyString(
   value: unknown,
@@ -483,6 +536,305 @@ function validateScheduleView(value: unknown): string[] {
   return errors;
 }
 
+function requireLeaseProof(value: Record<string, unknown>, errors: string[]): void {
+  // Optional §25.3 lease proof fields: validate shape when present.
+  const leaseId = value["lease_id"];
+  if (leaseId !== undefined && leaseId !== null && (typeof leaseId !== "string" || !leaseId)) {
+    errors.push("lease_id must be a non-empty string");
+  }
+  const leaseEpoch = value["lease_epoch"];
+  if (
+    leaseEpoch !== undefined &&
+    leaseEpoch !== null &&
+    (!Number.isInteger(leaseEpoch) || Number(leaseEpoch) < 0)
+  ) {
+    errors.push("lease_epoch must be a non-negative integer");
+  }
+}
+
+function validateNoteCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (typeof value.agent_id !== "string" || value.agent_id.length === 0) {
+    errors.push("agent_id must be a non-empty string");
+  }
+  if (!NOTE_KINDS.has(String(value.kind))) {
+    errors.push("kind must be a known note kind");
+  }
+  if (typeof value.title !== "string" || value.title.length === 0 || value.title.length > 500) {
+    errors.push("title must be 1..500 characters");
+  }
+  if (
+    value.body !== undefined &&
+    value.body !== null &&
+    (typeof value.body !== "string" || value.body.length > 20000)
+  ) {
+    errors.push("body must be at most 20000 characters");
+  }
+  if (value.session_id != null && value.space_id == null) {
+    errors.push("session_id requires space_id");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateNoteUpdateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!Number.isInteger(value.expected_revision) || Number(value.expected_revision) < 1) {
+    errors.push("expected_revision must be a positive integer");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateNoteView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["note_id", "agent_id", "title"] as const) {
+    if (typeof value[key] !== "string" || value[key].length === 0) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  }
+  // Forward compatibility: the server owns the kind/status enums.
+  if (typeof value.kind !== "string" || value.kind.length === 0) {
+    errors.push("kind must be a non-empty string");
+  }
+  if (typeof value.status !== "string" || value.status.length === 0) {
+    errors.push("status must be a non-empty string");
+  }
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  return errors;
+}
+
+function validateTaskCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (typeof value.agent_id !== "string" || value.agent_id.length === 0) {
+    errors.push("agent_id must be a non-empty string");
+  }
+  // origin is a server-defaulted optional field: the JSON Schema only
+  // requires agent_id+title, so the SDK accepts the same minimum.
+  if (value.origin != null && !TASK_ORIGINS.has(String(value.origin))) {
+    errors.push("origin must be a known task origin");
+  }
+  if (typeof value.title !== "string" || value.title.length === 0 || value.title.length > 500) {
+    errors.push("title must be 1..500 characters");
+  }
+  if (value.session_id != null && value.space_id == null) {
+    errors.push("session_id requires space_id");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateTaskUpdateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!Number.isInteger(value.expected_revision) || Number(value.expected_revision) < 1) {
+    errors.push("expected_revision must be a positive integer");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateTaskTransitionRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!TASK_TRANSITION_TARGETS.has(String(value.target))) {
+    errors.push("target must be a known task transition");
+  }
+  if (!Number.isInteger(value.expected_revision) || Number(value.expected_revision) < 1) {
+    errors.push("expected_revision must be a positive integer");
+  }
+  if (typeof value.reason !== "string" || value.reason.length === 0) {
+    errors.push("reason is required");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateTaskStepView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["task_step_id", "task_id", "stable_key", "title"] as const) {
+    if (typeof value[key] !== "string" || value[key].length === 0) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  }
+  if (typeof value.status !== "string" || value.status.length === 0) {
+    errors.push("status must be a non-empty string");
+  }
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  return errors;
+}
+
+function validateTaskView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["task_id", "agent_id", "title"] as const) {
+    if (typeof value[key] !== "string" || value[key].length === 0) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  }
+  if (typeof value.status !== "string" || value.status.length === 0) {
+    errors.push("status must be a non-empty string");
+  }
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  if (value.steps !== undefined && value.steps !== null) {
+    if (!Array.isArray(value.steps)) {
+      errors.push("steps must be an array");
+    } else {
+      for (const step of value.steps) {
+        errors.push(...validateTaskStepView(step));
+      }
+    }
+  }
+  return errors;
+}
+
+function validateTaskStepCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (
+    typeof value.stable_key !== "string" ||
+    value.stable_key.length === 0 ||
+    value.stable_key.length > 256
+  ) {
+    errors.push("stable_key must be 1..256 characters");
+  }
+  if (typeof value.title !== "string" || value.title.length === 0 || value.title.length > 500) {
+    errors.push("title must be 1..500 characters");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateTaskStepTransitionRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!STEP_TRANSITION_TARGETS.has(String(value.target))) {
+    errors.push("target must be a known step transition");
+  }
+  if (!Number.isInteger(value.expected_revision) || Number(value.expected_revision) < 1) {
+    errors.push("expected_revision must be a positive integer");
+  }
+  if (typeof value.reason !== "string" || value.reason.length === 0) {
+    errors.push("reason is required");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateTaskDependencyCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["predecessor_step_id", "successor_step_id"] as const) {
+    if (typeof value[key] !== "string" || value[key].length === 0) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  }
+  const condition = value.condition === undefined ? "completed" : value.condition;
+  if (!["completed", "completed_or_skipped"].includes(String(condition))) {
+    errors.push("condition must be a known dependency condition");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateTaskTriggerCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!TRIGGER_KINDS.has(String(value.kind))) {
+    errors.push("kind must be a known trigger kind");
+  }
+  const catchUp = value.catch_up_policy === undefined ? "all" : value.catch_up_policy;
+  if (!CATCH_UP_POLICIES.has(String(catchUp))) {
+    errors.push("catch_up_policy must be a known policy");
+  }
+  const timezone = value.timezone === undefined ? "UTC" : value.timezone;
+  if (typeof timezone !== "string" || timezone.length === 0) {
+    errors.push("timezone must be a non-empty IANA name");
+  }
+  const kind = String(value.kind);
+  const timeTrigger = kind === "at_time" || kind === "recurrence";
+  if (timeTrigger && !isRecord(value.schedule_spec)) {
+    errors.push("schedule_spec must be an object for time triggers");
+  }
+  if (!timeTrigger && !isRecord(value.condition_spec)) {
+    errors.push("condition_spec must be an object for condition triggers");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateTriggerView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["trigger_id", "task_id"] as const) {
+    if (typeof value[key] !== "string" || value[key].length === 0) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  }
+  if (typeof value.kind !== "string" || value.kind.length === 0) {
+    errors.push("kind must be a non-empty string");
+  }
+  if (typeof value.enabled !== "boolean") errors.push("enabled must be a boolean");
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  return errors;
+}
+
+function validateCognitiveEventView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of [
+    "cognitive_event_id",
+    "agent_id",
+    "kind",
+    "object_type",
+    "object_id",
+  ] as const) {
+    if (typeof value[key] !== "string" || value[key].length === 0) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  }
+  if (typeof value.status !== "string" || value.status.length === 0) {
+    errors.push("status must be a non-empty string");
+  }
+  if (
+    !Number.isInteger(value.delivery_attempts) ||
+    Number(value.delivery_attempts) < 0
+  ) {
+    errors.push("delivery_attempts must be a non-negative integer");
+  }
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  return errors;
+}
+
+function validateCognitiveEventAckRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (
+    value.ack_token !== undefined &&
+    value.ack_token !== null &&
+    (typeof value.ack_token !== "string" || value.ack_token.length === 0)
+  ) {
+    errors.push("ack_token must be a non-empty string");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
 function asCapabilities(value: unknown): CapabilitiesEnvelope {
   const errors = validateCapabilities(value);
   if (errors.length > 0) throw new ContractValidationError(errors);
@@ -593,6 +945,105 @@ export interface FocusView {
 }
 
 export type FocusAction = "activate" | "dormant" | "dismiss" | "expire" | "promote";
+
+/** Note view (§10, Phase 4). */
+export interface NoteView {
+  readonly note_id: string;
+  readonly agent_id: string;
+  readonly kind: string;
+  readonly title: string;
+  readonly body?: string;
+  readonly status: string;
+  readonly revision: number;
+  readonly importance?: number;
+  readonly space_id?: string | null;
+  readonly session_id?: string | null;
+  readonly review_after_us?: number | null;
+  readonly snooze_until_us?: number | null;
+  readonly due_at_us?: number | null;
+  readonly archived_us?: number | null;
+  readonly promotion_target_type?: string | null;
+  readonly promotion_target_id?: string | null;
+  readonly [futureField: string]: unknown;
+}
+
+export type NoteAction = "archive" | "promote";
+
+/** Task view (§11, Phase 4). */
+export interface TaskView {
+  readonly task_id: string;
+  readonly agent_id: string;
+  readonly title: string;
+  readonly status: string;
+  readonly revision: number;
+  readonly goal?: string;
+  readonly owner_kind?: string;
+  readonly owner_entity_id?: string | null;
+  readonly priority?: number;
+  readonly next_action?: string | null;
+  readonly progress_note?: string | null;
+  readonly due_at_us?: number | null;
+  readonly completed_us?: number | null;
+  readonly steps?: readonly TaskStepView[];
+  readonly [futureField: string]: unknown;
+}
+
+/** Task step view (§11.2, Phase 4). */
+export interface TaskStepView {
+  readonly task_step_id: string;
+  readonly task_id: string;
+  readonly stable_key: string;
+  readonly title: string;
+  readonly status: string;
+  readonly revision: number;
+  readonly description?: string | null;
+  readonly ordinal?: number;
+  readonly expected_effect?: string | null;
+  readonly completion_evidence_refs?: readonly unknown[];
+  readonly started_us?: number | null;
+  readonly completed_us?: number | null;
+  readonly [futureField: string]: unknown;
+}
+
+/** Trigger view (§11.4, Phase 4). */
+export interface TriggerView {
+  readonly trigger_id: string;
+  readonly task_id: string;
+  readonly kind: string;
+  readonly enabled: boolean;
+  readonly revision: number;
+  readonly task_step_id?: string | null;
+  readonly schedule_spec?: Readonly<Record<string, unknown>> | null;
+  readonly condition_spec?: Readonly<Record<string, unknown>> | null;
+  readonly timezone?: string;
+  readonly catch_up_policy?: string;
+  readonly misfire_grace_us?: number;
+  readonly max_occurrences_per_run?: number;
+  readonly next_fire_at_us?: number | null;
+  readonly [futureField: string]: unknown;
+}
+
+/** Cognitive event view (§12, Phase 4). */
+export interface CognitiveEventView {
+  readonly cognitive_event_id: string;
+  readonly agent_id: string;
+  readonly kind: string;
+  readonly object_type: string;
+  readonly object_id: string;
+  readonly status: string;
+  readonly revision: number;
+  readonly delivery_attempts: number;
+  readonly occurrence_id?: string | null;
+  readonly scheduled_at_us?: number;
+  readonly deliver_after_us?: number;
+  readonly expires_us?: number | null;
+  readonly delivered_lease_id?: string | null;
+  readonly delivered_lease_epoch?: number | null;
+  readonly ack_id?: string | null;
+  readonly acknowledged_us?: number | null;
+  readonly summary_of_count?: number;
+  readonly [futureField: string]: unknown;
+}
 
 export class AsyncIrisMemoryClient {
   readonly #baseUrl: string;
@@ -984,5 +1435,349 @@ export class AsyncIrisMemoryClient {
       },
     );
     return (await response.json()) as Readonly<Record<string, unknown>>;
+  }
+
+  // -- Phase 4: notes -------------------------------------------------------
+
+  public async createNote(
+    input: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<NoteView> {
+    const response = await fetch(`${this.#baseUrl}/v1/notes`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateNoteView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as NoteView;
+  }
+
+  public async listNotes(input: {
+    agent_id: string;
+    status?: string;
+    kind?: string;
+    space_id?: string;
+    session_id?: string;
+  }): Promise<{ items: readonly NoteView[] }> {
+    const params = new URLSearchParams({ agent_id: input.agent_id });
+    for (const key of ["status", "kind", "space_id", "session_id"] as const) {
+      const item = input[key];
+      if (item !== undefined) params.set(key, item);
+    }
+    const response = await fetch(`${this.#baseUrl}/v1/notes?${params.toString()}`);
+    const body: unknown = await response.json();
+    if (typeof body !== "object" || body === null || !Array.isArray((body as { items?: unknown }).items)) {
+      throw new ContractValidationError(["items must be an array"]);
+    }
+    for (const item of (body as { items: unknown[] }).items) {
+      const errors = validateNoteView(item);
+      if (errors.length > 0) throw new ContractValidationError(errors);
+    }
+    return body as { items: readonly NoteView[] };
+  }
+
+  public async updateNote(
+    noteId: string,
+    input: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<NoteView> {
+    const response = await fetch(`${this.#baseUrl}/v1/notes/${encodeURIComponent(noteId)}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "PATCH",
+    });
+    const value: unknown = await response.json();
+    const errors = validateNoteView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as NoteView;
+  }
+
+  public async noteAction(
+    noteId: string,
+    action: NoteAction,
+    input: {
+      expected_revision: number;
+      reason: string;
+      idempotencyKey: string;
+      promotion_target_type?: string;
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<NoteView> {
+    const body: Record<string, unknown> = {
+      expected_revision: input.expected_revision,
+      reason: input.reason,
+    };
+    if (input.promotion_target_type !== undefined) {
+      body.promotion_target_type = input.promotion_target_type;
+    }
+    if (input.lease_id !== undefined) body.lease_id = input.lease_id;
+    if (input.lease_epoch !== undefined) body.lease_epoch = input.lease_epoch;
+    const response = await fetch(
+      `${this.#baseUrl}/v1/notes/${encodeURIComponent(noteId)}:${action}`,
+      {
+        body: JSON.stringify(body),
+        headers: {
+          "Idempotency-Key": input.idempotencyKey,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    const value: unknown = await response.json();
+    const errors = validateNoteView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as NoteView;
+  }
+
+  // -- Phase 4: tasks ---------------------------------------------------------
+
+  public async createTask(
+    input: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<TaskView> {
+    const response = await fetch(`${this.#baseUrl}/v1/tasks`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateTaskView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as TaskView;
+  }
+
+  public async listTasks(input: {
+    agent_id: string;
+    status?: string;
+    space_id?: string;
+    session_id?: string;
+  }): Promise<{ items: readonly TaskView[] }> {
+    const params = new URLSearchParams({ agent_id: input.agent_id });
+    for (const key of ["status", "space_id", "session_id"] as const) {
+      const item = input[key];
+      if (item !== undefined) params.set(key, item);
+    }
+    const response = await fetch(`${this.#baseUrl}/v1/tasks?${params.toString()}`);
+    const body: unknown = await response.json();
+    if (typeof body !== "object" || body === null || !Array.isArray((body as { items?: unknown }).items)) {
+      throw new ContractValidationError(["items must be an array"]);
+    }
+    for (const item of (body as { items: unknown[] }).items) {
+      const errors = validateTaskView(item);
+      if (errors.length > 0) throw new ContractValidationError(errors);
+    }
+    return body as { items: readonly TaskView[] };
+  }
+
+  public async updateTask(
+    taskId: string,
+    input: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<TaskView> {
+    const response = await fetch(`${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "PATCH",
+    });
+    const value: unknown = await response.json();
+    const errors = validateTaskView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as TaskView;
+  }
+
+  public async transitionTask(
+    taskId: string,
+    input: {
+      target: string;
+      expected_revision: number;
+      reason: string;
+      idempotencyKey: string;
+      origin?: string;
+      completion_evidence_refs?: readonly Readonly<Record<string, unknown>>[];
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<TaskView> {
+    const { idempotencyKey, ...body } = input;
+    const response = await fetch(
+      `${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}:transition`,
+      {
+        body: JSON.stringify(body),
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    const value: unknown = await response.json();
+    const errors = validateTaskView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as TaskView;
+  }
+
+  public async createTaskStep(
+    taskId: string,
+    input: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<TaskStepView> {
+    const response = await fetch(`${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}/steps`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateTaskStepView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as TaskStepView;
+  }
+
+  public async transitionTaskStep(
+    taskId: string,
+    stepId: string,
+    input: {
+      target: string;
+      expected_revision: number;
+      reason: string;
+      idempotencyKey: string;
+      completion_evidence_refs?: readonly Readonly<Record<string, unknown>>[];
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<TaskStepView> {
+    const { idempotencyKey, ...body } = input;
+    const response = await fetch(
+      `${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}/steps/${encodeURIComponent(stepId)}:transition`,
+      {
+        body: JSON.stringify(body),
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    const value: unknown = await response.json();
+    const errors = validateTaskStepView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as TaskStepView;
+  }
+
+  public async createTaskDependency(
+    taskId: string,
+    input: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const response = await fetch(
+      `${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}/dependencies`,
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Idempotency-Key": options.idempotencyKey,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    return (await response.json()) as Readonly<Record<string, unknown>>;
+  }
+
+  public async createTaskTrigger(
+    taskId: string,
+    input: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<TriggerView> {
+    const response = await fetch(`${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}/triggers`, {
+      body: JSON.stringify(input),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateTriggerView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as TriggerView;
+  }
+
+  // -- Phase 4: cognitive events -----------------------------------------------
+
+  public async listCognitiveEvents(input: {
+    agent_id: string;
+    status?: string;
+    pull?: boolean;
+    lease_id?: string;
+    lease_epoch?: number;
+    limit?: number;
+  }): Promise<{ items: readonly CognitiveEventView[] }> {
+    const params = new URLSearchParams({ agent_id: input.agent_id });
+    if (input.status !== undefined) params.set("status", input.status);
+    if (input.pull) params.set("pull", "true");
+    if (input.lease_id !== undefined) params.set("lease_id", input.lease_id);
+    if (input.lease_epoch !== undefined) params.set("lease_epoch", String(input.lease_epoch));
+    if (input.limit !== undefined) params.set("limit", String(input.limit));
+    const response = await fetch(`${this.#baseUrl}/v1/cognitive-events?${params.toString()}`);
+    const body: unknown = await response.json();
+    if (typeof body !== "object" || body === null || !Array.isArray((body as { items?: unknown }).items)) {
+      throw new ContractValidationError(["items must be an array"]);
+    }
+    for (const item of (body as { items: unknown[] }).items) {
+      const errors = validateCognitiveEventView(item);
+      if (errors.length > 0) throw new ContractValidationError(errors);
+    }
+    return body as { items: readonly CognitiveEventView[] };
+  }
+
+  public async ackCognitiveEvent(
+    eventId: string,
+    options: {
+      idempotencyKey: string;
+      ack_token?: string;
+      /** §25.3 lease proof — required on the ACK under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<CognitiveEventView> {
+    const body: Record<string, unknown> = {};
+    if (options.ack_token !== undefined) body.ack_token = options.ack_token;
+    if (options.lease_id !== undefined) body.lease_id = options.lease_id;
+    if (options.lease_epoch !== undefined) body.lease_epoch = options.lease_epoch;
+    const response = await fetch(
+      `${this.#baseUrl}/v1/cognitive-events/${encodeURIComponent(eventId)}:ack`,
+      {
+        body: JSON.stringify(body),
+        headers: {
+          "Idempotency-Key": options.idempotencyKey,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    const value: unknown = await response.json();
+    const errors = validateCognitiveEventView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as CognitiveEventView;
   }
 }

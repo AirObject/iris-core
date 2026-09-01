@@ -635,9 +635,10 @@ class TestAdminListing:
 
 
 def test_enabled_kinds_only_safe_seed() -> None:
-    # Phase 3: every enabled kind has a real, tested handler (rebuild, decay
-    # sweep, pointer check, observation→rebuild scheduling, spine selfcheck);
-    # everything else stays disabled and unclaimable.
+    # Phase 3: rebuild, decay sweep, pointer check, observation→rebuild
+    # scheduling, spine selfcheck. Phase 4 adds note review, trigger scan and
+    # the three pointer-invariant checks. Everything else stays disabled and
+    # unclaimable (fail closed).
     assert (
         frozenset(
             {
@@ -646,6 +647,11 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "recent_context.maintenance",
                 "focus.maintenance",
                 "state.projection",
+                "note.review",
+                "task.trigger_scan",
+                "note.changed",
+                "task.changed",
+                "cognitive_event.changed",
             }
         )
         == ENABLED_JOB_KINDS

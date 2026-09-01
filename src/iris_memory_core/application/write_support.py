@@ -1,0 +1,245 @@
+"""Shared write-path helpers for the Phase 4 application services.
+
+Same rules as the Phase 3 services: request scope is only what the caller
+NAMED (ADR-0011 §5), by-ID access requires the resource's own scope dims to
+lie inside the access envelope, and every modification writes Revision +
+Pointer CAS + Audit + Watermark + Outbox inside one transaction (§16.1).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from iris_memory_core.application.backpressure import BackpressureGauge
+from iris_memory_core.application.outbox import enqueue_with_pressure
+from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.surface import SurfaceCoordinatorService
+from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.errors import AccessDeniedError, InvalidRequestError
+from iris_memory_core.domain.jobs import JOB_PAYLOAD_VERSION, NewOutboxJob
+from iris_memory_core.domain.privacy import InvalidPrivacyLabelError, parse_label
+from iris_memory_core.domain.scope import Scope
+
+SOURCE_REF_TYPES = frozenset(
+    {
+        "observation",
+        "episode",
+        "claim",
+        "entity",
+        "external_identity",
+        "binding",
+        "relation",
+        "state_record",
+        "focus_item",
+        "note",
+        "task",
+        "task_step",
+        "task_trigger",
+        "cognitive_event",
+        "persona_revision",
+        "persona_state",
+        "persona_proposal",
+        "reflection_record",
+        "artifact",
+        "tombstone",
+        "audit_event",
+    }
+)
+
+
+def require_surface_online(
+    surface: SurfaceCoordinatorService | None,
+    tenant_id: str,
+    agent_id: str,
+    *,
+    lease_id: str | None,
+    lease_epoch: int | None,
+    app_instance_id: str,
+) -> str | None:
+    """§25.3 online-plane gate for application-plane writes.
+
+    Delegates entirely to the Phase 2 coordinator's ``check_online`` so the
+    lease rules live in exactly one place: ``off`` passes, ``advisory``
+    returns the warning without blocking, ``required`` fails closed with the
+    stable ``lease_expired``/``lease_fenced`` codes when the proof is
+    missing, expired or superseded. The authenticated caller identity binds
+    the proof to its recorded holder — a neighbour that
+    read the live pair off ``current`` cannot replay it as its own
+    credential. Call this BEFORE the idempotency cache: a completed record
+    must not answer a caller that can no longer present a live lease. No
+    coordinator wired means the control plane is not deployed (§25.1
+    optional); every other invariant still holds. Returns the advisory
+    ``lease_warning`` for the audit trail.
+    """
+    if surface is None:
+        return None
+    check = surface.check_online(
+        tenant_id,
+        agent_id,
+        lease_id=lease_id,
+        lease_epoch=lease_epoch,
+        app_instance_id=app_instance_id,
+    )
+    return check.lease_warning
+
+
+def require_surface_online_in_tx(
+    surface: SurfaceCoordinatorService | None,
+    tx: Transaction,
+    tenant_id: str,
+    agent_id: str,
+    *,
+    lease_id: str | None,
+    lease_epoch: int | None,
+    app_instance_id: str,
+) -> str | None:
+    """Revalidate the online proof inside the canonical write transaction.
+
+    This complements the cache preflight above. Cache hits need the preflight;
+    cache misses need this serialized check so a lease cannot be fenced or
+    expire between validation and the canonical mutation.
+    """
+    if surface is None:
+        return None
+    check = surface.check_online_in_tx(
+        tx,
+        tenant_id,
+        agent_id,
+        lease_id=lease_id,
+        lease_epoch=lease_epoch,
+        app_instance_id=app_instance_id,
+    )
+    return check.lease_warning
+
+
+def parse_source_refs(raw: list[dict[str, Any]] | None) -> tuple[dict[str, object], ...]:
+    refs: list[dict[str, object]] = []
+    for item in raw or []:
+        if not isinstance(item, dict):
+            raise InvalidRequestError("source_refs entries must be objects")
+        resource_type = item.get("resource_type")
+        resource_id = item.get("resource_id")
+        if resource_type not in SOURCE_REF_TYPES:
+            raise InvalidRequestError(f"unknown source ref type: {resource_type!r}")
+        if not isinstance(resource_id, str) or not resource_id:
+            raise InvalidRequestError("source_refs[].resource_id must be a non-empty string")
+        revision = item.get("revision")
+        if revision is not None and (not isinstance(revision, int) or revision < 1):
+            raise InvalidRequestError("source_refs[].revision must be a positive integer")
+        refs.append(
+            {
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                **({"revision": revision} if revision is not None else {}),
+            }
+        )
+    return tuple(refs)
+
+
+def parse_privacy_labels(raw: list[str] | None) -> tuple[str, ...]:
+    labels: list[str] = []
+    for label in raw or []:
+        try:
+            parse_label(label)
+        except InvalidPrivacyLabelError as error:
+            raise InvalidRequestError(str(error)) from error
+        labels.append(label)
+    return tuple(labels)
+
+
+def authorize_scope(
+    tx: Transaction,
+    access: AccessContext,
+    *,
+    agent_id: str,
+    space_id: str | None,
+    session_id: str | None,
+) -> Scope:
+    """Authorize and build the request scope (the caller's named dims only)."""
+    agent = tx.get_agent(agent_id)
+    if agent.tenant_id != access.tenant_id:
+        raise AccessDeniedError("agent belongs to another tenant")
+    if agent_id not in access.agent_ids:
+        raise AccessDeniedError("agent is outside the access context")
+    if space_id is not None:
+        space = tx.get_space(space_id)
+        if space.tenant_id != access.tenant_id:
+            raise AccessDeniedError("space belongs to another tenant")
+        if space_id not in access.allowed_space_ids:
+            raise AccessDeniedError("space is outside the access context")
+        if space.agent_id is not None and space.agent_id != agent_id:
+            raise AccessDeniedError("space belongs to a different agent")
+    if session_id is not None:
+        if space_id is None:
+            raise InvalidRequestError("session_id requires space_id")
+        session = tx.get_session(session_id)
+        if session.tenant_id != access.tenant_id:
+            raise AccessDeniedError("session belongs to another tenant")
+        if session.space_id != space_id:
+            raise InvalidRequestError("session does not belong to the given space")
+    return access.authorize_scope(
+        Scope(
+            tenant_id=access.tenant_id,
+            agent_id=agent_id,
+            space_group_id=None,
+            space_id=space_id,
+            session_id=session_id,
+        )
+    )
+
+
+def require_same_tenant_agent(
+    access: AccessContext, *, tenant_id: str, agent_id: str, space_id: str | None
+) -> None:
+    """By-ID gate: the resource's own scope dims must sit in the envelope."""
+    if tenant_id != access.tenant_id:
+        raise AccessDeniedError("resource belongs to another tenant")
+    if agent_id not in access.agent_ids:
+        raise AccessDeniedError("resource's agent is outside the access context")
+    if space_id is not None and space_id not in access.allowed_space_ids:
+        raise AccessDeniedError("resource's space is outside the access context")
+
+
+def enqueue_change_job(
+    tx: Transaction,
+    *,
+    tenant_id: str,
+    agent_id: str,
+    job_kind: str,
+    aggregate_type: str,
+    aggregate_id: str,
+    source_revision: int,
+    payload: dict[str, object],
+    gauge: BackpressureGauge | None = None,
+) -> None:
+    """Emit the transactional change job (pointer invariant checks).
+
+    Dedupe key carries the aggregate revision: replays of the same revision
+    collapse onto the existing job row.
+    """
+    enqueue_with_pressure(
+        tx,
+        NewOutboxJob(
+            tenant_id=tenant_id,
+            job_kind=job_kind,
+            aggregate_type=aggregate_type,
+            aggregate_id=aggregate_id,
+            source_revision=source_revision,
+            payload={"version": JOB_PAYLOAD_VERSION, **payload},
+            dedupe_key=f"{job_kind}:{aggregate_type}:{aggregate_id}:{source_revision}",
+            agent_id=agent_id,
+            priority=6,
+        ),
+        gauge,
+    )
+
+
+__all__ = [
+    "SOURCE_REF_TYPES",
+    "authorize_scope",
+    "enqueue_change_job",
+    "parse_privacy_labels",
+    "parse_source_refs",
+    "require_same_tenant_agent",
+    "require_surface_online",
+]

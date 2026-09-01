@@ -1,0 +1,63 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/task-trigger-create-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "catch_up_policy": {
+      "enum": [
+        "all",
+        "latest",
+        "coalesce",
+        "skip"
+      ]
+    },
+    "condition_spec": {
+      "type": "object"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "kind": {
+      "enum": [
+        "at_time",
+        "recurrence",
+        "observation_kind",
+        "state_condition",
+        "task_transition"
+      ]
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "max_occurrences_per_run": {
+      "maximum": 1000,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "misfire_grace_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schedule_spec": {
+      "type": "object"
+    },
+    "task_step_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "timezone": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "title": "TaskTriggerCreateRequest",
+  "type": "object"
+}

@@ -456,6 +456,317 @@ def _validate_focus_view(value: object) -> tuple[str, ...]:
     return tuple(errors)
 
 
+# ---------------------------------------------------------------------------
+# Phase 4: notes, tasks, steps, triggers, cognitive events (S10-S12)
+
+_NOTE_KINDS = ("important", "idea", "follow_up", "promise", "question", "observation")
+_TASK_ORIGINS = ("explicit_tool", "admin", "policy", "conversation", "background")
+_TASK_TRANSITION_TARGETS = ("activate", "wait", "block", "complete", "cancel", "archive")
+_STEP_TRANSITION_TARGETS = (
+    "start",
+    "wait",
+    "block",
+    "complete",
+    "skip",
+    "cancel",
+    "requeue",
+)
+_TRIGGER_KINDS = (
+    "at_time",
+    "recurrence",
+    "observation_kind",
+    "state_condition",
+    "task_transition",
+)
+_TRIGGER_CATCH_UP_POLICIES = ("all", "latest", "coalesce", "skip")
+
+
+def _require_lease_proof(value: Mapping[str, object], errors: list[str]) -> None:
+    """Optional §25.3 lease proof fields: validate shape when present."""
+    lease_id = value.get("lease_id")
+    if lease_id is not None and (not isinstance(lease_id, str) or not lease_id):
+        errors.append("lease_id must be a non-empty string")
+    lease_epoch = value.get("lease_epoch")
+    if lease_epoch is not None and (type(lease_epoch) is not int or lease_epoch < 0):
+        errors.append("lease_epoch must be a non-negative integer")
+
+
+def _validate_note_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    if value.get("kind") not in _NOTE_KINDS:
+        errors.append("kind must be a known note kind")
+    title = value.get("title")
+    if not isinstance(title, str) or not title or len(title) > 500:
+        errors.append("title must be 1..500 characters")
+    body = value.get("body")
+    if body is not None and (not isinstance(body, str) or len(body) > 20000):
+        errors.append("body must be at most 20000 characters")
+    if "importance" in value:
+        _require_unit_interval(value.get("importance"), "importance", errors)
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append("session_id requires space_id")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_note_update_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    revision = value.get("expected_revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("expected_revision must be a positive integer")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_note_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("note_id", "agent_id", "title"):
+        _require_non_empty_str(value.get(key), key, errors)
+    if value.get("kind") not in _NOTE_KINDS:
+        # Forward compatibility: kinds added after this SDK build are the
+        # server's to define; only malformed values are fatal.
+        kind = value.get("kind")
+        if not isinstance(kind, str) or not kind:
+            errors.append("kind must be a non-empty string")
+    status = value.get("status")
+    if not isinstance(status, str) or not status:
+        errors.append("status must be a non-empty string")
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    if "importance" in value:
+        _require_unit_interval(value.get("importance"), "importance", errors)
+    return tuple(errors)
+
+
+def _validate_task_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    # origin/owner_kind are optional server-defaulted fields: the JSON Schema
+    # only requires agent_id+title, so the SDK accepts the same minimum.
+    origin = value.get("origin")
+    if origin is not None and origin not in _TASK_ORIGINS:
+        errors.append("origin must be a known task origin")
+    owner_kind = value.get("owner_kind")
+    if owner_kind is not None and owner_kind not in ("agent", "joint", "entity", "space_group"):
+        errors.append("owner_kind must be a known owner kind")
+    title = value.get("title")
+    if not isinstance(title, str) or not title or len(title) > 500:
+        errors.append("title must be 1..500 characters")
+    priority = value.get("priority")
+    if priority is not None and (type(priority) is not int or not 0 <= priority <= 9):
+        errors.append("priority must be within 0..9")
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append("session_id requires space_id")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_task_update_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    revision = value.get("expected_revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("expected_revision must be a positive integer")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_task_transition_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    if value.get("target") not in _TASK_TRANSITION_TARGETS:
+        errors.append("target must be a known task transition")
+    revision = value.get("expected_revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("expected_revision must be a positive integer")
+    reason = value.get("reason")
+    if not isinstance(reason, str) or not reason:
+        errors.append("reason is required")
+    origin = value.get("origin")
+    if origin is not None and origin not in _TASK_ORIGINS:
+        errors.append("origin must be a known task origin")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_task_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("task_id", "agent_id", "title"):
+        _require_non_empty_str(value.get(key), key, errors)
+    owner_kind = value.get("owner_kind")
+    if (
+        owner_kind is not None
+        and owner_kind not in ("agent", "joint", "entity", "space_group")
+        and (not isinstance(owner_kind, str) or not owner_kind)
+    ):
+        errors.append("owner_kind must be a non-empty string")
+    status = value.get("status")
+    if not isinstance(status, str) or not status:
+        errors.append("status must be a non-empty string")
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    steps = value.get("steps")
+    if steps is not None:
+        if not isinstance(steps, list):
+            errors.append("steps must be an array")
+        else:
+            for index, step in enumerate(steps):
+                step_errors = _validate_task_step_view(step)
+                errors.extend(f"steps[{index}].{item}" for item in step_errors)
+    return tuple(errors)
+
+
+def _validate_task_step_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("task_step_id", "task_id", "stable_key", "title"):
+        _require_non_empty_str(value.get(key), key, errors)
+    status = value.get("status")
+    if not isinstance(status, str) or not status:
+        errors.append("status must be a non-empty string")
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    return tuple(errors)
+
+
+def _validate_task_step_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    stable_key = value.get("stable_key")
+    if not isinstance(stable_key, str) or not stable_key or len(stable_key) > 256:
+        errors.append("stable_key must be 1..256 characters")
+    title = value.get("title")
+    if not isinstance(title, str) or not title or len(title) > 500:
+        errors.append("title must be 1..500 characters")
+    ordinal = value.get("ordinal")
+    if ordinal is not None and (type(ordinal) is not int or ordinal < 0):
+        errors.append("ordinal must be a non-negative integer")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_task_step_transition_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    if value.get("target") not in _STEP_TRANSITION_TARGETS:
+        errors.append("target must be a known step transition")
+    revision = value.get("expected_revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("expected_revision must be a positive integer")
+    reason = value.get("reason")
+    if not isinstance(reason, str) or not reason:
+        errors.append("reason is required")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_task_dependency_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("predecessor_step_id"), "predecessor_step_id", errors)
+    _require_non_empty_str(value.get("successor_step_id"), "successor_step_id", errors)
+    condition = value.get("condition", "completed")
+    if condition not in ("completed", "completed_or_skipped"):
+        errors.append("condition must be a known dependency condition")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_task_trigger_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    kind = value.get("kind")
+    if kind not in _TRIGGER_KINDS:
+        errors.append("kind must be a known trigger kind")
+    catch_up = value.get("catch_up_policy", "all")
+    if catch_up not in _TRIGGER_CATCH_UP_POLICIES:
+        errors.append("catch_up_policy must be a known policy")
+    timezone_name = value.get("timezone", "UTC")
+    if not isinstance(timezone_name, str) or not timezone_name:
+        errors.append("timezone must be a non-empty IANA name")
+    misfire = value.get("misfire_grace_us")
+    if misfire is not None and (type(misfire) is not int or misfire < 0):
+        errors.append("misfire_grace_us must be a non-negative integer")
+    max_occ = value.get("max_occurrences_per_run")
+    if max_occ is not None and (type(max_occ) is not int or not 1 <= max_occ <= 1000):
+        errors.append("max_occurrences_per_run must be within 1..1000")
+    if kind in ("at_time", "recurrence") and not isinstance(value.get("schedule_spec"), Mapping):
+        errors.append("schedule_spec must be an object for time triggers")
+    if kind not in ("at_time", "recurrence") and not isinstance(
+        value.get("condition_spec"), Mapping
+    ):
+        errors.append("condition_spec must be an object for condition triggers")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_trigger_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("trigger_id", "task_id"):
+        _require_non_empty_str(value.get(key), key, errors)
+    kind = value.get("kind")
+    if not isinstance(kind, str) or not kind:
+        errors.append("kind must be a non-empty string")
+    if not isinstance(value.get("enabled"), bool):
+        errors.append("enabled must be a boolean")
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    return tuple(errors)
+
+
+def _validate_cognitive_event_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("cognitive_event_id", "agent_id", "kind", "object_type", "object_id"):
+        _require_non_empty_str(value.get(key), key, errors)
+    status = value.get("status")
+    if not isinstance(status, str) or not status:
+        errors.append("status must be a non-empty string")
+    attempts = value.get("delivery_attempts")
+    if type(attempts) is not int or attempts < 0:
+        errors.append("delivery_attempts must be a non-negative integer")
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    return tuple(errors)
+
+
+def _validate_cognitive_event_ack_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    ack_token = value.get("ack_token")
+    if ack_token is not None and (not isinstance(ack_token, str) or not ack_token):
+        errors.append("ack_token must be a non-empty string")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
 def validate_contract(schema: str, value: object) -> tuple[str, ...]:
     validators = {
         "capabilities": _validate_capabilities,
@@ -475,6 +786,20 @@ def validate_contract(schema: str, value: object) -> tuple[str, ...]:
         "state-history-response": _validate_state_history_response,
         "focus-create-request": _validate_focus_create_request,
         "focus-view": _validate_focus_view,
+        "note-create-request": _validate_note_create_request,
+        "note-update-request": _validate_note_update_request,
+        "note-view": _validate_note_view,
+        "task-create-request": _validate_task_create_request,
+        "task-update-request": _validate_task_update_request,
+        "task-transition-request": _validate_task_transition_request,
+        "task-view": _validate_task_view,
+        "task-step-create-request": _validate_task_step_create_request,
+        "task-step-transition-request": _validate_task_step_transition_request,
+        "task-dependency-create-request": _validate_task_dependency_create_request,
+        "task-trigger-create-request": _validate_task_trigger_create_request,
+        "trigger-view": _validate_trigger_view,
+        "cognitive-event-view": _validate_cognitive_event_view,
+        "cognitive-event-ack-request": _validate_cognitive_event_ack_request,
     }
     validator = validators.get(schema)
     if validator is None:

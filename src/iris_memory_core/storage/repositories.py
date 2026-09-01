@@ -1300,6 +1300,42 @@ class LedgerRepository:
         )
         return row is not None
 
+    def links_for_source(
+        self,
+        tenant_id: str,
+        source_type: str,
+        source_id: str,
+        *,
+        target_type: str | None = None,
+        relation: str | None = None,
+    ) -> tuple[ResourceLink, ...]:
+        """Links whose source is the given resource (promotion/dup checks)."""
+        clauses = ["tenant_id = ?", "source_type = ?", "source_id = ?"]
+        params: list[Any] = [tenant_id, source_type, source_id]
+        if target_type is not None:
+            clauses.append("target_type = ?")
+            params.append(target_type)
+        if relation is not None:
+            clauses.append("relation = ?")
+            params.append(relation)
+        rows = self._connection.execute(
+            f"SELECT * FROM resource_links WHERE {' AND '.join(clauses)} ORDER BY created_us, id",
+            tuple(params),
+        ).fetchall()
+        return tuple(
+            ResourceLink(
+                id=row["id"],
+                tenant_id=row["tenant_id"],
+                source_type=row["source_type"],
+                source_id=row["source_id"],
+                target_type=row["target_type"],
+                target_id=row["target_id"],
+                relation=row["relation"],
+                created_us=row["created_us"],
+            )
+            for row in rows
+        )
+
     def insert_resource_link(
         self,
         *,

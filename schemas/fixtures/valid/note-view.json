@@ -1,0 +1,22 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "archived_us": null,
+  "body": "Ship the phase 4 report before Friday",
+  "created_us": 1700000000000000,
+  "due_at_us": null,
+  "importance": 0.8,
+  "kind": "follow_up",
+  "note_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa640",
+  "privacy_labels": [],
+  "promotion_target_id": null,
+  "promotion_target_type": null,
+  "review_after_us": 1700000900000000,
+  "revision": 1,
+  "session_id": null,
+  "snooze_until_us": null,
+  "source_refs": [],
+  "space_id": null,
+  "status": "inbox",
+  "title": "Ship the phase 4 report",
+  "updated_us": 1700000000000000
+}

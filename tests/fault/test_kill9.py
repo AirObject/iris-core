@@ -27,6 +27,11 @@ BOUNDARIES = {
     "state_put": ["pre_tx", "pre_pointer", "pre_commit", "post_commit"],
     "focus_transition": ["pre_commit", "post_commit"],
     "recent_rebuild": ["pre_generation", "pre_swap", "pre_commit", "post_commit"],
+    # Phase 4: task revision/pointer CAS boundaries, occurrence+event atomic
+    # creation, and the delivery/ack commit boundary.
+    "task_transition": ["pre_revision", "pre_pointer", "pre_commit", "post_commit"],
+    "trigger_scan": ["pre_occurrence", "pre_commit", "post_commit"],
+    "event_ack": ["pre_commit", "post_commit"],
 }
 
 
@@ -466,3 +471,100 @@ class TestRecentRebuildKill9:
         RecentContextService(store, store.clock).rebuild(
             access, agent_id=agent_id, space_id=space_id, session_id=session_id, reason="recovery"
         )
+
+
+class TestPhase4Kill9:
+    """Phase 4 crash boundaries x20: all-or-nothing logical effects."""
+
+    def _phase4_counts(self, database: Path) -> dict[str, int]:
+        import sqlite3
+
+        connection = sqlite3.connect(database)
+        try:
+            return {
+                "tasks": int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]),
+                "task_revisions": int(
+                    connection.execute("SELECT COUNT(*) FROM task_revisions").fetchone()[0]
+                ),
+                "active_tasks": int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM tasks WHERE status = 'active'"
+                    ).fetchone()[0]
+                ),
+                "task_audits": int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM audit_events WHERE action = 'task.active'"
+                    ).fetchone()[0]
+                ),
+                "occurrences": int(
+                    connection.execute("SELECT COUNT(*) FROM task_trigger_occurrences").fetchone()[
+                        0
+                    ]
+                ),
+                "events": int(
+                    connection.execute("SELECT COUNT(*) FROM cognitive_events").fetchone()[0]
+                ),
+                "acked_events": int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM cognitive_events WHERE status = 'acknowledged'"
+                    ).fetchone()[0]
+                ),
+            }
+        finally:
+            connection.close()
+
+    @pytest.mark.parametrize("crash_at", BOUNDARIES["task_transition"])
+    def test_task_transition_atomicity(self, crash_at: str, tmp_path: Path) -> None:
+        from iris_memory_core.storage.backup import verify_database_invariants
+
+        for iteration in range(REPETITIONS):
+            database = tmp_path / f"task-{crash_at}-{iteration}.sqlite3"
+            _run_crash("task_transition", crash_at, database)
+            counts = self._phase4_counts(database)
+            assert counts["tasks"] == 1, iteration
+            if crash_at in ("pre_revision", "pre_pointer", "pre_commit"):
+                # The proposed task exists (its own committed creation); the
+                # activation is all-or-nothing: no active row, no extra
+                # revision, no activate audit.
+                assert counts["active_tasks"] == 0, (iteration, counts)
+                assert counts["task_revisions"] == 1, (iteration, counts)
+                assert counts["task_audits"] == 0, (iteration, counts)
+            else:
+                assert counts["active_tasks"] == 1, (iteration, counts)
+                assert counts["task_revisions"] == 2, (iteration, counts)
+                assert counts["task_audits"] == 1, (iteration, counts)
+            assert verify_database_invariants(database) == (), iteration
+
+    @pytest.mark.parametrize("crash_at", BOUNDARIES["trigger_scan"])
+    def test_trigger_scan_atomicity(self, crash_at: str, tmp_path: Path) -> None:
+        from iris_memory_core.storage.backup import verify_database_invariants
+
+        for iteration in range(REPETITIONS):
+            database = tmp_path / f"scan-{crash_at}-{iteration}.sqlite3"
+            _run_crash("trigger_scan", crash_at, database)
+            counts = self._phase4_counts(database)
+            if crash_at in ("pre_occurrence", "pre_commit"):
+                # Occurrence and its event are one atomic unit: neither lands.
+                assert counts["occurrences"] == 0, (iteration, counts)
+                assert counts["events"] == 0, (iteration, counts)
+            else:
+                assert counts["occurrences"] == 1, (iteration, counts)
+                assert counts["events"] == 1, (iteration, counts)
+            assert verify_database_invariants(database) == (), iteration
+
+    @pytest.mark.parametrize("crash_at", BOUNDARIES["event_ack"])
+    def test_event_ack_atomicity(self, crash_at: str, tmp_path: Path) -> None:
+        from iris_memory_core.storage.backup import verify_database_invariants
+
+        for iteration in range(REPETITIONS):
+            database = tmp_path / f"ack-{crash_at}-{iteration}.sqlite3"
+            _run_crash("event_ack", crash_at, database)
+            counts = self._phase4_counts(database)
+            # The event itself always exists (its own committed creation).
+            assert counts["events"] == 1, iteration
+            if crash_at == "pre_commit":
+                # The ACK never landed: still delivered, not acknowledged.
+                assert counts["acked_events"] == 0, (iteration, counts)
+            else:
+                assert counts["acked_events"] == 1, (iteration, counts)
+            assert verify_database_invariants(database) == (), iteration

@@ -220,6 +220,155 @@ _FOCUS_KINDS = (
 )
 _AUTHORITIES = ("host", "platform", "adapter", "system", "user", "model")
 
+_NOTE_VIEW: dict[str, Any] = {
+    "note_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa640",
+    "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+    "kind": "follow_up",
+    "title": "Ship the phase 4 report",
+    "body": "Ship the phase 4 report before Friday",
+    "status": "inbox",
+    "space_id": None,
+    "session_id": None,
+    "importance": 0.8,
+    "privacy_labels": [],
+    "source_refs": [],
+    "review_after_us": 1700000900000000,
+    "snooze_until_us": None,
+    "due_at_us": None,
+    "archived_us": None,
+    "promotion_target_type": None,
+    "promotion_target_id": None,
+    "revision": 1,
+    "created_us": 1700000000000000,
+    "updated_us": 1700000000000000,
+}
+
+_NOTE_KINDS = (
+    "important",
+    "idea",
+    "follow_up",
+    "promise",
+    "question",
+    "observation",
+)
+_NOTE_STATUSES = ("inbox", "pinned", "snoozed", "archived", "promoted", "tombstoned")
+
+_TASK_VIEW: dict[str, Any] = {
+    "task_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa641",
+    "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+    "parent_task_id": None,
+    "title": "Deliver phase 4",
+    "goal": "Deliver the phase 4 slice end to end",
+    "owner_kind": "agent",
+    "owner_entity_id": None,
+    "status": "proposed",
+    "priority": 3,
+    "next_action": "Write the migration",
+    "progress_note": None,
+    "due_at_us": 1700086400000000,
+    "completed_us": None,
+    "space_id": None,
+    "session_id": None,
+    "privacy_labels": [],
+    "source_refs": [],
+    "steps": [],
+    "revision": 1,
+    "created_us": 1700000000000000,
+    "updated_us": 1700000000000000,
+}
+
+_TASK_STEP_VIEW: dict[str, Any] = {
+    "task_step_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa642",
+    "task_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa641",
+    "stable_key": "migration",
+    "title": "Write the migration",
+    "description": "Draft 0005_phase4_notes_tasks_events.sql",
+    "status": "ready",
+    "ordinal": 0,
+    "expected_effect": None,
+    "completion_evidence_refs": [],
+    "started_us": None,
+    "completed_us": None,
+    "revision": 1,
+}
+
+_TASK_STATUSES = (
+    "proposed",
+    "active",
+    "waiting",
+    "blocked",
+    "completed",
+    "cancelled",
+    "archived",
+)
+_TASK_STEP_STATUSES = (
+    "pending",
+    "ready",
+    "in_progress",
+    "waiting",
+    "blocked",
+    "completed",
+    "skipped",
+    "cancelled",
+)
+_TASK_ORIGINS = ("explicit_tool", "admin", "policy", "conversation", "background")
+
+_TRIGGER_VIEW: dict[str, Any] = {
+    "trigger_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa643",
+    "task_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa641",
+    "task_step_id": None,
+    "kind": "recurrence",
+    "schedule_spec": {
+        "kind": "daily",
+        "at": "09:00",
+        "dst_missing": "skip",
+        "dst_ambiguous": "first",
+    },
+    "condition_spec": None,
+    "timezone": "Europe/Berlin",
+    "catch_up_policy": "all",
+    "misfire_grace_us": 86400000000,
+    "max_occurrences_per_run": 100,
+    "enabled": True,
+    "next_fire_at_us": 1700048400000000,
+    "revision": 1,
+}
+
+_TRIGGER_KINDS = (
+    "at_time",
+    "recurrence",
+    "observation_kind",
+    "state_condition",
+    "task_transition",
+)
+_CATCH_UP_POLICIES = ("all", "latest", "coalesce", "skip")
+
+_COGNITIVE_EVENT_VIEW: dict[str, Any] = {
+    "cognitive_event_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa644",
+    "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+    "kind": "task.due",
+    "object_type": "task",
+    "object_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa641",
+    "occurrence_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa645",
+    "space_id": None,
+    "session_id": None,
+    "scheduled_at_us": 1700048400000000,
+    "deliver_after_us": 1700048400000000,
+    "expires_us": 1700653200000000,
+    "status": "pending",
+    "delivery_target": None,
+    "delivery_attempts": 0,
+    "last_delivery_us": None,
+    "delivered_lease_id": None,
+    "delivered_lease_epoch": None,
+    "ack_id": None,
+    "acknowledged_us": None,
+    "summary_of_count": 0,
+    "revision": 1,
+}
+
+_EVENT_STATUSES = ("pending", "delivered", "acknowledged", "expired", "cancelled")
+
 _CURSOR_PATTERN = re.compile(r"^/v1/observations/cursors/(?P<stream>[^/]+)$")
 _LEASE_ACTION_PATTERN = re.compile(
     r"^/v1/active-surfaces/(?P<lease_id>[^:]+):(?P<action>heartbeat|release)$"
@@ -232,6 +381,14 @@ _FOCUS_ACTION_PATTERN = re.compile(
     r"^/v1/focus-items/(?P<item_id>[^:]+):(?P<action>activate|dormant|dismiss|expire|promote)$"
 )
 _FOCUS_GET_PATTERN = re.compile(r"^/v1/focus-items/(?P<item_id>[^:]+)$")
+_NOTE_ACTION_PATTERN = re.compile(r"^/v1/notes/(?P<note_id>[^:]+):(?P<action>archive|promote)$")
+_NOTE_PATCH_PATTERN = re.compile(r"^/v1/notes/(?P<note_id>[^:]+)$")
+_TASK_PATCH_PATTERN = re.compile(r"^/v1/tasks/(?P<task_id>[^/:]+)$")
+_TASK_TRANSITION_PATTERN = re.compile(r"^/v1/tasks/(?P<task_id>[^:/]+):transition$")
+_TASK_STEP_TRANSITION_PATTERN = re.compile(
+    r"^/v1/tasks/(?P<task_id>[^/]+)/steps/(?P<step_id>[^:]+):transition$"
+)
+_EVENT_ACK_PATTERN = re.compile(r"^/v1/cognitive-events/(?P<event_id>[^:]+):ack$")
 
 
 class ContractRequestHandler(BaseHTTPRequestHandler):
@@ -245,10 +402,42 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _require_lease_proof_shape(self, value: dict[str, object]) -> bool:
+        """Carry the §25.3 lease proof on application-plane writes.
+
+        Shape-only validation (the mock has no lease state): lease_id must
+        be a non-empty string and lease_epoch a non-negative integer when
+        present. Whether the proof is REQUIRED is the server's mode policy.
+        """
+        lease_id = value.get("lease_id")
+        if lease_id is not None and (not isinstance(lease_id, str) or not lease_id):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "lease_id must be a non-empty string."),
+            )
+            return False
+        lease_epoch = value.get("lease_epoch")
+        if lease_epoch is not None and (
+            not isinstance(lease_epoch, int) or isinstance(lease_epoch, bool) or lease_epoch < 0
+        ):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "lease_epoch must be a non-negative integer."),
+            )
+            return False
+        return True
+
     def _read_json(self) -> object | None:
         try:
             length = int(self.headers.get("Content-Length", "0"))
             value: object = json.loads(self.rfile.read(length))
+            # Test-only observation channel: the contract tests assert the
+            # body the SDK ACTUALLY sent (e.g. that the lease proof rides
+            # along) against the recorded copy. This records; it never
+            # validates — validation stays in the handlers below.
+            received = getattr(self.server, "received_requests", None)
+            if received is not None:
+                received.append((self.command, urlparse(self.path).path, value))
             return value
         except (ValueError, json.JSONDecodeError):
             return None
@@ -367,6 +556,59 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
                 return
             self._send(HTTPStatus.OK, {"jobs": [dict(_ADMIN_JOB)]})
             return
+        # -- Phase 4 reads --------------------------------------------------
+        if parsed.path == "/v1/notes":
+            note_query = parse_qs(parsed.query)
+            if not note_query.get("agent_id", [""])[0]:
+                self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "agent_id required."))
+                return
+            if note_query.get("session_id") and not note_query.get("space_id"):
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("invalid_request", "session_id requires space_id."),
+                )
+                return
+            self._send(HTTPStatus.OK, {"items": [dict(_NOTE_VIEW)]})
+            return
+        if parsed.path == "/v1/tasks":
+            task_query = parse_qs(parsed.query)
+            if not task_query.get("agent_id", [""])[0]:
+                self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "agent_id required."))
+                return
+            if task_query.get("session_id") and not task_query.get("space_id"):
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("invalid_request", "session_id requires space_id."),
+                )
+                return
+            self._send(HTTPStatus.OK, {"items": [dict(_TASK_VIEW)]})
+            return
+        if parsed.path == "/v1/cognitive-events":
+            event_query = parse_qs(parsed.query)
+            if not event_query.get("agent_id", [""])[0]:
+                self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "agent_id required."))
+                return
+            view = dict(_COGNITIVE_EVENT_VIEW)
+            if event_query.get("pull", ["false"])[0] in ("true", "1"):
+                view["status"] = "delivered"
+                view["delivery_attempts"] = 1
+                view["last_delivery_us"] = 1700048400000000
+                lease_id = event_query.get("lease_id", [None])[0]
+                lease_epoch = event_query.get("lease_epoch", [None])[0]
+                # Same contract as the real pull: a named lease is only
+                # valid together with its epoch.
+                if lease_id and not (lease_epoch and lease_epoch.isdigit()):
+                    self._send(
+                        HTTPStatus.BAD_REQUEST,
+                        _error("invalid_request", "lease_id requires lease_epoch."),
+                    )
+                    return
+                if lease_id:
+                    view["delivered_lease_id"] = lease_id
+                if lease_epoch is not None and lease_epoch.isdigit():
+                    view["delivered_lease_epoch"] = int(lease_epoch)
+            self._send(HTTPStatus.OK, {"items": [view], "expired_during_pull": 0})
+            return
         self._send(HTTPStatus.NOT_FOUND, _error("invalid_request", "Unknown path."))
 
     def do_POST(self) -> None:
@@ -408,6 +650,45 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
         job_retry = _JOB_RETRY_PATTERN.match(parsed.path)
         if job_retry is not None:
             self._handle_job_retry()
+            return
+        # -- Phase 4 writes -------------------------------------------------
+        if parsed.path == "/v1/notes":
+            self._handle_note_create()
+            return
+        if parsed.path == "/v1/tasks":
+            self._handle_task_create()
+            return
+        note_action = _NOTE_ACTION_PATTERN.match(parsed.path)
+        if note_action is not None:
+            self._handle_note_action(note_action.group("action"))
+            return
+        note_patch = _NOTE_PATCH_PATTERN.match(parsed.path)
+        if note_patch is not None:
+            self._handle_note_update()
+            return
+        task_transition = _TASK_TRANSITION_PATTERN.match(parsed.path)
+        if task_transition is not None:
+            self._handle_task_transition()
+            return
+        step_transition = _TASK_STEP_TRANSITION_PATTERN.match(parsed.path)
+        if step_transition is not None:
+            self._handle_step_transition()
+            return
+        task_steps = re.match(r"^/v1/tasks/(?P<task_id>[^/]+)/steps$", parsed.path)
+        if task_steps is not None:
+            self._handle_step_create()
+            return
+        task_dependencies = re.match(r"^/v1/tasks/(?P<task_id>[^/]+)/dependencies$", parsed.path)
+        if task_dependencies is not None:
+            self._handle_dependency_create()
+            return
+        task_triggers = re.match(r"^/v1/tasks/(?P<task_id>[^/]+)/triggers$", parsed.path)
+        if task_triggers is not None:
+            self._handle_trigger_create()
+            return
+        event_ack = _EVENT_ACK_PATTERN.match(parsed.path)
+        if event_ack is not None:
+            self._handle_event_ack()
             return
         self._send(HTTPStatus.NOT_FOUND, _error("invalid_request", "Unknown path."))
 
@@ -531,6 +812,419 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
             self._handle_state_put(state_match.group("namespace"), state_match.group("key"))
             return
         self._send(HTTPStatus.NOT_FOUND, _error("invalid_request", "Unknown path."))
+
+    def do_PATCH(self) -> None:
+        parsed = urlparse(self.path)
+        if _NOTE_PATCH_PATTERN.match(parsed.path) is not None:
+            self._handle_note_update()
+            return
+        if _TASK_PATCH_PATTERN.match(parsed.path) is not None:
+            self._handle_task_update()
+            return
+        self._send(HTTPStatus.NOT_FOUND, _error("invalid_request", "Unknown path."))
+
+    # -- Phase 4 handlers ------------------------------------------------------
+
+    def _require_idempotency(self) -> bool:
+        if self.headers.get("Idempotency-Key"):
+            return True
+        self._send(
+            HTTPStatus.BAD_REQUEST,
+            _error("invalid_request", "Idempotency-Key header is required."),
+        )
+        return False
+
+    def _handle_note_create(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if not isinstance(value.get("agent_id"), str) or not value.get("agent_id"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "agent_id required."))
+            return
+        if value.get("kind") not in _NOTE_KINDS:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "kind must be a known note kind."),
+            )
+            return
+        if not isinstance(value.get("title"), str) or not value.get("title"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "title required."))
+            return
+        if value.get("session_id") is not None and value.get("space_id") is None:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "session_id requires space_id."),
+            )
+            return
+        self._send(HTTPStatus.OK, _NOTE_VIEW)
+
+    def _handle_note_update(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        revision = value.get("expected_revision")
+        if not isinstance(revision, int) or revision < 1:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "expected_revision must be a positive integer."),
+            )
+            return
+        view = dict(_NOTE_VIEW)
+        view["revision"] = revision + 1
+        if isinstance(value.get("title"), str) and value.get("title"):
+            view["title"] = value["title"]
+        if isinstance(value.get("body"), str):
+            view["body"] = value["body"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_note_action(self, action: str) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        revision = value.get("expected_revision")
+        if not isinstance(revision, int) or revision < 1:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "expected_revision must be a positive integer."),
+            )
+            return
+        if not isinstance(value.get("reason"), str) or not value.get("reason"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "reason required."))
+            return
+        if action == "promote" and value.get("promotion_target_type") not in (
+            "task",
+            "claim",
+            "episode",
+        ):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "promotion requires promotion_target_type."),
+            )
+            return
+        view = dict(_NOTE_VIEW)
+        view["revision"] = revision + 1
+        view["status"] = "archived" if action == "archive" else "promoted"
+        if action == "archive":
+            view["archived_us"] = 1700000000000000
+        else:
+            view["promotion_target_type"] = value.get("promotion_target_type")
+            if value.get("promotion_target_type") == "task":
+                view["promotion_target_id"] = _TASK_VIEW["task_id"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_task_create(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if not isinstance(value.get("agent_id"), str) or not value.get("agent_id"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "agent_id required."))
+            return
+        if not isinstance(value.get("title"), str) or not value.get("title"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "title required."))
+            return
+        # origin is optional and server-defaulted (explicit_tool), matching
+        # the JSON Schema and the real TaskService signature.
+        origin = value.get("origin")
+        if origin is None:
+            origin = "explicit_tool"
+        if origin not in _TASK_ORIGINS:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "origin must be a known task origin."),
+            )
+            return
+        if value.get("session_id") is not None and value.get("space_id") is None:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "session_id requires space_id."),
+            )
+            return
+        view = dict(_TASK_VIEW)
+        # §11.5: conversation/background extraction is pinned to proposed.
+        if origin in ("conversation", "background"):
+            view["status"] = "proposed"
+        elif origin in ("explicit_tool", "policy", "admin"):
+            view["status"] = "active"
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_task_update(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        revision = value.get("expected_revision")
+        if not isinstance(revision, int) or revision < 1:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "expected_revision must be a positive integer."),
+            )
+            return
+        view = dict(_TASK_VIEW)
+        view["revision"] = revision + 1
+        if isinstance(value.get("next_action"), str):
+            view["next_action"] = value["next_action"]
+        if isinstance(value.get("progress_note"), str):
+            view["progress_note"] = value["progress_note"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_task_transition(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        target = value.get("target")
+        if target not in ("activate", "wait", "block", "complete", "cancel", "archive"):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "target must be a known transition."),
+            )
+            return
+        revision = value.get("expected_revision")
+        if not isinstance(revision, int) or revision < 1:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "expected_revision must be a positive integer."),
+            )
+            return
+        if not isinstance(value.get("reason"), str) or not value.get("reason"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "reason required."))
+            return
+        if target == "activate" and value.get("origin") in ("conversation", "background"):
+            self._send(
+                HTTPStatus.FORBIDDEN,
+                _error(
+                    "access_denied",
+                    "activation requires an explicit tool, policy or admin.",
+                ),
+            )
+            return
+        view = dict(_TASK_VIEW)
+        view["revision"] = revision + 1
+        status_map = {
+            "activate": "active",
+            "wait": "waiting",
+            "block": "blocked",
+            "complete": "completed",
+            "cancel": "cancelled",
+            "archive": "archived",
+        }
+        view["status"] = status_map[target]
+        if target == "complete":
+            view["completed_us"] = 1700000000000000
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_step_create(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if not isinstance(value.get("stable_key"), str) or not value.get("stable_key"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "stable_key required."))
+            return
+        if not isinstance(value.get("title"), str) or not value.get("title"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "title required."))
+            return
+        view = dict(_TASK_STEP_VIEW)
+        view["stable_key"] = value["stable_key"]
+        view["title"] = value["title"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_step_transition(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        target = value.get("target")
+        if target not in ("start", "wait", "block", "complete", "skip", "cancel", "requeue"):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "target must be a known step transition."),
+            )
+            return
+        revision = value.get("expected_revision")
+        if not isinstance(revision, int) or revision < 1:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "expected_revision must be a positive integer."),
+            )
+            return
+        if not isinstance(value.get("reason"), str) or not value.get("reason"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "reason required."))
+            return
+        status_map = {
+            "start": "in_progress",
+            "wait": "waiting",
+            "block": "blocked",
+            "complete": "completed",
+            "skip": "skipped",
+            "cancel": "cancelled",
+            "requeue": "pending",
+        }
+        view = dict(_TASK_STEP_VIEW)
+        view["revision"] = revision + 1
+        view["status"] = status_map[target]
+        if target == "complete":
+            evidence = value.get("completion_evidence_refs")
+            if not isinstance(evidence, list) or not evidence:
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error(
+                        "invalid_request",
+                        "completing a step with expected_effect requires evidence refs.",
+                    ),
+                )
+                return
+            view["completion_evidence_refs"] = evidence
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_dependency_create(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        predecessor = value.get("predecessor_step_id")
+        successor = value.get("successor_step_id")
+        if not isinstance(predecessor, str) or not predecessor:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "predecessor_step_id required."),
+            )
+            return
+        if not isinstance(successor, str) or not successor:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "successor_step_id required."),
+            )
+            return
+        condition = value.get("condition", "completed")
+        if condition not in ("completed", "completed_or_skipped"):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "condition must be a known dependency condition."),
+            )
+            return
+        if predecessor == successor:
+            self._send(
+                HTTPStatus.CONFLICT,
+                _error("task_dependency_cycle", "a step cannot depend on itself."),
+            )
+            return
+        self._send(
+            HTTPStatus.OK,
+            {
+                "dependency_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa646",
+                "task_id": _TASK_VIEW["task_id"],
+                "predecessor_step_id": predecessor,
+                "successor_step_id": successor,
+                "condition": condition,
+            },
+        )
+
+    def _handle_trigger_create(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        kind = value.get("kind")
+        if kind not in _TRIGGER_KINDS:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "kind must be a known trigger kind."),
+            )
+            return
+        if value.get("catch_up_policy", "all") not in _CATCH_UP_POLICIES:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "catch_up_policy must be a known policy."),
+            )
+            return
+        if kind in ("at_time", "recurrence") and not isinstance(value.get("schedule_spec"), dict):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "schedule_spec required for time triggers."),
+            )
+            return
+        if kind not in ("at_time", "recurrence") and not isinstance(
+            value.get("condition_spec"), dict
+        ):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "condition_spec required for condition triggers."),
+            )
+            return
+        view = dict(_TRIGGER_VIEW)
+        view["kind"] = kind
+        if kind in ("at_time", "recurrence"):
+            view["schedule_spec"] = value.get("schedule_spec")
+            view["condition_spec"] = None
+        else:
+            view["schedule_spec"] = None
+            view["condition_spec"] = value.get("condition_spec")
+        if isinstance(value.get("timezone"), str) and value.get("timezone"):
+            view["timezone"] = value["timezone"]
+        if value.get("catch_up_policy") is not None:
+            view["catch_up_policy"] = value["catch_up_policy"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_event_ack(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict) and value is not None:
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if isinstance(value, dict) and not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        view = dict(_COGNITIVE_EVENT_VIEW)
+        view["status"] = "acknowledged"
+        view["ack_id"] = "ack_mock_0001"
+        view["acknowledged_us"] = 1700048500000000
+        view["revision"] = 2
+        self._send(HTTPStatus.OK, view)
 
     def _handle_recent_rebuild(self) -> None:
         value = self._read_json()
@@ -675,7 +1369,11 @@ def _error(code: str, message: str) -> dict[str, object]:
 
 
 def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
-    return ThreadingHTTPServer((host, port), ContractRequestHandler)
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+    #: (method, path, parsed-body) tuples recorded by ``_read_json`` for the
+    #: contract tests — observation only, never a validation layer.
+    server.received_requests = []  # type: ignore[attr-defined]
+    return server
 
 
 def main() -> int:

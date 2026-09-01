@@ -50,6 +50,11 @@ from iris_memory_core.storage.cognitive import (
     RecentContextRepository,
     StateRepository,
 )
+from iris_memory_core.storage.plans import (
+    CognitiveEventRepository,
+    NoteRepository,
+    TaskRepository,
+)
 from iris_memory_core.storage.repositories import (
     IdentityRepository,
     LedgerRepository,
@@ -98,6 +103,9 @@ class Transaction:
         self.recent = RecentContextRepository(connection, clock, ids)
         self.states = StateRepository(connection, clock, ids)
         self.focus = FocusRepository(connection, clock, ids)
+        self.notes = NoteRepository(connection, clock, ids)
+        self.tasks = TaskRepository(connection, clock, ids)
+        self.events = CognitiveEventRepository(connection, clock, ids)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}
@@ -497,6 +505,19 @@ class Transaction:
             target_type=target_type,
             target_id=target_id,
             relation=relation,
+        )
+
+    def links_for_source(
+        self,
+        tenant_id: str,
+        source_type: str,
+        source_id: str,
+        *,
+        target_type: str | None = None,
+        relation: str | None = None,
+    ) -> tuple[ResourceLink, ...]:
+        return self.ledger.links_for_source(
+            tenant_id, source_type, source_id, target_type=target_type, relation=relation
         )
 
     def tombstone_watermark(self) -> int:

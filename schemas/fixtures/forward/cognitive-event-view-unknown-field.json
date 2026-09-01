@@ -1,0 +1,11 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "cognitive_event_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa644",
+  "delivery_attempts": 0,
+  "fallback_channel": "sms",
+  "kind": "task.due",
+  "object_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa641",
+  "object_type": "task",
+  "revision": 1,
+  "status": "pending"
+}

@@ -14,12 +14,18 @@ import pytest
 
 from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.focus import FocusService
+from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.observation import ObservationService
 from iris_memory_core.application.outbox import OutboxService
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.state import StateService
+from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.jobs import NewOutboxJob, spec_for
-from iris_memory_core.jobs.worker import OutboxWorker, phase3_handlers
+from iris_memory_core.jobs.worker import (
+    OutboxWorker,
+    phase3_handlers,
+    phase4_handlers,
+)
 from iris_memory_core.storage.idempotency import IdempotencyManager
 from iris_memory_core.storage.uow import Store
 from tests.conftest import access_for
@@ -41,10 +47,15 @@ def phase3(
     idem = IdempotencyManager(clocked_store)
     recent = RecentContextService(clocked_store, clocked_store.clock)
     focus = FocusService(clocked_store, clocked_store.clock, idempotency=idem)
+    notes = NoteService(clocked_store, clocked_store.clock, idempotency=idem)
+    tasks = TaskService(clocked_store, clocked_store.clock, idempotency=idem)
     outbox = OutboxService(clocked_store, clocked_store.clock, gauge=generous_gauge)
-    handlers = phase3_handlers(
-        clocked_store, clocked_store.clock, recent=recent, focus=focus, gauge=generous_gauge
-    )
+    handlers = {
+        **phase3_handlers(
+            clocked_store, clocked_store.clock, recent=recent, focus=focus, gauge=generous_gauge
+        ),
+        **phase4_handlers(clocked_store.clock, notes=notes, tasks=tasks),
+    }
     return {
         "store": clocked_store,
         "gauge": generous_gauge,
@@ -56,6 +67,8 @@ def phase3(
         "idem": idem,
         "recent": recent,
         "focus": focus,
+        "notes": notes,
+        "tasks": tasks,
         "outbox": outbox,
         "states": StateService(
             clocked_store, clocked_store.clock, gauge=generous_gauge, idempotency=idem
@@ -360,11 +373,19 @@ class TestFailClosed:
 
     def test_every_enabled_kind_has_a_handler(self, phase3: dict[str, Any]) -> None:
         from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS
+        from iris_memory_core.jobs.worker import phase4_handlers
 
         ctx = phase3
-        handlers = phase3_handlers(
-            ctx["store"], ctx["store"].clock, recent=ctx["recent"], focus=ctx["focus"]
-        )
+        handlers = {
+            **phase3_handlers(
+                ctx["store"], ctx["store"].clock, recent=ctx["recent"], focus=ctx["focus"]
+            ),
+            **phase4_handlers(
+                ctx["store"].clock,
+                notes=ctx["notes"],
+                tasks=ctx["tasks"],
+            ),
+        }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in ENABLED_JOB_KINDS:
             assert spec_for(kind).handler_enabled

@@ -506,11 +506,14 @@ class TestPromotionSeam:
                 .fetchall()
             )
         assert any(row["action"] == "focus.promoted" for row in audits)
-        # No task/note tables exist yet — the seam must not fabricate objects.
-        import sqlite3 as _sqlite3
-
-        with pytest.raises(_sqlite3.OperationalError), ctx["store"].read() as tx:
-            tx.raw().execute("SELECT 1 FROM tasks LIMIT 1").fetchone()
+        # Phase 4 added the task/note tables, but the FOCUS seam still must
+        # not fabricate objects: nothing was created and the target id stays
+        # NULL until the owning service backfills it.
+        with ctx["store"].read() as tx:
+            tasks_count = tx.raw().execute("SELECT COUNT(*) FROM tasks").fetchone()
+            notes_count = tx.raw().execute("SELECT COUNT(*) FROM notes").fetchone()
+        assert int(tasks_count[0]) == 0
+        assert int(notes_count[0]) == 0
 
     def test_promote_requires_valid_target_type(self, phase3: dict[str, Any]) -> None:
         ctx = phase3

@@ -102,6 +102,158 @@
         "title": "CapabilitiesEnvelope",
         "type": "object"
       },
+      "CognitiveEventAckRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/cognitive-event-ack-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "ack_token": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "title": "CognitiveEventAckRequest",
+        "type": "object"
+      },
+      "CognitiveEventView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/cognitive-event-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "ack_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "acknowledged_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "cognitive_event_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "deliver_after_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "delivered_lease_epoch": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "delivered_lease_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delivery_attempts": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "delivery_target": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "kind": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "last_delivery_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "object_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "object_type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "occurrence_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scheduled_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "space_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "delivered",
+              "acknowledged",
+              "expired",
+              "cancelled"
+            ]
+          },
+          "summary_of_count": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cognitive_event_id",
+          "agent_id",
+          "kind",
+          "object_type",
+          "object_id",
+          "status",
+          "revision"
+        ],
+        "title": "CognitiveEventView",
+        "type": "object"
+      },
       "ErrorEnvelope": {
         "$id": "https://schemas.iris-memory-core.local/v1/error-envelope.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -496,6 +648,296 @@
           "expires_us"
         ],
         "title": "LeaseView",
+        "type": "object"
+      },
+      "NoteCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/note-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "body": {
+            "maxLength": 20000,
+            "type": "string"
+          },
+          "due_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "important",
+              "idea",
+              "follow_up",
+              "promise",
+              "question",
+              "observation"
+            ]
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "review_after_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "kind",
+          "title"
+        ],
+        "title": "NoteCreateRequest",
+        "type": "object"
+      },
+      "NoteUpdateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/note-update-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "body": {
+            "maxLength": 20000,
+            "type": "string"
+          },
+          "due_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "review_after_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "NoteUpdateRequest",
+        "type": "object"
+      },
+      "NoteView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/note-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "archived_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "due_at_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "important",
+              "idea",
+              "follow_up",
+              "promise",
+              "question",
+              "observation"
+            ]
+          },
+          "note_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "promotion_target_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "promotion_target_type": {
+            "enum": [
+              "task",
+              "claim",
+              "episode",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "review_after_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snooze_until_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source_refs": {
+            "type": "array"
+          },
+          "space_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "inbox",
+              "pinned",
+              "snoozed",
+              "archived",
+              "promoted",
+              "tombstoned"
+            ]
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "updated_us": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "note_id",
+          "agent_id",
+          "kind",
+          "title",
+          "status",
+          "revision"
+        ],
+        "title": "NoteView",
         "type": "object"
       },
       "ObservationBatchRequest": {
@@ -1240,6 +1682,759 @@
         "title": "StateView",
         "type": "object"
       },
+      "TaskCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/task-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "due_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goal": {
+            "maxLength": 8000,
+            "type": "string"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "next_action": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "explicit_tool",
+              "admin",
+              "policy",
+              "conversation",
+              "background"
+            ]
+          },
+          "owner_entity_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "owner_kind": {
+            "enum": [
+              "agent",
+              "joint",
+              "entity",
+              "space_group"
+            ]
+          },
+          "priority": {
+            "maximum": 9,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "title"
+        ],
+        "title": "TaskCreateRequest",
+        "type": "object"
+      },
+      "TaskDependencyCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/task-dependency-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "condition": {
+            "enum": [
+              "completed",
+              "completed_or_skipped"
+            ]
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "predecessor_step_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "successor_step_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "predecessor_step_id",
+          "successor_step_id"
+        ],
+        "title": "TaskDependencyCreateRequest",
+        "type": "object"
+      },
+      "TaskStepCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/task-step-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "description": {
+            "maxLength": 8000,
+            "type": "string"
+          },
+          "expected_effect": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ordinal": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "stable_key": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "stable_key",
+          "title"
+        ],
+        "title": "TaskStepCreateRequest",
+        "type": "object"
+      },
+      "TaskStepTransitionRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/task-step-transition-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "completion_evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "start",
+              "wait",
+              "block",
+              "complete",
+              "skip",
+              "cancel",
+              "requeue"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "expected_revision",
+          "reason"
+        ],
+        "title": "TaskStepTransitionRequest",
+        "type": "object"
+      },
+      "TaskTransitionRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/task-transition-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "completion_evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "explicit_tool",
+              "admin",
+              "policy",
+              "conversation",
+              "background"
+            ]
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "activate",
+              "wait",
+              "block",
+              "complete",
+              "cancel",
+              "archive"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "expected_revision",
+          "reason"
+        ],
+        "title": "TaskTransitionRequest",
+        "type": "object"
+      },
+      "TaskTriggerCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/task-trigger-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "catch_up_policy": {
+            "enum": [
+              "all",
+              "latest",
+              "coalesce",
+              "skip"
+            ]
+          },
+          "condition_spec": {
+            "type": "object"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "at_time",
+              "recurrence",
+              "observation_kind",
+              "state_condition",
+              "task_transition"
+            ]
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "max_occurrences_per_run": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "misfire_grace_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "schedule_spec": {
+            "type": "object"
+          },
+          "task_step_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "timezone": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "TaskTriggerCreateRequest",
+        "type": "object"
+      },
+      "TaskUpdateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/task-update-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "due_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "goal": {
+            "maxLength": 8000,
+            "type": "string"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "next_action": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "priority": {
+            "maximum": 9,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "progress_note": {
+            "maxLength": 8000,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "TaskUpdateRequest",
+        "type": "object"
+      },
+      "TaskView": {
+        "$defs": {
+          "TaskStepView": {
+            "additionalProperties": true,
+            "properties": {
+              "completed_us": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "completion_evidence_refs": {
+                "type": "array"
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "expected_effect": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ordinal": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "stable_key": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "started_us": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "ready",
+                  "in_progress",
+                  "waiting",
+                  "blocked",
+                  "completed",
+                  "skipped",
+                  "cancelled"
+                ]
+              },
+              "task_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "task_step_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "task_step_id",
+              "task_id",
+              "stable_key",
+              "title",
+              "status",
+              "revision"
+            ],
+            "type": "object"
+          }
+        },
+        "$id": "https://schemas.iris-memory-core.local/v1/task-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "completed_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "due_at_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "goal": {
+            "type": "string"
+          },
+          "next_action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner_entity_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner_kind": {
+            "enum": [
+              "agent",
+              "joint",
+              "entity",
+              "space_group"
+            ]
+          },
+          "parent_task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "maximum": 9,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "progress_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_refs": {
+            "type": "array"
+          },
+          "space_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "proposed",
+              "active",
+              "waiting",
+              "blocked",
+              "completed",
+              "cancelled",
+              "archived"
+            ]
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/$defs/TaskStepView"
+            },
+            "type": "array"
+          },
+          "task_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "updated_us": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "task_id",
+          "agent_id",
+          "title",
+          "status",
+          "revision"
+        ],
+        "title": "TaskView",
+        "type": "object"
+      },
+      "TriggerView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/trigger-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "catch_up_policy": {
+            "enum": [
+              "all",
+              "latest",
+              "coalesce",
+              "skip"
+            ]
+          },
+          "condition_spec": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "at_time",
+              "recurrence",
+              "observation_kind",
+              "state_condition",
+              "task_transition"
+            ]
+          },
+          "max_occurrences_per_run": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "misfire_grace_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next_fire_at_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "schedule_spec": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "task_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "task_step_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timezone": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "trigger_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "trigger_id",
+          "task_id",
+          "kind",
+          "enabled",
+          "revision"
+        ],
+        "title": "TriggerView",
+        "type": "object"
+      },
       "VersionManifest": {
         "$id": "https://schemas.iris-memory-core.local/v1/version-manifest.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1276,13 +2471,13 @@
     }
   },
   "info": {
-    "description": "Phase 3 contract and capability surface",
+    "description": "Phase 4 contract and capability surface",
     "license": {
       "identifier": "AGPL-3.0-only",
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1956,6 +3151,171 @@
         }
       }
     },
+    "/v1/cognitive-events": {
+      "get": {
+        "operationId": "listCognitiveEvents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "pending",
+                "delivered",
+                "acknowledged",
+                "expired",
+                "cancelled"
+              ]
+            }
+          },
+          {
+            "description": "Pull (deliver) due events instead of listing",
+            "in": "query",
+            "name": "pull",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Lease stamp recorded on delivery",
+            "in": "query",
+            "name": "lease_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Lease epoch stamp recorded on delivery",
+            "in": "query",
+            "name": "lease_epoch",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "expired_during_pull": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/CognitiveEventView"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Cognitive events visible at the requested scope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/cognitive-events/{event_id}:ack": {
+      "post": {
+        "operationId": "ackCognitiveEvent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CognitiveEventAckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CognitiveEventView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
     "/v1/focus-items": {
       "get": {
         "operationId": "listFocusItems",
@@ -2575,6 +3935,413 @@
         }
       }
     },
+    "/v1/notes": {
+      "get": {
+        "operationId": "listNotes",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "inbox",
+                "pinned",
+                "snoozed",
+                "archived",
+                "promoted",
+                "tombstoned"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "enum": [
+                "important",
+                "idea",
+                "follow_up",
+                "promise",
+                "question",
+                "observation"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/NoteView"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Notes visible at the requested scope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createNote",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/notes/{note_id}": {
+      "patch": {
+        "operationId": "updateNote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/notes/{note_id}:archive": {
+      "post": {
+        "operationId": "archiveNote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "expected_revision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "lease_epoch": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "lease_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "snooze_until_us": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/notes/{note_id}:promote": {
+      "post": {
+        "operationId": "promoteNote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "expected_revision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "lease_epoch": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "lease_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "promotion_target_type": {
+                    "enum": [
+                      "task",
+                      "claim",
+                      "episode"
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "reason",
+                  "promotion_target_type"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
     "/v1/observations/cursors/{source_stream}": {
       "get": {
         "operationId": "getSourceCursor",
@@ -3039,6 +4806,555 @@
             "description": "Successful response"
           },
           "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "proposed",
+                "active",
+                "waiting",
+                "blocked",
+                "completed",
+                "cancelled",
+                "archived"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/TaskView"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Tasks visible at the requested scope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTask",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{task_id}": {
+      "patch": {
+        "operationId": "updateTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{task_id}/dependencies": {
+      "post": {
+        "operationId": "createTaskDependency",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskDependencyCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "condition": {
+                      "enum": [
+                        "completed",
+                        "completed_or_skipped"
+                      ]
+                    },
+                    "dependency_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "predecessor_step_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "successor_step_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "task_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "dependency_id",
+                    "predecessor_step_id",
+                    "successor_step_id",
+                    "condition"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The created dependency edge"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{task_id}/steps": {
+      "post": {
+        "operationId": "createTaskStep",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskStepCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskView/$defs/TaskStepView"
+                }
+              }
+            },
+            "description": "The created step view"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{task_id}/steps/{step_id}:transition": {
+      "post": {
+        "operationId": "transitionTaskStep",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskStepTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskView/$defs/TaskStepView"
+                }
+              }
+            },
+            "description": "The updated step view"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{task_id}/triggers": {
+      "post": {
+        "operationId": "createTaskTrigger",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskTriggerCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{task_id}:transition": {
+      "post": {
+        "operationId": "transitionTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
             "content": {
               "application/json": {
                 "schema": {

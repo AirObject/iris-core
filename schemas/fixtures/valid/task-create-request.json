@@ -1,0 +1,17 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "due_at_us": 1700086400000000,
+  "goal": "Deliver the phase 4 slice end to end",
+  "origin": "explicit_tool",
+  "owner_kind": "agent",
+  "priority": 3,
+  "privacy_labels": [],
+  "source_refs": [
+    {
+      "resource_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa640",
+      "resource_type": "note",
+      "revision": 1
+    }
+  ],
+  "title": "Deliver phase 4"
+}

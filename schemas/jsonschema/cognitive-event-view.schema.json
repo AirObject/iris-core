@@ -1,0 +1,131 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/cognitive-event-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "ack_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "acknowledged_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "cognitive_event_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "deliver_after_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "delivered_lease_epoch": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "delivered_lease_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "delivery_attempts": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "delivery_target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expires_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "kind": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "last_delivery_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "object_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "object_type": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "occurrence_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "scheduled_at_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "space_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "delivered",
+        "acknowledged",
+        "expired",
+        "cancelled"
+      ]
+    },
+    "summary_of_count": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "cognitive_event_id",
+    "agent_id",
+    "kind",
+    "object_type",
+    "object_id",
+    "status",
+    "revision"
+  ],
+  "title": "CognitiveEventView",
+  "type": "object"
+}

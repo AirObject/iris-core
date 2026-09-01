@@ -24,11 +24,12 @@ from iris_memory_core.domain.errors import (
     IdempotencyKeyReusedError,
     InvalidRequestError,
     LeaseExpiredError,
+    LeaseFencedError,
     NotFoundError,
 )
 from iris_memory_core.domain.surface import SurfaceMode
 from iris_memory_core.storage.uow import Store
-from tests.conftest import access_for
+from tests.conftest import MutableClock, access_for
 
 
 def _record(agent_id: str, key: str, **overrides: object) -> dict[str, object]:
@@ -480,6 +481,86 @@ class TestRequiredModeGating:
             lease_epoch=acquired.lease.lease_epoch,
         )
         assert len(outcome.accepted_observation_ids) == 1
+
+    def test_neighbor_cannot_observe_with_an_exfiltrated_holder_proof(
+        self,
+        clocked_store: Store,
+        generous_gauge: BackpressureGauge,
+        phase2_access: AccessContext,
+        phase2_agent: str,
+        surface: SurfaceCoordinatorService,
+    ) -> None:
+        surface.set_mode(phase2_access, phase2_agent, SurfaceMode.REQUIRED, reason="policy")
+        acquired = surface.acquire(phase2_access, phase2_agent, ttl_us=60_000_000)
+        neighbor = access_for(
+            phase2_access.tenant_id,
+            agent_ids=frozenset({phase2_agent}),
+            admin=True,
+            app_instance_id="app-neighbor",
+        )
+        leaked = surface.current(neighbor, phase2_agent)
+        assert leaked is not None and leaked.lease_id == acquired.lease.lease_id
+        gated = ObservationService(clocked_store, surface=surface, gauge=generous_gauge)
+        with pytest.raises(LeaseFencedError):
+            gated.observe_batch(
+                neighbor,
+                [_record(phase2_agent, "neighbor-stolen")],
+                lease_id=leaked.lease_id,
+                lease_epoch=leaked.lease_epoch,
+            )
+        with clocked_store.read() as tx:
+            assert (
+                tx.observations.find_by_idempotency_key(
+                    phase2_access.tenant_id, phase2_agent, "neighbor-stolen"
+                )
+                is None
+            )
+
+    def test_observation_gate_runs_before_cache_and_proof_is_not_fingerprint_material(
+        self,
+        clocked_store: Store,
+        mutable_clock: MutableClock,
+        generous_gauge: BackpressureGauge,
+        phase2_access: AccessContext,
+        phase2_agent: str,
+        surface: SurfaceCoordinatorService,
+    ) -> None:
+        from iris_memory_core.storage.idempotency import IdempotencyManager
+
+        surface.set_mode(phase2_access, phase2_agent, SurfaceMode.REQUIRED, reason="policy")
+        first_lease = surface.acquire(phase2_access, phase2_agent, ttl_us=60_000_000).lease
+        gated = ObservationService(
+            clocked_store,
+            IdempotencyManager(clocked_store),
+            surface=surface,
+            gauge=generous_gauge,
+        )
+        records = [_record(phase2_agent, "cache-proof")]
+        first = gated.observe_batch(
+            phase2_access,
+            records,
+            idempotency_key="observation-cache-proof",
+            lease_id=first_lease.lease_id,
+            lease_epoch=first_lease.lease_epoch,
+        )
+        mutable_clock.advance(60_000_001)
+        with pytest.raises(LeaseExpiredError):
+            gated.observe_batch(
+                phase2_access,
+                records,
+                idempotency_key="observation-cache-proof",
+                lease_id=first_lease.lease_id,
+                lease_epoch=first_lease.lease_epoch,
+            )
+        successor = surface.acquire(phase2_access, phase2_agent, ttl_us=60_000_000).lease
+        replay = gated.observe_batch(
+            phase2_access,
+            records,
+            idempotency_key="observation-cache-proof",
+            lease_id=successor.lease_id,
+            lease_epoch=successor.lease_epoch,
+        )
+        assert replay.accepted_observation_ids == first.accepted_observation_ids
 
     def test_advisory_mode_only_warns(
         self,

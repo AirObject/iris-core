@@ -8,11 +8,16 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from typing import Protocol
 
+from iris_memory_core.domain.event import (
+    DEFAULT_MAX_DELIVERY_ATTEMPTS,
+    CognitiveEventCurrent,
+    CognitiveEventRevision,
+)
 from iris_memory_core.domain.focus import FocusItemCurrent, FocusRevision
 from iris_memory_core.domain.identity import (
     BindingMethod,
@@ -44,6 +49,7 @@ from iris_memory_core.domain.model import (
     Tombstone,
     WatermarkState,
 )
+from iris_memory_core.domain.note import NoteCurrent, NoteRevision
 from iris_memory_core.domain.observation import (
     GapPolicy,
     ObservationDraft,
@@ -58,6 +64,16 @@ from iris_memory_core.domain.state import (
     StateRevision,
 )
 from iris_memory_core.domain.surface import LeaseView, SurfaceMode
+from iris_memory_core.domain.task import (
+    TaskCurrent,
+    TaskDependencyEdge,
+    TaskRevision,
+    TaskStepCurrent,
+    TaskStepRevision,
+    TaskTriggerCurrent,
+    TaskTriggerRevision,
+    TriggerOccurrence,
+)
 
 
 class Clock(Protocol):
@@ -139,6 +155,18 @@ class ObservationSurface(Protocol):
     def find_by_source_event(
         self, tenant_id: str, agent_id: str, source_event_id: str
     ) -> StoredObservation | None: ...
+    def for_trigger_scan(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        want_kind: str | None,
+        want_role: str | None,
+        after_us: int | None,
+        limit: int,
+        trigger_id: str | None = None,
+        trigger_revision: int = 0,
+    ) -> Sequence[StoredObservation]: ...
     def insert(self, draft: ObservationDraft, fingerprint: str) -> StoredObservation: ...
     def cursor_state(
         self, tenant_id: str, agent_id: str, source_stream: str
@@ -489,6 +517,410 @@ class FocusSurface(Protocol):
     def history(self, item_id: str, *, limit: int = 100) -> Sequence[FocusRevision]: ...
 
 
+class NoteSurface(Protocol):
+    """Repository surface for note current rows and immutable revisions."""
+
+    def get(self, note_id: str) -> NoteCurrent: ...
+    def get_revision(self, revision_id: str) -> NoteRevision: ...
+    def current_revision_row(self, note_id: str) -> NoteRevision: ...
+    def insert(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        space_group_id: str | None,
+        space_id: str | None,
+        session_id: str | None,
+        scope_key: str,
+        kind: str,
+        title: str,
+        status: str,
+        importance: float,
+        review_after_us: int | None,
+        snooze_until_us: int | None,
+        due_at_us: int | None,
+        content_hash: str,
+    ) -> str: ...
+    def insert_revision(
+        self,
+        *,
+        note_id: str,
+        tenant_id: str,
+        revision: int,
+        kind: str,
+        title: str,
+        body: str,
+        privacy_labels: tuple[str, ...],
+        source_refs: tuple[dict[str, object], ...],
+        importance: float,
+        status: str,
+        review_after_us: int | None,
+        snooze_until_us: int | None,
+        due_at_us: int | None,
+        promotion_target_type: str | None,
+        promotion_target_id: str | None,
+        archived_us: int | None,
+        content_hash: str,
+        created_by: str,
+    ) -> str: ...
+    def set_initial_pointer(self, note_id: str, revision_id: str) -> int: ...
+    def advance_pointer(
+        self,
+        note_id: str,
+        *,
+        expected_revision: int,
+        revision: int,
+        revision_id: str,
+        status: str,
+        importance: float | None = None,
+        review_after_us: int | None = None,
+        snooze_until_us: int | None = None,
+        snooze_until_clear: bool = False,
+        due_at_us: int | None = None,
+        archived_us_set: bool = False,
+        archived_us: int | None = None,
+        archived_us_clear: bool = False,
+    ) -> int: ...
+    def raise_pointer_mismatch(self, note_id: str, expected: int) -> None: ...
+    def list_notes(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        statuses: tuple[str, ...] = ("inbox", "pinned", "snoozed"),
+        kind: str | None = None,
+        limit: int = 100,
+    ) -> Sequence[NoteCurrent]: ...
+    def review_due(
+        self, tenant_id: str, agent_id: str, *, now_us: int, limit: int = 500
+    ) -> Sequence[NoteCurrent]: ...
+    def duplicate_candidates(
+        self, note: NoteCurrent, *, limit: int = 50
+    ) -> Sequence[NoteCurrent]: ...
+    def history(self, note_id: str, *, limit: int = 100) -> Sequence[NoteRevision]: ...
+
+
+class TaskSurface(Protocol):
+    """Repository surface for tasks, steps, dependencies, triggers, occurrences."""
+
+    def get_task(self, task_id: str) -> TaskCurrent: ...
+    def get_task_revision(self, revision_id: str) -> TaskRevision: ...
+    def current_task_revision_row(self, task_id: str) -> TaskRevision: ...
+    def insert_task(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        space_group_id: str | None,
+        space_id: str | None,
+        session_id: str | None,
+        scope_key: str,
+        parent_task_id: str | None,
+        title: str,
+        owner_kind: str,
+        owner_entity_id: str | None,
+        status: str,
+        priority: int,
+        due_at_us: int | None,
+    ) -> str: ...
+    def insert_task_revision(
+        self,
+        *,
+        task_id: str,
+        tenant_id: str,
+        revision: int,
+        title: str,
+        goal: str,
+        owner_kind: str,
+        owner_entity_id: str | None,
+        privacy_labels: tuple[str, ...],
+        source_refs: tuple[dict[str, object], ...],
+        status: str,
+        priority: int,
+        next_action: str | None,
+        progress_note: str | None,
+        due_at_us: int | None,
+        completed_us: int | None,
+        created_by: str,
+    ) -> str: ...
+    def set_initial_task_pointer(self, task_id: str, revision_id: str) -> int: ...
+    def advance_task_pointer(
+        self,
+        task_id: str,
+        *,
+        expected_revision: int,
+        revision: int,
+        revision_id: str,
+        status: str,
+        next_action: str | None = None,
+        next_action_set: bool = False,
+        due_at_us: int | None = None,
+        due_at_set: bool = False,
+        completed_us: int | None = None,
+        completed_us_set: bool = False,
+    ) -> int: ...
+    def raise_task_pointer_mismatch(self, task_id: str, expected: int) -> None: ...
+    def list_tasks(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        statuses: tuple[str, ...] = ("proposed", "active", "waiting", "blocked"),
+        limit: int = 100,
+    ) -> Sequence[TaskCurrent]: ...
+    def due_tasks(
+        self, tenant_id: str, agent_id: str, *, now_us: int, limit: int = 50
+    ) -> Sequence[TaskCurrent]: ...
+    def task_history(self, task_id: str, *, limit: int = 100) -> Sequence[TaskRevision]: ...
+    def get_step(self, step_id: str) -> TaskStepCurrent: ...
+    def get_step_revision(self, revision_id: str) -> TaskStepRevision: ...
+    def current_step_revision_row(self, step_id: str) -> TaskStepRevision: ...
+    def find_step_by_key(self, task_id: str, stable_key: str) -> TaskStepCurrent | None: ...
+    def insert_step(
+        self,
+        *,
+        task_id: str,
+        tenant_id: str,
+        stable_key: str,
+        title: str,
+        ordinal: int,
+        status: str,
+    ) -> str: ...
+    def insert_step_revision(
+        self,
+        *,
+        step_id: str,
+        task_id: str,
+        tenant_id: str,
+        revision: int,
+        stable_key: str,
+        title: str,
+        description: str | None,
+        privacy_labels: tuple[str, ...],
+        status: str,
+        ordinal: int,
+        expected_effect: str | None,
+        completion_evidence_refs: tuple[dict[str, object], ...],
+        started_us: int | None,
+        completed_us: int | None,
+        created_by: str,
+    ) -> str: ...
+    def set_initial_step_pointer(self, step_id: str, revision_id: str) -> int: ...
+    def advance_step_pointer(
+        self,
+        step_id: str,
+        *,
+        expected_revision: int,
+        revision: int,
+        revision_id: str,
+        status: str,
+        started_us: int | None = None,
+        started_us_set: bool = False,
+        completed_us: int | None = None,
+        completed_us_set: bool = False,
+    ) -> int: ...
+    def raise_step_pointer_mismatch(self, step_id: str, expected: int) -> None: ...
+    def steps_for_task(self, task_id: str) -> Sequence[TaskStepCurrent]: ...
+    def step_history(self, step_id: str, *, limit: int = 100) -> Sequence[TaskStepRevision]: ...
+    def dependencies_for_task(self, task_id: str) -> Sequence[TaskDependencyEdge]: ...
+    def get_dependency(self, dependency_id: str) -> TaskDependencyEdge: ...
+    def insert_dependency(
+        self,
+        *,
+        task_id: str,
+        tenant_id: str,
+        predecessor_step_id: str,
+        successor_step_id: str,
+        condition: str,
+    ) -> str: ...
+    def insert_dependency_revision(
+        self,
+        *,
+        dependency_id: str,
+        task_id: str,
+        tenant_id: str,
+        revision: int,
+        predecessor_step_id: str,
+        successor_step_id: str,
+        condition: str,
+        created_by: str,
+    ) -> str: ...
+    def set_initial_dependency_pointer(self, dependency_id: str, revision_id: str) -> int: ...
+    def dependency_revision_number(self, revision_id: str) -> int: ...
+    def get_trigger(self, trigger_id: str) -> TaskTriggerCurrent: ...
+    def get_trigger_revision(self, revision_id: str) -> TaskTriggerRevision: ...
+    def current_trigger_revision_row(self, trigger_id: str) -> TaskTriggerRevision: ...
+    def insert_trigger(
+        self,
+        *,
+        task_id: str,
+        task_step_id: str | None,
+        tenant_id: str,
+        agent_id: str,
+        kind: str,
+        timezone: str,
+        catch_up_policy: str,
+        misfire_grace_us: int,
+        max_occurrences_per_run: int,
+        enabled: bool,
+        next_fire_at_us: int | None,
+    ) -> str: ...
+    def insert_trigger_revision(
+        self,
+        *,
+        trigger_id: str,
+        task_id: str,
+        tenant_id: str,
+        revision: int,
+        kind: str,
+        task_step_id: str | None,
+        schedule_spec: dict[str, object] | None,
+        condition_spec: dict[str, object] | None,
+        timezone: str,
+        catch_up_policy: str,
+        misfire_grace_us: int,
+        max_occurrences_per_run: int,
+        enabled: bool,
+        created_by: str,
+    ) -> str: ...
+    def set_initial_trigger_pointer(self, trigger_id: str, revision_id: str) -> int: ...
+    def advance_trigger_pointer(
+        self,
+        trigger_id: str,
+        *,
+        expected_revision: int,
+        revision: int,
+        revision_id: str,
+        enabled: bool | None = None,
+    ) -> int: ...
+    def raise_trigger_pointer_mismatch(self, trigger_id: str, expected: int) -> None: ...
+    def set_trigger_schedule_state(
+        self,
+        trigger_id: str,
+        *,
+        expected_fire_at_us: int | None,
+        next_fire_at_us: int | None,
+        last_scan_us: int | None = None,
+    ) -> int: ...
+    def triggers_for_scan(
+        self, tenant_id: str, agent_id: str, *, now_us: int, limit: int = 500
+    ) -> Sequence[TaskTriggerCurrent]: ...
+    def triggers_for_task(self, task_id: str) -> Sequence[TaskTriggerCurrent]: ...
+    def insert_occurrence(
+        self,
+        *,
+        trigger_id: str,
+        trigger_revision: int,
+        tenant_id: str,
+        scheduled_at_us: int,
+        occurrence_key: str,
+        status: str,
+        reason_code: str | None = None,
+    ) -> tuple[str, bool]: ...
+    def get_occurrence(self, occurrence_id: str) -> TriggerOccurrence: ...
+    def attach_occurrence_event(self, occurrence_id: str, *, cognitive_event_id: str) -> int: ...
+    def occurrences_for_trigger(
+        self, trigger_id: str, *, limit: int = 200
+    ) -> Sequence[TriggerOccurrence]: ...
+
+
+class CognitiveEventSurface(Protocol):
+    """Repository surface for cognitive event rows and delivery history."""
+
+    def get(self, event_id: str) -> CognitiveEventCurrent: ...
+    def get_revision(self, revision_id: str) -> CognitiveEventRevision: ...
+    def current_revision_row(self, event_id: str) -> CognitiveEventRevision: ...
+    def insert(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        space_group_id: str | None,
+        space_id: str | None,
+        session_id: str | None,
+        scope_key: str,
+        kind: str,
+        object_type: str,
+        object_id: str,
+        occurrence_id: str | None,
+        scheduled_at_us: int,
+        deliver_after_us: int,
+        expires_us: int | None,
+        delivery_target: str | None,
+        summary_of_count: int = 0,
+    ) -> str: ...
+    def insert_revision(
+        self,
+        *,
+        event_id: str,
+        tenant_id: str,
+        revision: int,
+        status: str,
+        delivery_attempts: int,
+        last_delivery_us: int | None,
+        delivered_lease_id: str | None,
+        delivered_lease_epoch: int | None,
+        ack_id: str | None,
+        acknowledged_us: int | None,
+        reason_code: str | None,
+        created_by: str,
+    ) -> str: ...
+    def set_initial_pointer(self, event_id: str, revision_id: str) -> int: ...
+    def advance_pointer(
+        self,
+        event_id: str,
+        *,
+        expected_revision: int,
+        revision: int,
+        revision_id: str,
+        status: str,
+        delivery_attempts: int | None = None,
+        last_delivery_us: int | None = None,
+        last_delivery_set: bool = False,
+        delivered_lease_id: str | None = None,
+        delivered_lease_epoch: int | None = None,
+        lease_set: bool = False,
+        ack_id: str | None = None,
+        ack_id_set: bool = False,
+        acknowledged_us: int | None = None,
+        acknowledged_set: bool = False,
+    ) -> int: ...
+    def raise_pointer_mismatch(self, event_id: str, expected: int) -> None: ...
+    def pullable_events(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        now_us: int,
+        limit: int = 50,
+        allowed_space_ids: Collection[str] | None = None,
+    ) -> Sequence[CognitiveEventCurrent]: ...
+    def pending_events(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        statuses: Sequence[str] = ("pending", "delivered"),
+        limit: int = 200,
+        allowed_space_ids: Collection[str] | None = None,
+        now_us: int | None = None,
+        request_scope: tuple[str | None, str | None, str | None] | None = None,
+    ) -> Sequence[CognitiveEventCurrent]: ...
+    def expiry_candidates(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        now_us: int,
+        limit: int = 500,
+        max_attempts: int = DEFAULT_MAX_DELIVERY_ATTEMPTS,
+    ) -> Sequence[CognitiveEventCurrent]: ...
+    def fence_candidates(
+        self, tenant_id: str, agent_id: str, *, limit: int = 500
+    ) -> Sequence[CognitiveEventCurrent]: ...
+    def history(self, event_id: str, *, limit: int = 100) -> Sequence[CognitiveEventRevision]: ...
+
+
 class Transaction(Protocol):
     """Repository surface available inside one unit of work."""
 
@@ -512,6 +944,15 @@ class Transaction(Protocol):
 
     @property
     def focus(self) -> FocusSurface: ...
+
+    @property
+    def notes(self) -> NoteSurface: ...
+
+    @property
+    def tasks(self) -> TaskSurface: ...
+
+    @property
+    def events(self) -> CognitiveEventSurface: ...
 
     # --- tenants, agents, spaces -------------------------------------
     def insert_tenant(self, tenant_id: str, *, status: str) -> Tenant: ...
@@ -692,6 +1133,15 @@ class Transaction(Protocol):
         target_id: str,
         relation: str,
     ) -> ResourceLink: ...
+    def links_for_source(
+        self,
+        tenant_id: str,
+        source_type: str,
+        source_id: str,
+        *,
+        target_type: str | None = None,
+        relation: str | None = None,
+    ) -> Sequence[ResourceLink]: ...
     def tombstone_watermark(self) -> int: ...
 
 

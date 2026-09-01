@@ -1,0 +1,50 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/task-update-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "due_at_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "expected_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "goal": {
+      "maxLength": 8000,
+      "type": "string"
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "next_action": {
+      "maxLength": 2000,
+      "type": "string"
+    },
+    "priority": {
+      "maximum": 9,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "progress_note": {
+      "maxLength": 8000,
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 500,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "expected_revision"
+  ],
+  "title": "TaskUpdateRequest",
+  "type": "object"
+}

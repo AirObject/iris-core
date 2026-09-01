@@ -22,9 +22,11 @@ from __future__ import annotations
 
 from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.focus import FocusService
+from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, enqueue_with_pressure
 from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
+from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import NotFoundError
 from iris_memory_core.domain.jobs import NewOutboxJob, OutboxJob
 from iris_memory_core.domain.recent import recent_target_key
@@ -165,9 +167,143 @@ def state_projection_handler() -> JobWork:
     return work
 
 
+# ---------------------------------------------------------------------------
+# Phase 4 handlers: note review, trigger scan, pointer invariant checks
+
+
+def note_review_handler(notes: NoteService, clock: Clock) -> JobWork:
+    """Bounded review sweep per agent inside the fenced commit transaction."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            if job.agent_id is None:
+                return
+            notes.review_sweep(
+                tx,
+                tenant_id=job.tenant_id,
+                agent_id=job.agent_id,
+                now_us=clock.now_us(),
+            )
+
+        return commit
+
+    return work
+
+
+def task_trigger_scan_handler(tasks: TaskService, clock: Clock) -> JobWork:
+    """Compute due occurrences and create their CognitiveEvents (idempotent)."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            if job.agent_id is None:
+                return
+            tasks.trigger_scan(
+                tx,
+                tenant_id=job.tenant_id,
+                agent_id=job.agent_id,
+                now_us=clock.now_us(),
+            )
+
+        return commit
+
+    return work
+
+
+def note_changed_handler() -> JobWork:
+    """note.changed: the note's current pointer resolves to its revision."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            note = tx.notes.get(job.aggregate_id)
+            if note.tenant_id != job.tenant_id:
+                raise NotFoundError("note tenant mismatch")
+            if tx.notes.current_revision_row(note.id).revision != note.current_revision:
+                raise NotFoundError("note current pointer does not resolve to its revision number")
+
+        return commit
+
+    return work
+
+
+def task_changed_handler() -> JobWork:
+    """task.changed: task/step/dependency/trigger pointer invariant check."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        def commit(tx: Transaction) -> None:
+            aggregate_type = job.aggregate_type
+            anchor = job.aggregate_id
+            if aggregate_type == "task":
+                task = tx.tasks.get_task(anchor)
+                if task.tenant_id != job.tenant_id:
+                    raise NotFoundError("task tenant mismatch")
+                pointer, revision_number = (
+                    task.current_revision,
+                    tx.tasks.current_task_revision_row(anchor).revision,
+                )
+            elif aggregate_type == "task_step":
+                step = tx.tasks.get_step(anchor)
+                pointer, revision_number = (
+                    step.current_revision,
+                    tx.tasks.current_step_revision_row(anchor).revision,
+                )
+            elif aggregate_type == "task_trigger":
+                trigger = tx.tasks.get_trigger(anchor)
+                pointer, revision_number = (
+                    trigger.current_revision,
+                    tx.tasks.current_trigger_revision_row(anchor).revision,
+                )
+            elif aggregate_type == "task_dependency":
+                edge = tx.tasks.get_dependency(anchor)
+                pointer, revision_number = (
+                    edge.current_revision,
+                    tx.tasks.dependency_revision_number(edge.current_revision_id),
+                )
+            else:
+                raise ValueError(f"task.changed does not handle aggregate {aggregate_type!r}")
+            if pointer != revision_number:
+                raise NotFoundError(
+                    f"{aggregate_type} current pointer does not resolve to its revision number"
+                )
+
+        return commit
+
+    return work
+
+
+def cognitive_event_changed_handler() -> JobWork:
+    """cognitive_event.changed: delivery revision invariant check."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            event = tx.events.get(job.aggregate_id)
+            if event.tenant_id != job.tenant_id:
+                raise NotFoundError("cognitive event tenant mismatch")
+            if tx.events.current_revision_row(event.id).revision != event.current_revision:
+                raise NotFoundError(
+                    "cognitive event current pointer does not resolve to its revision number"
+                )
+
+        return commit
+
+    return work
+
+
 __all__ = [
+    "cognitive_event_changed_handler",
     "focus_maintenance_handler",
+    "note_changed_handler",
+    "note_review_handler",
     "observation_recorded_handler",
     "recent_context_maintenance_handler",
     "state_projection_handler",
+    "task_changed_handler",
+    "task_trigger_scan_handler",
 ]

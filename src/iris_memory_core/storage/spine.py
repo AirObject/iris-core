@@ -138,6 +138,51 @@ class ObservationRepository:
         )
         return self._to_record(row) if row is not None else None
 
+    def for_trigger_scan(
+        self,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        want_kind: str | None,
+        want_role: str | None,
+        after_us: int | None,
+        limit: int,
+        trigger_id: str | None = None,
+        trigger_revision: int = 0,
+    ) -> list[StoredObservation]:
+        """Committed observations matching an observation_kind trigger.
+
+        Ordered by committed time so the scan is deterministic; tombstones are
+        re-checked by the caller (defense in depth). When ``trigger_id`` is
+        given, observations that already have a ledger row under that trigger
+        revision are excluded IN SQL — the batch limit must bound NEW work,
+        not re-reads, or a large backlog never converges past one batch.
+        """
+        clauses = ["tenant_id = ?", "agent_id = ?", "effect_state = 'committed'"]
+        params: list[Any] = [tenant_id, agent_id]
+        if want_kind is not None:
+            clauses.append("kind = ?")
+            params.append(want_kind)
+        if want_role is not None:
+            clauses.append("role = ?")
+            params.append(want_role)
+        if after_us is not None:
+            clauses.append("committed_us > ?")
+            params.append(after_us)
+        if trigger_id is not None:
+            clauses.append(
+                "NOT EXISTS (SELECT 1 FROM task_trigger_occurrences occ "
+                "WHERE occ.trigger_id = ? AND occ.trigger_revision = ? "
+                "AND occ.occurrence_key = ? || observations.id)"
+            )
+            params.extend((trigger_id, trigger_revision, f"o:{trigger_id}:{trigger_revision}:"))
+        rows = self._connection.execute(
+            f"SELECT * FROM observations WHERE {' AND '.join(clauses)} "
+            "ORDER BY committed_us, id LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        return [self._to_record(row) for row in rows]
+
     # -- writes ----------------------------------------------------------
 
     def insert(self, draft: ObservationDraft, fingerprint: str) -> StoredObservation:

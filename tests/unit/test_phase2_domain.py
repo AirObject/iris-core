@@ -158,7 +158,7 @@ class TestJobKindRegistry:
             spec_for("nope.nope")
 
     def test_only_safe_handlers_enabled(self) -> None:
-        # Phase 3 enabled set: all five kinds have implemented + tested
+        # Phase 4 enabled set: all ten kinds have implemented + tested
         # handlers; no other kind is claimable (fail closed, §16).
         assert (
             frozenset(
@@ -168,6 +168,11 @@ class TestJobKindRegistry:
                     "recent_context.maintenance",
                     "focus.maintenance",
                     "state.projection",
+                    "note.review",
+                    "task.trigger_scan",
+                    "note.changed",
+                    "task.changed",
+                    "cognitive_event.changed",
                 }
             )
             == ENABLED_JOB_KINDS

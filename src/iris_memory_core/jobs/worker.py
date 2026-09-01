@@ -19,9 +19,11 @@ import uuid
 
 from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.focus import FocusService
+from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, OutboxService
 from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
+from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import LeaseFencedError
 from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS, OutboxJob
 
@@ -70,6 +72,30 @@ def phase3_handlers(
         "focus.maintenance": focus_maintenance_handler(focus, clock),
         "state.projection": state_projection_handler(),
         "maintenance.selfcheck": selfcheck_handler,
+    }
+
+
+def phase4_handlers(
+    clock: Clock,
+    *,
+    notes: NoteService,
+    tasks: TaskService,
+) -> dict[str, JobWork]:
+    """Phase 4 handlers: note review, trigger scan, pointer invariant checks."""
+    from iris_memory_core.jobs.handlers import (
+        cognitive_event_changed_handler,
+        note_changed_handler,
+        note_review_handler,
+        task_changed_handler,
+        task_trigger_scan_handler,
+    )
+
+    return {
+        "note.review": note_review_handler(notes, clock),
+        "task.trigger_scan": task_trigger_scan_handler(tasks, clock),
+        "note.changed": note_changed_handler(),
+        "task.changed": task_changed_handler(),
+        "cognitive_event.changed": cognitive_event_changed_handler(),
     }
 
 

@@ -12,13 +12,16 @@ from iris_memory_core.application.backpressure import (
     BackpressureGauge,
     FixedDiskProbe,
 )
+from iris_memory_core.application.events import CognitiveEventService
 from iris_memory_core.application.health import HealthService
 from iris_memory_core.application.identity import IdentityService
+from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.observation import ObservationService
 from iris_memory_core.application.outbox import OutboxService
 from iris_memory_core.application.provisioning import ProvisioningService
 from iris_memory_core.application.scheduler import SchedulerService
 from iris_memory_core.application.surface import SurfaceCoordinatorService
+from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.storage.idempotency import IdempotencyManager
 from iris_memory_core.storage.migrations import MigrationRunner
@@ -122,6 +125,21 @@ def outbox_service(clocked_store: Store, generous_gauge: BackpressureGauge) -> O
 @pytest.fixture
 def scheduler(clocked_store: Store) -> SchedulerService:
     return SchedulerService(clocked_store, clocked_store.clock)
+
+
+@pytest.fixture
+def phase4_notes(clocked_store: Store, idempotency: IdempotencyManager) -> NoteService:
+    return NoteService(clocked_store, clocked_store.clock, idempotency=idempotency)
+
+
+@pytest.fixture
+def phase4_tasks(clocked_store: Store, idempotency: IdempotencyManager) -> TaskService:
+    return TaskService(clocked_store, clocked_store.clock, idempotency=idempotency)
+
+
+@pytest.fixture
+def phase4_events(clocked_store: Store, idempotency: IdempotencyManager) -> CognitiveEventService:
+    return CognitiveEventService(clocked_store, clocked_store.clock, idempotency=idempotency)
 
 
 @pytest.fixture

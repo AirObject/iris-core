@@ -1041,6 +1041,71 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
                         "verified recent generation references missing or mismatched observations"
                     )
                     break
+        # Phase 4 invariants (S10-S12, ADR-0004): every mutable aggregate's
+        # current pointer must resolve to its own revision row; occurrences
+        # must resolve to their trigger; occurrence-attached events must
+        # resolve. Skipped for older snapshots whose schema predates them.
+        for current_table, revision_table, join_key, label in (
+            ("notes", "note_revisions", "note_id", "note"),
+            ("tasks", "task_revisions", "task_id", "task"),
+            ("task_steps", "task_step_revisions", "step_id", "task step"),
+            (
+                "task_dependencies",
+                "task_dependency_revisions",
+                "dependency_id",
+                "task dependency",
+            ),
+            ("task_triggers", "task_trigger_revisions", "trigger_id", "trigger"),
+            ("cognitive_events", "cognitive_event_revisions", "event_id", "cognitive event"),
+        ):
+            if not (_has(current_table) and _has(revision_table)):
+                continue
+            dangling = connection.execute(
+                f"SELECT COUNT(*) FROM {current_table} c WHERE c.current_revision_id = '' "
+                f"OR c.current_revision_id NOT IN (SELECT id FROM {revision_table})"
+            ).fetchone()
+            if dangling is not None and int(dangling[0]) > 0:
+                problems.append(f"{label} current pointers without their revision row")
+            mismatch = connection.execute(
+                f"SELECT COUNT(*) FROM {current_table} c JOIN {revision_table} v "
+                f"ON v.id = c.current_revision_id WHERE v.revision <> c.current_revision "
+                f"OR v.{join_key} <> c.id"
+            ).fetchone()
+            if mismatch is not None and int(mismatch[0]) > 0:
+                problems.append(f"{label} current pointer revision mismatch")
+        if _has("task_trigger_occurrences") and _has("task_triggers"):
+            orphan_occurrence = connection.execute(
+                "SELECT COUNT(*) FROM task_trigger_occurrences o WHERE o.trigger_id "
+                "NOT IN (SELECT id FROM task_triggers)"
+            ).fetchone()
+            if orphan_occurrence is not None and int(orphan_occurrence[0]) > 0:
+                problems.append("trigger occurrences without their trigger row")
+            bad_event_ref = connection.execute(
+                "SELECT COUNT(*) FROM task_trigger_occurrences o WHERE "
+                "o.cognitive_event_id IS NOT NULL AND o.cognitive_event_id NOT IN "
+                "(SELECT id FROM cognitive_events)"
+            ).fetchone()
+            if bad_event_ref is not None and int(bad_event_ref[0]) > 0:
+                problems.append("trigger occurrences referencing a missing cognitive event")
+        if _has("task_steps") and _has("tasks"):
+            orphan_step = connection.execute(
+                "SELECT COUNT(*) FROM task_steps s WHERE s.task_id NOT IN (SELECT id FROM tasks)"
+            ).fetchone()
+            if orphan_step is not None and int(orphan_step[0]) > 0:
+                problems.append("task steps without their task row")
+        if _has("cognitive_events"):
+            acknowledged_without_ack = connection.execute(
+                "SELECT COUNT(*) FROM cognitive_events WHERE status = 'acknowledged' "
+                "AND ack_id IS NULL"
+            ).fetchone()
+            if acknowledged_without_ack is not None and int(acknowledged_without_ack[0]) > 0:
+                problems.append("acknowledged cognitive events without an ack id")
+            terminal_with_lease = connection.execute(
+                "SELECT COUNT(*) FROM cognitive_events WHERE status IN "
+                "('acknowledged', 'expired', 'cancelled') AND delivered_lease_id IS NOT NULL"
+            ).fetchone()
+            if terminal_with_lease is not None and int(terminal_with_lease[0]) > 0:
+                problems.append("terminal cognitive events still holding a delivery lease")
     finally:
         connection.close()
     return tuple(problems)

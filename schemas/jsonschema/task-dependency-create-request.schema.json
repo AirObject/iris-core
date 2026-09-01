@@ -1,0 +1,35 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/task-dependency-create-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "condition": {
+      "enum": [
+        "completed",
+        "completed_or_skipped"
+      ]
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "predecessor_step_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "successor_step_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "predecessor_step_id",
+    "successor_step_id"
+  ],
+  "title": "TaskDependencyCreateRequest",
+  "type": "object"
+}

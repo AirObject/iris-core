@@ -1,0 +1,16 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "body": "Ship the phase 4 report before Friday",
+  "importance": 0.8,
+  "kind": "follow_up",
+  "privacy_labels": [],
+  "review_after_us": 1700000900000000,
+  "source_refs": [
+    {
+      "resource_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "resource_type": "observation",
+      "revision": 1
+    }
+  ],
+  "title": "Ship the phase 4 report"
+}

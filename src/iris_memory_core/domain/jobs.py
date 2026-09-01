@@ -115,8 +115,45 @@ _KINDS: dict[str, JobKindSpec] = dict(
         ),
         _spec("profile.refresh", priority=6, coalesce=CoalesceClass.PROFILE),
         _spec("graph.refresh", priority=6, coalesce=CoalesceClass.GRAPH),
-        _spec("note.review", priority=4, catch_up="all"),
-        _spec("task.trigger_scan", priority=4, catch_up="all"),
+        # Phase 4: enabled with real, safe handlers. note.review sweeps due
+        # notes (wake snoozes, associate duplicates, deterministic proposed
+        # task promotion); task.trigger_scan computes occurrences and creates
+        # due CognitiveEvents idempotently. Both catch_up=all per §17.4.
+        _spec(
+            "note.review",
+            priority=4,
+            catch_up="all",
+            enabled=True,
+            notes="Phase 4: bounded review sweep per agent (wake/duplicate/promote).",
+        ),
+        _spec(
+            "task.trigger_scan",
+            priority=4,
+            catch_up="all",
+            enabled=True,
+            notes="Phase 4: occurrence computation + due CognitiveEvent creation.",
+        ),
+        # Phase 4 pointer invariant checks (the note/task/event coalesced
+        # streams' invariant debt, mirroring state.projection). NOT
+        # coalescable: occurrences and deliveries must never be drop-merged.
+        _spec(
+            "note.changed",
+            priority=6,
+            enabled=True,
+            notes="Phase 4: note current-pointer invariant check.",
+        ),
+        _spec(
+            "task.changed",
+            priority=6,
+            enabled=True,
+            notes="Phase 4: task/step/dependency/trigger pointer invariant check.",
+        ),
+        _spec(
+            "cognitive_event.changed",
+            priority=6,
+            enabled=True,
+            notes="Phase 4: event delivery revision invariant check.",
+        ),
         _spec("episode.consolidation", priority=7, catch_up="latest"),
         _spec("memory.reconciliation", priority=7, catch_up="coalesce"),
         _spec("reflection.generate", priority=7, catch_up="latest"),

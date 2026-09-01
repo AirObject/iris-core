@@ -11,7 +11,9 @@ instance behind the ``AccessContext`` — ``holder_app_instance_id`` may only
 name that instance, the agent must be inside the context's granted set, and
 a holder space must be inside the allowed space set. Under ``required`` the
 online plane must PRESENT its lease (id + epoch) on every gated request;
-holding one is not proof by itself.
+holding one is not proof by itself, and an app that names itself must be
+the lease's recorded holder — the id+epoch pair is observable via
+``current`` by every granted instance, so it only authorizes its holder.
 """
 
 from __future__ import annotations
@@ -450,39 +452,35 @@ class SurfaceCoordinatorService:
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        app_instance_id: str,
     ) -> SurfaceCheck:
         """Required-mode gate for online Observe/Recall/cognitive operations.
 
         Under ``required`` the request must PRESENT the lease it holds —
         both the lease id and the epoch; merely existing while another
         instance holds the agent's lease proves nothing and fails closed.
-        Internal workers, backup, migrations and persona management never
-        call this: they run on the management/maintenance plane with their
-        own permission and audit (§25.3). An unreachable coordinator under
-        ``required`` fails closed with ``not_ready`` (§25.4); ``advisory``
-        only reports a warning and never blocks the business request.
+        The presented proof must additionally belong to the authenticated
+        ``app_instance_id``: the id+epoch pair
+        is readable by every app granted to the agent (``current``), so it
+        is only a credential in its holder's hands — a neighbour replaying
+        an exfiltrated proof is fenced with ``not_lease_holder`` (round-4
+        audit). Online requests always have an ``AccessContext`` identity;
+        internal workers, backup, migrations and persona management never
+        call this: they run on the
+        management/maintenance plane with their own permission and audit
+        (§25.3). An unreachable coordinator under ``required`` fails closed
+        with ``not_ready`` (§25.4); ``advisory`` only reports a warning and
+        never blocks the business request.
         """
         try:
             with self._uow.read() as tx:
-                raw_mode, _, _ = tx.surfaces.state(tenant_id, agent_id)
-                mode = SurfaceMode(raw_mode)
-                if mode is SurfaceMode.OFF:
-                    return SurfaceCheck(mode=mode, valid=True)
-                now_us = self._clock.now_us()
-                lease = tx.surfaces.active_lease(tenant_id, agent_id)
-                if lease is None or is_expired(lease.status, lease.expires_us, now_us):
-                    return self._online_verdict(mode, None, "no_active_lease")
-                if lease_id is None or lease_epoch is None:
-                    return self._online_verdict(mode, lease, "missing_lease_proof")
-                if lease.lease_id != lease_id:
-                    return self._online_verdict(mode, lease, "stale_lease_id")
-                if lease.lease_epoch != lease_epoch:
-                    return self._online_verdict(mode, lease, "stale_lease_epoch")
-                return SurfaceCheck(
-                    mode=mode,
-                    valid=True,
-                    lease_id=lease.lease_id,
-                    lease_epoch=lease.lease_epoch,
+                return self.check_online_in_tx(
+                    tx,
+                    tenant_id,
+                    agent_id,
+                    lease_id=lease_id,
+                    lease_epoch=lease_epoch,
+                    app_instance_id=app_instance_id,
                 )
         except (OperationalBusyError, OSError) as error:
             # §25.4: the coordinator is unreachable — the request can neither
@@ -493,6 +491,50 @@ class SurfaceCoordinatorService:
                 "surface coordinator unavailable; the online plane fails closed",
                 details={"code": "not_ready"},
             ) from error
+
+    def check_online_in_tx(
+        self,
+        tx: Transaction,
+        tenant_id: str,
+        agent_id: str,
+        *,
+        lease_id: str | None,
+        lease_epoch: int | None,
+        app_instance_id: str,
+    ) -> SurfaceCheck:
+        """Validate an online proof against the caller's existing transaction.
+
+        Idempotent application writes use the public ``check_online`` before
+        consulting their response cache, then call this method again inside
+        the serialized business write transaction. The second check closes
+        the preemption/expiry window between preflight and canonical commit:
+        once this transaction has read the live lease, no competing Surface
+        writer can fence it before the business mutation commits.
+        """
+        raw_mode, _, _ = tx.surfaces.state(tenant_id, agent_id)
+        mode = SurfaceMode(raw_mode)
+        if mode is SurfaceMode.OFF:
+            return SurfaceCheck(mode=mode, valid=True)
+        now_us = self._clock.now_us()
+        lease = tx.surfaces.active_lease(tenant_id, agent_id)
+        if lease is None or is_expired(lease.status, lease.expires_us, now_us):
+            return self._online_verdict(mode, None, "no_active_lease")
+        if lease_id is None or lease_epoch is None:
+            return self._online_verdict(mode, lease, "missing_lease_proof")
+        if lease.lease_id != lease_id:
+            return self._online_verdict(mode, lease, "stale_lease_id")
+        if lease.lease_epoch != lease_epoch:
+            return self._online_verdict(mode, lease, "stale_lease_epoch")
+        if lease.holder_app_instance_id != app_instance_id:
+            # Knowledge of the observable pair is not authorization: only
+            # the authenticated holder may present it as its credential.
+            return self._online_verdict(mode, lease, "not_lease_holder")
+        return SurfaceCheck(
+            mode=mode,
+            valid=True,
+            lease_id=lease.lease_id,
+            lease_epoch=lease.lease_epoch,
+        )
 
     def _online_verdict(
         self, mode: SurfaceMode, lease: LeaseView | None, warning: str

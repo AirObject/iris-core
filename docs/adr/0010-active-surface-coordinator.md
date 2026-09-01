@@ -31,6 +31,8 @@
 | `advisory` | 维护租约、在响应中附 `lease_warning`，**绝不拒绝**业务请求 | 不校验 |
 | `required` | 请求必须**出示**与当前 active 租约匹配的 lease_id+epoch（缺一即拒）；无租约或未出示→`lease_expired`，过期 epoch/lease_id→`lease_fenced` | 不校验 |
 
+所有在线调用同时携带认证的 `AccessContext.app_instance_id`；proof 与 live lease 匹配但调用者不是记录 Holder 时按 `not_lease_holder` fencing。幂等在线写采用双阶段校验：访问授权后、缓存查询前校验一次，缓存未命中则在 Canonical 业务写事务内再次校验；lease proof 是逐调用凭证，不进入逻辑请求指纹。Observe 与 Phase 4 在线写遵循同一规则，避免缓存回放和预检后抢占绕过 Required 模式。
+
 内部 Worker、备份、迁移、索引、Scheduler 与 Persona 管理属于管理/维护平面，**永不**调用在线校验——管理员凭据不能冒充活动宿主。required 模式下 Coordinator 不可用时 fail closed；advisory 只报告警告，不把记忆服务变成单点可用性门槛。Coordinator 的任何故障只影响自己的表，绝不触碰 Canonical 数据。
 
 **不可达映射稳定错误码**（二轮复核修复）：Coordinator 不可达（存储 busy 或底层 I/O 故障，含 `OSError`）时，在线校验抛出域内一等错误 `NotReadyError`（稳定码 `not_ready`，retryable），绝不放任裸 `OSError` 逃逸、也绝不降级为通用 `domain_error`——因为此刻连"模式是否为 off/advisory"都无法证明，唯一安全的行为是按未知状态 fail closed。

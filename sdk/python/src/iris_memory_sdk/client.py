@@ -373,6 +373,295 @@ class AsyncIrisMemoryClient:
         )
         return cast(dict[str, Any], value)
 
+    # -- Phase 4: notes -------------------------------------------------------
+
+    async def create_note(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/notes",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def list_notes(
+        self,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        kind: str | None = None,
+        space_id: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = f"agent_id={quote(agent_id, safe='')}"
+        for key, item in (
+            ("status", status),
+            ("kind", kind),
+            ("space_id", space_id),
+            ("session_id", session_id),
+        ):
+            if item is not None:
+                query += f"&{key}={quote(item, safe='')}"
+        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/notes?{query}", None)
+        return cast(dict[str, Any], value)
+
+    async def update_note(
+        self,
+        note_id: str,
+        body: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "PATCH",
+            f"/v1/notes/{quote(note_id, safe='')}",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def note_action(
+        self,
+        note_id: str,
+        action: str,
+        body: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        if action not in ("archive", "promote"):
+            raise ValueError(f"unknown note action: {action!r}")
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/notes/{quote(note_id, safe='')}:{action}",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    # -- Phase 4: tasks ---------------------------------------------------------
+
+    async def create_task(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/tasks",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def list_tasks(
+        self,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        space_id: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = f"agent_id={quote(agent_id, safe='')}"
+        for key, item in (
+            ("status", status),
+            ("space_id", space_id),
+            ("session_id", session_id),
+        ):
+            if item is not None:
+                query += f"&{key}={quote(item, safe='')}"
+        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/tasks?{query}", None)
+        return cast(dict[str, Any], value)
+
+    async def update_task(
+        self,
+        task_id: str,
+        body: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "PATCH",
+            f"/v1/tasks/{quote(task_id, safe='')}",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def transition_task(
+        self,
+        task_id: str,
+        body: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/tasks/{quote(task_id, safe='')}:transition",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_task_step(
+        self,
+        task_id: str,
+        body: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/tasks/{quote(task_id, safe='')}/steps",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def transition_task_step(
+        self,
+        task_id: str,
+        step_id: str,
+        body: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/tasks/{quote(task_id, safe='')}/steps/{quote(step_id, safe='')}:transition",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_task_dependency(
+        self,
+        task_id: str,
+        body: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/tasks/{quote(task_id, safe='')}/dependencies",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_task_trigger(
+        self,
+        task_id: str,
+        body: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/tasks/{quote(task_id, safe='')}/triggers",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    # -- Phase 4: cognitive events -----------------------------------------------
+
+    async def list_cognitive_events(
+        self,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        pull: bool = False,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = f"agent_id={quote(agent_id, safe='')}"
+        if status is not None:
+            query += f"&status={quote(status, safe='')}"
+        if pull:
+            query += "&pull=true"
+        if lease_id is not None:
+            query += f"&lease_id={quote(lease_id, safe='')}"
+        if lease_epoch is not None:
+            query += f"&lease_epoch={lease_epoch}"
+        if limit is not None:
+            query += f"&limit={limit}"
+        value = await asyncio.to_thread(
+            self._request_json, "GET", f"/v1/cognitive-events?{query}", None
+        )
+        return cast(dict[str, Any], value)
+
+    async def ack_cognitive_event(
+        self,
+        event_id: str,
+        *,
+        idempotency_key: str,
+        ack_token: str | None = None,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        """ACK a delivered event.
+
+        Under required surface mode the caller must present its lease proof
+        (``lease_id`` + ``lease_epoch``); both ride in the request body,
+        exactly like every other Phase 4 write.
+        """
+        from urllib.parse import quote
+
+        body: dict[str, Any] = {}
+        if ack_token is not None:
+            body["ack_token"] = ack_token
+        if lease_id is not None:
+            body["lease_id"] = lease_id
+        if lease_epoch is not None:
+            body["lease_epoch"] = lease_epoch
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/cognitive-events/{quote(event_id, safe='')}:ack",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
     # -- Phase 2: health -----------------------------------------------------
 
     async def readiness(self) -> dict[str, Any]:

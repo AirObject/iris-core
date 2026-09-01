@@ -1,0 +1,23 @@
+{
+  "ack_id": null,
+  "acknowledged_us": null,
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "cognitive_event_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa644",
+  "deliver_after_us": 1700048400000000,
+  "delivered_lease_epoch": null,
+  "delivered_lease_id": null,
+  "delivery_attempts": 0,
+  "delivery_target": null,
+  "expires_us": 1700653200000000,
+  "kind": "task.due",
+  "last_delivery_us": null,
+  "object_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa641",
+  "object_type": "task",
+  "occurrence_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa645",
+  "revision": 1,
+  "scheduled_at_us": 1700048400000000,
+  "session_id": null,
+  "space_id": null,
+  "status": "pending",
+  "summary_of_count": 0
+}

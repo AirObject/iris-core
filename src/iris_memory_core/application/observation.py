@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from typing import Any, Protocol
 
 from iris_memory_core.application.backpressure import BackpressureGauge
@@ -231,7 +232,24 @@ class ObservationService:
         keys = [draft.idempotency_key for draft in drafts]
         if len(set(keys)) != len(keys):
             raise InvalidRequestError("duplicate idempotency_key within one batch")
-        payload = {"records": records, "lease_epoch": lease_epoch}
+        # Authorization precedes Surface inspection so ungranted agents are
+        # not mode/lease-state oracles. The proof is checked before the cache
+        # and is a per-call credential, not logical fingerprint material.
+        with self._uow.read() as tx:
+            agent_tenant = self._authorize_batch(tx, access, drafts)
+        preflight_warning: str | None = None
+        if self._surface is not None:
+            for agent_id in agent_tenant:
+                check = self._surface.check_online(
+                    access.tenant_id,
+                    agent_id,
+                    lease_id=lease_id,
+                    lease_epoch=lease_epoch,
+                    app_instance_id=access.app_instance_id,
+                )
+                if check.lease_warning is not None:
+                    preflight_warning = check.lease_warning
+        payload = {"records": records}
         if idempotency_key is not None:
             if self._idempotency is None:
                 raise IdempotencyUnavailableError(
@@ -247,7 +265,8 @@ class ObservationService:
                     tx, access, drafts, lease_id=lease_id, lease_epoch=lease_epoch
                 ),
             )
-            return _outcome_from_json(result.body)
+            outcome = _outcome_from_json(result.body)
+            return replace(outcome, lease_warning=preflight_warning) if result.replayed else outcome
         with self._uow.write() as tx:
             code, body, _refs = self._execute_batch(
                 tx, access, drafts, lease_id=lease_id, lease_epoch=lease_epoch
@@ -266,24 +285,18 @@ class ObservationService:
     ) -> tuple[str, str, list[str]]:
         """The atomic spine: observations + cursors + audit + watermark + outbox."""
         # Authorization and structural checks first (zero writes on failure).
-        agent_tenant: dict[str, str] = {}
-        for draft in drafts:
-            _same_tenant(access, draft.tenant_id)
-            if draft.agent_id not in agent_tenant:
-                agent = tx.get_agent(draft.agent_id)
-                if agent.tenant_id != access.tenant_id:
-                    raise AccessDeniedError("agent belongs to another tenant")
-                if draft.agent_id not in access.agent_ids:
-                    raise AccessDeniedError("agent is outside the access context")
-                agent_tenant[draft.agent_id] = agent.tenant_id
-            self._check_container(tx, access, draft)
-            self._check_actor(tx, access, draft)
+        agent_tenant = self._authorize_batch(tx, access, drafts)
         # Required-mode online gate per distinct agent (§25.3).
         lease_warning: str | None = None
         if self._surface is not None:
             for agent_id in agent_tenant:
-                check = self._surface.check_online(
-                    access.tenant_id, agent_id, lease_id=lease_id, lease_epoch=lease_epoch
+                check = self._surface.check_online_in_tx(
+                    tx,
+                    access.tenant_id,
+                    agent_id,
+                    lease_id=lease_id,
+                    lease_epoch=lease_epoch,
+                    app_instance_id=access.app_instance_id,
                 )
                 if check.lease_warning is not None:
                     lease_warning = check.lease_warning
@@ -358,6 +371,24 @@ class ObservationService:
         )
         refs = [f"observation:{oid}" for oid in accepted]
         return "observations.accepted", _outcome_json(outcome), refs
+
+    def _authorize_batch(
+        self, tx: Transaction, access: AccessContext, drafts: list[ObservationDraft]
+    ) -> dict[str, str]:
+        """Authorize a batch without writing and return its distinct agents."""
+        agent_tenant: dict[str, str] = {}
+        for draft in drafts:
+            _same_tenant(access, draft.tenant_id)
+            if draft.agent_id not in agent_tenant:
+                agent = tx.get_agent(draft.agent_id)
+                if agent.tenant_id != access.tenant_id:
+                    raise AccessDeniedError("agent belongs to another tenant")
+                if draft.agent_id not in access.agent_ids:
+                    raise AccessDeniedError("agent is outside the access context")
+                agent_tenant[draft.agent_id] = agent.tenant_id
+            self._check_container(tx, access, draft)
+            self._check_actor(tx, access, draft)
+        return agent_tenant
 
     def _accept_single(
         self, tx: Transaction, draft: ObservationDraft

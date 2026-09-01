@@ -77,8 +77,8 @@ def check_runtime(
 #: Schema 3 (Phase 2) databases and migrates them forward to Schema 4; a
 #: Schema 2 database must first pass through a 0.3.0 binary (the staged
 #: multi-version upgrade path from Phase 1/2 keeps working).
-SUPPORTED_SCHEMA_MIN = 3
-SUPPORTED_SCHEMA_MAX = 4
+SUPPORTED_SCHEMA_MIN = 4
+SUPPORTED_SCHEMA_MAX = 5
 
 
 def verify_schema_compatible(schema_version: int) -> None:

@@ -418,7 +418,13 @@ class TestModeMatrix:
             reason="policy",
         )
         with pytest.raises(LeaseExpiredError):
-            surface.check_online(clocked_tenant_id, phase2_agent, lease_id=None, lease_epoch=None)
+            surface.check_online(
+                clocked_tenant_id,
+                phase2_agent,
+                lease_id=None,
+                lease_epoch=None,
+                app_instance_id="app-1",
+            )
 
     def test_required_demands_presented_proof(
         self,
@@ -437,10 +443,22 @@ class TestModeMatrix:
         )
         surface.acquire(host, phase2_agent, ttl_us=TTL)
         with pytest.raises(LeaseExpiredError) as excinfo:
-            surface.check_online(clocked_tenant_id, phase2_agent, lease_id=None, lease_epoch=None)
+            surface.check_online(
+                clocked_tenant_id,
+                phase2_agent,
+                lease_id=None,
+                lease_epoch=None,
+                app_instance_id="host-1",
+            )
         assert excinfo.value.details.get("warning") == "missing_lease_proof"
         with pytest.raises(LeaseExpiredError):
-            surface.check_online(clocked_tenant_id, phase2_agent, lease_id=None, lease_epoch=1)
+            surface.check_online(
+                clocked_tenant_id,
+                phase2_agent,
+                lease_id=None,
+                lease_epoch=1,
+                app_instance_id="host-1",
+            )
 
     def test_required_accepts_live_lease(
         self,
@@ -461,6 +479,7 @@ class TestModeMatrix:
             phase2_agent,
             lease_id=acquired.lease.lease_id,
             lease_epoch=acquired.lease.lease_epoch,
+            app_instance_id="host-1",
         )
         assert check.valid and check.mode is SurfaceMode.REQUIRED
 
@@ -488,6 +507,7 @@ class TestModeMatrix:
                 phase2_agent,
                 lease_id=first.lease.lease_id,
                 lease_epoch=first.lease.lease_epoch,
+                app_instance_id="host-1",
             )
 
     def test_advisory_warns_but_never_blocks(
@@ -503,7 +523,11 @@ class TestModeMatrix:
             reason="policy",
         )
         check = surface.check_online(
-            clocked_tenant_id, phase2_agent, lease_id=None, lease_epoch=None
+            clocked_tenant_id,
+            phase2_agent,
+            lease_id=None,
+            lease_epoch=None,
+            app_instance_id="app-1",
         )
         assert check.valid is True
         assert check.lease_warning == "no_active_lease"
@@ -515,7 +539,11 @@ class TestModeMatrix:
         phase2_agent: str,
     ) -> None:
         check = surface.check_online(
-            clocked_tenant_id, phase2_agent, lease_id=None, lease_epoch=None
+            clocked_tenant_id,
+            phase2_agent,
+            lease_id=None,
+            lease_epoch=None,
+            app_instance_id="app-1",
         )
         assert check.valid and check.lease_warning is None
 
@@ -553,6 +581,7 @@ class TestModeMatrix:
     def test_coordinator_failure_leaves_canonical_intact(
         self, clocked_store: Store, phase2_access: AccessContext, phase2_agent: str
     ) -> None:
+        from iris_memory_core.application.events import CognitiveEventService
         from iris_memory_core.application.observation import ObservationService
 
         coordinator = SurfaceCoordinatorService(clocked_store, clocked_store.clock)
@@ -571,7 +600,11 @@ class TestModeMatrix:
         # OSError and never a generic domain_error.
         with pytest.raises(NotReadyError) as direct:
             broken.check_online(
-                phase2_access.tenant_id, phase2_agent, lease_id=None, lease_epoch=None
+                phase2_access.tenant_id,
+                phase2_agent,
+                lease_id=None,
+                lease_epoch=None,
+                app_instance_id=phase2_access.app_instance_id,
             )
         assert direct.value.code == "not_ready"
         gated = ObservationService(clocked_store, surface=broken)
@@ -590,6 +623,10 @@ class TestModeMatrix:
                 ],
             )
         assert excinfo.value.code == "not_ready"
+        events = CognitiveEventService(clocked_store, clocked_store.clock, surface=broken)
+        with pytest.raises(NotReadyError) as pull_error:
+            events.pull(phase2_access, agent_id=phase2_agent)
+        assert pull_error.value.code == "not_ready"
         # Canonical observations untouched by the coordinator failure.
         with clocked_store.read() as tx:
             count = tx.raw().execute("SELECT COUNT(*) FROM observations").fetchone()[0]

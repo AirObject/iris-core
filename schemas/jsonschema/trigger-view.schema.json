@@ -1,0 +1,85 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/trigger-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "catch_up_policy": {
+      "enum": [
+        "all",
+        "latest",
+        "coalesce",
+        "skip"
+      ]
+    },
+    "condition_spec": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "kind": {
+      "enum": [
+        "at_time",
+        "recurrence",
+        "observation_kind",
+        "state_condition",
+        "task_transition"
+      ]
+    },
+    "max_occurrences_per_run": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "misfire_grace_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "next_fire_at_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "schedule_spec": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "task_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "task_step_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timezone": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "trigger_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "trigger_id",
+    "task_id",
+    "kind",
+    "enabled",
+    "revision"
+  ],
+  "title": "TriggerView",
+  "type": "object"
+}
