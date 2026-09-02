@@ -187,6 +187,37 @@ class LeaseFencedError(DomainError):
     code = "lease_fenced"
 
 
+class IdentityNotFoundError(DomainError):
+    """An ExternalActor could not be resolved through the server-side
+    identity registry (§18.1): callers never supply internal entity ids."""
+
+    code = "identity_not_found"
+
+
+class MinimumWatermarkUnavailableError(NotReadyError):
+    """Read-your-writes cannot be satisfied: the store has not seen the
+    claimed watermark and no key recall route can succeed (§18.3).
+
+    A refinement of ``not_ready`` with its own frozen contract code — the
+    Phase 3/4 internal contract (NotReadyError semantics) stays intact.
+    """
+
+    code = "minimum_watermark_unavailable"
+    retryable = True
+
+
+class DeadlineExceededError(NotReadyError):
+    """Every recall route missed its deadline — there is no complete nor
+    trustworthy partial result to return (§18.4).
+
+    A refinement of ``not_ready`` with its own frozen contract code; the
+    internal Phase 3/4 contract (NotReadyError semantics) stays intact.
+    """
+
+    code = "deadline_exceeded"
+    retryable = True
+
+
 class InvalidRequestError(DomainError):
     """Malformed or semantically invalid request payload (contract code)."""
 

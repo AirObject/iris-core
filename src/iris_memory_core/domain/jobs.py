@@ -36,6 +36,7 @@ class CoalesceClass(StrEnum):
     STATE = "state"
     PROFILE = "profile"
     GRAPH = "graph"
+    FTS = "fts"
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,6 +194,35 @@ _KINDS: dict[str, JobKindSpec] = dict(
         ),
         _spec("episode.consolidation", priority=7, catch_up="latest"),
         _spec("memory.reconciliation", priority=7, catch_up="coalesce"),
+        # Phase 6: FTS projection maintenance. fts.apply consumes the
+        # refs-only change events (claim/episode/note.changed plus
+        # memory.invalidated) and coalesces per resource; fts.rebuild runs
+        # the shadow rebuild + verified atomic switch; fts.cleanup performs
+        # the async physical deletion of logically invalidated documents and
+        # retired generations (ADR-0014 §2, §11).
+        _spec(
+            "fts.apply",
+            priority=5,
+            coalesce=CoalesceClass.FTS,
+            enabled=True,
+            notes="Phase 6: upsert/invalidate one resource's FTS document "
+            "inside the current verified generation.",
+        ),
+        _spec(
+            "fts.rebuild",
+            priority=3,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 6: full shadow rebuild with checksum verification "
+            "and atomic current-pointer switch.",
+        ),
+        _spec(
+            "fts.cleanup",
+            priority=8,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 6: physical cleanup of invalid documents and retired generations.",
+        ),
         _spec("reflection.generate", priority=7, catch_up="latest"),
         _spec("persona.evaluation", priority=6, catch_up="latest"),
         _spec("backup.execute", priority=3, catch_up="all"),

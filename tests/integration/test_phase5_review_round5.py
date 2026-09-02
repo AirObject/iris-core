@@ -166,7 +166,7 @@ def test_invalidation_handler_finishes_blob_cleanup_after_a_post_commit_crash(
         )
         assert row is not None
         job = tx.outbox.get(str(row[0]))
-    commit = memory_invalidated_handler()(job)
+    commit = memory_invalidated_handler(ctx.store.clock)(job)
     with ctx.store.write() as tx:
         commit(tx)
     assert not blob.exists()
@@ -210,7 +210,7 @@ def test_tombstone_only_artifact_keeps_blob_through_sync_and_worker_cleanup(
         assert row is not None
         assert json.loads(str(row["payload"]))["erase_content"] is False
         job = tx.outbox.get(str(row["id"]))
-    commit = memory_invalidated_handler()(job)
+    commit = memory_invalidated_handler(ctx.store.clock)(job)
     with ctx.store.write() as tx:
         commit(tx)
     assert blob.is_file()

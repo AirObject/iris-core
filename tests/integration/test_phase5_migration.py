@@ -58,7 +58,17 @@ def _migrate_to_phase4(database: Path) -> None:
             "episodes",
         ):
             connection.execute(f"DROP TABLE IF EXISTS {table}")
-        connection.execute("DELETE FROM schema_migrations WHERE version = 6")
+        for phase6_table in (
+            "fts_index",
+            "fts_documents",
+            "fts_current",
+            "fts_generations",
+            "fts_projection_state",
+            "recall_usage_reports",
+            "recall_requests",
+        ):
+            connection.execute(f"DROP TABLE IF EXISTS {phase6_table}")
+        connection.execute("DELETE FROM schema_migrations WHERE version IN (6, 7)")
         connection.commit()
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(
@@ -124,11 +134,13 @@ class TestUpgrade:
         try:
             from iris_memory_core.storage.migrations import current_app_version
 
-            assert current_app_version() == "0.6.0"
+            assert current_app_version() == "0.7.0"
         finally:
             connection.close()
         applied = MigrationRunner(database, default_migrations_path()).migrate()
-        assert [item.version for item in applied] == [6]
+        # Phase 6 ride-along: the 0.7.0 runner walks the Schema 5 source all
+        # the way to the current released schema (ADR-0014 §10).
+        assert [item.version for item in applied] == [6, 7]
         connection = sqlite3.connect(database)
         try:
             tables = {
@@ -151,13 +163,15 @@ class TestUpgrade:
             version = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
         finally:
             connection.close()
-        assert version == 6
+        assert version == 7
         assert not verify_database_invariants(database)
 
-    def test_window_is_5_to_6(self) -> None:
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (5, 6)
-        verify_schema_compatible(5)
+    def test_window_is_6_to_7(self) -> None:
+        # The 0.7.0 binary window (ADR-0014 §10): Schema 6 databases upgrade
+        # online; Schema 5 needs a 0.6.0 binary first (staged path).
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (6, 7)
         verify_schema_compatible(6)
+        verify_schema_compatible(7)
 
     def test_upgraded_database_openable_by_runtime(self, tmp_path: Path) -> None:
         database = tmp_path / "canonical.sqlite3"

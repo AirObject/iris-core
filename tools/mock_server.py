@@ -1005,6 +1005,17 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
         if claim_correct is not None:
             self._handle_claim_correct()
             return
+        # -- Phase 6 recall protocol ------------------------------------------
+        if parsed.path == "/v1/recall":
+            self._handle_recall()
+            return
+        recall_usage = re.match(r"^/v1/recall/(?P<request_id>[^/]+)/usage$", parsed.path)
+        if recall_usage is not None:
+            self._handle_recall_usage(recall_usage.group("request_id"))
+            return
+        if parsed.path == "/v1/search":
+            self._handle_search()
+            return
         if parsed.path == "/v1/memory:forget":
             self._handle_memory_forget()
             return
@@ -2073,8 +2084,156 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
             view["promotion_target_id"] = None
         self._send(HTTPStatus.OK, view)
 
+    # -- Phase 6: recall protocol ------------------------------------------
+
+    def _handle_recall(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        purpose = value.get("purpose", "reply")
+        if purpose not in ("reply", "planning", "reflection", "tool"):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "purpose must be a known recall purpose."),
+            )
+            return
+        actors = value.get("actors")
+        if not isinstance(actors, list) or not actors:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "actors must contain the current speaker."),
+            )
+            return
+        scope = value.get("scope")
+        if not isinstance(scope, dict) or not scope.get("agent_id") or not scope.get("space_id"):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "scope requires agent_id and space_id."),
+            )
+            return
+        if not isinstance(value.get("topic"), str) or not value.get("topic", "").strip():
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "topic required."))
+            return
+        if not isinstance(value.get("deadline_at"), str):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "deadline_at required."))
+            return
+        envelope = json.loads(json.dumps(_RECALL_RESPONSE))
+        envelope["request_id"] = value.get("request_id", envelope["request_id"])
+        self._send(HTTPStatus.OK, envelope)
+
+    def _handle_recall_usage(self, request_id: str) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_idempotency():
+            return
+
+        def _id_list(name: str) -> list[object] | None:
+            ids = value.get(name)
+            return ids if isinstance(ids, list) else None
+
+        returned = _id_list("returned_candidate_ids")
+        selected = _id_list("host_selected_candidate_ids")
+        visible = _id_list("model_visible_candidate_ids")
+        if returned is None or selected is None or visible is None:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "stage id arrays are required."),
+            )
+            return
+        visible_set = {str(item) for item in visible}
+        selected_set = {str(item) for item in selected}
+        returned_set = {str(item) for item in returned}
+        if not visible_set <= selected_set <= returned_set:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error(
+                    "invalid_request",
+                    "model_visible ⊆ host_selected ⊆ returned must hold.",
+                ),
+            )
+            return
+        if not value.get("host_cycle_id"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "host_cycle_id required."))
+            return
+        self._send(
+            HTTPStatus.OK,
+            {
+                "report_id": "01a060aa-0000-7000-8000-000000000002",
+                "created": True,
+                "request_id": request_id,
+                "stages": {
+                    "retrieved_count": 3,
+                    "returned_count": len(returned_set),
+                    "host_selected_count": len(selected_set),
+                    "model_visible_count": len(visible_set),
+                },
+            },
+        )
+
+    def _handle_search(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not value.get("agent_id"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "agent_id required."))
+            return
+        query = value.get("query")
+        if not isinstance(query, str) or not query.strip():
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "query required."))
+            return
+        limit = value.get("limit", 50)
+        if not isinstance(limit, int) or not 1 <= limit <= 200:
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "limit must be 1..200."))
+            return
+        self._send(HTTPStatus.OK, {"results": []})
+
     def log_message(self, format: str, *args: object) -> None:
         return
+
+
+#: Canned Phase 6 recall envelope (ADR-0014 shapes; persona top-level,
+#: degraded routes carry stable reason codes).
+_RECALL_RESPONSE: dict[str, object] = {
+    "schema_version": 1,
+    "request_id": "01a060aa-0000-7000-8000-000000000001",
+    "source_watermark": "18",
+    "persona_revision": 1,
+    "persona_content_hash": "c0ffee1234",
+    "candidates": [
+        {
+            "candidate_id": "cand:0123456789abcdef",
+            "resource_ref": {
+                "resource_type": "claim",
+                "resource_id": "01a060aa-0000-7000-8000-000000000099",
+                "revision": 1,
+            },
+            "content_hash": "9a8b7c6d5e4f3210abcdef0123456789abcdef",
+            "text": "User prefers communicating in Chinese",
+            "category": "preference",
+            "placement": "memory",
+            "subject_entity_id": None,
+            "scope": {"space_group_id": None, "space_id": None, "session_id": None},
+            "privacy_labels": [],
+            "source_refs": [],
+            "scores": {"confidence": 0.9, "importance": 0.6, "relevance": 0.8},
+            "final_score": 0.62,
+            "token_estimate": 9,
+            "conflict_state": None,
+            "expires_at": None,
+        }
+    ],
+    "pending_event_ids": [],
+    "completed_routes": ["recent_context", "state", "focus", "claims", "fts"],
+    "degraded_routes": [],
+    "partial": False,
+    "cache_until": None,
+    "next_wake_at": None,
+    "trace": None,
+}
 
 
 def _error(code: str, message: str) -> dict[str, object]:

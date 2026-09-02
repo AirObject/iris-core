@@ -27,6 +27,7 @@ from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import LeaseFencedError
 from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS, OutboxJob
+from iris_memory_core.indexing.fts import FtsProjectionService
 
 
 def selfcheck_handler(job: OutboxJob) -> JobCommit:
@@ -81,6 +82,7 @@ def phase4_handlers(
     *,
     notes: NoteService,
     tasks: TaskService,
+    gauge: BackpressureGauge | None = None,
 ) -> dict[str, JobWork]:
     """Phase 4 handlers: note review, trigger scan, pointer invariant checks."""
     from iris_memory_core.jobs.handlers import (
@@ -94,7 +96,7 @@ def phase4_handlers(
     return {
         "note.review": note_review_handler(notes, clock),
         "task.trigger_scan": task_trigger_scan_handler(tasks, clock),
-        "note.changed": note_changed_handler(),
+        "note.changed": note_changed_handler(clock, gauge),
         "task.changed": task_changed_handler(),
         "cognitive_event.changed": cognitive_event_changed_handler(),
     }
@@ -104,6 +106,7 @@ def phase5_handlers(
     clock: Clock,
     *,
     retention: RetentionService,
+    gauge: BackpressureGauge | None = None,
 ) -> dict[str, JobWork]:
     """Phase 5 handlers: memory pointer checks, invalidation verification,
     retention sweep."""
@@ -116,11 +119,31 @@ def phase5_handlers(
     )
 
     return {
-        "claim.changed": claim_changed_handler(),
-        "episode.changed": episode_changed_handler(),
+        "claim.changed": claim_changed_handler(clock, gauge),
+        "episode.changed": episode_changed_handler(clock, gauge),
         "relation.changed": relation_changed_handler(),
-        "memory.invalidated": memory_invalidated_handler(),
+        "memory.invalidated": memory_invalidated_handler(clock, gauge),
         "retention.compaction": retention_compaction_handler(retention, clock),
+    }
+
+
+def phase6_handlers(
+    clock: Clock,
+    *,
+    projection: FtsProjectionService,
+) -> dict[str, JobWork]:
+    """Phase 6 handlers: FTS projection apply/rebuild/cleanup."""
+    del clock  # the projection service owns its clock
+    from iris_memory_core.jobs.handlers import (
+        fts_apply_handler,
+        fts_cleanup_handler,
+        fts_rebuild_handler,
+    )
+
+    return {
+        "fts.apply": fts_apply_handler(projection),
+        "fts.rebuild": fts_rebuild_handler(projection),
+        "fts.cleanup": fts_cleanup_handler(projection),
     }
 
 

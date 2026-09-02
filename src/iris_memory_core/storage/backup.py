@@ -964,6 +964,45 @@ def _restore_failure(target_dir: Path, started: float, *problems: str) -> Restor
     )
 
 
+def _reset_fts_projection_for_restore(database: Path) -> None:
+    """Reset any FTS projection bytes the backup carried (ADR-0014 §9).
+
+    The FTS index — documents, generations, pointers and the virtual table —
+    is never restored as a source of truth: everything is dropped and the
+    state marker flips to ``pending_rebuild``. Snapshots older than Schema 7
+    have no FTS tables at all and are left untouched (the startup migration
+    then creates them in ``never_built``, which equally forces a rebuild).
+    """
+    connection = sqlite3.connect(database, isolation_level=None)
+    try:
+        has_fts = (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'fts_documents'"
+            ).fetchone()
+            is not None
+        )
+        if not has_fts:
+            return
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("DROP TABLE IF EXISTS fts_index")
+        connection.execute("DELETE FROM fts_documents")
+        connection.execute("DELETE FROM fts_current")
+        connection.execute("DELETE FROM fts_generations")
+        connection.execute(
+            "INSERT INTO fts_projection_state (id, state, marked_us) VALUES (1, "
+            "'pending_rebuild', CAST(strftime('%s', 'now') AS INTEGER) * 1000000) "
+            "ON CONFLICT(id) DO UPDATE SET state = 'pending_rebuild', "
+            "marked_us = CAST(strftime('%s', 'now') AS INTEGER) * 1000000"
+        )
+        connection.execute("COMMIT")
+    except BaseException:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    finally:
+        connection.close()
+
+
 def _discard_staging(staging: Path) -> str | None:
     """Best-effort cleanup whose failure is visible to the caller."""
     if not staging.exists():
@@ -1121,6 +1160,23 @@ def restore_backup(
                 if cleanup_problem is not None:
                     problems.append(cleanup_problem)
                 return _restore_failure(target_dir, started, *problems)
+        # Phase 6 (ADR-0014 §9): reset any FTS projection bytes the backup
+        # carried and mark the rebuild pending — the FTS index is never
+        # restored as a source of truth. Snapshots older than Schema 7 carry
+        # no FTS tables; the startup migration leaves them in ``never_built``,
+        # which equally requires a rebuild before the FTS route can serve.
+        try:
+            _reset_fts_projection_for_restore(staging / CANONICAL_NAME)
+            _checkpoint_database_for_switch(staging / CANONICAL_NAME)
+            phase6_problems = verify_database_invariants(staging / CANONICAL_NAME)
+        except (sqlite3.Error, OSError, TypeError, ValueError) as error:
+            phase6_problems = (f"restore FTS projection reset failed: {error}",)
+        if phase6_problems:
+            cleanup_problem = _discard_staging(staging)
+            problems = list(phase6_problems)
+            if cleanup_problem is not None:
+                problems.append(cleanup_problem)
+            return _restore_failure(target_dir, started, *problems)
         aside = target_dir.parent / f"{target_dir.name}.previous-{int(time.time())}"
         had_previous = target_dir.exists()
         journal = _journal_path(target_dir)
@@ -1531,6 +1587,39 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
             ).fetchone()
             if invalid_hold is not None and int(invalid_hold[0]) > 0:
                 problems.append("legal hold released before it was created")
+        # Phase 6 invariants (ADR-0014 §9): the FTS projection pointer
+        # resolves to a verified generation of the same tenant, documents
+        # reference existing generations, and a ready state never hides a
+        # missing pointer. Usage rows keep their request anchors (the FK
+        # already enforces existence; here we keep tenant coherence).
+        if _has("fts_current") and _has("fts_generations"):
+            broken_pointer = connection.execute(
+                "SELECT COUNT(*) FROM fts_current c WHERE c.generation_id NOT IN "
+                "(SELECT id FROM fts_generations WHERE status = 'verified' "
+                "AND tenant_id = c.tenant_id)"
+            ).fetchone()
+            if broken_pointer is not None and int(broken_pointer[0]) > 0:
+                problems.append("fts current pointer does not resolve to a verified generation")
+            orphan_docs = connection.execute(
+                "SELECT COUNT(*) FROM fts_documents d WHERE d.generation_id NOT IN "
+                "(SELECT id FROM fts_generations)"
+            ).fetchone()
+            if orphan_docs is not None and int(orphan_docs[0]) > 0:
+                problems.append("fts documents referencing a missing generation")
+        if _has("fts_projection_state"):
+            stale_ready = connection.execute(
+                "SELECT COUNT(*) FROM fts_projection_state WHERE state = 'ready' "
+                "AND NOT EXISTS (SELECT 1 FROM fts_current)"
+            ).fetchone()
+            if stale_ready is not None and int(stale_ready[0]) > 0:
+                problems.append("fts projection ready state without a current pointer")
+        if _has("recall_usage_reports") and _has("recall_requests"):
+            cross_request = connection.execute(
+                "SELECT COUNT(*) FROM recall_usage_reports u WHERE u.request_id NOT IN "
+                "(SELECT id FROM recall_requests WHERE tenant_id = u.tenant_id)"
+            ).fetchone()
+            if cross_request is not None and int(cross_request[0]) > 0:
+                problems.append("usage reports anchored outside their tenant's requests")
     finally:
         connection.close()
     return tuple(problems)

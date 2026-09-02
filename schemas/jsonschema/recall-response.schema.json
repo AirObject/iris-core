@@ -1,0 +1,396 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/recall-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cache_until": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "format": "date-time",
+          "type": "string"
+        }
+      ]
+    },
+    "candidates": {
+      "items": {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-candidate.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "pattern": "^cand:[0-9a-f]{16}$",
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "conflict_state": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "enum": [
+                  "conflicts",
+                  "redundant"
+                ]
+              }
+            ]
+          },
+          "content_hash": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "format": "date-time",
+                "type": "string"
+              }
+            ]
+          },
+          "final_score": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "placement": {
+            "enum": [
+              "working",
+              "memory"
+            ]
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "resource_ref": {
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "resource_type": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "properties": {
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_group_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "object"
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "subject_entity_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "token_estimate": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "resource_ref",
+          "content_hash",
+          "text",
+          "category",
+          "placement",
+          "scope",
+          "privacy_labels",
+          "source_refs",
+          "scores",
+          "final_score",
+          "token_estimate"
+        ],
+        "title": "RecallCandidate",
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "completed_routes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "degraded_routes": {
+      "items": {
+        "$id": "https://schemas.iris-memory-core.local/v1/degraded-route.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "fallback": {
+            "type": "string"
+          },
+          "reason_code": {
+            "enum": [
+              "route_deadline_exceeded",
+              "route_failed",
+              "fts_rebuild_pending",
+              "fts_builder_unknown",
+              "fts_generation_stale",
+              "fts_index_corrupt",
+              "fts_unavailable",
+              "fts_as_of_unsupported"
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "route": {
+            "enum": [
+              "tasks",
+              "recent_context",
+              "state",
+              "focus",
+              "claims",
+              "relations",
+              "fts"
+            ]
+          }
+        },
+        "required": [
+          "route",
+          "reason_code",
+          "retryable",
+          "fallback"
+        ],
+        "title": "DegradedRoute",
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "next_wake_at": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "format": "date-time",
+          "type": "string"
+        }
+      ]
+    },
+    "partial": {
+      "type": "boolean"
+    },
+    "pending_event_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 50,
+      "type": "array"
+    },
+    "persona_content_hash": {
+      "type": "string"
+    },
+    "persona_revision": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "request_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "source_watermark": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "trace": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$id": "https://schemas.iris-memory-core.local/v1/recall-trace.schema.json",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "properties": {
+            "missing_score_components": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ranker_version": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "rehydrated_out": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "request_hash": {
+              "pattern": "^[0-9a-f]{16}$",
+              "type": "string"
+            },
+            "routes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidate_count": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "duration_us": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "fallback": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "outcome": {
+                    "enum": [
+                      "completed",
+                      "degraded"
+                    ]
+                  },
+                  "route": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "route",
+                  "outcome",
+                  "candidate_count",
+                  "duration_us"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "total_duration_us": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "request_hash",
+            "ranker_version",
+            "total_duration_us",
+            "routes",
+            "rehydrated_out"
+          ],
+          "title": "RecallTrace",
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "source_watermark",
+    "persona_revision",
+    "persona_content_hash",
+    "candidates",
+    "pending_event_ids",
+    "completed_routes",
+    "degraded_routes",
+    "partial",
+    "cache_until",
+    "next_wake_at"
+  ],
+  "title": "RecallResponse",
+  "type": "object"
+}

@@ -1,0 +1,50 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/search-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "limit": {
+      "default": 50,
+      "maximum": 200,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "query": {
+      "maxLength": 512,
+      "minLength": 1,
+      "type": "string"
+    },
+    "session_id": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "minLength": 1,
+          "type": "string"
+        }
+      ]
+    },
+    "space_id": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "minLength": 1,
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "required": [
+    "agent_id",
+    "query"
+  ],
+  "title": "SearchRequest",
+  "type": "object"
+}

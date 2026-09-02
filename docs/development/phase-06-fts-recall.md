@@ -1,8 +1,11 @@
 # 阶段 6：FTS Recall
 
-> 状态：Planned  
+> 状态：Completed（含发布前外部复审两轮修复）  
+> 负责人：Iris Memory Core Team  
+> 开始日期：2026-09-02  
+> 完成日期：2026-09-02  
 > 前置阶段：[阶段 5](./phase-05-long-term-memory.md)  
-> 目标版本：0.7.0  
+> 目标版本：0.7.0（已达成：Core/双 SDK 0.7.0、Schema 7、Contract 1.5.0）  
 > 架构依据：[§18 Recall 协议](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#18-recall-协议)、[§22.1 FTS5](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#221-fts5)、[§23 HTTP API](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#23-http-api-与能力协商)、[§30 性能与容量](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#30-性能与容量目标)、[§36 阶段 6](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-6fts-recall)
 
 ## 阶段目标
@@ -78,21 +81,25 @@
 
 ## 退出门禁
 
-- [ ] FTS Builder 版本变化可影子重建并无中断切换，旧 Revision 不再被采用。
-- [ ] Recall 稳定排序、Token/Layer Budget 和相同输入可复现性测试通过。
-- [ ] 并发 Forget 与 FTS Search 的删除竞态不能越过最终 Rehydrate。
-- [ ] Route 超时、索引落后和 Minimum Watermark 场景返回准确 Partial/Degraded Envelope。
-- [ ] Usage 子集伪造、跨 Tenant Candidate 和重复 Report 被拒绝或幂等处理。
-- [ ] 在声明的硬件/数据集/并发条件下达到结构化与 FTS p95 目标。
-- [ ] Schema/SDK/Builder 兼容和 FTS 回退方案、需求追踪及交付证据已完成评审。
+- [x] FTS Builder 版本变化可影子重建并无中断切换，旧 Revision 不再被采用。
+- [x] Recall 稳定排序、Token/Layer Budget 和相同输入可复现性测试通过。
+- [x] 并发 Forget 与 FTS Search 的删除竞态不能越过最终 Rehydrate。
+- [x] Route 超时、索引落后和 Minimum Watermark 场景返回准确 Partial/Degraded Envelope。
+- [x] Usage 子集伪造、跨 Tenant Candidate 和重复 Report 被拒绝或幂等处理。
+- [x] 在声明的硬件/数据集/并发条件下达到结构化与 FTS p95 目标。
+- [x] Schema/SDK/Builder 兼容和 FTS 回退方案、需求追踪及交付证据已完成评审。
 
 ## 交付证据
 
-- 代码/变更：待补充
-- 契约/SDK 版本：待补充
-- Schema/Migration：待补充
-- 性能/竞态测试报告：待补充
-- 已知限制：待补充
+- 代码/变更：基线 `b7bbad5` 之上的工作区（未提交，供复审）；核心模块 `domain/fts.py`、`domain/recall.py`（Ranker v2）、`storage/fts.py`、`indexing/fts.py`（影子重建/信任门）、`application/recall.py`（三段式编排器 + RecallService/UsageService/SearchService）、`jobs/handlers.py`（`fts.apply/rebuild/cleanup` + 变更事件排程）、`storage/backup.py`（FTS 重置与不变量）。
+- 决策：[ADR-0014](../adr/0014-phase6-fts-recall.md)（FTS Generation/Builder、Recall Envelope 与路由并发/新鲜 Rehydrate 边界、排序/预算、缓存非目标、Usage 语义、复审补充）。
+- 契约/SDK 版本：Contract 1.5.0（additive：`recall.v1`、`recall.usage.v1`、`search.fts.v1` capability；`/v1/recall`、`/v1/recall/{request_id}/usage`、`/v1/search` 路径；9 个 schema；错误码 `deadline_exceeded`、`identity_not_found`、`minimum_watermark_unavailable`）；Python/TypeScript SDK 0.7.0；fixtures 104 manifest cases。
+- Schema/Migration：Schema 7（`0007_phase6_fts_recall.sql`，checksum `92e37560…57236ce4`，min_app 0.7.0；`recall_requests` 携带请求指纹与可重放响应， Forget 失效同事务擦除；0007 属工作区未发布版本，第三轮移除了第二轮引入的 `fts_generation_agents`——其口径被未结算 backlog 信任门取代）；0001–0006 与 `b7bbad5` 逐字节一致；窗口 [6, 7]。
+- 性能/竞态测试报告：[phase-06-verification](../reports/phase-06-verification.md)（三轮复审后终测；2200 硬过滤性质案例；100 次重放一致；20×5 降级场景；删除竞态 0 复活；最终 `make ci` 数字以报告 §9 为准）。
+- 发布前外部复审（第二轮，2026-09-02）：9 项发布阻断级缺陷（路由 deadline 无界等待、Claims as_of 候选丢失、FTS scope SQL 违反下行可见性、Purpose/ExternalActor 授权边界、影子重建截断与 checksum 未重算、FTS 落后租户口径、BM25/冗余排序方向、Usage 幂等重放未校验、退休代 ghost postings）全部修复并落 20 例回归（ADR-0014 §13、验证报告 §7b）。
+- 发布前外部复审（第三轮，2026-09-02）：6 个未闭合边界 + 1 个新增问题（FTS 信任门非连续消费前沿——false fresh 与永久 false stale、speaker_entity_id 注入口未闭合、组-空间组合未验证真实绑定、单路由/单线程仍可无限阻塞、as_of Valid Time 按 now 判定、tombstoned Note 重入索引、Recall 请求级幂等无响应重放）全部修复并落 15 例回归（ADR-0014 §14、验证报告 §7c）。
+- 回退策略：停用 `fts.*` handler 与 recall 流量 → 兼容二进制运行 Schema 7 → 必要时按 ADR-0013 §10 恢复流程回退备份（FTS 由 0.7.0 重建，restore 后强制 `pending_rebuild`）。
+- 已知限制：见验证报告 §8（tokenizer 固定 unicode61、重建持有 Writer Gate、FTS 落后阈值、不支持 as_of FTS、无 Recall Cache、usage 记录-only、search 请求面较窄、可索引集 {claim, episode, note}）。
 
 ## 明确不做
 

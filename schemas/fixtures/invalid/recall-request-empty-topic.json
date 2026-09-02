@@ -1,0 +1,49 @@
+{
+  "actors": [
+    {
+      "external_id": "user-123",
+      "provider": "qq",
+      "realm": "default",
+      "weight": 1.0
+    },
+    {
+      "external_id": "viewer-9",
+      "provider": "live",
+      "realm": "default",
+      "weight": 0.3
+    }
+  ],
+  "allow_partial": true,
+  "as_of": null,
+  "candidate_limits": {
+    "fts": 20
+  },
+  "categories": [
+    "preference",
+    "fact"
+  ],
+  "deadline_at": "2026-09-02T12:00:01.500000+00:00",
+  "include_trace": false,
+  "layer_budgets": {
+    "claims": 400,
+    "fts": 600
+  },
+  "minimum_watermark": "17",
+  "purpose": "reply",
+  "request_id": "01a060aa-0000-7000-8000-000000000001",
+  "requested_privacy_labels": [
+    "space:01a060aa-0000-7000-8000-000000000011"
+  ],
+  "resource_types": [
+    "claim",
+    "note"
+  ],
+  "schema_version": 1,
+  "scope": {
+    "agent_id": "01a060aa-0000-7000-8000-000000000010",
+    "session_id": "01a060aa-0000-7000-8000-000000000012",
+    "space_id": "01a060aa-0000-7000-8000-000000000011"
+  },
+  "token_budget": 2000,
+  "topic": ""
+}

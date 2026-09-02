@@ -1,0 +1,44 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/degraded-route.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "fallback": {
+      "type": "string"
+    },
+    "reason_code": {
+      "enum": [
+        "route_deadline_exceeded",
+        "route_failed",
+        "fts_rebuild_pending",
+        "fts_builder_unknown",
+        "fts_generation_stale",
+        "fts_index_corrupt",
+        "fts_unavailable",
+        "fts_as_of_unsupported"
+      ]
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "route": {
+      "enum": [
+        "tasks",
+        "recent_context",
+        "state",
+        "focus",
+        "claims",
+        "relations",
+        "fts"
+      ]
+    }
+  },
+  "required": [
+    "route",
+    "reason_code",
+    "retryable",
+    "fallback"
+  ],
+  "title": "DegradedRoute",
+  "type": "object"
+}

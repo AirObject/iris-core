@@ -1,0 +1,22 @@
+{
+  "cache_until": null,
+  "candidates": [],
+  "completed_routes": [
+    "recent_context",
+    "state",
+    "focus",
+    "claims",
+    "relations",
+    "fts"
+  ],
+  "degraded_routes": [],
+  "next_wake_at": null,
+  "partial": false,
+  "pending_event_ids": [],
+  "persona_content_hash": "c0ffee1234",
+  "persona_revision": 1,
+  "request_id": "01a060aa-0000-7000-8000-000000000001",
+  "schema_version": 1,
+  "source_watermark": "18",
+  "trace": null
+}

@@ -1,0 +1,54 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/recall-usage-report-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "created": {
+      "type": "boolean"
+    },
+    "report_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "request_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "stages": {
+      "additionalProperties": false,
+      "properties": {
+        "host_selected_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model_visible_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retrieved_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "returned_count": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "retrieved_count",
+        "returned_count",
+        "host_selected_count",
+        "model_visible_count"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "report_id",
+    "created",
+    "request_id",
+    "stages"
+  ],
+  "title": "RecallUsageReportResponse",
+  "type": "object"
+}

@@ -479,10 +479,23 @@ def test_restore_cleans_pending_state_before_switching(
     report = backups.restore_backup(backup_dir, target)
     assert report.check.ok, report.check.problems
     assert not (parent / f"data{JOURNAL_SUFFIX}").exists()
-    # The empty previous target was replaced by the verified backup payload.
-    assert (target / "canonical.sqlite3").read_bytes() == (
-        backup_dir / "canonical.sqlite3"
-    ).read_bytes()
+    # The empty previous target was replaced by the verified backup payload,
+    # forward-migrated to the current schema with the FTS projection marked
+    # pending rebuild (ADR-0014 §9) — never a byte-identical projection.
+    import sqlite3 as _sqlite3
+
+    connection = _sqlite3.connect(target / "canonical.sqlite3")
+    try:
+        schema = connection.execute(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
+        ).fetchone()[0]
+        fts_state = connection.execute(
+            "SELECT state FROM fts_projection_state WHERE id = 1"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert schema == 7
+    assert fts_state == "pending_rebuild"
 
 
 def test_persona_pointer_invariants_require_published_same_agent_revision(

@@ -154,6 +154,7 @@ def authorize_scope(
     agent_id: str,
     space_id: str | None,
     session_id: str | None,
+    space_group_id: str | None = None,
 ) -> Scope:
     """Authorize and build the request scope (the caller's named dims only)."""
     agent = tx.get_agent(agent_id)
@@ -161,6 +162,8 @@ def authorize_scope(
         raise AccessDeniedError("agent belongs to another tenant")
     if agent_id not in access.agent_ids:
         raise AccessDeniedError("agent is outside the access context")
+    if space_group_id is not None and space_group_id not in access.allowed_space_group_ids:
+        raise AccessDeniedError("space group is outside the access context")
     if space_id is not None:
         space = tx.get_space(space_id)
         if space.tenant_id != access.tenant_id:
@@ -169,6 +172,18 @@ def authorize_scope(
             raise AccessDeniedError("space is outside the access context")
         if space.agent_id is not None and space.agent_id != agent_id:
             raise AccessDeniedError("space belongs to a different agent")
+        if space_group_id is not None:
+            # Each dim being authorized independently is not enough: the
+            # named space must actually be bound to the named group, or a
+            # caller could combine two separately approved dims and widen
+            # the effective read.
+            binding = tx.get_active_group_binding(space_id)
+            if (
+                binding is None
+                or binding.tenant_id != access.tenant_id
+                or binding.space_group_id != space_group_id
+            ):
+                raise AccessDeniedError("space is not bound to the requested space group")
     if session_id is not None:
         if space_id is None:
             raise InvalidRequestError("session_id requires space_id")
@@ -181,7 +196,7 @@ def authorize_scope(
         Scope(
             tenant_id=access.tenant_id,
             agent_id=agent_id,
-            space_group_id=None,
+            space_group_id=space_group_id,
             space_id=space_id,
             session_id=session_id,
         )

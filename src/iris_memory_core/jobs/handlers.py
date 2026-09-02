@@ -16,6 +16,12 @@ both back. Handlers are idempotent by construction:
 - ``state.projection`` verifies the record's current pointer resolves to the
   revision it names (there is no derived state table in Phase 3; the job is
   the pointer invariant check the coalesced stream owes us).
+
+Phase 6: the claim/episode/note change handlers and the invalidation
+verifier additionally schedule ``fts.apply`` jobs (refs-only payloads,
+coalesced per resource, dedupe keyed by the watermark) — the FTS projection
+consumes the EXISTING change events and never gets a second write-side
+projection of its own (ADR-0014 §2).
 """
 
 from __future__ import annotations
@@ -29,8 +35,10 @@ from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import NotFoundError
+from iris_memory_core.domain.fts import FTS_INDEXABLE_RESOURCE_TYPES
 from iris_memory_core.domain.jobs import NewOutboxJob, OutboxJob
 from iris_memory_core.domain.recent import recent_target_key
+from iris_memory_core.indexing.fts import FtsProjectionService
 
 
 def _require_payload(job: OutboxJob) -> dict[str, object]:
@@ -39,6 +47,57 @@ def _require_payload(job: OutboxJob) -> dict[str, object]:
     if version != 1:
         raise ValueError(f"unsupported payload version: {version!r}")
     return payload
+
+
+def _schedule_fts_apply(
+    tx: Transaction,
+    *,
+    tenant_id: str,
+    resource_type: str,
+    resource_id: str,
+    agent_id: str | None,
+    clock: Clock,
+    gauge: BackpressureGauge | None = None,
+) -> None:
+    """Refs-only FTS projection scheduling from a change handler (ADR-0014 §2).
+
+    Coalesced per resource so a burst of revisions becomes one apply; the
+    dedupe key carries the current agent watermark so a replay at the same
+    watermark absorbs. The payload never contains content. The job's
+    agent_id attributes it to the right per-agent backlog (the staleness
+    trust gate counts unsettled ``fts.apply`` jobs per agent), so a
+    triggering event without an agent resolves the owner from the resource.
+    """
+    if resource_type not in FTS_INDEXABLE_RESOURCE_TYPES:
+        return
+    owner = agent_id
+    if owner is None:
+        owner = FtsProjectionService.resource_agent(tx, tenant_id, resource_type, resource_id)
+    watermark_state = tx.watermark(tenant_id, owner or "")
+    watermark = watermark_state.current_seq if watermark_state is not None else 0
+    coalesce_key = f"fts:{resource_type}:{resource_id}"
+    enqueue_with_pressure(
+        tx,
+        NewOutboxJob(
+            tenant_id=tenant_id,
+            job_kind="fts.apply",
+            aggregate_type=resource_type,
+            aggregate_id=resource_id,
+            source_revision=watermark,
+            payload={
+                "version": 1,
+                "job_kind": "fts.apply",
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+            },
+            dedupe_key=f"fts-apply:{tenant_id}:{resource_type}:{resource_id}:{watermark}",
+            agent_id=owner,
+            coalesce_key=coalesce_key,
+            priority=5,
+            available_at_us=clock.now_us(),
+        ),
+        gauge,
+    )
 
 
 def observation_recorded_handler(
@@ -214,7 +273,7 @@ def task_trigger_scan_handler(tasks: TaskService, clock: Clock) -> JobWork:
     return work
 
 
-def note_changed_handler() -> JobWork:
+def note_changed_handler(clock: Clock, gauge: BackpressureGauge | None = None) -> JobWork:
     """note.changed: the note's current pointer resolves to its revision."""
 
     def work(job: OutboxJob) -> JobCommit:
@@ -226,6 +285,15 @@ def note_changed_handler() -> JobWork:
                 raise NotFoundError("note tenant mismatch")
             if tx.notes.current_revision_row(note.id).revision != note.current_revision:
                 raise NotFoundError("note current pointer does not resolve to its revision number")
+            _schedule_fts_apply(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type="note",
+                resource_id=note.id,
+                agent_id=note.agent_id,
+                clock=clock,
+                gauge=gauge,
+            )
 
         return commit
 
@@ -301,7 +369,7 @@ def cognitive_event_changed_handler() -> JobWork:
 # Phase 5 handlers: memory pointer checks, invalidation verification, retention
 
 
-def claim_changed_handler() -> JobWork:
+def claim_changed_handler(clock: Clock, gauge: BackpressureGauge | None = None) -> JobWork:
     """claim.changed: the claim's current pointer resolves to its revision."""
 
     def work(job: OutboxJob) -> JobCommit:
@@ -313,13 +381,22 @@ def claim_changed_handler() -> JobWork:
                 raise NotFoundError("claim tenant mismatch")
             if tx.claims.current_revision_row(claim.id).revision != claim.current_revision:
                 raise NotFoundError("claim current pointer does not resolve to its revision number")
+            _schedule_fts_apply(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type="claim",
+                resource_id=claim.id,
+                agent_id=claim.agent_id,
+                clock=clock,
+                gauge=gauge,
+            )
 
         return commit
 
     return work
 
 
-def episode_changed_handler() -> JobWork:
+def episode_changed_handler(clock: Clock, gauge: BackpressureGauge | None = None) -> JobWork:
     """episode.changed: the episode's current pointer resolves to its revision."""
 
     def work(job: OutboxJob) -> JobCommit:
@@ -333,6 +410,15 @@ def episode_changed_handler() -> JobWork:
                 raise NotFoundError(
                     "episode current pointer does not resolve to its revision number"
                 )
+            _schedule_fts_apply(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type="episode",
+                resource_id=episode.id,
+                agent_id=episode.agent_id,
+                clock=clock,
+                gauge=gauge,
+            )
 
         return commit
 
@@ -359,7 +445,7 @@ def relation_changed_handler() -> JobWork:
     return work
 
 
-def memory_invalidated_handler() -> JobWork:
+def memory_invalidated_handler(clock: Clock, gauge: BackpressureGauge | None = None) -> JobWork:
     """memory.invalidated: every named resource is non-current under the
     recorded tombstone watermark — the fail-closed check future projection
     builders must repeat before exposing content (ADR-0005/0013 §7).
@@ -369,6 +455,10 @@ def memory_invalidated_handler() -> JobWork:
     tombstone transaction commits; this handler closes the crash window between
     that commit and the synchronous unlink.  Re-execution is safe because a
     missing file already means the erasure effect is complete.
+
+    Phase 6: every FTS-indexable resource in the chunk also gets an
+    ``fts.apply`` scheduled — the apply re-reads Canonical, sees the
+    tombstone and logically invalidates the projection document (ADR-0014 §2).
     """
 
     def work(job: OutboxJob) -> JobCommit:
@@ -397,10 +487,83 @@ def memory_invalidated_handler() -> JobWork:
                     raise NotFoundError(
                         f"invalidated {resource_type} {resource_id} is not tombstoned"
                     )
+                # Replayable-response erasure: a stored recall response that
+                # still carries this resource's body must lose it, or a
+                # request-id replay would resurrect erased content through
+                # the idempotency path (ADR-0014 §7/§13).
+                tx.usage.scrub_request_responses(job.tenant_id, (resource_id,))
                 if resource_type == "artifact" and erase_content:
                     artifact = tx.artifacts.get(resource_id)
                     if artifact.storage_kind == "local_blob":
                         tx.artifacts.unlink_blob(artifact.locator)
+                _schedule_fts_apply(
+                    tx,
+                    tenant_id=job.tenant_id,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    agent_id=job.agent_id,
+                    clock=clock,
+                    gauge=gauge,
+                )
+
+        return commit
+
+    return work
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 handlers: FTS projection maintenance
+
+
+def fts_apply_handler(projection: FtsProjectionService) -> JobWork:
+    """fts.apply: upsert/invalidate one resource's document (idempotent)."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        payload = _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            resource_type = payload.get("resource_type")
+            resource_id = payload.get("resource_id")
+            if not isinstance(resource_type, str) or not isinstance(resource_id, str):
+                raise ValueError("fts.apply payload needs resource_type/resource_id")
+            projection.apply_change_in_tx(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+            )
+
+        return commit
+
+    return work
+
+
+def fts_rebuild_handler(projection: FtsProjectionService) -> JobWork:
+    """fts.rebuild: shadow rebuild + verification + atomic pointer switch."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            # Runs inside the fenced commit transaction — the rebuild core
+            # is transaction-bound so no nested write unit of work opens.
+            # Rebuild idempotence is structural: same canonical snapshot ⇒
+            # same generation content; the switch is a pointer CAS.
+            projection.rebuild_in_tx(tx, tenant_id=job.tenant_id)
+
+        return commit
+
+    return work
+
+
+def fts_cleanup_handler(projection: FtsProjectionService) -> JobWork:
+    """fts.cleanup: physical deletion of invalid documents/retired generations."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            projection.cleanup_in_tx(tx, job.tenant_id)
 
         return commit
 
@@ -426,6 +589,9 @@ __all__ = [
     "cognitive_event_changed_handler",
     "episode_changed_handler",
     "focus_maintenance_handler",
+    "fts_apply_handler",
+    "fts_cleanup_handler",
+    "fts_rebuild_handler",
     "memory_invalidated_handler",
     "note_changed_handler",
     "note_review_handler",

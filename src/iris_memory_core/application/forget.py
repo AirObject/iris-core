@@ -1122,6 +1122,12 @@ class ForgetService:
         snapshots (ADR-0013 §7)."""
         for index in range(0, len(invalidated), INVALIDATION_CHUNK):
             chunk = invalidated[index : index + INVALIDATION_CHUNK]
+            # Stored recall responses replay by request id; their bodies
+            # must lose every invalidated resource IN THIS TRANSACTION —
+            # the tombstone and the response scrub commit or roll back
+            # together, so an erased body can never survive a replay
+            # (ADR-0014 §7/§13).
+            tx.usage.scrub_request_responses(tenant_id, [resource_id for _, resource_id in chunk])
             enqueue_with_pressure(
                 tx,
                 NewOutboxJob(

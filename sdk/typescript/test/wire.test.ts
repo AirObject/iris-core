@@ -256,3 +256,75 @@ test("transitionEpisode carries target and the lease proof on the wire", async (
   assert.equal(call(stub.calls, 0).body?.lease_epoch, 9);
   assert.equal(call(stub.calls, 0).body?.idempotencyKey, undefined);
 });
+
+test("recall posts the full request scope on the wire", async () => {
+  const stub = stubFetch([await readFixture("recall-response.json")]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.recall({
+      schema_version: 1,
+      request_id: "01a060aa-0000-7000-8000-000000000001",
+      scope: { agent_id: "agent-1", space_id: "space-1" },
+      actors: [{ provider: "qq", external_id: "user-1" }],
+      topic: "language preference",
+      purpose: "reply",
+      token_budget: 2000,
+      deadline_at: "2026-09-02T12:00:01.500000+00:00",
+    });
+  } finally {
+    stub.restore();
+  }
+  assert.equal(stub.calls.length, 1);
+  assert.match(call(stub.calls, 0).url, /\/v1\/recall$/);
+  const body = call(stub.calls, 0).body as {
+    scope?: { agent_id?: string };
+    actors?: ReadonlyArray<{ external_id?: string }>;
+  };
+  assert.equal(body.scope?.agent_id, "agent-1");
+  assert.equal(body.actors?.[0]?.external_id, "user-1");
+});
+
+test("reportRecallUsage posts stage ids and idempotency key", async () => {
+  const stub = stubFetch([await readFixture("recall-usage-report-response.json")]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.reportRecallUsage(
+      "01a060aa-0000-7000-8000-000000000001",
+      {
+        host_cycle_id: "cycle-1",
+        persona_revision: 1,
+        returned_candidate_ids: ["cand:0123456789abcdef"],
+        host_selected_candidate_ids: ["cand:0123456789abcdef"],
+        model_visible_candidate_ids: ["cand:0123456789abcdef"],
+        reported_at: "2026-09-02T12:00:02+00:00",
+      },
+      { idempotencyKey: "usage-1" },
+    );
+  } finally {
+    stub.restore();
+  }
+  assert.equal(stub.calls.length, 1);
+  assert.match(call(stub.calls, 0).url, /\/v1\/recall\/[^/]+\/usage$/);
+  assert.equal(call(stub.calls, 0).headers["Idempotency-Key"], "usage-1");
+  assert.equal(call(stub.calls, 0).body?.host_cycle_id, "cycle-1");
+});
+
+test("search posts query and scope on the wire", async () => {
+  const stub = stubFetch([await readFixture("search-response.json")]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.search({
+      agent_id: "agent-1",
+      query: "language preference",
+      space_id: "space-1",
+      limit: 25,
+    });
+  } finally {
+    stub.restore();
+  }
+  assert.equal(stub.calls.length, 1);
+  assert.match(call(stub.calls, 0).url, /\/v1\/search$/);
+  assert.equal(call(stub.calls, 0).body?.query, "language preference");
+  assert.equal(call(stub.calls, 0).body?.space_id, "space-1");
+  assert.equal(call(stub.calls, 0).body?.limit, 25);
+});

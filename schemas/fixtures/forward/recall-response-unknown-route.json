@@ -1,0 +1,79 @@
+{
+  "cache_until": null,
+  "candidates": [
+    {
+      "candidate_id": "cand:0123456789abcdef",
+      "category": "preference",
+      "conflict_state": null,
+      "content_hash": "9a8b7c6d5e4f3210abcdef0123456789abcdef0123456789abcdef0123456789",
+      "expires_at": null,
+      "final_score": 0.62,
+      "placement": "memory",
+      "privacy_labels": [
+        "space:01a060aa-0000-7000-8000-000000000011"
+      ],
+      "resource_ref": {
+        "resource_id": "01a060aa-0000-7000-8000-000000000001",
+        "resource_type": "claim",
+        "revision": 2
+      },
+      "scope": {
+        "session_id": "01a060aa-0000-7000-8000-000000000012",
+        "space_group_id": null,
+        "space_id": "01a060aa-0000-7000-8000-000000000011"
+      },
+      "scores": {
+        "confidence": 0.9,
+        "importance": 0.6,
+        "relevance": null
+      },
+      "source_refs": [],
+      "subject_entity_id": "01a060aa-0000-7000-8000-000000000013",
+      "text": "User prefers communicating in Chinese",
+      "token_estimate": 9
+    }
+  ],
+  "completed_routes": [
+    "recent_context",
+    "vector"
+  ],
+  "degraded_routes": [
+    {
+      "fallback": "route_skipped_canonical_intact",
+      "reason_code": "route_deadline_exceeded",
+      "retryable": true,
+      "route": "tasks"
+    }
+  ],
+  "next_wake_at": null,
+  "partial": true,
+  "pending_event_ids": [],
+  "persona_content_hash": "c0ffee1234",
+  "persona_revision": 1,
+  "request_id": "01a060aa-0000-7000-8000-000000000001",
+  "schema_version": 1,
+  "source_watermark": "18",
+  "trace": {
+    "missing_score_components": 2,
+    "ranker_version": 2,
+    "rehydrated_out": 1,
+    "request_hash": "0123456789abcdef",
+    "routes": [
+      {
+        "candidate_count": 1,
+        "duration_us": 900,
+        "fallback": null,
+        "outcome": "completed",
+        "route": "claims"
+      },
+      {
+        "candidate_count": 0,
+        "duration_us": 1200,
+        "fallback": "fts_generation_stale",
+        "outcome": "degraded",
+        "route": "fts"
+      }
+    ],
+    "total_duration_us": 4200
+  }
+}

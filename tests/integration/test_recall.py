@@ -176,10 +176,11 @@ class TestDeterminism:
             candidate("recent_context", 0.5, 99, "m"),
             candidate("recent_context", 0.5, 10, "c"),
         ]
-        # score DESC first; then category priority (recent < state < focus);
+        # score DESC first; then category priority (focus < recent < state —
+        # Phase 6 v2 mapping, ADR-0014 §5: focus outranks hot context);
         # then occurred DESC; then id ASC (c before z at the same instant).
         ordered = [c.resource_id for c in sorted(items, key=stable_sort_key)]
-        assert ordered == ["a", "m", "c", "z", "b", "a"]
+        assert ordered == ["a", "a", "m", "c", "z", "b"]
 
 
 class TestRoutesAndEnvelope:

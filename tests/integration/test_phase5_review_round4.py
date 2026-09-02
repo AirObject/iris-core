@@ -156,11 +156,23 @@ def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
             "SELECT tenant_id, selector_key, created_us FROM forget_requests ORDER BY created_us"
         ).fetchall()
         # A real snapshot records the migration bytes that created its old
-        # shape, not the checksum of the current test checkout.
+        # shape, not the checksum of the current test checkout — and a
+        # round-2 build predates Phase 6 entirely, so its schema stops at 6.
         connection.execute(
             "UPDATE schema_migrations SET checksum = ? WHERE version = 6",
             (_ROUND2_MIGRATION_CHECKSUM,),
         )
+        for table in (
+            "fts_index",
+            "fts_documents",
+            "fts_current",
+            "fts_generations",
+            "fts_projection_state",
+            "recall_usage_reports",
+            "recall_requests",
+        ):
+            connection.execute(f"DROP TABLE IF EXISTS {table}")
+        connection.execute("DELETE FROM schema_migrations WHERE version >= 7")
         connection.commit()
     finally:
         connection.close()
@@ -174,6 +186,7 @@ def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
     manifest_path = backup_dir / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["forget_ledger_by_tenant"] = ledger
+    manifest["schema_version"] = 6
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -270,7 +283,11 @@ class TestR4_1RealLegacySchemaBackup:
             (default_migrations_path() / "0006_phase5_long_term_memory.sql").read_bytes()
         ).hexdigest()
         assert recorded_checksum == expected_checksum
-        assert MigrationRunner(target_dir / "canonical.sqlite3").migrate() == ()
+        # The restored Schema 6 snapshot upgrades through the ordinary
+        # startup migration (ADR-0014 §9: restore never forward-migrates).
+        assert [
+            item.version for item in MigrationRunner(target_dir / "canonical.sqlite3").migrate()
+        ] == [7]
 
         # "Can continue serving" includes the repository path that needs the
         # newly backfilled privacy key, not only deletion-ledger replay.

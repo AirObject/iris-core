@@ -1023,3 +1023,111 @@ def test_episode_transition_rejects_unknown_target(mock_base_url: str) -> None:
             )
         )
     assert captured.value.envelope.code == "invalid_request"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: recall protocol contract surface (ADR-0014)
+
+
+def test_recall_round_trip_against_contract(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    request = {
+        "schema_version": 1,
+        "request_id": "01a060aa-0000-7000-8000-000000000001",
+        "scope": {
+            "agent_id": "01a060aa-0000-7000-8000-000000000010",
+            "space_id": "01a060aa-0000-7000-8000-000000000011",
+        },
+        "actors": [{"provider": "qq", "external_id": "user-1", "realm": "default"}],
+        "topic": "language preference",
+        "purpose": "reply",
+        "token_budget": 2000,
+        "deadline_at": "2026-09-02T12:00:01.500000+00:00",
+    }
+    response = asyncio.run(client.recall(request))
+    assert validate_contract("recall-response", response) == ()
+    # The SDK must NOT hide partial/degraded/persona/cache_until semantics.
+    assert "partial" in response and "degraded_routes" in response
+    assert "persona_revision" in response and "cache_until" in response
+
+
+def test_recall_rejects_empty_actors(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    request = {
+        "schema_version": 1,
+        "request_id": "01a060aa-0000-7000-8000-000000000001",
+        "scope": {
+            "agent_id": "01a060aa-0000-7000-8000-000000000010",
+            "space_id": "01a060aa-0000-7000-8000-000000000011",
+        },
+        "actors": [],
+        "topic": "language preference",
+        "purpose": "reply",
+        "token_budget": 2000,
+        "deadline_at": "2026-09-02T12:00:01.500000+00:00",
+    }
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(client.recall(request))
+    assert captured.value.envelope.code == "invalid_request"
+
+
+def test_recall_usage_report_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    candidate_id = "cand:0123456789abcdef"
+    record = {
+        "host_cycle_id": "cycle-1",
+        "persona_revision": 1,
+        "returned_candidate_ids": [candidate_id],
+        "host_selected_candidate_ids": [candidate_id],
+        "model_visible_candidate_ids": [candidate_id],
+        "reported_at": "2026-09-02T12:00:02+00:00",
+    }
+    response = asyncio.run(
+        client.report_recall_usage(
+            "01a060aa-0000-7000-8000-000000000001", record, idempotency_key="usage-1"
+        )
+    )
+    assert validate_contract("recall-usage-report-response", response) == ()
+    assert response["stages"]["model_visible_count"] == 1
+
+
+def test_recall_usage_report_rejects_broken_subset(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    record = {
+        "host_cycle_id": "cycle-1",
+        "persona_revision": 1,
+        "returned_candidate_ids": [],
+        "host_selected_candidate_ids": [],
+        "model_visible_candidate_ids": ["cand:0123456789abcdef"],
+        "reported_at": "2026-09-02T12:00:02+00:00",
+    }
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(
+            client.report_recall_usage(
+                "01a060aa-0000-7000-8000-000000000001", record, idempotency_key="usage-2"
+            )
+        )
+    assert captured.value.envelope.code == "invalid_request"
+
+
+def test_search_round_trip_against_contract(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    response = asyncio.run(
+        client.search(
+            "01a060aa-0000-7000-8000-000000000010",
+            "language preference",
+            space_id="01a060aa-0000-7000-8000-000000000011",
+            limit=25,
+        )
+    )
+    assert validate_contract("search-response", response) == ()
+    assert response["results"] == []
+
+
+def test_search_rejects_zero_limit(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(
+            client.search("01a060aa-0000-7000-8000-000000000010", "language preference", limit=0)
+        )
+    assert captured.value.envelope.code == "invalid_request"

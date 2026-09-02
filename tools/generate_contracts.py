@@ -1960,6 +1960,433 @@ def _json_response(
     }
 
 
+# ---------------------------------------------------------------------------
+# Phase 6 schemas (recall protocol, usage, search — ADR-0014)
+
+
+#: Wire route names frozen by ADR-0014 §3: the internal names win over the
+#: baseline's example spellings (`tasks`, not `task`).
+RECALL_ROUTE_NAMES = [
+    "tasks",
+    "recent_context",
+    "state",
+    "focus",
+    "claims",
+    "relations",
+    "fts",
+]
+
+#: Degraded reason codes frozen by ADR-0014 §10 (+ the as-of exclusion).
+RECALL_DEGRADED_REASONS = [
+    "route_deadline_exceeded",
+    "route_failed",
+    "fts_rebuild_pending",
+    "fts_builder_unknown",
+    "fts_generation_stale",
+    "fts_index_corrupt",
+    "fts_unavailable",
+    "fts_as_of_unsupported",
+]
+
+
+def _external_actor_ref_schema() -> dict[str, Any]:
+    return {
+        "additionalProperties": False,
+        "properties": {
+            "provider": {"type": "string", "minLength": 1, "maxLength": 64},
+            "external_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "realm": {"type": "string", "minLength": 1, "maxLength": 64, "default": "default"},
+            "weight": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 1.0},
+        },
+        "required": ["provider", "external_id"],
+        "title": "ExternalActorRef",
+        "type": "object",
+    }
+
+
+def recall_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": False,
+        "properties": {
+            "schema_version": {"const": 1},
+            "request_id": _id(),
+            "scope": {
+                "additionalProperties": False,
+                "properties": {
+                    "agent_id": _id(),
+                    "space_id": _id(),
+                    "session_id": {"anyOf": [{"type": "null"}, _id()]},
+                    "space_group_id": {"anyOf": [{"type": "null"}, _id()]},
+                },
+                "required": ["agent_id", "space_id"],
+                "type": "object",
+            },
+            "actors": {
+                "items": _external_actor_ref_schema(),
+                "minItems": 1,
+                "maxItems": 16,
+                "type": "array",
+            },
+            "topic": {"type": "string", "minLength": 1, "maxLength": 512},
+            "purpose": {"enum": ["reply", "planning", "reflection", "tool"]},
+            "categories": {
+                "items": {"type": "string", "minLength": 1, "maxLength": 64},
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": True,
+            },
+            "resource_types": {
+                "items": {"type": "string", "minLength": 1, "maxLength": 64},
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": True,
+            },
+            "requested_privacy_labels": {
+                "items": {"type": "string", "minLength": 1, "maxLength": 128},
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": True,
+            },
+            "token_budget": {"type": "integer", "minimum": 0, "maximum": 100000},
+            "layer_budgets": {
+                "additionalProperties": {"type": "integer", "minimum": 0},
+                "propertyNames": {"pattern": "^[a-z_]{1,64}$"},
+                "type": "object",
+            },
+            "candidate_limits": {
+                "additionalProperties": {"type": "integer", "minimum": 0, "maximum": 200},
+                "propertyNames": {"pattern": "^[a-z_]{1,64}$"},
+                "type": "object",
+            },
+            "as_of": {
+                "anyOf": [
+                    {"type": "null"},
+                    {"type": "string", "format": "date-time"},
+                ]
+            },
+            "minimum_watermark": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1}]},
+            "deadline_at": {"type": "string", "format": "date-time"},
+            "allow_partial": {"type": "boolean", "default": True},
+            "include_trace": {"type": "boolean", "default": False},
+        },
+        "required": [
+            "schema_version",
+            "request_id",
+            "scope",
+            "actors",
+            "topic",
+            "purpose",
+            "token_budget",
+            "deadline_at",
+        ],
+        "title": "RecallRequest",
+        "type": "object",
+    }
+
+
+def recall_candidate_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-candidate.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": False,
+        "properties": {
+            "candidate_id": {"type": "string", "pattern": "^cand:[0-9a-f]{16}$"},
+            "resource_ref": {
+                "additionalProperties": False,
+                "properties": {
+                    "resource_type": {"type": "string", "minLength": 1},
+                    "resource_id": _id(),
+                    "revision": {"type": "integer", "minimum": 1},
+                },
+                "required": ["resource_type", "resource_id", "revision"],
+                "type": "object",
+            },
+            "content_hash": {"type": "string", "minLength": 1},
+            "text": {"type": "string"},
+            "category": {"type": "string"},
+            "placement": {"enum": ["working", "memory"]},
+            "subject_entity_id": {"anyOf": [{"type": "null"}, _id()]},
+            "scope": _scope_view_schema(),
+            "privacy_labels": {
+                "items": {"type": "string"},
+                "type": "array",
+                "uniqueItems": True,
+            },
+            "source_refs": {"items": _resource_ref_schema(), "type": "array"},
+            "scores": {
+                "additionalProperties": {
+                    "anyOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]
+                },
+                "type": "object",
+            },
+            "final_score": {"type": "number", "minimum": 0, "maximum": 1},
+            "token_estimate": {"type": "integer", "minimum": 0},
+            "conflict_state": {"anyOf": [{"type": "null"}, {"enum": ["conflicts", "redundant"]}]},
+            "expires_at": {"anyOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]},
+        },
+        "required": [
+            "candidate_id",
+            "resource_ref",
+            "content_hash",
+            "text",
+            "category",
+            "placement",
+            "scope",
+            "privacy_labels",
+            "source_refs",
+            "scores",
+            "final_score",
+            "token_estimate",
+        ],
+        "title": "RecallCandidate",
+        "type": "object",
+    }
+
+
+def degraded_route_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/degraded-route.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": False,
+        "properties": {
+            "route": {"enum": RECALL_ROUTE_NAMES},
+            "reason_code": {"enum": RECALL_DEGRADED_REASONS},
+            "retryable": {"type": "boolean"},
+            "fallback": {"type": "string"},
+        },
+        "required": ["route", "reason_code", "retryable", "fallback"],
+        "title": "DegradedRoute",
+        "type": "object",
+    }
+
+
+def recall_trace_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-trace.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": False,
+        "properties": {
+            "request_hash": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+            "ranker_version": {"type": "integer", "minimum": 1},
+            "total_duration_us": {"type": "integer", "minimum": 0},
+            "routes": {
+                "items": {
+                    "additionalProperties": False,
+                    "properties": {
+                        "route": {"type": "string"},
+                        "outcome": {"enum": ["completed", "degraded"]},
+                        "candidate_count": {"type": "integer", "minimum": 0},
+                        "duration_us": {"type": "integer", "minimum": 0},
+                        "fallback": {"anyOf": [{"type": "null"}, {"type": "string"}]},
+                    },
+                    "required": [
+                        "route",
+                        "outcome",
+                        "candidate_count",
+                        "duration_us",
+                    ],
+                    "type": "object",
+                },
+                "type": "array",
+            },
+            "rehydrated_out": {"type": "integer", "minimum": 0},
+            "missing_score_components": {"type": "integer", "minimum": 0},
+        },
+        "required": [
+            "request_hash",
+            "ranker_version",
+            "total_duration_us",
+            "routes",
+            "rehydrated_out",
+        ],
+        "title": "RecallTrace",
+        "type": "object",
+    }
+
+
+def recall_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": False,
+        "properties": {
+            "schema_version": {"const": 1},
+            "request_id": _id(),
+            "source_watermark": {"type": "string", "minLength": 1},
+            "persona_revision": {"type": "integer", "minimum": 0},
+            "persona_content_hash": {"type": "string"},
+            "candidates": {"items": recall_candidate_schema(), "type": "array"},
+            "pending_event_ids": {"items": _id(), "type": "array", "maxItems": 50},
+            "completed_routes": {"items": {"type": "string"}, "type": "array"},
+            "degraded_routes": {"items": degraded_route_schema(), "type": "array"},
+            "partial": {"type": "boolean"},
+            "cache_until": {"anyOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]},
+            "next_wake_at": {
+                "anyOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]
+            },
+            "trace": {"anyOf": [{"type": "null"}, recall_trace_schema()]},
+        },
+        "required": [
+            "schema_version",
+            "request_id",
+            "source_watermark",
+            "persona_revision",
+            "persona_content_hash",
+            "candidates",
+            "pending_event_ids",
+            "completed_routes",
+            "degraded_routes",
+            "partial",
+            "cache_until",
+            "next_wake_at",
+        ],
+        "title": "RecallResponse",
+        "type": "object",
+    }
+
+
+def recall_usage_report_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-usage-report-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": False,
+        "properties": {
+            "host_cycle_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "persona_revision": {"type": "integer", "minimum": 0},
+            "returned_candidate_ids": {
+                "items": {"type": "string", "pattern": "^cand:[0-9a-f]{16}$"},
+                "type": "array",
+                "uniqueItems": True,
+            },
+            "host_selected_candidate_ids": {
+                "items": {"type": "string", "pattern": "^cand:[0-9a-f]{16}$"},
+                "type": "array",
+                "uniqueItems": True,
+            },
+            "model_visible_candidate_ids": {
+                "items": {"type": "string", "pattern": "^cand:[0-9a-f]{16}$"},
+                "type": "array",
+                "uniqueItems": True,
+            },
+            "reported_at": {"type": "string", "format": "date-time"},
+        },
+        "required": [
+            "host_cycle_id",
+            "persona_revision",
+            "returned_candidate_ids",
+            "host_selected_candidate_ids",
+            "model_visible_candidate_ids",
+            "reported_at",
+        ],
+        "title": "RecallUsageReportRequest",
+        "type": "object",
+    }
+
+
+def recall_usage_report_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-usage-report-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": False,
+        "properties": {
+            "report_id": _id(),
+            "created": {"type": "boolean"},
+            "request_id": _id(),
+            "stages": {
+                "additionalProperties": False,
+                "properties": {
+                    "retrieved_count": {"type": "integer", "minimum": 0},
+                    "returned_count": {"type": "integer", "minimum": 0},
+                    "host_selected_count": {"type": "integer", "minimum": 0},
+                    "model_visible_count": {"type": "integer", "minimum": 0},
+                },
+                "required": [
+                    "retrieved_count",
+                    "returned_count",
+                    "host_selected_count",
+                    "model_visible_count",
+                ],
+                "type": "object",
+            },
+        },
+        "required": ["report_id", "created", "request_id", "stages"],
+        "title": "RecallUsageReportResponse",
+        "type": "object",
+    }
+
+
+def search_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/search-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": False,
+        "properties": {
+            "agent_id": _id(),
+            "space_id": {"anyOf": [{"type": "null"}, _id()]},
+            "session_id": {"anyOf": [{"type": "null"}, _id()]},
+            "query": {"type": "string", "minLength": 1, "maxLength": 512},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+        },
+        "required": ["agent_id", "query"],
+        "title": "SearchRequest",
+        "type": "object",
+    }
+
+
+def search_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/search-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": False,
+        "properties": {
+            "results": {"items": recall_candidate_schema(), "type": "array"},
+        },
+        "required": ["results"],
+        "title": "SearchResponse",
+        "type": "object",
+    }
+
+
+_PHASE6_COMPONENTS: dict[str, dict[str, Any]] = {}
+
+
+def phase6_components() -> dict[str, dict[str, Any]]:
+    global _PHASE6_COMPONENTS
+    if not _PHASE6_COMPONENTS:
+        _PHASE6_COMPONENTS = {
+            "RecallRequest": recall_request_schema(),
+            "RecallCandidate": recall_candidate_schema(),
+            "DegradedRoute": degraded_route_schema(),
+            "RecallTrace": recall_trace_schema(),
+            "RecallResponse": recall_response_schema(),
+            "RecallUsageReportRequest": recall_usage_report_request_schema(),
+            "RecallUsageReportResponse": recall_usage_report_response_schema(),
+            "SearchRequest": search_request_schema(),
+            "SearchResponse": search_response_schema(),
+        }
+    return _PHASE6_COMPONENTS
+
+
+def phase6_json_schema_files() -> dict[Path, dict[str, Any]]:
+    names = {
+        "recall-request": "RecallRequest",
+        "recall-candidate": "RecallCandidate",
+        "degraded-route": "DegradedRoute",
+        "recall-trace": "RecallTrace",
+        "recall-response": "RecallResponse",
+        "recall-usage-report-request": "RecallUsageReportRequest",
+        "recall-usage-report-response": "RecallUsageReportResponse",
+        "search-request": "SearchRequest",
+        "search-response": "SearchResponse",
+    }
+    return {
+        JSON_SCHEMA_DIRECTORY / f"{slug}.schema.json": phase6_components()[title]
+        for slug, title in names.items()
+    }
+
+
 def _idempotency_header() -> dict[str, Any]:
     return {
         "description": "Transport-retry safety for this write",
@@ -2075,6 +2502,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
         **phase3_components(),
         **phase4_components(),
         **phase5_components(),
+        **phase6_components(),
     }
     batch_request_body = {
         "content": {
@@ -3715,6 +4143,85 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
                 },
             }
         },
+        "/v1/recall": {
+            "post": {
+                "operationId": "recall",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/RecallRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response(
+                        "#/components/schemas/RecallResponse",
+                        "Recall envelope: candidates, routes, partial/degraded state, "
+                        "persona revision (Phase 6, ADR-0014)",
+                    ),
+                    "400": error_response,
+                    "403": error_response,
+                    "404": error_response,
+                    "503": error_response,
+                },
+            },
+        },
+        "/v1/recall/{request_id}/usage": {
+            "post": {
+                "operationId": "reportRecallUsage",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "request_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/RecallUsageReportRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response(
+                        "#/components/schemas/RecallUsageReportResponse",
+                        "Idempotent merge result for the four usage stages",
+                    ),
+                    "400": error_response,
+                    "403": error_response,
+                    "404": error_response,
+                    "409": error_response,
+                },
+            },
+        },
+        "/v1/search": {
+            "post": {
+                "operationId": "search",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/SearchRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response(
+                        "#/components/schemas/SearchResponse",
+                        "FTS-backed cross-resource search over the trusted current "
+                        "generation (claim/episode/note)",
+                    ),
+                    "400": error_response,
+                    "403": error_response,
+                    "503": error_response,
+                },
+            },
+        },
         "/v1/retention-policies": {
             "get": {
                 "operationId": "listRetentionPolicies",
@@ -3847,6 +4354,7 @@ def generated_documents(source: Mapping[str, Any]) -> dict[Path, dict[str, Any]]
     documents.update(phase3_json_schema_files())
     documents.update(phase4_json_schema_files())
     documents.update(phase5_json_schema_files())
+    documents.update(phase6_json_schema_files())
     return documents
 
 

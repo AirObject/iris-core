@@ -376,6 +376,8 @@ class EpisodeRepository:
         *,
         statuses: Sequence[str] = ("open", "sealed"),
         limit: int = 100,
+        cursor_updated_us: int | None = None,
+        cursor_id: str | None = None,
     ) -> tuple[EpisodeCurrent, ...]:
         status_placeholders = ", ".join("?" * len(statuses))
         sql = (
@@ -384,6 +386,9 @@ class EpisodeRepository:
         )
         params: list[object] = [tenant_id, agent_id, *statuses]
         sql += _TOMBSTONE_EXCLUSION["episode"]
+        if cursor_updated_us is not None and cursor_id is not None:
+            sql += "AND (updated_us < ? OR (updated_us = ? AND id < ?)) "
+            params.extend([cursor_updated_us, cursor_updated_us, cursor_id])
         sql += "ORDER BY updated_us DESC, id DESC LIMIT ?"
         params.append(limit)
         rows = self._connection.execute(sql, tuple(params)).fetchall()

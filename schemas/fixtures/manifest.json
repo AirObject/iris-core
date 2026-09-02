@@ -2,268 +2,13 @@
   "cases": [
     {
       "expected": "accept",
-      "file": "valid/capabilities.json",
-      "schema": "capabilities"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/error-envelope.json",
-      "schema": "error-envelope"
-    },
-    {
-      "expected": "accept",
-      "file": "forward/error-envelope-unknown-field.json",
-      "schema": "error-envelope"
-    },
-    {
-      "expected": "accept",
       "file": "forward/capabilities-unknown-enum.json",
       "schema": "capabilities"
     },
     {
-      "expected": "reject",
-      "file": "invalid/error-envelope-missing-code.json",
-      "schema": "error-envelope"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/capabilities-duplicate.json",
-      "schema": "capabilities"
-    },
-    {
       "expected": "accept",
-      "file": "valid/observation-batch-request.json",
-      "schema": "observation-batch-request"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/observation-batch-response.json",
-      "schema": "observation-batch-response"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/source-cursor-envelope.json",
-      "schema": "source-cursor-envelope"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/lease-acquire-request.json",
-      "schema": "lease-acquire-request"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/lease-view.json",
-      "schema": "lease-view"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/readiness-report.json",
-      "schema": "readiness-report"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/admin-job.json",
-      "schema": "admin-job"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/schedule-view.json",
-      "schema": "schedule-view"
-    },
-    {
-      "expected": "accept",
-      "file": "forward/observation-batch-request-unknown-field.json",
-      "schema": "observation-batch-request"
-    },
-    {
-      "expected": "accept",
-      "file": "forward/lease-view-unknown-status.json",
-      "schema": "lease-view"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/observation-batch-request-bad-role.json",
-      "schema": "observation-batch-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/observation-batch-request-bad-cursor.json",
-      "schema": "observation-batch-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/observation-batch-request-session-without-space.json",
-      "schema": "observation-batch-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/readiness-report-bad-status.json",
-      "schema": "readiness-report"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/lease-acquire-request-bad-ttl.json",
-      "schema": "lease-acquire-request"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/recent-context-view.json",
-      "schema": "recent-context-view"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/state-put-request.json",
-      "schema": "state-put-request"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/state-view.json",
-      "schema": "state-view"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/state-history-response.json",
-      "schema": "state-history-response"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/focus-create-request.json",
-      "schema": "focus-create-request"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/focus-view.json",
-      "schema": "focus-view"
-    },
-    {
-      "expected": "accept",
-      "file": "forward/focus-view-unknown-status.json",
-      "schema": "focus-view"
-    },
-    {
-      "expected": "accept",
-      "file": "forward/state-view-unknown-field.json",
-      "schema": "state-view"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/state-put-request-bad-authority.json",
-      "schema": "state-put-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/state-put-request-value-missing.json",
-      "schema": "state-put-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/state-put-request-session-without-space.json",
-      "schema": "state-put-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/focus-create-request-bad-kind.json",
-      "schema": "focus-create-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/focus-create-request-bad-scores.json",
-      "schema": "focus-create-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/recent-context-view-bad-hash.json",
-      "schema": "recent-context-view"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/note-create-request.json",
-      "schema": "note-create-request"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/note-view.json",
-      "schema": "note-view"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/task-create-request.json",
-      "schema": "task-create-request"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/task-create-request-minimum.json",
-      "schema": "task-create-request"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/task-create-request-with-lease-proof.json",
-      "schema": "task-create-request"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/task-view.json",
-      "schema": "task-view"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/trigger-view.json",
-      "schema": "trigger-view"
-    },
-    {
-      "expected": "accept",
-      "file": "valid/cognitive-event-view.json",
-      "schema": "cognitive-event-view"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/note-create-request-bad-kind.json",
-      "schema": "note-create-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/note-create-request-session-without-space.json",
-      "schema": "note-create-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/note-update-request-missing-revision.json",
-      "schema": "note-update-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/task-create-request-bad-origin.json",
-      "schema": "task-create-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/task-view-bad-status.json",
-      "schema": "task-view"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/task-step-transition-request-bad-target.json",
-      "schema": "task-step-transition-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/task-trigger-create-request-bad-kind.json",
-      "schema": "task-trigger-create-request"
-    },
-    {
-      "expected": "reject",
-      "file": "invalid/cognitive-event-view-bad-status.json",
-      "schema": "cognitive-event-view"
-    },
-    {
-      "expected": "accept",
-      "file": "forward/note-view-unknown-status.json",
-      "schema": "note-view"
-    },
-    {
-      "expected": "accept",
-      "file": "forward/task-view-unknown-step-status.json",
-      "schema": "task-view"
+      "file": "forward/claim-view-unknown-status.json",
+      "schema": "claim-view"
     },
     {
       "expected": "accept",
@@ -272,13 +17,58 @@
     },
     {
       "expected": "accept",
-      "file": "forward/claim-view-unknown-status.json",
-      "schema": "claim-view"
+      "file": "forward/error-envelope-unknown-field.json",
+      "schema": "error-envelope"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/focus-view-unknown-status.json",
+      "schema": "focus-view"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/lease-view-unknown-status.json",
+      "schema": "lease-view"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/note-view-unknown-status.json",
+      "schema": "note-view"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/observation-batch-request-unknown-field.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/recall-response-no-trace.json",
+      "schema": "recall-response"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/recall-response-unknown-route.json",
+      "schema": "recall-response"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/state-view-unknown-field.json",
+      "schema": "state-view"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/task-view-unknown-step-status.json",
+      "schema": "task-view"
     },
     {
       "expected": "reject",
       "file": "invalid/artifact-create-request-bad-kind.json",
       "schema": "artifact-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/capabilities-duplicate.json",
+      "schema": "capabilities"
     },
     {
       "expected": "reject",
@@ -297,8 +87,33 @@
     },
     {
       "expected": "reject",
+      "file": "invalid/cognitive-event-view-bad-status.json",
+      "schema": "cognitive-event-view"
+    },
+    {
+      "expected": "reject",
       "file": "invalid/episode-transition-request-bad-target.json",
       "schema": "episode-transition-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/error-envelope-missing-code.json",
+      "schema": "error-envelope"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/focus-create-request-bad-kind.json",
+      "schema": "focus-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/focus-create-request-bad-scores.json",
+      "schema": "focus-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/lease-acquire-request-bad-ttl.json",
+      "schema": "lease-acquire-request"
     },
     {
       "expected": "reject",
@@ -311,6 +126,131 @@
       "schema": "memory-forget-request"
     },
     {
+      "expected": "reject",
+      "file": "invalid/note-create-request-bad-kind.json",
+      "schema": "note-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/note-create-request-session-without-space.json",
+      "schema": "note-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/note-update-request-missing-revision.json",
+      "schema": "note-update-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/observation-batch-request-bad-cursor.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/observation-batch-request-bad-role.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/observation-batch-request-session-without-space.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/readiness-report-bad-status.json",
+      "schema": "readiness-report"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recall-request-bad-purpose.json",
+      "schema": "recall-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recall-request-empty-actors.json",
+      "schema": "recall-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recall-request-empty-topic.json",
+      "schema": "recall-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recall-response-score-out-of-range.json",
+      "schema": "recall-response"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recall-response-unknown-reason.json",
+      "schema": "recall-response"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recall-usage-report-request-broken-subset.json",
+      "schema": "recall-usage-report-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recall-usage-report-request-foreign-candidate.json",
+      "schema": "recall-usage-report-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recent-context-view-bad-hash.json",
+      "schema": "recent-context-view"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/search-request-empty-query.json",
+      "schema": "search-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/search-request-zero-limit.json",
+      "schema": "search-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/state-put-request-bad-authority.json",
+      "schema": "state-put-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/state-put-request-session-without-space.json",
+      "schema": "state-put-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/state-put-request-value-missing.json",
+      "schema": "state-put-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/task-create-request-bad-origin.json",
+      "schema": "task-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/task-step-transition-request-bad-target.json",
+      "schema": "task-step-transition-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/task-trigger-create-request-bad-kind.json",
+      "schema": "task-trigger-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/task-view-bad-status.json",
+      "schema": "task-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/admin-job.json",
+      "schema": "admin-job"
+    },
+    {
       "expected": "accept",
       "file": "valid/artifact-create-request.json",
       "schema": "artifact-create-request"
@@ -319,6 +259,11 @@
       "expected": "accept",
       "file": "valid/artifact-view.json",
       "schema": "artifact-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/capabilities.json",
+      "schema": "capabilities"
     },
     {
       "expected": "accept",
@@ -357,6 +302,11 @@
     },
     {
       "expected": "accept",
+      "file": "valid/cognitive-event-view.json",
+      "schema": "cognitive-event-view"
+    },
+    {
+      "expected": "accept",
       "file": "valid/deletion-ledger-response.json",
       "schema": "deletion-ledger-response"
     },
@@ -374,6 +324,31 @@
       "expected": "accept",
       "file": "valid/episode-view.json",
       "schema": "episode-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/error-envelope.json",
+      "schema": "error-envelope"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/focus-create-request.json",
+      "schema": "focus-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/focus-view.json",
+      "schema": "focus-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/lease-acquire-request.json",
+      "schema": "lease-acquire-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/lease-view.json",
+      "schema": "lease-view"
     },
     {
       "expected": "accept",
@@ -402,6 +377,66 @@
     },
     {
       "expected": "accept",
+      "file": "valid/note-create-request.json",
+      "schema": "note-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/note-view.json",
+      "schema": "note-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/observation-batch-request.json",
+      "schema": "observation-batch-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/observation-batch-response.json",
+      "schema": "observation-batch-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/readiness-report.json",
+      "schema": "readiness-report"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/recall-request-minimum.json",
+      "schema": "recall-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/recall-request.json",
+      "schema": "recall-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/recall-response-empty.json",
+      "schema": "recall-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/recall-response.json",
+      "schema": "recall-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/recall-usage-report-request.json",
+      "schema": "recall-usage-report-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/recall-usage-report-response.json",
+      "schema": "recall-usage-report-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/recent-context-view.json",
+      "schema": "recent-context-view"
+    },
+    {
+      "expected": "accept",
       "file": "valid/relation-create-request.json",
       "schema": "relation-create-request"
     },
@@ -424,6 +459,66 @@
       "expected": "accept",
       "file": "valid/retention-policy-view.json",
       "schema": "retention-policy-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/schedule-view.json",
+      "schema": "schedule-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/search-request.json",
+      "schema": "search-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/search-response.json",
+      "schema": "search-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/source-cursor-envelope.json",
+      "schema": "source-cursor-envelope"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/state-history-response.json",
+      "schema": "state-history-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/state-put-request.json",
+      "schema": "state-put-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/state-view.json",
+      "schema": "state-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/task-create-request-minimum.json",
+      "schema": "task-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/task-create-request-with-lease-proof.json",
+      "schema": "task-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/task-create-request.json",
+      "schema": "task-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/task-view.json",
+      "schema": "task-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/trigger-view.json",
+      "schema": "trigger-view"
     }
   ]
 }

@@ -1,0 +1,196 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/search-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "results": {
+      "items": {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-candidate.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "pattern": "^cand:[0-9a-f]{16}$",
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "conflict_state": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "enum": [
+                  "conflicts",
+                  "redundant"
+                ]
+              }
+            ]
+          },
+          "content_hash": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "format": "date-time",
+                "type": "string"
+              }
+            ]
+          },
+          "final_score": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "placement": {
+            "enum": [
+              "working",
+              "memory"
+            ]
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "resource_ref": {
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "resource_type": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "properties": {
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_group_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "object"
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "subject_entity_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "token_estimate": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "resource_ref",
+          "content_hash",
+          "text",
+          "category",
+          "placement",
+          "scope",
+          "privacy_labels",
+          "source_refs",
+          "scores",
+          "final_score",
+          "token_estimate"
+        ],
+        "title": "RecallCandidate",
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "results"
+  ],
+  "title": "SearchResponse",
+  "type": "object"
+}

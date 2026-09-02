@@ -24,6 +24,7 @@ import json
 import re
 import sqlite3
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -394,7 +395,11 @@ class MigrationRunner:
         connection.commit()
 
     def current_version(self) -> int:
-        with self._connect() as connection:
+        # ``closing`` matters: a ``with connection`` block only scopes the
+        # transaction, it does not close the handle. A leaked open
+        # connection keeps a WAL-mode database mapped and blocks later
+        # journal-mode switches (restore staging hits this).
+        with closing(self._connect()) as connection:
             self._ensure_metadata(connection)
             row = connection.execute(
                 "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
@@ -423,7 +428,11 @@ class MigrationRunner:
         running_raw = app_version or current_app_version()
         running_version = _version_tuple(running_raw)
         applied_now: list[Migration] = []
-        with self._connect() as connection:
+        # ``closing`` (not a bare ``with``): the handle must not outlive this
+        # call — every commit is explicit, and a leaked connection would pin
+        # WAL sidecars on the migrated file (restore staging switches journal
+        # modes after migrating and a pinned WAL makes that fail ``busy``).
+        with closing(self._connect()) as connection:
             self._ensure_metadata(connection)
             recorded = {
                 int(version): (str(name), str(checksum))

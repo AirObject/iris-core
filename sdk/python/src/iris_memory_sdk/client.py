@@ -1055,6 +1055,67 @@ class AsyncIrisMemoryClient:
         )
         return cast(dict[str, Any], value)
 
+    # -- Phase 6: recall protocol ---------------------------------------------
+
+    async def recall(
+        self,
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST /v1/recall — the full recall envelope (ADR-0014).
+
+        The SDK does not hide scope, partial, degraded routes, persona
+        revision or cache_until; every field of the envelope is returned as-is.
+        """
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/recall",
+            record,
+        )
+        return cast(dict[str, Any], value)
+
+    async def report_recall_usage(
+        self,
+        request_id: str,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """POST /v1/recall/{request_id}/usage — four-stage usage report."""
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/recall/{quote(request_id, safe='')}/usage",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def search(
+        self,
+        agent_id: str,
+        query: str,
+        *,
+        space_id: str | None = None,
+        session_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """POST /v1/search — FTS-backed cross-resource search."""
+        body: dict[str, Any] = {"agent_id": agent_id, "query": query, "limit": limit}
+        if space_id is not None:
+            body["space_id"] = space_id
+        if session_id is not None:
+            body["session_id"] = session_id
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/search",
+            body,
+        )
+        return cast(dict[str, Any], value)
+
     def _request_json(
         self,
         method: str,

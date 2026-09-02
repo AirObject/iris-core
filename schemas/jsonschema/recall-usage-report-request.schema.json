@@ -1,0 +1,54 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/recall-usage-report-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "host_cycle_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "host_selected_candidate_ids": {
+      "items": {
+        "pattern": "^cand:[0-9a-f]{16}$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "model_visible_candidate_ids": {
+      "items": {
+        "pattern": "^cand:[0-9a-f]{16}$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "persona_revision": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "reported_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "returned_candidate_ids": {
+      "items": {
+        "pattern": "^cand:[0-9a-f]{16}$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "host_cycle_id",
+    "persona_revision",
+    "returned_candidate_ids",
+    "host_selected_candidate_ids",
+    "model_visible_candidate_ids",
+    "reported_at"
+  ],
+  "title": "RecallUsageReportRequest",
+  "type": "object"
+}

@@ -1378,6 +1378,231 @@ def _validate_legal_hold_release_request(value: object) -> tuple[str, ...]:
     return tuple(errors)
 
 
+# -- Phase 6: recall protocol validators (forward-lax on enums) --------------
+
+_CANDIDATE_ID_RE = re.compile(r"^cand:[0-9a-f]{16}$")
+
+
+def _validate_external_actor_ref(value: object, key: str, errors: list[str]) -> None:
+    if not isinstance(value, dict):
+        errors.append(f"{key} must be an object")
+        return
+    _require_non_empty_str(value.get("provider"), f"{key}.provider", errors)
+    _require_non_empty_str(value.get("external_id"), f"{key}.external_id", errors)
+
+
+def _validate_recall_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    if value.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    _require_non_empty_str(value.get("request_id"), "request_id", errors)
+    scope = value.get("scope")
+    if not isinstance(scope, dict):
+        errors.append("scope must be an object")
+    else:
+        _require_non_empty_str(scope.get("agent_id"), "scope.agent_id", errors)
+        _require_non_empty_str(scope.get("space_id"), "scope.space_id", errors)
+    actors = value.get("actors")
+    if not isinstance(actors, list) or not actors:
+        errors.append("actors must be a non-empty array")
+    else:
+        for index, actor in enumerate(actors):
+            _validate_external_actor_ref(actor, f"actors[{index}]", errors)
+    topic = value.get("topic")
+    if not isinstance(topic, str) or not topic.strip():
+        errors.append("topic must be a non-empty string")
+    purpose = value.get("purpose")
+    if not isinstance(purpose, str) or not purpose:
+        errors.append("purpose must be a string")
+    token_budget = value.get("token_budget")
+    if not isinstance(token_budget, int) or isinstance(token_budget, bool) or token_budget < 0:
+        errors.append("token_budget must be a non-negative integer")
+    deadline_at = value.get("deadline_at")
+    if not isinstance(deadline_at, str) or not deadline_at:
+        errors.append("deadline_at must be a non-empty string")
+    return tuple(errors)
+
+
+def _validate_recall_candidate(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("candidate must be an object",)
+    errors: list[str] = []
+    candidate_id = value.get("candidate_id")
+    if not isinstance(candidate_id, str) or not _CANDIDATE_ID_RE.match(candidate_id):
+        errors.append("candidate_id must match cand:<16 hex>")
+    resource_ref = value.get("resource_ref")
+    if not isinstance(resource_ref, dict):
+        errors.append("resource_ref must be an object")
+    else:
+        _require_non_empty_str(
+            resource_ref.get("resource_type"), "resource_ref.resource_type", errors
+        )
+        _require_non_empty_str(resource_ref.get("resource_id"), "resource_ref.resource_id", errors)
+        revision = resource_ref.get("revision")
+        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+            errors.append("resource_ref.revision must be a positive integer")
+    _require_non_empty_str(value.get("content_hash"), "content_hash", errors)
+    if not isinstance(value.get("text"), str):
+        errors.append("text must be a string")
+    if not isinstance(value.get("category"), str):
+        errors.append("category must be a string")
+    placement = value.get("placement")
+    if placement not in ("working", "memory"):
+        errors.append("placement must be working or memory")
+    scores = value.get("scores")
+    if not isinstance(scores, dict):
+        errors.append("scores must be an object")
+    final_score = value.get("final_score")
+    if (
+        not isinstance(final_score, (int, float))
+        or isinstance(final_score, bool)
+        or not 0 <= final_score <= 1
+    ):
+        errors.append("final_score must be within [0, 1]")
+    token_estimate = value.get("token_estimate")
+    if (
+        not isinstance(token_estimate, int)
+        or isinstance(token_estimate, bool)
+        or token_estimate < 0
+    ):
+        errors.append("token_estimate must be a non-negative integer")
+    return tuple(errors)
+
+
+def _validate_degraded_route(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("degraded route must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("route"), "route", errors)
+    _require_non_empty_str(value.get("reason_code"), "reason_code", errors)
+    if not isinstance(value.get("retryable"), bool):
+        errors.append("retryable must be a boolean")
+    _require_non_empty_str(value.get("fallback"), "fallback", errors)
+    return tuple(errors)
+
+
+def _validate_recall_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    if value.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    _require_non_empty_str(value.get("request_id"), "request_id", errors)
+    _require_non_empty_str(value.get("source_watermark"), "source_watermark", errors)
+    persona_revision = value.get("persona_revision")
+    if (
+        not isinstance(persona_revision, int)
+        or isinstance(persona_revision, bool)
+        or persona_revision < 0
+    ):
+        errors.append("persona_revision must be a non-negative integer")
+    if not isinstance(value.get("persona_content_hash"), str):
+        errors.append("persona_content_hash must be a string")
+    candidates = value.get("candidates")
+    if not isinstance(candidates, list):
+        errors.append("candidates must be an array")
+    else:
+        for index, item in enumerate(candidates):
+            errors.extend(f"candidates[{index}].{e}" for e in _validate_recall_candidate(item))
+    for key in ("pending_event_ids", "completed_routes"):
+        if not isinstance(value.get(key), list):
+            errors.append(f"{key} must be an array")
+    degraded = value.get("degraded_routes")
+    if not isinstance(degraded, list):
+        errors.append("degraded_routes must be an array")
+    else:
+        for index, item in enumerate(degraded):
+            errors.extend(f"degraded_routes[{index}].{e}" for e in _validate_degraded_route(item))
+    if not isinstance(value.get("partial"), bool):
+        errors.append("partial must be a boolean")
+    for key in ("cache_until", "next_wake_at"):
+        if value.get(key) is not None and not isinstance(value.get(key), str):
+            errors.append(f"{key} must be a string or null")
+    trace = value.get("trace", None)
+    if trace is not None and not isinstance(trace, dict):
+        errors.append("trace must be an object or null")
+    return tuple(errors)
+
+
+def _validate_recall_usage_report_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("host_cycle_id"), "host_cycle_id", errors)
+    persona_revision = value.get("persona_revision")
+    if (
+        not isinstance(persona_revision, int)
+        or isinstance(persona_revision, bool)
+        or persona_revision < 0
+    ):
+        errors.append("persona_revision must be a non-negative integer")
+    for key in (
+        "returned_candidate_ids",
+        "host_selected_candidate_ids",
+        "model_visible_candidate_ids",
+    ):
+        ids = value.get(key)
+        if not isinstance(ids, list) or not all(
+            isinstance(item, str) and _CANDIDATE_ID_RE.match(item) for item in ids
+        ):
+            errors.append(f"{key} must be an array of cand:<16 hex> ids")
+    _require_non_empty_str(value.get("reported_at"), "reported_at", errors)
+    return tuple(errors)
+
+
+def _validate_recall_usage_report_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("report_id"), "report_id", errors)
+    if not isinstance(value.get("created"), bool):
+        errors.append("created must be a boolean")
+    _require_non_empty_str(value.get("request_id"), "request_id", errors)
+    stages = value.get("stages")
+    if not isinstance(stages, dict):
+        errors.append("stages must be an object")
+    else:
+        for key in (
+            "retrieved_count",
+            "returned_count",
+            "host_selected_count",
+            "model_visible_count",
+        ):
+            count = stages.get(key)
+            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                errors.append(f"stages.{key} must be a non-negative integer")
+    return tuple(errors)
+
+
+def _validate_search_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    query = value.get("query")
+    if not isinstance(query, str) or not query:
+        errors.append("query must be a non-empty string")
+    limit = value.get("limit", 50)
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 200:
+        errors.append("limit must be within 1..200")
+    return tuple(errors)
+
+
+def _validate_search_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    results = value.get("results")
+    if not isinstance(results, list):
+        errors.append("results must be an array")
+        return tuple(errors)
+    for index, item in enumerate(results):
+        errors.extend(f"results[{index}].{e}" for e in _validate_recall_candidate(item))
+    return tuple(errors)
+
+
 def validate_contract(schema: str, value: object) -> tuple[str, ...]:
     validators = {
         "capabilities": _validate_capabilities,
@@ -1434,6 +1659,12 @@ def validate_contract(schema: str, value: object) -> tuple[str, ...]:
         "legal-hold-create-request": _validate_legal_hold_create_request,
         "legal-hold-view": _validate_legal_hold_view,
         "legal-hold-release-request": _validate_legal_hold_release_request,
+        "recall-request": _validate_recall_request,
+        "recall-response": _validate_recall_response,
+        "recall-usage-report-request": _validate_recall_usage_report_request,
+        "recall-usage-report-response": _validate_recall_usage_report_response,
+        "search-request": _validate_search_request,
+        "search-response": _validate_search_response,
     }
     validator = validators.get(schema)
     if validator is None:

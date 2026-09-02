@@ -1,0 +1,11 @@
+{
+  "created": true,
+  "report_id": "01a060aa-0000-7000-8000-000000000002",
+  "request_id": "01a060aa-0000-7000-8000-000000000001",
+  "stages": {
+    "host_selected_count": 1,
+    "model_visible_count": 1,
+    "retrieved_count": 3,
+    "returned_count": 1
+  }
+}

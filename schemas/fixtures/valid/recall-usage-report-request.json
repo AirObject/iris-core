@@ -1,0 +1,14 @@
+{
+  "host_cycle_id": "cycle-01a060aa",
+  "host_selected_candidate_ids": [
+    "cand:0123456789abcdef"
+  ],
+  "model_visible_candidate_ids": [
+    "cand:0123456789abcdef"
+  ],
+  "persona_revision": 1,
+  "reported_at": "2026-09-02T12:00:02+00:00",
+  "returned_candidate_ids": [
+    "cand:0123456789abcdef"
+  ]
+}

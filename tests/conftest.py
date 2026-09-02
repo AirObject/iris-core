@@ -213,6 +213,20 @@ def health(
 
 
 @pytest.fixture
+def phase6_world(clocked_store, mutable_clock):  # type: ignore[no-untyped-def]
+    """Shared Phase 6 recall world (see tests/integration/test_phase6_recall.py)."""
+    from tests.integration.test_phase6_recall import build_world
+
+    mutable_clock.set(1_700_000_000_000_000)
+    return build_world(clocked_store, mutable_clock)
+
+
+@pytest.fixture
+def world(phase6_world):  # type: ignore[no-untyped-def]
+    return phase6_world
+
+
+@pytest.fixture
 def admin_access(tenant_id: str) -> AccessContext:
     return AccessContext(
         tenant_id=tenant_id,
@@ -271,6 +285,7 @@ def access_for(
     space_group_ids: frozenset[str] = frozenset(),
     space_ids: frozenset[str] = frozenset(),
     consent_entities: frozenset[str] = frozenset(),
+    custom_labels: frozenset[str] = frozenset(),
     admin: bool = False,
     app_instance_id: str = "app-1",
 ) -> AccessContext:
@@ -281,5 +296,6 @@ def access_for(
         allowed_space_group_ids=space_group_ids,
         allowed_space_ids=space_ids,
         consent_subject_entity_ids=consent_entities,
+        granted_custom_labels=custom_labels,
         admin=admin,
     )

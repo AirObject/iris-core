@@ -74,6 +74,219 @@ function validateErrorEnvelope(value: unknown): string[] {
   return errors;
 }
 
+
+// -- Phase 6: recall protocol validators (forward-lax on enums) -------------
+
+const CANDIDATE_ID_PATTERN = /^cand:[0-9a-f]{16}$/;
+
+function validateExternalActorRef(value: unknown, key: string, errors: string[]): void {
+  if (!isRecord(value)) {
+    errors.push(`${key} must be an object`);
+    return;
+  }
+  requireNonEmptyString(value.provider, `${key}.provider`, errors);
+  requireNonEmptyString(value.external_id, `${key}.external_id`, errors);
+}
+
+function validateRecallRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (value.schema_version !== 1) errors.push("schema_version must be 1");
+  requireNonEmptyString(value.request_id, "request_id", errors);
+  if (!isRecord(value.scope)) {
+    errors.push("scope must be an object");
+  } else {
+    requireNonEmptyString(value.scope.agent_id, "scope.agent_id", errors);
+    requireNonEmptyString(value.scope.space_id, "scope.space_id", errors);
+  }
+  if (!Array.isArray(value.actors) || value.actors.length === 0) {
+    errors.push("actors must be a non-empty array");
+  } else {
+    value.actors.forEach((actor, index) =>
+      validateExternalActorRef(actor, `actors[${index}]`, errors),
+    );
+  }
+  if (typeof value.topic !== "string" || value.topic.trim() === "") {
+    errors.push("topic must be a non-empty string");
+  }
+  if (typeof value.purpose !== "string" || value.purpose === "") {
+    errors.push("purpose must be a string");
+  }
+  if (!Number.isInteger(value.token_budget) || Number(value.token_budget) < 0) {
+    errors.push("token_budget must be a non-negative integer");
+  }
+  if (typeof value.deadline_at !== "string" || value.deadline_at === "") {
+    errors.push("deadline_at must be a non-empty string");
+  }
+  return errors;
+}
+
+function validateRecallCandidate(value: unknown): string[] {
+  if (!isRecord(value)) return ["candidate must be an object"];
+  const errors: string[] = [];
+  if (typeof value.candidate_id !== "string" || !CANDIDATE_ID_PATTERN.test(value.candidate_id)) {
+    errors.push("candidate_id must match cand:<16 hex>");
+  }
+  if (!isRecord(value.resource_ref)) {
+    errors.push("resource_ref must be an object");
+  } else {
+    requireNonEmptyString(value.resource_ref.resource_type, "resource_ref.resource_type", errors);
+    requireNonEmptyString(value.resource_ref.resource_id, "resource_ref.resource_id", errors);
+    if (
+      !Number.isInteger(value.resource_ref.revision) ||
+      Number(value.resource_ref.revision) < 1
+    ) {
+      errors.push("resource_ref.revision must be a positive integer");
+    }
+  }
+  requireNonEmptyString(value.content_hash, "content_hash", errors);
+  if (typeof value.text !== "string") errors.push("text must be a string");
+  if (typeof value.category !== "string") errors.push("category must be a string");
+  if (value.placement !== "working" && value.placement !== "memory") {
+    errors.push("placement must be working or memory");
+  }
+  if (!isRecord(value.scores)) errors.push("scores must be an object");
+  requireUnitInterval(value.final_score, "final_score", errors);
+  if (!Number.isInteger(value.token_estimate) || Number(value.token_estimate) < 0) {
+    errors.push("token_estimate must be a non-negative integer");
+  }
+  return errors;
+}
+
+function validateDegradedRoute(value: unknown): string[] {
+  if (!isRecord(value)) return ["degraded route must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.route, "route", errors);
+  requireNonEmptyString(value.reason_code, "reason_code", errors);
+  if (typeof value.retryable !== "boolean") errors.push("retryable must be a boolean");
+  requireNonEmptyString(value.fallback, "fallback", errors);
+  return errors;
+}
+
+function validateRecallResponse(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (value.schema_version !== 1) errors.push("schema_version must be 1");
+  requireNonEmptyString(value.request_id, "request_id", errors);
+  requireNonEmptyString(value.source_watermark, "source_watermark", errors);
+  if (!Number.isInteger(value.persona_revision) || Number(value.persona_revision) < 0) {
+    errors.push("persona_revision must be a non-negative integer");
+  }
+  if (typeof value.persona_content_hash !== "string") {
+    errors.push("persona_content_hash must be a string");
+  }
+  if (!Array.isArray(value.candidates)) {
+    errors.push("candidates must be an array");
+  } else {
+    value.candidates.forEach((item, index) =>
+      validateRecallCandidate(item).forEach((error) =>
+        errors.push(`candidates[${index}].${error}`),
+      ),
+    );
+  }
+  for (const key of ["pending_event_ids", "completed_routes"] as const) {
+    if (!Array.isArray(value[key])) errors.push(`${key} must be an array`);
+  }
+  if (!Array.isArray(value.degraded_routes)) {
+    errors.push("degraded_routes must be an array");
+  } else {
+    value.degraded_routes.forEach((item, index) =>
+      validateDegradedRoute(item).forEach((error) =>
+        errors.push(`degraded_routes[${index}].${error}`),
+      ),
+    );
+  }
+  if (typeof value.partial !== "boolean") errors.push("partial must be a boolean");
+  for (const key of ["cache_until", "next_wake_at"] as const) {
+    if (value[key] !== null && value[key] !== undefined && typeof value[key] !== "string") {
+      errors.push(`${key} must be a string or null`);
+    }
+  }
+  if (value.trace !== null && value.trace !== undefined && !isRecord(value.trace)) {
+    errors.push("trace must be an object or null");
+  }
+  return errors;
+}
+
+function validateRecallUsageReportRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.host_cycle_id, "host_cycle_id", errors);
+  if (!Number.isInteger(value.persona_revision) || Number(value.persona_revision) < 0) {
+    errors.push("persona_revision must be a non-negative integer");
+  }
+  for (const key of [
+    "returned_candidate_ids",
+    "host_selected_candidate_ids",
+    "model_visible_candidate_ids",
+  ] as const) {
+    const ids = value[key];
+    if (
+      !Array.isArray(ids) ||
+      !ids.every((item) => typeof item === "string" && CANDIDATE_ID_PATTERN.test(item))
+    ) {
+      errors.push(`${key} must be an array of cand:<16 hex> ids`);
+    }
+  }
+  requireNonEmptyString(value.reported_at, "reported_at", errors);
+  return errors;
+}
+
+function validateRecallUsageReportResponse(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.report_id, "report_id", errors);
+  if (typeof value.created !== "boolean") errors.push("created must be a boolean");
+  requireNonEmptyString(value.request_id, "request_id", errors);
+  if (!isRecord(value.stages)) {
+    errors.push("stages must be an object");
+  } else {
+    for (const key of [
+      "retrieved_count",
+      "returned_count",
+      "host_selected_count",
+      "model_visible_count",
+    ] as const) {
+      if (!Number.isInteger(value.stages[key]) || Number(value.stages[key]) < 0) {
+        errors.push(`stages.${key} must be a non-negative integer`);
+      }
+    }
+  }
+  return errors;
+}
+
+function validateSearchRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.agent_id, "agent_id", errors);
+  if (typeof value.query !== "string" || value.query === "") {
+    errors.push("query must be a non-empty string");
+  }
+  const limit: unknown = value.limit === undefined ? 50 : value.limit;
+  if (
+    typeof limit !== "number" ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 200
+  ) {
+    errors.push("limit must be within 1..200");
+  }
+  return errors;
+}
+
+function validateSearchResponse(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!Array.isArray(value.results)) {
+    errors.push("results must be an array");
+    return errors;
+  }
+  value.results.forEach((item, index) =>
+    validateRecallCandidate(item).forEach((error) => errors.push(`results[${index}].${error}`)),
+  );
+  return errors;
+}
+
 export function validateContract(schema: string, value: unknown): readonly string[] {
   if (schema === "capabilities") return validateCapabilities(value);
   if (schema === "error-envelope") return validateErrorEnvelope(value);
@@ -130,6 +343,12 @@ export function validateContract(schema: string, value: unknown): readonly strin
   if (schema === "legal-hold-create-request") return validateLegalHoldCreateRequest(value);
   if (schema === "legal-hold-view") return validateLegalHoldView(value);
   if (schema === "legal-hold-release-request") return validateLegalHoldReleaseRequest(value);
+  if (schema === "recall-request") return validateRecallRequest(value);
+  if (schema === "recall-response") return validateRecallResponse(value);
+  if (schema === "recall-usage-report-request") return validateRecallUsageReportRequest(value);
+  if (schema === "recall-usage-report-response") return validateRecallUsageReportResponse(value);
+  if (schema === "search-request") return validateSearchRequest(value);
+  if (schema === "search-response") return validateSearchResponse(value);
   return [`unknown schema: ${schema}`];
 }
 
@@ -1612,6 +1831,133 @@ export interface ObservationBatchResponse {
   readonly [futureField: string]: unknown;
 }
 
+
+// -- Phase 6: recall protocol (ADR-0014) ------------------------------------
+
+export interface ExternalActorRef {
+  provider: string;
+  external_id: string;
+  realm?: string;
+  weight?: number;
+}
+
+export interface RecallScope {
+  agent_id: string;
+  space_id: string;
+  session_id?: string | null;
+  /** Optional group narrowing; group-scoped docs become recallable. */
+  space_group_id?: string | null;
+}
+
+export interface RecallRequest {
+  schema_version: 1;
+  request_id: string;
+  scope: RecallScope;
+  actors: ReadonlyArray<ExternalActorRef>;
+  topic: string;
+  purpose: "reply" | "planning" | "reflection" | "tool";
+  token_budget: number;
+  deadline_at: string;
+  categories?: ReadonlyArray<string>;
+  resource_types?: ReadonlyArray<string>;
+  requested_privacy_labels?: ReadonlyArray<string>;
+  layer_budgets?: Readonly<Record<string, number>>;
+  candidate_limits?: Readonly<Record<string, number>>;
+  as_of?: string | null;
+  minimum_watermark?: string | null;
+  allow_partial?: boolean;
+  include_trace?: boolean;
+}
+
+export interface DegradedRoute {
+  route: string;
+  reason_code: string;
+  retryable: boolean;
+  fallback: string;
+}
+
+export interface RecallCandidate {
+  candidate_id: string;
+  resource_ref: { resource_type: string; resource_id: string; revision: number };
+  content_hash: string;
+  text: string;
+  category: string;
+  placement: "working" | "memory";
+  subject_entity_id?: string | null;
+  scope: { space_group_id?: string | null; space_id?: string | null; session_id?: string | null };
+  privacy_labels: ReadonlyArray<string>;
+  source_refs: ReadonlyArray<Record<string, unknown>>;
+  scores: Readonly<Record<string, number | null>>;
+  final_score: number;
+  token_estimate: number;
+  conflict_state?: "conflicts" | "redundant" | null;
+  expires_at?: string | null;
+}
+
+export interface RecallTrace {
+  request_hash: string;
+  ranker_version: number;
+  total_duration_us: number;
+  routes: ReadonlyArray<{
+    route: string;
+    outcome: "completed" | "degraded";
+    candidate_count: number;
+    duration_us: number;
+    fallback?: string | null;
+  }>;
+  rehydrated_out: number;
+  missing_score_components?: number;
+}
+
+export interface RecallResponse {
+  schema_version: 1;
+  request_id: string;
+  source_watermark: string;
+  persona_revision: number;
+  persona_content_hash: string;
+  candidates: ReadonlyArray<RecallCandidate>;
+  pending_event_ids: ReadonlyArray<string>;
+  completed_routes: ReadonlyArray<string>;
+  degraded_routes: ReadonlyArray<DegradedRoute>;
+  partial: boolean;
+  cache_until: string | null;
+  next_wake_at: string | null;
+  trace?: RecallTrace | null;
+}
+
+export interface RecallUsageReportRequest {
+  host_cycle_id: string;
+  persona_revision: number;
+  returned_candidate_ids: ReadonlyArray<string>;
+  host_selected_candidate_ids: ReadonlyArray<string>;
+  model_visible_candidate_ids: ReadonlyArray<string>;
+  reported_at: string;
+}
+
+export interface RecallUsageReportResponse {
+  report_id: string;
+  created: boolean;
+  request_id: string;
+  stages: {
+    retrieved_count: number;
+    returned_count: number;
+    host_selected_count: number;
+    model_visible_count: number;
+  };
+}
+
+export interface SearchRequest {
+  agent_id: string;
+  query: string;
+  space_id?: string | null;
+  session_id?: string | null;
+  limit?: number;
+}
+
+export interface SearchResponse {
+  results: ReadonlyArray<RecallCandidate>;
+}
+
 export interface LeaseView {
   readonly lease_id: string;
   readonly tenant_id: string;
@@ -2315,6 +2661,55 @@ export class AsyncIrisMemoryClient {
       },
     );
     return (await response.json()) as Readonly<Record<string, unknown>>;
+  }
+
+
+  // -- Phase 6: recall protocol ---------------------------------------------
+
+  public async recall(input: RecallRequest): Promise<RecallResponse> {
+    const response = await fetch(`${this.#baseUrl}/v1/recall`, {
+      body: JSON.stringify(input),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new ContractValidationError([`recall failed with ${response.status}`]);
+    }
+    return (await response.json()) as RecallResponse;
+  }
+
+  public async reportRecallUsage(
+    requestId: string,
+    input: RecallUsageReportRequest,
+    options: { idempotencyKey: string },
+  ): Promise<RecallUsageReportResponse> {
+    const response = await fetch(
+      `${this.#baseUrl}/v1/recall/${encodeURIComponent(requestId)}/usage`,
+      {
+        body: JSON.stringify(input),
+        headers: {
+          "Idempotency-Key": options.idempotencyKey,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    if (!response.ok) {
+      throw new ContractValidationError([`usage report failed with ${response.status}`]);
+    }
+    return (await response.json()) as RecallUsageReportResponse;
+  }
+
+  public async search(input: SearchRequest): Promise<SearchResponse> {
+    const response = await fetch(`${this.#baseUrl}/v1/search`, {
+      body: JSON.stringify(input),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new ContractValidationError([`search failed with ${response.status}`]);
+    }
+    return (await response.json()) as SearchResponse;
   }
 
   // -- Phase 4: notes -------------------------------------------------------

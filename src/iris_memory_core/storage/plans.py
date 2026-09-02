@@ -393,7 +393,10 @@ class NoteRepository:
         *,
         statuses: tuple[str, ...] = ("inbox", "pinned", "snoozed"),
         kind: str | None = None,
+        include_tombstoned: bool = False,
         limit: int = 100,
+        cursor_created_us: int | None = None,
+        cursor_id: str | None = None,
     ) -> list[NoteCurrent]:
         clauses = ["tenant_id = ?", "agent_id = ?"]
         params: list[Any] = [tenant_id, agent_id]
@@ -401,9 +404,21 @@ class NoteRepository:
             placeholders = ",".join("?" for _ in statuses)
             clauses.append(f"status IN ({placeholders})")
             params.extend(statuses)
+        if not include_tombstoned:
+            # Same SQL-level exclusion the claims/episode enumerations apply:
+            # a committed tombstone must not feed ANY canonical consumer (the
+            # FTS rebuild reads this directly; app-level listings re-check).
+            clauses.append(
+                "NOT EXISTS (SELECT 1 FROM resource_tombstones _rt "
+                "WHERE _rt.tenant_id = notes.tenant_id AND _rt.resource_type = 'note' "
+                "AND _rt.resource_id = notes.id)"
+            )
         if kind is not None:
             clauses.append("kind = ?")
             params.append(kind)
+        if cursor_created_us is not None and cursor_id is not None:
+            clauses.append("(created_us > ? OR (created_us = ? AND id > ?))")
+            params.extend([cursor_created_us, cursor_created_us, cursor_id])
         rows = self._connection.execute(
             f"SELECT * FROM notes WHERE {' AND '.join(clauses)} ORDER BY created_us, id LIMIT ?",
             (*params, limit),

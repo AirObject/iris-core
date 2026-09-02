@@ -755,6 +755,19 @@ class OutboxRepository:
         )
         return int(row["oldest"]) if row is not None and row["oldest"] is not None else None
 
+    def unsettled_job_count(self, tenant_id: str, agent_id: str | None, job_kind: str) -> int:
+        """Unsettled (queued/in-flight/retryable) jobs of one kind for one
+        agent — the true consumption backlog, derived from queue state
+        rather than from incrementally maintained watermark counters."""
+        row = _one(
+            self._connection,
+            f"SELECT COUNT(*) AS c FROM outbox_jobs WHERE status IN ({_UNSETTLED}) "
+            "AND tenant_id = ? AND agent_id = ? AND job_kind = ?",
+            (tenant_id, agent_id, job_kind),
+        )
+        assert row is not None  # aggregates always return one row
+        return int(row["c"])
+
     def status_counts(self) -> dict[str, int]:
         rows = self._connection.execute(
             "SELECT status, COUNT(*) AS c FROM outbox_jobs GROUP BY status"

@@ -19,6 +19,12 @@ from iris_memory_core.domain.event import (
     CognitiveEventRevision,
 )
 from iris_memory_core.domain.focus import FocusItemCurrent, FocusRevision
+from iris_memory_core.domain.fts import (
+    FtsCurrentPointer,
+    FtsDocumentInput,
+    FtsDocumentRecord,
+    FtsGenerationRecord,
+)
 from iris_memory_core.domain.identity import (
     BindingMethod,
     BindingState,
@@ -273,6 +279,7 @@ class OutboxSurface(Protocol):
         lane: str | None = None,
     ) -> dict[str, int]: ...
     def oldest_pending_us(self) -> int | None: ...
+    def unsettled_job_count(self, tenant_id: str, agent_id: str | None, job_kind: str) -> int: ...
     def status_counts(self) -> dict[str, int]: ...
     def tick_completion(self, tick_id: str, *, now_us: int, error_code: str | None) -> None: ...
 
@@ -610,7 +617,10 @@ class NoteSurface(Protocol):
         *,
         statuses: tuple[str, ...] = ("inbox", "pinned", "snoozed"),
         kind: str | None = None,
+        include_tombstoned: bool = False,
         limit: int = 100,
+        cursor_created_us: int | None = None,
+        cursor_id: str | None = None,
     ) -> Sequence[NoteCurrent]: ...
     def review_due(
         self, tenant_id: str, agent_id: str, *, now_us: int, limit: int = 500
@@ -1011,6 +1021,8 @@ class EpisodeSurface(Protocol):
         *,
         statuses: Sequence[str] = ("open", "sealed"),
         limit: int = 100,
+        cursor_updated_us: int | None = None,
+        cursor_id: str | None = None,
     ) -> Sequence[EpisodeCurrent]: ...
     def episodes_for_session(
         self, tenant_id: str, space_id: str, session_id: str
@@ -1407,6 +1419,7 @@ class IdentitySurface(Protocol):
         privacy_labels: Sequence[str] = (),
         actor: str = "system",
     ) -> Entity: ...
+
     def insert_entity_redirect(
         self,
         tenant_id: str,
@@ -1416,6 +1429,148 @@ class IdentitySurface(Protocol):
         actor: str,
         reason_code: str,
     ) -> EntityRedirect: ...
+
+
+class FtsSurface(Protocol):
+    """Repository surface for the FTS5 projection (ADR-0014 §1-2)."""
+
+    def ensure_index(self) -> bool: ...
+
+    def drop_index(self) -> None: ...
+
+    def projection_state(self) -> str: ...
+
+    def set_projection_state(self, state: str, *, now_us: int | None = None) -> None: ...
+
+    def reset_projection(self, *, now_us: int | None = None) -> None: ...
+
+    def insert_generation(
+        self,
+        *,
+        tenant_id: str,
+        builder_version: int,
+        tokenizer_version: int,
+        config_json: str,
+        source_watermark: int,
+        tombstone_watermark: int,
+        document_count: int,
+        content_checksum: str,
+        now_us: int | None = None,
+    ) -> FtsGenerationRecord: ...
+
+    def get_generation(self, generation_id: str) -> FtsGenerationRecord: ...
+
+    def generations_for_tenant(self, tenant_id: str) -> tuple[FtsGenerationRecord, ...]: ...
+
+    def retire_generation(self, generation_id: str) -> int: ...
+
+    def pointer(self, tenant_id: str) -> FtsCurrentPointer | None: ...
+
+    def switch_pointer(
+        self, *, tenant_id: str, generation: FtsGenerationRecord, now_us: int | None = None
+    ) -> None: ...
+
+    def upsert_document(
+        self,
+        *,
+        generation_id: str,
+        document: FtsDocumentInput,
+        source_watermark: int,
+        tombstone_watermark: int,
+        builder_version: int,
+        now_us: int | None = None,
+    ) -> FtsDocumentRecord: ...
+
+    def invalidate_document(
+        self,
+        *,
+        tenant_id: str,
+        resource_type: str,
+        resource_id: str,
+        now_us: int | None = None,
+    ) -> int: ...
+
+    def document_for_resource(
+        self, tenant_id: str, resource_type: str, resource_id: str
+    ) -> FtsDocumentRecord | None: ...
+
+    def delete_invalid_documents(self, tenant_id: str, *, limit: int = 500) -> int: ...
+
+    def delete_retired_generations(
+        self, tenant_id: str, *, keep: int = 2, now_us: int | None = None
+    ) -> int: ...
+
+    def documents_for_generation(self, generation_id: str) -> tuple[FtsDocumentRecord, ...]: ...
+
+    def count_documents(self, generation_id: str) -> int: ...
+
+    def sample_query(
+        self, generation_id: str, match_expression: str, *, limit: int = 5
+    ) -> tuple[int, ...]: ...
+
+    def search(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        generation_id: str,
+        match_expression: str,
+        space_group_id: str | None = None,
+        space_id: str | None = None,
+        session_id: str | None = None,
+        statuses: Sequence[str] = ("active", "disputed", "open", "sealed", "inbox", "pinned"),
+        valid_at_us: int | None = None,
+        limit: int = 50,
+    ) -> tuple[tuple[FtsDocumentRecord, float], ...]: ...
+
+
+class RecallUsageSurface(Protocol):
+    """Repository surface for recall request archives and usage reports."""
+
+    def insert_request(
+        self,
+        *,
+        request_id: str,
+        tenant_id: str,
+        agent_id: str,
+        persona_revision: int,
+        source_watermark: int,
+        tombstone_watermark: int,
+        schema_version: int,
+        ranker_version: int,
+        token_estimator_version: int,
+        retrieved_count: int,
+        returned_candidate_ids: Sequence[str],
+        request_fingerprint: str,
+        resource_ids: Sequence[str] = (),
+        response_json: str | None = None,
+        now_us: int | None = None,
+    ) -> None: ...
+
+    def get_request(self, tenant_id: str, request_id: str) -> object | None: ...
+
+    def returned_candidate_ids(self, tenant_id: str, request_id: str) -> tuple[str, ...] | None: ...
+
+    def scrub_request_responses(self, tenant_id: str, resource_ids: Sequence[str]) -> int: ...
+
+    def insert_report(
+        self,
+        *,
+        tenant_id: str,
+        request_id: str,
+        agent_id: str,
+        app_instance_id: str,
+        host_cycle_id: str,
+        persona_revision: int,
+        host_selected_ids: Sequence[str],
+        model_visible_ids: Sequence[str],
+        reported_at_us: int,
+        now_us: int | None = None,
+    ) -> tuple[str, bool]: ...
+
+    def get_report(self, tenant_id: str, request_id: str, host_cycle_id: str) -> object | None: ...
+
+    def reports_for_request(self, tenant_id: str, request_id: str) -> Sequence[object]: ...
 
 
 class Transaction(Protocol):
@@ -1468,6 +1623,12 @@ class Transaction(Protocol):
 
     @property
     def retention(self) -> RetentionSurface: ...
+
+    @property
+    def fts(self) -> FtsSurface: ...
+
+    @property
+    def usage(self) -> RecallUsageSurface: ...
 
     # --- tenants, agents, spaces -------------------------------------
     def insert_tenant(self, tenant_id: str, *, status: str) -> Tenant: ...

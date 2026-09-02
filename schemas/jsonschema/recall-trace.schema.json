@@ -1,0 +1,78 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/recall-trace.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "missing_score_components": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ranker_version": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "rehydrated_out": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "request_hash": {
+      "pattern": "^[0-9a-f]{16}$",
+      "type": "string"
+    },
+    "routes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "duration_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "completed",
+              "degraded"
+            ]
+          },
+          "route": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "route",
+          "outcome",
+          "candidate_count",
+          "duration_us"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "total_duration_us": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "request_hash",
+    "ranker_version",
+    "total_duration_us",
+    "routes",
+    "rehydrated_out"
+  ],
+  "title": "RecallTrace",
+  "type": "object"
+}

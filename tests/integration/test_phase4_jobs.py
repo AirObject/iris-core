@@ -218,7 +218,8 @@ class TestFailClosed:
         from iris_memory_core.application.forget import ForgetService
         from iris_memory_core.application.retention import RetentionService
         from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS
-        from iris_memory_core.jobs.worker import phase5_handlers
+        from iris_memory_core.indexing.fts import FtsProjectionService
+        from iris_memory_core.jobs.worker import phase5_handlers, phase6_handlers
 
         retention = RetentionService(
             jobs_ctx["store"],
@@ -236,6 +237,10 @@ class TestFailClosed:
                 jobs_ctx["store"].clock, notes=jobs_ctx["notes"], tasks=jobs_ctx["tasks"]
             ),
             **phase5_handlers(jobs_ctx["store"].clock, retention=retention),
+            **phase6_handlers(
+                jobs_ctx["store"].clock,
+                projection=FtsProjectionService(jobs_ctx["store"], jobs_ctx["store"].clock),
+            ),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in (
@@ -388,8 +393,9 @@ class TestRecallIntegration:
         )
         assert all(candidate.route != ROUTE_TASKS for candidate in result.candidates)
 
-    def test_phase6_boundary_no_recall_contract_paths(self) -> None:
-        """The /v1/recall protocol stays unpublished (Phase 6 boundary)."""
+    def test_phase6_boundary_recall_contract_paths(self) -> None:
+        """Phase 6 publishes exactly the frozen recall surface (ADR-0014 §10):
+        /v1/recall, its usage report and /v1/search — vector stays Phase 7."""
         import json
         from pathlib import Path
 
@@ -398,9 +404,11 @@ class TestRecallIntegration:
                 Path(__file__).resolve().parents[2] / "schemas" / "openapi" / "openapi.json"
             ).read_text(encoding="utf-8")
         )
-        recall_paths = [path for path in openapi["paths"] if "recall" in path]
-        assert recall_paths == []
-        vector_paths = [path for path in openapi["paths"] if "search" in path]
+        recall_paths = sorted(path for path in openapi["paths"] if "recall" in path)
+        assert recall_paths == ["/v1/recall", "/v1/recall/{request_id}/usage"]
+        search_paths = [path for path in openapi["paths"] if "search" in path]
+        assert search_paths == ["/v1/search"]
+        vector_paths = [path for path in openapi["paths"] if "vector" in path]
         assert vector_paths == []
 
 

@@ -122,5 +122,20 @@ class HealthService:
                 degraded = True
                 reasons.append("scheduler_unavailable")
 
+        # Phase 6 (§31.4): the FTS projection state is REPORTED, never fatal —
+        # an unbuilt or rebuild-pending index degrades the FTS route only;
+        # structured recall keeps serving (ADR-0014 §9). ``never_built`` is the
+        # normal fresh-install state (FTS is optional until an admin builds),
+        # so it does not mark readiness degraded; ``pending_rebuild`` (a
+        # restore owes a rebuild) and an unreadable projection do.
+        try:
+            with self._uow.read() as tx:
+                checks["fts_projection_state"] = tx.fts.projection_state()
+        except Exception:
+            checks["fts_projection_state"] = "unavailable"
+        if checks["fts_projection_state"] in ("pending_rebuild", "unavailable"):
+            degraded = True
+            reasons.append("fts_projection_rebuild_pending")
+
         status = NOT_READY if fatal else (DEGRADED if degraded else READY)
         return ReadinessReport(status=status, checks=checks, reasons=tuple(reasons))

@@ -176,6 +176,9 @@ class TestJobKindRegistry:
                     "claim.changed",
                     "episode.changed",
                     "relation.changed",
+                    "fts.apply",
+                    "fts.rebuild",
+                    "fts.cleanup",
                     "memory.invalidated",
                     "retention.compaction",
                 }

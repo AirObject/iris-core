@@ -657,6 +657,9 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "relation.changed",
                 "memory.invalidated",
                 "retention.compaction",
+                "fts.apply",
+                "fts.rebuild",
+                "fts.cleanup",
             }
         )
         == ENABLED_JOB_KINDS
