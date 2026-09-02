@@ -1,0 +1,57 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/legal-hold-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "legal_hold_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "reason_code": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "released_at_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "space_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "subject_entity_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "legal_hold_id",
+    "reason_code",
+    "created_at_us"
+  ],
+  "title": "LegalHoldView",
+  "type": "object"
+}

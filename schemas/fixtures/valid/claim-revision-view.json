@@ -1,0 +1,14 @@
+{
+  "canonical_text": "User prefers communicating in Chinese",
+  "content_hash": "abababababababababababababababababababababababababababababababab",
+  "privacy_labels": [
+    "personal"
+  ],
+  "recorded_at_us": 1700000000000000,
+  "revision": 1,
+  "status": "superseded",
+  "superseded_at_us": 1700000100000000,
+  "value": {
+    "language": "zh"
+  }
+}

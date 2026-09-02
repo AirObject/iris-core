@@ -1,0 +1,92 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/artifact-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "artifact_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "content_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "locator": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "media_type": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "refcount": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "scope": {
+      "additionalProperties": true,
+      "properties": {
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_group_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "size_bytes": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "active",
+        "archived",
+        "tombstoned"
+      ]
+    },
+    "storage_kind": {
+      "enum": [
+        "inline",
+        "local_blob",
+        "external_ref"
+      ]
+    }
+  },
+  "required": [
+    "artifact_id",
+    "agent_id",
+    "media_type",
+    "storage_kind",
+    "locator",
+    "content_hash",
+    "size_bytes",
+    "status",
+    "refcount"
+  ],
+  "title": "ArtifactView",
+  "type": "object"
+}

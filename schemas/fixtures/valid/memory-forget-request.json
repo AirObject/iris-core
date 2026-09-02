@@ -1,0 +1,9 @@
+{
+  "erase_content": true,
+  "reason": "User requested erasure of this session",
+  "selector": {
+    "kind": "session",
+    "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+    "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631"
+  }
+}

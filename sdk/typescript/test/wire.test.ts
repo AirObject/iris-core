@@ -126,3 +126,133 @@ test("ackCognitiveEvent carries the lease proof on the wire", async () => {
   assert.equal(call(stub.calls, 0).body?.lease_epoch, 2);
   assert.equal(call(stub.calls, 0).headers["Idempotency-Key"], "k4");
 });
+
+test("rememberClaim carries the lease proof on the wire", async () => {
+  const stub = stubFetch([await readFixture("claim-view.json")]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.rememberClaim(
+      {
+        agent_id: "agent-1",
+        predicate: "prefers_language",
+        value: { language: "zh" },
+        evidence: [
+          {
+            source_type: "observation",
+            source_id: "obs-1",
+            relation: "supports",
+            source_authority: "user_statement",
+          },
+        ],
+      },
+      { idempotencyKey: "claim-1", lease_id: "lease-10", lease_epoch: 5 },
+    );
+  } finally {
+    stub.restore();
+  }
+  assert.equal(stub.calls.length, 1);
+  assert.match(call(stub.calls, 0).url, /\/v1\/claims:remember$/);
+  assert.equal(call(stub.calls, 0).method, "POST");
+  assert.equal(call(stub.calls, 0).headers["Idempotency-Key"], "claim-1");
+  assert.equal(call(stub.calls, 0).body?.lease_id, "lease-10");
+  assert.equal(call(stub.calls, 0).body?.lease_epoch, 5);
+  assert.equal(call(stub.calls, 0).body?.idempotencyKey, undefined);
+  assert.equal(call(stub.calls, 0).body?.idempotency_key, undefined);
+});
+
+test("correctClaim carries the lease proof on the wire", async () => {
+  const stub = stubFetch([await readFixture("claim-view.json")]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.correctClaim(
+      "claim-1",
+      {
+        expected_revision: 1,
+        reason: "the user corrected the preference",
+        mode: "supersede",
+        value: { language: "en" },
+      },
+      { idempotencyKey: "claim-2", lease_id: "lease-11", lease_epoch: 6 },
+    );
+  } finally {
+    stub.restore();
+  }
+  assert.equal(stub.calls.length, 1);
+  assert.match(call(stub.calls, 0).url, /\/v1\/claims\/claim-1:correct$/);
+  assert.equal(call(stub.calls, 0).headers["Idempotency-Key"], "claim-2");
+  assert.equal(call(stub.calls, 0).body?.expected_revision, 1);
+  assert.equal(call(stub.calls, 0).body?.lease_id, "lease-11");
+  assert.equal(call(stub.calls, 0).body?.lease_epoch, 6);
+  assert.equal(call(stub.calls, 0).body?.idempotencyKey, undefined);
+});
+
+test("forgetMemory carries the lease proof on the wire", async () => {
+  const stub = stubFetch([await readFixture("memory-forget-view.json")]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.forgetMemory(
+      {
+        selector: { kind: "session", session_id: "s-1", space_id: "sp-1" },
+        reason: "user requested erasure",
+        erase_content: true,
+      },
+      { idempotencyKey: "forget-1", lease_id: "lease-12", lease_epoch: 7 },
+    );
+  } finally {
+    stub.restore();
+  }
+  assert.equal(stub.calls.length, 1);
+  assert.match(call(stub.calls, 0).url, /\/v1\/memory:forget$/);
+  assert.equal(call(stub.calls, 0).headers["Idempotency-Key"], "forget-1");
+  assert.equal(call(stub.calls, 0).body?.lease_id, "lease-12");
+  assert.equal(call(stub.calls, 0).body?.lease_epoch, 7);
+  assert.equal(call(stub.calls, 0).body?.idempotencyKey, undefined);
+});
+
+test("createArtifact carries the lease proof on the wire", async () => {
+  const stub = stubFetch([await readFixture("artifact-view.json")]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.createArtifact(
+      {
+        agent_id: "agent-1",
+        storage_kind: "inline",
+        media_type: "text/plain",
+        content_base64: "aXJpcw==",
+      },
+      { idempotencyKey: "artifact-1", lease_id: "lease-13", lease_epoch: 8 },
+    );
+  } finally {
+    stub.restore();
+  }
+  assert.equal(stub.calls.length, 1);
+  assert.match(call(stub.calls, 0).url, /\/v1\/artifacts$/);
+  assert.equal(call(stub.calls, 0).headers["Idempotency-Key"], "artifact-1");
+  assert.equal(call(stub.calls, 0).body?.lease_id, "lease-13");
+  assert.equal(call(stub.calls, 0).body?.lease_epoch, 8);
+  assert.equal(call(stub.calls, 0).body?.idempotencyKey, undefined);
+});
+
+test("transitionEpisode carries target and the lease proof on the wire", async () => {
+  const stub = stubFetch([await readFixture("episode-view.json")]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.transitionEpisode(
+      "episode-1",
+      "seal",
+      { expected_revision: 1, reason: "the session is stable" },
+      { idempotencyKey: "episode-1", lease_id: "lease-14", lease_epoch: 9 },
+    );
+  } finally {
+    stub.restore();
+  }
+  assert.equal(stub.calls.length, 1);
+  assert.match(call(stub.calls, 0).url, /\/v1\/episodes\/episode-1:transition$/);
+  assert.equal(call(stub.calls, 0).headers["Idempotency-Key"], "episode-1");
+  // The transition target rides the BODY — there is no query parameter for it.
+  assert.equal(call(stub.calls, 0).body?.target, "seal");
+  assert.equal(call(stub.calls, 0).body?.expected_revision, 1);
+  assert.equal(call(stub.calls, 0).body?.lease_id, "lease-14");
+  assert.equal(call(stub.calls, 0).body?.lease_epoch, 9);
+  assert.equal(call(stub.calls, 0).body?.idempotencyKey, undefined);
+});

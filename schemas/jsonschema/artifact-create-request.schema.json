@@ -1,0 +1,91 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/artifact-create-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "dependentRequired": {
+    "session_id": [
+      "space_id"
+    ]
+  },
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "content_base64": {
+      "type": "string"
+    },
+    "external_url": {
+      "type": "string"
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "media_type": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "session_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_ref": {
+      "additionalProperties": true,
+      "properties": {
+        "resource_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id"
+      ],
+      "type": "object"
+    },
+    "space_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "storage_kind": {
+      "enum": [
+        "inline",
+        "local_blob",
+        "external_ref"
+      ]
+    }
+  },
+  "required": [
+    "agent_id",
+    "storage_kind",
+    "media_type"
+  ],
+  "title": "ArtifactCreateRequest",
+  "type": "object"
+}

@@ -1,0 +1,38 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/episode-transition-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "expected_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "target": {
+      "enum": [
+        "seal",
+        "supersede",
+        "archive",
+        "reopen"
+      ]
+    }
+  },
+  "required": [
+    "target",
+    "expected_revision",
+    "reason"
+  ],
+  "title": "EpisodeTransitionRequest",
+  "type": "object"
+}

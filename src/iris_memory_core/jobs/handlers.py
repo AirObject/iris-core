@@ -26,6 +26,7 @@ from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, enqueue_with_pressure
 from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
+from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import NotFoundError
 from iris_memory_core.domain.jobs import NewOutboxJob, OutboxJob
@@ -296,13 +297,142 @@ def cognitive_event_changed_handler() -> JobWork:
     return work
 
 
+# ---------------------------------------------------------------------------
+# Phase 5 handlers: memory pointer checks, invalidation verification, retention
+
+
+def claim_changed_handler() -> JobWork:
+    """claim.changed: the claim's current pointer resolves to its revision."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            claim = tx.claims.get(job.aggregate_id)
+            if claim.tenant_id != job.tenant_id:
+                raise NotFoundError("claim tenant mismatch")
+            if tx.claims.current_revision_row(claim.id).revision != claim.current_revision:
+                raise NotFoundError("claim current pointer does not resolve to its revision number")
+
+        return commit
+
+    return work
+
+
+def episode_changed_handler() -> JobWork:
+    """episode.changed: the episode's current pointer resolves to its revision."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            episode = tx.episodes.get(job.aggregate_id)
+            if episode.tenant_id != job.tenant_id:
+                raise NotFoundError("episode tenant mismatch")
+            if tx.episodes.current_revision_row(episode.id).revision != episode.current_revision:
+                raise NotFoundError(
+                    "episode current pointer does not resolve to its revision number"
+                )
+
+        return commit
+
+    return work
+
+
+def relation_changed_handler() -> JobWork:
+    """relation.changed: the relation's current pointer resolves to its revision."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            relation = tx.relations.get(job.aggregate_id)
+            if relation.tenant_id != job.tenant_id:
+                raise NotFoundError("relation tenant mismatch")
+            if tx.relations.current_revision_row(relation.id).revision != relation.current_revision:
+                raise NotFoundError(
+                    "relation current pointer does not resolve to its revision number"
+                )
+
+        return commit
+
+    return work
+
+
+def memory_invalidated_handler() -> JobWork:
+    """memory.invalidated: every named resource is non-current under the
+    recorded tombstone watermark — the fail-closed check future projection
+    builders must repeat before exposing content (ADR-0005/0013 §7).
+
+    Local Artifact blobs are also unlinked here as a durable, idempotent
+    completion path.  Forget performs the same cleanup synchronously after its
+    tombstone transaction commits; this handler closes the crash window between
+    that commit and the synchronous unlink.  Re-execution is safe because a
+    missing file already means the erasure effect is complete.
+    """
+
+    def work(job: OutboxJob) -> JobCommit:
+        payload = _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            resources = payload.get("resources")
+            if not isinstance(resources, list) or not resources:
+                raise ValueError("memory.invalidated payload needs resources")
+            expected_watermark = payload.get("tombstone_watermark")
+            if not isinstance(expected_watermark, int):
+                raise ValueError("memory.invalidated payload needs tombstone_watermark")
+            erase_content = payload.get("erase_content", False)
+            if not isinstance(erase_content, bool):
+                raise ValueError("memory.invalidated erase_content must be boolean")
+            if tx.tombstone_watermark() < expected_watermark:
+                raise NotFoundError("tombstone watermark regressed below the recorded invalidation")
+            for item in resources:
+                if not isinstance(item, dict):
+                    raise ValueError("memory.invalidated resources must be objects")
+                resource_type = item.get("resource_type")
+                resource_id = item.get("resource_id")
+                if not isinstance(resource_type, str) or not isinstance(resource_id, str):
+                    raise ValueError("invalid resource ref in invalidation payload")
+                if not tx.is_tombstoned(job.tenant_id, resource_type, resource_id):
+                    raise NotFoundError(
+                        f"invalidated {resource_type} {resource_id} is not tombstoned"
+                    )
+                if resource_type == "artifact" and erase_content:
+                    artifact = tx.artifacts.get(resource_id)
+                    if artifact.storage_kind == "local_blob":
+                        tx.artifacts.unlink_blob(artifact.locator)
+
+        return commit
+
+    return work
+
+
+def retention_compaction_handler(retention: RetentionService, clock: Clock) -> JobWork:
+    """retention.compaction: the §19.5 sweep inside the fenced transaction."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            retention.retention_sweep(tx, tenant_id=job.tenant_id, now_us=clock.now_us())
+
+        return commit
+
+    return work
+
+
 __all__ = [
+    "claim_changed_handler",
     "cognitive_event_changed_handler",
+    "episode_changed_handler",
     "focus_maintenance_handler",
+    "memory_invalidated_handler",
     "note_changed_handler",
     "note_review_handler",
     "observation_recorded_handler",
     "recent_context_maintenance_handler",
+    "relation_changed_handler",
+    "retention_compaction_handler",
     "state_projection_handler",
     "task_changed_handler",
     "task_trigger_scan_handler",

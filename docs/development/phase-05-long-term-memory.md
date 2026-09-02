@@ -1,8 +1,8 @@
 # 阶段 5：显式长期记忆与 Episode
 
-> 状态：Planned  
+> 状态：Completed  
 > 前置阶段：[阶段 4](./phase-04-notes-tasks-events.md)  
-> 目标版本：0.6.0  
+> 目标版本：0.6.0（已发布：Core/Python SDK/TypeScript SDK 0.6.0，Schema 6，契约 1.4.0）  
 > 架构依据：[§13 长期记忆模型](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#13-长期记忆模型)、[§19 Remember/Correct/Forget](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#19-remembercorrectforget-与保留)、[§21 备份恢复与导出](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#21-备份恢复与导出)、[§29 安全与隐私](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#29-安全与隐私)、[§36 阶段 5](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-5显式长期记忆与-episode)
 
 ## 阶段目标
@@ -88,11 +88,13 @@
 
 ## 交付证据
 
-- 代码/变更：待补充
-- ADR：待补充
-- Schema/Migration：待补充
-- 历史/删除故障测试报告：待补充
-- 已知限制：待补充
+- 代码/变更：`domain/memory.py`、`domain/retention.py`、`storage/memory.py`（12 张新表的仓储，含 `relation_evidence`、artifact `privacy_key`（canonical JSON 编码）与 forget ledger 列自省）、`application/memory.py`（Remember/Correct/Search/history + claim/observation 证据全量准入 + `correct(retract)` 级联）、`application/episodes.py`（Episode/Relation + 规范化证据行）、`application/artifacts.py`（scope+隐私去重、tombstone 行保留）、`application/forget.py`（Forget/deletion ledger 完整身份元组（含 app 实例分量）/request-id 失效事件身份/提交后 blob 清理/身份差分重放/逐目标信封终检/传递闭包证据级联（覆盖 disputed，退场 Revision 发 claim.changed/relation.changed））、`application/retention.py`（Policy/Legal Hold/清扫）、`jobs/handlers.py` + `jobs/worker.py`（5 个新启用 kind，失效 worker 幂等补删 blob）、`storage/backup.py`（artifact+SQLite 同树原子切换、staging 内 ledger 重放、legacy int manifest 与旧列集 Schema 6 规范化、Phase 5 不变量）、Phase 4 交接（notes promotion seam、task artifact/observation 证据重启用含 privacy）。
+- ADR：[ADR-0013](../adr/0013-phase5-long-term-memory.md)（双时态、去重/修正、Evidence 不变量、Artifact 安全面、Tombstone selector 优先级、旧备份删除重放、Retention/Legal Hold、Surface 门禁、Phase 6 投影边界；2026-09-02 第二至第五轮复审语义均已同步）。
+- 回归：第二轮对抗性评审（2×P0 + 5×P1 + 1×P2）、第三轮二阶评审（6×P1 + 1×P2）、第四轮三阶评审（5×P1）与第五轮提交前复核（同微秒失效 identity、文件/事务边界、旧 Schema 6 升级、恢复 staging 原子性及连带发现）均已修复，`tests/integration/test_phase5_review_round2.py` 至 `round5.py` 与 `test_tasks.py` 增补锁定（见验证报告 §7.2–§7.5）。
+- Schema/Migration：`migrations/0006_phase5_long_term_memory.sql`（online_safe=true, lock_ms=200, min_app=0.6.0, recovery=none；SHA-256 见验证报告）。0001-0005 与 HEAD `51316fa` 逐字节一致（测试锁定）。Runtime 窗口 [5,6]。
+- 契约：1.4.0（additive：6 capability、18 路径、23 schema、7 新错误码）；fixtures 54→85；OpenAPI/JSON Schema/manifest/mock server/双 SDK 同步。
+- 验证报告：[phase-05-verification.md](../reports/phase-05-verification.md)（实测测试数、覆盖率、性能、恢复演练）。
+- 已知限制：见验证报告"已知限制"（Privacy 过滤在应用层经 keyset 续页实现、 Forget 事务规模上限 5000 目标、external_ref 内容不校验等）。
 
 ## 明确不做
 
@@ -100,6 +102,11 @@
 - 不用相似度自动合并主体、Scope、有效时间不同的 Claim。
 - 不把认知衰减伪装成隐私删除。
 
-## 交接条件
+## 交接条件（Phase 6 验收基线）
 
-Phase 6 可以依赖稳定的 Claim/Episode/Relation/Artifact ResourceRef、Tombstone Watermark、结构化 Search、历史读取与投影失效事件。
+Phase 6 可以依赖（均已交付并有测试锁定）：
+
+- 稳定的 Claim/Episode/Relation/Artifact ResourceRef 与 Revision 契约；
+- Tombstone Watermark 与 `memory.invalidated` 版本化失效事件（refs-only payload）作为 FTS/Vector/Cache 失效的唯一权威输入；
+- 结构化 Search（SQL 优先过滤 + keyset 续页）与双时态 `as_of`/`history_unavailable` 语义；
+- Artifact blob 受控根与 hash 验证读取；Procedure Claim 声明式约束。

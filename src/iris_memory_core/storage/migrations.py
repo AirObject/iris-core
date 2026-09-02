@@ -20,11 +20,14 @@ after COMMIT is surfaced as a success warning, never as a false failure.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from iris_memory_core.domain.hashing import canonical_json
 
 MIGRATION_PATTERN = re.compile(r"^(?P<version>[0-9]{4})_(?P<name>[a-z0-9_]+)\.sql$")
 META_PATTERN = re.compile(
@@ -172,6 +175,171 @@ def discover_migrations(path: Path) -> tuple[Migration, ...]:
             Migration(version, migration_path.name, migration_path, sql, checksum, meta)
         )
     return tuple(migrations)
+
+
+def normalize_prerelease_phase5_schema(database: Path, migrations: Path | None = None) -> bool:
+    """Normalize a verified pre-release Schema 6 snapshot in isolation.
+
+    Migration 0006 changed shape several times before publication.  Those
+    snapshots all report schema version 6, so the ordinary sequential runner
+    cannot apply another version to add ``artifacts.privacy_key`` or replace
+    the coarse Forget request identity.  Restore calls this function on its
+    private staging copy *after* authenticating the source bytes and *before*
+    switching the target into service.
+
+    Only the two known structural deltas are repaired.  The Forget table is
+    rebuilt because SQLite cannot drop its old table-level UNIQUE constraint;
+    existing rows are preserved with conservative defaults.  Once the shape
+    matches the current 0006, its recorded checksum is advanced as part of the
+    same transaction so the normal migration runner accepts the restored DB.
+    """
+    migration = next(
+        (
+            item
+            for item in discover_migrations(migrations or default_migrations_path())
+            if item.version == 6
+        ),
+        None,
+    )
+    if migration is None:
+        raise MigrationError("current migration 0006 is unavailable")
+
+    connection = sqlite3.connect(database, isolation_level=None)
+    connection.row_factory = sqlite3.Row
+    try:
+        version_row = connection.execute(
+            "SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations"
+        ).fetchone()
+        if version_row is None or int(version_row["version"]) != 6:
+            return False
+
+        def columns(table: str) -> frozenset[str]:
+            return frozenset(
+                str(row["name"]) for row in connection.execute(f"PRAGMA table_info({table})")
+            )
+
+        artifact_columns = columns("artifacts")
+        forget_columns = columns("forget_requests")
+        if not artifact_columns or not forget_columns:
+            raise MigrationError("Schema 6 snapshot is missing Phase 5 tables")
+        artifact_needs_repair = "privacy_key" not in artifact_columns
+        forget_sql_row = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'forget_requests'"
+        ).fetchone()
+        compact_forget_sql = re.sub(
+            r"\s+", "", str(forget_sql_row["sql"] if forget_sql_row is not None else "").lower()
+        )
+        expected_identity = (
+            "unique(tenant_id,app_instance_id,selector_key,created_us,"
+            "idempotency_key,reason_code,erase_content)"
+        )
+        forget_needs_repair = (
+            not {"app_instance_id", "idempotency_key", "erase_content"}.issubset(forget_columns)
+            or expected_identity not in compact_forget_sql
+        )
+        if not artifact_needs_repair and not forget_needs_repair:
+            return False
+
+        # Force rollback-journal mode so the transformed bytes are wholly in
+        # canonical.sqlite3 before the staging directory is renamed.
+        connection.execute("PRAGMA journal_mode = DELETE")
+        connection.execute("PRAGMA foreign_keys = OFF")
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            if artifact_needs_repair:
+                connection.execute(
+                    "ALTER TABLE artifacts ADD COLUMN privacy_key TEXT NOT NULL DEFAULT ''"
+                )
+                for row in connection.execute("SELECT id, privacy_labels FROM artifacts"):
+                    labels = json.loads(str(row["privacy_labels"]))
+                    if not isinstance(labels, list) or not all(
+                        isinstance(label, str) for label in labels
+                    ):
+                        raise MigrationError("artifact privacy_labels is not a string list")
+                    connection.execute(
+                        "UPDATE artifacts SET privacy_key = ? WHERE id = ?",
+                        (canonical_json(sorted(set(labels))), str(row["id"])),
+                    )
+                connection.execute("DROP INDEX IF EXISTS idx_artifacts_live_content")
+                connection.execute(
+                    "CREATE UNIQUE INDEX idx_artifacts_live_content ON artifacts "
+                    "(tenant_id, scope_key, content_hash, storage_kind, privacy_key) "
+                    "WHERE status = 'active'"
+                )
+
+            if forget_needs_repair:
+                connection.execute(
+                    "ALTER TABLE forget_requests RENAME TO forget_requests_prerelease"
+                )
+                connection.execute("DROP INDEX IF EXISTS idx_forget_requests_tenant")
+                connection.execute(
+                    "CREATE TABLE forget_requests ("
+                    "id TEXT PRIMARY KEY, "
+                    "tenant_id TEXT NOT NULL REFERENCES tenants (id), "
+                    "selector_key TEXT NOT NULL, selector_json TEXT NOT NULL, "
+                    "reason_code TEXT NOT NULL, requested_by TEXT NOT NULL, "
+                    "app_instance_id TEXT NOT NULL DEFAULT '', "
+                    "idempotency_key TEXT NOT NULL DEFAULT '', "
+                    "erase_content INTEGER NOT NULL DEFAULT 0 CHECK (erase_content IN (0, 1)), "
+                    "created_us INTEGER NOT NULL, "
+                    "tombstone_seq_lo INTEGER NOT NULL CHECK (tombstone_seq_lo >= 0), "
+                    "tombstone_seq_hi INTEGER NOT NULL "
+                    "CHECK (tombstone_seq_hi >= tombstone_seq_lo), "
+                    "target_count INTEGER NOT NULL CHECK (target_count >= 0), "
+                    "erased_count INTEGER NOT NULL CHECK (erased_count >= 0), "
+                    "protected_skipped INTEGER NOT NULL CHECK (protected_skipped >= 0), "
+                    "held_skipped INTEGER NOT NULL CHECK (held_skipped >= 0), "
+                    "UNIQUE (tenant_id, app_instance_id, selector_key, created_us, "
+                    "idempotency_key, reason_code, erase_content)) STRICT"
+                )
+                old_columns = columns("forget_requests_prerelease")
+                app_expression = (
+                    "app_instance_id"
+                    if "app_instance_id" in old_columns
+                    else "CASE WHEN requested_by LIKE 'access:%' "
+                    "THEN substr(requested_by, 8) ELSE '' END"
+                )
+                key_expression = "idempotency_key" if "idempotency_key" in old_columns else "''"
+                # A missing mode came from the pre-release build whose public
+                # Forget default was content erasure.  Using 1 is fail-closed
+                # for compliance and only annotates the retained audit row.
+                erase_expression = "erase_content" if "erase_content" in old_columns else "1"
+                connection.execute(
+                    "INSERT INTO forget_requests (id, tenant_id, selector_key, selector_json, "
+                    "reason_code, requested_by, app_instance_id, idempotency_key, erase_content, "
+                    "created_us, tombstone_seq_lo, tombstone_seq_hi, target_count, erased_count, "
+                    "protected_skipped, held_skipped) "
+                    "SELECT id, tenant_id, selector_key, selector_json, reason_code, requested_by, "
+                    f"{app_expression}, {key_expression}, {erase_expression}, created_us, "
+                    "tombstone_seq_lo, tombstone_seq_hi, target_count, erased_count, "
+                    "protected_skipped, held_skipped FROM forget_requests_prerelease"
+                )
+                connection.execute("DROP TABLE forget_requests_prerelease")
+                connection.execute(
+                    "CREATE INDEX idx_forget_requests_tenant "
+                    "ON forget_requests (tenant_id, created_us)"
+                )
+
+            connection.execute(
+                "UPDATE schema_migrations SET name = ?, checksum = ? WHERE version = 6",
+                (migration.name, migration.checksum),
+            )
+            violations = tuple(connection.execute("PRAGMA foreign_key_check"))
+            if violations:
+                raise MigrationError(
+                    f"pre-release Schema 6 normalization found foreign-key violations: "
+                    f"{violations[:3]}"
+                )
+            connection.execute("COMMIT")
+        except BaseException:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.execute("PRAGMA foreign_keys = ON")
+        return True
+    finally:
+        connection.close()
 
 
 class MigrationRunner:

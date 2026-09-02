@@ -1,0 +1,28 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "canonical_text": "User prefers communicating in Chinese",
+  "category": "preference",
+  "confidence": 0.9,
+  "evidence": [
+    {
+      "evidence_span": "observations[0]:12-18",
+      "relation": "supports",
+      "source_authority": "user_statement",
+      "source_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "source_revision": 1,
+      "source_type": "observation"
+    }
+  ],
+  "extractor_version": "phase5/v1",
+  "importance": 0.6,
+  "predicate": "prefers_language",
+  "privacy_labels": [
+    "personal"
+  ],
+  "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+  "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631",
+  "subject_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+  "value": {
+    "language": "zh"
+  }
+}

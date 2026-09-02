@@ -410,6 +410,63 @@ def scenario_event_ack(db_path: str, crash_at: str) -> None:
         _self_kill()
 
 
+def scenario_forget(db_path: str, crash_at: str) -> None:
+    """Phase 5: forget must be atomic across tombstones, erasure, ledger,
+    watermark and the invalidation outbox — a kill at any boundary leaves
+    either the full deletion or none of it."""
+    from iris_memory_core.application.forget import ForgetService
+    from iris_memory_core.application.memory import ClaimService
+    from iris_memory_core.domain.identity import EntityKind
+    from iris_memory_core.domain.retention import ForgetSelector, ForgetSelectorKind
+    from iris_memory_core.storage.idempotency import IdempotencyManager
+
+    ctx = setup(db_path)
+    idem = IdempotencyManager(ctx.store)
+    claims = ClaimService(ctx.store, ctx.store.clock, idempotency=idem)
+    forget = ForgetService(ctx.store, ctx.store.clock, idempotency=idem)
+    with ctx.store.write() as tx:
+        entity = tx.identities.insert_entity("t1", EntityKind.PERSON, display_name="Bob")
+    outcome = ctx.observations.observe_batch(
+        ctx.access,
+        [
+            {
+                "agent_id": ctx.agent_id,
+                "role": "user",
+                "kind": "message.text",
+                "idempotency_key": "kill9-forget-obs",
+                "occurred_us": 1,
+                "committed_us": 2,
+                "content": "payload",
+            }
+        ],
+    )
+    observation_id = outcome.accepted_observation_ids[0]
+    created = claims.remember(
+        ctx.access,
+        agent_id=ctx.agent_id,
+        predicate="likes",
+        value={"drink": "tea"},
+        canonical_text="Bob likes tea",
+        subject_entity_id=entity.id,
+        evidence=[
+            {"source_type": "observation", "source_id": observation_id, "relation": "supports"}
+        ],
+        idempotency_key="kill9-forget-claim",
+    )
+    selector = ForgetSelector(
+        kind=ForgetSelectorKind.RESOURCE,
+        resource_type="claim",
+        resource_id=created.claim_id,
+    )
+    if crash_at == "pre_tx":
+        _self_kill()
+    if crash_at == "pre_commit":
+        _die_before_commit(ctx.store)
+    forget.forget(ctx.access, selector, reason="kill9", idempotency_key="kill9-forget-exec")
+    if crash_at == "post_commit":
+        _self_kill()
+
+
 SCENARIOS = {
     "observe": scenario_observe,
     "worker": scenario_worker,
@@ -420,6 +477,7 @@ SCENARIOS = {
     "task_transition": scenario_task_transition,
     "trigger_scan": scenario_trigger_scan,
     "event_ack": scenario_event_ack,
+    "forget": scenario_forget,
 }
 
 

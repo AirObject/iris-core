@@ -441,6 +441,39 @@ class NoteRepository:
         ).fetchall()
         return [_note_revision_from_row(row) for row in rows]
 
+    def notes_for_session(self, tenant_id: str, space_id: str, session_id: str) -> tuple[str, ...]:
+        rows = self._connection.execute(
+            "SELECT id FROM notes WHERE tenant_id = ? AND space_id = ? AND session_id = ? "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones _rt WHERE "
+            "_rt.tenant_id = notes.tenant_id AND _rt.resource_type = 'note' "
+            "AND _rt.resource_id = notes.id)",
+            (tenant_id, space_id, session_id),
+        ).fetchall()
+        return tuple(row["id"] for row in rows)
+
+    def notes_for_space(self, tenant_id: str, space_id: str) -> tuple[str, ...]:
+        rows = self._connection.execute(
+            "SELECT id FROM notes WHERE tenant_id = ? AND space_id = ? "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones _rt WHERE "
+            "_rt.tenant_id = notes.tenant_id AND _rt.resource_type = 'note' "
+            "AND _rt.resource_id = notes.id)",
+            (tenant_id, space_id),
+        ).fetchall()
+        return tuple(row["id"] for row in rows)
+
+    def erase_content(self, note_id: str, *, now_us: int) -> None:
+        """Compliance erasure: scrub title/body in every revision, tombstone
+        the current row. Metadata (kinds, hashes, timestamps) survives."""
+        self._connection.execute(
+            "UPDATE note_revisions SET title = '<erased>', body = '' WHERE note_id = ?",
+            (note_id,),
+        )
+        self._connection.execute(
+            "UPDATE notes SET title = '<erased>', status = 'tombstoned', updated_us = ? "
+            "WHERE id = ? AND status != 'tombstoned'",
+            (now_us, note_id),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Tasks, steps, dependencies, triggers, occurrences

@@ -1,0 +1,9 @@
+{
+  "action": "archive",
+  "enabled": true,
+  "policy_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa666",
+  "policy_version": 1,
+  "privacy_label": "personal",
+  "resource_type": "claim",
+  "threshold_days": 180
+}

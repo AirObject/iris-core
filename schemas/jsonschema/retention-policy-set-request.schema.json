@@ -1,0 +1,50 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/retention-policy-set-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "action": {
+      "enum": [
+        "decay",
+        "archive",
+        "delete"
+      ]
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "privacy_label": {
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "resource_type": {
+      "enum": [
+        "claim",
+        "note",
+        "episode",
+        "relation",
+        "observation"
+      ]
+    },
+    "threshold_days": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "resource_type",
+    "action",
+    "threshold_days",
+    "reason"
+  ],
+  "title": "RetentionPolicySetRequest",
+  "type": "object"
+}

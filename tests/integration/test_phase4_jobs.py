@@ -215,8 +215,16 @@ class TestFailClosed:
             )
 
     def test_enabled_kinds_have_handlers(self, jobs_ctx: dict[str, Any]) -> None:
+        from iris_memory_core.application.forget import ForgetService
+        from iris_memory_core.application.retention import RetentionService
         from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS
+        from iris_memory_core.jobs.worker import phase5_handlers
 
+        retention = RetentionService(
+            jobs_ctx["store"],
+            jobs_ctx["store"].clock,
+            forget=ForgetService(jobs_ctx["store"], jobs_ctx["store"].clock),
+        )
         handlers = {
             **phase3_handlers(
                 jobs_ctx["store"],
@@ -227,6 +235,7 @@ class TestFailClosed:
             **phase4_handlers(
                 jobs_ctx["store"].clock, notes=jobs_ctx["notes"], tasks=jobs_ctx["tasks"]
             ),
+            **phase5_handlers(jobs_ctx["store"].clock, retention=retention),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in (
@@ -235,6 +244,11 @@ class TestFailClosed:
             "note.changed",
             "task.changed",
             "cognitive_event.changed",
+            "claim.changed",
+            "episode.changed",
+            "relation.changed",
+            "memory.invalidated",
+            "retention.compaction",
         ):
             assert spec_for(kind).handler_enabled
 

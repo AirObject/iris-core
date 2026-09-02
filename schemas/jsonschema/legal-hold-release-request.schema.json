@@ -1,0 +1,24 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/legal-hold-release-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "reason"
+  ],
+  "title": "LegalHoldReleaseRequest",
+  "type": "object"
+}

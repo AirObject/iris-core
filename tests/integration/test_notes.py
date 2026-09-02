@@ -246,7 +246,10 @@ class TestNotePromotion:
             links = tx.links_for_source(ctx["tenant"], "note", note.note_id, target_type="task")
             assert [link.target_id for link in links] == [task.id]
 
-    def test_promote_to_claim_and_episode_stay_seams(self, note_ctx: dict[str, Any]) -> None:
+    def test_promote_to_claim_and_episode_materialize(self, note_ctx: dict[str, Any]) -> None:
+        """Phase 5 closes the promotion seam (ADR-0013 §6): claim/episode
+        promotions are REAL canonical objects with the note revision as
+        evidence, and the note backfills the target id atomically."""
         ctx = note_ctx
         note = _create(ctx, "p2")
         revision = ctx["notes"].transition(
@@ -259,16 +262,29 @@ class TestNotePromotion:
             idempotency_key="promo2",
         )
         assert revision.promotion_target_type == "claim"
-        assert revision.promotion_target_id is None  # Phase 5 owns the id
+        assert revision.promotion_target_id is not None  # Phase 5 owns the id
         with ctx["store"].read() as tx:
-            # No claim/episode tables exist yet — the seam records intent only.
-            tables = {
-                row[0]
-                for row in tx.raw()
-                .execute("SELECT name FROM sqlite_master WHERE type='table'")
-                .fetchall()
-            }
-        assert not any(name in tables for name in ("claims", "episodes"))
+            claim = tx.claims.get(revision.promotion_target_id)
+            assert claim.status == "active"
+            evidence = tx.claims.evidence_for_claim(claim.id)
+            assert any(item.source_type == "note" for item in evidence)
+            links = tx.links_for_source(ctx["tenant"], "note", note.note_id, target_type="claim")
+        assert any(link.relation == "promoted_to" for link in links)
+
+        episode_note = _create(ctx, "p2b")
+        episode_revision = ctx["notes"].transition(
+            ctx["access"],
+            episode_note.note_id,
+            "promote",
+            expected_revision=1,
+            reason="seam",
+            promotion_target_type="episode",
+            idempotency_key="promo2b",
+        )
+        assert episode_revision.promotion_target_id is not None
+        with ctx["store"].read() as tx:
+            episode = tx.episodes.get(episode_revision.promotion_target_id)
+        assert episode.status == "open"
 
     def test_promote_requires_known_target(self, note_ctx: dict[str, Any]) -> None:
         ctx = note_ctx

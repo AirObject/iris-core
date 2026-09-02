@@ -269,6 +269,161 @@
       "expected": "accept",
       "file": "forward/cognitive-event-view-unknown-field.json",
       "schema": "cognitive-event-view"
+    },
+    {
+      "expected": "accept",
+      "file": "forward/claim-view-unknown-status.json",
+      "schema": "claim-view"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/artifact-create-request-bad-kind.json",
+      "schema": "artifact-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/claim-remember-request-bad-category.json",
+      "schema": "claim-remember-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/claim-remember-request-no-evidence.json",
+      "schema": "claim-remember-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/claim-remember-request-session-without-space.json",
+      "schema": "claim-remember-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/episode-transition-request-bad-target.json",
+      "schema": "episode-transition-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/legal-hold-create-request-session-without-space.json",
+      "schema": "legal-hold-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/memory-forget-request-bad-kind.json",
+      "schema": "memory-forget-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/artifact-create-request.json",
+      "schema": "artifact-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/artifact-view.json",
+      "schema": "artifact-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/claim-correct-request.json",
+      "schema": "claim-correct-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/claim-history-response.json",
+      "schema": "claim-history-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/claim-remember-request-minimum.json",
+      "schema": "claim-remember-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/claim-remember-request.json",
+      "schema": "claim-remember-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/claim-revision-view.json",
+      "schema": "claim-revision-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/claim-search-response.json",
+      "schema": "claim-search-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/claim-view.json",
+      "schema": "claim-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/deletion-ledger-response.json",
+      "schema": "deletion-ledger-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/episode-create-request.json",
+      "schema": "episode-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/episode-transition-request.json",
+      "schema": "episode-transition-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/episode-view.json",
+      "schema": "episode-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/legal-hold-create-request.json",
+      "schema": "legal-hold-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/legal-hold-release-request.json",
+      "schema": "legal-hold-release-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/legal-hold-view.json",
+      "schema": "legal-hold-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/memory-forget-request.json",
+      "schema": "memory-forget-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/memory-forget-view.json",
+      "schema": "memory-forget-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/relation-create-request.json",
+      "schema": "relation-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/relation-view.json",
+      "schema": "relation-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/retention-policy-list-response.json",
+      "schema": "retention-policy-list-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/retention-policy-set-request.json",
+      "schema": "retention-policy-set-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/retention-policy-view.json",
+      "schema": "retention-policy-view"
     }
   ]
 }

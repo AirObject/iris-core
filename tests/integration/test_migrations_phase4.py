@@ -60,7 +60,7 @@ class TestPublishedMigrationIntegrity:
             ).fetchall()
         finally:
             connection.close()
-        assert [row[0] for row in rows] == [1, 2, 3, 4, 5]
+        assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6]
         for _version, name, checksum in rows:
             on_disk = hashlib.sha256(
                 (REPOSITORY_ROOT / "migrations" / name).read_bytes()
@@ -78,20 +78,20 @@ class TestPublishedMigrationIntegrity:
         assert meta.min_app == "0.5.0"
         assert meta.recovery == "none"
 
-    def test_empty_database_installs_all_five(self, tmp_path: Path) -> None:
+    def test_empty_database_installs_all_six(self, tmp_path: Path) -> None:
         database = tmp_path / "empty.sqlite3"
         MigrationRunner(database).migrate()
-        assert current_schema_version(sqlite3.connect(database)) == 5
+        assert current_schema_version(sqlite3.connect(database)) == 6
 
 
 def _phase3_database(tmp_path: Path) -> Path:
-    """A Schema 4 database with real Phase 3 rows, rolled back from 5."""
+    """A Schema 4 database with real Phase 3 rows, rolled back from 6."""
     database = tmp_path / "canonical.sqlite3"
     MigrationRunner(database).migrate()
     connection = sqlite3.connect(database)
     try:
         connection.execute("PRAGMA foreign_keys = OFF")
-        connection.execute("DELETE FROM schema_migrations WHERE version = 5")
+        connection.execute("DELETE FROM schema_migrations WHERE version IN (5, 6)")
         for table in (
             "notes",
             "note_revisions",
@@ -106,6 +106,18 @@ def _phase3_database(tmp_path: Path) -> Path:
             "task_trigger_occurrences",
             "cognitive_events",
             "cognitive_event_revisions",
+            "forget_requests",
+            "legal_holds",
+            "retention_policies",
+            "artifacts",
+            "relation_evidence",
+            "relation_revisions",
+            "relations",
+            "claim_evidence",
+            "claim_revisions",
+            "claims",
+            "episode_revisions",
+            "episodes",
         ):
             connection.execute(f"DROP TABLE IF EXISTS {table}")
         connection.commit()
@@ -159,7 +171,7 @@ class TestSchema4To5Upgrade:
     def test_phase3_data_upgrades_intact(self, tmp_path: Path) -> None:
         database = _phase3_database(tmp_path)
         applied = MigrationRunner(database).migrate()
-        assert [item.version for item in applied] == [5]
+        assert [item.version for item in applied] == [5, 6]
         connection = sqlite3.connect(database)
         try:
             assert int(connection.execute("SELECT COUNT(*) FROM observations").fetchone()[0]) == 1
@@ -294,7 +306,7 @@ class TestPhase4RestoreInvariants:
             source = self._phase4_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 5
+            assert report["schema_version"] == 6
             assert verify_backup(backup_dir).ok
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
             target.parent.mkdir(parents=True, exist_ok=True)

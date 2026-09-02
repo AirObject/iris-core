@@ -1,0 +1,17 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "artifact_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa664",
+  "content_hash": "abababababababababababababababababababababababababababababababab",
+  "locator": "inline://01a050fd-6cc2-7d1b-86ef-86d5150fa664",
+  "media_type": "text/plain",
+  "privacy_labels": [],
+  "refcount": 1,
+  "scope": {
+    "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+    "space_group_id": null,
+    "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631"
+  },
+  "size_bytes": 27,
+  "status": "active",
+  "storage_kind": "inline"
+}

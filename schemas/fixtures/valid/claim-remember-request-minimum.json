@@ -1,0 +1,14 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "evidence": [
+    {
+      "relation": "supports",
+      "source_authority": "user_statement",
+      "source_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "source_type": "observation"
+    }
+  ],
+  "predicate": "likes_coffee",
+  "subject_is_self": true,
+  "value": true
+}

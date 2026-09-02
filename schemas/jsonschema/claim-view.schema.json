@@ -1,0 +1,167 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/claim-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "accessibility": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "canonical_text": {
+      "type": "string"
+    },
+    "category": {
+      "enum": [
+        "identity",
+        "preference",
+        "relationship",
+        "fact",
+        "community",
+        "procedure",
+        "self_narrative"
+      ]
+    },
+    "claim_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "current_subject_entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "evidence_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "extractor_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "importance": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "predicate": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "recorded_at_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "scope": {
+      "additionalProperties": true,
+      "properties": {
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_group_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "source_authority": {
+      "enum": [
+        "agent_inference",
+        "extracted",
+        "user_statement",
+        "platform_verified",
+        "admin_confirmed",
+        "explicit_correction"
+      ]
+    },
+    "status": {
+      "enum": [
+        "active",
+        "disputed",
+        "superseded",
+        "retracted",
+        "expired",
+        "archived",
+        "tombstoned"
+      ]
+    },
+    "subject_entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "superseded_at_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "valid_from_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "valid_until_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "value": {}
+  },
+  "required": [
+    "claim_id",
+    "agent_id",
+    "subject_entity_id",
+    "current_subject_entity_id",
+    "predicate",
+    "category",
+    "status",
+    "canonical_text",
+    "revision",
+    "privacy_labels",
+    "confidence",
+    "importance",
+    "accessibility",
+    "source_authority",
+    "evidence_count",
+    "recorded_at_us"
+  ],
+  "title": "ClaimView",
+  "type": "object"
+}

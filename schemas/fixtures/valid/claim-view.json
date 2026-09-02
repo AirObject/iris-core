@@ -1,0 +1,32 @@
+{
+  "accessibility": 1.0,
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "canonical_text": "User prefers communicating in Chinese",
+  "category": "preference",
+  "claim_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa660",
+  "confidence": 0.9,
+  "current_subject_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+  "evidence_count": 1,
+  "extractor_version": "phase5/v1",
+  "importance": 0.6,
+  "predicate": "prefers_language",
+  "privacy_labels": [
+    "personal"
+  ],
+  "recorded_at_us": 1700000000000000,
+  "revision": 2,
+  "scope": {
+    "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+    "space_group_id": null,
+    "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631"
+  },
+  "source_authority": "user_statement",
+  "status": "active",
+  "subject_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+  "superseded_at_us": null,
+  "valid_from_us": null,
+  "valid_until_us": null,
+  "value": {
+    "language": "zh"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/memory-forget-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "erased_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "held_skipped": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "protected_skipped": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "request_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "selector_key": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "target_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tombstone_seq_hi": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "tombstone_seq_lo": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "request_id",
+    "selector_key",
+    "target_count",
+    "erased_count",
+    "protected_skipped",
+    "held_skipped",
+    "tombstone_seq_lo",
+    "tombstone_seq_hi"
+  ],
+  "title": "MemoryForgetView",
+  "type": "object"
+}

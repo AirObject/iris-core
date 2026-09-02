@@ -72,6 +72,189 @@
         "title": "AdminJob",
         "type": "object"
       },
+      "ArtifactCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/artifact-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "content_base64": {
+            "type": "string"
+          },
+          "external_url": {
+            "type": "string"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "media_type": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_ref": {
+            "additionalProperties": true,
+            "properties": {
+              "resource_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "resource_type": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id"
+            ],
+            "type": "object"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storage_kind": {
+            "enum": [
+              "inline",
+              "local_blob",
+              "external_ref"
+            ]
+          }
+        },
+        "required": [
+          "agent_id",
+          "storage_kind",
+          "media_type"
+        ],
+        "title": "ArtifactCreateRequest",
+        "type": "object"
+      },
+      "ArtifactView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/artifact-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "artifact_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "locator": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "media_type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "refcount": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "properties": {
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_group_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "size_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived",
+              "tombstoned"
+            ]
+          },
+          "storage_kind": {
+            "enum": [
+              "inline",
+              "local_blob",
+              "external_ref"
+            ]
+          }
+        },
+        "required": [
+          "artifact_id",
+          "agent_id",
+          "media_type",
+          "storage_kind",
+          "locator",
+          "content_hash",
+          "size_bytes",
+          "status",
+          "refcount"
+        ],
+        "title": "ArtifactView",
+        "type": "object"
+      },
       "CapabilitiesEnvelope": {
         "$id": "https://schemas.iris-memory-core.local/v1/capabilities.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -100,6 +283,795 @@
           "capabilities"
         ],
         "title": "CapabilitiesEnvelope",
+        "type": "object"
+      },
+      "ClaimCorrectRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-correct-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "canonical_text": {
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "evidence_span": {
+                  "type": "string"
+                },
+                "relation": {
+                  "enum": [
+                    "supports",
+                    "contradicts",
+                    "corrects"
+                  ]
+                },
+                "source_authority": {
+                  "enum": [
+                    "agent_inference",
+                    "extracted",
+                    "user_statement",
+                    "platform_verified",
+                    "admin_confirmed",
+                    "explicit_correction"
+                  ]
+                },
+                "source_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "source_type": {
+                  "enum": [
+                    "observation",
+                    "artifact",
+                    "episode",
+                    "claim",
+                    "note"
+                  ]
+                }
+              },
+              "required": [
+                "source_type",
+                "source_id",
+                "relation",
+                "source_authority"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mode": {
+            "default": "supersede",
+            "enum": [
+              "supersede",
+              "dispute",
+              "retract"
+            ]
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_authority": {
+            "enum": [
+              "agent_inference",
+              "extracted",
+              "user_statement",
+              "platform_verified",
+              "admin_confirmed",
+              "explicit_correction"
+            ]
+          },
+          "value": {}
+        },
+        "required": [
+          "expected_revision",
+          "reason"
+        ],
+        "title": "ClaimCorrectRequest",
+        "type": "object"
+      },
+      "ClaimHistoryResponse": {
+        "$defs": {
+          "ClaimRevisionView": {
+            "additionalProperties": true,
+            "properties": {
+              "canonical_text": {
+                "type": "string"
+              },
+              "content_hash": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "privacy_labels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "recorded_at_us": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "status": {
+                "enum": [
+                  "active",
+                  "disputed",
+                  "superseded",
+                  "retracted",
+                  "expired",
+                  "archived",
+                  "tombstoned"
+                ]
+              },
+              "superseded_at_us": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "value": {}
+            },
+            "required": [
+              "revision",
+              "status",
+              "canonical_text",
+              "value",
+              "recorded_at_us",
+              "privacy_labels",
+              "content_hash"
+            ],
+            "title": "ClaimRevisionView",
+            "type": "object"
+          }
+        },
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-history-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "claim_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revisions": {
+            "items": {
+              "$ref": "#/$defs/ClaimRevisionView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "revisions"
+        ],
+        "title": "ClaimHistoryResponse",
+        "type": "object"
+      },
+      "ClaimRememberRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-remember-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "accessibility": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "canonical_text": {
+            "type": "string"
+          },
+          "category": {
+            "default": "fact",
+            "enum": [
+              "identity",
+              "preference",
+              "relationship",
+              "fact",
+              "community",
+              "procedure",
+              "self_narrative"
+            ]
+          },
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "evidence_span": {
+                  "type": "string"
+                },
+                "relation": {
+                  "enum": [
+                    "supports",
+                    "contradicts",
+                    "corrects"
+                  ]
+                },
+                "source_authority": {
+                  "enum": [
+                    "agent_inference",
+                    "extracted",
+                    "user_statement",
+                    "platform_verified",
+                    "admin_confirmed",
+                    "explicit_correction"
+                  ]
+                },
+                "source_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "source_type": {
+                  "enum": [
+                    "observation",
+                    "artifact",
+                    "episode",
+                    "claim",
+                    "note"
+                  ]
+                }
+              },
+              "required": [
+                "source_type",
+                "source_id",
+                "relation",
+                "source_authority"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "extractor_version": {
+            "type": "string"
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "predicate": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_authority": {
+            "default": "user_statement",
+            "enum": [
+              "agent_inference",
+              "extracted",
+              "user_statement",
+              "platform_verified",
+              "admin_confirmed",
+              "explicit_correction"
+            ]
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject_entity_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "subject_is_self": {
+            "default": false,
+            "type": "boolean"
+          },
+          "valid_from_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "valid_until_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "value": {}
+        },
+        "required": [
+          "agent_id",
+          "predicate",
+          "value",
+          "evidence"
+        ],
+        "title": "ClaimRememberRequest",
+        "type": "object"
+      },
+      "ClaimRevisionView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-revision-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "canonical_text": {
+            "type": "string"
+          },
+          "content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "recorded_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "disputed",
+              "superseded",
+              "retracted",
+              "expired",
+              "archived",
+              "tombstoned"
+            ]
+          },
+          "superseded_at_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "value": {}
+        },
+        "required": [
+          "revision",
+          "status",
+          "canonical_text",
+          "value",
+          "recorded_at_us",
+          "privacy_labels",
+          "content_hash"
+        ],
+        "title": "ClaimRevisionView",
+        "type": "object"
+      },
+      "ClaimSearchResponse": {
+        "$defs": {
+          "ClaimView": {
+            "additionalProperties": true,
+            "properties": {
+              "accessibility": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "agent_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "canonical_text": {
+                "type": "string"
+              },
+              "category": {
+                "enum": [
+                  "identity",
+                  "preference",
+                  "relationship",
+                  "fact",
+                  "community",
+                  "procedure",
+                  "self_narrative"
+                ]
+              },
+              "claim_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "confidence": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "current_subject_entity_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "evidence_count": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "extractor_version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "importance": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "predicate": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "privacy_labels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "recorded_at_us": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "scope": {
+                "additionalProperties": true,
+                "properties": {
+                  "session_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "space_group_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "space_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "source_authority": {
+                "enum": [
+                  "agent_inference",
+                  "extracted",
+                  "user_statement",
+                  "platform_verified",
+                  "admin_confirmed",
+                  "explicit_correction"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "active",
+                  "disputed",
+                  "superseded",
+                  "retracted",
+                  "expired",
+                  "archived",
+                  "tombstoned"
+                ]
+              },
+              "subject_entity_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "superseded_at_us": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "valid_from_us": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "valid_until_us": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "value": {}
+            },
+            "required": [
+              "claim_id",
+              "agent_id",
+              "subject_entity_id",
+              "current_subject_entity_id",
+              "predicate",
+              "category",
+              "status",
+              "canonical_text",
+              "revision",
+              "privacy_labels",
+              "confidence",
+              "importance",
+              "accessibility",
+              "source_authority",
+              "evidence_count",
+              "recorded_at_us"
+            ],
+            "title": "ClaimView",
+            "type": "object"
+          }
+        },
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-search-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/ClaimView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ClaimSearchResponse",
+        "type": "object"
+      },
+      "ClaimView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "accessibility": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "canonical_text": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "identity",
+              "preference",
+              "relationship",
+              "fact",
+              "community",
+              "procedure",
+              "self_narrative"
+            ]
+          },
+          "claim_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "current_subject_entity_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "evidence_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "extractor_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "predicate": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "recorded_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "properties": {
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_group_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "source_authority": {
+            "enum": [
+              "agent_inference",
+              "extracted",
+              "user_statement",
+              "platform_verified",
+              "admin_confirmed",
+              "explicit_correction"
+            ]
+          },
+          "status": {
+            "enum": [
+              "active",
+              "disputed",
+              "superseded",
+              "retracted",
+              "expired",
+              "archived",
+              "tombstoned"
+            ]
+          },
+          "subject_entity_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "superseded_at_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "valid_from_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "valid_until_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "value": {}
+        },
+        "required": [
+          "claim_id",
+          "agent_id",
+          "subject_entity_id",
+          "current_subject_entity_id",
+          "predicate",
+          "category",
+          "status",
+          "canonical_text",
+          "revision",
+          "privacy_labels",
+          "confidence",
+          "importance",
+          "accessibility",
+          "source_authority",
+          "evidence_count",
+          "recorded_at_us"
+        ],
+        "title": "ClaimView",
         "type": "object"
       },
       "CognitiveEventAckRequest": {
@@ -252,6 +1224,457 @@
           "revision"
         ],
         "title": "CognitiveEventView",
+        "type": "object"
+      },
+      "DeletionLedgerResponse": {
+        "$defs": {
+          "ForgetRequestView": {
+            "additionalProperties": true,
+            "properties": {
+              "created_us": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "erased_count": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "held_skipped": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "protected_skipped": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reason_code": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "request_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "selector": {
+                "additionalProperties": true,
+                "properties": {
+                  "agent_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "resource",
+                      "subject_predicate",
+                      "session",
+                      "space",
+                      "data_request"
+                    ]
+                  },
+                  "predicate": {
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "type": "string"
+                  },
+                  "resource_type": {
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "space_id": {
+                    "type": "string"
+                  },
+                  "subject_entity_id": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "selector_key": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "target_count": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "tombstone_seq_hi": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "tombstone_seq_lo": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "request_id",
+              "selector_key",
+              "reason_code",
+              "created_us",
+              "target_count",
+              "erased_count",
+              "protected_skipped",
+              "held_skipped",
+              "tombstone_seq_lo",
+              "tombstone_seq_hi"
+            ],
+            "title": "ForgetRequestView",
+            "type": "object"
+          }
+        },
+        "$id": "https://schemas.iris-memory-core.local/v1/deletion-ledger-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "requests": {
+            "items": {
+              "$ref": "#/$defs/ForgetRequestView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "requests"
+        ],
+        "title": "DeletionLedgerResponse",
+        "type": "object"
+      },
+      "EpisodeCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/episode-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "arousal": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "ended_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "extractor_version": {
+            "type": "string"
+          },
+          "importance": {
+            "default": 0.5,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "observation_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "participant_entity_ids": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "summary": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "valence": {
+            "maximum": 1,
+            "minimum": -1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "agent_id",
+          "summary"
+        ],
+        "title": "EpisodeCreateRequest",
+        "type": "object"
+      },
+      "EpisodeTransitionRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/episode-transition-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "seal",
+              "supersede",
+              "archive",
+              "reopen"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "expected_revision",
+          "reason"
+        ],
+        "title": "EpisodeTransitionRequest",
+        "type": "object"
+      },
+      "EpisodeView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/episode-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "arousal": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ended_at_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "episode_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "extractor_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "observation_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "participant_entity_ids": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "properties": {
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_group_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "started_at_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "open",
+              "sealed",
+              "superseded",
+              "archived",
+              "tombstoned"
+            ]
+          },
+          "summary": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valence": {
+            "maximum": 1,
+            "minimum": -1,
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "episode_id",
+          "agent_id",
+          "status",
+          "summary",
+          "importance",
+          "revision"
+        ],
+        "title": "EpisodeView",
         "type": "object"
       },
       "ErrorEnvelope": {
@@ -532,6 +1955,106 @@
         "title": "FocusView",
         "type": "object"
       },
+      "ForgetRequestView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/forget-request-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "created_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "erased_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "held_skipped": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "protected_skipped": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reason_code": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "request_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "selector": {
+            "additionalProperties": true,
+            "properties": {
+              "agent_id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "resource",
+                  "subject_predicate",
+                  "session",
+                  "space",
+                  "data_request"
+                ]
+              },
+              "predicate": {
+                "type": "string"
+              },
+              "resource_id": {
+                "type": "string"
+              },
+              "resource_type": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "space_id": {
+                "type": "string"
+              },
+              "subject_entity_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "selector_key": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tombstone_seq_hi": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tombstone_seq_lo": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "selector_key",
+          "reason_code",
+          "created_us",
+          "target_count",
+          "erased_count",
+          "protected_skipped",
+          "held_skipped",
+          "tombstone_seq_lo",
+          "tombstone_seq_hi"
+        ],
+        "title": "ForgetRequestView",
+        "type": "object"
+      },
       "LeaseAcquireRequest": {
         "$id": "https://schemas.iris-memory-core.local/v1/lease-acquire-request.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -648,6 +2171,278 @@
           "expires_us"
         ],
         "title": "LeaseView",
+        "type": "object"
+      },
+      "LegalHoldCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/legal-hold-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject_entity_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "LegalHoldCreateRequest",
+        "type": "object"
+      },
+      "LegalHoldReleaseRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/legal-hold-release-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "LegalHoldReleaseRequest",
+        "type": "object"
+      },
+      "LegalHoldView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/legal-hold-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "legal_hold_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason_code": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "released_at_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "space_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject_entity_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "legal_hold_id",
+          "reason_code",
+          "created_at_us"
+        ],
+        "title": "LegalHoldView",
+        "type": "object"
+      },
+      "MemoryForgetRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/memory-forget-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "erase_content": {
+            "default": true,
+            "type": "boolean"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "selector": {
+            "additionalProperties": true,
+            "dependentRequired": {
+              "session_id": [
+                "space_id"
+              ]
+            },
+            "properties": {
+              "agent_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "resource",
+                  "subject_predicate",
+                  "session",
+                  "space",
+                  "data_request"
+                ]
+              },
+              "predicate": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "resource_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "resource_type": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "session_id": {
+                "minLength": 1,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_id": {
+                "minLength": 1,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "subject_entity_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "selector",
+          "reason"
+        ],
+        "title": "MemoryForgetRequest",
+        "type": "object"
+      },
+      "MemoryForgetView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/memory-forget-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "erased_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "held_skipped": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "protected_skipped": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "request_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "selector_key": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tombstone_seq_hi": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tombstone_seq_lo": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "selector_key",
+          "target_count",
+          "erased_count",
+          "protected_skipped",
+          "held_skipped",
+          "tombstone_seq_lo",
+          "tombstone_seq_hi"
+        ],
+        "title": "MemoryForgetView",
         "type": "object"
       },
       "NoteCreateRequest": {
@@ -1356,6 +3151,459 @@
           "result_hash"
         ],
         "title": "RecentContextView",
+        "type": "object"
+      },
+      "RelationCreateRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/relation-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "dependentRequired": {
+          "session_id": [
+            "space_id"
+          ]
+        },
+        "properties": {
+          "accessibility": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "relation": {
+                  "enum": [
+                    "supports"
+                  ]
+                },
+                "source_authority": {
+                  "enum": [
+                    "agent_inference",
+                    "extracted",
+                    "user_statement",
+                    "platform_verified",
+                    "admin_confirmed",
+                    "explicit_correction"
+                  ]
+                },
+                "source_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_type": {
+                  "enum": [
+                    "observation",
+                    "artifact",
+                    "episode",
+                    "claim",
+                    "note"
+                  ]
+                }
+              },
+              "required": [
+                "source_type",
+                "source_id",
+                "relation",
+                "source_authority"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "relation_type": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "session_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_entity_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "space_id": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_entity_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "valid_from_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "valid_until_us": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agent_id",
+          "source_entity_id",
+          "relation_type",
+          "target_entity_id",
+          "evidence"
+        ],
+        "title": "RelationCreateRequest",
+        "type": "object"
+      },
+      "RelationView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/relation-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "accessibility": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "evidence_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "importance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "privacy_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "relation_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "relation_type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "properties": {
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_group_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "space_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "source_entity_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "disputed",
+              "superseded",
+              "retracted",
+              "archived",
+              "tombstoned"
+            ]
+          },
+          "target_entity_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "valid_from_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "valid_until_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "relation_id",
+          "agent_id",
+          "source_entity_id",
+          "relation_type",
+          "target_entity_id",
+          "status",
+          "revision",
+          "confidence",
+          "importance",
+          "accessibility",
+          "evidence_count"
+        ],
+        "title": "RelationView",
+        "type": "object"
+      },
+      "RetentionPolicyListResponse": {
+        "$defs": {
+          "RetentionPolicyView": {
+            "additionalProperties": true,
+            "properties": {
+              "action": {
+                "enum": [
+                  "decay",
+                  "archive",
+                  "delete"
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "policy_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "policy_version": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "privacy_label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "resource_type": {
+                "enum": [
+                  "claim",
+                  "note",
+                  "episode",
+                  "relation",
+                  "observation"
+                ]
+              },
+              "threshold_days": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "policy_id",
+              "resource_type",
+              "action",
+              "threshold_days",
+              "policy_version",
+              "enabled"
+            ],
+            "title": "RetentionPolicyView",
+            "type": "object"
+          }
+        },
+        "$id": "https://schemas.iris-memory-core.local/v1/retention-policy-list-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/RetentionPolicyView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RetentionPolicyListResponse",
+        "type": "object"
+      },
+      "RetentionPolicySetRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/retention-policy-set-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "enum": [
+              "decay",
+              "archive",
+              "delete"
+            ]
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "privacy_label": {
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "enum": [
+              "claim",
+              "note",
+              "episode",
+              "relation",
+              "observation"
+            ]
+          },
+          "threshold_days": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "action",
+          "threshold_days",
+          "reason"
+        ],
+        "title": "RetentionPolicySetRequest",
+        "type": "object"
+      },
+      "RetentionPolicyView": {
+        "$id": "https://schemas.iris-memory-core.local/v1/retention-policy-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "enum": [
+              "decay",
+              "archive",
+              "delete"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "policy_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "policy_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "privacy_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource_type": {
+            "enum": [
+              "claim",
+              "note",
+              "episode",
+              "relation",
+              "observation"
+            ]
+          },
+          "threshold_days": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "policy_id",
+          "resource_type",
+          "action",
+          "threshold_days",
+          "policy_version",
+          "enabled"
+        ],
+        "title": "RetentionPolicyView",
         "type": "object"
       },
       "ScheduleView": {
@@ -2471,13 +4719,13 @@
     }
   },
   "info": {
-    "description": "Phase 4 contract and capability surface",
+    "description": "Phase 5 contract and capability surface",
     "license": {
       "identifier": "AGPL-3.0-only",
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.3.0"
+    "version": "1.4.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3124,6 +5372,103 @@
         }
       }
     },
+    "/v1/artifacts": {
+      "post": {
+        "operationId": "createArtifact",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "getArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
     "/v1/capabilities": {
       "get": {
         "operationId": "getCapabilities",
@@ -3139,6 +5484,368 @@
             "description": "Successful response"
           },
           "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/claims": {
+      "get": {
+        "operationId": "searchClaims",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Narrow to a session; requires space_id",
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "subject_entity_id",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "predicate",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "enum": [
+                "identity",
+                "preference",
+                "relationship",
+                "fact",
+                "community",
+                "procedure",
+                "self_narrative"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "enum": [
+                  "active",
+                  "disputed",
+                  "superseded",
+                  "retracted",
+                  "expired",
+                  "archived",
+                  "tombstoned"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "valid_at_us",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Bi-temporal read point (§19.4)",
+            "in": "query",
+            "name": "as_of_us",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimSearchResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/claims/{claim_id}": {
+      "get": {
+        "operationId": "getClaim",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/claims/{claim_id}/history": {
+      "get": {
+        "operationId": "claimHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bi-temporal read point; before the retained window fails with history_unavailable",
+            "in": "query",
+            "name": "as_of_us",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/claims/{claim_id}:correct": {
+      "post": {
+        "operationId": "correctClaim",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimCorrectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/claims:remember": {
+      "post": {
+        "operationId": "createClaimRemember",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimRememberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
             "content": {
               "application/json": {
                 "schema": {
@@ -3302,6 +6009,171 @@
               }
             },
             "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/episodes": {
+      "post": {
+        "operationId": "createEpisode",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EpisodeCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/episodes/{episode_id}": {
+      "get": {
+        "operationId": "getEpisode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "episode_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/episodes/{episode_id}:transition": {
+      "post": {
+        "operationId": "transitionEpisode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "episode_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EpisodeTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
           },
           "409": {
             "content": {
@@ -3871,6 +6743,230 @@
               }
             },
             "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/legal-holds": {
+      "post": {
+        "operationId": "createLegalHold",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegalHoldCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegalHoldView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/legal-holds/{legal_hold_id}:release": {
+      "post": {
+        "operationId": "releaseLegalHold",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "legal_hold_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegalHoldReleaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegalHoldView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/memory/deletion-ledger": {
+      "get": {
+        "operationId": "exportDeletionLedger",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "created_after_us",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionLedgerResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/memory:forget": {
+      "post": {
+        "operationId": "forgetMemory",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryForgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryForgetView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
           },
           "409": {
             "content": {
@@ -4500,6 +7596,187 @@
               }
             },
             "description": "Successful response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/relations": {
+      "post": {
+        "operationId": "createRelation",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/relations/{relation_id}": {
+      "get": {
+        "operationId": "getRelation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/retention-policies": {
+      "get": {
+        "operationId": "listRetentionPolicies",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionPolicyListResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      },
+      "post": {
+        "operationId": "setRetentionPolicy",
+        "parameters": [
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionPolicySetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionPolicyView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
           },
           "403": {
             "content": {

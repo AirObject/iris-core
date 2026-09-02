@@ -1,0 +1,151 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/episode-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "arousal": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "ended_at_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "episode_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "extractor_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "importance": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "observation_refs": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "participant_entity_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "scope": {
+      "additionalProperties": true,
+      "properties": {
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_group_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "started_at_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "open",
+        "sealed",
+        "superseded",
+        "archived",
+        "tombstoned"
+      ]
+    },
+    "summary": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "title": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "valence": {
+      "maximum": 1,
+      "minimum": -1,
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "episode_id",
+    "agent_id",
+    "status",
+    "summary",
+    "importance",
+    "revision"
+  ],
+  "title": "EpisodeView",
+  "type": "object"
+}

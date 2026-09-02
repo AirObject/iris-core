@@ -105,6 +105,31 @@ export function validateContract(schema: string, value: unknown): readonly strin
   if (schema === "trigger-view") return validateTriggerView(value);
   if (schema === "cognitive-event-view") return validateCognitiveEventView(value);
   if (schema === "cognitive-event-ack-request") return validateCognitiveEventAckRequest(value);
+  if (schema === "claim-remember-request") return validateClaimRememberRequest(value);
+  if (schema === "claim-correct-request") return validateClaimCorrectRequest(value);
+  if (schema === "claim-view") return validateClaimView(value);
+  if (schema === "claim-revision-view") return validateClaimRevisionView(value);
+  if (schema === "claim-search-response") return validateClaimSearchResponse(value);
+  if (schema === "claim-history-response") return validateClaimHistoryResponse(value);
+  if (schema === "memory-forget-request") return validateMemoryForgetRequest(value);
+  if (schema === "memory-forget-view") return validateMemoryForgetView(value);
+  if (schema === "forget-request-view") return validateForgetRequestView(value);
+  if (schema === "deletion-ledger-response") return validateDeletionLedgerResponse(value);
+  if (schema === "episode-create-request") return validateEpisodeCreateRequest(value);
+  if (schema === "episode-view") return validateEpisodeView(value);
+  if (schema === "episode-transition-request") return validateEpisodeTransitionRequest(value);
+  if (schema === "relation-create-request") return validateRelationCreateRequest(value);
+  if (schema === "relation-view") return validateRelationView(value);
+  if (schema === "artifact-create-request") return validateArtifactCreateRequest(value);
+  if (schema === "artifact-view") return validateArtifactView(value);
+  if (schema === "retention-policy-set-request") return validateRetentionPolicySetRequest(value);
+  if (schema === "retention-policy-view") return validateRetentionPolicyView(value);
+  if (schema === "retention-policy-list-response") {
+    return validateRetentionPolicyListResponse(value);
+  }
+  if (schema === "legal-hold-create-request") return validateLegalHoldCreateRequest(value);
+  if (schema === "legal-hold-view") return validateLegalHoldView(value);
+  if (schema === "legal-hold-release-request") return validateLegalHoldReleaseRequest(value);
   return [`unknown schema: ${schema}`];
 }
 
@@ -168,6 +193,46 @@ const TRIGGER_KINDS = new Set([
   "state_condition",
   "task_transition",
 ]);
+const CLAIM_CATEGORIES = new Set([
+  "identity",
+  "preference",
+  "relationship",
+  "fact",
+  "community",
+  "procedure",
+  "self_narrative",
+]);
+const CLAIM_STATUSES = new Set([
+  "active",
+  "disputed",
+  "superseded",
+  "retracted",
+  "expired",
+  "archived",
+  "tombstoned",
+]);
+const CORRECT_MODES = new Set(["supersede", "dispute", "retract"]);
+const EVIDENCE_RELATIONS = new Set(["supports", "contradicts", "corrects"]);
+const MEMORY_AUTHORITIES = new Set([
+  "agent_inference",
+  "extracted",
+  "user_statement",
+  "platform_verified",
+  "admin_confirmed",
+  "explicit_correction",
+]);
+const EVIDENCE_SOURCE_TYPES = new Set(["observation", "artifact", "episode", "claim", "note"]);
+const EPISODE_TRANSITION_TARGETS = new Set(["seal", "supersede", "archive", "reopen"]);
+const ARTIFACT_STORAGE_KINDS = new Set(["inline", "local_blob", "external_ref"]);
+const FORGET_SELECTOR_KINDS = new Set([
+  "resource",
+  "subject_predicate",
+  "session",
+  "space",
+  "data_request",
+]);
+const RETENTION_ACTIONS = new Set(["decay", "archive", "delete"]);
+const RETENTION_RESOURCE_TYPES = new Set(["claim", "note", "episode", "relation", "observation"]);
 
 function requireNonEmptyString(
   value: unknown,
@@ -186,6 +251,16 @@ function requireUnitInterval(
 ): void {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
     errors.push(`${key} must be a number within [0, 1]`);
+  }
+}
+
+function requireSignedInterval(
+  value: unknown,
+  key: string,
+  errors: string[],
+): void {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < -1 || value > 1) {
+    errors.push(`${key} must be a number within [-1, 1]`);
   }
 }
 
@@ -835,10 +910,656 @@ function validateCognitiveEventAckRequest(value: unknown): string[] {
   return errors;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 5: long-term memory — claims, episodes, relations, artifacts,
+// forget/retention/legal holds (§13, §19)
+
+function requireKnownOrNonEmpty(
+  value: Record<string, unknown>,
+  key: string,
+  known: ReadonlySet<string>,
+  errors: string[],
+): void {
+  // Forward compatibility on VIEW fields: known enum members pass, anything
+  // else only has to be a non-empty string (the server owns the enum).
+  const item = value[key];
+  if (item !== undefined && known.has(String(item))) return;
+  if (typeof item !== "string" || item.length === 0) {
+    errors.push(`${key} must be a non-empty string`);
+  }
+}
+
+function requireStringArray(value: unknown, key: string, errors: string[]): void {
+  if (value === undefined || value === null) return;
+  if (!Array.isArray(value) || !value.every((item: unknown) => typeof item === "string")) {
+    errors.push(`${key} must be an array of strings`);
+  }
+}
+
+function requireResourceRefs(value: unknown, key: string, errors: string[]): void {
+  if (value === undefined || value === null) return;
+  if (!Array.isArray(value)) {
+    errors.push(`${key} must be an array`);
+    return;
+  }
+  value.forEach((ref: unknown, index: number) => {
+    if (!isRecord(ref)) {
+      errors.push(`${key}[${index}] must be an object`);
+      return;
+    }
+    for (const field of ["resource_type", "resource_id"] as const) {
+      if (typeof ref[field] !== "string" || ref[field].length === 0) {
+        errors.push(`${key}[${index}].${field} must be a non-empty string`);
+      }
+    }
+  });
+}
+
+function requireEvidenceRows(
+  value: unknown,
+  errors: string[],
+  options: { relations?: ReadonlySet<string>; minimum?: number } = {},
+): void {
+  const relations = options.relations ?? EVIDENCE_RELATIONS;
+  const minimum = options.minimum ?? 0;
+  if (!Array.isArray(value)) {
+    errors.push("evidence must be an array");
+    return;
+  }
+  if (value.length < minimum) errors.push(`evidence must have at least ${minimum} item(s)`);
+  value.forEach((row: unknown, index: number) => {
+    if (!isRecord(row)) {
+      errors.push(`evidence[${index}] must be an object`);
+      return;
+    }
+    if (!EVIDENCE_SOURCE_TYPES.has(String(row.source_type))) {
+      errors.push(`evidence[${index}].source_type must be a known source type`);
+    }
+    if (typeof row.source_id !== "string" || row.source_id.length === 0) {
+      errors.push(`evidence[${index}].source_id must be a non-empty string`);
+    }
+    if (!relations.has(String(row.relation))) {
+      errors.push(`evidence[${index}].relation must be a known evidence relation`);
+    }
+    if (!MEMORY_AUTHORITIES.has(String(row.source_authority))) {
+      errors.push(`evidence[${index}].source_authority must be a known authority`);
+    }
+  });
+}
+
+function validateClaimRememberRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.agent_id, "agent_id", errors);
+  if (typeof value.predicate !== "string" || value.predicate.length === 0 || value.predicate.length > 256) {
+    errors.push("predicate must be 1..256 characters");
+  }
+  if (!("value" in value)) errors.push("value is required");
+  requireEvidenceRows(value.evidence, errors, { minimum: 1 });
+  const category = value.category === undefined ? "fact" : value.category;
+  if (!CLAIM_CATEGORIES.has(String(category))) {
+    errors.push("category must be a known claim category");
+  }
+  const authority = value.source_authority === undefined ? "user_statement" : value.source_authority;
+  if (!MEMORY_AUTHORITIES.has(String(authority))) {
+    errors.push("source_authority must be a known authority");
+  }
+  for (const key of ["confidence", "importance", "accessibility"] as const) {
+    if (value[key] !== undefined) requireUnitInterval(value[key], key, errors);
+  }
+  for (const key of ["subject_entity_id", "canonical_text", "extractor_version"] as const) {
+    const item = value[key];
+    if (item !== undefined && item !== null && (typeof item !== "string" || item.length === 0)) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  }
+  if (value.subject_is_self !== undefined && typeof value.subject_is_self !== "boolean") {
+    errors.push("subject_is_self must be a boolean");
+  }
+  for (const key of ["valid_from_us", "valid_until_us"] as const) {
+    const item = value[key];
+    if (item !== undefined && item !== null && (!Number.isInteger(item) || Number(item) < 0)) {
+      errors.push(`${key} must be null or a non-negative integer`);
+    }
+  }
+  requireStringArray(value.privacy_labels, "privacy_labels", errors);
+  requireResourceRefs(value.source_refs, "source_refs", errors);
+  if (value.session_id != null && value.space_id == null) {
+    errors.push("session_id requires space_id");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateClaimCorrectRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!Number.isInteger(value.expected_revision) || Number(value.expected_revision) < 1) {
+    errors.push("expected_revision must be a positive integer");
+  }
+  requireNonEmptyString(value.reason, "reason", errors);
+  const mode = value.mode === undefined ? "supersede" : value.mode;
+  if (!CORRECT_MODES.has(String(mode))) {
+    errors.push("mode must be a known correction mode");
+  }
+  if (value.evidence !== undefined && value.evidence !== null) {
+    requireEvidenceRows(value.evidence, errors);
+  }
+  if (
+    value.source_authority !== undefined &&
+    value.source_authority !== null &&
+    !MEMORY_AUTHORITIES.has(String(value.source_authority))
+  ) {
+    errors.push("source_authority must be a known authority");
+  }
+  if (
+    value.canonical_text !== undefined &&
+    value.canonical_text !== null &&
+    typeof value.canonical_text !== "string"
+  ) {
+    errors.push("canonical_text must be a string");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateClaimView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of [
+    "claim_id",
+    "agent_id",
+    "subject_entity_id",
+    "current_subject_entity_id",
+    "predicate",
+  ] as const) {
+    requireNonEmptyString(value[key], key, errors);
+  }
+  requireKnownOrNonEmpty(value, "category", CLAIM_CATEGORIES, errors);
+  requireKnownOrNonEmpty(value, "status", CLAIM_STATUSES, errors);
+  requireKnownOrNonEmpty(value, "source_authority", MEMORY_AUTHORITIES, errors);
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  for (const key of ["confidence", "importance", "accessibility"] as const) {
+    if (value[key] !== undefined) requireUnitInterval(value[key], key, errors);
+  }
+  for (const key of ["evidence_count", "recorded_at_us"] as const) {
+    const item = value[key];
+    if (item !== undefined && item !== null && (!Number.isInteger(item) || Number(item) < 0)) {
+      errors.push(`${key} must be a non-negative integer`);
+    }
+  }
+  requireStringArray(value.privacy_labels, "privacy_labels", errors);
+  return errors;
+}
+
+function validateClaimRevisionView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  requireKnownOrNonEmpty(value, "status", CLAIM_STATUSES, errors);
+  if (
+    value.canonical_text !== undefined &&
+    value.canonical_text !== null &&
+    typeof value.canonical_text !== "string"
+  ) {
+    errors.push("canonical_text must be a string");
+  }
+  if (!("value" in value)) errors.push("value is required");
+  const recorded = value.recorded_at_us;
+  if (recorded !== undefined && recorded !== null && (!Number.isInteger(recorded) || Number(recorded) < 0)) {
+    errors.push("recorded_at_us must be a non-negative integer");
+  }
+  requireStringArray(value.privacy_labels, "privacy_labels", errors);
+  if (typeof value.content_hash !== "string" || !HASH_RE.test(value.content_hash)) {
+    errors.push("content_hash must be a SHA-256 hex string");
+  }
+  const superseded = value.superseded_at_us;
+  if (superseded !== undefined && superseded !== null && (!Number.isInteger(superseded) || Number(superseded) < 0)) {
+    errors.push("superseded_at_us must be null or a non-negative integer");
+  }
+  return errors;
+}
+
+function validateClaimSearchResponse(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!Array.isArray(value.items)) return ["items must be an array"];
+  value.items.forEach((item: unknown, index: number) => {
+    for (const error of validateClaimView(item)) {
+      errors.push(`items[${index}].${error}`);
+    }
+  });
+  return errors;
+}
+
+function validateClaimHistoryResponse(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (value.claim_id !== undefined && value.claim_id !== null) {
+    requireNonEmptyString(value.claim_id, "claim_id", errors);
+  }
+  if (!Array.isArray(value.revisions)) return ["revisions must be an array"];
+  value.revisions.forEach((item: unknown, index: number) => {
+    for (const error of validateClaimRevisionView(item)) {
+      errors.push(`revisions[${index}].${error}`);
+    }
+  });
+  return errors;
+}
+
+function validateMemoryForgetRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!isRecord(value.selector)) {
+    errors.push("selector must be an object");
+  } else {
+    if (!FORGET_SELECTOR_KINDS.has(String(value.selector.kind))) {
+      errors.push("selector.kind must be a known forget selector");
+    }
+    if (value.selector.session_id != null && value.selector.space_id == null) {
+      errors.push("selector.session_id requires space_id");
+    }
+  }
+  requireNonEmptyString(value.reason, "reason", errors);
+  if (value.erase_content !== undefined && typeof value.erase_content !== "boolean") {
+    errors.push("erase_content must be a boolean");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function requireForgetCounters(value: Record<string, unknown>, errors: string[]): void {
+  for (const key of ["target_count", "erased_count", "protected_skipped", "held_skipped"] as const) {
+    if (!Number.isInteger(value[key]) || Number(value[key]) < 0) {
+      errors.push(`${key} must be a non-negative integer`);
+    }
+  }
+  if (!Number.isInteger(value.tombstone_seq_lo) || Number(value.tombstone_seq_lo) < 0) {
+    errors.push("tombstone_seq_lo must be a non-negative integer");
+  }
+  const high = value.tombstone_seq_hi;
+  if (high !== undefined && high !== null && (!Number.isInteger(high) || Number(high) < 0)) {
+    errors.push("tombstone_seq_hi must be null or a non-negative integer");
+  }
+}
+
+function validateMemoryForgetView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["request_id", "selector_key"] as const) {
+    requireNonEmptyString(value[key], key, errors);
+  }
+  requireForgetCounters(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateForgetRequestView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["request_id", "selector_key", "reason_code"] as const) {
+    requireNonEmptyString(value[key], key, errors);
+  }
+  if (!Number.isInteger(value.created_us) || Number(value.created_us) < 0) {
+    errors.push("created_us must be a non-negative integer");
+  }
+  requireForgetCounters(value as Record<string, unknown>, errors);
+  if (value.selector !== undefined && value.selector !== null) {
+    if (!isRecord(value.selector)) {
+      errors.push("selector must be an object");
+    } else {
+      requireKnownOrNonEmpty(value.selector, "kind", FORGET_SELECTOR_KINDS, errors);
+    }
+  }
+  return errors;
+}
+
+function validateDeletionLedgerResponse(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  if (!Array.isArray(value.requests)) return ["requests must be an array"];
+  const errors: string[] = [];
+  value.requests.forEach((item: unknown, index: number) => {
+    for (const error of validateForgetRequestView(item)) {
+      errors.push(`requests[${index}].${error}`);
+    }
+  });
+  return errors;
+}
+
+function validateEpisodeCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.agent_id, "agent_id", errors);
+  if (typeof value.summary !== "string" || value.summary.length === 0 || value.summary.length > 8000) {
+    errors.push("summary must be 1..8000 characters");
+  }
+  if (
+    value.title !== undefined &&
+    value.title !== null &&
+    (typeof value.title !== "string" || value.title.length === 0 || value.title.length > 500)
+  ) {
+    errors.push("title must be 1..500 characters");
+  }
+  for (const key of ["importance", "arousal"] as const) {
+    if (value[key] !== undefined) requireUnitInterval(value[key], key, errors);
+  }
+  if (value.valence !== undefined && value.valence !== null) {
+    requireSignedInterval(value.valence, "valence", errors);
+  }
+  for (const key of ["started_at_us", "ended_at_us"] as const) {
+    const item = value[key];
+    if (item !== undefined && item !== null && (!Number.isInteger(item) || Number(item) < 0)) {
+      errors.push(`${key} must be null or a non-negative integer`);
+    }
+  }
+  if (value.participant_entity_ids !== undefined && value.participant_entity_ids !== null) {
+    const participants = value.participant_entity_ids;
+    if (
+      !Array.isArray(participants) ||
+      !participants.every((item: unknown) => typeof item === "string" && item.length > 0)
+    ) {
+      errors.push("participant_entity_ids must be an array of non-empty strings");
+    }
+  }
+  requireResourceRefs(value.observation_refs, "observation_refs", errors);
+  requireStringArray(value.privacy_labels, "privacy_labels", errors);
+  if (
+    value.extractor_version !== undefined &&
+    value.extractor_version !== null &&
+    typeof value.extractor_version !== "string"
+  ) {
+    errors.push("extractor_version must be a string");
+  }
+  if (value.session_id != null && value.space_id == null) {
+    errors.push("session_id requires space_id");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateEpisodeView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["episode_id", "agent_id", "summary"] as const) {
+    requireNonEmptyString(value[key], key, errors);
+  }
+  // Forward compatibility: episode status is the server's state machine.
+  if (typeof value.status !== "string" || value.status.length === 0) {
+    errors.push("status must be a non-empty string");
+  }
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  for (const key of ["importance", "arousal"] as const) {
+    if (value[key] !== undefined) requireUnitInterval(value[key], key, errors);
+  }
+  if (value.valence !== undefined && value.valence !== null) {
+    requireSignedInterval(value.valence, "valence", errors);
+  }
+  for (const key of ["started_at_us", "ended_at_us"] as const) {
+    const item = value[key];
+    if (item !== undefined && item !== null && (!Number.isInteger(item) || Number(item) < 0)) {
+      errors.push(`${key} must be null or a non-negative integer`);
+    }
+  }
+  requireResourceRefs(value.observation_refs, "observation_refs", errors);
+  requireStringArray(value.privacy_labels, "privacy_labels", errors);
+  return errors;
+}
+
+function validateEpisodeTransitionRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!EPISODE_TRANSITION_TARGETS.has(String(value.target))) {
+    errors.push("target must be a known episode transition");
+  }
+  if (!Number.isInteger(value.expected_revision) || Number(value.expected_revision) < 1) {
+    errors.push("expected_revision must be a positive integer");
+  }
+  requireNonEmptyString(value.reason, "reason", errors);
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateRelationCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.agent_id, "agent_id", errors);
+  for (const key of ["source_entity_id", "target_entity_id"] as const) {
+    requireNonEmptyString(value[key], key, errors);
+  }
+  if (
+    typeof value.relation_type !== "string" ||
+    value.relation_type.length === 0 ||
+    value.relation_type.length > 128
+  ) {
+    errors.push("relation_type must be 1..128 characters");
+  }
+  // Relation evidence only ever supports the edge (§13 relation semantics).
+  requireEvidenceRows(value.evidence, errors, {
+    relations: new Set(["supports"]),
+    minimum: 1,
+  });
+  for (const key of ["confidence", "importance", "accessibility"] as const) {
+    if (value[key] !== undefined) requireUnitInterval(value[key], key, errors);
+  }
+  for (const key of ["valid_from_us", "valid_until_us"] as const) {
+    const item = value[key];
+    if (item !== undefined && item !== null && (!Number.isInteger(item) || Number(item) < 0)) {
+      errors.push(`${key} must be null or a non-negative integer`);
+    }
+  }
+  requireStringArray(value.privacy_labels, "privacy_labels", errors);
+  if (value.session_id != null && value.space_id == null) {
+    errors.push("session_id requires space_id");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateRelationView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of [
+    "relation_id",
+    "agent_id",
+    "source_entity_id",
+    "relation_type",
+    "target_entity_id",
+  ] as const) {
+    requireNonEmptyString(value[key], key, errors);
+  }
+  if (typeof value.status !== "string" || value.status.length === 0) {
+    errors.push("status must be a non-empty string");
+  }
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  for (const key of ["confidence", "importance", "accessibility"] as const) {
+    if (value[key] !== undefined) requireUnitInterval(value[key], key, errors);
+  }
+  const evidenceCount = value.evidence_count;
+  if (evidenceCount !== undefined && evidenceCount !== null && (!Number.isInteger(evidenceCount) || Number(evidenceCount) < 0)) {
+    errors.push("evidence_count must be a non-negative integer");
+  }
+  requireResourceRefs(value.evidence_refs, "evidence_refs", errors);
+  requireStringArray(value.privacy_labels, "privacy_labels", errors);
+  return errors;
+}
+
+function validateArtifactCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.agent_id, "agent_id", errors);
+  if (!ARTIFACT_STORAGE_KINDS.has(String(value.storage_kind))) {
+    errors.push("storage_kind must be a known storage kind");
+  }
+  if (typeof value.media_type !== "string" || value.media_type.length === 0 || value.media_type.length > 256) {
+    errors.push("media_type must be 1..256 characters");
+  }
+  for (const key of ["content_base64", "external_url"] as const) {
+    const item = value[key];
+    if (item !== undefined && item !== null && typeof item !== "string") {
+      errors.push(`${key} must be a string`);
+    }
+  }
+  if (value.source_ref !== undefined && value.source_ref !== null) {
+    requireResourceRefs([value.source_ref], "source_ref", errors);
+  }
+  requireStringArray(value.privacy_labels, "privacy_labels", errors);
+  if (value.session_id != null && value.space_id == null) {
+    errors.push("session_id requires space_id");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateArtifactView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["artifact_id", "agent_id", "media_type", "locator"] as const) {
+    requireNonEmptyString(value[key], key, errors);
+  }
+  requireKnownOrNonEmpty(value, "storage_kind", ARTIFACT_STORAGE_KINDS, errors);
+  if (typeof value.status !== "string" || value.status.length === 0) {
+    errors.push("status must be a non-empty string");
+  }
+  if (typeof value.content_hash !== "string" || !HASH_RE.test(value.content_hash)) {
+    errors.push("content_hash must be a SHA-256 hex string");
+  }
+  for (const key of ["size_bytes", "refcount"] as const) {
+    if (!Number.isInteger(value[key]) || Number(value[key]) < 0) {
+      errors.push(`${key} must be a non-negative integer`);
+    }
+  }
+  requireStringArray(value.privacy_labels, "privacy_labels", errors);
+  return errors;
+}
+
+function validateRetentionPolicySetRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!RETENTION_RESOURCE_TYPES.has(String(value.resource_type))) {
+    errors.push("resource_type must be a known resource type");
+  }
+  if (!RETENTION_ACTIONS.has(String(value.action))) {
+    errors.push("action must be a known retention action");
+  }
+  if (!Number.isInteger(value.threshold_days) || Number(value.threshold_days) < 1) {
+    errors.push("threshold_days must be a positive integer");
+  }
+  requireNonEmptyString(value.reason, "reason", errors);
+  if (
+    value.privacy_label !== undefined &&
+    value.privacy_label !== null &&
+    typeof value.privacy_label !== "string"
+  ) {
+    errors.push("privacy_label must be a string");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateRetentionPolicyView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.policy_id, "policy_id", errors);
+  requireKnownOrNonEmpty(value, "resource_type", RETENTION_RESOURCE_TYPES, errors);
+  requireKnownOrNonEmpty(value, "action", RETENTION_ACTIONS, errors);
+  if (!Number.isInteger(value.threshold_days) || Number(value.threshold_days) < 1) {
+    errors.push("threshold_days must be a positive integer");
+  }
+  if (!Number.isInteger(value.policy_version) || Number(value.policy_version) < 1) {
+    errors.push("policy_version must be a positive integer");
+  }
+  if (typeof value.enabled !== "boolean") errors.push("enabled must be a boolean");
+  if (
+    value.privacy_label !== undefined &&
+    value.privacy_label !== null &&
+    typeof value.privacy_label !== "string"
+  ) {
+    errors.push("privacy_label must be a string");
+  }
+  return errors;
+}
+
+function validateRetentionPolicyListResponse(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  if (!Array.isArray(value.items)) return ["items must be an array"];
+  const errors: string[] = [];
+  value.items.forEach((item: unknown, index: number) => {
+    for (const error of validateRetentionPolicyView(item)) {
+      errors.push(`items[${index}].${error}`);
+    }
+  });
+  return errors;
+}
+
+function validateLegalHoldCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.reason, "reason", errors);
+  for (const key of ["agent_id", "subject_entity_id"] as const) {
+    const item = value[key];
+    if (item !== undefined && item !== null && (typeof item !== "string" || item.length === 0)) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  }
+  if (value.session_id != null && value.space_id == null) {
+    errors.push("session_id requires space_id");
+  }
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
+function validateLegalHoldView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const key of ["legal_hold_id", "reason_code"] as const) {
+    requireNonEmptyString(value[key], key, errors);
+  }
+  if (!Number.isInteger(value.created_at_us) || Number(value.created_at_us) < 0) {
+    errors.push("created_at_us must be a non-negative integer");
+  }
+  const released = value.released_at_us;
+  if (released !== undefined && released !== null && (!Number.isInteger(released) || Number(released) < 0)) {
+    errors.push("released_at_us must be null or a non-negative integer");
+  }
+  for (const key of ["space_id", "session_id", "agent_id", "subject_entity_id"] as const) {
+    const item = value[key];
+    if (item !== undefined && item !== null && typeof item !== "string") {
+      errors.push(`${key} must be a string or null`);
+    }
+  }
+  return errors;
+}
+
+function validateLegalHoldReleaseRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.reason, "reason", errors);
+  requireLeaseProof(value as Record<string, unknown>, errors);
+  return errors;
+}
+
 function asCapabilities(value: unknown): CapabilitiesEnvelope {
   const errors = validateCapabilities(value);
   if (errors.length > 0) throw new ContractValidationError(errors);
   return value as CapabilitiesEnvelope;
+}
+
+function withLeaseProof(
+  record: Readonly<Record<string, unknown>>,
+  proof: { lease_id?: string; lease_epoch?: number },
+): Record<string, unknown> {
+  // The §25.3 lease proof rides the BODY; the idempotency key stays a header.
+  const body: Record<string, unknown> = { ...record };
+  if (proof.lease_id !== undefined) body.lease_id = proof.lease_id;
+  if (proof.lease_epoch !== undefined) body.lease_epoch = proof.lease_epoch;
+  return body;
 }
 
 /** Admin-plane outbox job projection (AdminJob schema, §16 admin listing). */
@@ -1042,6 +1763,165 @@ export interface CognitiveEventView {
   readonly ack_id?: string | null;
   readonly acknowledged_us?: number | null;
   readonly summary_of_count?: number;
+  readonly [futureField: string]: unknown;
+}
+
+/** Claim view — a remembered long-term fact about a subject (§13, Phase 5). */
+export interface ClaimView {
+  readonly claim_id: string;
+  readonly agent_id: string;
+  readonly subject_entity_id: string;
+  readonly current_subject_entity_id: string;
+  readonly predicate: string;
+  readonly category: string;
+  readonly status: string;
+  readonly canonical_text: string;
+  readonly revision: number;
+  readonly confidence: number;
+  readonly importance: number;
+  readonly accessibility: number;
+  readonly source_authority: string;
+  readonly evidence_count: number;
+  readonly recorded_at_us: number;
+  readonly value: unknown;
+  readonly privacy_labels?: readonly string[];
+  readonly scope?: Readonly<Record<string, unknown>>;
+  readonly valid_from_us?: number | null;
+  readonly valid_until_us?: number | null;
+  readonly superseded_at_us?: number | null;
+  readonly extractor_version?: string | null;
+  readonly [futureField: string]: unknown;
+}
+
+/** One bi-temporal claim revision (§19.4, Phase 5). */
+export interface ClaimRevisionView {
+  readonly revision: number;
+  readonly status: string;
+  readonly canonical_text: string;
+  readonly value: unknown;
+  readonly recorded_at_us: number;
+  readonly privacy_labels?: readonly string[];
+  readonly content_hash: string;
+  readonly superseded_at_us?: number | null;
+  readonly [futureField: string]: unknown;
+}
+
+/** Claim history listing (§19.4, Phase 5). */
+export interface ClaimHistoryResponse {
+  readonly claim_id?: string;
+  readonly revisions: readonly ClaimRevisionView[];
+  readonly [futureField: string]: unknown;
+}
+
+/** Result of a memory:forget erasure request (§19, Phase 5). */
+export interface MemoryForgetView {
+  readonly request_id: string;
+  readonly selector_key: string;
+  readonly target_count: number;
+  readonly erased_count: number;
+  readonly protected_skipped: number;
+  readonly held_skipped: number;
+  readonly tombstone_seq_lo: number;
+  readonly tombstone_seq_hi: number | null;
+  readonly [futureField: string]: unknown;
+}
+
+/** Deletion-ledger row describing one past forget request (§19, Phase 5). */
+export interface ForgetRequestView {
+  readonly request_id: string;
+  readonly selector_key: string;
+  readonly reason_code: string;
+  readonly created_us: number;
+  readonly target_count: number;
+  readonly erased_count: number;
+  readonly protected_skipped: number;
+  readonly held_skipped: number;
+  readonly tombstone_seq_lo: number;
+  readonly tombstone_seq_hi: number | null;
+  readonly selector?: Readonly<Record<string, unknown>>;
+  readonly [futureField: string]: unknown;
+}
+
+/** Episode view — a sealed interaction segment (§13, Phase 5). */
+export interface EpisodeView {
+  readonly episode_id: string;
+  readonly agent_id: string;
+  readonly status: string;
+  readonly summary: string;
+  readonly importance: number;
+  readonly revision: number;
+  readonly title?: string | null;
+  readonly valence?: number | null;
+  readonly arousal?: number | null;
+  readonly started_at_us?: number | null;
+  readonly ended_at_us?: number | null;
+  readonly participant_entity_ids?: readonly string[];
+  readonly observation_refs?: readonly Readonly<Record<string, unknown>>[];
+  readonly privacy_labels?: readonly string[];
+  readonly scope?: Readonly<Record<string, unknown>>;
+  readonly extractor_version?: string | null;
+  readonly [futureField: string]: unknown;
+}
+
+/** Relation view — an edge between two entities (§13, Phase 5). */
+export interface RelationView {
+  readonly relation_id: string;
+  readonly agent_id: string;
+  readonly source_entity_id: string;
+  readonly relation_type: string;
+  readonly target_entity_id: string;
+  readonly status: string;
+  readonly revision: number;
+  readonly confidence: number;
+  readonly importance: number;
+  readonly accessibility: number;
+  readonly evidence_count: number;
+  readonly privacy_labels?: readonly string[];
+  readonly evidence_refs?: readonly Readonly<Record<string, unknown>>[];
+  readonly scope?: Readonly<Record<string, unknown>>;
+  readonly valid_from_us?: number | null;
+  readonly valid_until_us?: number | null;
+  readonly [futureField: string]: unknown;
+}
+
+/** Artifact view — stored content referenced by evidence (§13, Phase 5). */
+export interface ArtifactView {
+  readonly artifact_id: string;
+  readonly agent_id: string;
+  readonly media_type: string;
+  readonly storage_kind: string;
+  readonly locator: string;
+  readonly content_hash: string;
+  readonly size_bytes: number;
+  readonly status: string;
+  readonly refcount: number;
+  readonly privacy_labels?: readonly string[];
+  readonly scope?: Readonly<Record<string, unknown>>;
+  readonly [futureField: string]: unknown;
+}
+
+/** Retention policy view (§19.3, Phase 5). */
+export interface RetentionPolicyView {
+  readonly policy_id: string;
+  readonly resource_type: string;
+  readonly action: string;
+  readonly threshold_days: number;
+  readonly policy_version: number;
+  readonly enabled: boolean;
+  readonly privacy_label?: string | null;
+  readonly [futureField: string]: unknown;
+}
+
+/** Legal hold view (§19, Phase 5). */
+export interface LegalHoldView {
+  readonly legal_hold_id: string;
+  readonly reason_code: string;
+  readonly created_at_us: number;
+  readonly released_at_us?: number | null;
+  readonly space_id?: string | null;
+  readonly session_id?: string | null;
+  readonly subject_entity_id?: string | null;
+  readonly agent_id?: string | null;
   readonly [futureField: string]: unknown;
 }
 
@@ -1779,5 +2659,364 @@ export class AsyncIrisMemoryClient {
     const errors = validateCognitiveEventView(value);
     if (errors.length > 0) throw new ContractValidationError(errors);
     return value as CognitiveEventView;
+  }
+
+  // -- Phase 5: claims --------------------------------------------------------
+
+  public async rememberClaim(
+    record: Readonly<Record<string, unknown>>,
+    options: {
+      idempotencyKey: string;
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<ClaimView> {
+    const response = await fetch(`${this.#baseUrl}/v1/claims:remember`, {
+      body: JSON.stringify(withLeaseProof(record, options)),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateClaimView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as ClaimView;
+  }
+
+  public async correctClaim(
+    claimId: string,
+    record: Readonly<Record<string, unknown>>,
+    options: {
+      idempotencyKey: string;
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<ClaimView> {
+    const response = await fetch(
+      `${this.#baseUrl}/v1/claims/${encodeURIComponent(claimId)}:correct`,
+      {
+        body: JSON.stringify(withLeaseProof(record, options)),
+        headers: {
+          "Idempotency-Key": options.idempotencyKey,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    const value: unknown = await response.json();
+    const errors = validateClaimView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as ClaimView;
+  }
+
+  public async getClaim(claimId: string): Promise<ClaimView> {
+    const response = await fetch(
+      `${this.#baseUrl}/v1/claims/${encodeURIComponent(claimId)}`,
+    );
+    const value: unknown = await response.json();
+    const errors = validateClaimView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as ClaimView;
+  }
+
+  public async searchClaims(input: {
+    agent_id: string;
+    space_id?: string;
+    session_id?: string;
+    subject_entity_id?: string;
+    predicate?: string;
+    category?: string;
+    /** Repeated query parameter — one ``status`` entry per value. */
+    statuses?: readonly string[];
+    valid_at_us?: number;
+    as_of_us?: number;
+    limit?: number;
+  }): Promise<{ items: readonly ClaimView[] }> {
+    const params = new URLSearchParams({ agent_id: input.agent_id });
+    for (const key of [
+      "space_id",
+      "session_id",
+      "subject_entity_id",
+      "predicate",
+      "category",
+    ] as const) {
+      const item = input[key];
+      if (item !== undefined) params.set(key, item);
+    }
+    for (const status of input.statuses ?? []) params.append("status", status);
+    if (input.valid_at_us !== undefined) params.set("valid_at_us", String(input.valid_at_us));
+    if (input.as_of_us !== undefined) params.set("as_of_us", String(input.as_of_us));
+    if (input.limit !== undefined) params.set("limit", String(input.limit));
+    const response = await fetch(`${this.#baseUrl}/v1/claims?${params.toString()}`);
+    const value: unknown = await response.json();
+    const errors = validateClaimSearchResponse(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as { items: readonly ClaimView[] };
+  }
+
+  public async claimHistory(
+    claimId: string,
+    query: { as_of_us?: number; limit?: number } = {},
+  ): Promise<ClaimHistoryResponse> {
+    const params = new URLSearchParams();
+    if (query.as_of_us !== undefined) params.set("as_of_us", String(query.as_of_us));
+    if (query.limit !== undefined) params.set("limit", String(query.limit));
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    const response = await fetch(
+      `${this.#baseUrl}/v1/claims/${encodeURIComponent(claimId)}/history${suffix}`,
+    );
+    const value: unknown = await response.json();
+    const errors = validateClaimHistoryResponse(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as ClaimHistoryResponse;
+  }
+
+  // -- Phase 5: forget / retention / legal holds -------------------------------
+
+  public async forgetMemory(
+    record: Readonly<Record<string, unknown>>,
+    options: {
+      idempotencyKey?: string;
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    } = {},
+  ): Promise<MemoryForgetView> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (options.idempotencyKey !== undefined) {
+      headers["Idempotency-Key"] = options.idempotencyKey;
+    }
+    const response = await fetch(`${this.#baseUrl}/v1/memory:forget`, {
+      body: JSON.stringify(withLeaseProof(record, options)),
+      headers,
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateMemoryForgetView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as MemoryForgetView;
+  }
+
+  public async exportDeletionLedger(
+    query: { created_after_us?: number } = {},
+  ): Promise<{ requests: readonly ForgetRequestView[] }> {
+    const params = new URLSearchParams();
+    if (query.created_after_us !== undefined) {
+      params.set("created_after_us", String(query.created_after_us));
+    }
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    const response = await fetch(`${this.#baseUrl}/v1/memory/deletion-ledger${suffix}`);
+    const value: unknown = await response.json();
+    const errors = validateDeletionLedgerResponse(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as { requests: readonly ForgetRequestView[] };
+  }
+
+  public async setRetentionPolicy(
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<RetentionPolicyView> {
+    // The contract requires the Idempotency-Key header on this write too.
+    const response = await fetch(`${this.#baseUrl}/v1/retention-policies`, {
+      body: JSON.stringify(record),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateRetentionPolicyView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as RetentionPolicyView;
+  }
+
+  public async listRetentionPolicies(): Promise<{
+    items: readonly RetentionPolicyView[];
+  }> {
+    const response = await fetch(`${this.#baseUrl}/v1/retention-policies`);
+    const value: unknown = await response.json();
+    const errors = validateRetentionPolicyListResponse(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as { items: readonly RetentionPolicyView[] };
+  }
+
+  public async createLegalHold(
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey?: string } = {},
+  ): Promise<LegalHoldView> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (options.idempotencyKey !== undefined) {
+      headers["Idempotency-Key"] = options.idempotencyKey;
+    }
+    const response = await fetch(`${this.#baseUrl}/v1/legal-holds`, {
+      body: JSON.stringify(record),
+      headers,
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateLegalHoldView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as LegalHoldView;
+  }
+
+  public async releaseLegalHold(
+    legalHoldId: string,
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey?: string } = {},
+  ): Promise<LegalHoldView> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (options.idempotencyKey !== undefined) {
+      headers["Idempotency-Key"] = options.idempotencyKey;
+    }
+    const response = await fetch(
+      `${this.#baseUrl}/v1/legal-holds/${encodeURIComponent(legalHoldId)}:release`,
+      {
+        body: JSON.stringify(record),
+        headers,
+        method: "POST",
+      },
+    );
+    const value: unknown = await response.json();
+    const errors = validateLegalHoldView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as LegalHoldView;
+  }
+
+  // -- Phase 5: episodes -------------------------------------------------------
+
+  public async createEpisode(
+    record: Readonly<Record<string, unknown>>,
+    options: {
+      idempotencyKey: string;
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<EpisodeView> {
+    const response = await fetch(`${this.#baseUrl}/v1/episodes`, {
+      body: JSON.stringify(withLeaseProof(record, options)),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateEpisodeView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as EpisodeView;
+  }
+
+  public async transitionEpisode(
+    episodeId: string,
+    target: string,
+    record: Readonly<Record<string, unknown>>,
+    options: {
+      idempotencyKey: string;
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<EpisodeView> {
+    // The transition target rides the body (there is no query parameter for
+    // it); the explicit argument always wins over a value inside the record.
+    const response = await fetch(
+      `${this.#baseUrl}/v1/episodes/${encodeURIComponent(episodeId)}:transition`,
+      {
+        body: JSON.stringify(withLeaseProof({ ...record, target }, options)),
+        headers: {
+          "Idempotency-Key": options.idempotencyKey,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    const value: unknown = await response.json();
+    const errors = validateEpisodeView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as EpisodeView;
+  }
+
+  public async getEpisode(episodeId: string): Promise<EpisodeView> {
+    const response = await fetch(
+      `${this.#baseUrl}/v1/episodes/${encodeURIComponent(episodeId)}`,
+    );
+    const value: unknown = await response.json();
+    const errors = validateEpisodeView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as EpisodeView;
+  }
+
+  // -- Phase 5: relations & artifacts ------------------------------------------
+
+  public async createRelation(
+    record: Readonly<Record<string, unknown>>,
+    options: {
+      idempotencyKey: string;
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<RelationView> {
+    const response = await fetch(`${this.#baseUrl}/v1/relations`, {
+      body: JSON.stringify(withLeaseProof(record, options)),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateRelationView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as RelationView;
+  }
+
+  public async getRelation(relationId: string): Promise<RelationView> {
+    const response = await fetch(
+      `${this.#baseUrl}/v1/relations/${encodeURIComponent(relationId)}`,
+    );
+    const value: unknown = await response.json();
+    const errors = validateRelationView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as RelationView;
+  }
+
+  public async createArtifact(
+    record: Readonly<Record<string, unknown>>,
+    options: {
+      idempotencyKey: string;
+      /** §25.3 lease proof — required on this write under required mode. */
+      lease_id?: string;
+      lease_epoch?: number;
+    },
+  ): Promise<ArtifactView> {
+    const response = await fetch(`${this.#baseUrl}/v1/artifacts`, {
+      body: JSON.stringify(withLeaseProof(record, options)),
+      headers: {
+        "Idempotency-Key": options.idempotencyKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const value: unknown = await response.json();
+    const errors = validateArtifactView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as ArtifactView;
+  }
+
+  public async getArtifact(artifactId: string): Promise<ArtifactView> {
+    const response = await fetch(
+      `${this.#baseUrl}/v1/artifacts/${encodeURIComponent(artifactId)}`,
+    );
+    const value: unknown = await response.json();
+    const errors = validateArtifactView(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as ArtifactView;
   }
 }

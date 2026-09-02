@@ -2,7 +2,7 @@
 
 > 状态：In progress  
 > 架构来源：[Architecture & Implementation Baseline v1.0](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)  
-> 更新日期：2026-08-31
+> 更新日期：2026-09-01
 
 本路线图将架构基线第 36 章的 15 个阶段转换为可执行文档。每个阶段结束时都应形成一个可运行、可测试、可迁移的纵向切片；后续阶段不得绕过已经建立的安全、权限、Revision、Tombstone 或 Canonical/Projection 不变量。
 
@@ -47,7 +47,7 @@ flowchart LR
 | M0 工程与可靠性脊柱 | [02 Observation、Outbox 与持久调度](./phase-02-observation-outbox-scheduler.md) | 已确认事件可可靠落库并异步推进 | Completed |
 | M1 认知领域闭环 | [03 近期上下文、State 与 Focus](./phase-03-recent-state-focus.md) | 有界短期上下文和认知关注可恢复 | Completed |
 | M1 认知领域闭环 | [04 Note、Task 与 CognitiveEvent](./phase-04-notes-tasks-events.md) | 捕获、计划、提醒和 ACK 语义闭环 | Completed |
-| M1 认知领域闭环 | [05 显式长期记忆与 Episode](./phase-05-long-term-memory.md) | Remember/Correct/Forget 与历史可审计 | Planned |
+| M1 认知领域闭环 | [05 显式长期记忆与 Episode](./phase-05-long-term-memory.md) | Remember/Correct/Forget 与历史可审计 | Completed |
 | M2 可解释召回 | [06 FTS Recall](./phase-06-fts-recall.md) | 无向量依赖的首个完整召回协议 | Planned |
 | M2 可解释召回 | [07 Vector Recall](./phase-07-vector-recall.md) | 可回退的混合语义召回 | Planned |
 | M2 可解释召回 | [08 Profile 与 Graph](./phase-08-profile-graph.md) | 画像与受限关系召回可重建 | Planned |

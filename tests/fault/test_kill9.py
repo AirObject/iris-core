@@ -32,6 +32,9 @@ BOUNDARIES = {
     "task_transition": ["pre_revision", "pre_pointer", "pre_commit", "post_commit"],
     "trigger_scan": ["pre_occurrence", "pre_commit", "post_commit"],
     "event_ack": ["pre_commit", "post_commit"],
+    # Phase 5: forget atomicity across tombstone/erasure/ledger/watermark/
+    # invalidation outbox (ADR-0005/0013).
+    "forget": ["pre_tx", "pre_commit", "post_commit"],
 }
 
 
@@ -550,6 +553,62 @@ class TestPhase4Kill9:
             else:
                 assert counts["occurrences"] == 1, (iteration, counts)
                 assert counts["events"] == 1, (iteration, counts)
+            assert verify_database_invariants(database) == (), iteration
+
+    @pytest.mark.parametrize("crash_at", BOUNDARIES["forget"])
+    def test_forget_atomicity(self, crash_at: str, tmp_path: Path) -> None:
+        """Forget lands completely (claim erased + tombstone + ledger +
+        invalidation job) or not at all — never half-committed."""
+        import sqlite3
+
+        from iris_memory_core.storage.backup import verify_database_invariants
+
+        for iteration in range(REPETITIONS):
+            database = tmp_path / f"forget-{crash_at}-{iteration}.sqlite3"
+            _run_crash("forget", crash_at, database)
+            connection = sqlite3.connect(database)
+            try:
+                counts = {
+                    "claims": int(connection.execute("SELECT COUNT(*) FROM claims").fetchone()[0]),
+                    "erased": int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM claim_revisions WHERE canonical_text = '<erased>'"
+                        ).fetchone()[0]
+                    ),
+                    "tombstones": int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM resource_tombstones WHERE resource_type = 'claim'"
+                        ).fetchone()[0]
+                    ),
+                    "ledger": int(
+                        connection.execute("SELECT COUNT(*) FROM forget_requests").fetchone()[0]
+                    ),
+                    "invalidations": int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM outbox_jobs WHERE job_kind = 'memory.invalidated'"
+                        ).fetchone()[0]
+                    ),
+                    "evidence_invalidated": int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM claim_evidence WHERE invalidated_us IS NOT NULL"
+                        ).fetchone()[0]
+                    ),
+                }
+            finally:
+                connection.close()
+            assert counts["claims"] == 1, iteration
+            if crash_at in ("pre_tx", "pre_commit"):
+                # Nothing landed: the claim is intact and visible.
+                assert counts["erased"] == 0, (iteration, counts)
+                assert counts["tombstones"] == 0, (iteration, counts)
+                assert counts["ledger"] == 0, (iteration, counts)
+                assert counts["invalidations"] == 0, (iteration, counts)
+            else:
+                # Everything landed together.
+                assert counts["erased"] == 1, (iteration, counts)
+                assert counts["tombstones"] == 1, (iteration, counts)
+                assert counts["ledger"] == 1, (iteration, counts)
+                assert counts["invalidations"] >= 1, (iteration, counts)
             assert verify_database_invariants(database) == (), iteration
 
     @pytest.mark.parametrize("crash_at", BOUNDARIES["event_ack"])

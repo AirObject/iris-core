@@ -1,0 +1,58 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/claim-revision-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "canonical_text": {
+      "type": "string"
+    },
+    "content_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "recorded_at_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "active",
+        "disputed",
+        "superseded",
+        "retracted",
+        "expired",
+        "archived",
+        "tombstoned"
+      ]
+    },
+    "superseded_at_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "value": {}
+  },
+  "required": [
+    "revision",
+    "status",
+    "canonical_text",
+    "value",
+    "recorded_at_us",
+    "privacy_labels",
+    "content_hash"
+  ],
+  "title": "ClaimRevisionView",
+  "type": "object"
+}

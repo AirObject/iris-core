@@ -10,6 +10,7 @@ import sqlite3
 import time
 from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager, suppress
+from pathlib import Path
 
 from iris_memory_core.application.ports import (
     Clock,
@@ -49,6 +50,13 @@ from iris_memory_core.storage.cognitive import (
     FocusRepository,
     RecentContextRepository,
     StateRepository,
+)
+from iris_memory_core.storage.memory import (
+    ArtifactRepository,
+    ClaimRepository,
+    EpisodeRepository,
+    RelationRepository,
+    RetentionRepository,
 )
 from iris_memory_core.storage.plans import (
     CognitiveEventRepository,
@@ -92,6 +100,7 @@ class Transaction:
         ids: IdentifierGenerator,
         *,
         writable: bool = True,
+        artifact_root: Path | None = None,
     ) -> None:
         self.spaces = SpaceRepository(connection, clock, ids)
         self.identities = IdentityRepository(connection, clock, ids)
@@ -106,6 +115,11 @@ class Transaction:
         self.notes = NoteRepository(connection, clock, ids)
         self.tasks = TaskRepository(connection, clock, ids)
         self.events = CognitiveEventRepository(connection, clock, ids)
+        self.episodes = EpisodeRepository(connection, clock, ids)
+        self.claims = ClaimRepository(connection, clock, ids)
+        self.relations = RelationRepository(connection, clock, ids)
+        self.artifacts = ArtifactRepository(connection, clock, ids, artifact_root)
+        self.retention = RetentionRepository(connection, clock, ids)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}
@@ -545,7 +559,11 @@ class _WriteUnitOfWork(AbstractContextManager[Transaction]):
             self._release()
             raise
         self._transaction = Transaction(
-            self._connection, self._store.clock, self._store.ids, writable=True
+            self._connection,
+            self._store.clock,
+            self._store.ids,
+            writable=True,
+            artifact_root=self._store.artifact_root,
         )
         return self._transaction
 
@@ -586,7 +604,13 @@ class _ReadUnitOfWork(AbstractContextManager[Transaction]):
     def __enter__(self) -> Transaction:
         self._connection = self._store._ready_connect()
         self._connection.execute("BEGIN DEFERRED")
-        return Transaction(self._connection, self._store.clock, self._store.ids, writable=False)
+        return Transaction(
+            self._connection,
+            self._store.clock,
+            self._store.ids,
+            writable=False,
+            artifact_root=self._store.artifact_root,
+        )
 
     def __exit__(
         self,
@@ -627,6 +651,9 @@ class Store:
         self.runtime = runtime
         self.clock: Clock = clock or SystemClock()
         self.ids: IdentifierGenerator = ids or Uuid7Generator()
+        #: Controlled local blob root for Phase 5 artifacts (§13.6): derived
+        #: from the database location, never configurable per request.
+        self.artifact_root: Path = runtime.database.parent / "artifacts"
         self._busy_retry_attempts = busy_retry_attempts
         self._busy_backoff_ms = busy_backoff_ms
         self._busy_observer = busy_observer

@@ -1,0 +1,100 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/forget-request-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "created_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "erased_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "held_skipped": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "protected_skipped": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "reason_code": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "request_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "selector": {
+      "additionalProperties": true,
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "resource",
+            "subject_predicate",
+            "session",
+            "space",
+            "data_request"
+          ]
+        },
+        "predicate": {
+          "type": "string"
+        },
+        "resource_id": {
+          "type": "string"
+        },
+        "resource_type": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "space_id": {
+          "type": "string"
+        },
+        "subject_entity_id": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "selector_key": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "target_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tombstone_seq_hi": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "tombstone_seq_lo": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "request_id",
+    "selector_key",
+    "reason_code",
+    "created_us",
+    "target_count",
+    "erased_count",
+    "protected_skipped",
+    "held_skipped",
+    "tombstone_seq_lo",
+    "tombstone_seq_hi"
+  ],
+  "title": "ForgetRequestView",
+  "type": "object"
+}

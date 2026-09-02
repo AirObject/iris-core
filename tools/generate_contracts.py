@@ -1135,6 +1135,822 @@ def phase4_json_schema_files() -> dict[Path, dict[str, Any]]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Phase 5 schemas (long-term memory: claims, episodes, relations, artifacts,
+# forget/retention/legal holds; §13, §19)
+
+_CLAIM_CATEGORIES = [
+    "identity",
+    "preference",
+    "relationship",
+    "fact",
+    "community",
+    "procedure",
+    "self_narrative",
+]
+_CLAIM_STATUSES = [
+    "active",
+    "disputed",
+    "superseded",
+    "retracted",
+    "expired",
+    "archived",
+    "tombstoned",
+]
+_EVIDENCE_RELATIONS = ["supports", "contradicts", "corrects"]
+_SOURCE_AUTHORITIES = [
+    "agent_inference",
+    "extracted",
+    "user_statement",
+    "platform_verified",
+    "admin_confirmed",
+    "explicit_correction",
+]
+_EVIDENCE_SOURCE_TYPES = ["observation", "artifact", "episode", "claim", "note"]
+_CORRECT_MODES = ["supersede", "dispute", "retract"]
+_EPISODE_STATUSES = ["open", "sealed", "superseded", "archived", "tombstoned"]
+_EPISODE_TRANSITION_TARGETS = ["seal", "supersede", "archive", "reopen"]
+_RELATION_STATUSES = [
+    "active",
+    "disputed",
+    "superseded",
+    "retracted",
+    "archived",
+    "tombstoned",
+]
+_ARTIFACT_STORAGE_KINDS = ["inline", "local_blob", "external_ref"]
+_ARTIFACT_STATUSES = ["active", "archived", "tombstoned"]
+_FORGET_SELECTOR_KINDS = ["resource", "subject_predicate", "session", "space", "data_request"]
+_RETENTION_ACTIONS = ["decay", "archive", "delete"]
+_RETENTION_RESOURCE_TYPES = ["claim", "note", "episode", "relation", "observation"]
+
+
+def _evidence_ref_schema() -> dict[str, Any]:
+    """One evidence row: a typed source plus its relation to the claim."""
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "source_type": {"enum": _EVIDENCE_SOURCE_TYPES},
+            "source_id": _id(),
+            "relation": {"enum": _EVIDENCE_RELATIONS},
+            "source_authority": {"enum": _SOURCE_AUTHORITIES},
+            "source_revision": {"type": "integer", "minimum": 1},
+            "evidence_span": {"type": "string"},
+        },
+        "required": ["source_type", "source_id", "relation", "source_authority"],
+    }
+
+
+def _scope_view_schema() -> dict[str, Any]:
+    """View-side scope projection (§5.2): the recorded space nesting."""
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "space_group_id": {"type": ["string", "null"]},
+            "space_id": {"type": ["string", "null"]},
+            "session_id": {"type": ["string", "null"]},
+        },
+    }
+
+
+def claim_remember_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-remember-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "agent_id": _id(),
+            "predicate": {"type": "string", "minLength": 1, "maxLength": 256},
+            "value": {},
+            "subject_entity_id": _id(),
+            "subject_is_self": {"type": "boolean", "default": False},
+            "canonical_text": {"type": "string"},
+            "category": {"enum": _CLAIM_CATEGORIES, "default": "fact"},
+            "space_id": {"type": ["string", "null"], "minLength": 1},
+            "session_id": {"type": ["string", "null"], "minLength": 1},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "importance": {"type": "number", "minimum": 0, "maximum": 1},
+            "accessibility": {"type": "number", "minimum": 0, "maximum": 1},
+            "source_authority": {"enum": _SOURCE_AUTHORITIES, "default": "user_statement"},
+            "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": _evidence_ref_schema(),
+            },
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "source_refs": {"type": "array", "items": _resource_ref_schema()},
+            "valid_from_us": {"type": "integer", "minimum": 0},
+            "valid_until_us": {"type": "integer", "minimum": 0},
+            "extractor_version": {"type": "string"},
+            **_lease_proof_properties(),
+        },
+        "required": ["agent_id", "predicate", "value", "evidence"],
+        # §5.2: a session-scoped write must also name its space.
+        "dependentRequired": {"session_id": ["space_id"]},
+        "title": "ClaimRememberRequest",
+        "type": "object",
+    }
+
+
+def claim_correct_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-correct-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "expected_revision": {"type": "integer", "minimum": 1},
+            "mode": {"enum": _CORRECT_MODES, "default": "supersede"},
+            "value": {},
+            "canonical_text": {"type": "string"},
+            "evidence": {"type": "array", "items": _evidence_ref_schema()},
+            "source_authority": {"enum": _SOURCE_AUTHORITIES},
+            "reason": {"type": "string", "minLength": 1},
+            **_lease_proof_properties(),
+        },
+        "required": ["expected_revision", "reason"],
+        "title": "ClaimCorrectRequest",
+        "type": "object",
+    }
+
+
+def _claim_view_body() -> dict[str, Any]:
+    """ClaimView without $id, so sibling schemas can embed it in $defs."""
+    return {
+        "additionalProperties": True,
+        "properties": {
+            "claim_id": _id(),
+            "agent_id": _id(),
+            "subject_entity_id": _id(),
+            "current_subject_entity_id": _id(),
+            "predicate": {"type": "string", "minLength": 1},
+            "value": {},
+            "category": {"enum": _CLAIM_CATEGORIES},
+            "status": {"enum": _CLAIM_STATUSES},
+            "canonical_text": {"type": "string"},
+            "scope": _scope_view_schema(),
+            "revision": {"type": "integer", "minimum": 1},
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "importance": {"type": "number", "minimum": 0, "maximum": 1},
+            "accessibility": {"type": "number", "minimum": 0, "maximum": 1},
+            "source_authority": {"enum": _SOURCE_AUTHORITIES},
+            "evidence_count": {"type": "integer", "minimum": 0},
+            "recorded_at_us": {"type": "integer", "minimum": 0},
+            "valid_from_us": {"type": ["integer", "null"], "minimum": 0},
+            "valid_until_us": {"type": ["integer", "null"], "minimum": 0},
+            "superseded_at_us": {"type": ["integer", "null"], "minimum": 0},
+            "extractor_version": {"type": ["string", "null"]},
+        },
+        "required": [
+            "claim_id",
+            "agent_id",
+            "subject_entity_id",
+            "current_subject_entity_id",
+            "predicate",
+            "category",
+            "status",
+            "canonical_text",
+            "revision",
+            "privacy_labels",
+            "confidence",
+            "importance",
+            "accessibility",
+            "source_authority",
+            "evidence_count",
+            "recorded_at_us",
+        ],
+        "title": "ClaimView",
+        "type": "object",
+    }
+
+
+def claim_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        **_claim_view_body(),
+    }
+
+
+def _claim_revision_view_body() -> dict[str, Any]:
+    """ClaimRevisionView without $id, for $defs embedding."""
+    return {
+        "additionalProperties": True,
+        "properties": {
+            "revision": {"type": "integer", "minimum": 1},
+            "status": {"enum": _CLAIM_STATUSES},
+            "canonical_text": {"type": "string"},
+            "value": {},
+            "recorded_at_us": {"type": "integer", "minimum": 0},
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "superseded_at_us": {"type": ["integer", "null"], "minimum": 0},
+        },
+        "required": [
+            "revision",
+            "status",
+            "canonical_text",
+            "value",
+            "recorded_at_us",
+            "privacy_labels",
+            "content_hash",
+        ],
+        "title": "ClaimRevisionView",
+        "type": "object",
+    }
+
+
+def claim_revision_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-revision-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        **_claim_revision_view_body(),
+    }
+
+
+def claim_search_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-search-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "items": {"type": "array", "items": {"$ref": "#/$defs/ClaimView"}},
+        },
+        "$defs": {"ClaimView": _claim_view_body()},
+        "required": ["items"],
+        "title": "ClaimSearchResponse",
+        "type": "object",
+    }
+
+
+def claim_history_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/claim-history-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "claim_id": _id(),
+            "revisions": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/ClaimRevisionView"},
+            },
+        },
+        "$defs": {"ClaimRevisionView": _claim_revision_view_body()},
+        "required": ["revisions"],
+        "title": "ClaimHistoryResponse",
+        "type": "object",
+    }
+
+
+def memory_forget_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/memory-forget-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "selector": {
+                "type": "object",
+                "additionalProperties": True,
+                "properties": {
+                    "kind": {"enum": _FORGET_SELECTOR_KINDS},
+                    "resource_type": {"type": "string", "minLength": 1},
+                    "resource_id": _id(),
+                    "agent_id": _id(),
+                    "subject_entity_id": _id(),
+                    "predicate": {"type": "string", "minLength": 1},
+                    "space_id": {"type": ["string", "null"], "minLength": 1},
+                    "session_id": {"type": ["string", "null"], "minLength": 1},
+                },
+                "required": ["kind"],
+                "dependentRequired": {"session_id": ["space_id"]},
+            },
+            "reason": {"type": "string", "minLength": 1},
+            "erase_content": {"type": "boolean", "default": True},
+            **_lease_proof_properties(),
+        },
+        "required": ["selector", "reason"],
+        "title": "MemoryForgetRequest",
+        "type": "object",
+    }
+
+
+def _forget_counts_properties() -> dict[str, Any]:
+    """Shared counters of a completed forget request (view + ledger)."""
+    return {
+        "target_count": {"type": "integer", "minimum": 0},
+        "erased_count": {"type": "integer", "minimum": 0},
+        "protected_skipped": {"type": "integer", "minimum": 0},
+        "held_skipped": {"type": "integer", "minimum": 0},
+        "tombstone_seq_lo": {"type": "integer", "minimum": 0},
+        "tombstone_seq_hi": {"type": ["integer", "null"], "minimum": 0},
+    }
+
+
+def memory_forget_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/memory-forget-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "request_id": _id(),
+            "selector_key": {"type": "string", "minLength": 1},
+            **_forget_counts_properties(),
+        },
+        "required": [
+            "request_id",
+            "selector_key",
+            "target_count",
+            "erased_count",
+            "protected_skipped",
+            "held_skipped",
+            "tombstone_seq_lo",
+            "tombstone_seq_hi",
+        ],
+        "title": "MemoryForgetView",
+        "type": "object",
+    }
+
+
+def episode_create_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/episode-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "agent_id": _id(),
+            "title": {"type": "string", "minLength": 1, "maxLength": 500},
+            "summary": {"type": "string", "minLength": 1, "maxLength": 8000},
+            "participant_entity_ids": {"type": "array", "items": _id()},
+            "observation_refs": {"type": "array", "items": _resource_ref_schema()},
+            "space_id": {"type": ["string", "null"], "minLength": 1},
+            "session_id": {"type": ["string", "null"], "minLength": 1},
+            "importance": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
+            "valence": {"type": "number", "minimum": -1, "maximum": 1},
+            "arousal": {"type": "number", "minimum": 0, "maximum": 1},
+            "started_at_us": {"type": "integer", "minimum": 0},
+            "ended_at_us": {"type": "integer", "minimum": 0},
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "source_refs": {"type": "array", "items": _resource_ref_schema()},
+            "extractor_version": {"type": "string"},
+            **_lease_proof_properties(),
+        },
+        "required": ["agent_id", "summary"],
+        "dependentRequired": {"session_id": ["space_id"]},
+        "title": "EpisodeCreateRequest",
+        "type": "object",
+    }
+
+
+def episode_transition_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/episode-transition-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "target": {"enum": _EPISODE_TRANSITION_TARGETS},
+            "expected_revision": {"type": "integer", "minimum": 1},
+            "reason": {"type": "string", "minLength": 1},
+            **_lease_proof_properties(),
+        },
+        "required": ["target", "expected_revision", "reason"],
+        "title": "EpisodeTransitionRequest",
+        "type": "object",
+    }
+
+
+def episode_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/episode-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "episode_id": _id(),
+            "agent_id": _id(),
+            "status": {"enum": _EPISODE_STATUSES},
+            "title": {"type": ["string", "null"]},
+            "summary": {"type": "string", "minLength": 1},
+            "participant_entity_ids": {"type": "array", "items": _id()},
+            "observation_refs": {"type": "array", "items": _resource_ref_schema()},
+            "scope": _scope_view_schema(),
+            "importance": {"type": "number", "minimum": 0, "maximum": 1},
+            "valence": {"type": ["number", "null"], "minimum": -1, "maximum": 1},
+            "arousal": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+            "started_at_us": {"type": ["integer", "null"], "minimum": 0},
+            "ended_at_us": {"type": ["integer", "null"], "minimum": 0},
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "extractor_version": {"type": ["string", "null"]},
+            "revision": {"type": "integer", "minimum": 1},
+        },
+        "required": ["episode_id", "agent_id", "status", "summary", "importance", "revision"],
+        "title": "EpisodeView",
+        "type": "object",
+    }
+
+
+def relation_create_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/relation-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "agent_id": _id(),
+            "source_entity_id": _id(),
+            "relation_type": {"type": "string", "minLength": 1, "maxLength": 128},
+            "target_entity_id": _id(),
+            "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "properties": {
+                        "source_type": {"enum": _EVIDENCE_SOURCE_TYPES},
+                        "source_id": _id(),
+                        "relation": {"enum": ["supports"]},
+                        "source_authority": {"enum": _SOURCE_AUTHORITIES},
+                    },
+                    "required": ["source_type", "source_id", "relation", "source_authority"],
+                },
+            },
+            "space_id": {"type": ["string", "null"], "minLength": 1},
+            "session_id": {"type": ["string", "null"], "minLength": 1},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "importance": {"type": "number", "minimum": 0, "maximum": 1},
+            "accessibility": {"type": "number", "minimum": 0, "maximum": 1},
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "valid_from_us": {"type": "integer", "minimum": 0},
+            "valid_until_us": {"type": "integer", "minimum": 0},
+            **_lease_proof_properties(),
+        },
+        "required": [
+            "agent_id",
+            "source_entity_id",
+            "relation_type",
+            "target_entity_id",
+            "evidence",
+        ],
+        "dependentRequired": {"session_id": ["space_id"]},
+        "title": "RelationCreateRequest",
+        "type": "object",
+    }
+
+
+def relation_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/relation-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "relation_id": _id(),
+            "agent_id": _id(),
+            "source_entity_id": _id(),
+            "relation_type": {"type": "string", "minLength": 1},
+            "target_entity_id": _id(),
+            "status": {"enum": _RELATION_STATUSES},
+            "scope": _scope_view_schema(),
+            "revision": {"type": "integer", "minimum": 1},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "importance": {"type": "number", "minimum": 0, "maximum": 1},
+            "accessibility": {"type": "number", "minimum": 0, "maximum": 1},
+            "evidence_count": {"type": "integer", "minimum": 0},
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "evidence_refs": {"type": "array", "items": _resource_ref_schema()},
+            "valid_from_us": {"type": ["integer", "null"], "minimum": 0},
+            "valid_until_us": {"type": ["integer", "null"], "minimum": 0},
+        },
+        "required": [
+            "relation_id",
+            "agent_id",
+            "source_entity_id",
+            "relation_type",
+            "target_entity_id",
+            "status",
+            "revision",
+            "confidence",
+            "importance",
+            "accessibility",
+            "evidence_count",
+        ],
+        "title": "RelationView",
+        "type": "object",
+    }
+
+
+def artifact_create_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/artifact-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "agent_id": _id(),
+            "storage_kind": {"enum": _ARTIFACT_STORAGE_KINDS},
+            "media_type": {"type": "string", "minLength": 1, "maxLength": 256},
+            "content_base64": {"type": "string"},
+            "external_url": {"type": "string"},
+            "space_id": {"type": ["string", "null"], "minLength": 1},
+            "session_id": {"type": ["string", "null"], "minLength": 1},
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+            "source_ref": _resource_ref_schema(),
+            **_lease_proof_properties(),
+        },
+        "required": ["agent_id", "storage_kind", "media_type"],
+        "dependentRequired": {"session_id": ["space_id"]},
+        "title": "ArtifactCreateRequest",
+        "type": "object",
+    }
+
+
+def artifact_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/artifact-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "artifact_id": _id(),
+            "agent_id": _id(),
+            "media_type": {"type": "string", "minLength": 1},
+            "storage_kind": {"enum": _ARTIFACT_STORAGE_KINDS},
+            "locator": {"type": "string", "minLength": 1},
+            "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "size_bytes": {"type": "integer", "minimum": 0},
+            "status": {"enum": _ARTIFACT_STATUSES},
+            "refcount": {"type": "integer", "minimum": 0},
+            "scope": _scope_view_schema(),
+            "privacy_labels": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": [
+            "artifact_id",
+            "agent_id",
+            "media_type",
+            "storage_kind",
+            "locator",
+            "content_hash",
+            "size_bytes",
+            "status",
+            "refcount",
+        ],
+        "title": "ArtifactView",
+        "type": "object",
+    }
+
+
+def _retention_policy_body() -> dict[str, Any]:
+    """RetentionPolicyView without $id, for $defs embedding."""
+    return {
+        "additionalProperties": True,
+        "properties": {
+            "policy_id": _id(),
+            "resource_type": {"enum": _RETENTION_RESOURCE_TYPES},
+            "action": {"enum": _RETENTION_ACTIONS},
+            "threshold_days": {"type": "integer", "minimum": 1},
+            "privacy_label": {"type": ["string", "null"]},
+            "policy_version": {"type": "integer", "minimum": 1},
+            "enabled": {"type": "boolean"},
+        },
+        "required": [
+            "policy_id",
+            "resource_type",
+            "action",
+            "threshold_days",
+            "policy_version",
+            "enabled",
+        ],
+        "title": "RetentionPolicyView",
+        "type": "object",
+    }
+
+
+def retention_policy_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/retention-policy-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        **_retention_policy_body(),
+    }
+
+
+def retention_policy_set_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/retention-policy-set-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "resource_type": {"enum": _RETENTION_RESOURCE_TYPES},
+            "action": {"enum": _RETENTION_ACTIONS},
+            "threshold_days": {"type": "integer", "minimum": 1},
+            "privacy_label": {"type": "string"},
+            "reason": {"type": "string", "minLength": 1},
+            **_lease_proof_properties(),
+        },
+        "required": ["resource_type", "action", "threshold_days", "reason"],
+        "title": "RetentionPolicySetRequest",
+        "type": "object",
+    }
+
+
+def retention_policy_list_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/retention-policy-list-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "items": {"type": "array", "items": {"$ref": "#/$defs/RetentionPolicyView"}},
+        },
+        "$defs": {"RetentionPolicyView": _retention_policy_body()},
+        "required": ["items"],
+        "title": "RetentionPolicyListResponse",
+        "type": "object",
+    }
+
+
+def legal_hold_create_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/legal-hold-create-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "reason": {"type": "string", "minLength": 1},
+            "space_id": {"type": ["string", "null"], "minLength": 1},
+            "session_id": {"type": ["string", "null"], "minLength": 1},
+            "subject_entity_id": _id(),
+            "agent_id": _id(),
+            **_lease_proof_properties(),
+        },
+        "required": ["reason"],
+        "dependentRequired": {"session_id": ["space_id"]},
+        "title": "LegalHoldCreateRequest",
+        "type": "object",
+    }
+
+
+def legal_hold_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/legal-hold-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "legal_hold_id": _id(),
+            "reason_code": {"type": "string", "minLength": 1},
+            "space_id": {"type": ["string", "null"]},
+            "session_id": {"type": ["string", "null"]},
+            "subject_entity_id": {"type": ["string", "null"]},
+            "agent_id": {"type": ["string", "null"]},
+            "created_at_us": {"type": "integer", "minimum": 0},
+            "released_at_us": {"type": ["integer", "null"], "minimum": 0},
+        },
+        "required": ["legal_hold_id", "reason_code", "created_at_us"],
+        "title": "LegalHoldView",
+        "type": "object",
+    }
+
+
+def legal_hold_release_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/legal-hold-release-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "reason": {"type": "string", "minLength": 1},
+            **_lease_proof_properties(),
+        },
+        "required": ["reason"],
+        "title": "LegalHoldReleaseRequest",
+        "type": "object",
+    }
+
+
+def _forget_request_view_body() -> dict[str, Any]:
+    """ForgetRequestView without $id, for $defs embedding."""
+    return {
+        "additionalProperties": True,
+        "properties": {
+            "request_id": _id(),
+            "selector_key": {"type": "string", "minLength": 1},
+            "selector": {
+                "type": "object",
+                "additionalProperties": True,
+                "properties": {
+                    "kind": {"enum": _FORGET_SELECTOR_KINDS},
+                    "resource_type": {"type": "string"},
+                    "resource_id": {"type": "string"},
+                    "agent_id": {"type": "string"},
+                    "subject_entity_id": {"type": "string"},
+                    "predicate": {"type": "string"},
+                    "space_id": {"type": "string"},
+                    "session_id": {"type": "string"},
+                },
+            },
+            "reason_code": {"type": "string", "minLength": 1},
+            "created_us": {"type": "integer", "minimum": 0},
+            **_forget_counts_properties(),
+        },
+        "required": [
+            "request_id",
+            "selector_key",
+            "reason_code",
+            "created_us",
+            "target_count",
+            "erased_count",
+            "protected_skipped",
+            "held_skipped",
+            "tombstone_seq_lo",
+            "tombstone_seq_hi",
+        ],
+        "title": "ForgetRequestView",
+        "type": "object",
+    }
+
+
+def forget_request_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/forget-request-view.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        **_forget_request_view_body(),
+    }
+
+
+def deletion_ledger_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/deletion-ledger-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": True,
+        "properties": {
+            "requests": {"type": "array", "items": {"$ref": "#/$defs/ForgetRequestView"}},
+        },
+        "$defs": {"ForgetRequestView": _forget_request_view_body()},
+        "required": ["requests"],
+        "title": "DeletionLedgerResponse",
+        "type": "object",
+    }
+
+
+PHASE5_COMPONENTS: dict[str, dict[str, Any]] = {}
+
+
+def phase5_components() -> dict[str, dict[str, Any]]:
+    global PHASE5_COMPONENTS
+    if not PHASE5_COMPONENTS:
+        PHASE5_COMPONENTS = {
+            "ClaimRememberRequest": claim_remember_request_schema(),
+            "ClaimCorrectRequest": claim_correct_request_schema(),
+            "ClaimView": claim_view_schema(),
+            "ClaimRevisionView": claim_revision_view_schema(),
+            "ClaimSearchResponse": claim_search_response_schema(),
+            "ClaimHistoryResponse": claim_history_response_schema(),
+            "MemoryForgetRequest": memory_forget_request_schema(),
+            "MemoryForgetView": memory_forget_view_schema(),
+            "EpisodeCreateRequest": episode_create_request_schema(),
+            "EpisodeTransitionRequest": episode_transition_request_schema(),
+            "EpisodeView": episode_view_schema(),
+            "RelationCreateRequest": relation_create_request_schema(),
+            "RelationView": relation_view_schema(),
+            "ArtifactCreateRequest": artifact_create_request_schema(),
+            "ArtifactView": artifact_view_schema(),
+            "RetentionPolicySetRequest": retention_policy_set_request_schema(),
+            "RetentionPolicyView": retention_policy_view_schema(),
+            "RetentionPolicyListResponse": retention_policy_list_response_schema(),
+            "LegalHoldCreateRequest": legal_hold_create_request_schema(),
+            "LegalHoldView": legal_hold_view_schema(),
+            "LegalHoldReleaseRequest": legal_hold_release_request_schema(),
+            "ForgetRequestView": forget_request_view_schema(),
+            "DeletionLedgerResponse": deletion_ledger_response_schema(),
+        }
+    return PHASE5_COMPONENTS
+
+
+def phase5_json_schema_files() -> dict[Path, dict[str, Any]]:
+    names = {
+        "claim-remember-request": "ClaimRememberRequest",
+        "claim-correct-request": "ClaimCorrectRequest",
+        "claim-view": "ClaimView",
+        "claim-revision-view": "ClaimRevisionView",
+        "claim-search-response": "ClaimSearchResponse",
+        "claim-history-response": "ClaimHistoryResponse",
+        "memory-forget-request": "MemoryForgetRequest",
+        "memory-forget-view": "MemoryForgetView",
+        "episode-create-request": "EpisodeCreateRequest",
+        "episode-transition-request": "EpisodeTransitionRequest",
+        "episode-view": "EpisodeView",
+        "relation-create-request": "RelationCreateRequest",
+        "relation-view": "RelationView",
+        "artifact-create-request": "ArtifactCreateRequest",
+        "artifact-view": "ArtifactView",
+        "retention-policy-set-request": "RetentionPolicySetRequest",
+        "retention-policy-view": "RetentionPolicyView",
+        "retention-policy-list-response": "RetentionPolicyListResponse",
+        "legal-hold-create-request": "LegalHoldCreateRequest",
+        "legal-hold-view": "LegalHoldView",
+        "legal-hold-release-request": "LegalHoldReleaseRequest",
+        "forget-request-view": "ForgetRequestView",
+        "deletion-ledger-response": "DeletionLedgerResponse",
+    }
+    return {
+        JSON_SCHEMA_DIRECTORY / f"{slug}.schema.json": phase5_components()[title]
+        for slug, title in names.items()
+    }
+
+
 def _json_response(
     schema_reference: str, description: str = "Successful response"
 ) -> dict[str, Any]:
@@ -1258,6 +2074,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
         **phase2_components(),
         **phase3_components(),
         **phase4_components(),
+        **phase5_components(),
     }
     batch_request_body = {
         "content": {
@@ -2557,11 +3374,424 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
                 },
             }
         },
+        # -- Phase 5: claims, episodes, relations, artifacts, forget (§13, §19)
+        "/v1/claims:remember": {
+            "post": {
+                "operationId": "createClaimRemember",
+                "parameters": [_idempotency_header()],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/ClaimRememberRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/ClaimView"),
+                    "400": error_response,
+                    "403": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/claims": {
+            "get": {
+                "operationId": "searchClaims",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "space_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "description": "Narrow to a session; requires space_id",
+                        "in": "query",
+                        "name": "session_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "subject_entity_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "predicate",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "category",
+                        "required": False,
+                        "schema": {"enum": _CLAIM_CATEGORIES},
+                    },
+                    {
+                        "in": "query",
+                        "name": "status",
+                        "required": False,
+                        "schema": {"type": "array", "items": {"enum": _CLAIM_STATUSES}},
+                    },
+                    {
+                        "in": "query",
+                        "name": "valid_at_us",
+                        "required": False,
+                        "schema": {"type": "integer", "minimum": 0},
+                    },
+                    {
+                        "description": "Bi-temporal read point (§19.4)",
+                        "in": "query",
+                        "name": "as_of_us",
+                        "required": False,
+                        "schema": {"type": "integer", "minimum": 0},
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "required": False,
+                        "schema": {"type": "integer", "minimum": 1, "maximum": 200},
+                    },
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/ClaimSearchResponse"),
+                    "400": error_response,
+                },
+            }
+        },
+        "/v1/claims/{claim_id}": {
+            "get": {
+                "operationId": "getClaim",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "claim_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/ClaimView"),
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/claims/{claim_id}/history": {
+            "get": {
+                "operationId": "claimHistory",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "claim_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "description": (
+                            "Bi-temporal read point; before the retained window "
+                            "fails with history_unavailable"
+                        ),
+                        "in": "query",
+                        "name": "as_of_us",
+                        "required": False,
+                        "schema": {"type": "integer", "minimum": 0},
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "required": False,
+                        "schema": {"type": "integer", "minimum": 1, "maximum": 200},
+                    },
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/ClaimHistoryResponse"),
+                    "400": error_response,
+                },
+            }
+        },
+        "/v1/claims/{claim_id}:correct": {
+            "post": {
+                "operationId": "correctClaim",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "claim_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/ClaimCorrectRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/ClaimView"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/memory:forget": {
+            "post": {
+                "operationId": "forgetMemory",
+                "parameters": [_idempotency_header()],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/MemoryForgetRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/MemoryForgetView"),
+                    "403": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/memory/deletion-ledger": {
+            "get": {
+                "operationId": "exportDeletionLedger",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "created_after_us",
+                        "required": False,
+                        "schema": {"type": "integer", "minimum": 0},
+                    }
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/DeletionLedgerResponse"),
+                    "403": error_response,
+                },
+            }
+        },
+        "/v1/episodes": {
+            "post": {
+                "operationId": "createEpisode",
+                "parameters": [_idempotency_header()],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/EpisodeCreateRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/EpisodeView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/episodes/{episode_id}": {
+            "get": {
+                "operationId": "getEpisode",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "episode_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/EpisodeView"),
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/episodes/{episode_id}:transition": {
+            "post": {
+                "operationId": "transitionEpisode",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "episode_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/EpisodeTransitionRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/EpisodeView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/relations": {
+            "post": {
+                "operationId": "createRelation",
+                "parameters": [_idempotency_header()],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/RelationCreateRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/RelationView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/relations/{relation_id}": {
+            "get": {
+                "operationId": "getRelation",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "relation_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/RelationView"),
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/artifacts": {
+            "post": {
+                "operationId": "createArtifact",
+                "parameters": [_idempotency_header()],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/ArtifactCreateRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/ArtifactView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/artifacts/{artifact_id}": {
+            "get": {
+                "operationId": "getArtifact",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "artifact_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/ArtifactView"),
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/retention-policies": {
+            "get": {
+                "operationId": "listRetentionPolicies",
+                "responses": {
+                    "200": _json_response("#/components/schemas/RetentionPolicyListResponse"),
+                    "403": error_response,
+                },
+            },
+            "post": {
+                "operationId": "setRetentionPolicy",
+                "parameters": [_idempotency_header()],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/RetentionPolicySetRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/RetentionPolicyView"),
+                    "400": error_response,
+                    "403": error_response,
+                },
+            },
+        },
+        "/v1/legal-holds": {
+            "post": {
+                "operationId": "createLegalHold",
+                "parameters": [_idempotency_header()],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/LegalHoldCreateRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/LegalHoldView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/legal-holds/{legal_hold_id}:release": {
+            "post": {
+                "operationId": "releaseLegalHold",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "legal_hold_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/LegalHoldReleaseRequest"}
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/LegalHoldView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            }
+        },
     }
     return {
         "components": {"schemas": schemas},
         "info": {
-            "description": "Phase 4 contract and capability surface",
+            "description": "Phase 5 contract and capability surface",
             "license": {"identifier": "AGPL-3.0-only", "name": "AGPL-3.0-only"},
             "title": "Iris Memory Core API",
             "version": str(source["contract_version"]),
@@ -2616,6 +3846,7 @@ def generated_documents(source: Mapping[str, Any]) -> dict[Path, dict[str, Any]]
     documents.update(phase2_json_schema_files())
     documents.update(phase3_json_schema_files())
     documents.update(phase4_json_schema_files())
+    documents.update(phase5_json_schema_files())
     return documents
 
 

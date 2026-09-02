@@ -1,0 +1,28 @@
+{
+  "accessibility": 1.0,
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "confidence": 0.8,
+  "evidence_count": 1,
+  "evidence_refs": [
+    {
+      "resource_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "resource_type": "observation",
+      "revision": 1
+    }
+  ],
+  "importance": 0.5,
+  "privacy_labels": [],
+  "relation_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa663",
+  "relation_type": "plays_with",
+  "revision": 1,
+  "scope": {
+    "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+    "space_group_id": null,
+    "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631"
+  },
+  "source_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+  "status": "active",
+  "target_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa668",
+  "valid_from_us": null,
+  "valid_until_us": null
+}

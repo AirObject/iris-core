@@ -18,21 +18,30 @@ from urllib.parse import parse_qs, urlparse
 
 CAPABILITIES: dict[str, Any] = {
     "api_version": "v1",
-    "schema_version": 4,
+    "schema_version": 6,
     "capabilities": [
-        "contract.negotiation",
-        "error-envelope.v1",
-        "health.v1",
-        "health.readiness.v2",
-        "observe.batch.v1",
-        "source-cursor.v1",
-        "outbox.jobs.v1",
-        "schedules.v1",
         "active-surface.v1",
-        "metrics.v1",
-        "recent-context.v1",
-        "state.v1",
+        "artifacts.v1",
+        "claims.v1",
+        "cognitive-events.v1",
+        "contract.negotiation",
+        "episodes.v1",
+        "error-envelope.v1",
         "focus-items.v1",
+        "health.readiness.v2",
+        "health.v1",
+        "memory-forget.v1",
+        "metrics.v1",
+        "notes.v1",
+        "observe.batch.v1",
+        "outbox.jobs.v1",
+        "recent-context.v1",
+        "relations.v1",
+        "retention.v1",
+        "schedules.v1",
+        "source-cursor.v1",
+        "state.v1",
+        "tasks.v1",
     ],
 }
 
@@ -369,6 +378,213 @@ _COGNITIVE_EVENT_VIEW: dict[str, Any] = {
 
 _EVENT_STATUSES = ("pending", "delivered", "acknowledged", "expired", "cancelled")
 
+# -- Phase 5 static views -----------------------------------------------------
+
+_CLAIM_VIEW: dict[str, Any] = {
+    "claim_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa660",
+    "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+    "subject_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+    "current_subject_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+    "predicate": "prefers_language",
+    "value": {"language": "zh"},
+    "category": "preference",
+    "status": "active",
+    "canonical_text": "User prefers communicating in Chinese",
+    "scope": {"space_group_id": None, "space_id": None, "session_id": None},
+    "revision": 1,
+    "privacy_labels": [],
+    "confidence": 0.9,
+    "importance": 0.6,
+    "accessibility": 1.0,
+    "source_authority": "user_statement",
+    "evidence_count": 1,
+    "recorded_at_us": 1700000000000000,
+    "valid_from_us": None,
+    "valid_until_us": None,
+    "superseded_at_us": None,
+    "extractor_version": None,
+}
+
+_CLAIM_HISTORY: dict[str, Any] = {
+    "claim_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa660",
+    "revisions": [
+        {
+            "revision": 2,
+            "status": "active",
+            "canonical_text": "User prefers communicating in Chinese",
+            "value": {"language": "zh"},
+            "recorded_at_us": 1700000100000000,
+            "privacy_labels": [],
+            "content_hash": "ab" * 32,
+            "superseded_at_us": None,
+        },
+        {
+            "revision": 1,
+            "status": "superseded",
+            "canonical_text": "User prefers communicating in German",
+            "value": {"language": "de"},
+            "recorded_at_us": 1700000000000000,
+            "privacy_labels": [],
+            "content_hash": "cd" * 32,
+            "superseded_at_us": 1700000100000000,
+        },
+    ],
+}
+
+_MEMORY_FORGET_VIEW: dict[str, Any] = {
+    "request_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa665",
+    "selector_key": (
+        "session|01a050fd-6cc2-7d1b-86ef-86d5150fa631|01a050fd-6cc2-7d1b-86ef-86d5150fa632"
+    ),
+    "target_count": 4,
+    "erased_count": 3,
+    "protected_skipped": 0,
+    "held_skipped": 1,
+    "tombstone_seq_lo": 39,
+    "tombstone_seq_hi": 42,
+}
+
+_DELETION_LEDGER: dict[str, Any] = {
+    "requests": [
+        {
+            "request_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa665",
+            "selector_key": (
+                "session|01a050fd-6cc2-7d1b-86ef-86d5150fa631|01a050fd-6cc2-7d1b-86ef-86d5150fa632"
+            ),
+            "selector": {
+                "kind": "session",
+                "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+                "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631",
+            },
+            "reason_code": "user_request",
+            "created_us": 1700000000000000,
+            "target_count": 4,
+            "erased_count": 3,
+            "protected_skipped": 0,
+            "held_skipped": 1,
+            "tombstone_seq_lo": 39,
+            "tombstone_seq_hi": 42,
+        }
+    ]
+}
+
+_EPISODE_VIEW: dict[str, Any] = {
+    "episode_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa662",
+    "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+    "status": "open",
+    "title": "Weekend gaming session",
+    "summary": "User played competitive matches with friends online",
+    "participant_entity_ids": [],
+    "observation_refs": [
+        {
+            "resource_type": "observation",
+            "resource_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+            "revision": 1,
+        }
+    ],
+    "scope": {"space_group_id": None, "space_id": None, "session_id": None},
+    "importance": 0.5,
+    "valence": 0.4,
+    "arousal": 0.6,
+    "started_at_us": 1700000000000000,
+    "ended_at_us": None,
+    "privacy_labels": [],
+    "extractor_version": None,
+    "revision": 1,
+}
+
+_RELATION_VIEW: dict[str, Any] = {
+    "relation_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa663",
+    "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+    "source_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+    "relation_type": "plays_with",
+    "target_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa668",
+    "status": "active",
+    "scope": {"space_group_id": None, "space_id": None, "session_id": None},
+    "revision": 1,
+    "confidence": 0.8,
+    "importance": 0.5,
+    "accessibility": 1.0,
+    "evidence_count": 1,
+    "privacy_labels": [],
+    "evidence_refs": [],
+    "valid_from_us": None,
+    "valid_until_us": None,
+}
+
+_ARTIFACT_VIEW: dict[str, Any] = {
+    "artifact_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa664",
+    "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+    "media_type": "text/plain",
+    "storage_kind": "inline",
+    "locator": "inline://01a050fd-6cc2-7d1b-86ef-86d5150fa664",
+    "content_hash": "ab" * 32,
+    "size_bytes": 27,
+    "status": "active",
+    "refcount": 1,
+    "scope": {"space_group_id": None, "space_id": None, "session_id": None},
+    "privacy_labels": [],
+}
+
+_RETENTION_POLICY_VIEW: dict[str, Any] = {
+    "policy_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa666",
+    "resource_type": "claim",
+    "action": "archive",
+    "threshold_days": 180,
+    "privacy_label": None,
+    "policy_version": 1,
+    "enabled": True,
+}
+
+_LEGAL_HOLD_VIEW: dict[str, Any] = {
+    "legal_hold_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa667",
+    "reason_code": "litigation",
+    "space_id": None,
+    "session_id": None,
+    "subject_entity_id": None,
+    "agent_id": None,
+    "created_at_us": 1700000000000000,
+    "released_at_us": None,
+}
+
+_CLAIM_CATEGORIES = (
+    "identity",
+    "preference",
+    "relationship",
+    "fact",
+    "community",
+    "procedure",
+    "self_narrative",
+)
+_CLAIM_STATUSES = (
+    "active",
+    "disputed",
+    "superseded",
+    "retracted",
+    "expired",
+    "archived",
+    "tombstoned",
+)
+_EVIDENCE_RELATIONS = ("supports", "contradicts", "corrects")
+_SOURCE_AUTHORITIES = (
+    "agent_inference",
+    "extracted",
+    "user_statement",
+    "platform_verified",
+    "admin_confirmed",
+    "explicit_correction",
+)
+_EVIDENCE_SOURCE_TYPES = ("observation", "artifact", "episode", "claim", "note")
+_CORRECT_MODES = ("supersede", "dispute", "retract")
+_EPISODE_TRANSITION_TARGETS = ("seal", "supersede", "archive", "reopen")
+_ARTIFACT_STORAGE_KINDS = ("inline", "local_blob", "external_ref")
+_FORGET_SELECTOR_KINDS = ("resource", "subject_predicate", "session", "space", "data_request")
+_RETENTION_ACTIONS = ("decay", "archive", "delete")
+_RETENTION_RESOURCE_TYPES = ("claim", "note", "episode", "relation", "observation")
+# Bi-temporal demonstration bound: as_of_us reads before this watermark have
+# no retained history and fail with history_unavailable (§19.4).
+_HISTORY_FLOOR_US = 1000
+
 _CURSOR_PATTERN = re.compile(r"^/v1/observations/cursors/(?P<stream>[^/]+)$")
 _LEASE_ACTION_PATTERN = re.compile(
     r"^/v1/active-surfaces/(?P<lease_id>[^:]+):(?P<action>heartbeat|release)$"
@@ -389,6 +605,14 @@ _TASK_STEP_TRANSITION_PATTERN = re.compile(
     r"^/v1/tasks/(?P<task_id>[^/]+)/steps/(?P<step_id>[^:]+):transition$"
 )
 _EVENT_ACK_PATTERN = re.compile(r"^/v1/cognitive-events/(?P<event_id>[^:]+):ack$")
+_CLAIM_CORRECT_PATTERN = re.compile(r"^/v1/claims/(?P<claim_id>[^:]+):correct$")
+_CLAIM_GET_PATTERN = re.compile(r"^/v1/claims/(?P<claim_id>[^:/]+)$")
+_CLAIM_HISTORY_PATTERN = re.compile(r"^/v1/claims/(?P<claim_id>[^/]+)/history$")
+_EPISODE_TRANSITION_PATTERN = re.compile(r"^/v1/episodes/(?P<episode_id>[^:]+):transition$")
+_EPISODE_GET_PATTERN = re.compile(r"^/v1/episodes/(?P<episode_id>[^:/]+)$")
+_RELATION_GET_PATTERN = re.compile(r"^/v1/relations/(?P<relation_id>[^:/]+)$")
+_ARTIFACT_GET_PATTERN = re.compile(r"^/v1/artifacts/(?P<artifact_id>[^:/]+)$")
+_LEGAL_HOLD_RELEASE_PATTERN = re.compile(r"^/v1/legal-holds/(?P<legal_hold_id>[^:]+):release$")
 
 
 class ContractRequestHandler(BaseHTTPRequestHandler):
@@ -609,6 +833,89 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
                     view["delivered_lease_epoch"] = int(lease_epoch)
             self._send(HTTPStatus.OK, {"items": [view], "expired_during_pull": 0})
             return
+        # -- Phase 5 reads ---------------------------------------------------
+        if parsed.path == "/v1/claims":
+            claim_query = parse_qs(parsed.query)
+            if not claim_query.get("agent_id", [""])[0]:
+                self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "agent_id required."))
+                return
+            if claim_query.get("session_id") and not claim_query.get("space_id"):
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("invalid_request", "session_id requires space_id."),
+                )
+                return
+            category = claim_query.get("category", [None])[0]
+            if category is not None and category not in _CLAIM_CATEGORIES:
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("invalid_request", "category must be a known claim category."),
+                )
+                return
+            for status in claim_query.get("status", []):
+                if status not in _CLAIM_STATUSES:
+                    self._send(
+                        HTTPStatus.BAD_REQUEST,
+                        _error("invalid_request", "status must be a known claim status."),
+                    )
+                    return
+            self._send(HTTPStatus.OK, {"items": [dict(_CLAIM_VIEW)]})
+            return
+        claim_history = _CLAIM_HISTORY_PATTERN.match(parsed.path)
+        if claim_history is not None:
+            history_query = parse_qs(parsed.query)
+            as_of = history_query.get("as_of_us", [None])[0]
+            if as_of is not None:
+                if not as_of.isdigit():
+                    self._send(
+                        HTTPStatus.BAD_REQUEST,
+                        _error("invalid_request", "as_of_us must be a non-negative integer."),
+                    )
+                    return
+                if int(as_of) < _HISTORY_FLOOR_US:
+                    self._send(
+                        HTTPStatus.BAD_REQUEST,
+                        _error(
+                            "history_unavailable",
+                            "no retained history covers the requested as_of_us.",
+                        ),
+                    )
+                    return
+            self._send(HTTPStatus.OK, _CLAIM_HISTORY)
+            return
+        claim_get = _CLAIM_GET_PATTERN.match(parsed.path)
+        if claim_get is not None:
+            self._send(HTTPStatus.OK, _CLAIM_VIEW)
+            return
+        episode_get = _EPISODE_GET_PATTERN.match(parsed.path)
+        if episode_get is not None:
+            self._send(HTTPStatus.OK, _EPISODE_VIEW)
+            return
+        relation_get = _RELATION_GET_PATTERN.match(parsed.path)
+        if relation_get is not None:
+            self._send(HTTPStatus.OK, _RELATION_VIEW)
+            return
+        artifact_get = _ARTIFACT_GET_PATTERN.match(parsed.path)
+        if artifact_get is not None:
+            self._send(HTTPStatus.OK, _ARTIFACT_VIEW)
+            return
+        if parsed.path == "/v1/retention-policies":
+            self._send(HTTPStatus.OK, {"items": [dict(_RETENTION_POLICY_VIEW)]})
+            return
+        if parsed.path == "/v1/memory/deletion-ledger":
+            ledger_query = parse_qs(parsed.query)
+            after = ledger_query.get("created_after_us", [None])[0]
+            if after is not None and not after.isdigit():
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("invalid_request", "created_after_us must be a non-negative integer."),
+                )
+                return
+            requests = list(_DELETION_LEDGER["requests"])
+            if after is not None:
+                requests = [request for request in requests if request["created_us"] >= int(after)]
+            self._send(HTTPStatus.OK, {"requests": requests})
+            return
         self._send(HTTPStatus.NOT_FOUND, _error("invalid_request", "Unknown path."))
 
     def do_POST(self) -> None:
@@ -689,6 +996,40 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
         event_ack = _EVENT_ACK_PATTERN.match(parsed.path)
         if event_ack is not None:
             self._handle_event_ack()
+            return
+        # -- Phase 5 writes --------------------------------------------------
+        if parsed.path == "/v1/claims:remember":
+            self._handle_claim_remember()
+            return
+        claim_correct = _CLAIM_CORRECT_PATTERN.match(parsed.path)
+        if claim_correct is not None:
+            self._handle_claim_correct()
+            return
+        if parsed.path == "/v1/memory:forget":
+            self._handle_memory_forget()
+            return
+        if parsed.path == "/v1/episodes":
+            self._handle_episode_create()
+            return
+        episode_transition = _EPISODE_TRANSITION_PATTERN.match(parsed.path)
+        if episode_transition is not None:
+            self._handle_episode_transition()
+            return
+        if parsed.path == "/v1/relations":
+            self._handle_relation_create()
+            return
+        if parsed.path == "/v1/artifacts":
+            self._handle_artifact_create()
+            return
+        if parsed.path == "/v1/retention-policies":
+            self._handle_retention_policy_set()
+            return
+        if parsed.path == "/v1/legal-holds":
+            self._handle_legal_hold_create()
+            return
+        legal_hold_release = _LEGAL_HOLD_RELEASE_PATTERN.match(parsed.path)
+        if legal_hold_release is not None:
+            self._handle_legal_hold_release()
             return
         self._send(HTTPStatus.NOT_FOUND, _error("invalid_request", "Unknown path."))
 
@@ -1224,6 +1565,381 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
         view["ack_id"] = "ack_mock_0001"
         view["acknowledged_us"] = 1700048500000000
         view["revision"] = 2
+        self._send(HTTPStatus.OK, view)
+
+    # -- Phase 5 handlers ------------------------------------------------------
+
+    def _require_agent(self, value: dict[str, object]) -> bool:
+        if isinstance(value.get("agent_id"), str) and value.get("agent_id"):
+            return True
+        self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "agent_id required."))
+        return False
+
+    def _require_session_with_space(self, value: dict[str, object]) -> bool:
+        if value.get("session_id") is not None and value.get("space_id") is None:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "session_id requires space_id."),
+            )
+            return False
+        return True
+
+    def _require_reason(self, value: dict[str, object]) -> bool:
+        if isinstance(value.get("reason"), str) and value.get("reason"):
+            return True
+        self._send(HTTPStatus.BAD_REQUEST, _error("reason_required", "reason required."))
+        return False
+
+    def _require_expected_revision(self, value: dict[str, object]) -> int | None:
+        revision = value.get("expected_revision")
+        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "expected_revision must be a positive integer."),
+            )
+            return None
+        return revision
+
+    def _require_evidence(self, value: dict[str, object]) -> list[object] | None:
+        evidence = value.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("evidence_required", "at least one evidence row is required."),
+            )
+            return None
+        for row in evidence:
+            if not isinstance(row, dict):
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("evidence_invalid", "evidence entries must be objects."),
+                )
+                return None
+            if row.get("source_type") not in _EVIDENCE_SOURCE_TYPES:
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("evidence_invalid", "evidence source_type must be known."),
+                )
+                return None
+            if not isinstance(row.get("source_id"), str) or not row.get("source_id"):
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("evidence_invalid", "evidence source_id required."),
+                )
+                return None
+            if row.get("relation") not in _EVIDENCE_RELATIONS:
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("evidence_invalid", "evidence relation must be known."),
+                )
+                return None
+            if row.get("source_authority") not in _SOURCE_AUTHORITIES:
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("evidence_invalid", "evidence source_authority must be known."),
+                )
+                return None
+        return evidence
+
+    def _handle_claim_remember(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if not self._require_agent(value):
+            return
+        if not isinstance(value.get("predicate"), str) or not value.get("predicate"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "predicate required."))
+            return
+        if "value" not in value:
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "value required."))
+            return
+        category = value.get("category", "fact")
+        if category not in _CLAIM_CATEGORIES:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "category must be a known claim category."),
+            )
+            return
+        if value.get("source_authority", "user_statement") not in _SOURCE_AUTHORITIES:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "source_authority must be a known authority."),
+            )
+            return
+        # Every remembered claim carries at least one evidence row (§13).
+        if self._require_evidence(value) is None:
+            return
+        if not self._require_session_with_space(value):
+            return
+        view = dict(_CLAIM_VIEW)
+        view["predicate"] = value["predicate"]
+        view["value"] = value["value"]
+        view["category"] = category
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_claim_correct(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        revision = self._require_expected_revision(value)
+        if revision is None:
+            return
+        if not self._require_reason(value):
+            return
+        mode = value.get("mode", "supersede")
+        if mode not in _CORRECT_MODES:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "mode must be a known correction mode."),
+            )
+            return
+        if value.get("evidence") is not None and self._require_evidence(value) is None:
+            return
+        view = dict(_CLAIM_VIEW)
+        view["revision"] = revision + 1
+        # Correct never mutates in place: supersede records a fresh active
+        # revision, dispute/retract move the claim status (§19.2).
+        view["status"] = {"supersede": "active", "dispute": "disputed", "retract": "retracted"}[
+            mode
+        ]
+        if mode == "supersede":
+            view["superseded_at_us"] = 1700000100000000
+        if value.get("value") is not None:
+            view["value"] = value["value"]
+        if isinstance(value.get("canonical_text"), str) and value.get("canonical_text"):
+            view["canonical_text"] = value["canonical_text"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_memory_forget(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        selector = value.get("selector")
+        if not isinstance(selector, dict) or selector.get("kind") not in _FORGET_SELECTOR_KINDS:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "selector.kind must be a known forget selector."),
+            )
+            return
+        if not self._require_reason(value):
+            return
+        if not self._require_session_with_space(selector):
+            return
+        self._send(HTTPStatus.OK, _MEMORY_FORGET_VIEW)
+
+    def _handle_episode_create(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if not self._require_agent(value):
+            return
+        if not isinstance(value.get("summary"), str) or not value.get("summary"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "summary required."))
+            return
+        if not self._require_session_with_space(value):
+            return
+        view = dict(_EPISODE_VIEW)
+        if isinstance(value.get("title"), str) and value.get("title"):
+            view["title"] = value["title"]
+        view["summary"] = value["summary"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_episode_transition(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        target = value.get("target")
+        if target not in _EPISODE_TRANSITION_TARGETS:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "target must be a known episode transition."),
+            )
+            return
+        revision = self._require_expected_revision(value)
+        if revision is None:
+            return
+        if not self._require_reason(value):
+            return
+        status_map = {
+            "seal": "sealed",
+            "supersede": "superseded",
+            "archive": "archived",
+            "reopen": "open",
+        }
+        view = dict(_EPISODE_VIEW)
+        view["revision"] = revision + 1
+        view["status"] = status_map[target]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_relation_create(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if not self._require_agent(value):
+            return
+        for field in ("source_entity_id", "relation_type", "target_entity_id"):
+            if not isinstance(value.get(field), str) or not value.get(field):
+                self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", f"{field} required."))
+                return
+        evidence = value.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("evidence_required", "at least one evidence row is required."),
+            )
+            return
+        for row in evidence:
+            if not isinstance(row, dict) or row.get("relation") != "supports":
+                self._send(
+                    HTTPStatus.BAD_REQUEST,
+                    _error("evidence_invalid", "relation evidence must use relation supports."),
+                )
+                return
+        if not self._require_session_with_space(value):
+            return
+        view = dict(_RELATION_VIEW)
+        view["relation_type"] = value["relation_type"]
+        view["source_entity_id"] = value["source_entity_id"]
+        view["target_entity_id"] = value["target_entity_id"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_artifact_create(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if not self._require_agent(value):
+            return
+        if value.get("storage_kind") not in _ARTIFACT_STORAGE_KINDS:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("artifact_invalid", "storage_kind must be a known storage kind."),
+            )
+            return
+        if not isinstance(value.get("media_type"), str) or not value.get("media_type"):
+            self._send(HTTPStatus.BAD_REQUEST, _error("artifact_invalid", "media_type required."))
+            return
+        if value.get("storage_kind") == "external_ref" and not (
+            isinstance(value.get("external_url"), str) and value.get("external_url")
+        ):
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("artifact_invalid", "external_ref requires external_url."),
+            )
+            return
+        if not self._require_session_with_space(value):
+            return
+        view = dict(_ARTIFACT_VIEW)
+        view["storage_kind"] = value["storage_kind"]
+        view["media_type"] = value["media_type"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_retention_policy_set(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if value.get("resource_type") not in _RETENTION_RESOURCE_TYPES:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "resource_type must be a known resource type."),
+            )
+            return
+        if value.get("action") not in _RETENTION_ACTIONS:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "action must be a known retention action."),
+            )
+            return
+        threshold = value.get("threshold_days")
+        if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                _error("invalid_request", "threshold_days must be a positive integer."),
+            )
+            return
+        if not self._require_reason(value):
+            return
+        view = dict(_RETENTION_POLICY_VIEW)
+        view["resource_type"] = value["resource_type"]
+        view["action"] = value["action"]
+        view["threshold_days"] = threshold
+        if isinstance(value.get("privacy_label"), str) and value.get("privacy_label"):
+            view["privacy_label"] = value["privacy_label"]
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_legal_hold_create(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if not self._require_reason(value):
+            return
+        if not self._require_session_with_space(value):
+            return
+        view = dict(_LEGAL_HOLD_VIEW)
+        view["reason_code"] = "compliance"
+        view["space_id"] = value.get("space_id")
+        view["session_id"] = value.get("session_id")
+        view["subject_entity_id"] = value.get("subject_entity_id")
+        view["agent_id"] = value.get("agent_id")
+        self._send(HTTPStatus.OK, view)
+
+    def _handle_legal_hold_release(self) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_lease_proof_shape(value):
+            return
+        if not self._require_idempotency():
+            return
+        if not self._require_reason(value):
+            return
+        view = dict(_LEGAL_HOLD_VIEW)
+        view["released_at_us"] = 1700000200000000
         self._send(HTTPStatus.OK, view)
 
     def _handle_recent_rebuild(self) -> None:

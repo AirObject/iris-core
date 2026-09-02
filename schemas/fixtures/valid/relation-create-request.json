@@ -1,0 +1,19 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "confidence": 0.8,
+  "evidence": [
+    {
+      "relation": "supports",
+      "source_authority": "extracted",
+      "source_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "source_type": "observation"
+    }
+  ],
+  "importance": 0.5,
+  "privacy_labels": [],
+  "relation_type": "plays_with",
+  "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+  "source_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+  "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631",
+  "target_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa668"
+}

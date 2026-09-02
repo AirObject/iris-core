@@ -1,0 +1,133 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/relation-create-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "dependentRequired": {
+    "session_id": [
+      "space_id"
+    ]
+  },
+  "properties": {
+    "accessibility": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "evidence": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "relation": {
+            "enum": [
+              "supports"
+            ]
+          },
+          "source_authority": {
+            "enum": [
+              "agent_inference",
+              "extracted",
+              "user_statement",
+              "platform_verified",
+              "admin_confirmed",
+              "explicit_correction"
+            ]
+          },
+          "source_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_type": {
+            "enum": [
+              "observation",
+              "artifact",
+              "episode",
+              "claim",
+              "note"
+            ]
+          }
+        },
+        "required": [
+          "source_type",
+          "source_id",
+          "relation",
+          "source_authority"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "importance": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "relation_type": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "session_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "space_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target_entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "valid_from_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "valid_until_us": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "agent_id",
+    "source_entity_id",
+    "relation_type",
+    "target_entity_id",
+    "evidence"
+  ],
+  "title": "RelationCreateRequest",
+  "type": "object"
+}

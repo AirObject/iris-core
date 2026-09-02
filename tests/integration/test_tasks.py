@@ -781,14 +781,53 @@ class TestTaskSecurity:
             after = tx.tasks.get_step(step.step_id)
         assert after.status == TaskStepStatus.IN_PROGRESS.value
 
-    def test_artifact_refs_are_structurally_rejected_as_evidence(
+    def test_artifact_evidence_goes_through_the_canonical_validator(
         self, task_ctx: dict[str, Any]
     ) -> None:
-        """P0 gate (round 3): no canonical artifact repository exists yet, so
-        EVERY artifact completion evidence is structurally rejected — a
-        fabricated id must not complete an expected_effect step, and neither
-        the task-level nor the step-level evidence path lands anything."""
+        """Phase 5 (ADR-0013 §5): the canonical artifact repository exists,
+        so artifact evidence is admitted ONLY through its validator — the
+        artifact's own tenant/agent/scope/status/tombstone state decides. A
+        fabricated id, a foreign-space artifact and a tombstoned artifact are
+        all rejected; a real in-scope artifact completes the step."""
+        from iris_memory_core.application.artifacts import ArtifactService
+        from iris_memory_core.application.forget import ForgetService
+        from iris_memory_core.domain.errors import NotFoundError
+        from iris_memory_core.domain.retention import ForgetSelector, ForgetSelectorKind
+        from iris_memory_core.storage.idempotency import IdempotencyManager
+
         ctx = task_ctx
+        artifacts = ArtifactService(
+            ctx["store"], ctx["store"].clock, idempotency=IdempotencyManager(ctx["store"])
+        )
+        # Agent-level artifacts: visible to the agent-level task under the
+        # downward-visibility model (a space-level artifact would not be).
+        good = artifacts.ingest_inline(
+            ctx["access"],
+            agent_id=ctx["agent"],
+            content=b"effect output",
+            media_type="text/plain",
+            idempotency_key="art-good",
+        )
+        tombstoned = artifacts.ingest_inline(
+            ctx["access"],
+            agent_id=ctx["agent"],
+            content=b"stale output",
+            media_type="text/plain",
+            idempotency_key="art-stale",
+        )
+        forget = ForgetService(
+            ctx["store"], ctx["store"].clock, idempotency=IdempotencyManager(ctx["store"])
+        )
+        forget.forget(
+            ctx["access"],
+            ForgetSelector(
+                kind=ForgetSelectorKind.RESOURCE,
+                resource_type="artifact",
+                resource_id=tombstoned.artifact_id,
+            ),
+            reason="stale",
+            idempotency_key="art-forget",
+        )
         task = _create(ctx, "artifact")
         step = ctx["tasks"].create_step(
             ctx["access"],
@@ -807,12 +846,9 @@ class TestTaskSecurity:
             reason="go",
             idempotency_key="art-start",
         )
-        # A nonexistent artifact id and an arbitrary well-formed one are
-        # equally rejected: there is no artifact store to validate against.
-        for index, artifact_id in enumerate(
-            ("does-not-exist", "01a050fd-6cc2-7d1b-86ef-86d5150fa6ff")
-        ):
-            with pytest.raises(InvalidRequestError, match="evidence resource type not allowed"):
+        # Fabricated and tombstoned artifacts never complete the step.
+        for index, artifact_id in enumerate(("does-not-exist", tombstoned.artifact_id)):
+            with pytest.raises((InvalidRequestError, NotFoundError)):
                 ctx["tasks"].transition_step(
                     ctx["access"],
                     task.task_id,
@@ -825,31 +861,33 @@ class TestTaskSecurity:
                     ],
                     idempotency_key=f"art-complete-{index}",
                 )
-        # The step is untouched.
         with ctx["store"].read() as tx:
             after_step = tx.tasks.get_step(step.step_id)
-            after_step_revision = tx.tasks.current_step_revision_row(step.step_id)
-            after_task = tx.tasks.get_task(task.task_id)
         assert after_step.status == TaskStepStatus.IN_PROGRESS.value
-        assert after_step_revision.completion_evidence_refs == ()
-        # The task-level completion path is equally closed to artifacts: make
-        # the step terminal via cancel first so the all-steps-terminal gate
-        # passes and the evidence check is what fails.
-        ctx["tasks"].transition_step(
+        # A real, canonical, in-scope artifact completes the step.
+        completed = ctx["tasks"].transition_step(
             ctx["access"],
             task.task_id,
             step.step_id,
-            "cancel",
+            "complete",
             expected_revision=after_step.current_revision,
-            reason="not needed",
-            idempotency_key="art-cancel",
+            reason="done",
+            completion_evidence_refs=[
+                {"resource_type": "artifact", "resource_id": good.artifact_id}
+            ],
+            idempotency_key="art-complete-good",
         )
-        with pytest.raises(InvalidRequestError, match="evidence resource type not allowed"):
+        assert completed.status == TaskStepStatus.COMPLETED.value
+        # The task-level path validates with the same rules (the fabricated
+        # id is rejected before any state can change).
+        with ctx["store"].read() as tx:
+            task_row = tx.tasks.get_task(task.task_id)
+        with pytest.raises((InvalidRequestError, NotFoundError)):
             ctx["tasks"].transition(
                 ctx["access"],
                 task.task_id,
                 "complete",
-                expected_revision=after_task.current_revision + 1,
+                expected_revision=task_row.current_revision,
                 origin="admin",
                 reason="done",
                 completion_evidence_refs=[
@@ -857,7 +895,150 @@ class TestTaskSecurity:
                 ],
                 idempotency_key="art-task-complete",
             )
+
+    def test_artifact_evidence_respects_privacy_labels(self, task_ctx: dict[str, Any]) -> None:
+        """Review round 2 (P1-3): artifact evidence admission includes the
+        PRIVACY evaluation — a restricted artifact never completes a step for
+        a caller without admin (the only grant that sees ``restricted``)."""
+        from iris_memory_core.application.artifacts import ArtifactService
+        from iris_memory_core.storage.idempotency import IdempotencyManager
+
+        ctx = task_ctx
+        artifacts = ArtifactService(
+            ctx["store"], ctx["store"].clock, idempotency=IdempotencyManager(ctx["store"])
+        )
+        secret = artifacts.ingest_inline(
+            ctx["access"],
+            agent_id=ctx["agent"],
+            content=b"restricted effect output",
+            media_type="text/plain",
+            privacy_labels=["restricted"],
+            idempotency_key="art-priv",
+        )
+        task = _create(ctx, "art-priv")
+        step = ctx["tasks"].create_step(
+            ctx["access"],
+            task.task_id,
+            stable_key="act",
+            title="Do the effect",
+            expected_effect="message delivered",
+            idempotency_key="art-priv-step",
+        )
+        started = ctx["tasks"].transition_step(
+            ctx["access"],
+            task.task_id,
+            step.step_id,
+            "start",
+            expected_revision=step.revision,
+            reason="go",
+            idempotency_key="art-priv-start",
+        )
+        non_admin = access_for(
+            ctx["tenant"], agent_ids=frozenset({ctx["agent"]}), space_ids=frozenset({ctx["space"]})
+        )
+        with pytest.raises(AccessDeniedError):
+            ctx["tasks"].transition_step(
+                non_admin,
+                task.task_id,
+                step.step_id,
+                "complete",
+                expected_revision=started.revision,
+                reason="done",
+                completion_evidence_refs=[
+                    {"resource_type": "artifact", "resource_id": secret.artifact_id}
+                ],
+                idempotency_key="art-priv-denied",
+            )
         with ctx["store"].read() as tx:
-            final_task = tx.tasks.get_task(task.task_id)
-        assert final_task.status == "active"
-        assert final_task.current_revision == after_task.current_revision
+            after = tx.tasks.get_step(step.step_id)
+        assert after.status == TaskStepStatus.IN_PROGRESS.value
+        completed = ctx["tasks"].transition_step(
+            ctx["access"],
+            task.task_id,
+            step.step_id,
+            "complete",
+            expected_revision=after.current_revision,
+            reason="done",
+            completion_evidence_refs=[
+                {"resource_type": "artifact", "resource_id": secret.artifact_id}
+            ],
+            idempotency_key="art-priv-admin",
+        )
+        assert completed.status == TaskStepStatus.COMPLETED.value
+
+    def test_observation_evidence_respects_privacy_labels(self, task_ctx: dict[str, Any]) -> None:
+        """Review round 3 (R3-2): observation evidence admission includes the
+        PRIVACY evaluation too — a restricted observation never completes a
+        step for a caller without admin."""
+        from iris_memory_core.application.observation import ObservationService
+
+        ctx = task_ctx
+        now = 2_000_000
+        restricted = ObservationService(ctx["store"], gauge=ctx["gauge"]).observe_batch(
+            ctx["access"],
+            [
+                {
+                    "agent_id": ctx["agent"],
+                    "role": "assistant",
+                    "kind": "message.sent",
+                    "idempotency_key": "obs-priv",
+                    "occurred_us": now,
+                    "committed_us": now + 1,
+                    "content": "restricted effect output",
+                    "space_id": ctx["space"],
+                    "privacy_labels": ["restricted"],
+                }
+            ],
+        )
+        observation_id = restricted.accepted_observation_ids[0]
+
+        task = _create(ctx, "obs-priv", space_id=ctx["space"])
+        step = ctx["tasks"].create_step(
+            ctx["access"],
+            task.task_id,
+            stable_key="act",
+            title="Do the effect",
+            expected_effect="message delivered",
+            idempotency_key="obs-priv-step",
+        )
+        started = ctx["tasks"].transition_step(
+            ctx["access"],
+            task.task_id,
+            step.step_id,
+            "start",
+            expected_revision=step.revision,
+            reason="go",
+            idempotency_key="obs-priv-start",
+        )
+        non_admin = access_for(
+            ctx["tenant"], agent_ids=frozenset({ctx["agent"]}), space_ids=frozenset({ctx["space"]})
+        )
+        with pytest.raises(AccessDeniedError):
+            ctx["tasks"].transition_step(
+                non_admin,
+                task.task_id,
+                step.step_id,
+                "complete",
+                expected_revision=started.revision,
+                reason="done",
+                completion_evidence_refs=[
+                    {"resource_type": "observation", "resource_id": observation_id}
+                ],
+                idempotency_key="obs-priv-denied",
+            )
+        with ctx["store"].read() as tx:
+            after = tx.tasks.get_step(step.step_id)
+        assert after.status == TaskStepStatus.IN_PROGRESS.value
+        completed = ctx["tasks"].transition_step(
+            ctx["access"],
+            task.task_id,
+            step.step_id,
+            "complete",
+            expected_revision=after.current_revision,
+            reason="done",
+            completion_evidence_refs=[
+                {"resource_type": "observation", "resource_id": observation_id}
+            ],
+            idempotency_key="obs-priv-admin",
+        )
+        assert completed.status == TaskStepStatus.COMPLETED.value

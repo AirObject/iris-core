@@ -652,6 +652,11 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "note.changed",
                 "task.changed",
                 "cognitive_event.changed",
+                "claim.changed",
+                "episode.changed",
+                "relation.changed",
+                "memory.invalidated",
+                "retention.compaction",
             }
         )
         == ENABLED_JOB_KINDS

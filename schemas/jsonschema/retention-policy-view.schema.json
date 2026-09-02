@@ -1,0 +1,54 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/retention-policy-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "action": {
+      "enum": [
+        "decay",
+        "archive",
+        "delete"
+      ]
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "policy_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "policy_version": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "privacy_label": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "resource_type": {
+      "enum": [
+        "claim",
+        "note",
+        "episode",
+        "relation",
+        "observation"
+      ]
+    },
+    "threshold_days": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "policy_id",
+    "resource_type",
+    "action",
+    "threshold_days",
+    "policy_version",
+    "enabled"
+  ],
+  "title": "RetentionPolicyView",
+  "type": "object"
+}

@@ -278,6 +278,52 @@ class ObservationRepository:
         )
         _ = cursor
 
+    def observations_by_actor_entity(
+        self, tenant_id: str, entity_id: str, *, limit: int = 10_000
+    ) -> tuple[str, ...]:
+        rows = self._connection.execute(
+            "SELECT id FROM observations WHERE tenant_id = ? "
+            "AND actor_entity_id_at_ingest = ? LIMIT ?",
+            (tenant_id, entity_id, limit),
+        ).fetchall()
+        return tuple(row["id"] for row in rows)
+
+    def observations_for_session(
+        self, tenant_id: str, space_id: str, session_id: str, *, limit: int = 10_000
+    ) -> tuple[str, ...]:
+        rows = self._connection.execute(
+            "SELECT id FROM observations WHERE tenant_id = ? AND space_id = ? "
+            "AND session_id = ? AND NOT EXISTS (SELECT 1 FROM resource_tombstones _rt "
+            "WHERE _rt.tenant_id = observations.tenant_id "
+            "AND _rt.resource_type = 'observation' AND _rt.resource_id = observations.id) "
+            "LIMIT ?",
+            (tenant_id, space_id, session_id, limit),
+        ).fetchall()
+        return tuple(row["id"] for row in rows)
+
+    def observations_for_space(
+        self, tenant_id: str, space_id: str, *, limit: int = 10_000
+    ) -> tuple[str, ...]:
+        rows = self._connection.execute(
+            "SELECT id FROM observations WHERE tenant_id = ? AND space_id = ? "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones _rt "
+            "WHERE _rt.tenant_id = observations.tenant_id "
+            "AND _rt.resource_type = 'observation' AND _rt.resource_id = observations.id) "
+            "LIMIT ?",
+            (tenant_id, space_id, limit),
+        ).fetchall()
+        return tuple(row["id"] for row in rows)
+
+    def scrub_content(self, observation_id: str) -> int:
+        """Compliance erasure (§19.4, ADR-0013): destroy payload columns,
+        keep the identity/timing/scope metadata the journal owes its audit."""
+        cursor = self._connection.execute(
+            "UPDATE observations SET content = NULL, structured_payload = NULL, "
+            "effect_proof = NULL WHERE id = ?",
+            (observation_id,),
+        )
+        return cursor.rowcount
+
     def _to_record(self, row: sqlite3.Row) -> StoredObservation:
         artifact_rows = json.loads(row["artifact_refs"]) if row["artifact_refs"] else []
         return StoredObservation(

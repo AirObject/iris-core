@@ -1,0 +1,196 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/claim-remember-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "dependentRequired": {
+    "session_id": [
+      "space_id"
+    ]
+  },
+  "properties": {
+    "accessibility": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "canonical_text": {
+      "type": "string"
+    },
+    "category": {
+      "default": "fact",
+      "enum": [
+        "identity",
+        "preference",
+        "relationship",
+        "fact",
+        "community",
+        "procedure",
+        "self_narrative"
+      ]
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "evidence": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "evidence_span": {
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "supports",
+              "contradicts",
+              "corrects"
+            ]
+          },
+          "source_authority": {
+            "enum": [
+              "agent_inference",
+              "extracted",
+              "user_statement",
+              "platform_verified",
+              "admin_confirmed",
+              "explicit_correction"
+            ]
+          },
+          "source_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "source_type": {
+            "enum": [
+              "observation",
+              "artifact",
+              "episode",
+              "claim",
+              "note"
+            ]
+          }
+        },
+        "required": [
+          "source_type",
+          "source_id",
+          "relation",
+          "source_authority"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "extractor_version": {
+      "type": "string"
+    },
+    "importance": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "predicate": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "session_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_authority": {
+      "default": "user_statement",
+      "enum": [
+        "agent_inference",
+        "extracted",
+        "user_statement",
+        "platform_verified",
+        "admin_confirmed",
+        "explicit_correction"
+      ]
+    },
+    "source_refs": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "space_id": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "subject_entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "subject_is_self": {
+      "default": false,
+      "type": "boolean"
+    },
+    "valid_from_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "valid_until_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "value": {}
+  },
+  "required": [
+    "agent_id",
+    "predicate",
+    "value",
+    "evidence"
+  ],
+  "title": "ClaimRememberRequest",
+  "type": "object"
+}

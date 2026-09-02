@@ -154,11 +154,47 @@ _KINDS: dict[str, JobKindSpec] = dict(
             enabled=True,
             notes="Phase 4: event delivery revision invariant check.",
         ),
+        # Phase 5: pointer invariant checks for the long-term memory
+        # aggregates (same shape as note.changed/task.changed) and the
+        # tombstone-effect verifier for forget invalidations. All carry real,
+        # idempotent handlers; retention.compaction runs the §19.5 sweep.
+        _spec(
+            "claim.changed",
+            priority=6,
+            enabled=True,
+            notes="Phase 5: claim current-pointer invariant check.",
+        ),
+        _spec(
+            "episode.changed",
+            priority=6,
+            enabled=True,
+            notes="Phase 5: episode current-pointer invariant check.",
+        ),
+        _spec(
+            "relation.changed",
+            priority=6,
+            enabled=True,
+            notes="Phase 5: relation current-pointer invariant check.",
+        ),
+        _spec(
+            "memory.invalidated",
+            priority=1,
+            enabled=True,
+            notes="Phase 5: verify each invalidated resource is non-current "
+            "under the recorded tombstone watermark (fail closed).",
+        ),
+        _spec(
+            "retention.compaction",
+            priority=8,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 5: §19.5 retention sweep (decay/archive/delete via "
+            "the Forget machinery; protected resources skipped).",
+        ),
         _spec("episode.consolidation", priority=7, catch_up="latest"),
         _spec("memory.reconciliation", priority=7, catch_up="coalesce"),
         _spec("reflection.generate", priority=7, catch_up="latest"),
         _spec("persona.evaluation", priority=6, catch_up="latest"),
-        _spec("retention.compaction", priority=8, catch_up="latest"),
         _spec("backup.execute", priority=3, catch_up="all"),
         # Phase 2 spine kinds.
         _spec(

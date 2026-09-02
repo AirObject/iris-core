@@ -16,5 +16,6 @@ Phase 0 freezes the boundaries required by Phase 1. Accepted decisions are immut
 | [0010](./0010-active-surface-coordinator.md) | Active Surface Coordinator (lease/epoch/modes) | Accepted |
 | [0011](./0011-phase3-recent-state-focus.md) | Phase 3 recent generations, state coalesced stream, focus decay model, structured-recall skeleton | Accepted |
 | [0012](./0012-phase4-notes-tasks-events.md) | Phase 4 note lifecycle, task evidence semantics, trigger/occurrence identity, at-least-once host delivery | Accepted |
+| [0013](./0013-phase5-long-term-memory.md) | Phase 5 explicit long-term memory, bi-temporal claims, evidence invariants, artifact security, non-resurrecting erasure | Accepted |
 
 Open conflicts blocking Phase 1: **none**.

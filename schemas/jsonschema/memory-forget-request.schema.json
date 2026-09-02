@@ -1,0 +1,86 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/memory-forget-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "erase_content": {
+      "default": true,
+      "type": "boolean"
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "selector": {
+      "additionalProperties": true,
+      "dependentRequired": {
+        "session_id": [
+          "space_id"
+        ]
+      },
+      "properties": {
+        "agent_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "resource",
+            "subject_predicate",
+            "session",
+            "space",
+            "data_request"
+          ]
+        },
+        "predicate": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "session_id": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_id": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject_entity_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "selector",
+    "reason"
+  ],
+  "title": "MemoryForgetRequest",
+  "type": "object"
+}

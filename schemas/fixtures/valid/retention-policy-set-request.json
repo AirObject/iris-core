@@ -1,0 +1,7 @@
+{
+  "action": "archive",
+  "privacy_label": "personal",
+  "reason": "Archive stale claims after 180 days",
+  "resource_type": "claim",
+  "threshold_days": 180
+}

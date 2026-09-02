@@ -112,7 +112,7 @@ class TestPublishedMigrationIntegrity:
             ).fetchall()
         finally:
             connection.close()
-        assert len(rows) == 5
+        assert len(rows) == 6
         on_disk = hashlib.sha256(
             (REPOSITORY_ROOT / "migrations" / "0003_phase2_reliability_spine.sql").read_bytes()
         ).hexdigest()
@@ -127,9 +127,9 @@ class TestSchemaUpgrade:
         assert current_schema_version(sqlite3.connect(database)) == 2
 
         applied = MigrationRunner(database).migrate()
-        # The 0.5.0 runner walks a Schema 2 database through 0003, 0004 AND
-        # 0005 (staged multi-version upgrades migrate through intermediates).
-        assert [item.version for item in applied] == [3, 4, 5]
+        # The 0.6.0 runner walks a Schema 2 database through 0003-0006
+        # (staged multi-version upgrades migrate through intermediates).
+        assert [item.version for item in applied] == [3, 4, 5, 6]
 
         connection = sqlite3.connect(database)
         try:
@@ -156,26 +156,26 @@ class TestSchemaUpgrade:
         ):
             assert table in tables
 
-    def test_empty_database_installs_all_five(self, database: Path) -> None:
+    def test_empty_database_installs_all_six(self, database: Path) -> None:
         MigrationRunner(database).migrate()
         connection = sqlite3.connect(database)
         try:
-            assert current_schema_version(connection) == 5
+            assert current_schema_version(connection) == 6
         finally:
             connection.close()
 
     def test_schema_window_is_4_to_5(self) -> None:
         from iris_memory_core.domain.errors import SchemaIncompatibleError
 
-        # The 0.5.0 binary window: Schema 4 (Phase 3) databases upgrade
-        # forward online; Schema 3 needs a 0.4.0 binary first (staged path).
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (4, 5)
-        verify_schema_compatible(4)
+        # The 0.6.0 binary window: Schema 5 (Phase 4) databases upgrade
+        # forward online; Schema 4 needs a 0.5.0 binary first (staged path).
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (5, 6)
         verify_schema_compatible(5)
+        verify_schema_compatible(6)
         with pytest.raises(SchemaIncompatibleError):
-            verify_schema_compatible(6)
+            verify_schema_compatible(7)
         with pytest.raises(SchemaIncompatibleError):
-            verify_schema_compatible(3)
+            verify_schema_compatible(4)
 
     def test_upgraded_database_openable_by_runtime(self, tmp_path: Path) -> None:
         database = tmp_path / "runtime.sqlite3"
@@ -297,7 +297,7 @@ class TestPhase2BackupRestore:
             source = self._phase2_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 5
+            assert report["schema_version"] == 6
             assert verify_backup(backup_dir).ok
 
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
@@ -342,4 +342,4 @@ class TestPhase2BackupRestore:
         service = BackupService(store)
         backup_dir = tmp_path / "catalog-backup"
         report = service.create_backup(backup_dir)
-        assert report.schema_version == 5
+        assert report.schema_version == 6

@@ -48,12 +48,12 @@ ORIGINS_THAT_CANNOT_ACTIVATE = frozenset({"conversation", "background"})
 #: only. ``observation`` rows are validated against their committed effect
 #: state by the application layer; a CognitiveEvent is a reminder, and an
 #: ACK/Delivered/Expired event must never masquerade as an effect (§12.2).
-#: ``artifact`` is deliberately ABSENT until a later phase ships a canonical
-#: artifact repository: with no existence/scope/privacy/tombstone checks to
-#: run, an ``artifact`` ref would be unvalidated input and any string could
-#: complete a step. It re-enters this set only together with a validator of
-#: its own (ADR-0012 §11).
-EVIDENCE_RESOURCE_TYPES = frozenset({"observation"})
+#: ``artifact`` re-enters the set in Phase 5 together with its canonical
+#: validator (ADR-0013 §5): the artifact repository provides existence,
+#: tenant/agent, scope-envelope, status and tombstone checks, so an artifact
+#: ref is validated against its own row — not the caller's say-so.
+#: ``cognitive_event`` stays structurally excluded.
+EVIDENCE_RESOURCE_TYPES = frozenset({"observation", "artifact"})
 
 
 class TaskStatus(StrEnum):

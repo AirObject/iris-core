@@ -743,3 +743,283 @@ def test_phase4_lists_reject_session_without_space(mock_base_url: str) -> None:
     with pytest.raises(IrisMemoryApiError) as captured:
         asyncio.run(client.list_tasks(_AGENT, session_id="01a050fd-6cc2-7d1b-86ef-86d5150fa632"))
     assert captured.value.envelope.code == "invalid_request"
+
+
+# -- Phase 5: claims, forget, episodes, relations, artifacts ---------------------
+
+_SPACE = "01a050fd-6cc2-7d1b-86ef-86d5150fa631"
+_SESSION = "01a050fd-6cc2-7d1b-86ef-86d5150fa632"
+_CLAIM = "01a050fd-6cc2-7d1b-86ef-86d5150fa660"
+_EPISODE = "01a050fd-6cc2-7d1b-86ef-86d5150fa662"
+_RELATION = "01a050fd-6cc2-7d1b-86ef-86d5150fa663"
+_ARTIFACT = "01a050fd-6cc2-7d1b-86ef-86d5150fa664"
+
+_EVIDENCE = [
+    {
+        "source_type": "observation",
+        "source_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+        "relation": "supports",
+        "source_authority": "user_statement",
+    }
+]
+
+
+def test_claim_remember_search_and_history_round_trip(recorded_mock_server: Any) -> None:
+    """Phase 5 P1: remember → claim view, repeated-status search, bi-temporal
+    history. The lease proof must reach the BODY while the idempotency key
+    stays a header (asserted against the recorded wire copy)."""
+    client = AsyncIrisMemoryClient(f"http://127.0.0.1:{recorded_mock_server.server_port}")
+    claim = asyncio.run(
+        client.remember_claim(
+            {
+                "agent_id": _AGENT,
+                "subject_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+                "predicate": "prefers_language",
+                "value": {"language": "zh"},
+                "category": "preference",
+                "canonical_text": "User prefers communicating in Chinese",
+                "evidence": _EVIDENCE,
+                "space_id": _SPACE,
+                "session_id": _SESSION,
+            },
+            idempotency_key="claim-1",
+            lease_id="lease-20",
+            lease_epoch=11,
+        )
+    )
+    assert validate_contract("claim-view", claim) == ()
+    remember_bodies = [
+        body
+        for method, path, body in recorded_mock_server.received_requests
+        if method == "POST" and path == "/v1/claims:remember"
+    ]
+    assert remember_bodies[0]["lease_id"] == "lease-20"
+    assert remember_bodies[0]["lease_epoch"] == 11
+    assert "idempotency_key" not in remember_bodies[0]
+
+    fetched = asyncio.run(client.get_claim(_CLAIM))
+    assert validate_contract("claim-view", fetched) == ()
+    listed = asyncio.run(
+        client.search_claims(
+            _AGENT,
+            space_id=_SPACE,
+            session_id=_SESSION,
+            predicate="prefers_language",
+            category="preference",
+            statuses=["active", "superseded"],
+            as_of_us=1700000500000000,
+            limit=50,
+        )
+    )
+    assert validate_contract("claim-search-response", listed) == ()
+    assert validate_contract("claim-view", listed["items"][0]) == ()
+
+    history = asyncio.run(client.claim_history(_CLAIM))
+    assert validate_contract("claim-history-response", history) == ()
+    assert [rev["revision"] for rev in history["revisions"]] == [2, 1]
+    assert all(not validate_contract("claim-revision-view", rev) for rev in history["revisions"])
+
+
+def test_claim_remember_rejects_unknown_category(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(
+            client.remember_claim(
+                {
+                    "agent_id": _AGENT,
+                    "predicate": "likes_coffee",
+                    "value": True,
+                    "category": "vibe",
+                    "evidence": _EVIDENCE,
+                },
+                idempotency_key="claim-bad",
+            )
+        )
+    assert captured.value.envelope.code == "invalid_request"
+
+
+def test_claim_correct_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    corrected = asyncio.run(
+        client.correct_claim(
+            _CLAIM,
+            {
+                "expected_revision": 1,
+                "reason": "the user corrected the language preference",
+                "mode": "supersede",
+                "value": {"language": "en"},
+            },
+            idempotency_key="claim-2",
+            lease_id="lease-21",
+            lease_epoch=12,
+        )
+    )
+    assert validate_contract("claim-view", corrected) == ()
+    assert corrected["revision"] == 2
+    assert corrected["status"] == "active"
+    retracted = asyncio.run(
+        client.correct_claim(
+            _CLAIM,
+            {"expected_revision": 2, "reason": "withdrawn", "mode": "retract"},
+            idempotency_key="claim-3",
+        )
+    )
+    assert retracted["status"] == "retracted"
+
+
+def test_claim_history_before_retained_window_fails(mock_base_url: str) -> None:
+    """S19.4: as_of_us reads before the retained watermark have no history."""
+    client = AsyncIrisMemoryClient(mock_base_url)
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(client.claim_history(_CLAIM, as_of_us=1))
+    assert captured.value.envelope.code == "history_unavailable"
+
+
+def test_memory_forget_and_deletion_ledger_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    forgotten = asyncio.run(
+        client.forget_memory(
+            {
+                "selector": {"kind": "session", "session_id": _SESSION, "space_id": _SPACE},
+                "reason": "user requested erasure of this session",
+                "erase_content": True,
+            },
+            idempotency_key="forget-1",
+            lease_id="lease-22",
+            lease_epoch=13,
+        )
+    )
+    assert validate_contract("memory-forget-view", forgotten) == ()
+    ledger = asyncio.run(client.export_deletion_ledger())
+    assert validate_contract("deletion-ledger-response", ledger) == ()
+    assert not validate_contract("forget-request-view", ledger["requests"][0])
+    # The created_after_us filter narrows the ledger deterministically.
+    future = asyncio.run(client.export_deletion_ledger(created_after_us=1700000000000001))
+    assert future["requests"] == []
+
+
+def test_memory_forget_without_idempotency_key_is_rejected(mock_base_url: str) -> None:
+    """The SDK treats the idempotency key as optional caller input and never
+    invents one — the contract (and mock) still demand the header, so a bare
+    call deterministically maps the stable error envelope."""
+    client = AsyncIrisMemoryClient(mock_base_url)
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(
+            client.forget_memory(
+                {
+                    "selector": {"kind": "session", "session_id": _SESSION, "space_id": _SPACE},
+                    "reason": "no key this time",
+                }
+            )
+        )
+    assert captured.value.envelope.code == "invalid_request"
+
+
+def test_episode_relation_and_artifact_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    episode = asyncio.run(
+        client.create_episode(
+            {
+                "agent_id": _AGENT,
+                "summary": "User played competitive matches with friends online",
+                "title": "Weekend gaming session",
+                "space_id": _SPACE,
+                "session_id": _SESSION,
+            },
+            idempotency_key="episode-1",
+            lease_id="lease-23",
+            lease_epoch=14,
+        )
+    )
+    assert validate_contract("episode-view", episode) == ()
+    fetched = asyncio.run(client.get_episode(_EPISODE))
+    assert validate_contract("episode-view", fetched) == ()
+    sealed = asyncio.run(
+        client.transition_episode(
+            _EPISODE,
+            "seal",
+            {"expected_revision": 1, "reason": "the session ended"},
+            idempotency_key="episode-2",
+        )
+    )
+    assert sealed["status"] == "sealed"
+    assert sealed["revision"] == 2
+
+    relation = asyncio.run(
+        client.create_relation(
+            {
+                "agent_id": _AGENT,
+                "source_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa661",
+                "relation_type": "plays_with",
+                "target_entity_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa668",
+                "evidence": _EVIDENCE,
+            },
+            idempotency_key="relation-1",
+        )
+    )
+    assert validate_contract("relation-view", relation) == ()
+    assert validate_contract("relation-view", asyncio.run(client.get_relation(_RELATION))) == ()
+
+    artifact = asyncio.run(
+        client.create_artifact(
+            {
+                "agent_id": _AGENT,
+                "storage_kind": "inline",
+                "media_type": "text/plain",
+                "content_base64": "aXJpcyBwaGFzZTU=",
+            },
+            idempotency_key="artifact-1",
+        )
+    )
+    assert validate_contract("artifact-view", artifact) == ()
+    assert validate_contract("artifact-view", asyncio.run(client.get_artifact(_ARTIFACT))) == ()
+
+
+def test_retention_policy_and_legal_hold_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    policy = asyncio.run(
+        client.set_retention_policy(
+            {
+                "resource_type": "claim",
+                "action": "archive",
+                "threshold_days": 180,
+                "reason": "archive stale claims",
+                "privacy_label": "personal",
+            },
+            idempotency_key="retention-1",
+        )
+    )
+    assert validate_contract("retention-policy-view", policy) == ()
+    listed = asyncio.run(client.list_retention_policies())
+    assert validate_contract("retention-policy-list-response", listed) == ()
+
+    hold = asyncio.run(
+        client.create_legal_hold(
+            {"reason": "pending litigation discovery", "space_id": _SPACE},
+            idempotency_key="hold-1",
+        )
+    )
+    assert validate_contract("legal-hold-view", hold) == ()
+    released = asyncio.run(
+        client.release_legal_hold(
+            hold["legal_hold_id"],
+            {"reason": "the litigation hold expired"},
+            idempotency_key="hold-2",
+        )
+    )
+    assert validate_contract("legal-hold-view", released) == ()
+    assert released["released_at_us"] is not None
+
+
+def test_episode_transition_rejects_unknown_target(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    with pytest.raises(IrisMemoryApiError) as captured:
+        asyncio.run(
+            client.transition_episode(
+                _EPISODE,
+                "freeze",
+                {"expected_revision": 1, "reason": "not a transition"},
+                idempotency_key="episode-bad",
+            )
+        )
+    assert captured.value.envelope.code == "invalid_request"

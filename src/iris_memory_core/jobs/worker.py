@@ -23,6 +23,7 @@ from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, OutboxService
 from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
+from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import LeaseFencedError
 from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS, OutboxJob
@@ -96,6 +97,30 @@ def phase4_handlers(
         "note.changed": note_changed_handler(),
         "task.changed": task_changed_handler(),
         "cognitive_event.changed": cognitive_event_changed_handler(),
+    }
+
+
+def phase5_handlers(
+    clock: Clock,
+    *,
+    retention: RetentionService,
+) -> dict[str, JobWork]:
+    """Phase 5 handlers: memory pointer checks, invalidation verification,
+    retention sweep."""
+    from iris_memory_core.jobs.handlers import (
+        claim_changed_handler,
+        episode_changed_handler,
+        memory_invalidated_handler,
+        relation_changed_handler,
+        retention_compaction_handler,
+    )
+
+    return {
+        "claim.changed": claim_changed_handler(),
+        "episode.changed": episode_changed_handler(),
+        "relation.changed": relation_changed_handler(),
+        "memory.invalidated": memory_invalidated_handler(),
+        "retention.compaction": retention_compaction_handler(retention, clock),
     }
 
 

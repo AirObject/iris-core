@@ -662,6 +662,327 @@ class AsyncIrisMemoryClient:
         )
         return cast(dict[str, Any], value)
 
+    # -- Phase 5: long-term memory (claims, forget, episodes, relations) ----
+
+    async def remember_claim(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        body = self._with_lease_proof(record, lease_id, lease_epoch)
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/claims:remember",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def correct_claim(
+        self,
+        claim_id: str,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        body = self._with_lease_proof(record, lease_id, lease_epoch)
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/claims/{quote(claim_id, safe='')}:correct",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def get_claim(self, claim_id: str) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/claims/{quote(claim_id, safe='')}",
+            None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def search_claims(
+        self,
+        agent_id: str,
+        *,
+        space_id: str | None = None,
+        session_id: str | None = None,
+        subject_entity_id: str | None = None,
+        predicate: str | None = None,
+        category: str | None = None,
+        statuses: list[str] | None = None,
+        valid_at_us: int | None = None,
+        as_of_us: int | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = f"agent_id={quote(agent_id, safe='')}"
+        for key, item in (
+            ("space_id", space_id),
+            ("session_id", session_id),
+            ("subject_entity_id", subject_entity_id),
+            ("predicate", predicate),
+            ("category", category),
+        ):
+            if item is not None:
+                query += f"&{key}={quote(item, safe='')}"
+        # statuses is a repeated query parameter (one status per repetition).
+        for status in statuses or ():
+            query += f"&status={quote(status, safe='')}"
+        for key, numeric in (
+            ("valid_at_us", valid_at_us),
+            ("as_of_us", as_of_us),
+            ("limit", limit),
+        ):
+            if numeric is not None:
+                query += f"&{key}={numeric}"
+        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/claims?{query}", None)
+        return cast(dict[str, Any], value)
+
+    async def claim_history(
+        self,
+        claim_id: str,
+        *,
+        as_of_us: int | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = ""
+        for key, numeric in (("as_of_us", as_of_us), ("limit", limit)):
+            if numeric is not None:
+                query += f"&{key}={numeric}"
+        path = f"/v1/claims/{quote(claim_id, safe='')}/history"
+        if query:
+            path += f"?{query[1:]}"
+        value = await asyncio.to_thread(self._request_json, "GET", path, None)
+        return cast(dict[str, Any], value)
+
+    async def forget_memory(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        body = self._with_lease_proof(record, lease_id, lease_epoch)
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/memory:forget",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key} if idempotency_key else None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_episode(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        body = self._with_lease_proof(record, lease_id, lease_epoch)
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/episodes",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def transition_episode(
+        self,
+        episode_id: str,
+        target: str,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        # The transition target rides in the body (the contract has no query
+        # parameter for it); an explicit argument always wins over the record.
+        body = self._with_lease_proof({**record, "target": target}, lease_id, lease_epoch)
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/episodes/{quote(episode_id, safe='')}:transition",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def get_episode(self, episode_id: str) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/episodes/{quote(episode_id, safe='')}",
+            None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_relation(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        body = self._with_lease_proof(record, lease_id, lease_epoch)
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/relations",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def get_relation(self, relation_id: str) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/relations/{quote(relation_id, safe='')}",
+            None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_artifact(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        body = self._with_lease_proof(record, lease_id, lease_epoch)
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/artifacts",
+            body,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def get_artifact(self, artifact_id: str) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/artifacts/{quote(artifact_id, safe='')}",
+            None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def set_retention_policy(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Set a retention policy (S19.3).
+
+        The contract declares the Idempotency-Key header on this write (the
+        mock enforces it), so the SDK carries it as a header-only parameter.
+        """
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/retention-policies",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def list_retention_policies(self) -> dict[str, Any]:
+        value = await asyncio.to_thread(self._request_json, "GET", "/v1/retention-policies", None)
+        return cast(dict[str, Any], value)
+
+    async def create_legal_hold(
+        self,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/legal-holds",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key} if idempotency_key else None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def release_legal_hold(
+        self,
+        legal_hold_id: str,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/legal-holds/{quote(legal_hold_id, safe='')}:release",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key} if idempotency_key else None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def export_deletion_ledger(
+        self,
+        *,
+        created_after_us: int | None = None,
+    ) -> dict[str, Any]:
+        path = "/v1/memory/deletion-ledger"
+        if created_after_us is not None:
+            path += f"?created_after_us={created_after_us}"
+        value = await asyncio.to_thread(self._request_json, "GET", path, None)
+        return cast(dict[str, Any], value)
+
+    @staticmethod
+    def _with_lease_proof(
+        record: dict[str, Any],
+        lease_id: str | None,
+        lease_epoch: int | None,
+    ) -> dict[str, Any]:
+        """Merge the S25.3 lease proof into a write body (never the header)."""
+        body = dict(record)
+        if lease_id is not None:
+            body["lease_id"] = lease_id
+        if lease_epoch is not None:
+            body["lease_epoch"] = lease_epoch
+        return body
+
     # -- Phase 2: health -----------------------------------------------------
 
     async def readiness(self) -> dict[str, Any]:

@@ -1,0 +1,103 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/claim-correct-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "canonical_text": {
+      "type": "string"
+    },
+    "evidence": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "evidence_span": {
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "supports",
+              "contradicts",
+              "corrects"
+            ]
+          },
+          "source_authority": {
+            "enum": [
+              "agent_inference",
+              "extracted",
+              "user_statement",
+              "platform_verified",
+              "admin_confirmed",
+              "explicit_correction"
+            ]
+          },
+          "source_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "source_type": {
+            "enum": [
+              "observation",
+              "artifact",
+              "episode",
+              "claim",
+              "note"
+            ]
+          }
+        },
+        "required": [
+          "source_type",
+          "source_id",
+          "relation",
+          "source_authority"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "expected_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "mode": {
+      "default": "supersede",
+      "enum": [
+        "supersede",
+        "dispute",
+        "retract"
+      ]
+    },
+    "reason": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "source_authority": {
+      "enum": [
+        "agent_inference",
+        "extracted",
+        "user_statement",
+        "platform_verified",
+        "admin_confirmed",
+        "explicit_correction"
+      ]
+    },
+    "value": {}
+  },
+  "required": [
+    "expected_revision",
+    "reason"
+  ],
+  "title": "ClaimCorrectRequest",
+  "type": "object"
+}

@@ -767,6 +767,617 @@ def _validate_cognitive_event_ack_request(value: object) -> tuple[str, ...]:
     return tuple(errors)
 
 
+# ---------------------------------------------------------------------------
+# Phase 5: long-term memory — claims, episodes, relations, artifacts,
+# forget/retention/legal holds (S13, S19)
+
+_CLAIM_CATEGORIES = (
+    "identity",
+    "preference",
+    "relationship",
+    "fact",
+    "community",
+    "procedure",
+    "self_narrative",
+)
+_CLAIM_STATUSES = (
+    "active",
+    "disputed",
+    "superseded",
+    "retracted",
+    "expired",
+    "archived",
+    "tombstoned",
+)
+_CORRECT_MODES = ("supersede", "dispute", "retract")
+_EVIDENCE_RELATIONS = ("supports", "contradicts", "corrects")
+_MEMORY_AUTHORITIES = (
+    "agent_inference",
+    "extracted",
+    "user_statement",
+    "platform_verified",
+    "admin_confirmed",
+    "explicit_correction",
+)
+_EVIDENCE_SOURCE_TYPES = ("observation", "artifact", "episode", "claim", "note")
+_EPISODE_TRANSITION_TARGETS = ("seal", "supersede", "archive", "reopen")
+_ARTIFACT_STORAGE_KINDS = ("inline", "local_blob", "external_ref")
+_FORGET_SELECTOR_KINDS = ("resource", "subject_predicate", "session", "space", "data_request")
+_RETENTION_ACTIONS = ("decay", "archive", "delete")
+_RETENTION_RESOURCE_TYPES = ("claim", "note", "episode", "relation", "observation")
+
+
+def _require_known_or_non_empty(
+    value: Mapping[str, object], key: str, known: tuple[str, ...], errors: list[str]
+) -> None:
+    """Forward-compatible enum check for VIEW fields.
+
+    Known enum members pass; anything else only has to be a non-empty string
+    (the server owns the state machine and may add members after this build).
+    """
+    item = value.get(key)
+    if item in known:
+        return
+    if not isinstance(item, str) or not item:
+        errors.append(f"{key} must be a non-empty string")
+
+
+def _require_string_array(value: object, key: str, errors: list[str]) -> None:
+    if value is None:
+        return
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        errors.append(f"{key} must be an array of strings")
+
+
+def _require_resource_refs(value: object, key: str, errors: list[str]) -> None:
+    """source_refs / observation_refs / evidence_refs rows (S13 resource ref)."""
+    if value is None:
+        return
+    if not isinstance(value, list):
+        errors.append(f"{key} must be an array")
+        return
+    for index, ref in enumerate(value):
+        if not isinstance(ref, Mapping):
+            errors.append(f"{key}[{index}] must be an object")
+            continue
+        for field in ("resource_type", "resource_id"):
+            if not isinstance(ref.get(field), str) or not ref.get(field):
+                errors.append(f"{key}[{index}].{field} must be a non-empty string")
+
+
+def _require_evidence_rows(
+    value: object,
+    errors: list[str],
+    *,
+    field: str = "evidence",
+    relations: tuple[str, ...] = _EVIDENCE_RELATIONS,
+    minimum: int = 0,
+) -> None:
+    """Evidence rows (S13): every row names a source and how it relates.
+
+    ``minimum=1`` mirrors the JSON Schema ``minItems: 1`` on remember/relation
+    writes; the correct endpoint accepts an absent list but validates rows.
+    """
+    if not isinstance(value, list):
+        errors.append(f"{field} must be an array")
+        return
+    if len(value) < minimum:
+        errors.append(f"{field} must have at least {minimum} item(s)")
+    for index, row in enumerate(value):
+        if not isinstance(row, Mapping):
+            errors.append(f"{field}[{index}] must be an object")
+            continue
+        if row.get("source_type") not in _EVIDENCE_SOURCE_TYPES:
+            errors.append(f"{field}[{index}].source_type must be a known source type")
+        if not isinstance(row.get("source_id"), str) or not row.get("source_id"):
+            errors.append(f"{field}[{index}].source_id must be a non-empty string")
+        if row.get("relation") not in relations:
+            errors.append(f"{field}[{index}].relation must be a known evidence relation")
+        if row.get("source_authority") not in _MEMORY_AUTHORITIES:
+            errors.append(f"{field}[{index}].source_authority must be a known authority")
+
+
+def _validate_claim_remember_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    predicate = value.get("predicate")
+    if not isinstance(predicate, str) or not predicate or len(predicate) > 256:
+        errors.append("predicate must be 1..256 characters")
+    if "value" not in value:
+        errors.append("value is required")
+    _require_evidence_rows(value.get("evidence"), errors, minimum=1)
+    if value.get("category", "fact") not in _CLAIM_CATEGORIES:
+        errors.append("category must be a known claim category")
+    if value.get("source_authority", "user_statement") not in _MEMORY_AUTHORITIES:
+        errors.append("source_authority must be a known authority")
+    for key in ("confidence", "importance", "accessibility"):
+        if key in value:
+            _require_unit_interval(value.get(key), key, errors)
+    for key in ("subject_entity_id", "canonical_text", "extractor_version"):
+        item = value.get(key)
+        if item is not None and (not isinstance(item, str) or not item):
+            errors.append(f"{key} must be a non-empty string")
+    if "subject_is_self" in value and not isinstance(value.get("subject_is_self"), bool):
+        errors.append("subject_is_self must be a boolean")
+    for key in ("valid_from_us", "valid_until_us"):
+        item = value.get(key)
+        if item is not None and (type(item) is not int or item < 0):
+            errors.append(f"{key} must be null or a non-negative integer")
+    _require_string_array(value.get("privacy_labels"), "privacy_labels", errors)
+    _require_resource_refs(value.get("source_refs"), "source_refs", errors)
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append("session_id requires space_id")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_claim_correct_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    revision = value.get("expected_revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("expected_revision must be a positive integer")
+    _require_non_empty_str(value.get("reason"), "reason", errors)
+    if value.get("mode", "supersede") not in _CORRECT_MODES:
+        errors.append("mode must be a known correction mode")
+    if value.get("evidence") is not None:
+        _require_evidence_rows(value.get("evidence"), errors)
+    if value.get("source_authority") is not None and (
+        value.get("source_authority") not in _MEMORY_AUTHORITIES
+    ):
+        errors.append("source_authority must be a known authority")
+    canonical_text = value.get("canonical_text")
+    if canonical_text is not None and not isinstance(canonical_text, str):
+        errors.append("canonical_text must be a string")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_claim_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in (
+        "claim_id",
+        "agent_id",
+        "subject_entity_id",
+        "current_subject_entity_id",
+        "predicate",
+    ):
+        _require_non_empty_str(value.get(key), key, errors)
+    # Forward compatibility on views: category/status/source_authority are the
+    # server's enums; unknown future members are tolerated if well-formed.
+    _require_known_or_non_empty(value, "category", _CLAIM_CATEGORIES, errors)
+    _require_known_or_non_empty(value, "status", _CLAIM_STATUSES, errors)
+    _require_known_or_non_empty(value, "source_authority", _MEMORY_AUTHORITIES, errors)
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    for key in ("confidence", "importance", "accessibility"):
+        if key in value:
+            _require_unit_interval(value.get(key), key, errors)
+    for key in ("evidence_count", "recorded_at_us"):
+        item = value.get(key)
+        if item is not None and (type(item) is not int or item < 0):
+            errors.append(f"{key} must be a non-negative integer")
+    _require_string_array(value.get("privacy_labels"), "privacy_labels", errors)
+    return tuple(errors)
+
+
+def _validate_claim_revision_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    _require_known_or_non_empty(value, "status", _CLAIM_STATUSES, errors)
+    for key in ("canonical_text",):
+        if value.get(key) is not None and not isinstance(value.get(key), str):
+            errors.append(f"{key} must be a string")
+    if "value" not in value:
+        errors.append("value is required")
+    item = value.get("recorded_at_us")
+    if item is not None and (type(item) is not int or item < 0):
+        errors.append("recorded_at_us must be a non-negative integer")
+    _require_string_array(value.get("privacy_labels"), "privacy_labels", errors)
+    content_hash = value.get("content_hash")
+    if not isinstance(content_hash, str) or _HASH_PATTERN.fullmatch(content_hash) is None:
+        errors.append("content_hash must be a SHA-256 hex string")
+    superseded = value.get("superseded_at_us")
+    if superseded is not None and (type(superseded) is not int or superseded < 0):
+        errors.append("superseded_at_us must be null or a non-negative integer")
+    return tuple(errors)
+
+
+def _validate_claim_search_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    items = value.get("items")
+    if not isinstance(items, list):
+        errors.append("items must be an array")
+        return tuple(errors)
+    for index, item in enumerate(items):
+        item_errors = _validate_claim_view(item)
+        errors.extend(f"items[{index}].{error}" for error in item_errors)
+    return tuple(errors)
+
+
+def _validate_claim_history_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    if value.get("claim_id") is not None:
+        _require_non_empty_str(value.get("claim_id"), "claim_id", errors)
+    revisions = value.get("revisions")
+    if not isinstance(revisions, list):
+        errors.append("revisions must be an array")
+        return tuple(errors)
+    for index, item in enumerate(revisions):
+        item_errors = _validate_claim_revision_view(item)
+        errors.extend(f"revisions[{index}].{error}" for error in item_errors)
+    return tuple(errors)
+
+
+def _validate_forget_selector(value: object, key: str, errors: list[str]) -> None:
+    if not isinstance(value, Mapping):
+        errors.append(f"{key} must be an object")
+        return
+    if value.get("kind") not in _FORGET_SELECTOR_KINDS:
+        errors.append(f"{key}.kind must be a known forget selector")
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append(f"{key}.session_id requires space_id")
+
+
+def _validate_memory_forget_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _validate_forget_selector(value.get("selector"), "selector", errors)
+    _require_non_empty_str(value.get("reason"), "reason", errors)
+    if "erase_content" in value and not isinstance(value.get("erase_content"), bool):
+        errors.append("erase_content must be a boolean")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _require_forget_counters(value: Mapping[str, object], errors: list[str]) -> None:
+    for key in ("target_count", "erased_count", "protected_skipped", "held_skipped"):
+        item = value.get(key)
+        if type(item) is not int or item < 0:
+            errors.append(f"{key} must be a non-negative integer")
+    low = value.get("tombstone_seq_lo")
+    if type(low) is not int or low < 0:
+        errors.append("tombstone_seq_lo must be a non-negative integer")
+    high = value.get("tombstone_seq_hi")
+    if high is not None and (type(high) is not int or high < 0):
+        errors.append("tombstone_seq_hi must be null or a non-negative integer")
+
+
+def _validate_memory_forget_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("request_id", "selector_key"):
+        _require_non_empty_str(value.get(key), key, errors)
+    _require_forget_counters(value, errors)
+    return tuple(errors)
+
+
+def _validate_forget_request_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("request_id", "selector_key", "reason_code"):
+        _require_non_empty_str(value.get(key), key, errors)
+    created = value.get("created_us")
+    if type(created) is not int or created < 0:
+        errors.append("created_us must be a non-negative integer")
+    _require_forget_counters(value, errors)
+    selector = value.get("selector")
+    if selector is not None:
+        if not isinstance(selector, Mapping):
+            errors.append("selector must be an object")
+        else:
+            _require_known_or_non_empty(selector, "kind", _FORGET_SELECTOR_KINDS, errors)
+    return tuple(errors)
+
+
+def _validate_deletion_ledger_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    requests = value.get("requests")
+    if not isinstance(requests, list):
+        errors.append("requests must be an array")
+        return tuple(errors)
+    for index, item in enumerate(requests):
+        item_errors = _validate_forget_request_view(item)
+        errors.extend(f"requests[{index}].{error}" for error in item_errors)
+    return tuple(errors)
+
+
+def _validate_episode_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    summary = value.get("summary")
+    if not isinstance(summary, str) or not summary or len(summary) > 8000:
+        errors.append("summary must be 1..8000 characters")
+    title = value.get("title")
+    if title is not None and (not isinstance(title, str) or not title or len(title) > 500):
+        errors.append("title must be 1..500 characters")
+    for key in ("importance", "arousal"):
+        if key in value:
+            _require_unit_interval(value.get(key), key, errors)
+    valence = value.get("valence")
+    if valence is not None and (
+        not isinstance(valence, (int, float)) or isinstance(valence, bool) or not -1 <= valence <= 1
+    ):
+        errors.append("valence must be a number within [-1, 1]")
+    for key in ("started_at_us", "ended_at_us"):
+        item = value.get(key)
+        if item is not None and (type(item) is not int or item < 0):
+            errors.append(f"{key} must be null or a non-negative integer")
+    participants = value.get("participant_entity_ids")
+    if participants is not None and (
+        not isinstance(participants, list)
+        or not all(isinstance(item, str) and item for item in participants)
+    ):
+        errors.append("participant_entity_ids must be an array of non-empty strings")
+    _require_resource_refs(value.get("observation_refs"), "observation_refs", errors)
+    _require_string_array(value.get("privacy_labels"), "privacy_labels", errors)
+    extractor = value.get("extractor_version")
+    if extractor is not None and not isinstance(extractor, str):
+        errors.append("extractor_version must be a string")
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append("session_id requires space_id")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_episode_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("episode_id", "agent_id", "summary"):
+        _require_non_empty_str(value.get(key), key, errors)
+    # Forward compatibility: episode status is the server's state machine.
+    status = value.get("status")
+    if not isinstance(status, str) or not status:
+        errors.append("status must be a non-empty string")
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    for key in ("importance", "arousal"):
+        if key in value:
+            _require_unit_interval(value.get(key), key, errors)
+    valence = value.get("valence")
+    if valence is not None and (
+        not isinstance(valence, (int, float)) or isinstance(valence, bool) or not -1 <= valence <= 1
+    ):
+        errors.append("valence must be a number within [-1, 1]")
+    for key in ("started_at_us", "ended_at_us"):
+        item = value.get(key)
+        if item is not None and (type(item) is not int or item < 0):
+            errors.append(f"{key} must be null or a non-negative integer")
+    _require_resource_refs(value.get("observation_refs"), "observation_refs", errors)
+    _require_string_array(value.get("privacy_labels"), "privacy_labels", errors)
+    return tuple(errors)
+
+
+def _validate_episode_transition_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    if value.get("target") not in _EPISODE_TRANSITION_TARGETS:
+        errors.append("target must be a known episode transition")
+    revision = value.get("expected_revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("expected_revision must be a positive integer")
+    _require_non_empty_str(value.get("reason"), "reason", errors)
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_relation_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    for key in ("source_entity_id", "target_entity_id"):
+        _require_non_empty_str(value.get(key), key, errors)
+    relation_type = value.get("relation_type")
+    if not isinstance(relation_type, str) or not relation_type or len(relation_type) > 128:
+        errors.append("relation_type must be 1..128 characters")
+    # Relation evidence only ever supports the edge (S13 relation semantics).
+    _require_evidence_rows(value.get("evidence"), errors, relations=("supports",), minimum=1)
+    for key in ("confidence", "importance", "accessibility"):
+        if key in value:
+            _require_unit_interval(value.get(key), key, errors)
+    for key in ("valid_from_us", "valid_until_us"):
+        item = value.get(key)
+        if item is not None and (type(item) is not int or item < 0):
+            errors.append(f"{key} must be null or a non-negative integer")
+    _require_string_array(value.get("privacy_labels"), "privacy_labels", errors)
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append("session_id requires space_id")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_relation_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in (
+        "relation_id",
+        "agent_id",
+        "source_entity_id",
+        "relation_type",
+        "target_entity_id",
+    ):
+        _require_non_empty_str(value.get(key), key, errors)
+    status = value.get("status")
+    if not isinstance(status, str) or not status:
+        errors.append("status must be a non-empty string")
+    revision = value.get("revision")
+    if type(revision) is not int or revision < 1:
+        errors.append("revision must be a positive integer")
+    for key in ("confidence", "importance", "accessibility"):
+        if key in value:
+            _require_unit_interval(value.get(key), key, errors)
+    evidence_count = value.get("evidence_count")
+    if evidence_count is not None and (type(evidence_count) is not int or evidence_count < 0):
+        errors.append("evidence_count must be a non-negative integer")
+    _require_resource_refs(value.get("evidence_refs"), "evidence_refs", errors)
+    _require_string_array(value.get("privacy_labels"), "privacy_labels", errors)
+    return tuple(errors)
+
+
+def _validate_artifact_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    if value.get("storage_kind") not in _ARTIFACT_STORAGE_KINDS:
+        errors.append("storage_kind must be a known storage kind")
+    media_type = value.get("media_type")
+    if not isinstance(media_type, str) or not media_type or len(media_type) > 256:
+        errors.append("media_type must be 1..256 characters")
+    for key in ("content_base64", "external_url"):
+        if value.get(key) is not None and not isinstance(value.get(key), str):
+            errors.append(f"{key} must be a string")
+    source_ref = value.get("source_ref")
+    if source_ref is not None:
+        _require_resource_refs([source_ref], "source_ref", errors)
+    _require_string_array(value.get("privacy_labels"), "privacy_labels", errors)
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append("session_id requires space_id")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_artifact_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("artifact_id", "agent_id", "media_type", "locator"):
+        _require_non_empty_str(value.get(key), key, errors)
+    _require_known_or_non_empty(value, "storage_kind", _ARTIFACT_STORAGE_KINDS, errors)
+    status = value.get("status")
+    if not isinstance(status, str) or not status:
+        errors.append("status must be a non-empty string")
+    content_hash = value.get("content_hash")
+    if not isinstance(content_hash, str) or _HASH_PATTERN.fullmatch(content_hash) is None:
+        errors.append("content_hash must be a SHA-256 hex string")
+    for key in ("size_bytes", "refcount"):
+        item = value.get(key)
+        if type(item) is not int or item < 0:
+            errors.append(f"{key} must be a non-negative integer")
+    _require_string_array(value.get("privacy_labels"), "privacy_labels", errors)
+    return tuple(errors)
+
+
+def _validate_retention_policy_set_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    if value.get("resource_type") not in _RETENTION_RESOURCE_TYPES:
+        errors.append("resource_type must be a known resource type")
+    if value.get("action") not in _RETENTION_ACTIONS:
+        errors.append("action must be a known retention action")
+    threshold = value.get("threshold_days")
+    if type(threshold) is not int or threshold < 1:
+        errors.append("threshold_days must be a positive integer")
+    _require_non_empty_str(value.get("reason"), "reason", errors)
+    if value.get("privacy_label") is not None and not isinstance(value.get("privacy_label"), str):
+        errors.append("privacy_label must be a string")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_retention_policy_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("policy_id"), "policy_id", errors)
+    _require_known_or_non_empty(value, "resource_type", _RETENTION_RESOURCE_TYPES, errors)
+    _require_known_or_non_empty(value, "action", _RETENTION_ACTIONS, errors)
+    threshold = value.get("threshold_days")
+    if type(threshold) is not int or threshold < 1:
+        errors.append("threshold_days must be a positive integer")
+    version = value.get("policy_version")
+    if type(version) is not int or version < 1:
+        errors.append("policy_version must be a positive integer")
+    if not isinstance(value.get("enabled"), bool):
+        errors.append("enabled must be a boolean")
+    if value.get("privacy_label") is not None and not isinstance(value.get("privacy_label"), str):
+        errors.append("privacy_label must be a string")
+    return tuple(errors)
+
+
+def _validate_retention_policy_list_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    items = value.get("items")
+    if not isinstance(items, list):
+        errors.append("items must be an array")
+        return tuple(errors)
+    for index, item in enumerate(items):
+        item_errors = _validate_retention_policy_view(item)
+        errors.extend(f"items[{index}].{error}" for error in item_errors)
+    return tuple(errors)
+
+
+def _validate_legal_hold_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("reason"), "reason", errors)
+    for key in ("agent_id", "subject_entity_id"):
+        item = value.get(key)
+        if item is not None and (not isinstance(item, str) or not item):
+            errors.append(f"{key} must be a non-empty string")
+    if value.get("session_id") is not None and value.get("space_id") is None:
+        errors.append("session_id requires space_id")
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
+def _validate_legal_hold_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for key in ("legal_hold_id", "reason_code"):
+        _require_non_empty_str(value.get(key), key, errors)
+    created = value.get("created_at_us")
+    if type(created) is not int or created < 0:
+        errors.append("created_at_us must be a non-negative integer")
+    released = value.get("released_at_us")
+    if released is not None and (type(released) is not int or released < 0):
+        errors.append("released_at_us must be null or a non-negative integer")
+    for key in ("space_id", "session_id", "agent_id", "subject_entity_id"):
+        if value.get(key) is not None and not isinstance(value.get(key), str):
+            errors.append(f"{key} must be a string or null")
+    return tuple(errors)
+
+
+def _validate_legal_hold_release_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("reason"), "reason", errors)
+    _require_lease_proof(value, errors)
+    return tuple(errors)
+
+
 def validate_contract(schema: str, value: object) -> tuple[str, ...]:
     validators = {
         "capabilities": _validate_capabilities,
@@ -800,6 +1411,29 @@ def validate_contract(schema: str, value: object) -> tuple[str, ...]:
         "trigger-view": _validate_trigger_view,
         "cognitive-event-view": _validate_cognitive_event_view,
         "cognitive-event-ack-request": _validate_cognitive_event_ack_request,
+        "claim-remember-request": _validate_claim_remember_request,
+        "claim-correct-request": _validate_claim_correct_request,
+        "claim-view": _validate_claim_view,
+        "claim-revision-view": _validate_claim_revision_view,
+        "claim-search-response": _validate_claim_search_response,
+        "claim-history-response": _validate_claim_history_response,
+        "memory-forget-request": _validate_memory_forget_request,
+        "memory-forget-view": _validate_memory_forget_view,
+        "forget-request-view": _validate_forget_request_view,
+        "deletion-ledger-response": _validate_deletion_ledger_response,
+        "episode-create-request": _validate_episode_create_request,
+        "episode-view": _validate_episode_view,
+        "episode-transition-request": _validate_episode_transition_request,
+        "relation-create-request": _validate_relation_create_request,
+        "relation-view": _validate_relation_view,
+        "artifact-create-request": _validate_artifact_create_request,
+        "artifact-view": _validate_artifact_view,
+        "retention-policy-set-request": _validate_retention_policy_set_request,
+        "retention-policy-view": _validate_retention_policy_view,
+        "retention-policy-list-response": _validate_retention_policy_list_response,
+        "legal-hold-create-request": _validate_legal_hold_create_request,
+        "legal-hold-view": _validate_legal_hold_view,
+        "legal-hold-release-request": _validate_legal_hold_release_request,
     }
     validator = validators.get(schema)
     if validator is None:

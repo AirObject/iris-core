@@ -1,0 +1,10 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "created_at_us": 1700000000000000,
+  "legal_hold_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa667",
+  "reason_code": "litigation",
+  "released_at_us": null,
+  "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+  "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631",
+  "subject_entity_id": null
+}

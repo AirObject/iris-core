@@ -1,0 +1,18 @@
+{
+  "canonical_text": "User prefers communicating in English",
+  "evidence": [
+    {
+      "relation": "corrects",
+      "source_authority": "explicit_correction",
+      "source_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "source_revision": 2,
+      "source_type": "observation"
+    }
+  ],
+  "expected_revision": 2,
+  "mode": "supersede",
+  "reason": "The user explicitly corrected the language preference",
+  "value": {
+    "language": "en"
+  }
+}

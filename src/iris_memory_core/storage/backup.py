@@ -32,13 +32,19 @@ import sqlite3
 import stat
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from iris_memory_core.domain.errors import ConflictError
+from iris_memory_core.domain.memory import ArtifactLocatorError, normalize_local_locator
+from iris_memory_core.domain.retention import ForgetRequest
+from iris_memory_core.storage.migrations import (
+    MigrationError,
+    normalize_prerelease_phase5_schema,
+)
 from iris_memory_core.storage.runtime import SQLiteRuntime, current_schema_version
 from iris_memory_core.storage.uow import Store
 
@@ -51,6 +57,10 @@ JOURNAL_SUFFIX = ".restore-journal"
 _PAYLOAD_NAMES = (CANONICAL_NAME, MANIFEST_NAME, FINGERPRINT_NAME)
 _REQUIRED_BACKUP_NAMES = frozenset((*_PAYLOAD_NAMES, CHECKSUMS_NAME))
 _ALLOWED_BACKUP_NAMES = frozenset((*_REQUIRED_BACKUP_NAMES, AUTH_NAME))
+#: Phase 5: local artifact blobs ride inside ``artifacts/<shard>/<uuid>``
+#: (server-derived locators only). Their integrity anchors to the manifest's
+#: artifact digest map, which itself sits inside the checksummed manifest.
+ARTIFACTS_DIR_NAME = "artifacts"
 
 
 def _sha256_file(path: Path) -> str:
@@ -79,6 +89,38 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
+def _checkpoint_database_for_switch(database: Path) -> None:
+    """Fold trusted staging writes into the main DB before immutable checks.
+
+    ``SQLiteRuntime`` uses WAL.  An ``immutable=1`` verification connection
+    intentionally ignores WAL sidecars, so ledger replay must be checkpointed
+    before the invariant pass or that pass would inspect the pre-replay image.
+    DELETE mode also guarantees the directory switch has one canonical SQLite
+    file rather than a crash-sensitive main/WAL pair.
+    """
+    connection = sqlite3.connect(database, isolation_level=None)
+    try:
+        checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        if checkpoint is not None and int(checkpoint[0]) != 0:
+            raise OSError(f"staging WAL checkpoint stayed busy: {tuple(checkpoint)}")
+        mode = connection.execute("PRAGMA journal_mode = DELETE").fetchone()
+        if mode is None or str(mode[0]).lower() != "delete":
+            raise OSError(f"staging database did not enter DELETE journal mode: {mode}")
+    finally:
+        connection.close()
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(f"{database}{suffix}")
+        if sidecar.exists():
+            raise OSError(f"staging SQLite sidecar survived checkpoint: {sidecar.name}")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(database, flags)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    _fsync_dir(database.parent)
+
+
 def _write_file_durable(path: Path, content: str) -> None:
     """Publish ``content`` atomically: fsync a temp file, rename into place.
 
@@ -100,6 +142,22 @@ def _write_file_durable(path: Path, content: str) -> None:
         raise
 
 
+def _copy_artifact_blobs(
+    artifacts_manifest: dict[str, dict[str, Any]], artifact_root: Path, destination: Path
+) -> None:
+    """Copy the manifest's local blobs into ``artifacts/<locator>`` (regular
+    files only, no symlink following, hash-verified after the copy)."""
+    for artifact_id, meta in sorted(artifacts_manifest.items()):
+        source = artifact_root / str(meta["locator"])
+        if source.is_symlink() or not source.is_file():
+            raise OSError(f"artifact blob missing for backup: {artifact_id}")
+        target = destination / ARTIFACTS_DIR_NAME / str(meta["locator"])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _copy_regular_file(source, target)
+        if _sha256_file(target) != meta["content_hash"]:
+            raise OSError(f"artifact blob hash mismatch while backing up: {artifact_id}")
+
+
 def _inspect_backup_directory(directory: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return a safe, exact backup file set and any shape violations.
 
@@ -119,10 +177,25 @@ def _inspect_backup_directory(directory: Path) -> tuple[tuple[str, ...], tuple[s
         except OSError as error:
             problems.append(f"backup entry {entry.name} is unreadable: {error}")
             continue
+        if entry.name == ARTIFACTS_DIR_NAME:
+            # The artifact blob tree is validated recursively below.
+            continue
         if entry.is_symlink() or not stat.S_ISREG(mode):
             problems.append(f"backup entry {entry.name} is not a regular file")
         if entry.name not in _ALLOWED_BACKUP_NAMES:
             problems.append(f"unexpected backup entry {entry.name}")
+    artifacts_dir = directory / ARTIFACTS_DIR_NAME
+    if artifacts_dir.exists():
+        if artifacts_dir.is_symlink() or not artifacts_dir.is_dir():
+            problems.append("artifacts entry is not a real directory")
+        else:
+            for entry in sorted(artifacts_dir.rglob("*")):
+                if entry.is_symlink():
+                    problems.append(f"artifact entry {entry.relative_to(directory)} is a symlink")
+                elif entry.exists() and not entry.is_file() and not entry.is_dir():
+                    problems.append(
+                        f"artifact entry {entry.relative_to(directory)} is not a regular file"
+                    )
     actual = set(names)
     for missing in sorted(_REQUIRED_BACKUP_NAMES - actual):
         problems.append(f"missing {missing}")
@@ -146,6 +219,7 @@ def _copy_regular_file(source: Path, destination: Path) -> None:
                 shutil.copyfileobj(source_handle, target_handle)
                 target_handle.flush()
                 os.fsync(target_handle.fileno())
+            _fsync_dir(destination.parent)
     finally:
         if source_fd >= 0:
             os.close(source_fd)
@@ -307,9 +381,220 @@ def _reconcile_manifest(canonical: Path, manifest: dict[str, Any]) -> tuple[str,
             actual_tombstones = int(tombstone_row[0]) if tombstone_row is not None else 0
         if int(manifest.get("tombstone_watermark", -1)) != actual_tombstones:
             problems.append("manifest tombstone watermark does not match the snapshot")
+        # Phase 5: artifact manifest and deletion-ledger watermark.
+        if _has("artifacts"):
+            actual_artifacts = {
+                str(row[0]): {
+                    "locator": str(row[1]),
+                    "content_hash": str(row[2]),
+                    "size_bytes": int(row[3]),
+                }
+                for row in connection.execute(
+                    "SELECT id, locator, content_hash, size_bytes FROM artifacts "
+                    "WHERE storage_kind = 'local_blob' AND status != 'tombstoned'"
+                )
+            }
+        else:
+            actual_artifacts = {}
+        if manifest.get("artifacts", {}) != actual_artifacts:
+            problems.append("manifest artifact inventory does not match the snapshot")
+        if _has("forget_requests"):
+            actual_ledger = _ledger_manifest_from_rows(_ledger_rows(connection))
+        else:
+            actual_ledger = {}
+        manifest_ledger = manifest.get("forget_ledger_by_tenant", {})
+        if _is_legacy_ledger_manifest(manifest_ledger):
+            # Legacy int-format manifests recorded only the per-tenant
+            # watermark; verify what they claim (the watermark), not the full
+            # identity list the snapshot rows can now express. Restore then
+            # replays the whole supplied ledger — idempotent, never misses.
+            for tenant_id, watermark in manifest_ledger.items():
+                actual_watermark = int(actual_ledger.get(str(tenant_id), {}).get("watermark_us", 0))
+                if int(watermark) != actual_watermark:
+                    problems.append(
+                        "manifest deletion-ledger watermark does not match the snapshot"
+                    )
+                    break
+            unknown = set(actual_ledger) - {str(key) for key in manifest_ledger}
+            if unknown:
+                problems.append("manifest deletion-ledger inventory does not match the snapshot")
+        elif isinstance(manifest_ledger, dict):
+            # Identity-carrying manifests (including the coarser shapes older
+            # pre-release builds wrote): every claimed request must match a
+            # snapshot identity on every field the claim names, tenant counts
+            # must agree, and the snapshot must not carry unknown tenants.
+            ledger_ok = True
+            for tenant_id, entry in manifest_ledger.items():
+                actual_entry = actual_ledger.get(str(tenant_id))
+                if (
+                    not isinstance(entry, dict)
+                    or actual_entry is None
+                    or int(entry.get("watermark_us", -1)) != int(actual_entry["watermark_us"])
+                    or not isinstance(entry.get("requests"), list)
+                    or len(entry["requests"]) != len(actual_entry["requests"])
+                    or not all(
+                        _ledger_claim_matches(item, actual_entry["requests"])
+                        for item in entry["requests"]
+                    )
+                ):
+                    ledger_ok = False
+                    break
+            if set(actual_ledger) - {str(key) for key in manifest_ledger}:
+                ledger_ok = False
+            if not ledger_ok:
+                problems.append("manifest deletion-ledger inventory does not match the snapshot")
+        else:
+            problems.append("manifest deletion-ledger inventory does not match the snapshot")
     finally:
         connection.close()
+    # Blob bytes are verified against the manifest digests (the manifest is
+    # itself covered by checksums.txt / the authenticity tag).  The file-set
+    # comparison is bidirectional: a missing artifacts/ directory must not
+    # skip verification, and unlisted bytes must not ride into the live root.
+    artifact_inventory = manifest.get("artifacts") or {}
+    artifacts_dir = canonical.parent / ARTIFACTS_DIR_NAME
+    expected_files: set[str] = set()
+    if isinstance(artifact_inventory, dict):
+        for artifact_id, meta in artifact_inventory.items():
+            locator = str(meta.get("locator", "")) if isinstance(meta, dict) else ""
+            try:
+                normalize_local_locator(locator)
+            except ArtifactLocatorError:
+                problems.append(f"artifact manifest entry {artifact_id} has an unsafe locator")
+                continue
+            expected_files.add(locator)
+            blob = artifacts_dir / locator
+            if not blob.is_file():
+                problems.append(f"artifact blob missing from backup: {artifact_id}")
+                continue
+            if _sha256_file(blob) != meta.get("content_hash"):
+                problems.append(f"artifact blob checksum mismatch: {artifact_id}")
+            if blob.stat().st_size != meta.get("size_bytes"):
+                problems.append(f"artifact blob size mismatch: {artifact_id}")
+    actual_files = (
+        {
+            str(path.relative_to(artifacts_dir))
+            for path in artifacts_dir.rglob("*")
+            if path.is_file() and not path.is_symlink()
+        }
+        if artifacts_dir.is_dir()
+        else set()
+    )
+    for unexpected in sorted(actual_files - expected_files):
+        problems.append(f"unexpected artifact blob in backup: {unexpected}")
     return tuple(problems)
+
+
+def _ledger_rows(connection: sqlite3.Connection) -> list[tuple[Any, ...]]:
+    """Read forget_requests identities with the columns the snapshot HAS.
+
+    The identity columns (app_instance_id / idempotency_key / erase_content)
+    were added while migration 0006 was still unreleased: snapshots written by
+    those builds carry the legacy column set, and a hard SELECT on the new
+    columns would fail the whole verify/restore for a structurally valid old
+    backup. Missing columns read as the '' / 0 those builds would have
+    recorded. Row shape: (tenant_id, selector_key, created_us, app_instance_id,
+    idempotency_key, reason_code, erase_content).
+    """
+    columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(forget_requests)")}
+    if not columns:
+        return []
+    select = (
+        "SELECT tenant_id, selector_key, created_us, "
+        + ("app_instance_id" if "app_instance_id" in columns else "''")
+        + ", "
+        + ("idempotency_key" if "idempotency_key" in columns else "''")
+        + ", "
+        + "reason_code, "
+        + ("erase_content" if "erase_content" in columns else "0")
+        + " FROM forget_requests"
+    )
+    return [tuple(row) for row in connection.execute(select)]
+
+
+def _ledger_manifest_from_rows(rows: Sequence[tuple[Any, ...]]) -> dict[str, dict[str, Any]]:
+    """Deletion-ledger inventory the manifest carries per tenant.
+
+    The FULL set of request identities (app_instance_id, selector_key,
+    created_us, idempotency_key, reason_code, erase_content) — not just a
+    MAX(created_us) watermark — so a restore can replay by exact set
+    difference: two forgets landing in the same microsecond around a backup
+    are distinguished by identity, never by an ambiguous timestamp boundary,
+    and two requests sharing selector+instant under different app instances,
+    keys or modes stay two requests (§21.2, ADR-0013 §7/§10). Identities
+    carry hashes/us only — no content.
+    """
+    by_tenant: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        tenant_id = str(row[0])
+        selector_key = str(row[1])
+        created_us = int(row[2])
+        entry = by_tenant.setdefault(tenant_id, {"watermark_us": 0, "requests": []})
+        entry["watermark_us"] = max(int(entry["watermark_us"]), created_us)
+        entry["requests"].append(
+            {
+                "app_instance_id": str(row[3]),
+                "selector_key": selector_key,
+                "created_us": created_us,
+                "idempotency_key": str(row[4]),
+                "reason_code": str(row[5]),
+                "erase_content": bool(row[6]),
+            }
+        )
+    for entry in by_tenant.values():
+        entry["requests"].sort(
+            key=lambda item: (
+                item["created_us"],
+                item["app_instance_id"],
+                item["selector_key"],
+                item["idempotency_key"],
+                item["reason_code"],
+            )
+        )
+    return by_tenant
+
+
+def _is_legacy_ledger_manifest(value: Any) -> bool:
+    """Legacy manifests carried only a per-tenant MAX(created_us) int."""
+    return (
+        isinstance(value, dict)
+        and bool(value)
+        and all(isinstance(item, int) and not isinstance(item, bool) for item in value.values())
+    )
+
+
+#: Request-entry fields a full-shape (identity-carrying) manifest entry has.
+#: Coarser pre-release shapes named only a subset; those manifests cannot
+#: feed exact set-difference replay and fall back to whole-ledger replay.
+_LEDGER_IDENTITY_FIELDS = (
+    "app_instance_id",
+    "selector_key",
+    "created_us",
+    "idempotency_key",
+    "reason_code",
+    "erase_content",
+)
+
+
+def _ledger_claim_matches(claimed: Any, actual_requests: list[dict[str, Any]]) -> bool:
+    """One manifest request entry against the snapshot's actual identities.
+
+    Older builds' manifests claim only the identity fields they knew (the
+    earliest carried just selector_key + created_us): a claim is verified on
+    exactly the fields it names — the snapshot's extra identity fields are
+    finer-grained knowledge, not a mismatch. A full-shape manifest entry must
+    of course match on every field it carries."""
+    if not isinstance(claimed, dict):
+        return False
+    for actual in actual_requests:
+        agrees = True
+        for key, value in claimed.items():
+            if key not in actual or actual[key] != value:
+                agrees = False
+                break
+        if agrees:
+            return True
+    return False
 
 
 def write_backup_files(
@@ -318,6 +603,7 @@ def write_backup_files(
     backup_id: str,
     *,
     signing_key: bytes | None = None,
+    artifact_root: Path | None = None,
 ) -> dict[str, Any]:
     """Snapshot ``database`` into ``destination`` and write manifest + checksums.
 
@@ -339,7 +625,9 @@ def write_backup_files(
     if staging.exists():
         shutil.rmtree(staging)
     try:
-        manifest = _write_backup_files_into(database, staging, backup_id, signing_key)
+        manifest = _write_backup_files_into(
+            database, staging, backup_id, signing_key, artifact_root=artifact_root
+        )
         _, shape_problems = _inspect_backup_directory(staging)
         if shape_problems:
             raise OSError("generated backup has invalid file set: " + "; ".join(shape_problems))
@@ -356,6 +644,7 @@ def _write_backup_files_into(
     destination: Path,
     backup_id: str,
     signing_key: bytes | None,
+    artifact_root: Path | None = None,
 ) -> dict[str, Any]:
     destination.mkdir(parents=True)
     target_path = destination / CANONICAL_NAME
@@ -404,14 +693,33 @@ def _write_backup_files_into(
             ).fetchone()
         else:
             tombstone_row = (0,)
+        # Phase 5: artifact manifest (local blobs only) and the deletion
+        # ledger watermark — the boundary a restore replays from (§21.2).
+        artifacts_manifest: dict[str, dict[str, Any]] = {}
+        if _has("artifacts"):
+            for art_id, locator, content_hash, size_bytes in snapshot.execute(
+                "SELECT id, locator, content_hash, size_bytes FROM artifacts "
+                "WHERE storage_kind = 'local_blob' AND status != 'tombstoned'"
+            ):
+                artifacts_manifest[str(art_id)] = {
+                    "locator": str(locator),
+                    "content_hash": str(content_hash),
+                    "size_bytes": int(size_bytes),
+                }
+        # Missing table → no columns → no rows; the helper is its own guard.
+        ledger_by_tenant = _ledger_manifest_from_rows(_ledger_rows(snapshot))
     finally:
         snapshot.close()
+    if artifact_root is not None and artifacts_manifest:
+        _copy_artifact_blobs(artifacts_manifest, artifact_root, destination)
     manifest: dict[str, Any] = {
         "backup_id": backup_id,
         "schema_version": schema_version,
         "sqlite_runtime": sqlite_runtime_version_string(),
         "agent_watermarks": agent_watermarks,
         "tombstone_watermark": int(tombstone_row[0]) if tombstone_row is not None else 0,
+        "artifacts": artifacts_manifest,
+        "forget_ledger_by_tenant": ledger_by_tenant,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "files": {CANONICAL_NAME: _sha256_file(target_path)},
     }
@@ -674,6 +982,8 @@ def restore_backup(
     target_dir: Path,
     *,
     signing_key: bytes | None = None,
+    artifact_root: Path | None = None,
+    prepare_staging: Callable[[Path], None] | None = None,
 ) -> RestoreReport:
     """Copy into isolation, verify THE COPIED BYTES, then switch recoverably.
 
@@ -685,6 +995,13 @@ def restore_backup(
     The whole sequence is serialized per target directory.
     """
     started = time.monotonic()
+    expected_artifact_root = target_dir / ARTIFACTS_DIR_NAME
+    if artifact_root is not None and artifact_root.absolute() != expected_artifact_root.absolute():
+        return _restore_failure(
+            target_dir,
+            started,
+            "artifact root must be inside the restored target directory",
+        )
     with _restore_lock(target_dir):
         pending = _recover_pending_switch_locked(target_dir)
         if pending == "invalid_journal":
@@ -715,6 +1032,16 @@ def restore_backup(
             staging.chmod(0o700)
             for name in safe_names:
                 _copy_regular_file(backup_dir / name, staging / name)
+            source_artifacts = backup_dir / ARTIFACTS_DIR_NAME
+            if source_artifacts.is_dir() and not source_artifacts.is_symlink():
+                # Blob bytes land in staging too; verification hashes them
+                # against the manifest before anything switches in.
+                for blob in sorted(source_artifacts.rglob("*")):
+                    if blob.is_file() and not blob.is_symlink():
+                        relative = blob.relative_to(source_artifacts)
+                        target_blob = staging / ARTIFACTS_DIR_NAME / relative
+                        target_blob.parent.mkdir(parents=True, exist_ok=True)
+                        _copy_regular_file(blob, target_blob)
             _fsync_dir(staging)
         except (OSError, ValueError) as error:
             cleanup_problem = _discard_staging(staging)
@@ -752,6 +1079,48 @@ def restore_backup(
             if cleanup_problem is not None:
                 problems.append(cleanup_problem)
             return _restore_failure(target_dir, started, *problems)
+        # A handful of pre-release Phase 5 builds wrote structurally older
+        # tables while already recording schema version 6.  The authenticated
+        # source bytes have now passed both verification passes, so normalize
+        # only the private staging copy before it can become the live target.
+        # This also advances the recorded 0006 checksum to the exact current
+        # shape; the ordinary migration runner can then start the restored DB.
+        try:
+            normalized = normalize_prerelease_phase5_schema(staging / CANONICAL_NAME)
+            if normalized:
+                _checkpoint_database_for_switch(staging / CANONICAL_NAME)
+            normalized_problems = (
+                verify_database_invariants(staging / CANONICAL_NAME) if normalized else ()
+            )
+        except (MigrationError, sqlite3.Error, OSError, TypeError, ValueError) as error:
+            normalized_problems = (f"backup schema normalization failed: {error}",)
+        if normalized_problems:
+            cleanup_problem = _discard_staging(staging)
+            problems = list(normalized_problems)
+            if cleanup_problem is not None:
+                problems.append(cleanup_problem)
+            return _restore_failure(target_dir, started, *problems)
+        # Trusted callers may apply deterministic, local recovery work (most
+        # importantly deletion-ledger replay) to the isolated copy.  A failure
+        # discards staging and leaves the previous target untouched; no
+        # incompletely replayed database is ever made visible.
+        if prepare_staging is not None:
+            try:
+                prepare_staging(staging)
+                _checkpoint_database_for_switch(staging / CANONICAL_NAME)
+                prepared_problems = verify_database_invariants(staging / CANONICAL_NAME)
+            # ``prepare_staging`` is an internal extension point, but no
+            # callback bug may bypass staging cleanup or partially expose a
+            # restore.  Convert every ordinary exception into a failed report;
+            # process-control exceptions still propagate.
+            except Exception as error:
+                prepared_problems = (f"backup staging preparation failed: {error}",)
+            if prepared_problems:
+                cleanup_problem = _discard_staging(staging)
+                problems = list(prepared_problems)
+                if cleanup_problem is not None:
+                    problems.append(cleanup_problem)
+                return _restore_failure(target_dir, started, *problems)
         aside = target_dir.parent / f"{target_dir.name}.previous-{int(time.time())}"
         had_previous = target_dir.exists()
         journal = _journal_path(target_dir)
@@ -1057,6 +1426,9 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
             ),
             ("task_triggers", "task_trigger_revisions", "trigger_id", "trigger"),
             ("cognitive_events", "cognitive_event_revisions", "event_id", "cognitive event"),
+            ("episodes", "episode_revisions", "episode_id", "episode"),
+            ("claims", "claim_revisions", "claim_id", "claim"),
+            ("relations", "relation_revisions", "relation_id", "relation"),
         ):
             if not (_has(current_table) and _has(revision_table)):
                 continue
@@ -1106,9 +1478,66 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
             ).fetchone()
             if terminal_with_lease is not None and int(terminal_with_lease[0]) > 0:
                 problems.append("terminal cognitive events still holding a delivery lease")
+        # Phase 5 invariants (ADR-0013 §9): active claims carry valid
+        # evidence, evidence rows resolve to live non-tombstoned sources,
+        # claim system-time stamps are monotone, and the forget ledger stays
+        # anchored to the tombstone sequence it claims.
+        if _has("claims") and _has("claim_evidence"):
+            miscounted = connection.execute(
+                "SELECT COUNT(*) FROM claims c WHERE c.status != 'tombstoned' AND "
+                "c.evidence_count <> (SELECT COUNT(*) FROM claim_evidence e "
+                "WHERE e.claim_id = c.id AND e.invalidated_us IS NULL)"
+            ).fetchone()
+            if miscounted is not None and int(miscounted[0]) > 0:
+                problems.append("claim evidence_count does not match its valid evidence rows")
+            for source_table, source_type in (
+                ("observations", "observation"),
+                ("artifacts", "artifact"),
+                ("episodes", "episode"),
+                ("notes", "note"),
+                ("claims", "claim"),
+            ):
+                if not _has(source_table):
+                    continue
+                dead = connection.execute(
+                    "SELECT COUNT(*) FROM claim_evidence e WHERE e.source_type = ? "
+                    "AND e.invalidated_us IS NULL AND ("
+                    "e.source_id NOT IN (SELECT id FROM " + source_table + ") OR EXISTS ("
+                    "SELECT 1 FROM resource_tombstones rt WHERE rt.tenant_id = e.tenant_id "
+                    "AND rt.resource_type = ? AND rt.resource_id = e.source_id))",
+                    (source_type, source_type),
+                ).fetchone()
+                if dead is not None and int(dead[0]) > 0:
+                    problems.append(
+                        f"valid evidence rows citing a missing or tombstoned {source_type}"
+                    )
+            non_monotone = connection.execute(
+                "SELECT COUNT(*) FROM claim_revisions WHERE superseded_at_us IS NOT NULL "
+                "AND superseded_at_us <= recorded_at_us"
+            ).fetchone()
+            if non_monotone is not None and int(non_monotone[0]) > 0:
+                problems.append("claim revision superseded_at_us is not after recorded_at_us")
+            if _has("forget_requests"):
+                unanchored = connection.execute(
+                    "SELECT COUNT(*) FROM forget_requests WHERE tombstone_seq_hi > "
+                    "(SELECT COALESCE(MAX(tombstone_seq), 0) FROM resource_tombstones)"
+                ).fetchone()
+                if unanchored is not None and int(unanchored[0]) > 0:
+                    problems.append("forget ledger rows exceed the tombstone watermark")
+        if _has("legal_holds"):
+            invalid_hold = connection.execute(
+                "SELECT COUNT(*) FROM legal_holds WHERE released_us IS NOT NULL "
+                "AND released_us < created_us"
+            ).fetchone()
+            if invalid_hold is not None and int(invalid_hold[0]) > 0:
+                problems.append("legal hold released before it was created")
     finally:
         connection.close()
     return tuple(problems)
+
+
+if TYPE_CHECKING:
+    from iris_memory_core.application.forget import ForgetService
 
 
 class BackupService:
@@ -1121,7 +1550,11 @@ class BackupService:
         started = time.monotonic()
         backup_id = str(self._store.ids.new())
         manifest = write_backup_files(
-            self._store.runtime.database, destination, backup_id, signing_key=signing_key
+            self._store.runtime.database,
+            destination,
+            backup_id,
+            signing_key=signing_key,
+            artifact_root=self._store.artifact_root,
         )
         schema_version = int(manifest["schema_version"])
         agent_watermarks = {str(k): int(v) for k, v in manifest["agent_watermarks"].items()}
@@ -1166,9 +1599,128 @@ class BackupService:
         return verify_backup(backup_dir, signing_key=signing_key)
 
     def restore_backup(
-        self, backup_dir: Path, target_dir: Path, *, signing_key: bytes | None = None
+        self,
+        backup_dir: Path,
+        target_dir: Path,
+        *,
+        signing_key: bytes | None = None,
+        deletion_ledger: Sequence[ForgetRequest] = (),
+        forget_service: ForgetService | None = None,
     ) -> RestoreReport:
-        return restore_backup(backup_dir, target_dir, signing_key=signing_key)
+        """Restore and (when a deletion ledger is supplied) replay it.
+
+        An old backup cannot know about Forget requests committed after it
+        was taken. The operator supplies the compliance deletion ledger
+        exported from the live system (ForgetService.export_deletion_ledger)
+        together with a ForgetService bound to the RESTORED store; rows newer
+        than the backup's ledger watermark are re-executed before the store
+        serves traffic (§21.2, ADR-0013 §10). Replay is idempotent.
+        """
+        if deletion_ledger:
+            from iris_memory_core.application.forget import ForgetService
+
+            if not isinstance(forget_service, ForgetService):
+                raise ConflictError(
+                    "deletion-ledger replay requires a ForgetService bound to the restored store"
+                )
+
+        def prepare(staging: Path) -> None:
+            if not deletion_ledger:
+                return
+            assert forget_service is not None
+            # Replay by exact IDENTITY difference on the manifest copy that was
+            # authenticated into staging.  Reading the original backup path
+            # here would reopen a verify-to-replay TOCTOU.
+            known = self.backup_ledger_identities(staging)
+            pending = tuple(
+                request
+                for request in deletion_ledger
+                if isinstance(request, ForgetRequest)
+                and (
+                    request.app_instance_id,
+                    request.selector_key,
+                    request.created_us,
+                    request.idempotency_key,
+                    request.reason_code,
+                    request.erase_content,
+                )
+                not in known.get(request.tenant_id, frozenset())
+            )
+            staging_store = Store(
+                SQLiteRuntime(
+                    staging / CANONICAL_NAME,
+                    allowed_versions=(self._store.runtime.runtime_report.sqlite_version,),
+                ),
+                clock=self._store.clock,
+            )
+            forget_service.replay_deletion_ledger(staging_store, pending)
+
+        return restore_backup(
+            backup_dir,
+            target_dir,
+            signing_key=signing_key,
+            artifact_root=target_dir / ARTIFACTS_DIR_NAME,
+            prepare_staging=prepare if deletion_ledger else None,
+        )
+
+    def _manifest_ledger(self, backup_dir: Path) -> dict[str, Any]:
+        manifest_path = backup_dir / MANIFEST_NAME
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        ledger = manifest.get("forget_ledger_by_tenant", {})
+        return ledger if isinstance(ledger, dict) else {}
+
+    def backup_ledger_watermark(self, backup_dir: Path) -> dict[str, int]:
+        """The deletion-ledger watermark a backup carries (tenant -> max us)."""
+        watermark: dict[str, int] = {}
+        for tenant_id, entry in self._manifest_ledger(backup_dir).items():
+            if isinstance(entry, int):
+                # Legacy int-format manifests carry only the watermark.
+                watermark[str(tenant_id)] = int(entry)
+            elif isinstance(entry, dict) and isinstance(entry.get("watermark_us"), int):
+                watermark[str(tenant_id)] = int(entry["watermark_us"])
+        return watermark
+
+    def backup_ledger_identities(
+        self, backup_dir: Path
+    ) -> dict[str, frozenset[tuple[str, str, int, str, str, bool]]]:
+        """Request identities the backup already carries, per tenant.
+
+        A legacy int-format manifest — or a coarser pre-release dict manifest
+        whose request entries lack the full identity fields — yields no
+        identities for that tenant: the restore then replays the WHOLE
+        supplied ledger, which is safe (replay is idempotent — known rows are
+        skipped) and never misses a deletion."""
+        identities: dict[str, frozenset[tuple[str, str, int, str, str, bool]]] = {}
+        for tenant_id, entry in self._manifest_ledger(backup_dir).items():
+            if not isinstance(entry, dict):
+                continue
+            rows = entry.get("requests", [])
+            if not isinstance(rows, list):
+                continue
+            full_shape = all(
+                isinstance(item, dict) and all(field in item for field in _LEDGER_IDENTITY_FIELDS)
+                for item in rows
+            )
+            if not full_shape:
+                # Coarse manifest: no precise identities, whole-ledger replay.
+                continue
+            tuples = {
+                (
+                    str(item.get("app_instance_id", "")),
+                    str(item.get("selector_key", "")),
+                    int(item.get("created_us", 0)),
+                    str(item.get("idempotency_key", "")),
+                    str(item.get("reason_code", "")),
+                    bool(item.get("erase_content", False)),
+                )
+                for item in rows
+                if isinstance(item, dict)
+            }
+            identities[str(tenant_id)] = frozenset(tuples)
+        return identities
 
     @staticmethod
     def _verify_database_invariants(database: Path) -> tuple[str, ...]:

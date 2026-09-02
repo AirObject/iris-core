@@ -1,0 +1,144 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/relation-view.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "accessibility": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "evidence_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "evidence_refs": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "importance": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "privacy_labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "relation_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "relation_type": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "scope": {
+      "additionalProperties": true,
+      "properties": {
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_group_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "source_entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "active",
+        "disputed",
+        "superseded",
+        "retracted",
+        "archived",
+        "tombstoned"
+      ]
+    },
+    "target_entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "valid_from_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "valid_until_us": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "relation_id",
+    "agent_id",
+    "source_entity_id",
+    "relation_type",
+    "target_entity_id",
+    "status",
+    "revision",
+    "confidence",
+    "importance",
+    "accessibility",
+    "evidence_count"
+  ],
+  "title": "RelationView",
+  "type": "object"
+}

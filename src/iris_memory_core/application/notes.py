@@ -639,6 +639,34 @@ class NoteService:
             )
             promotion_target_id = task_id
             extra_refs.append(f"task:{task_id}")
+        elif target == NoteStatus.PROMOTED.value and promotion_target_type == "claim":
+            # Phase 5 seam closure: the promotion is materialized by the
+            # canonical claim service (real claim + note evidence + link),
+            # then backfilled into THIS revision — idempotent because the
+            # promoted status is terminal (ADR-0013 §6).
+            from iris_memory_core.application.memory import ClaimService
+
+            claim_id = ClaimService._create_promoted_claim(
+                tx,
+                note=note,
+                current=current,
+                actor=f"access:{access.app_instance_id}",
+                now_us=now_us,
+            )
+            promotion_target_id = claim_id
+            extra_refs.append(f"claim:{claim_id}")
+        elif target == NoteStatus.PROMOTED.value and promotion_target_type == "episode":
+            from iris_memory_core.application.episodes import EpisodeService
+
+            episode_id = EpisodeService._create_promoted_episode(
+                tx,
+                note=note,
+                current=current,
+                actor=f"access:{access.app_instance_id}",
+                now_us=now_us,
+            )
+            promotion_target_id = episode_id
+            extra_refs.append(f"episode:{episode_id}")
         revision_id = tx.notes.insert_revision(
             note_id=note.id,
             tenant_id=note.tenant_id,
@@ -987,6 +1015,70 @@ class NoteService:
             resource_type="note",
             resource_id=note.id,
             reason_code=reason_code,
+            details={},
+            revision=revision,
+        )
+        enqueue_change_job(
+            tx,
+            tenant_id=note.tenant_id,
+            agent_id=note.agent_id,
+            job_kind="note.changed",
+            aggregate_type="note",
+            aggregate_id=note.id,
+            source_revision=revision,
+            payload={"note_id": note.id, "revision": revision},
+        )
+
+    @staticmethod
+    def _archive_for_retention(tx: Transaction, note: NoteCurrent, *, now_us: int) -> None:
+        """Retention archive (§19.5): maintenance-plane status move with
+        audit, watermark and the pointer invariant job — no deletion."""
+        if note.status not in (NoteStatus.INBOX.value, NoteStatus.SNOOZED.value):
+            return
+        current = tx.notes.current_revision_row(note.id)
+        revision = note.current_revision + 1
+        revision_id = tx.notes.insert_revision(
+            note_id=note.id,
+            tenant_id=note.tenant_id,
+            revision=revision,
+            kind=current.kind,
+            title=current.title,
+            body=current.body,
+            privacy_labels=current.privacy_labels,
+            source_refs=current.source_refs,
+            importance=current.importance,
+            status=NoteStatus.ARCHIVED.value,
+            review_after_us=current.review_after_us,
+            snooze_until_us=None,
+            due_at_us=current.due_at_us,
+            promotion_target_type=current.promotion_target_type,
+            promotion_target_id=current.promotion_target_id,
+            archived_us=now_us,
+            content_hash=current.content_hash,
+            created_by="retention:sweep",
+        )
+        if (
+            tx.notes.advance_pointer(
+                note.id,
+                expected_revision=note.current_revision,
+                revision=revision,
+                revision_id=revision_id,
+                status=NoteStatus.ARCHIVED.value,
+                archived_us_set=True,
+                archived_us=now_us,
+                archived_us_clear=False,
+            )
+            != 1
+        ):
+            tx.notes.raise_pointer_mismatch(note.id, note.current_revision)
+        tx.advance_watermark(note.tenant_id, note.agent_id, [("note", note.id, revision)])
+        tx.audit(
+            tenant_id=note.tenant_id,
+            actor="retention:sweep",
+            action="note.archived",
+            resource_type="note",
+            resource_id=note.id,
+            reason_code="retention_archive",
             details={},
             revision=revision,
         )

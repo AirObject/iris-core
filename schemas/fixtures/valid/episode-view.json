@@ -1,0 +1,30 @@
+{
+  "agent_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa630",
+  "arousal": 0.6,
+  "ended_at_us": null,
+  "episode_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa662",
+  "extractor_version": null,
+  "importance": 0.5,
+  "observation_refs": [
+    {
+      "resource_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa633",
+      "resource_type": "observation",
+      "revision": 1
+    }
+  ],
+  "participant_entity_ids": [
+    "01a050fd-6cc2-7d1b-86ef-86d5150fa661"
+  ],
+  "privacy_labels": [],
+  "revision": 1,
+  "scope": {
+    "session_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+    "space_group_id": null,
+    "space_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa631"
+  },
+  "started_at_us": 1700000000000000,
+  "status": "open",
+  "summary": "User played competitive matches with friends online",
+  "title": "Weekend gaming session",
+  "valence": 0.4
+}

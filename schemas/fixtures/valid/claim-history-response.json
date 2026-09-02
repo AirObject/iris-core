@@ -1,0 +1,33 @@
+{
+  "claim_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa660",
+  "revisions": [
+    {
+      "canonical_text": "User prefers communicating in Chinese",
+      "content_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "privacy_labels": [
+        "personal"
+      ],
+      "recorded_at_us": 1700000100000000,
+      "revision": 2,
+      "status": "active",
+      "superseded_at_us": null,
+      "value": {
+        "language": "zh"
+      }
+    },
+    {
+      "canonical_text": "User prefers communicating in Chinese",
+      "content_hash": "abababababababababababababababababababababababababababababababab",
+      "privacy_labels": [
+        "personal"
+      ],
+      "recorded_at_us": 1700000000000000,
+      "revision": 1,
+      "status": "superseded",
+      "superseded_at_us": 1700000100000000,
+      "value": {
+        "language": "zh"
+      }
+    }
+  ]
+}

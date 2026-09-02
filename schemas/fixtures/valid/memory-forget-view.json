@@ -1,0 +1,10 @@
+{
+  "erased_count": 3,
+  "held_skipped": 1,
+  "protected_skipped": 0,
+  "request_id": "01a050fd-6cc2-7d1b-86ef-86d5150fa665",
+  "selector_key": "session|01a050fd-6cc2-7d1b-86ef-86d5150fa631|01a050fd-6cc2-7d1b-86ef-86d5150fa632",
+  "target_count": 4,
+  "tombstone_seq_hi": 42,
+  "tombstone_seq_lo": 39
+}

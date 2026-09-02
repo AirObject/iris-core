@@ -1,0 +1,6 @@
+{
+  "reason": "User requested erasure",
+  "selector": {
+    "kind": "everything"
+  }
+}

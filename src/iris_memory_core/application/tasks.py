@@ -714,7 +714,7 @@ class TaskService:
                 )
             refs = parse_source_refs(payload["completion_evidence_refs"])
             if refs:
-                _validate_evidence(tx, task, refs)
+                _validate_evidence(tx, task, refs, access)
                 details["evidence_count"] = len(refs)
             completed_us = now_us
         revision = task.current_revision + 1
@@ -1087,7 +1087,7 @@ class TaskService:
                 raise InvalidRequestError(
                     "completing a step with expected_effect requires completion_evidence_refs"
                 )
-            _validate_evidence(tx, task, evidence)
+            _validate_evidence(tx, task, evidence, access)
         elif payload["completion_evidence_refs"]:
             raise InvalidRequestError(
                 "completion_evidence_refs is only valid when completing a step"
@@ -2276,17 +2276,21 @@ def _observation_scope(observation: StoredObservation) -> Scope:
 
 
 def _validate_evidence(
-    tx: Transaction, task: TaskCurrent, refs: tuple[dict[str, object], ...]
+    tx: Transaction, task: TaskCurrent, refs: tuple[dict[str, object], ...], access: AccessContext
 ) -> None:
-    """Evidence must be REAL: committed observations inside the task's scope.
+    """Evidence must be REAL: committed observations or canonical artifacts
+    inside the task's scope.
 
-    The observation is fetched by ID, so its own scope dims — not the
-    caller's say-so — decide admissibility: an observation belonging to
-    another tenant or agent is never evidence for this task, and neither is
-    one from another space_group/space/session (a space-B effect must not
-    complete a space-A task). Observation evidence additionally requires
-    the committed effect state — generated-but-unsent, failed or partial
-    output is not an effect (§15.2).
+    The source is fetched by ID, so its own scope dims — not the caller's
+    say-so — decide admissibility: a resource belonging to another tenant or
+    agent is never evidence for this task, and neither is one from another
+    space_group/space/session (a space-B effect must not complete a space-A
+    task). Observation evidence additionally requires the committed effect
+    state — generated-but-unsent, failed or partial output is not an effect
+    (§15.2) — and its own privacy labels must be visible to the access
+    context. Artifact evidence goes through the Phase 5 canonical artifact
+    validator (existence, envelope, status, tombstone, PRIVACY; ADR-0013 §5)
+    — CognitiveEvent is structurally excluded and can never complete a step.
     """
     for ref in refs:
         resource_type = str(ref.get("resource_type"))
@@ -2310,6 +2314,41 @@ def _validate_evidence(
                 raise InvalidRequestError("observation evidence must be committed (not partial)")
             if tx.is_tombstoned(observation.tenant_id, "observation", observation.id):
                 raise InvalidRequestError("observation evidence is tombstoned")
+            if not evaluate_privacy(
+                observation.privacy_labels,
+                _observation_scope(observation),
+                _task_scope(task),
+                access,
+            ):
+                raise AccessDeniedError(
+                    "observation evidence privacy is outside the access context"
+                )
+        elif resource_type == "artifact":
+            artifact = tx.artifacts.get(resource_id)
+            if artifact.tenant_id != task.tenant_id or artifact.agent_id != task.agent_id:
+                raise InvalidRequestError(
+                    "artifact evidence must belong to the task's tenant and agent"
+                )
+            artifact_scope = Scope(
+                tenant_id=artifact.tenant_id,
+                agent_id=artifact.agent_id,
+                space_group_id=artifact.space_group_id,
+                space_id=artifact.space_id,
+                session_id=artifact.session_id,
+            )
+            if not scope_allows(artifact_scope, _task_scope(task)):
+                raise InvalidRequestError(
+                    "artifact evidence is outside the task's scope "
+                    "(space_group/space/session must match)"
+                )
+            if artifact.status == "tombstoned" or tx.is_tombstoned(
+                artifact.tenant_id, "artifact", artifact.id
+            ):
+                raise InvalidRequestError("artifact evidence is tombstoned")
+            if not evaluate_privacy(
+                artifact.privacy_labels, artifact_scope, _task_scope(task), access
+            ):
+                raise AccessDeniedError("artifact evidence privacy is outside the access context")
 
 
 __all__ = [

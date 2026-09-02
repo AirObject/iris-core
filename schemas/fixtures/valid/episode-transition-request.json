@@ -1,0 +1,5 @@
+{
+  "expected_revision": 1,
+  "reason": "The session ended and the summary is stable",
+  "target": "seal"
+}

@@ -7,18 +7,23 @@ from pathlib import Path
 
 import pytest
 
+from iris_memory_core.application.artifacts import ArtifactService
 from iris_memory_core.application.backpressure import (
     BackpressureConfig,
     BackpressureGauge,
     FixedDiskProbe,
 )
+from iris_memory_core.application.episodes import EpisodeService, RelationService
 from iris_memory_core.application.events import CognitiveEventService
+from iris_memory_core.application.forget import ForgetService
 from iris_memory_core.application.health import HealthService
 from iris_memory_core.application.identity import IdentityService
+from iris_memory_core.application.memory import ClaimService
 from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.observation import ObservationService
 from iris_memory_core.application.outbox import OutboxService
 from iris_memory_core.application.provisioning import ProvisioningService
+from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.scheduler import SchedulerService
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.application.tasks import TaskService
@@ -140,6 +145,54 @@ def phase4_tasks(clocked_store: Store, idempotency: IdempotencyManager) -> TaskS
 @pytest.fixture
 def phase4_events(clocked_store: Store, idempotency: IdempotencyManager) -> CognitiveEventService:
     return CognitiveEventService(clocked_store, clocked_store.clock, idempotency=idempotency)
+
+
+# Phase 5 fixtures bind their idempotency runner to the SAME store as the
+# services: the generic ``idempotency`` fixture wraps the plain ``store``
+# fixture, whose transactions would otherwise execute the write closures on a
+# second Store instance with a different clock.
+@pytest.fixture
+def phase5_idempotency(clocked_store: Store) -> IdempotencyManager:
+    return IdempotencyManager(clocked_store)
+
+
+@pytest.fixture
+def phase5_claims(clocked_store: Store, phase5_idempotency: IdempotencyManager) -> ClaimService:
+    return ClaimService(clocked_store, clocked_store.clock, idempotency=phase5_idempotency)
+
+
+@pytest.fixture
+def phase5_episodes(clocked_store: Store, phase5_idempotency: IdempotencyManager) -> EpisodeService:
+    return EpisodeService(clocked_store, clocked_store.clock, idempotency=phase5_idempotency)
+
+
+@pytest.fixture
+def phase5_relations(
+    clocked_store: Store, phase5_idempotency: IdempotencyManager
+) -> RelationService:
+    return RelationService(clocked_store, clocked_store.clock, idempotency=phase5_idempotency)
+
+
+@pytest.fixture
+def phase5_artifacts(
+    clocked_store: Store, phase5_idempotency: IdempotencyManager
+) -> ArtifactService:
+    return ArtifactService(clocked_store, clocked_store.clock, idempotency=phase5_idempotency)
+
+
+@pytest.fixture
+def phase5_notes(clocked_store: Store, phase5_idempotency: IdempotencyManager) -> NoteService:
+    return NoteService(clocked_store, clocked_store.clock, idempotency=phase5_idempotency)
+
+
+@pytest.fixture
+def phase5_forget(clocked_store: Store, phase5_idempotency: IdempotencyManager) -> ForgetService:
+    return ForgetService(clocked_store, clocked_store.clock, idempotency=phase5_idempotency)
+
+
+@pytest.fixture
+def phase5_retention(clocked_store: Store, phase5_forget: ForgetService) -> RetentionService:
+    return RetentionService(clocked_store, clocked_store.clock, forget=phase5_forget)
 
 
 @pytest.fixture
