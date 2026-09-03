@@ -64,6 +64,7 @@ from iris_memory_core.storage.plans import (
     NoteRepository,
     TaskRepository,
 )
+from iris_memory_core.storage.projection import GraphRepository, ProfileRepository
 from iris_memory_core.storage.repositories import (
     IdentityRepository,
     LedgerRepository,
@@ -125,6 +126,8 @@ class Transaction:
         self.fts = FtsRepository(connection, clock, ids)
         self.usage = RecallUsageRepository(connection, clock, ids)
         self.vector = VectorRepository(connection, clock, ids)
+        self.profile = ProfileRepository(connection, clock, ids)
+        self.graph = GraphRepository(connection, clock, ids)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}
@@ -486,6 +489,9 @@ class Transaction:
 
     def watermark(self, tenant_id: str, agent_id: str) -> WatermarkState | None:
         return self.ledger.watermark(tenant_id, agent_id)
+
+    def tenant_watermarks(self, tenant_id: str) -> dict[str, int]:
+        return self.ledger.tenant_watermarks(tenant_id)
 
     def record_tombstone(
         self,

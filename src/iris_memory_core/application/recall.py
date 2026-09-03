@@ -59,22 +59,40 @@ from iris_memory_core.domain.errors import (
 )
 from iris_memory_core.domain.focus import FocusStatus
 from iris_memory_core.domain.fts import build_fts_query
+from iris_memory_core.domain.graph import (
+    GRAPH_MAX_DEPTH,
+    GRAPH_MAX_FANOUT,
+    GRAPH_MAX_NODES,
+    GRAPH_NODE_ENTITY,
+    GRAPH_NON_RETRYABLE_REASONS,
+    GRAPH_REASON_AS_OF_UNSUPPORTED,
+    GraphDegradedError,
+)
 from iris_memory_core.domain.hashing import canonical_json, content_hash
-from iris_memory_core.domain.identity import ExternalIdentityKey
+from iris_memory_core.domain.identity import EntityState, ExternalIdentityKey
 from iris_memory_core.domain.memory import (
     CLAIM_CURRENT_VISIBLE_STATUSES,
     SOURCE_AUTHORITY_RANK,
     SourceAuthority,
 )
+from iris_memory_core.domain.model import Entity
 from iris_memory_core.domain.note import NoteStatus
 from iris_memory_core.domain.observation import StoredObservation
 from iris_memory_core.domain.privacy import evaluate_privacy
+from iris_memory_core.domain.profile import (
+    PROFILE_NON_RETRYABLE_REASONS,
+    PROFILE_REASON_AS_OF_UNSUPPORTED,
+    ProfileDegradedError,
+    ProfileSubjectKey,
+)
 from iris_memory_core.domain.recall import (
     CATEGORY_PRIORITY,
     RECALL_RANKER_V3,
     ROUTE_CLAIMS,
     ROUTE_FOCUS,
     ROUTE_FTS,
+    ROUTE_GRAPH,
+    ROUTE_PROFILE,
     ROUTE_RECENT,
     ROUTE_RELATIONS,
     ROUTE_STATE,
@@ -96,7 +114,13 @@ from iris_memory_core.domain.vector import (
     VectorDegradedError,
 )
 from iris_memory_core.indexing.fts import FtsDegradedError, FtsProjectionService
+from iris_memory_core.indexing.graph import GraphProjectionService
+from iris_memory_core.indexing.profile import ProfileProjectionService
 from iris_memory_core.indexing.vector import VectorProjectionService
+
+#: Sentinel distinguishing "not yet cached" from a cached None (an entity
+#: the canonical store no longer resolves).
+_MISSING: Any = object()
 
 #: Bump when scoring weights, category priorities or budget logic change.
 #: v1 was the Phase 3/4 skeleton; v2 added missing-score semantics, conflict
@@ -114,6 +138,8 @@ DEFAULT_ROUTES = (
     ROUTE_RELATIONS,
     ROUTE_FTS,
     ROUTE_VECTOR,
+    ROUTE_GRAPH,
+    ROUTE_PROFILE,
 )
 
 #: Equal share of the total budget as each route's sub-deadline. Parallel
@@ -132,6 +158,8 @@ DEFAULT_CLAIMS_CANDIDATES = 20
 DEFAULT_RELATIONS_CANDIDATES = 12
 DEFAULT_FTS_CANDIDATES = 20
 DEFAULT_VECTOR_CANDIDATES = 20
+DEFAULT_GRAPH_CANDIDATES = 12
+DEFAULT_PROFILE_CANDIDATES = 12
 #: Upper bound of pending event ids advertised on one recall response (§12).
 DEFAULT_PENDING_EVENT_IDS = 50
 
@@ -1241,6 +1269,479 @@ class VectorRoute:
         return tuple(candidates)
 
 
+class GraphRoute:
+    """Budget-bound traversal route over the trusted current graph
+    generation (Phase 8, ADR-0016 §4).
+
+    BFS from the server-resolved speaker entity under hard server-side
+    budgets: max depth, per-level fanout, total visited nodes, candidate
+    cap, edge-kind allowlist and the monotonic deadline (checked before
+    EVERY edge expansion). Each edge is authorized per-edge — scope,
+    privacy, status, valid time and tombstones of the edge resource AND
+    both endpoint entities — so an invisible intermediate node can never
+    become an authorization springboard. Candidates carry refs + score +
+    safety metadata only; the fresh canonical rehydrate re-verifies
+    everything again."""
+
+    def __init__(
+        self,
+        projection: GraphProjectionService,
+        estimator: TokenEstimator | None = None,
+        *,
+        monotonic: MonotonicClock | None = None,
+        max_depth: int = GRAPH_MAX_DEPTH,
+        max_fanout: int = GRAPH_MAX_FANOUT,
+        max_nodes: int = GRAPH_MAX_NODES,
+        edge_kinds: frozenset[str] | None = None,
+    ) -> None:
+        self.name = ROUTE_GRAPH
+        self._projection = projection
+        self._estimator = estimator or DefaultTokenEstimator()
+        self._monotonic = monotonic or SystemMonotonicClock()
+        self._max_depth = max(1, max_depth)
+        self._max_fanout = max(1, max_fanout)
+        self._max_nodes = max(1, max_nodes)
+        self._edge_kinds = edge_kinds
+
+    def _edge_read_limit(self) -> int:
+        """Bounded edge fetch: the route never expands more than its
+        per-level fanout, so reading (fanout x 4) edges per node keeps the
+        fetch itself bounded against a malicious hub while staying
+        deterministic (fixed window in the fixed edge order)."""
+        return self._max_fanout * 4
+
+    def _edge_visible(
+        self,
+        tx: Transaction,
+        edge: Any,
+        request_scope: Scope,
+        access: AccessContext,
+        valid_at_us: int,
+        entity_cache: dict[str, Entity | None] | None = None,
+    ) -> bool:
+        """Per-edge authorization: scope, privacy, status, valid time and
+        tombstones (edge resource + both endpoint entities, INCLUDING each
+        endpoint entity's own privacy labels) — run BEFORE any expansion
+        decision (ADR-0016 §4; endpoint entity privacy added in review
+        round 3: a public edge must expose neither a restricted endpoint
+        nor a traversal through it)."""
+        if entity_cache is None:
+            entity_cache = {}
+        if edge.status not in ("active", "disputed"):
+            return False
+        if edge.valid_from_us is not None and edge.valid_from_us > valid_at_us:
+            return False
+        if edge.valid_until_us is not None and edge.valid_until_us <= valid_at_us:
+            return False
+        if not tx.is_tombstoned(request_scope.tenant_id, edge.resource_type, edge.resource_id):
+            pass
+        else:
+            return False
+        edge_scope = Scope(
+            tenant_id=request_scope.tenant_id,
+            agent_id=edge.agent_id,
+            space_group_id=edge.space_group_id,
+            space_id=edge.space_id,
+            session_id=edge.session_id,
+        )
+        if not scope_allows(edge_scope, request_scope):
+            return False
+        if not evaluate_privacy(edge.privacy_labels, edge_scope, request_scope, access):
+            return False
+        # Both endpoint ENTITIES must be alive AND privacy-visible to this
+        # request: the tombstone ledger is the last line of defense, and the
+        # entity's own labels evaluate against the tenant-level data scope
+        # (entities are tenant-global) — a restricted endpoint blocks the
+        # edge entirely instead of becoming an authorization springboard.
+        for node_kind, node_id in (
+            (edge.source_node_kind, edge.source_node_id),
+            (edge.target_node_kind, edge.target_node_id),
+        ):
+            if node_kind == GRAPH_NODE_ENTITY and not self._entity_visible(
+                tx, request_scope.tenant_id, node_id, request_scope, access, entity_cache
+            ):
+                return False
+        if edge.source_node_kind == "external_identity":
+            return not tx.is_tombstoned(
+                request_scope.tenant_id, "external_identity", edge.source_node_id
+            )
+        return True
+
+    def _entity_visible(
+        self,
+        tx: Transaction,
+        tenant_id: str,
+        entity_id: str,
+        request_scope: Scope,
+        access: AccessContext,
+        entity_cache: dict[str, Entity | None],
+    ) -> bool:
+        """One endpoint entity is alive and its own privacy labels pass for
+        this request. Lookups are cached per collect call — the cache is
+        bounded by the route's node/edge budgets (≤ fanout edges per level,
+        ≤ depth levels), so a malicious hub cannot turn it into unbounded
+        work either."""
+        entity = entity_cache.get(entity_id, _MISSING)
+        if entity is _MISSING:
+            entity = tx.identities.entities_by_id(tenant_id, {entity_id}).get(entity_id)
+            entity_cache[entity_id] = entity
+        if entity is None:
+            # Unknown endpoint: fail closed (the projection may reference an
+            # entity the canonical store no longer resolves).
+            return False
+        if entity.state == EntityState.TOMBSTONED or tx.is_tombstoned(
+            tenant_id, "entity", entity_id
+        ):
+            return False
+        if entity.privacy_labels:
+            entity_scope = Scope(tenant_id=tenant_id)
+            if not evaluate_privacy(entity.privacy_labels, entity_scope, request_scope, access):
+                return False
+        return True
+
+    def collect(
+        self,
+        tx: Transaction,
+        request: StructuredRecallRequest,
+        access: AccessContext,
+        deadline_us: int,
+        now_us: int,
+    ) -> tuple[RecallCandidate, ...]:
+        check_deadline(self._monotonic, deadline_us)
+        if request.as_of_us is not None:
+            # The graph projection indexes the CURRENT canonical state; it
+            # must not answer as_of with present-day edges (ADR-0016 §4).
+            raise GraphDegradedError(GRAPH_REASON_AS_OF_UNSUPPORTED, retryable=False)
+        if request.speaker_entity_id is None:
+            return ()
+        if request.resource_types is not None and not (
+            request.resource_types & {"claim", "relation"}
+        ):
+            return ()
+        limit = request.candidate_limits.get(ROUTE_GRAPH, DEFAULT_GRAPH_CANDIDATES)
+        _pointer, generation = self._projection.trusted_generation_in_tx(
+            tx,
+            tenant_id=access.tenant_id,
+            agent_id=request.agent_id,
+            minimum_watermark=request.minimum_watermark,
+        )
+        request_scope = Scope(
+            tenant_id=access.tenant_id,
+            agent_id=request.agent_id,
+            space_group_id=request.space_group_id,
+            space_id=request.space_id,
+            session_id=request.session_id,
+        )
+        valid_at_us = now_us
+        # Per-collect endpoint entity cache (bounded by the node/edge
+        # budgets — see _entity_visible).
+        entity_cache: dict[str, Entity | None] = {}
+        # Deterministic BFS under every budget. Frontier order and edge
+        # order are fixed (nodes sorted by (kind, id); edges come sorted
+        # from the repository), so one snapshot always replays identically.
+        start = (GRAPH_NODE_ENTITY, request.speaker_entity_id)
+        visited: set[tuple[str, str]] = {start}
+        frontier: list[tuple[str, str]] = [start]
+        seen_resources: set[tuple[str, str]] = set()
+        candidates: list[RecallCandidate] = []
+        depth = 0
+        while frontier and depth < self._max_depth and len(candidates) < limit:
+            check_deadline(self._monotonic, deadline_us)
+            next_frontier: list[tuple[str, str]] = []
+            fanout_used = 0
+            frontier.sort()
+            for node_kind, node_id in frontier:
+                if len(visited) >= self._max_nodes:
+                    break
+                edges = tx.graph.edges_for_source(
+                    access.tenant_id,
+                    generation.id,
+                    node_id,
+                    node_kind=node_kind,
+                    limit=self._edge_read_limit(),
+                )
+                for edge in edges:
+                    if fanout_used >= self._max_fanout:
+                        break
+                    check_deadline(self._monotonic, deadline_us)
+                    if self._edge_kinds is not None and edge.edge_kind not in (self._edge_kinds):
+                        continue
+                    if not self._edge_visible(
+                        tx, edge, request_scope, access, valid_at_us, entity_cache
+                    ):
+                        continue
+                    # Canonical currency BEFORE any use of the edge: an
+                    # edge whose resource drifted (correct / revoke /
+                    # privacy change / tombstone pending its apply) must
+                    # neither become a candidate NOR expand the frontier —
+                    # validating only at candidacy left the next hop
+                    # reachable through a stale edge (review round 3).
+                    if not self._projection.resource_still_admissible(tx, access.tenant_id, edge):
+                        continue
+                    fanout_used += 1
+                    target = (edge.target_node_kind, edge.target_node_id)
+                    if target not in visited:
+                        if len(visited) >= self._max_nodes:
+                            continue
+                        visited.add(target)
+                        next_frontier.append(target)
+                    resource_key = (edge.resource_type, edge.resource_id)
+                    if resource_key in seen_resources:
+                        continue
+                    seen_resources.add(resource_key)
+                    candidate = self._candidate_for_edge(
+                        tx, request, access, edge, request_scope, depth + 1, now_us
+                    )
+                    if candidate is not None:
+                        candidates.append(candidate)
+                        if len(candidates) >= limit:
+                            break
+                if len(candidates) >= limit or len(visited) >= self._max_nodes:
+                    break
+            frontier = next_frontier
+            depth += 1
+        return tuple(candidates)
+
+    def _candidate_for_edge(
+        self,
+        tx: Transaction,
+        request: StructuredRecallRequest,
+        access: AccessContext,
+        edge: Any,
+        request_scope: Scope,
+        hop: int,
+        now_us: int,
+    ) -> RecallCandidate | None:
+        """Build one candidate from a traversed edge's canonical resource
+        (claim or relation). Stale revisions never become candidates: the
+        canonical current revision must equal the edge's bound revision."""
+        if edge.resource_type == "claim":
+            if request.resource_types is not None and "claim" not in (request.resource_types):
+                return None
+            canonical = _canonical_projection_row(tx, "claim", edge.resource_id)
+            if canonical is None:
+                return None
+            current, revision, text, category, occurred_us = canonical
+            if current.current_revision != edge.resource_revision:
+                return None
+            data_scope = _claim_scope(current)
+            if not scope_allows(data_scope, request_scope):
+                return None
+            if not evaluate_privacy(revision.privacy_labels, data_scope, request_scope, access):
+                return None
+            if not _passes_request_filters(
+                request,
+                resource_type="claim",
+                category=category,
+                privacy_labels=revision.privacy_labels,
+            ):
+                return None
+            scores: dict[str, float | None] = {
+                "confidence": round(current.confidence, 6),
+                "importance": round(current.importance, 6),
+                "accessibility": round(current.accessibility, 6),
+                "authority": round(_authority_component(current.source_authority), 6),
+                "relevance": round(1.0 / (1.0 + hop), 6),
+                "recency": round(_recency(now_us, occurred_us), 6),
+            }
+            return RecallCandidate(
+                candidate_id=_candidate_id(ROUTE_GRAPH, edge.resource_id, edge.resource_revision),
+                route=ROUTE_GRAPH,
+                resource_type="claim",
+                resource_id=edge.resource_id,
+                resource_revision=edge.resource_revision,
+                text=text,
+                scores=scores,
+                final_score=0.0,
+                token_estimate=self._estimator.estimate(text),
+                occurred_us=occurred_us,
+                scope=data_scope,
+                privacy_labels=revision.privacy_labels,
+                content_hash=revision.content_hash,
+                subject_entity_id=revision.subject_entity_id,
+                category=category,
+                conflict_group=(
+                    f"{revision.subject_entity_id}:{revision.predicate}"
+                    if revision.subject_entity_id
+                    else None
+                ),
+            )
+        if edge.resource_type == "relation":
+            if request.resource_types is not None and "relation" not in (request.resource_types):
+                return None
+            try:
+                relation = tx.relations.get(edge.resource_id)
+                revision = tx.relations.current_revision_row(relation.id)
+            except Exception:
+                return None
+            if relation.status not in ("active", "disputed"):
+                return None
+            if relation.current_revision != edge.resource_revision:
+                return None
+            data_scope = Scope(
+                tenant_id=relation.tenant_id,
+                agent_id=relation.agent_id,
+                space_group_id=relation.space_group_id,
+                space_id=relation.space_id,
+                session_id=relation.session_id,
+            )
+            if not scope_allows(data_scope, request_scope):
+                return None
+            if not evaluate_privacy(revision.privacy_labels, data_scope, request_scope, access):
+                return None
+            text = (
+                f"{relation.source_entity_id} {relation.relation_type} {relation.target_entity_id}"
+            )
+            scores = {
+                "confidence": round(relation.confidence, 6),
+                "importance": round(relation.importance, 6),
+                "accessibility": round(relation.accessibility, 6),
+                "relevance": round(1.0 / (1.0 + hop), 6),
+                "recency": round(_recency(now_us, relation.created_us), 6),
+            }
+            return RecallCandidate(
+                candidate_id=_candidate_id(ROUTE_GRAPH, relation.id, revision.revision),
+                route=ROUTE_GRAPH,
+                resource_type="relation",
+                resource_id=relation.id,
+                resource_revision=revision.revision,
+                text=text,
+                scores=scores,
+                final_score=0.0,
+                token_estimate=self._estimator.estimate(text),
+                occurred_us=relation.created_us,
+                scope=data_scope,
+                privacy_labels=revision.privacy_labels,
+                content_hash=revision.content_hash,
+                subject_entity_id=relation.source_entity_id,
+                category="relationship",
+            )
+        return None
+
+
+class ProfileRoute:
+    """Speaker-profile route over the trusted profile projection (Phase 8,
+    ADR-0016 §5).
+
+    The route turns the speaker's projected profile FIELDS into candidates
+    bound to the fields' source CLAIMS — the candidate resource is the
+    canonical claim (claim rehydrate path applies unchanged), so profile
+    provenance selects and ranks but never becomes an unsourced fact. Every
+    field's stored sources are re-validated canonically inside the route;
+    the fresh rehydrate re-verifies again."""
+
+    def __init__(
+        self,
+        projection: ProfileProjectionService,
+        estimator: TokenEstimator | None = None,
+        *,
+        monotonic: MonotonicClock | None = None,
+    ) -> None:
+        self.name = ROUTE_PROFILE
+        self._projection = projection
+        self._estimator = estimator or DefaultTokenEstimator()
+        self._monotonic = monotonic or SystemMonotonicClock()
+
+    def collect(
+        self,
+        tx: Transaction,
+        request: StructuredRecallRequest,
+        access: AccessContext,
+        deadline_us: int,
+        now_us: int,
+    ) -> tuple[RecallCandidate, ...]:
+        check_deadline(self._monotonic, deadline_us)
+        if request.as_of_us is not None:
+            raise ProfileDegradedError(PROFILE_REASON_AS_OF_UNSUPPORTED, retryable=False)
+        if request.speaker_entity_id is None:
+            return ()
+        if request.resource_types is not None and "claim" not in request.resource_types:
+            return ()
+        if tx.is_tombstoned(access.tenant_id, "entity", request.speaker_entity_id):
+            # A tombstoned subject's profile is dead the moment the
+            # tombstone commits — the projection lag window must not serve
+            # it (ADR-0005; review round 2, mirroring the graph route's
+            # per-endpoint tombstone check).
+            return ()
+        limit = request.candidate_limits.get(ROUTE_PROFILE, DEFAULT_PROFILE_CANDIDATES)
+        pointer, _generation = self._projection.trusted_generation_in_tx(
+            tx,
+            tenant_id=access.tenant_id,
+            agent_id=request.agent_id,
+            minimum_watermark=request.minimum_watermark,
+        )
+        subject = ProfileSubjectKey("entity", request.speaker_entity_id)
+        # Re-validate every projected field's sources canonically (the
+        # 100% source-validity invariant, enforced at read time).
+        valid_fields = self._projection.fields_with_valid_sources_in_tx(
+            tx, access.tenant_id, pointer.generation_id, subject
+        )
+        request_scope = Scope(
+            tenant_id=access.tenant_id,
+            agent_id=request.agent_id,
+            space_group_id=request.space_group_id,
+            space_id=request.space_id,
+            session_id=request.session_id,
+        )
+        candidates: list[RecallCandidate] = []
+        for _label, refs in valid_fields:
+            check_deadline(self._monotonic, deadline_us)
+            if len(candidates) >= limit:
+                break
+            # Deterministic primary source: the smallest claim id.
+            claim_id, revision_number = min(refs, key=lambda ref: ref[0])
+            canonical = _canonical_projection_row(tx, "claim", claim_id)
+            if canonical is None:
+                continue
+            current, revision, text, category, occurred_us = canonical
+            if current.current_revision != revision_number:
+                continue
+            data_scope = _claim_scope(current)
+            if not scope_allows(data_scope, request_scope):
+                continue
+            if not evaluate_privacy(revision.privacy_labels, data_scope, request_scope, access):
+                continue
+            if not _passes_request_filters(
+                request,
+                resource_type="claim",
+                category=category,
+                privacy_labels=revision.privacy_labels,
+            ):
+                continue
+            scores: dict[str, float | None] = {
+                "confidence": round(current.confidence, 6),
+                "importance": round(current.importance, 6),
+                "accessibility": round(current.accessibility, 6),
+                "authority": round(_authority_component(current.source_authority), 6),
+                "recency": round(_recency(now_us, occurred_us), 6),
+            }
+            candidates.append(
+                RecallCandidate(
+                    candidate_id=_candidate_id(ROUTE_PROFILE, claim_id, revision_number),
+                    route=ROUTE_PROFILE,
+                    resource_type="claim",
+                    resource_id=claim_id,
+                    resource_revision=revision_number,
+                    text=text,
+                    scores=scores,
+                    final_score=0.0,
+                    token_estimate=self._estimator.estimate(text),
+                    occurred_us=occurred_us,
+                    scope=data_scope,
+                    privacy_labels=revision.privacy_labels,
+                    content_hash=revision.content_hash,
+                    subject_entity_id=revision.subject_entity_id,
+                    category=category,
+                    conflict_group=(
+                        f"{revision.subject_entity_id}:{revision.predicate}"
+                        if revision.subject_entity_id
+                        else None
+                    ),
+                )
+            )
+        return tuple(candidates)
+
+
 def _observation_scope(observation: StoredObservation) -> Scope:
     return Scope(
         tenant_id=observation.tenant_id,
@@ -1280,6 +1781,8 @@ class StructuredRecallOrchestrator:
         claims_enabled: bool = False,
         fts: FtsProjectionService | None = None,
         vector: VectorProjectionService | None = None,
+        graph: GraphProjectionService | None = None,
+        profile: ProfileProjectionService | None = None,
         monotonic: MonotonicClock | None = None,
         estimator: TokenEstimator | None = None,
         routes: tuple[RecallRoute, ...] | None = None,
@@ -1317,6 +1820,10 @@ class StructuredRecallOrchestrator:
                 composed.append(FtsRoute(fts, self._estimator, monotonic=self._monotonic))
             if vector is not None:
                 composed.append(VectorRoute(vector, self._estimator, monotonic=self._monotonic))
+            if graph is not None:
+                composed.append(GraphRoute(graph, self._estimator, monotonic=self._monotonic))
+            if profile is not None:
+                composed.append(ProfileRoute(profile, self._estimator, monotonic=self._monotonic))
             self._routes = tuple(composed)
 
     # -- route execution ------------------------------------------------------
@@ -1374,6 +1881,30 @@ class StructuredRecallOrchestrator:
                 ),
             )
         except VectorDegradedError as error:
+            return (
+                "degraded",
+                (),
+                RouteTrace(
+                    route.name,
+                    "degraded",
+                    0,
+                    self._monotonic.monotonic_us() - route_start,
+                    error.reason_code,
+                ),
+            )
+        except GraphDegradedError as error:
+            return (
+                "degraded",
+                (),
+                RouteTrace(
+                    route.name,
+                    "degraded",
+                    0,
+                    self._monotonic.monotonic_us() - route_start,
+                    error.reason_code,
+                ),
+            )
+        except ProfileDegradedError as error:
             return (
                 "degraded",
                 (),
@@ -1523,6 +2054,12 @@ class StructuredRecallOrchestrator:
         elif fallback.startswith("vector_"):
             reason = fallback
             retryable = fallback not in VECTOR_NON_RETRYABLE_REASONS
+        elif fallback.startswith("graph_"):
+            reason = fallback
+            retryable = fallback not in GRAPH_NON_RETRYABLE_REASONS
+        elif fallback.startswith("profile_"):
+            reason = fallback
+            retryable = fallback not in PROFILE_NON_RETRYABLE_REASONS
         elif fallback == "route_deadline_exceeded":
             reason = "route_deadline_exceeded"
             retryable = True

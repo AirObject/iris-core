@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import ClassVar, TypeVar, cast
 
 from iris_memory_core.application.ports import IdempotencyRunner, Transaction, UnitOfWork
+from iris_memory_core.application.write_support import schedule_projection_apply
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
@@ -341,6 +342,15 @@ class IdentityService:
                 reason_code=reason_code,
                 revision=verified.revision,
             )
+            # Binding changes invalidate the graph projection atomically
+            # with the canonical transition (ADR-0016 §7).
+            schedule_projection_apply(
+                tx,
+                job_kind="graph.apply",
+                tenant_id=access.tenant_id,
+                resource_type="binding",
+                resource_id=binding_id,
+            )
             fresh.append(verified)
             return "verified", snapshot_json(verified), [verified.id]
 
@@ -423,6 +433,13 @@ class IdentityService:
                 reason_code=reason_code,
                 revision=revoked.revision,
             )
+            schedule_projection_apply(
+                tx,
+                job_kind="graph.apply",
+                tenant_id=access.tenant_id,
+                resource_type="binding",
+                resource_id=binding_id,
+            )
             fresh.append(revoked)
             return "revoked", snapshot_json(revoked), [revoked.id]
 
@@ -498,6 +515,16 @@ class IdentityService:
                 resource_id=from_entity_id,
                 reason_code=reason_code,
                 details={"to_entity_id": to_entity_id},
+            )
+            # Redirect invalidation: every graph edge touching the entity is
+            # re-derived (canonical relations keep their ids; the enqueue is
+            # the auditable invalidation boundary, ADR-0016 §7).
+            schedule_projection_apply(
+                tx,
+                job_kind="graph.apply",
+                tenant_id=access.tenant_id,
+                resource_type="entity",
+                resource_id=from_entity_id,
             )
             fresh.append(redirect)
             return "redirected", snapshot_json(redirect), [redirect.id]
@@ -635,6 +662,23 @@ class IdentityService:
                 resource_id=entity_id,
                 reason_code=reason_code,
                 details={"sensitive_content": False},
+            )
+            # A tombstoned entity's graph edges and profile fields must die
+            # with it — both projections re-derive to zero content for the
+            # entity inside the invalidation apply (ADR-0016 §7).
+            schedule_projection_apply(
+                tx,
+                job_kind="graph.apply",
+                tenant_id=access.tenant_id,
+                resource_type="entity",
+                resource_id=entity_id,
+            )
+            schedule_projection_apply(
+                tx,
+                job_kind="profile.apply",
+                tenant_id=access.tenant_id,
+                resource_type="entity",
+                resource_id=entity_id,
             )
             return "tombstoned", entity_id, [entity_id]
 

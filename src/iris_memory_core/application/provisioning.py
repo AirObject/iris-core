@@ -15,6 +15,7 @@ from collections.abc import Callable
 from typing import TypeVar, cast
 
 from iris_memory_core.application.ports import IdempotencyRunner, Transaction, UnitOfWork
+from iris_memory_core.application.write_support import schedule_projection_apply
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
@@ -275,6 +276,24 @@ class ProvisioningService:
                     (("space", space_id, expected_revision + 1),),
                 )
             assert binding is not None
+            # Space-group membership changes write the projection
+            # invalidation outbox entry atomically with the binding
+            # (ADR-0016 §7) — the event boundary cache/consolidation
+            # consumers key off.
+            schedule_projection_apply(
+                tx,
+                job_kind="profile.apply",
+                tenant_id=access.tenant_id,
+                resource_type="space_group",
+                resource_id=space_group_id,
+            )
+            schedule_projection_apply(
+                tx,
+                job_kind="graph.apply",
+                tenant_id=access.tenant_id,
+                resource_type="space_group",
+                resource_id=space_group_id,
+            )
             fresh.append(binding)
             return "bound", snapshot_json(binding), [binding.id]
 
@@ -322,6 +341,21 @@ class ProvisioningService:
                     (("space", space_id, expected_revision + 1),),
                 )
             assert historical is not None
+            if historical.space_group_id is not None:
+                schedule_projection_apply(
+                    tx,
+                    job_kind="profile.apply",
+                    tenant_id=access.tenant_id,
+                    resource_type="space_group",
+                    resource_id=historical.space_group_id,
+                )
+                schedule_projection_apply(
+                    tx,
+                    job_kind="graph.apply",
+                    tenant_id=access.tenant_id,
+                    resource_type="space_group",
+                    resource_id=historical.space_group_id,
+                )
             fresh.append(historical)
             return "unbound", snapshot_json(historical), [space_id]
 

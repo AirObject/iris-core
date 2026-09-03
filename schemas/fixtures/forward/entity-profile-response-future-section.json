@@ -1,0 +1,31 @@
+{
+  "builder_version": 1,
+  "fields": [
+    {
+      "agent_id": "01a060aa-0000-7000-8000-0000000000aa",
+      "conflict_state": "single",
+      "field": "vibe",
+      "freshness_us": 1790000000000000,
+      "privacy_labels": [
+        "tenant"
+      ],
+      "section": "sentiment_v2",
+      "session_id": null,
+      "sources": [
+        {
+          "claim_id": "01a060aa-0000-7000-8000-000000000042",
+          "revision": 1
+        }
+      ],
+      "space_group_id": null,
+      "space_id": null,
+      "summary_text": "mostly friendly"
+    }
+  ],
+  "generation_id": null,
+  "source": "canonical_fallback",
+  "source_watermark": 0,
+  "subject_id": "01a060aa-0000-7000-8000-000000000041",
+  "subject_kind": "space_group",
+  "tombstone_watermark": 0
+}

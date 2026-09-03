@@ -1,0 +1,26 @@
+{
+  "builder_version": 1,
+  "fields": [
+    {
+      "agent_id": "01a060aa-0000-7000-8000-0000000000aa",
+      "conflict_state": "merged",
+      "field": "display_name",
+      "freshness_us": 1790000000000000,
+      "privacy_labels": [
+        "tenant"
+      ],
+      "section": "identity",
+      "session_id": null,
+      "sources": [],
+      "space_group_id": null,
+      "space_id": null,
+      "summary_text": "Bob"
+    }
+  ],
+  "generation_id": null,
+  "source": "projection",
+  "source_watermark": 12,
+  "subject_id": "01a060aa-0000-7000-8000-000000000031",
+  "subject_kind": "entity",
+  "tombstone_watermark": 3
+}

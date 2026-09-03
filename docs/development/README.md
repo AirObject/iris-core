@@ -50,7 +50,7 @@ flowchart LR
 | M1 认知领域闭环 | [05 显式长期记忆与 Episode](./phase-05-long-term-memory.md) | Remember/Correct/Forget 与历史可审计 | Completed |
 | M2 可解释召回 | [06 FTS Recall](./phase-06-fts-recall.md) | 无向量依赖的首个完整召回协议 | Completed |
 | M2 可解释召回 | [07 Vector Recall](./phase-07-vector-recall.md) | 可回退的混合语义召回 | Completed |
-| M2 可解释召回 | [08 Profile 与 Graph](./phase-08-profile-graph.md) | 画像与受限关系召回可重建 | Planned |
+| M2 可解释召回 | [08 Profile 与 Graph](./phase-08-profile-graph.md) | 画像与受限关系召回可重建 | Completed |
 | M3 人格与后台认知 | [09 完整 Persona](./phase-09-persona.md) | 多宿主共享受控、可回滚人格 | Planned |
 | M3 人格与后台认知 | [10 巩固与 Reflection](./phase-10-consolidation-reflection.md) | Evidence 驱动的后台提炼可重放 | Planned |
 | M4 接入与迁移 | [11 Bellis Adapter](./phase-11-bellis-adapter.md) | Bellis 端到端闭环 | Planned |

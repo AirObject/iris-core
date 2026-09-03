@@ -28,6 +28,8 @@ from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import LeaseFencedError
 from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS, OutboxJob
 from iris_memory_core.indexing.fts import FtsProjectionService
+from iris_memory_core.indexing.graph import GraphProjectionService
+from iris_memory_core.indexing.profile import ProfileProjectionService
 from iris_memory_core.indexing.vector import VectorProjectionService
 
 
@@ -166,6 +168,34 @@ def phase7_handlers(
         "vector.apply": vector_apply_handler(projection),
         "vector.rebuild": vector_rebuild_handler(projection),
         "vector.cleanup": vector_cleanup_handler(projection),
+    }
+
+
+def phase8_handlers(
+    *,
+    graph: GraphProjectionService,
+    profile: ProfileProjectionService,
+) -> dict[str, JobWork]:
+    """Phase 8 handlers: profile/graph projection apply/rebuild/cleanup
+    (ADR-0016 §7). All pure-SQLite work lands inside the fenced commit
+    transaction; rebuild gauges are emitted by the post-commit hook so a
+    fenced or rolled-back publish cannot move them."""
+    from iris_memory_core.jobs.handlers import (
+        graph_apply_handler,
+        graph_cleanup_handler,
+        graph_rebuild_handler,
+        profile_apply_handler,
+        profile_cleanup_handler,
+        profile_rebuild_handler,
+    )
+
+    return {
+        "graph.apply": graph_apply_handler(graph),
+        "graph.rebuild": graph_rebuild_handler(graph),
+        "graph.cleanup": graph_cleanup_handler(graph),
+        "profile.apply": profile_apply_handler(profile),
+        "profile.rebuild": profile_rebuild_handler(profile),
+        "profile.cleanup": profile_cleanup_handler(profile),
     }
 
 

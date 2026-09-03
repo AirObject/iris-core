@@ -48,7 +48,8 @@ REDUNDANCY_PENALTY = 0.10
 
 #: Wire route names frozen by ADR-0014 §3 (internal names win over the
 #: baseline's example spellings; ``tasks`` keeps its ADR-0011/0012 identity).
-#: Phase 7 adds ``vector`` (ADR-0015 §6, baseline example spelling).
+#: Phase 7 adds ``vector`` (ADR-0015 §6, baseline example spelling); Phase 8
+#: adds ``graph`` and ``profile`` (ADR-0016 §4-5, reserved spellings).
 ROUTE_TASKS = "tasks"
 ROUTE_FOCUS = "focus"
 ROUTE_CLAIMS = "claims"
@@ -57,6 +58,8 @@ ROUTE_RELATIONS = "relations"
 ROUTE_STATE = "state"
 ROUTE_FTS = "fts"
 ROUTE_VECTOR = "vector"
+ROUTE_GRAPH = "graph"
+ROUTE_PROFILE = "profile"
 
 #: Category priority for the stable tie-breaker: prospective memory first,
 #: then focus, then long-term structured memory, then hot context, then
@@ -71,6 +74,8 @@ CATEGORY_PRIORITY: Mapping[str, int] = {
     ROUTE_STATE: 5,
     ROUTE_FTS: 6,
     ROUTE_VECTOR: 7,
+    ROUTE_GRAPH: 8,
+    ROUTE_PROFILE: 9,
 }
 
 #: Routes whose candidates are guaranteed by the budget pass (§18.6):

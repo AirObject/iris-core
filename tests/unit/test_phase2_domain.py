@@ -158,8 +158,8 @@ class TestJobKindRegistry:
             spec_for("nope.nope")
 
     def test_only_safe_handlers_enabled(self) -> None:
-        # Phase 5 enabled set: all fifteen kinds have implemented + tested
-        # handlers; no other kind is claimable (fail closed, §16).
+        # Phase 8 enabled set: every kind has an implemented + tested
+        # handler; no other kind is claimable (fail closed, §16).
         assert (
             frozenset(
                 {
@@ -182,6 +182,12 @@ class TestJobKindRegistry:
                     "vector.apply",
                     "vector.rebuild",
                     "vector.cleanup",
+                    "graph.apply",
+                    "graph.rebuild",
+                    "graph.cleanup",
+                    "profile.apply",
+                    "profile.rebuild",
+                    "profile.cleanup",
                     "memory.invalidated",
                     "retention.compaction",
                 }

@@ -178,6 +178,16 @@ def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
             "vector_current",
             "vector_id_map",
             "vector_delta_ledger",
+            "profile_projection_state",
+            "profile_generations",
+            "profile_current",
+            "profile_subjects",
+            "profile_fields",
+            "graph_projection_state",
+            "graph_generations",
+            "graph_current",
+            "graph_nodes",
+            "graph_edges",
         ):
             connection.execute(f"DROP TABLE IF EXISTS {phase7_table}")
         connection.execute("DELETE FROM schema_migrations WHERE version >= 7")
@@ -295,7 +305,7 @@ class TestR4_1RealLegacySchemaBackup:
         # startup migration (ADR-0014 §9: restore never forward-migrates).
         assert [
             item.version for item in MigrationRunner(target_dir / "canonical.sqlite3").migrate()
-        ] == [7, 8]
+        ] == [7, 8, 9]
 
         # "Can continue serving" includes the repository path that needs the
         # newly backfilled privacy key, not only deletion-ledger replay.

@@ -663,6 +663,12 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "vector.apply",
                 "vector.rebuild",
                 "vector.cleanup",
+                "graph.apply",
+                "graph.rebuild",
+                "graph.cleanup",
+                "profile.apply",
+                "profile.rebuild",
+                "profile.cleanup",
             }
         )
         == ENABLED_JOB_KINDS

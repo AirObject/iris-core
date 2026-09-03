@@ -229,7 +229,17 @@
               "vector_index_corrupt",
               "vector_unavailable",
               "vector_as_of_unsupported",
-              "vector_space_mismatch"
+              "vector_space_mismatch",
+              "graph_rebuild_pending",
+              "graph_builder_unknown",
+              "graph_generation_stale",
+              "graph_index_corrupt",
+              "graph_as_of_unsupported",
+              "profile_rebuild_pending",
+              "profile_builder_unknown",
+              "profile_generation_stale",
+              "profile_index_corrupt",
+              "profile_as_of_unsupported"
             ]
           },
           "retryable": {
@@ -244,7 +254,9 @@
               "claims",
               "relations",
               "fts",
-              "vector"
+              "vector",
+              "graph",
+              "profile"
             ]
           }
         },

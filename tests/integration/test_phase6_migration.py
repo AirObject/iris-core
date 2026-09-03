@@ -78,7 +78,7 @@ class TestEmptyAndUpgrade:
     def test_empty_database_installs_all_seven(self, tmp_path: Path) -> None:
         database = tmp_path / "empty.sqlite3"
         applied = MigrationRunner(database).migrate()
-        assert [item.version for item in applied] == [1, 2, 3, 4, 5, 6, 7, 8]
+        assert [item.version for item in applied] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
         connection = sqlite3.connect(database)
         try:
             tables = {
@@ -94,7 +94,7 @@ class TestEmptyAndUpgrade:
         database = tmp_path / "db.sqlite3"
         MigrationRunner(database).migrate()
         assert MigrationRunner(database).migrate() == ()
-        assert current_schema_version(sqlite3.connect(database)) == 8
+        assert current_schema_version(sqlite3.connect(database)) == 9
 
     def test_schema6_upgrades_to_7_with_data_intact(self, tmp_path: Path) -> None:
         database = tmp_path / "db.sqlite3"
@@ -130,7 +130,7 @@ class TestEmptyAndUpgrade:
         assert state is None  # the marker row appears after the first rebuild
 
     def test_window_is_7_to_8(self) -> None:
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (7, 8)
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (8, 9)
 
     def test_checksum_recorded_in_db_matches_disk(self, tmp_path: Path) -> None:
         database = tmp_path / "db.sqlite3"
@@ -142,7 +142,7 @@ class TestEmptyAndUpgrade:
             ).fetchall()
         finally:
             connection.close()
-        assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8]
+        assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
         for version, name, checksum in rows:
             on_disk = hashlib.sha256(
                 (REPOSITORY_ROOT / "migrations" / str(name)).read_bytes()

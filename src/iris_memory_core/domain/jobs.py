@@ -254,6 +254,56 @@ _KINDS: dict[str, JobKindSpec] = dict(
             notes="Phase 7: physical cleanup of invalidated id map rows, "
             "retired generations and orphan directories.",
         ),
+        # Phase 8: profile/graph projection maintenance (ADR-0016 §7).
+        # Applies maintain the CURRENT generation in place (per-resource
+        # coalesced); rebuilds are deterministic shadow rebuilds with a
+        # fenced pointer CAS; cleanup verifies then retires old generations
+        # past the rollback window. Payload version 1, refs-only.
+        _spec(
+            "graph.apply",
+            priority=5,
+            coalesce=CoalesceClass.GRAPH,
+            enabled=True,
+            notes="Phase 8: re-derive one canonical resource's edges in the "
+            "current graph generation (fail-closed tombstone re-check).",
+        ),
+        _spec(
+            "graph.rebuild",
+            priority=3,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 8: deterministic shadow graph rebuild + fenced pointer CAS.",
+        ),
+        _spec(
+            "graph.cleanup",
+            priority=8,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 8: verify the graph generation then delete retired "
+            "generations beyond the rollback window.",
+        ),
+        _spec(
+            "profile.apply",
+            priority=5,
+            coalesce=CoalesceClass.PROFILE,
+            enabled=True,
+            notes="Phase 8: re-derive one subject's profile fields in the current generation.",
+        ),
+        _spec(
+            "profile.rebuild",
+            priority=3,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 8: deterministic shadow profile rebuild + fenced pointer CAS.",
+        ),
+        _spec(
+            "profile.cleanup",
+            priority=8,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 8: verify the profile generation then delete "
+            "retired generations beyond the rollback window.",
+        ),
         _spec("reflection.generate", priority=7, catch_up="latest"),
         _spec("persona.evaluation", priority=6, catch_up="latest"),
         _spec("backup.execute", priority=3, catch_up="all"),

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from typing import Protocol
@@ -24,6 +24,12 @@ from iris_memory_core.domain.fts import (
     FtsDocumentInput,
     FtsDocumentRecord,
     FtsGenerationRecord,
+)
+from iris_memory_core.domain.graph import (
+    GraphCurrentPointer,
+    GraphEdgeDraft,
+    GraphEdgeRecord,
+    GraphGenerationRecord,
 )
 from iris_memory_core.domain.identity import (
     BindingMethod,
@@ -70,6 +76,14 @@ from iris_memory_core.domain.observation import (
     GapPolicy,
     ObservationDraft,
     StoredObservation,
+)
+from iris_memory_core.domain.profile import (
+    ProfileCurrentPointer,
+    ProfileFieldDraft,
+    ProfileFieldRecord,
+    ProfileGenerationRecord,
+    ProfileSubjectKey,
+    ProfileSubjectRecord,
 )
 from iris_memory_core.domain.recent import BuiltProjection, StoredGeneration
 from iris_memory_core.domain.retention import ForgetRequest, LegalHold, RetentionPolicy
@@ -215,6 +229,18 @@ class ObservationSurface(Protocol):
 
 
 class OutboxSurface(Protocol):
+    def settle_unleased_kind(
+        self,
+        tenant_id: str,
+        job_kind: str,
+        *,
+        reason_code: str,
+        now_us: int,
+        payload_version: int = 1,
+    ) -> int: ...
+
+    def unsettled_tenant_job_count(self, tenant_id: str, job_kind: str) -> int: ...
+
     def enqueue(self, job: NewOutboxJob) -> tuple[OutboxJob, bool]: ...
     def replay(self, original: OutboxJob, *, available_at_us: int) -> OutboxJob: ...
     def release_expired_leases(self, now_us: int, *, requeue_delay_us: int) -> int: ...
@@ -1142,6 +1168,21 @@ class ClaimSurface(Protocol):
     ) -> int: ...
     def valid_evidence_count(self, claim_id: str) -> int: ...
     def recount_evidence(self, claim_id: str) -> int: ...
+    def all_current_claim_pairs(
+        self,
+        tenant_id: str,
+        *,
+        statuses: Sequence[str] = ...,
+    ) -> tuple[tuple[ClaimCurrent, ClaimRevision], ...]: ...
+
+    def claims_for_group(
+        self, tenant_id: str, space_group_id: str, *, categories: Sequence[str]
+    ) -> tuple[tuple[ClaimCurrent, ClaimRevision], ...]: ...
+
+    def claims_targeting_entity(
+        self, tenant_id: str, entity_id: str
+    ) -> tuple[tuple[ClaimCurrent, ClaimRevision], ...]: ...
+
     def claims_for_subject_predicate(
         self, tenant_id: str, agent_id: str, subject_entity_id: str, predicate: str | None
     ) -> Sequence[ClaimCurrent]: ...
@@ -1186,6 +1227,13 @@ class RelationSurface(Protocol):
     """Repository surface for canonical relations."""
 
     def get(self, relation_id: str) -> RelationCurrent: ...
+
+    def all_current_relation_pairs(
+        self,
+        tenant_id: str,
+        *,
+        statuses: Sequence[str] = ...,
+    ) -> tuple[tuple[RelationCurrent, RelationRevision], ...]: ...
     def get_revision(self, revision_id: str) -> RelationRevision: ...
     def current_revision_row(self, relation_id: str) -> RelationRevision: ...
     def find_live(
@@ -1417,6 +1465,16 @@ class RetentionSurface(Protocol):
 
 class IdentitySurface(Protocol):
     """Repository surface for entities used by the self-subject resolution."""
+
+    def entities_by_id(self, tenant_id: str, entity_ids: Collection[str]) -> dict[str, Entity]: ...
+
+    def all_verified_bindings(self, tenant_id: str) -> tuple[Binding, ...]: ...
+
+    def verified_bindings_for_entity(
+        self, tenant_id: str, entity_id: str
+    ) -> tuple[Binding, ...]: ...
+
+    def external_identity_ids(self, tenant_id: str) -> set[str]: ...
 
     def insert_entity(
         self,
@@ -1734,6 +1792,197 @@ class RecallUsageSurface(Protocol):
     def reports_for_request(self, tenant_id: str, request_id: str) -> Sequence[object]: ...
 
 
+class ProfileSurface(Protocol):
+    """Repository surface for the profile projection (ADR-0016 §2)."""
+
+    def projection_state(self) -> str: ...
+
+    def set_projection_state(self, state: str, *, now_us: int | None = None) -> None: ...
+
+    def reset_projection(self, *, now_us: int | None = None) -> None: ...
+
+    def insert_generation(
+        self,
+        *,
+        tenant_id: str,
+        builder_version: int,
+        source_watermark: int,
+        tombstone_watermark: int,
+        subject_count: int,
+        field_count: int,
+        content_checksum: str,
+        agent_watermarks: dict[str, int],
+        generation_id: str | None = None,
+        now_us: int | None = None,
+    ) -> ProfileGenerationRecord: ...
+
+    def get_generation(self, generation_id: str) -> ProfileGenerationRecord: ...
+
+    def generations_for_tenant(self, tenant_id: str) -> tuple[ProfileGenerationRecord, ...]: ...
+
+    def retire_generation(self, generation_id: str, *, now_us: int | None = None) -> int: ...
+
+    def delete_retired_generations(
+        self,
+        tenant_id: str,
+        *,
+        keep: int = ...,
+        older_than_us: int | None = ...,
+    ) -> tuple[str, ...]: ...
+
+    def bump_generation_watermark(
+        self, tenant_id: str, generation_id: str, agent_id: str, watermark: int
+    ) -> None: ...
+
+    def subjects_for_generation(
+        self, tenant_id: str, generation_id: str
+    ) -> tuple[ProfileSubjectRecord, ...]: ...
+
+    def fields_for_subject(
+        self, tenant_id: str, generation_id: str, subject: ProfileSubjectKey
+    ) -> tuple[ProfileFieldRecord, ...]: ...
+
+    def field_count(self, tenant_id: str, generation_id: str) -> int: ...
+
+    def subject_count(self, tenant_id: str, generation_id: str) -> int: ...
+
+    def insert_fields(
+        self,
+        tenant_id: str,
+        generation_id: str,
+        drafts: Sequence[ProfileFieldDraft],
+        *,
+        now_us: int | None = None,
+    ) -> int: ...
+
+    def delete_subject_rows(
+        self, tenant_id: str, generation_id: str, subject: ProfileSubjectKey
+    ) -> int: ...
+
+    def recompute_generation_manifest(self, tenant_id: str, generation_id: str) -> None: ...
+
+    def pointer(self, tenant_id: str) -> ProfileCurrentPointer | None: ...
+
+    def current_epoch(self, tenant_id: str) -> int: ...
+
+    def switch_pointer(
+        self,
+        *,
+        tenant_id: str,
+        generation: ProfileGenerationRecord,
+        expected_epoch: int,
+        now_us: int | None = None,
+    ) -> ProfileCurrentPointer: ...
+
+    def pointer_info(self, tenant_id: str) -> dict[str, object]: ...
+
+
+class GraphSurface(Protocol):
+    """Repository surface for the relation graph projection (ADR-0016 §3)."""
+
+    def projection_state(self) -> str: ...
+
+    def set_projection_state(self, state: str, *, now_us: int | None = None) -> None: ...
+
+    def reset_projection(self, *, now_us: int | None = None) -> None: ...
+
+    def insert_generation(
+        self,
+        *,
+        tenant_id: str,
+        builder_version: int,
+        source_watermark: int,
+        tombstone_watermark: int,
+        node_count: int,
+        edge_count: int,
+        content_checksum: str,
+        agent_watermarks: dict[str, int],
+        generation_id: str | None = None,
+        now_us: int | None = None,
+    ) -> GraphGenerationRecord: ...
+
+    def get_generation(self, generation_id: str) -> GraphGenerationRecord: ...
+
+    def generations_for_tenant(self, tenant_id: str) -> tuple[GraphGenerationRecord, ...]: ...
+
+    def retire_generation(self, generation_id: str, *, now_us: int | None = None) -> int: ...
+
+    def delete_retired_generations(
+        self,
+        tenant_id: str,
+        *,
+        keep: int = ...,
+        older_than_us: int | None = ...,
+    ) -> tuple[str, ...]: ...
+
+    def bump_generation_watermark(
+        self, tenant_id: str, generation_id: str, agent_id: str, watermark: int
+    ) -> None: ...
+
+    def node_count(self, tenant_id: str, generation_id: str) -> int: ...
+
+    def edge_count(self, tenant_id: str, generation_id: str) -> int: ...
+
+    def node_exists(
+        self, tenant_id: str, generation_id: str, node_id: str, node_kind: str
+    ) -> bool: ...
+
+    def edges_for_source(
+        self,
+        tenant_id: str,
+        generation_id: str,
+        node_id: str,
+        *,
+        node_kind: str,
+        limit: int | None = ...,
+    ) -> tuple[GraphEdgeRecord, ...]: ...
+
+    def edges_for_resource(
+        self, tenant_id: str, generation_id: str, resource_type: str, resource_id: str
+    ) -> tuple[GraphEdgeRecord, ...]: ...
+
+    def edges_for_entity(
+        self, tenant_id: str, generation_id: str, entity_id: str
+    ) -> tuple[GraphEdgeRecord, ...]: ...
+
+    def all_edges(self, tenant_id: str, generation_id: str) -> tuple[GraphEdgeRecord, ...]: ...
+
+    def insert_edges(
+        self,
+        tenant_id: str,
+        generation_id: str,
+        drafts: Sequence[GraphEdgeDraft],
+        *,
+        node_status: str | Mapping[str, str] = "canonical",
+        now_us: int | None = None,
+    ) -> int: ...
+
+    def delete_resource_edges(
+        self, tenant_id: str, generation_id: str, resource_type: str, resource_id: str
+    ) -> int: ...
+
+    def delete_entity_edges(self, tenant_id: str, generation_id: str, entity_id: str) -> int: ...
+
+    def prune_orphan_nodes(self, tenant_id: str, generation_id: str) -> int: ...
+
+    def recompute_generation_manifest(self, tenant_id: str, generation_id: str) -> None: ...
+
+    def pointer(self, tenant_id: str) -> GraphCurrentPointer | None: ...
+
+    def current_epoch(self, tenant_id: str) -> int: ...
+
+    def switch_pointer(
+        self,
+        *,
+        tenant_id: str,
+        generation: GraphGenerationRecord,
+        expected_epoch: int,
+        now_us: int | None = None,
+    ) -> GraphCurrentPointer: ...
+
+    def pointer_info(self, tenant_id: str) -> dict[str, object]: ...
+
+
 class Transaction(Protocol):
     """Repository surface available inside one unit of work."""
 
@@ -1793,6 +2042,12 @@ class Transaction(Protocol):
 
     @property
     def vector(self) -> VectorSurface: ...
+
+    @property
+    def profile(self) -> ProfileSurface: ...
+
+    @property
+    def graph(self) -> GraphSurface: ...
 
     # --- tenants, agents, spaces -------------------------------------
     def insert_tenant(self, tenant_id: str, *, status: str) -> Tenant: ...
@@ -1953,6 +2208,8 @@ class Transaction(Protocol):
         entries: Sequence[tuple[str, str, int]],
     ) -> int: ...
     def watermark(self, tenant_id: str, agent_id: str) -> WatermarkState | None: ...
+
+    def tenant_watermarks(self, tenant_id: str) -> dict[str, int]: ...
     def record_tombstone(
         self,
         *,

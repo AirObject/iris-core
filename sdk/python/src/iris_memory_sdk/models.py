@@ -1576,6 +1576,77 @@ def _validate_recall_usage_report_response(value: object) -> tuple[str, ...]:
     return tuple(errors)
 
 
+def _validate_entity_profile_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    if value.get("subject_kind") not in ("entity", "relationship", "space_group"):
+        errors.append("subject_kind must be entity|relationship|space_group")
+    _require_non_empty_str(value.get("subject_id"), "subject_id", errors)
+    if value.get("source") not in ("projection", "canonical_fallback"):
+        errors.append("source must be projection|canonical_fallback")
+    generation_id = value.get("generation_id")
+    if generation_id is not None and not isinstance(generation_id, str):
+        errors.append("generation_id must be a string or null")
+    builder_version = value.get("builder_version")
+    if (
+        not isinstance(builder_version, int)
+        or isinstance(builder_version, bool)
+        or builder_version < 1
+    ):
+        errors.append("builder_version must be a positive integer")
+    for key in ("source_watermark", "tombstone_watermark"):
+        mark = value.get(key)
+        if not isinstance(mark, int) or isinstance(mark, bool) or mark < 0:
+            errors.append(f"{key} must be a non-negative integer")
+    fields = value.get("fields")
+    if not isinstance(fields, list):
+        errors.append("fields must be an array")
+    else:
+        for index, item in enumerate(fields):
+            if not isinstance(item, Mapping):
+                errors.append(f"fields[{index}] must be an object")
+                continue
+            _require_non_empty_str(item.get("field"), f"fields[{index}].field", errors)
+            _require_non_empty_str(item.get("agent_id"), f"fields[{index}].agent_id", errors)
+            for key in ("space_group_id", "space_id", "session_id"):
+                value = item.get(key)
+                if value is not None and not isinstance(value, str):
+                    errors.append(f"fields[{index}].{key} must be a string or null")
+            labels = item.get("privacy_labels")
+            if not isinstance(labels, list) or not all(
+                isinstance(label, str) and label for label in labels
+            ):
+                errors.append(f"fields[{index}].privacy_labels must be an array of strings")
+            if not isinstance(item.get("summary_text"), str):
+                errors.append(f"fields[{index}].summary_text must be a string")
+            if item.get("conflict_state") not in ("single", "conflict", "disputed"):
+                errors.append(f"fields[{index}].conflict_state must be single|conflict|disputed")
+            freshness = item.get("freshness_us")
+            if not isinstance(freshness, int) or isinstance(freshness, bool) or freshness < 0:
+                errors.append(f"fields[{index}].freshness_us must be a non-negative integer")
+            sources = item.get("sources")
+            if not isinstance(sources, list) or not sources:
+                errors.append(f"fields[{index}].sources must be a non-empty array")
+            else:
+                for source_index, source in enumerate(sources):
+                    if not isinstance(source, Mapping):
+                        errors.append(f"fields[{index}].sources[{source_index}] must be an object")
+                        continue
+                    _require_non_empty_str(
+                        source.get("claim_id"),
+                        f"fields[{index}].sources[{source_index}].claim_id",
+                        errors,
+                    )
+                    revision = source.get("revision")
+                    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+                        errors.append(
+                            f"fields[{index}].sources[{source_index}].revision "
+                            "must be a positive integer"
+                        )
+    return tuple(errors)
+
+
 def _validate_search_request(value: object) -> tuple[str, ...]:
     if not isinstance(value, Mapping):
         return ("root must be an object",)
@@ -1661,6 +1732,7 @@ def validate_contract(schema: str, value: object) -> tuple[str, ...]:
         "legal-hold-release-request": _validate_legal_hold_release_request,
         "recall-request": _validate_recall_request,
         "recall-response": _validate_recall_response,
+        "entity-profile-response": _validate_entity_profile_response,
         "recall-usage-report-request": _validate_recall_usage_report_request,
         "recall-usage-report-response": _validate_recall_usage_report_response,
         "search-request": _validate_search_request,

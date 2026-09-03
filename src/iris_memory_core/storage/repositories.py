@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -974,6 +974,53 @@ class IdentityRepository:
         ).fetchall()
         return tuple(self._binding_row(row) for row in rows)
 
+    def all_verified_bindings(self, tenant_id: str) -> tuple[Binding, ...]:
+        """Every verified binding of the tenant, id order — the graph
+        rebuild's binding-edge source (Phase 8, ADR-0016 §3)."""
+        rows = self._connection.execute(
+            "SELECT * FROM bindings WHERE tenant_id = ? AND state = 'verified' "
+            f"AND {_NOT_TOMBSTONED_BINDING} ORDER BY id",
+            (tenant_id,),
+        ).fetchall()
+        return tuple(self._binding_row(row) for row in rows)
+
+    def verified_bindings_for_entity(self, tenant_id: str, entity_id: str) -> tuple[Binding, ...]:
+        """Verified bindings attached to one entity — the graph's per-entity
+        binding-edge re-derivation set (Phase 8)."""
+        rows = self._connection.execute(
+            "SELECT * FROM bindings WHERE tenant_id = ? AND entity_id = ? "
+            f"AND state = 'verified' AND {_NOT_TOMBSTONED_BINDING} ORDER BY id",
+            (tenant_id, entity_id),
+        ).fetchall()
+        return tuple(self._binding_row(row) for row in rows)
+
+    def entities_by_id(self, tenant_id: str, entity_ids: Collection[str]) -> dict[str, Entity]:
+        """Bulk entity lookup WITHOUT the tombstone read-guard: the graph
+        builder needs the row (to check state itself) even when the entity
+        carries a tombstone — a tombstoned entity must not become a node,
+        which the builder decides, not this read."""
+        result: dict[str, Entity] = {}
+        ordered = sorted(set(entity_ids))
+        for offset in range(0, len(ordered), 400):
+            chunk = ordered[offset : offset + 400]
+            placeholders = ", ".join("?" * len(chunk))
+            rows = self._connection.execute(
+                f"SELECT * FROM entities WHERE tenant_id = ? AND id IN ({placeholders})",
+                (tenant_id, *chunk),
+            ).fetchall()
+            for row in rows:
+                entity = self._entity_row(row)
+                result[entity.id] = entity
+        return result
+
+    def external_identity_ids(self, tenant_id: str) -> set[str]:
+        """All external identity ids of the tenant (existence checks for
+        graph identity nodes)."""
+        rows = self._connection.execute(
+            "SELECT id FROM external_identities WHERE tenant_id = ?", (tenant_id,)
+        ).fetchall()
+        return {str(row["id"]) for row in rows}
+
     def insert_entity_redirect(
         self,
         tenant_id: str,
@@ -1250,6 +1297,15 @@ class LedgerRepository:
             current_seq=int(row["current_seq"]),
             updated_us=int(row["updated_us"]),
         )
+
+    def tenant_watermarks(self, tenant_id: str) -> dict[str, int]:
+        """Every agent's live watermark in the tenant — the projection
+        builders' snapshot stamp (Phase 8, ADR-0016 §4)."""
+        rows = self._connection.execute(
+            "SELECT agent_id, current_seq FROM agent_watermarks WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchall()
+        return {str(row["agent_id"]): int(row["current_seq"]) for row in rows}
 
     def record_tombstone(
         self,

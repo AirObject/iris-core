@@ -402,11 +402,14 @@ class TestFailClosed:
     def test_every_enabled_kind_has_a_handler(self, phase3: dict[str, Any]) -> None:
         from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS
         from iris_memory_core.indexing.fts import FtsProjectionService
+        from iris_memory_core.indexing.graph import GraphProjectionService
+        from iris_memory_core.indexing.profile import ProfileProjectionService
         from iris_memory_core.jobs.worker import (
             phase4_handlers,
             phase5_handlers,
             phase6_handlers,
             phase7_handlers,
+            phase8_handlers,
         )
 
         ctx = phase3
@@ -431,6 +434,10 @@ class TestFailClosed:
                 projection=FtsProjectionService(ctx["store"], ctx["store"].clock),
             ),
             **phase7_handlers(projection=_vector_projection(ctx["store"])),
+            **phase8_handlers(
+                graph=GraphProjectionService(ctx["store"], ctx["store"].clock),
+                profile=ProfileProjectionService(ctx["store"], ctx["store"].clock),
+            ),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in ENABLED_JOB_KINDS:

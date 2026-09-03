@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 CAPABILITIES: dict[str, Any] = {
     "api_version": "v1",
-    "schema_version": 8,
+    "schema_version": 9,
     "capabilities": [
         "active-surface.v1",
         "artifacts.v1",
@@ -36,6 +36,8 @@ CAPABILITIES: dict[str, Any] = {
         "notes.v1",
         "observe.batch.v1",
         "outbox.jobs.v1",
+        "profile.v1",
+        "recall.graph.v1",
         "recall.usage.v1",
         "recall.vector.v1",
         "recall.v1",

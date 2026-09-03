@@ -62,7 +62,7 @@ class TestPublishedMigrationIntegrity:
             ).fetchall()
         finally:
             connection.close()
-        assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8]
+        assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
         for _version, name, checksum in rows[:3]:
             on_disk = hashlib.sha256(
                 (REPOSITORY_ROOT / "migrations" / name).read_bytes()
@@ -77,7 +77,7 @@ def _phase2_database(tmp_path: Path) -> Path:
     # roll back to schema 3 by re-migrating only through 0003
     connection = sqlite3.connect(database)
     try:
-        connection.execute("DELETE FROM schema_migrations WHERE version IN (4, 5, 6, 7, 8)")
+        connection.execute("DELETE FROM schema_migrations WHERE version IN (4, 5, 6, 7, 8, 9)")
         for legacy_table in (
             "notes",
             "note_revisions",
@@ -126,6 +126,16 @@ def _phase2_database(tmp_path: Path) -> Path:
             "vector_current",
             "vector_id_map",
             "vector_delta_ledger",
+            "profile_projection_state",
+            "profile_generations",
+            "profile_current",
+            "profile_subjects",
+            "profile_fields",
+            "graph_projection_state",
+            "graph_generations",
+            "graph_current",
+            "graph_nodes",
+            "graph_edges",
         ):
             connection.execute(f"DROP TABLE IF EXISTS {later_table}")
         connection.commit()
@@ -175,7 +185,7 @@ class TestSchema3To4Upgrade:
         database = _phase2_database(tmp_path)
         applied = MigrationRunner(database).migrate()
         # 0.5.0 walks the Schema 3 database through 0004 AND 0005.
-        assert [item.version for item in applied] == [4, 5, 6, 7, 8]
+        assert [item.version for item in applied] == [4, 5, 6, 7, 8, 9]
         connection = sqlite3.connect(database)
         try:
             assert int(connection.execute("SELECT COUNT(*) FROM observations").fetchone()[0]) == 1
@@ -369,7 +379,7 @@ class TestPhase3RestoreInvariants:
             source = self._phase3_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 8
+            assert report["schema_version"] == 9
             assert verify_backup(backup_dir).ok
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
             target.parent.mkdir(parents=True, exist_ok=True)

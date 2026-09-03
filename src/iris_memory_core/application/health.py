@@ -42,12 +42,16 @@ class HealthService:
         scheduler_lag: Callable[[], dict[str, int]] | None = None,
         vector_required: bool = False,
         vector_capability: Callable[[], bool] | None = None,
+        profile_required: bool = False,
+        graph_required: bool = False,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._gauge = gauge
         self._scheduler_lag = scheduler_lag
         self._vector_required = vector_required
+        self._profile_required = profile_required
+        self._graph_required = graph_required
         #: Live capability probe (e.g. the vector projection's
         #: ``capability_available``: FAISS importable AND the embedding
         #: provider answers). Without this a ``vector_required`` deployment
@@ -172,6 +176,45 @@ class HealthService:
             else:
                 degraded = True
                 reasons.append("vector_projection_rebuild_pending")
+
+        # Phase 8 (ADR-0016 §10): profile/graph follow the same
+        # optional-capability semantics — ``never_built`` is the fresh-install
+        # normal state; ``pending_rebuild``/``unavailable`` degrade an
+        # OPTIONAL capability and go NOT READY when the deployment declared
+        # it REQUIRED. No live capability probe: both projections are pure
+        # SQLite with no external provider dependency.
+        for kind, repository_attr, required, reason in (
+            (
+                "profile",
+                "profile",
+                self._profile_required,
+                "profile_projection_required",
+            ),
+            (
+                "graph",
+                "graph",
+                self._graph_required,
+                "graph_projection_required",
+            ),
+        ):
+            try:
+                with self._uow.read() as tx:
+                    checks[f"{kind}_projection_state"] = getattr(
+                        tx, repository_attr
+                    ).projection_state()
+            except sqlite3.OperationalError:
+                # Pre-Schema-9 database whose startup migration has not run:
+                # the tables do not exist; the migration owns this state.
+                checks[f"{kind}_projection_state"] = "never_built"
+            except Exception:
+                checks[f"{kind}_projection_state"] = "unavailable"
+            if checks[f"{kind}_projection_state"] in ("pending_rebuild", "unavailable"):
+                if required:
+                    fatal = True
+                    reasons.append(reason)
+                else:
+                    degraded = True
+                    reasons.append(f"{kind}_projection_rebuild_pending")
 
         # Phase 7 capability probe (ADR-0015 §11): the projection STATE only
         # says what the database owes — a required vector capability is only

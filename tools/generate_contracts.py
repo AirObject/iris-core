@@ -1966,7 +1966,8 @@ def _json_response(
 
 #: Wire route names frozen by ADR-0014 §3: the internal names win over the
 #: baseline's example spellings (`tasks`, not `task`). Phase 7 adds the
-#: `vector` route (ADR-0015 §6, baseline example spelling).
+#: `vector` route (ADR-0015 §6, baseline example spelling); Phase 8 adds
+#: `graph` and `profile` (ADR-0016 §4-5, reserved spellings).
 RECALL_ROUTE_NAMES = [
     "tasks",
     "recent_context",
@@ -1976,10 +1977,12 @@ RECALL_ROUTE_NAMES = [
     "relations",
     "fts",
     "vector",
+    "graph",
+    "profile",
 ]
 
-#: Degraded reason codes frozen by ADR-0014 §10 (+ the as-of exclusion) and
-#: ADR-0015 §7 (the vector set).
+#: Degraded reason codes frozen by ADR-0014 §10 (+ the as-of exclusion),
+#: ADR-0015 §7 (the vector set) and ADR-0016 §6 (the graph/profile sets).
 RECALL_DEGRADED_REASONS = [
     "route_deadline_exceeded",
     "route_failed",
@@ -1996,6 +1999,16 @@ RECALL_DEGRADED_REASONS = [
     "vector_unavailable",
     "vector_as_of_unsupported",
     "vector_space_mismatch",
+    "graph_rebuild_pending",
+    "graph_builder_unknown",
+    "graph_generation_stale",
+    "graph_index_corrupt",
+    "graph_as_of_unsupported",
+    "profile_rebuild_pending",
+    "profile_builder_unknown",
+    "profile_generation_stale",
+    "profile_index_corrupt",
+    "profile_as_of_unsupported",
 ]
 
 
@@ -2397,6 +2410,133 @@ def phase6_json_schema_files() -> dict[Path, dict[str, Any]]:
     }
 
 
+def entity_profile_response_schema() -> dict[str, Any]:
+    """Phase 8 structured profile read surface (ADR-0016 §2/§10)."""
+    return {
+        "$id": "https://iris.memory/schemas/entity-profile-response.schema.json",
+        "title": "EntityProfileResponse",
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "subject_kind": {
+                "type": "string",
+                "enum": ["entity", "relationship", "space_group"],
+            },
+            "subject_id": {"type": "string", "minLength": 1},
+            "source": {
+                "type": "string",
+                "enum": ["projection", "canonical_fallback"],
+                "description": "Whether the fields came from the trusted "
+                "projection or the canonical-claim fallback derivation "
+                "(identical semantics; the fallback never widens results).",
+            },
+            "generation_id": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "description": "Serving generation (null on canonical fallback).",
+            },
+            "builder_version": {"type": "integer", "minimum": 1},
+            "source_watermark": {"type": "integer", "minimum": 0},
+            "tombstone_watermark": {"type": "integer", "minimum": 0},
+            "fields": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "section": {
+                            "type": "string",
+                            "enum": [
+                                "identity",
+                                "preference",
+                                "relationship",
+                                "experience",
+                                "goal",
+                                "recent_change",
+                                "interaction",
+                                "community",
+                                "fact",
+                            ],
+                        },
+                        "field": {"type": "string", "minLength": 1},
+                        "summary_text": {"type": "string"},
+                        "conflict_state": {
+                            "type": "string",
+                            "enum": ["single", "conflict", "disputed"],
+                        },
+                        "freshness_us": {"type": "integer", "minimum": 0},
+                        "agent_id": {"type": "string", "minLength": 1},
+                        "space_group_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                        "space_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                        "session_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                        "privacy_labels": {
+                            "type": "array",
+                            "items": {"type": "string", "minLength": 1},
+                        },
+                        "sources": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "properties": {
+                                    "claim_id": {"type": "string", "minLength": 1},
+                                    "revision": {"type": "integer", "minimum": 1},
+                                },
+                                "required": ["claim_id", "revision"],
+                            },
+                        },
+                    },
+                    "required": [
+                        "section",
+                        "field",
+                        "summary_text",
+                        "conflict_state",
+                        "freshness_us",
+                        "agent_id",
+                        "space_group_id",
+                        "space_id",
+                        "session_id",
+                        "privacy_labels",
+                        "sources",
+                    ],
+                },
+            },
+        },
+        "required": [
+            "subject_kind",
+            "subject_id",
+            "source",
+            "generation_id",
+            "builder_version",
+            "source_watermark",
+            "tombstone_watermark",
+            "fields",
+        ],
+    }
+
+
+_PHASE8_COMPONENTS: dict[str, dict[str, Any]] = {}
+
+
+def phase8_components() -> dict[str, dict[str, Any]]:
+    global _PHASE8_COMPONENTS
+    if not _PHASE8_COMPONENTS:
+        _PHASE8_COMPONENTS = {
+            "EntityProfileResponse": entity_profile_response_schema(),
+        }
+    return _PHASE8_COMPONENTS
+
+
+def phase8_json_schema_files() -> dict[Path, dict[str, Any]]:
+    names = {
+        "entity-profile-response": "EntityProfileResponse",
+    }
+    return {
+        JSON_SCHEMA_DIRECTORY / f"{slug}.schema.json": phase8_components()[title]
+        for slug, title in names.items()
+    }
+
+
 def _idempotency_header() -> dict[str, Any]:
     return {
         "description": "Transport-retry safety for this write",
@@ -2513,6 +2653,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
         **phase4_components(),
         **phase5_components(),
         **phase6_components(),
+        **phase8_components(),
     }
     batch_request_body = {
         "content": {
@@ -4117,6 +4258,28 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
                 },
             }
         },
+        "/v1/entities/{entity_id}/profile": {
+            "get": {
+                "operationId": "getEntityProfile",
+                "description": "Structured profile read surface (Phase 8, "
+                "ADR-0016 §2): field-level sourced summary of an entity's "
+                "canonical claims. The response reports whether the trusted "
+                "projection served the fields or the canonical fallback "
+                "derived them (identical semantics).",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "entity_id",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1},
+                    }
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/EntityProfileResponse"),
+                    "404": error_response,
+                },
+            }
+        },
         "/v1/artifacts": {
             "post": {
                 "operationId": "createArtifact",
@@ -4365,6 +4528,7 @@ def generated_documents(source: Mapping[str, Any]) -> dict[Path, dict[str, Any]]
     documents.update(phase4_json_schema_files())
     documents.update(phase5_json_schema_files())
     documents.update(phase6_json_schema_files())
+    documents.update(phase8_json_schema_files())
     return documents
 
 

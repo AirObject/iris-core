@@ -42,6 +42,8 @@ from iris_memory_core.domain.jobs import NewOutboxJob, OutboxJob
 from iris_memory_core.domain.recent import recent_target_key
 from iris_memory_core.domain.vector import VECTOR_INDEXABLE_RESOURCE_TYPES
 from iris_memory_core.indexing.fts import FtsProjectionService
+from iris_memory_core.indexing.graph import GraphProjectionService
+from iris_memory_core.indexing.profile import ProfileProjectionService
 from iris_memory_core.indexing.vector import VectorProjectionService
 
 
@@ -147,6 +149,119 @@ def _schedule_fts_apply(
             available_at_us=clock.now_us(),
         ),
         gauge,
+    )
+
+
+#: Canonical resources whose changes can alter graph edges (ADR-0016 §3).
+GRAPH_APPLY_RESOURCE_TYPES = frozenset({"claim", "relation", "binding", "entity", "space_group"})
+#: Resources whose changes can alter profile fields (ADR-0016 §2/§7).
+PROFILE_APPLY_RESOURCE_TYPES = frozenset({"claim", "entity", "space_group"})
+
+
+def _schedule_projection_apply(
+    tx: Transaction,
+    *,
+    job_kind: str,
+    tenant_id: str,
+    resource_type: str,
+    resource_id: str,
+    agent_id: str | None,
+    clock: Clock,
+    gauge: BackpressureGauge | None = None,
+) -> None:
+    """Refs-only graph/profile projection scheduling from a change or
+    invalidation handler (ADR-0016 §7) — per-resource coalesced, dedupe
+    keyed by the agent watermark, payload never contains content. The
+    binding/redirect/space-group identity events carry no agent: the job
+    stays ownerless so EVERY agent's freshness gate counts it (the same
+    ownerless-backlog discipline vector applies use)."""
+    allowed = (
+        GRAPH_APPLY_RESOURCE_TYPES if job_kind == "graph.apply" else PROFILE_APPLY_RESOURCE_TYPES
+    )
+    if resource_type not in allowed:
+        return
+    owner = agent_id
+    if owner is None and resource_type in ("claim", "relation"):
+        owner = GraphProjectionService.resource_agent(tx, tenant_id, resource_type, resource_id)
+        if owner is None and resource_type == "claim":
+            try:
+                owner = tx.claims.get(resource_id).agent_id
+            except Exception:
+                owner = None
+    watermark_state = tx.watermark(tenant_id, owner or "")
+    watermark = watermark_state.current_seq if watermark_state is not None else 0
+    coalesce_class = "graph" if job_kind == "graph.apply" else "profile"
+    enqueue_with_pressure(
+        tx,
+        NewOutboxJob(
+            tenant_id=tenant_id,
+            job_kind=job_kind,
+            aggregate_type=resource_type,
+            aggregate_id=resource_id,
+            source_revision=watermark,
+            payload={
+                "version": 1,
+                "job_kind": job_kind,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+            },
+            dedupe_key=f"{job_kind}:{tenant_id}:{resource_type}:{resource_id}:{watermark}",
+            agent_id=owner,
+            coalesce_key=f"{coalesce_class}:{resource_type}:{resource_id}",
+            priority=5,
+            available_at_us=clock.now_us(),
+        ),
+        gauge,
+    )
+
+
+def schedule_graph_apply(
+    tx: Transaction,
+    *,
+    tenant_id: str,
+    resource_type: str,
+    resource_id: str,
+    agent_id: str | None,
+    clock: Clock,
+    gauge: BackpressureGauge | None = None,
+) -> None:
+    """Public invalidation hook for identity/provisioning services: a
+    binding/redirect/tombstone/space-group change schedules graph.apply
+    inside the SAME canonical transaction (ADR-0016 §7)."""
+    _schedule_projection_apply(
+        tx,
+        job_kind="graph.apply",
+        tenant_id=tenant_id,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        agent_id=agent_id,
+        clock=clock,
+        gauge=gauge,
+    )
+
+
+def schedule_profile_apply(
+    tx: Transaction,
+    *,
+    tenant_id: str,
+    resource_type: str,
+    resource_id: str,
+    agent_id: str | None,
+    clock: Clock,
+    gauge: BackpressureGauge | None = None,
+) -> None:
+    """Public invalidation hook for identity/provisioning services: entity
+    tombstones and space-group changes schedule profile.apply inside the
+    SAME canonical transaction (ADR-0016 §7)."""
+    _schedule_projection_apply(
+        tx,
+        job_kind="profile.apply",
+        tenant_id=tenant_id,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        agent_id=agent_id,
+        clock=clock,
+        gauge=gauge,
     )
 
 
@@ -458,6 +573,26 @@ def claim_changed_handler(clock: Clock, gauge: BackpressureGauge | None = None) 
                 clock=clock,
                 gauge=gauge,
             )
+            _schedule_projection_apply(
+                tx,
+                job_kind="graph.apply",
+                tenant_id=job.tenant_id,
+                resource_type="claim",
+                resource_id=claim.id,
+                agent_id=claim.agent_id,
+                clock=clock,
+                gauge=gauge,
+            )
+            _schedule_projection_apply(
+                tx,
+                job_kind="profile.apply",
+                tenant_id=job.tenant_id,
+                resource_type="claim",
+                resource_id=claim.id,
+                agent_id=claim.agent_id,
+                clock=clock,
+                gauge=gauge,
+            )
 
         return commit
 
@@ -502,8 +637,12 @@ def episode_changed_handler(clock: Clock, gauge: BackpressureGauge | None = None
     return work
 
 
-def relation_changed_handler() -> JobWork:
-    """relation.changed: the relation's current pointer resolves to its revision."""
+def relation_changed_handler(
+    clock: Clock | None = None, gauge: BackpressureGauge | None = None
+) -> JobWork:
+    """relation.changed: the relation's current pointer resolves to its
+    revision, and the graph projection schedules its per-resource apply
+    (ADR-0016 §7)."""
 
     def work(job: OutboxJob) -> JobCommit:
         _require_payload(job)
@@ -515,6 +654,17 @@ def relation_changed_handler() -> JobWork:
             if tx.relations.current_revision_row(relation.id).revision != relation.current_revision:
                 raise NotFoundError(
                     "relation current pointer does not resolve to its revision number"
+                )
+            if clock is not None:
+                _schedule_projection_apply(
+                    tx,
+                    job_kind="graph.apply",
+                    tenant_id=job.tenant_id,
+                    resource_type="relation",
+                    resource_id=relation.id,
+                    agent_id=relation.agent_id,
+                    clock=clock,
+                    gauge=gauge,
                 )
 
         return commit
@@ -584,6 +734,26 @@ def memory_invalidated_handler(clock: Clock, gauge: BackpressureGauge | None = N
                 )
                 _schedule_vector_apply(
                     tx,
+                    tenant_id=job.tenant_id,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    agent_id=job.agent_id,
+                    clock=clock,
+                    gauge=gauge,
+                )
+                _schedule_projection_apply(
+                    tx,
+                    job_kind="graph.apply",
+                    tenant_id=job.tenant_id,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    agent_id=job.agent_id,
+                    clock=clock,
+                    gauge=gauge,
+                )
+                _schedule_projection_apply(
+                    tx,
+                    job_kind="profile.apply",
                     tenant_id=job.tenant_id,
                     resource_type=resource_type,
                     resource_id=resource_id,
@@ -730,6 +900,128 @@ def vector_cleanup_handler(projection: VectorProjectionService) -> JobWork:
     return work
 
 
+# ---------------------------------------------------------------------------
+# Phase 8 handlers: profile/graph projection maintenance
+
+
+def graph_apply_handler(projection: GraphProjectionService) -> JobWork:
+    """graph.apply: re-derive one canonical resource's edges (idempotent)."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        payload = _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            resource_type = payload.get("resource_type")
+            resource_id = payload.get("resource_id")
+            if not isinstance(resource_type, str) or not isinstance(resource_id, str):
+                raise ValueError("graph.apply payload needs resource_type/resource_id")
+            projection.apply_change_in_tx(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                agent_id=job.agent_id,
+                source_watermark=int(job.source_revision),
+            )
+
+        return commit
+
+    return work
+
+
+def graph_rebuild_handler(projection: GraphProjectionService) -> JobWork:
+    """graph.rebuild: deterministic shadow rebuild + fenced pointer switch
+    (pure SQLite work inside the fenced transaction; the generation gauge
+    is emitted post-commit — a fenced/rolled-back switch must not move it)."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            projection.rebuild_in_tx(tx, tenant_id=job.tenant_id)
+
+        commit.after_commit = partial(projection.emit_generation, job.tenant_id)  # type: ignore[attr-defined]
+        return commit
+
+    return work
+
+
+def graph_cleanup_handler(projection: GraphProjectionService) -> JobWork:
+    """graph.cleanup: verify the current generation, then delete retired
+    generations beyond the rollback window (rows only — SQLite rows roll
+    back with the transaction, unlike unlinked files). A failed
+    verification PERSISTS pending_rebuild inside this commit and skips
+    deletion — the verdict must survive the worker transaction (review
+    round 3), so verification reports its verdict instead of raising it
+    into a rollback."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            projection.cleanup_in_tx(tx, job.tenant_id)
+
+        return commit
+
+    return work
+
+
+def profile_apply_handler(projection: ProfileProjectionService) -> JobWork:
+    """profile.apply: re-derive one subject's fields (idempotent)."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        payload = _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            resource_type = payload.get("resource_type")
+            resource_id = payload.get("resource_id")
+            if not isinstance(resource_type, str) or not isinstance(resource_id, str):
+                raise ValueError("profile.apply payload needs resource_type/resource_id")
+            projection.apply_change_in_tx(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                agent_id=job.agent_id,
+                source_watermark=int(job.source_revision),
+            )
+
+        return commit
+
+    return work
+
+
+def profile_rebuild_handler(projection: ProfileProjectionService) -> JobWork:
+    """profile.rebuild: deterministic shadow rebuild + fenced switch."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            projection.rebuild_in_tx(tx, tenant_id=job.tenant_id)
+
+        commit.after_commit = partial(projection.emit_generation, job.tenant_id)  # type: ignore[attr-defined]
+        return commit
+
+    return work
+
+
+def profile_cleanup_handler(projection: ProfileProjectionService) -> JobWork:
+    """profile.cleanup: verify then delete retired generations. A failed
+    verification persists pending_rebuild inside this commit and skips
+    deletion (same persisted-verdict discipline as graph.cleanup)."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            projection.cleanup_in_tx(tx, job.tenant_id)
+
+        return commit
+
+    return work
+
+
 def retention_compaction_handler(retention: RetentionService, clock: Clock) -> JobWork:
     """retention.compaction: the §19.5 sweep inside the fenced transaction."""
 
@@ -752,13 +1044,21 @@ __all__ = [
     "fts_apply_handler",
     "fts_cleanup_handler",
     "fts_rebuild_handler",
+    "graph_apply_handler",
+    "graph_cleanup_handler",
+    "graph_rebuild_handler",
     "memory_invalidated_handler",
     "note_changed_handler",
     "note_review_handler",
     "observation_recorded_handler",
+    "profile_apply_handler",
+    "profile_cleanup_handler",
+    "profile_rebuild_handler",
     "recent_context_maintenance_handler",
     "relation_changed_handler",
     "retention_compaction_handler",
+    "schedule_graph_apply",
+    "schedule_profile_apply",
     "state_projection_handler",
     "task_changed_handler",
     "task_trigger_scan_handler",

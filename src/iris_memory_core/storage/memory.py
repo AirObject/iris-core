@@ -940,6 +940,48 @@ class ClaimRepository:
         ).fetchall()
         return tuple(_claim_current_from_row(row) for row in rows)
 
+    def all_current_claim_pairs(
+        self,
+        tenant_id: str,
+        *,
+        statuses: Sequence[str] = ("active", "disputed"),
+    ) -> tuple[tuple[ClaimCurrent, ClaimRevision], ...]:
+        """Full deterministic enumeration (id order) of the tenant's visible
+        claims with their current revisions — the profile/graph rebuild
+        snapshot source (Phase 8, ADR-0016 §2/§3)."""
+        placeholders = ", ".join("?" * len(statuses))
+        rows = self._connection.execute(
+            "SELECT * FROM claims WHERE tenant_id = ? "
+            f"AND status IN ({placeholders}) " + _TOMBSTONE_EXCLUSION["claim"] + " ORDER BY id",
+            (tenant_id, *statuses),
+        ).fetchall()
+        results: list[tuple[ClaimCurrent, ClaimRevision]] = []
+        for row in rows:
+            current = _claim_current_from_row(row)
+            results.append((current, self.current_revision_row(current.id)))
+        return tuple(results)
+
+    def claims_for_group(
+        self, tenant_id: str, space_group_id: str, *, categories: Sequence[str]
+    ) -> tuple[tuple[ClaimCurrent, ClaimRevision], ...]:
+        """Claims scoped at a space-group level, optionally narrowed by
+        category — the space-group profile source set (ADR-0016 §2)."""
+        placeholders = ", ".join("?" * len(categories))
+        rows = self._connection.execute(
+            "SELECT * FROM claims WHERE tenant_id = ? AND space_group_id = ? "
+            f"AND status IN ('active', 'disputed') AND category IN ({placeholders}) "
+            + _TOMBSTONE_EXCLUSION["claim"]
+            + " ORDER BY id",
+            (tenant_id, space_group_id, *categories),
+        ).fetchall()
+        return tuple(
+            (
+                _claim_current_from_row(row),
+                self.current_revision_row(str(row["id"])),
+            )
+            for row in rows
+        )
+
     def claims_citing_source(
         self, tenant_id: str, source_type: str, source_id: str
     ) -> tuple[ClaimCurrent, ...]:
@@ -952,6 +994,35 @@ class ClaimRepository:
             (tenant_id, source_type, source_id),
         ).fetchall()
         return tuple(_claim_current_from_row(row) for row in rows)
+
+    def claims_targeting_entity(
+        self, tenant_id: str, entity_id: str
+    ) -> tuple[tuple[ClaimCurrent, ClaimRevision], ...]:
+        """Live relationship claims whose structured value targets an entity
+        — the graph's per-entity claim-edge re-derivation set (Phase 8,
+        ADR-0016 §3). The LIKE prefilter is structural only; every hit is
+        re-validated against the parsed value_json."""
+        needle = f'"target_entity_id": "{entity_id}"'
+        needle_alt = f'"target_entity_id":"{entity_id}"'
+        rows = self._connection.execute(
+            "SELECT c.* FROM claims c JOIN claim_revisions r ON r.id = "
+            "(SELECT id FROM claim_revisions cr WHERE cr.claim_id = c.id "
+            "ORDER BY cr.revision DESC LIMIT 1) "
+            "WHERE c.tenant_id = ? AND c.status IN ('active', 'disputed') "
+            "AND c.category = 'relationship' "
+            "AND (r.value_json LIKE ? OR r.value_json LIKE ?) "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones _rt "
+            "WHERE _rt.tenant_id = c.tenant_id "
+            "AND _rt.resource_type = 'claim' AND _rt.resource_id = c.id) "
+            "ORDER BY c.id",
+            (tenant_id, f"%{needle}%", f"%{needle_alt}%"),
+        ).fetchall()
+        results: list[tuple[ClaimCurrent, ClaimRevision]] = []
+        for row in rows:
+            current = _claim_current_from_row(row)
+            revision = self.current_revision_row(current.id)
+            results.append((current, revision))
+        return tuple(results)
 
     def erase_content(self, claim_id: str, *, now_us: int) -> None:
         """Compliance erasure: scrub payload text/value, keep audit metadata."""
@@ -1466,6 +1537,27 @@ class RelationRepository:
         sql += _TOMBSTONE_EXCLUSION["relation"]
         rows = self._connection.execute(sql, tuple(params)).fetchall()
         return tuple(row["id"] for row in rows)
+
+    def all_current_relation_pairs(
+        self,
+        tenant_id: str,
+        *,
+        statuses: Sequence[str] = ("active", "disputed"),
+    ) -> tuple[tuple[RelationCurrent, RelationRevision], ...]:
+        """Full deterministic enumeration (id order) of the tenant's visible
+        relations with their current revisions — the graph rebuild snapshot
+        source (Phase 8, ADR-0016 §3)."""
+        placeholders = ", ".join("?" * len(statuses))
+        rows = self._connection.execute(
+            "SELECT * FROM relations WHERE tenant_id = ? "
+            f"AND status IN ({placeholders}) " + _TOMBSTONE_EXCLUSION["relation"] + " ORDER BY id",
+            (tenant_id, *statuses),
+        ).fetchall()
+        results: list[tuple[RelationCurrent, RelationRevision]] = []
+        for row in rows:
+            current = _relation_current_from_row(row)
+            results.append((current, self.current_revision_row(current.id)))
+        return tuple(results)
 
     def erase_content(self, relation_id: str, *, now_us: int) -> None:
         self._connection.execute(

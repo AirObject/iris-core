@@ -580,6 +580,32 @@ class OutboxRepository:
         )
         return cursor.rowcount
 
+    def settle_unleased_kind(
+        self,
+        tenant_id: str,
+        job_kind: str,
+        *,
+        reason_code: str,
+        now_us: int,
+        payload_version: int = 1,
+    ) -> int:
+        """Bulk-complete the tenant's UNLEASED jobs of one kind whose work a
+        full projection rebuild provably covered (Phase 8, ADR-0016 §7 — the
+        publish snapshot covers every committed change by construction, the
+        same drain-by-construction the FTS trust gate documents). Leased
+        rows are left to their workers; the fenced completion CAS still
+        applies to them. Only jobs at or below ``payload_version`` settle:
+        a rebuild compiled by THIS build cannot prove it covered the
+        semantics of a future payload version, so those rows stay queued
+        for a build that understands them (review round 3)."""
+        cursor = self._connection.execute(
+            "UPDATE outbox_jobs SET status = 'completed', completed_us = ?, "
+            "last_error_code = ? WHERE tenant_id = ? AND job_kind = ? "
+            "AND status IN ('pending', 'retryable') AND payload_version <= ?",
+            (now_us, reason_code, tenant_id, job_kind, payload_version),
+        )
+        return cursor.rowcount
+
     def complete(
         self,
         job_id: str,
@@ -779,6 +805,20 @@ class OutboxRepository:
             self._connection,
             f"SELECT COUNT(*) AS c FROM outbox_jobs WHERE status IN ({_UNSETTLED}) "
             "AND tenant_id = ? AND agent_id IS NULL AND job_kind = ?",
+            (tenant_id, job_kind),
+        )
+        assert row is not None  # aggregates always return one row
+        return int(row["c"])
+
+    def unsettled_tenant_job_count(self, tenant_id: str, job_kind: str) -> int:
+        """Unsettled jobs of one kind for the WHOLE tenant (every owner,
+        including ownerless rows). The verification gate uses this: a zero
+        count means every committed change of that kind is incorporated, so
+        any projection/canonical divergence is corruption, not lag."""
+        row = _one(
+            self._connection,
+            f"SELECT COUNT(*) AS c FROM outbox_jobs WHERE status IN ({_UNSETTLED}) "
+            "AND tenant_id = ? AND job_kind = ?",
             (tenant_id, job_kind),
         )
         assert row is not None  # aggregates always return one row

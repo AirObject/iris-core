@@ -274,6 +274,99 @@ function validateSearchRequest(value: unknown): string[] {
   return errors;
 }
 
+function validateEntityProfileResponse(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  const subjectKinds = new Set(["entity", "relationship", "space_group"]);
+  if (typeof value.subject_kind !== "string" || !subjectKinds.has(value.subject_kind)) {
+    errors.push("subject_kind must be entity|relationship|space_group");
+  }
+  if (typeof value.subject_id !== "string" || value.subject_id.length === 0) {
+    errors.push("subject_id must be a non-empty string");
+  }
+  const sources = new Set(["projection", "canonical_fallback"]);
+  if (typeof value.source !== "string" || !sources.has(value.source)) {
+    errors.push("source must be projection|canonical_fallback");
+  }
+  if (value.generation_id !== null && typeof value.generation_id !== "string") {
+    errors.push("generation_id must be a string or null");
+  }
+  if (typeof value.builder_version !== "number" || !Number.isInteger(value.builder_version) || value.builder_version < 1) {
+    errors.push("builder_version must be a positive integer");
+  }
+  for (const key of ["source_watermark", "tombstone_watermark"] as const) {
+    const mark = value[key];
+    if (typeof mark !== "number" || !Number.isInteger(mark) || mark < 0) {
+      errors.push(`${key} must be a non-negative integer`);
+    }
+  }
+  if (!Array.isArray(value.fields)) {
+    errors.push("fields must be an array");
+    return errors;
+  }
+  const conflictStates = new Set(["single", "conflict", "disputed"]);
+  value.fields.forEach((item, index) => {
+    if (!isRecord(item)) {
+      errors.push(`fields[${index}] must be an object`);
+      return;
+    }
+    if (typeof item.field !== "string" || item.field.length === 0) {
+      errors.push(`fields[${index}].field must be a non-empty string`);
+    }
+    if (typeof item.agent_id !== "string" || item.agent_id.length === 0) {
+      errors.push(`fields[${index}].agent_id must be a non-empty string`);
+    }
+    for (const key of ["space_group_id", "space_id", "session_id"] as const) {
+      const value = item[key];
+      if (value !== null && typeof value !== "string") {
+        errors.push(`fields[${index}].${key} must be a string or null`);
+      }
+    }
+    if (
+      !Array.isArray(item.privacy_labels) ||
+      !item.privacy_labels.every((label) => typeof label === "string" && label.length > 0)
+    ) {
+      errors.push(`fields[${index}].privacy_labels must be an array of strings`);
+    }
+    if (typeof item.summary_text !== "string") {
+      errors.push(`fields[${index}].summary_text must be a string`);
+    }
+    if (typeof item.conflict_state !== "string" || !conflictStates.has(item.conflict_state)) {
+      errors.push(`fields[${index}].conflict_state must be single|conflict|disputed`);
+    }
+    if (
+      typeof item.freshness_us !== "number" ||
+      !Number.isInteger(item.freshness_us) ||
+      item.freshness_us < 0
+    ) {
+      errors.push(`fields[${index}].freshness_us must be a non-negative integer`);
+    }
+    if (!Array.isArray(item.sources) || item.sources.length === 0) {
+      errors.push(`fields[${index}].sources must be a non-empty array`);
+      return;
+    }
+    item.sources.forEach((source, sourceIndex) => {
+      if (!isRecord(source)) {
+        errors.push(`fields[${index}].sources[${sourceIndex}] must be an object`);
+        return;
+      }
+      if (typeof source.claim_id !== "string" || source.claim_id.length === 0) {
+        errors.push(`fields[${index}].sources[${sourceIndex}].claim_id must be a non-empty string`);
+      }
+      if (
+        typeof source.revision !== "number" ||
+        !Number.isInteger(source.revision) ||
+        source.revision < 1
+      ) {
+        errors.push(
+          `fields[${index}].sources[${sourceIndex}].revision must be a positive integer`,
+        );
+      }
+    });
+  });
+  return errors;
+}
+
 function validateSearchResponse(value: unknown): string[] {
   if (!isRecord(value)) return ["root must be an object"];
   const errors: string[] = [];
@@ -349,6 +442,7 @@ export function validateContract(schema: string, value: unknown): readonly strin
   if (schema === "recall-usage-report-response") return validateRecallUsageReportResponse(value);
   if (schema === "search-request") return validateSearchRequest(value);
   if (schema === "search-response") return validateSearchResponse(value);
+  if (schema === "entity-profile-response") return validateEntityProfileResponse(value);
   return [`unknown schema: ${schema}`];
 }
 

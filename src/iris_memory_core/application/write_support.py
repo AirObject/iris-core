@@ -16,7 +16,7 @@ from iris_memory_core.application.ports import Transaction
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import AccessDeniedError, InvalidRequestError
-from iris_memory_core.domain.jobs import JOB_PAYLOAD_VERSION, NewOutboxJob
+from iris_memory_core.domain.jobs import JOB_PAYLOAD_VERSION, NewOutboxJob, coalescing_allowed
 from iris_memory_core.domain.privacy import InvalidPrivacyLabelError, parse_label
 from iris_memory_core.domain.scope import Scope
 
@@ -249,6 +249,62 @@ def enqueue_change_job(
     )
 
 
+#: Canonical resources whose changes can alter graph edges (ADR-0016 §3).
+GRAPH_APPLY_RESOURCE_TYPES = frozenset({"claim", "relation", "binding", "entity", "space_group"})
+#: Resources whose changes can alter profile fields (ADR-0016 §2/§7).
+PROFILE_APPLY_RESOURCE_TYPES = frozenset({"claim", "entity", "space_group"})
+
+
+def schedule_projection_apply(
+    tx: Transaction,
+    *,
+    job_kind: str,
+    tenant_id: str,
+    resource_type: str,
+    resource_id: str,
+    agent_id: str | None = None,
+    gauge: BackpressureGauge | None = None,
+) -> None:
+    """Refs-only graph/profile invalidation enqueue for application-layer
+    producers (identity/provisioning write paths; ADR-0016 §7). Runs inside
+    the caller's canonical transaction so the invalidation is atomic with
+    the binding/redirect/tombstone/space-group change. Coalesce keys and
+    dedupe formats match the change-handler path exactly, so both producers
+    merge onto the same pending job. Identity-plane events carry no agent:
+    the job stays ownerless and every agent's freshness gate counts it."""
+    allowed = (
+        GRAPH_APPLY_RESOURCE_TYPES if job_kind == "graph.apply" else PROFILE_APPLY_RESOURCE_TYPES
+    )
+    if resource_type not in allowed:
+        return
+    if not coalescing_allowed(job_kind):
+        raise InvalidRequestError(f"{job_kind} does not allow coalescing")
+    watermark_state = tx.watermark(tenant_id, agent_id or "")
+    watermark = watermark_state.current_seq if watermark_state is not None else 0
+    coalesce_class = "graph" if job_kind == "graph.apply" else "profile"
+    enqueue_with_pressure(
+        tx,
+        NewOutboxJob(
+            tenant_id=tenant_id,
+            job_kind=job_kind,
+            aggregate_type=resource_type,
+            aggregate_id=resource_id,
+            source_revision=watermark,
+            payload={
+                "version": JOB_PAYLOAD_VERSION,
+                "job_kind": job_kind,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+            },
+            dedupe_key=f"{job_kind}:{tenant_id}:{resource_type}:{resource_id}:{watermark}",
+            agent_id=agent_id,
+            coalesce_key=f"{coalesce_class}:{resource_type}:{resource_id}",
+            priority=5,
+        ),
+        gauge,
+    )
+
+
 __all__ = [
     "SOURCE_REF_TYPES",
     "authorize_scope",
@@ -257,4 +313,5 @@ __all__ = [
     "parse_source_refs",
     "require_same_tenant_agent",
     "require_surface_online",
+    "schedule_projection_apply",
 ]

@@ -1250,7 +1250,17 @@
               "vector_index_corrupt",
               "vector_unavailable",
               "vector_as_of_unsupported",
-              "vector_space_mismatch"
+              "vector_space_mismatch",
+              "graph_rebuild_pending",
+              "graph_builder_unknown",
+              "graph_generation_stale",
+              "graph_index_corrupt",
+              "graph_as_of_unsupported",
+              "profile_rebuild_pending",
+              "profile_builder_unknown",
+              "profile_generation_stale",
+              "profile_index_corrupt",
+              "profile_as_of_unsupported"
             ]
           },
           "retryable": {
@@ -1265,7 +1275,9 @@
               "claims",
               "relations",
               "fts",
-              "vector"
+              "vector",
+              "graph",
+              "profile"
             ]
           }
         },
@@ -1394,6 +1406,185 @@
           "requests"
         ],
         "title": "DeletionLedgerResponse",
+        "type": "object"
+      },
+      "EntityProfileResponse": {
+        "$id": "https://iris.memory/schemas/entity-profile-response.schema.json",
+        "additionalProperties": false,
+        "properties": {
+          "builder_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "fields": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "agent_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "conflict_state": {
+                  "enum": [
+                    "single",
+                    "conflict",
+                    "disputed"
+                  ],
+                  "type": "string"
+                },
+                "field": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "freshness_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "privacy_labels": {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "section": {
+                  "enum": [
+                    "identity",
+                    "preference",
+                    "relationship",
+                    "experience",
+                    "goal",
+                    "recent_change",
+                    "interaction",
+                    "community",
+                    "fact"
+                  ],
+                  "type": "string"
+                },
+                "session_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sources": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "claim_id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "revision": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "claim_id",
+                      "revision"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "space_group_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "space_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "summary_text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "section",
+                "field",
+                "summary_text",
+                "conflict_state",
+                "freshness_us",
+                "agent_id",
+                "space_group_id",
+                "space_id",
+                "session_id",
+                "privacy_labels",
+                "sources"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Serving generation (null on canonical fallback)."
+          },
+          "source": {
+            "description": "Whether the fields came from the trusted projection or the canonical-claim fallback derivation (identical semantics; the fallback never widens results).",
+            "enum": [
+              "projection",
+              "canonical_fallback"
+            ],
+            "type": "string"
+          },
+          "source_watermark": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subject_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "subject_kind": {
+            "enum": [
+              "entity",
+              "relationship",
+              "space_group"
+            ],
+            "type": "string"
+          },
+          "tombstone_watermark": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subject_kind",
+          "subject_id",
+          "source",
+          "generation_id",
+          "builder_version",
+          "source_watermark",
+          "tombstone_watermark",
+          "fields"
+        ],
+        "title": "EntityProfileResponse",
         "type": "object"
       },
       "EpisodeCreateRequest": {
@@ -3684,7 +3875,17 @@
                     "vector_index_corrupt",
                     "vector_unavailable",
                     "vector_as_of_unsupported",
-                    "vector_space_mismatch"
+                    "vector_space_mismatch",
+                    "graph_rebuild_pending",
+                    "graph_builder_unknown",
+                    "graph_generation_stale",
+                    "graph_index_corrupt",
+                    "graph_as_of_unsupported",
+                    "profile_rebuild_pending",
+                    "profile_builder_unknown",
+                    "profile_generation_stale",
+                    "profile_index_corrupt",
+                    "profile_as_of_unsupported"
                   ]
                 },
                 "retryable": {
@@ -3699,7 +3900,9 @@
                     "claims",
                     "relations",
                     "fts",
-                    "vector"
+                    "vector",
+                    "graph",
+                    "profile"
                   ]
                 }
               },
@@ -6001,7 +6204,7 @@
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.6.0"
+    "version": "1.7.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -7287,6 +7490,45 @@
             "description": "Successful response"
           },
           "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/entities/{entity_id}/profile": {
+      "get": {
+        "description": "Structured profile read surface (Phase 8, ADR-0016 §2): field-level sourced summary of an entity's canonical claims. The response reports whether the trusted projection served the fields or the canonical fallback derived them (identical semantics).",
+        "operationId": "getEntityProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityProfileResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {

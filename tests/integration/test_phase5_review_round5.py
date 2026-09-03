@@ -296,6 +296,7 @@ def test_legacy_restore_upgrades_before_replaying_colliding_requests(tmp_path: P
     assert [item.version for item in MigrationRunner(target / "canonical.sqlite3").migrate()] == [
         7,
         8,
+        9,
     ]
     with restored_store.read() as tx:
         rows = (

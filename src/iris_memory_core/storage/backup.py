@@ -1045,6 +1045,73 @@ def _reset_vector_projection_for_restore(database: Path) -> None:
         connection.close()
 
 
+def _reset_profile_graph_for_restore(database: Path) -> None:
+    """Reset profile/graph projections the backup carried (ADR-0016 §9).
+
+    Both projections live in SQLite so their rows travel inside the
+    snapshot — but a restored projection is an UNTRUSTED summary: it may
+    predate tombstones or deletions whose compliance log did not travel.
+    Generations, pointers and content rows are wiped and both states flip
+    to pending_rebuild; the first graph/profile reads degrade until an
+    admin/worker rebuild lands. Snapshots older than Schema 9 have no such
+    tables and are left untouched (the startup migration creates them in
+    ``never_built``).
+    """
+    connection = sqlite3.connect(database, isolation_level=None)
+    try:
+        has_tables = (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                "AND name IN ('profile_generations', 'graph_generations')"
+            ).fetchone()
+            is not None
+        )
+        if not has_tables:
+            return
+        connection.execute("BEGIN IMMEDIATE")
+        if (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'profile_fields'"
+            ).fetchone()
+            is not None
+        ):
+            connection.execute("DELETE FROM profile_fields")
+            connection.execute("DELETE FROM profile_subjects")
+            connection.execute("DELETE FROM profile_current")
+            connection.execute("DELETE FROM profile_generations")
+            connection.execute(
+                "INSERT INTO profile_projection_state (id, state, marked_us) "
+                "VALUES (1, 'pending_rebuild', "
+                "CAST(strftime('%s', 'now') AS INTEGER) * 1000000) "
+                "ON CONFLICT(id) DO UPDATE SET state = 'pending_rebuild', "
+                "marked_us = CAST(strftime('%s', 'now') AS INTEGER) * 1000000"
+            )
+        if (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'graph_edges'"
+            ).fetchone()
+            is not None
+        ):
+            connection.execute("DELETE FROM graph_edges")
+            connection.execute("DELETE FROM graph_nodes")
+            connection.execute("DELETE FROM graph_current")
+            connection.execute("DELETE FROM graph_generations")
+            connection.execute(
+                "INSERT INTO graph_projection_state (id, state, marked_us) "
+                "VALUES (1, 'pending_rebuild', "
+                "CAST(strftime('%s', 'now') AS INTEGER) * 1000000) "
+                "ON CONFLICT(id) DO UPDATE SET state = 'pending_rebuild', "
+                "marked_us = CAST(strftime('%s', 'now') AS INTEGER) * 1000000"
+            )
+        connection.execute("COMMIT")
+    except BaseException:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    finally:
+        connection.close()
+
+
 def _discard_staging(staging: Path) -> str | None:
     """Best-effort cleanup whose failure is visible to the caller."""
     if not staging.exists():
@@ -1210,6 +1277,7 @@ def restore_backup(
         try:
             _reset_fts_projection_for_restore(staging / CANONICAL_NAME)
             _reset_vector_projection_for_restore(staging / CANONICAL_NAME)
+            _reset_profile_graph_for_restore(staging / CANONICAL_NAME)
             _checkpoint_database_for_switch(staging / CANONICAL_NAME)
             phase6_problems = verify_database_invariants(staging / CANONICAL_NAME)
         except (sqlite3.Error, OSError, TypeError, ValueError) as error:
