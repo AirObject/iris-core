@@ -37,6 +37,7 @@ class CoalesceClass(StrEnum):
     PROFILE = "profile"
     GRAPH = "graph"
     FTS = "fts"
+    VECTOR = "vector"
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +223,36 @@ _KINDS: dict[str, JobKindSpec] = dict(
             catch_up="latest",
             enabled=True,
             notes="Phase 6: physical cleanup of invalid documents and retired generations.",
+        ),
+        # Phase 7: vector projection maintenance (ADR-0015 §8). vector.apply
+        # consumes the refs-only change events (coalesced per resource, same
+        # events FTS consumes) and maintains the id map + delta ledger — the
+        # serving FAISS handle is never mutated; vector.rebuild runs the six
+        # stage generation pipeline with the provider calls OUTSIDE the
+        # fenced transaction (only the switch lands in the commit); vector
+        # .cleanup performs the async physical deletion of invalidated id map
+        # rows, retired generations and orphan directories.
+        _spec(
+            "vector.apply",
+            priority=5,
+            coalesce=CoalesceClass.VECTOR,
+            enabled=True,
+            notes="Phase 7: id map + delta ledger maintenance for one resource.",
+        ),
+        _spec(
+            "vector.rebuild",
+            priority=3,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 7: FAISS generation build, verification and fenced atomic pointer switch.",
+        ),
+        _spec(
+            "vector.cleanup",
+            priority=8,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 7: physical cleanup of invalidated id map rows, "
+            "retired generations and orphan directories.",
         ),
         _spec("reflection.generate", priority=7, catch_up="latest"),
         _spec("persona.evaluation", priority=6, catch_up="latest"),

@@ -46,6 +46,16 @@ from iris_memory_core.domain.jobs import (
 
 #: Work runs outside the transaction and returns the commit closure that the
 #: fenced transaction executes together with the completion CAS.
+#:
+#: A commit closure MAY attach an ``after_commit`` attribute (a zero-arg
+#: callable). The worker runs it ONLY after the fenced transaction — the
+#: canonical writes AND the completion CAS — has durably committed. This is
+#: the hook for external, non-transactional effects that must not happen
+#: while the transaction can still roll back (e.g. deleting vector
+#: generation directories whose rows the transaction deleted): SQLite rolls
+#: rows back, never unlinked files. Failures inside ``after_commit`` are
+#: recorded as a metric and swallowed — the job stays completed; the effect
+#: must be orphan-tolerant and self-healing (idempotent on the next run).
 JobCommit = Callable[[Transaction], None]
 JobWork = Callable[[OutboxJob], JobCommit]
 
@@ -358,6 +368,16 @@ class OutboxService:
             return self._record_failure(job, owner, error)
         if self._metrics is not None:
             self._metrics.outbox_job_event(job.job_kind, "completed")
+        after_commit = getattr(commit, "after_commit", None)
+        if callable(after_commit):
+            try:
+                after_commit()
+            except Exception:
+                # The durable outcome is committed and final: a failed
+                # post-commit external effect is reported, never re-run as
+                # part of this job (the effect must be orphan-tolerant).
+                if self._metrics is not None:
+                    self._metrics.outbox_job_event(job.job_kind, "after_commit_failed")
         return "completed"
 
     def _record_failure(self, job: OutboxJob, owner: str, error: Exception) -> str:

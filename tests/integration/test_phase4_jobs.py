@@ -218,8 +218,11 @@ class TestFailClosed:
         from iris_memory_core.application.forget import ForgetService
         from iris_memory_core.application.retention import RetentionService
         from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS
+        from iris_memory_core.domain.vector import VectorSpaceConfig
         from iris_memory_core.indexing.fts import FtsProjectionService
-        from iris_memory_core.jobs.worker import phase5_handlers, phase6_handlers
+        from iris_memory_core.indexing.vector import VectorProjectionService
+        from iris_memory_core.jobs.worker import phase5_handlers, phase6_handlers, phase7_handlers
+        from iris_memory_core.providers.embedding import DeterministicEmbeddingProvider
 
         retention = RetentionService(
             jobs_ctx["store"],
@@ -240,6 +243,17 @@ class TestFailClosed:
             **phase6_handlers(
                 jobs_ctx["store"].clock,
                 projection=FtsProjectionService(jobs_ctx["store"], jobs_ctx["store"].clock),
+            ),
+            **phase7_handlers(
+                projection=VectorProjectionService(
+                    jobs_ctx["store"],
+                    jobs_ctx["store"].clock,
+                    provider=DeterministicEmbeddingProvider(
+                        VectorSpaceConfig(model="test-embedding", dimension=8)
+                    ),
+                    vector_root=jobs_ctx["store"].runtime.database.parent / "vector",
+                    space=VectorSpaceConfig(model="test-embedding", dimension=8),
+                ),
             ),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS

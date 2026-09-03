@@ -12,6 +12,7 @@ never payloads or identifiers (§31).
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -39,11 +40,20 @@ class HealthService:
         *,
         gauge: BackpressureGauge,
         scheduler_lag: Callable[[], dict[str, int]] | None = None,
+        vector_required: bool = False,
+        vector_capability: Callable[[], bool] | None = None,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._gauge = gauge
         self._scheduler_lag = scheduler_lag
+        self._vector_required = vector_required
+        #: Live capability probe (e.g. the vector projection's
+        #: ``capability_available``: FAISS importable AND the embedding
+        #: provider answers). Without this a ``vector_required`` deployment
+        #: would report ready while every vector route degrades on a dead
+        #: provider (ADR-0015 §11).
+        self._vector_capability = vector_capability
 
     def liveness(self) -> dict[str, str]:
         """Unversioned liveness: process up, no dependency checks (§23.2)."""
@@ -136,6 +146,48 @@ class HealthService:
         if checks["fts_projection_state"] in ("pending_rebuild", "unavailable"):
             degraded = True
             reasons.append("fts_projection_rebuild_pending")
+
+        # Phase 7 (ADR-0015 §11): the vector projection follows the same
+        # optional-capability semantics as FTS, split by configuration —
+        # ``never_built`` never degrades (fresh install); ``pending_rebuild``
+        # or an unreadable projection degrades an OPTIONAL vector capability
+        # but makes readiness NOT READY when the deployment declared the
+        # vector capability REQUIRED (``vector_required``). A database still
+        # on Schema 7 (its startup migration has not run) reports the normal
+        # ``never_built`` shape rather than a misleading degradation. The
+        # response carries the state string only — no paths, no identifiers.
+        try:
+            with self._uow.read() as tx:
+                checks["vector_projection_state"] = tx.vector.projection_state()
+        except sqlite3.OperationalError:
+            # Schema 7 database whose startup migration has not run yet: the
+            # vector tables do not exist; the migration owns this state.
+            checks["vector_projection_state"] = "never_built"
+        except Exception:
+            checks["vector_projection_state"] = "unavailable"
+        if checks["vector_projection_state"] in ("pending_rebuild", "unavailable"):
+            if self._vector_required:
+                fatal = True
+                reasons.append("vector_projection_required")
+            else:
+                degraded = True
+                reasons.append("vector_projection_rebuild_pending")
+
+        # Phase 7 capability probe (ADR-0015 §11): the projection STATE only
+        # says what the database owes — a required vector capability is only
+        # real when the runtime can actually serve it (FAISS importable and
+        # the embedding provider answering; the probe is cached/cooldown-
+        # bounded by the projection service). Optional deployments REPORT the
+        # state without degrading on it; required deployments go NOT READY.
+        if self._vector_capability is not None:
+            try:
+                capability_ok = bool(self._vector_capability())
+            except Exception:
+                capability_ok = False
+            checks["vector_capability"] = "ok" if capability_ok else "unavailable"
+            if not capability_ok and self._vector_required:
+                fatal = True
+                reasons.append("vector_capability_unavailable")
 
         status = NOT_READY if fatal else (DEGRADED if degraded else READY)
         return ReadinessReport(status=status, checks=checks, reasons=tuple(reasons))

@@ -179,6 +179,9 @@ class TestJobKindRegistry:
                     "fts.apply",
                     "fts.rebuild",
                     "fts.cleanup",
+                    "vector.apply",
+                    "vector.rebuild",
+                    "vector.cleanup",
                     "memory.invalidated",
                     "retention.compaction",
                 }

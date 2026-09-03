@@ -21,6 +21,13 @@ METRIC_SPECS: dict[str, frozenset[str]] = {
     "iris_sqlite_busy_total": frozenset({"operation_class"}),
     "iris_storage_free_bytes": frozenset(),
     "iris_active_surface_leases": frozenset({"status"}),
+    # Phase 7 additions (§31.2 recommended set, ADR-0015 §11): index
+    # generation/lag gauges and provider request/duration telemetry — all
+    # low-cardinality (index_kind/provider_kind/outcome enums).
+    "iris_index_generation": frozenset({"index_kind"}),
+    "iris_index_lag_revisions": frozenset({"index_kind"}),
+    "iris_provider_requests_total": frozenset({"provider_kind", "outcome"}),
+    "iris_provider_duration_seconds": frozenset({"provider_kind"}),
 }
 
 #: Labels that must NEVER appear on a metric (§31 forbidden cardinality).
@@ -30,7 +37,17 @@ FORBIDDEN_LABELS = frozenset(
 
 #: Label keys whose values are enum-like and pass through unhashed.
 _LOW_CARDINALITY_VALUES = frozenset(
-    {"role", "status", "operation_class", "lane", "mode", "job_kind"}
+    {
+        "role",
+        "status",
+        "operation_class",
+        "lane",
+        "mode",
+        "job_kind",
+        "index_kind",
+        "provider_kind",
+        "outcome",
+    }
 )
 
 
@@ -119,6 +136,26 @@ class Metrics:
 
     def surface_leases(self, status: str, count: int) -> None:
         self.set_gauge("iris_active_surface_leases", float(count), {"status": status})
+
+    # -- Phase 7 convenience emitters ---------------------------------------
+
+    def index_generation(self, index_kind: str, generation: int) -> None:
+        self.set_gauge("iris_index_generation", float(generation), {"index_kind": index_kind})
+
+    def index_lag(self, index_kind: str, lag_revisions: int) -> None:
+        self.set_gauge("iris_index_lag_revisions", float(lag_revisions), {"index_kind": index_kind})
+
+    def provider_request(self, provider_kind: str, outcome: str) -> None:
+        self.inc(
+            "iris_provider_requests_total", {"provider_kind": provider_kind, "outcome": outcome}
+        )
+
+    def provider_duration(self, provider_kind: str, duration_seconds: float) -> None:
+        self.set_gauge(
+            "iris_provider_duration_seconds",
+            float(duration_seconds),
+            {"provider_kind": provider_kind},
+        )
 
     # -- output --------------------------------------------------------------
 

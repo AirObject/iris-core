@@ -71,7 +71,7 @@ from iris_memory_core.domain.observation import StoredObservation
 from iris_memory_core.domain.privacy import evaluate_privacy
 from iris_memory_core.domain.recall import (
     CATEGORY_PRIORITY,
-    RECALL_RANKER_V2,
+    RECALL_RANKER_V3,
     ROUTE_CLAIMS,
     ROUTE_FOCUS,
     ROUTE_FTS,
@@ -79,19 +79,31 @@ from iris_memory_core.domain.recall import (
     ROUTE_RELATIONS,
     ROUTE_STATE,
     ROUTE_TASKS,
+    ROUTE_VECTOR,
     TOKEN_ESTIMATOR_VERSION,
-    RankerV2,
+    RankerV3,
     apply_token_budgets,
 )
 from iris_memory_core.domain.recent import DefaultTokenEstimator, TokenEstimator
 from iris_memory_core.domain.scope import Scope, scope_allows
 from iris_memory_core.domain.task import TaskStatus
+from iris_memory_core.domain.vector import (
+    VECTOR_INDEXABLE_RESOURCE_TYPES,
+    VECTOR_NON_RETRYABLE_REASONS,
+    VECTOR_REASON_AS_OF_UNSUPPORTED,
+    VECTOR_REASON_UNAVAILABLE,
+    EmbeddingProviderError,
+    VectorDegradedError,
+)
 from iris_memory_core.indexing.fts import FtsDegradedError, FtsProjectionService
+from iris_memory_core.indexing.vector import VectorProjectionService
 
 #: Bump when scoring weights, category priorities or budget logic change.
-#: v1 was the Phase 3/4 skeleton; v2 adds missing-score semantics, conflict
-#: marking and protected budgets (ADR-0014 §5).
-RECALL_RANKER_VERSION = RECALL_RANKER_V2
+#: v1 was the Phase 3/4 skeleton; v2 added missing-score semantics, conflict
+#: marking and protected budgets (ADR-0014 §5); v3 registers the vector
+#: route in the hybrid fusion (ADR-0015 §6) — existing candidates rank
+#: identically under v2 and v3.
+RECALL_RANKER_VERSION = RECALL_RANKER_V3
 
 DEFAULT_ROUTES = (
     ROUTE_TASKS,
@@ -101,6 +113,7 @@ DEFAULT_ROUTES = (
     ROUTE_CLAIMS,
     ROUTE_RELATIONS,
     ROUTE_FTS,
+    ROUTE_VECTOR,
 )
 
 #: Equal share of the total budget as each route's sub-deadline. Parallel
@@ -118,6 +131,7 @@ DEFAULT_FOCUS_CANDIDATES = 10
 DEFAULT_CLAIMS_CANDIDATES = 20
 DEFAULT_RELATIONS_CANDIDATES = 12
 DEFAULT_FTS_CANDIDATES = 20
+DEFAULT_VECTOR_CANDIDATES = 20
 #: Upper bound of pending event ids advertised on one recall response (§12).
 DEFAULT_PENDING_EVENT_IDS = 50
 
@@ -1087,6 +1101,146 @@ def _claim_scope(claim: Any) -> Scope:
     )
 
 
+def _cosine_relevance(score: float) -> float:
+    """Map a cosine in [-1, 1] to a deterministic relevance in [0, 1]."""
+    return round(max(0.0, min(1.0, (score + 1.0) / 2.0)), 6)
+
+
+class VectorRoute:
+    """Vector route over the trusted current FAISS generation (Phase 7,
+    ADR-0015 §6).
+
+    The query embedding goes through the provider FIRST (bounded by the
+    route's cooperative deadline checks — a stuck provider degrades this
+    route only, never the request), then the trusted search runs inside the
+    route's own read transaction: pointer, freshness gate and handle all
+    resolve against one consistent snapshot. Hits carry refs + score only;
+    the candidate text is read from the CANONICAL row and the final
+    rehydrate re-verifies everything again."""
+
+    def __init__(
+        self,
+        projection: VectorProjectionService,
+        estimator: TokenEstimator | None = None,
+        *,
+        monotonic: MonotonicClock | None = None,
+    ) -> None:
+        self.name = ROUTE_VECTOR
+        self._projection = projection
+        self._estimator = estimator or DefaultTokenEstimator()
+        self._monotonic = monotonic or SystemMonotonicClock()
+
+    def collect(
+        self,
+        tx: Transaction,
+        request: StructuredRecallRequest,
+        access: AccessContext,
+        deadline_us: int,
+        now_us: int,
+    ) -> tuple[RecallCandidate, ...]:
+        check_deadline(self._monotonic, deadline_us)
+        if request.as_of_us is not None:
+            # The FAISS projection indexes CURRENT revisions only; without a
+            # trusted historical generation it must not answer as_of with
+            # present-day vectors (ADR-0015 §6).
+            raise VectorDegradedError(VECTOR_REASON_AS_OF_UNSUPPORTED, retryable=False)
+        if not request.topic.strip():
+            return ()
+        if request.resource_types is not None and not (
+            request.resource_types & VECTOR_INDEXABLE_RESOURCE_TYPES
+        ):
+            return ()
+        # Provider call bounded by the route's remaining deadline: the
+        # provider caps its transport timeout at the remaining budget (the
+        # socket aborts — the call cannot outlive the deadline in a stranded
+        # thread) and fails fast once it has passed. This runs inside the
+        # route's READ snapshot (never a writer transaction) — a WAL reader
+        # does not block canonical writes.
+        try:
+            query_vector = self._projection.embed_query(
+                request.topic, deadline_monotonic_us=deadline_us
+            )
+        except EmbeddingProviderError:
+            raise VectorDegradedError(VECTOR_REASON_UNAVAILABLE, retryable=True) from None
+        check_deadline(self._monotonic, deadline_us)
+        limit = request.candidate_limits.get(ROUTE_VECTOR, DEFAULT_VECTOR_CANDIDATES)
+        hits = self._projection.search_in_tx(
+            tx,
+            tenant_id=access.tenant_id,
+            agent_id=request.agent_id,
+            query_vector=query_vector,
+            limit=limit,
+            minimum_watermark=request.minimum_watermark,
+        )
+        request_scope = Scope(
+            tenant_id=access.tenant_id,
+            agent_id=request.agent_id,
+            space_group_id=request.space_group_id,
+            space_id=request.space_id,
+            session_id=request.session_id,
+        )
+        candidates: list[RecallCandidate] = []
+        for hit in hits:
+            check_deadline(self._monotonic, deadline_us)
+            canonical = _canonical_projection_row(tx, hit.resource_type, hit.resource_id)
+            if canonical is None:
+                continue
+            current, revision, text, category, occurred_us = canonical
+            if current.current_revision != hit.resource_revision:
+                # The projection is behind: an expired revision must never
+                # become a trustworthy return value.
+                continue
+            data_scope = Scope(
+                tenant_id=current.tenant_id,
+                agent_id=current.agent_id,
+                space_group_id=current.space_group_id,
+                space_id=current.space_id,
+                session_id=current.session_id,
+            )
+            if not scope_allows(data_scope, request_scope):
+                continue
+            if not evaluate_privacy(revision.privacy_labels, data_scope, request_scope, access):
+                continue
+            if not _passes_request_filters(
+                request,
+                resource_type=hit.resource_type,
+                category=category,
+                privacy_labels=revision.privacy_labels,
+            ):
+                continue
+            base = _fts_base_scores(hit.resource_type, current)
+            scores: dict[str, float | None] = dict(base)
+            scores["relevance"] = _cosine_relevance(hit.score)
+            scores["recency"] = round(_recency(now_us, occurred_us), 6)
+            candidates.append(
+                RecallCandidate(
+                    candidate_id=_candidate_id(
+                        ROUTE_VECTOR, hit.resource_id, hit.resource_revision
+                    ),
+                    route=ROUTE_VECTOR,
+                    resource_type=hit.resource_type,
+                    resource_id=hit.resource_id,
+                    resource_revision=hit.resource_revision,
+                    text=text,
+                    scores=scores,
+                    final_score=0.0,
+                    token_estimate=self._estimator.estimate(text),
+                    occurred_us=occurred_us,
+                    scope=data_scope,
+                    privacy_labels=revision.privacy_labels,
+                    content_hash=revision.content_hash,
+                    subject_entity_id=getattr(revision, "subject_entity_id", None),
+                    category=category,
+                    conflict_group=(
+                        f"{revision.subject_entity_id}:{revision.predicate}"
+                        if hit.resource_type == "claim" and revision.subject_entity_id
+                        else None
+                    ),
+                )
+            )
+        return tuple(candidates)
+
+
 def _observation_scope(observation: StoredObservation) -> Scope:
     return Scope(
         tenant_id=observation.tenant_id,
@@ -1125,6 +1279,7 @@ class StructuredRecallOrchestrator:
         relations_enabled: bool = False,
         claims_enabled: bool = False,
         fts: FtsProjectionService | None = None,
+        vector: VectorProjectionService | None = None,
         monotonic: MonotonicClock | None = None,
         estimator: TokenEstimator | None = None,
         routes: tuple[RecallRoute, ...] | None = None,
@@ -1135,14 +1290,15 @@ class StructuredRecallOrchestrator:
         self._events = events
         self._monotonic = monotonic or SystemMonotonicClock()
         self._estimator = estimator or DefaultTokenEstimator()
-        self._ranker = RankerV2()
+        self._ranker = RankerV3()
         self._max_route_concurrency = max_route_concurrency
         if routes is not None:
             self._routes: tuple[RecallRoute, ...] = routes
         else:
             # Default composition: due tasks FIRST (prospective memory is the
             # highest-priority structured signal), then the Phase 3 routes,
-            # then the Phase 6 structured long-term and FTS routes.
+            # then the Phase 6 structured long-term and FTS routes, then the
+            # Phase 7 vector route (semantic recall supplements the rest).
             composed: list[RecallRoute] = []
             if tasks is not None:
                 composed.append(DueTaskRoute(tasks, self._estimator, monotonic=self._monotonic))
@@ -1159,6 +1315,8 @@ class StructuredRecallOrchestrator:
                 composed.append(RelationsRoute(self._estimator, monotonic=self._monotonic))
             if fts is not None:
                 composed.append(FtsRoute(fts, self._estimator, monotonic=self._monotonic))
+            if vector is not None:
+                composed.append(VectorRoute(vector, self._estimator, monotonic=self._monotonic))
             self._routes = tuple(composed)
 
     # -- route execution ------------------------------------------------------
@@ -1204,6 +1362,18 @@ class StructuredRecallOrchestrator:
                 ),
             )
         except FtsDegradedError as error:
+            return (
+                "degraded",
+                (),
+                RouteTrace(
+                    route.name,
+                    "degraded",
+                    0,
+                    self._monotonic.monotonic_us() - route_start,
+                    error.reason_code,
+                ),
+            )
+        except VectorDegradedError as error:
             return (
                 "degraded",
                 (),
@@ -1350,6 +1520,9 @@ class StructuredRecallOrchestrator:
                 "fts_unavailable",
                 "fts_builder_unknown",
             )
+        elif fallback.startswith("vector_"):
+            reason = fallback
+            retryable = fallback not in VECTOR_NON_RETRYABLE_REASONS
         elif fallback == "route_deadline_exceeded":
             reason = "route_deadline_exceeded"
             retryable = True
@@ -2593,6 +2766,7 @@ __all__ = [
     "CATEGORY_PRIORITY",
     "DEFAULT_ROUTES",
     "DEFAULT_ROUTE_CONCURRENCY",
+    "DEFAULT_VECTOR_CANDIDATES",
     "FTS_AS_OF_REASON",
     "RECALL_PURPOSES",
     "RECALL_RANKER_VERSION",
@@ -2603,6 +2777,7 @@ __all__ = [
     "ROUTE_RELATIONS",
     "ROUTE_STATE",
     "ROUTE_TASKS",
+    "ROUTE_VECTOR",
     "ClaimsRoute",
     "DeadlineExceededError",
     "DegradedRoute",
@@ -2626,6 +2801,7 @@ __all__ = [
     "StructuredRecallOrchestrator",
     "StructuredRecallRequest",
     "StructuredRecallResult",
+    "VectorRoute",
     "check_deadline",
     "new_request_id",
     "stable_sort_key",

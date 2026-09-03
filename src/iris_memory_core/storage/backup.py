@@ -1003,6 +1003,48 @@ def _reset_fts_projection_for_restore(database: Path) -> None:
         connection.close()
 
 
+def _reset_vector_projection_for_restore(database: Path) -> None:
+    """Reset any vector projection metadata the backup carried (ADR-0015 §10).
+
+    The FAISS generation files never travel inside a backup, so generation
+    rows, the pointer and the delta ledger must not survive a restore — a
+    pointer to missing files would poison the first load. The ID MAP and the
+    surrogate counter SURVIVE: surrogate assignment stays stable across
+    restores (server-assigned, never reused). Snapshots older than Schema 8
+    have no vector tables and are left untouched (the startup migration
+    creates them in ``never_built``).
+    """
+    connection = sqlite3.connect(database, isolation_level=None)
+    try:
+        has_vector = (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'vector_generations'"
+            ).fetchone()
+            is not None
+        )
+        if not has_vector:
+            return
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("DELETE FROM vector_delta_ledger")
+        connection.execute("DELETE FROM vector_current")
+        connection.execute("DELETE FROM vector_generations")
+        connection.execute(
+            "INSERT INTO vector_projection_state (id, state, marked_us, "
+            "last_surrogate_id) VALUES (1, 'pending_rebuild', "
+            "CAST(strftime('%s', 'now') AS INTEGER) * 1000000, "
+            "COALESCE((SELECT last_surrogate_id FROM vector_projection_state WHERE id = 1), 0)) "
+            "ON CONFLICT(id) DO UPDATE SET state = 'pending_rebuild', "
+            "marked_us = CAST(strftime('%s', 'now') AS INTEGER) * 1000000"
+        )
+        connection.execute("COMMIT")
+    except BaseException:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    finally:
+        connection.close()
+
+
 def _discard_staging(staging: Path) -> str | None:
     """Best-effort cleanup whose failure is visible to the caller."""
     if not staging.exists():
@@ -1167,10 +1209,11 @@ def restore_backup(
         # which equally requires a rebuild before the FTS route can serve.
         try:
             _reset_fts_projection_for_restore(staging / CANONICAL_NAME)
+            _reset_vector_projection_for_restore(staging / CANONICAL_NAME)
             _checkpoint_database_for_switch(staging / CANONICAL_NAME)
             phase6_problems = verify_database_invariants(staging / CANONICAL_NAME)
         except (sqlite3.Error, OSError, TypeError, ValueError) as error:
-            phase6_problems = (f"restore FTS projection reset failed: {error}",)
+            phase6_problems = (f"restore projection reset failed: {error}",)
         if phase6_problems:
             cleanup_problem = _discard_staging(staging)
             problems = list(phase6_problems)
@@ -1620,6 +1663,33 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
             ).fetchone()
             if cross_request is not None and int(cross_request[0]) > 0:
                 problems.append("usage reports anchored outside their tenant's requests")
+        # Phase 7 invariants (ADR-0015 §10): the vector pointer resolves to a
+        # verified same-tenant generation, delta rows keep tenant anchors,
+        # id map surrogates are unique per tenant (the UNIQUE index enforces
+        # it; this also survives legacy restores) and a ready state never
+        # hides a missing pointer.
+        if _has("vector_current") and _has("vector_generations"):
+            broken_vector_pointer = connection.execute(
+                "SELECT COUNT(*) FROM vector_current c WHERE c.generation_id NOT IN "
+                "(SELECT id FROM vector_generations WHERE status = 'verified' "
+                "AND tenant_id = c.tenant_id)"
+            ).fetchone()
+            if broken_vector_pointer is not None and int(broken_vector_pointer[0]) > 0:
+                problems.append("vector current pointer does not resolve to a verified generation")
+        if _has("vector_delta_ledger") and _has("agents"):
+            orphan_delta = connection.execute(
+                "SELECT COUNT(*) FROM vector_delta_ledger d WHERE d.agent_id NOT IN "
+                "(SELECT id FROM agents WHERE tenant_id = d.tenant_id)"
+            ).fetchone()
+            if orphan_delta is not None and int(orphan_delta[0]) > 0:
+                problems.append("vector delta rows anchored outside their tenant's agents")
+        if _has("vector_projection_state"):
+            vector_ready = connection.execute(
+                "SELECT COUNT(*) FROM vector_projection_state WHERE state = 'ready' "
+                "AND NOT EXISTS (SELECT 1 FROM vector_current)"
+            ).fetchone()
+            if vector_ready is not None and int(vector_ready[0]) > 0:
+                problems.append("vector projection ready state without a current pointer")
     finally:
         connection.close()
     return tuple(problems)
@@ -1741,6 +1811,11 @@ class BackupService:
                     allowed_versions=(self._store.runtime.runtime_report.sqlite_version,),
                 ),
                 clock=self._store.clock,
+                # The staging snapshot is authenticated legacy bytes; an
+                # older-schema backup replays here and the STARTUP migration
+                # (never restore, ADR-0014 §12-10) brings it forward once
+                # the current binary opens the switched-in target.
+                verify_schema_window=False,
             )
             forget_service.replay_deletion_ledger(staging_store, pending)
 

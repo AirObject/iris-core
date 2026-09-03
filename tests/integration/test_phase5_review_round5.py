@@ -290,6 +290,13 @@ def test_legacy_restore_upgrades_before_replaying_colliding_requests(tmp_path: P
     )
     assert report.check.ok, report.check.problems
     assert not verify_database_invariants(target / "canonical.sqlite3")
+    # The restored legacy snapshot is Schema 6: the current binary's staged
+    # upgrade path runs the ordinary startup migration before serving
+    # (ADR-0014 §12-10 — restore itself never forward-migrates).
+    assert [item.version for item in MigrationRunner(target / "canonical.sqlite3").migrate()] == [
+        7,
+        8,
+    ]
     with restored_store.read() as tx:
         rows = (
             tx.raw()

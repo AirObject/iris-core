@@ -1,1 +1,1 @@
-"""Projection index adapters; implemented in later phases."""
+"""Projection index adapters: FTS5 and FAISS generation lifecycles (§22)."""

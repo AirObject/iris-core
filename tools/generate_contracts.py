@@ -1965,7 +1965,8 @@ def _json_response(
 
 
 #: Wire route names frozen by ADR-0014 §3: the internal names win over the
-#: baseline's example spellings (`tasks`, not `task`).
+#: baseline's example spellings (`tasks`, not `task`). Phase 7 adds the
+#: `vector` route (ADR-0015 §6, baseline example spelling).
 RECALL_ROUTE_NAMES = [
     "tasks",
     "recent_context",
@@ -1974,9 +1975,11 @@ RECALL_ROUTE_NAMES = [
     "claims",
     "relations",
     "fts",
+    "vector",
 ]
 
-#: Degraded reason codes frozen by ADR-0014 §10 (+ the as-of exclusion).
+#: Degraded reason codes frozen by ADR-0014 §10 (+ the as-of exclusion) and
+#: ADR-0015 §7 (the vector set).
 RECALL_DEGRADED_REASONS = [
     "route_deadline_exceeded",
     "route_failed",
@@ -1986,6 +1989,13 @@ RECALL_DEGRADED_REASONS = [
     "fts_index_corrupt",
     "fts_unavailable",
     "fts_as_of_unsupported",
+    "vector_rebuild_pending",
+    "vector_builder_unknown",
+    "vector_generation_stale",
+    "vector_index_corrupt",
+    "vector_unavailable",
+    "vector_as_of_unsupported",
+    "vector_space_mismatch",
 ]
 
 

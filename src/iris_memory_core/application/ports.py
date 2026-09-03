@@ -91,6 +91,12 @@ from iris_memory_core.domain.task import (
     TaskTriggerRevision,
     TriggerOccurrence,
 )
+from iris_memory_core.domain.vector import (
+    VectorCurrentPointer,
+    VectorGenerationRecord,
+    VectorIdMapRecord,
+    VectorSpaceConfig,
+)
 
 
 class Clock(Protocol):
@@ -280,6 +286,8 @@ class OutboxSurface(Protocol):
     ) -> dict[str, int]: ...
     def oldest_pending_us(self) -> int | None: ...
     def unsettled_job_count(self, tenant_id: str, agent_id: str | None, job_kind: str) -> int: ...
+
+    def unsettled_null_agent_job_count(self, tenant_id: str, job_kind: str) -> int: ...
     def status_counts(self) -> dict[str, int]: ...
     def tick_completion(self, tick_id: str, *, now_us: int, error_code: str | None) -> None: ...
 
@@ -1524,6 +1532,159 @@ class FtsSurface(Protocol):
     ) -> tuple[tuple[FtsDocumentRecord, float], ...]: ...
 
 
+class EmbeddingProvider(Protocol):
+    """Port for external embedding capability (§24.1-24.2, ADR-0015 §2).
+
+    Application services depend on this interface only; adapters own the
+    transport, validation, timeouts, rate limiting and circuit breaking.
+    Implementations must never log the submitted text — only digests,
+    lengths, model names, batch sizes and durations.
+    """
+
+    @property
+    def space(self) -> VectorSpaceConfig: ...
+
+    def embed_batch(
+        self,
+        texts: Sequence[str],
+        *,
+        deadline_monotonic_us: int | None = None,
+    ) -> list[Sequence[float]]:
+        """Embed a batch; returns one L2-normalized vector per input.
+
+        Raises the adapter's provider error on dimension mismatch, NaN/Inf,
+        non-numeric output, timeout, rate limiting or an open circuit.
+        ``deadline_monotonic_us`` bounds the call by the caller's remaining
+        route budget: the adapter caps each transport call at
+        ``min(configured timeout, remaining deadline)`` and fails fast once
+        the deadline has passed (the socket timeout, not a background
+        thread, bounds the worst case).
+        """
+
+
+class VectorSurface(Protocol):
+    """Repository surface for the vector projection (ADR-0015 §3-5)."""
+
+    def projection_state(self) -> str: ...
+
+    def set_projection_state(self, state: str, *, now_us: int | None = None) -> None: ...
+
+    def reset_projection(self, *, now_us: int | None = None) -> None: ...
+
+    def allocate_surrogate_ids(self, count: int) -> tuple[int, ...]: ...
+
+    def id_map_get(
+        self, tenant_id: str, resource_type: str, resource_id: str
+    ) -> VectorIdMapRecord | None: ...
+
+    def id_map_by_surrogate(
+        self, tenant_id: str, surrogate_id: int
+    ) -> VectorIdMapRecord | None: ...
+
+    def id_map_count(self, tenant_id: str, *, active_only: bool = True) -> int: ...
+
+    def id_map_upsert(
+        self,
+        *,
+        tenant_id: str,
+        resource_type: str,
+        resource_id: str,
+        resource_revision: int,
+        surrogate_id: int,
+        agent_id: str,
+        space: VectorSpaceConfig,
+        content_hash: str,
+        now_us: int | None = None,
+        incorporated_generation: str | None = None,
+    ) -> VectorIdMapRecord: ...
+
+    def id_map_stamp_generation(
+        self,
+        tenant_id: str,
+        generation_id: str,
+        surrogates: Sequence[int],
+    ) -> int: ...
+
+    def id_map_invalidate(
+        self,
+        *,
+        tenant_id: str,
+        resource_type: str,
+        resource_id: str,
+        now_us: int | None = None,
+    ) -> int: ...
+
+    def id_map_delete_invalid(self, tenant_id: str, *, limit: int = 500) -> int: ...
+
+    def delta_upsert(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        resource_type: str,
+        resource_id: str,
+        resource_revision: int,
+        op: str,
+        source_watermark: int,
+        now_us: int | None = None,
+    ) -> None: ...
+
+    def delta_count(self, tenant_id: str, agent_id: str | None = None) -> int: ...
+
+    def delta_clear(self, tenant_id: str) -> int: ...
+
+    def id_map_invalidate_tombstoned(self, tenant_id: str, *, now_us: int | None = None) -> int: ...
+
+    def insert_generation(
+        self,
+        *,
+        tenant_id: str,
+        space: VectorSpaceConfig,
+        source_watermark: int,
+        tombstone_watermark: int,
+        vector_count: int,
+        content_checksum: str,
+        id_map_checksum: str,
+        index_checksum: str,
+        agent_watermarks: dict[str, int],
+        generation_id: str | None = None,
+        now_us: int | None = None,
+    ) -> VectorGenerationRecord: ...
+
+    def get_generation(self, generation_id: str) -> VectorGenerationRecord: ...
+
+    def generations_for_tenant(self, tenant_id: str) -> tuple[VectorGenerationRecord, ...]: ...
+
+    def all_generation_ids(self) -> tuple[str, ...]: ...
+
+    def all_pointer_generation_ids(self) -> tuple[str, ...]: ...
+
+    def retire_generation(self, generation_id: str, *, now_us: int | None = None) -> int: ...
+
+    def delete_retired_generations(
+        self,
+        tenant_id: str,
+        *,
+        keep: int = 2,
+        older_than_us: int | None = None,
+    ) -> tuple[str, ...]: ...
+
+    def pointer(self, tenant_id: str) -> VectorCurrentPointer | None: ...
+
+    def current_epoch(self, tenant_id: str) -> int: ...
+
+    def switch_pointer(
+        self,
+        *,
+        tenant_id: str,
+        generation: VectorGenerationRecord,
+        expected_epoch: int,
+        now_us: int | None = None,
+    ) -> VectorCurrentPointer: ...
+
+    def pointer_info(self, tenant_id: str) -> dict[str, object]: ...
+
+
 class RecallUsageSurface(Protocol):
     """Repository surface for recall request archives and usage reports."""
 
@@ -1629,6 +1790,9 @@ class Transaction(Protocol):
 
     @property
     def usage(self) -> RecallUsageSurface: ...
+
+    @property
+    def vector(self) -> VectorSurface: ...
 
     # --- tenants, agents, spaces -------------------------------------
     def insert_tenant(self, tenant_id: str, *, status: str) -> Tenant: ...

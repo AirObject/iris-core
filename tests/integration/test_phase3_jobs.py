@@ -8,7 +8,7 @@ payload versions.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -21,6 +21,12 @@ from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.state import StateService
 from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.jobs import NewOutboxJob, spec_for
+
+if TYPE_CHECKING:
+    from iris_memory_core.domain.vector import VectorSpaceConfig
+    from iris_memory_core.indexing.vector import VectorProjectionService
+    from iris_memory_core.storage.uow import Store
+
 from iris_memory_core.jobs.worker import (
     OutboxWorker,
     phase3_handlers,
@@ -95,6 +101,28 @@ def _observe(ctx: dict[str, Any], key: str, content: str, session: str | None = 
                 "session_id": session,
             }
         ],
+    )
+
+
+def _vector_space() -> VectorSpaceConfig:
+    from iris_memory_core.domain.vector import VectorSpaceConfig
+
+    return VectorSpaceConfig(model="test-embedding", dimension=8)
+
+
+def _vector_projection(store: Store) -> VectorProjectionService:
+    from pathlib import Path
+
+    from iris_memory_core.indexing.vector import VectorProjectionService
+    from iris_memory_core.providers.embedding import DeterministicEmbeddingProvider
+
+    runtime_database = store.runtime.database
+    return VectorProjectionService(
+        store,
+        store.clock,
+        provider=DeterministicEmbeddingProvider(_vector_space()),
+        vector_root=Path(runtime_database).parent / "vector",
+        space=_vector_space(),
     )
 
 
@@ -374,7 +402,12 @@ class TestFailClosed:
     def test_every_enabled_kind_has_a_handler(self, phase3: dict[str, Any]) -> None:
         from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS
         from iris_memory_core.indexing.fts import FtsProjectionService
-        from iris_memory_core.jobs.worker import phase4_handlers, phase5_handlers, phase6_handlers
+        from iris_memory_core.jobs.worker import (
+            phase4_handlers,
+            phase5_handlers,
+            phase6_handlers,
+            phase7_handlers,
+        )
 
         ctx = phase3
         from iris_memory_core.application.forget import ForgetService
@@ -397,6 +430,7 @@ class TestFailClosed:
                 ctx["store"].clock,
                 projection=FtsProjectionService(ctx["store"], ctx["store"].clock),
             ),
+            **phase7_handlers(projection=_vector_projection(ctx["store"])),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in ENABLED_JOB_KINDS:

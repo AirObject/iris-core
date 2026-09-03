@@ -26,6 +26,8 @@ projection of its own (ADR-0014 §2).
 
 from __future__ import annotations
 
+from functools import partial
+
 from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.notes import NoteService
@@ -38,7 +40,9 @@ from iris_memory_core.domain.errors import NotFoundError
 from iris_memory_core.domain.fts import FTS_INDEXABLE_RESOURCE_TYPES
 from iris_memory_core.domain.jobs import NewOutboxJob, OutboxJob
 from iris_memory_core.domain.recent import recent_target_key
+from iris_memory_core.domain.vector import VECTOR_INDEXABLE_RESOURCE_TYPES
 from iris_memory_core.indexing.fts import FtsProjectionService
+from iris_memory_core.indexing.vector import VectorProjectionService
 
 
 def _require_payload(job: OutboxJob) -> dict[str, object]:
@@ -47,6 +51,52 @@ def _require_payload(job: OutboxJob) -> dict[str, object]:
     if version != 1:
         raise ValueError(f"unsupported payload version: {version!r}")
     return payload
+
+
+def _schedule_vector_apply(
+    tx: Transaction,
+    *,
+    tenant_id: str,
+    resource_type: str,
+    resource_id: str,
+    agent_id: str | None,
+    clock: Clock,
+    gauge: BackpressureGauge | None = None,
+) -> None:
+    """Refs-only vector projection scheduling from a change handler
+    (ADR-0015 §8) — the same event stream FTS consumes, never a second
+    write-side projection of its own. Coalesced per resource; the dedupe
+    key carries the agent watermark so a replay at the same watermark
+    absorbs. The payload never contains content."""
+    if resource_type not in VECTOR_INDEXABLE_RESOURCE_TYPES:
+        return
+    owner = agent_id
+    if owner is None:
+        owner = VectorProjectionService.resource_agent(tx, tenant_id, resource_type, resource_id)
+    watermark_state = tx.watermark(tenant_id, owner or "")
+    watermark = watermark_state.current_seq if watermark_state is not None else 0
+    enqueue_with_pressure(
+        tx,
+        NewOutboxJob(
+            tenant_id=tenant_id,
+            job_kind="vector.apply",
+            aggregate_type=resource_type,
+            aggregate_id=resource_id,
+            source_revision=watermark,
+            payload={
+                "version": 1,
+                "job_kind": "vector.apply",
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+            },
+            dedupe_key=f"vector-apply:{tenant_id}:{resource_type}:{resource_id}:{watermark}",
+            agent_id=owner,
+            coalesce_key=f"vector:{resource_type}:{resource_id}",
+            priority=5,
+            available_at_us=clock.now_us(),
+        ),
+        gauge,
+    )
 
 
 def _schedule_fts_apply(
@@ -294,6 +344,15 @@ def note_changed_handler(clock: Clock, gauge: BackpressureGauge | None = None) -
                 clock=clock,
                 gauge=gauge,
             )
+            _schedule_vector_apply(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type="note",
+                resource_id=note.id,
+                agent_id=note.agent_id,
+                clock=clock,
+                gauge=gauge,
+            )
 
         return commit
 
@@ -390,6 +449,15 @@ def claim_changed_handler(clock: Clock, gauge: BackpressureGauge | None = None) 
                 clock=clock,
                 gauge=gauge,
             )
+            _schedule_vector_apply(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type="claim",
+                resource_id=claim.id,
+                agent_id=claim.agent_id,
+                clock=clock,
+                gauge=gauge,
+            )
 
         return commit
 
@@ -411,6 +479,15 @@ def episode_changed_handler(clock: Clock, gauge: BackpressureGauge | None = None
                     "episode current pointer does not resolve to its revision number"
                 )
             _schedule_fts_apply(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type="episode",
+                resource_id=episode.id,
+                agent_id=episode.agent_id,
+                clock=clock,
+                gauge=gauge,
+            )
+            _schedule_vector_apply(
                 tx,
                 tenant_id=job.tenant_id,
                 resource_type="episode",
@@ -505,6 +582,15 @@ def memory_invalidated_handler(clock: Clock, gauge: BackpressureGauge | None = N
                     clock=clock,
                     gauge=gauge,
                 )
+                _schedule_vector_apply(
+                    tx,
+                    tenant_id=job.tenant_id,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    agent_id=job.agent_id,
+                    clock=clock,
+                    gauge=gauge,
+                )
 
         return commit
 
@@ -570,6 +656,80 @@ def fts_cleanup_handler(projection: FtsProjectionService) -> JobWork:
     return work
 
 
+# ---------------------------------------------------------------------------
+# Phase 7 handlers: vector projection maintenance
+
+
+def vector_apply_handler(projection: VectorProjectionService) -> JobWork:
+    """vector.apply: id map + delta ledger maintenance for one resource."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        payload = _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            resource_type = payload.get("resource_type")
+            resource_id = payload.get("resource_id")
+            if not isinstance(resource_type, str) or not isinstance(resource_id, str):
+                raise ValueError("vector.apply payload needs resource_type/resource_id")
+            projection.apply_change_in_tx(
+                tx,
+                tenant_id=job.tenant_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+            )
+
+        return commit
+
+    return work
+
+
+def vector_rebuild_handler(projection: VectorProjectionService) -> JobWork:
+    """vector.rebuild: build + verify OUTSIDE the fenced transaction, then
+    land only the switch inside it (§20.2: provider calls never run in a
+    writer transaction; ADR-0015 §8). Crash between the two halves leaves an
+    orphan directory the sweep collects; the retry rebuilds from canonical
+    state (catch_up=latest). The generation gauge is emitted by the
+    post-commit hook — a fenced/rolled-back switch must not move it."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+        prepared = projection.prepare_generation(job.tenant_id)
+
+        def commit(tx: Transaction) -> None:
+            projection.switch_in_tx(tx, job.tenant_id, prepared)
+
+        commit.after_commit = partial(projection.emit_generation, job.tenant_id)  # type: ignore[attr-defined]
+        return commit
+
+    return work
+
+
+def vector_cleanup_handler(projection: VectorProjectionService) -> JobWork:
+    """vector.cleanup: physical deletion of invalidated id map rows and
+    retired generations beyond the rollback window (inside the fenced
+    transaction), then the post-commit hook unlinks the deleted generations'
+    directories and sweeps orphans — files are removed only once their row
+    deletion is durable, so a fenced/rolled-back completion can never leave
+    the rows restored but the directories gone."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        _require_payload(job)
+        removed_dirs: list[str] = []
+
+        def commit(tx: Transaction) -> None:
+            _id_rows, removed = projection.cleanup_in_tx(tx, job.tenant_id)
+            removed_dirs.extend(removed)
+
+        def after_commit() -> None:
+            projection.remove_generation_dirs(removed_dirs)
+            projection.sweep_filesystem()
+
+        commit.after_commit = after_commit  # type: ignore[attr-defined]
+        return commit
+
+    return work
+
+
 def retention_compaction_handler(retention: RetentionService, clock: Clock) -> JobWork:
     """retention.compaction: the §19.5 sweep inside the fenced transaction."""
 
@@ -602,4 +762,7 @@ __all__ = [
     "state_projection_handler",
     "task_changed_handler",
     "task_trigger_scan_handler",
+    "vector_apply_handler",
+    "vector_cleanup_handler",
+    "vector_rebuild_handler",
 ]

@@ -42,6 +42,11 @@
     },
     {
       "expected": "accept",
+      "file": "forward/recall-response-future-routes.json",
+      "schema": "recall-response"
+    },
+    {
+      "expected": "accept",
       "file": "forward/recall-response-no-trace.json",
       "schema": "recall-response"
     },
@@ -183,6 +188,11 @@
     {
       "expected": "reject",
       "file": "invalid/recall-response-unknown-reason.json",
+      "schema": "recall-response"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/recall-response-vector-nonboolean-retryable.json",
       "schema": "recall-response"
     },
     {
@@ -413,6 +423,11 @@
     {
       "expected": "accept",
       "file": "valid/recall-response-empty.json",
+      "schema": "recall-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/recall-response-vector.json",
       "schema": "recall-response"
     },
     {

@@ -660,6 +660,9 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "fts.apply",
                 "fts.rebuild",
                 "fts.cleanup",
+                "vector.apply",
+                "vector.rebuild",
+                "vector.cleanup",
             }
         )
         == ENABLED_JOB_KINDS

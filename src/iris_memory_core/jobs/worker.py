@@ -28,6 +28,7 @@ from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import LeaseFencedError
 from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS, OutboxJob
 from iris_memory_core.indexing.fts import FtsProjectionService
+from iris_memory_core.indexing.vector import VectorProjectionService
 
 
 def selfcheck_handler(job: OutboxJob) -> JobCommit:
@@ -144,6 +145,27 @@ def phase6_handlers(
         "fts.apply": fts_apply_handler(projection),
         "fts.rebuild": fts_rebuild_handler(projection),
         "fts.cleanup": fts_cleanup_handler(projection),
+    }
+
+
+def phase7_handlers(
+    *,
+    projection: VectorProjectionService,
+) -> dict[str, JobWork]:
+    """Phase 7 handlers: vector projection apply/rebuild/cleanup (ADR-0015
+    §8). The rebuild handler's work() stage runs the provider calls and the
+    file pipeline outside any transaction; only the fenced switch lands in
+    the commit transaction."""
+    from iris_memory_core.jobs.handlers import (
+        vector_apply_handler,
+        vector_cleanup_handler,
+        vector_rebuild_handler,
+    )
+
+    return {
+        "vector.apply": vector_apply_handler(projection),
+        "vector.rebuild": vector_rebuild_handler(projection),
+        "vector.cleanup": vector_cleanup_handler(projection),
     }
 
 

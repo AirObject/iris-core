@@ -1,0 +1,24 @@
+{
+  "cache_until": null,
+  "candidates": [],
+  "completed_routes": [
+    "vector"
+  ],
+  "degraded_routes": [
+    {
+      "fallback": "route_skipped_canonical_intact",
+      "reason_code": "vector_index_corrupt",
+      "retryable": "yes",
+      "route": "vector"
+    }
+  ],
+  "next_wake_at": null,
+  "partial": true,
+  "pending_event_ids": [],
+  "persona_content_hash": "",
+  "persona_revision": 0,
+  "request_id": "01a060aa-0000-7000-8000-000000000004",
+  "schema_version": 1,
+  "source_watermark": "9",
+  "trace": null
+}

@@ -20,8 +20,13 @@ from dataclasses import dataclass
 from typing import Protocol
 
 #: Bump when weights, missing-value semantics, conflict marking or budget
-#: logic change. Ranker v1 was the Phase 3/4 skeleton (ADR-0011 §4).
+#: logic change. Ranker v1 was the Phase 3/4 skeleton (ADR-0011 §4); v2
+#: added missing-score semantics, conflict marking and protected budgets
+#: (ADR-0014 §5); v3 adds the ``vector`` route to the fusion set with the
+#: frozen hybrid tie-breaker (ADR-0015 §6) — existing candidates rank
+#: identically under v2 and v3.
 RECALL_RANKER_V2 = 2
+RECALL_RANKER_V3 = 3
 
 #: Version of the char/4 token estimator used for budget math.
 TOKEN_ESTIMATOR_VERSION = 1
@@ -43,6 +48,7 @@ REDUNDANCY_PENALTY = 0.10
 
 #: Wire route names frozen by ADR-0014 §3 (internal names win over the
 #: baseline's example spellings; ``tasks`` keeps its ADR-0011/0012 identity).
+#: Phase 7 adds ``vector`` (ADR-0015 §6, baseline example spelling).
 ROUTE_TASKS = "tasks"
 ROUTE_FOCUS = "focus"
 ROUTE_CLAIMS = "claims"
@@ -50,10 +56,12 @@ ROUTE_RECENT = "recent_context"
 ROUTE_RELATIONS = "relations"
 ROUTE_STATE = "state"
 ROUTE_FTS = "fts"
+ROUTE_VECTOR = "vector"
 
 #: Category priority for the stable tie-breaker: prospective memory first,
 #: then focus, then long-term structured memory, then hot context, then
-#: relations, state and finally FTS matches.
+#: relations, state, FTS matches and finally vector matches — semantic
+#: recall supplements, never displaces, the deterministic routes.
 CATEGORY_PRIORITY: Mapping[str, int] = {
     ROUTE_TASKS: 0,
     ROUTE_FOCUS: 1,
@@ -62,6 +70,7 @@ CATEGORY_PRIORITY: Mapping[str, int] = {
     ROUTE_RELATIONS: 4,
     ROUTE_STATE: 5,
     ROUTE_FTS: 6,
+    ROUTE_VECTOR: 7,
 }
 
 #: Routes whose candidates are guaranteed by the budget pass (§18.6):
@@ -248,6 +257,39 @@ class RankerV2:
         return sorted(marked, key=stable_sort_key)
 
 
+class RankerV3:
+    """Deterministic v3 hybrid fusion (ADR-0015 §6): structured + FTS +
+    vector candidates in one stable order.
+
+    The fusion math is v2's (missing ≠ 0, deterministic conflict/redundancy
+    marking, protected budgets); v3 registers the ``vector`` category
+    priority and DEDUPLICATES by canonical resource: when the same
+    ``(resource_type, resource_id)`` surfaces through several routes (a
+    claim hit by claims, FTS and vector), exactly ONE instance — the
+    best-scored in stable order — is kept and the duplicates are dropped
+    BEFORE budgeting, so a multi-route resource occupies exactly one budget
+    slot ("nothing is returned twice"). Marking still runs first: the
+    surviving instance carries the v2 conflict/redundancy verdicts, and
+    DISTINCT resources disputing a predicate (conflict groups) are never
+    merged — only same-resource duplicates are. Resource types are disjoint
+    across routes, so a protected candidate (due task, focus item) can
+    never lose its slot to a duplicate of itself."""
+
+    version = RECALL_RANKER_V3
+
+    def score(self, candidates: Sequence[ScoredCandidate]) -> list[ScoredCandidate]:
+        ordered = RankerV2().score(candidates)
+        kept: list[ScoredCandidate] = []
+        seen: set[tuple[str, str]] = set()
+        for candidate in ordered:
+            identity = (candidate.resource_type, candidate.resource_id)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            kept.append(candidate)
+        return kept
+
+
 def is_speaker_identity(candidate: ScoredCandidate, speaker_entity_id: str | None) -> bool:
     """The speaker's necessary identity claims are budget-protected (§18.6)."""
     if speaker_entity_id is None or candidate.subject_entity_id != speaker_entity_id:
@@ -325,9 +367,11 @@ __all__ = [
     "IDENTITY_CLAIM_CATEGORIES",
     "PROTECTED_ROUTES",
     "RECALL_RANKER_V2",
+    "RECALL_RANKER_V3",
     "SCORE_WEIGHTS",
     "TOKEN_ESTIMATOR_VERSION",
     "RankerV2",
+    "RankerV3",
     "apply_token_budgets",
     "compute_final_score",
     "is_speaker_identity",

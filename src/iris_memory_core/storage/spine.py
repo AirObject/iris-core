@@ -768,6 +768,22 @@ class OutboxRepository:
         assert row is not None  # aggregates always return one row
         return int(row["c"])
 
+    def unsettled_null_agent_job_count(self, tenant_id: str, job_kind: str) -> int:
+        """Unsettled jobs of one kind with NO owning agent for a tenant.
+
+        Ownerless projection jobs (the triggering event carried no agent and
+        the resource was unresolvable) still represent unincorporated
+        changes; freshness gates count them against EVERY requesting agent —
+        fail-stale beats a false-fresh hole."""
+        row = _one(
+            self._connection,
+            f"SELECT COUNT(*) AS c FROM outbox_jobs WHERE status IN ({_UNSETTLED}) "
+            "AND tenant_id = ? AND agent_id IS NULL AND job_kind = ?",
+            (tenant_id, job_kind),
+        )
+        assert row is not None  # aggregates always return one row
+        return int(row["c"])
+
     def status_counts(self) -> dict[str, int]:
         rows = self._connection.execute(
             "SELECT status, COUNT(*) AS c FROM outbox_jobs GROUP BY status"

@@ -18,5 +18,6 @@ Phase 0 freezes the boundaries required by Phase 1. Accepted decisions are immut
 | [0012](./0012-phase4-notes-tasks-events.md) | Phase 4 note lifecycle, task evidence semantics, trigger/occurrence identity, at-least-once host delivery | Accepted |
 | [0013](./0013-phase5-long-term-memory.md) | Phase 5 explicit long-term memory, bi-temporal claims, evidence invariants, artifact security, non-resurrecting erasure | Accepted |
 | [0014](./0014-phase6-fts-recall.md) | Phase 6 FTS5 generations, full recall protocol, fresh rehydrate boundary, deterministic fusion/budgets, usage four stages | Accepted |
+| [0015](./0015-phase7-vector-recall.md) | Phase 7 embedding provider port, FAISS generation lifecycle with fenced COW swap, surrogate ID map, delta ledger freshness, vector route + hybrid ranker v3 | Accepted |
 
 Open conflicts blocking Phase 1: **none**.

@@ -15,7 +15,14 @@
         "fts_generation_stale",
         "fts_index_corrupt",
         "fts_unavailable",
-        "fts_as_of_unsupported"
+        "fts_as_of_unsupported",
+        "vector_rebuild_pending",
+        "vector_builder_unknown",
+        "vector_generation_stale",
+        "vector_index_corrupt",
+        "vector_unavailable",
+        "vector_as_of_unsupported",
+        "vector_space_mismatch"
       ]
     },
     "retryable": {
@@ -29,7 +36,8 @@
         "focus",
         "claims",
         "relations",
-        "fts"
+        "fts",
+        "vector"
       ]
     }
   },

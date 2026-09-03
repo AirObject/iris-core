@@ -1243,7 +1243,14 @@
               "fts_generation_stale",
               "fts_index_corrupt",
               "fts_unavailable",
-              "fts_as_of_unsupported"
+              "fts_as_of_unsupported",
+              "vector_rebuild_pending",
+              "vector_builder_unknown",
+              "vector_generation_stale",
+              "vector_index_corrupt",
+              "vector_unavailable",
+              "vector_as_of_unsupported",
+              "vector_space_mismatch"
             ]
           },
           "retryable": {
@@ -1257,7 +1264,8 @@
               "focus",
               "claims",
               "relations",
-              "fts"
+              "fts",
+              "vector"
             ]
           }
         },
@@ -3669,7 +3677,14 @@
                     "fts_generation_stale",
                     "fts_index_corrupt",
                     "fts_unavailable",
-                    "fts_as_of_unsupported"
+                    "fts_as_of_unsupported",
+                    "vector_rebuild_pending",
+                    "vector_builder_unknown",
+                    "vector_generation_stale",
+                    "vector_index_corrupt",
+                    "vector_unavailable",
+                    "vector_as_of_unsupported",
+                    "vector_space_mismatch"
                   ]
                 },
                 "retryable": {
@@ -3683,7 +3698,8 @@
                     "focus",
                     "claims",
                     "relations",
-                    "fts"
+                    "fts",
+                    "vector"
                   ]
                 }
               },
@@ -5985,7 +6001,7 @@
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.5.0"
+    "version": "1.6.0"
   },
   "openapi": "3.1.0",
   "paths": {

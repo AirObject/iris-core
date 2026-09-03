@@ -1,13 +1,16 @@
 # 阶段 7：Vector Recall
 
-> 状态：Planned  
-> 前置阶段：[阶段 6](./phase-06-fts-recall.md)  
-> 目标版本：0.8.0  
+> 状态：Completed（含两轮对抗性复审修复）
+> 负责人：Iris Memory Core Team
+> 开始日期：2026-09-03
+> 完成日期：2026-09-03
+> 前置阶段：[阶段 6](./phase-06-fts-recall.md)
+> 目标版本：0.8.0（已达成：Core/双 SDK 0.8.0、Schema 8、Contract 1.6.0）
 > 架构依据：[§22.2 Embedding](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#222-embedding)、[§22.3 FAISS Generation](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#223-faiss-generation)、[§22.4 并发规则](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#224-并发规则)、[§24 Provider 边界](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#24-provider-边界)、[§30 性能与容量](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#30-性能与容量目标)、[§36 阶段 7](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-7vector-recall)
 
 ## 阶段目标
 
-在不削弱 Canonical/FTS 可靠性的前提下增加可回退的向量语义召回。阶段结束时，模型或维度切换、Generation 损坏、并发重建、进程重启均不会让查询读取半成品或错误向量空间。
+在不削弱 Canonical/FTS 可靠性的前提下增加可回退的向量语义召回。模型或维度切换、Generation 损坏、并发重建、进程重启均不会让查询读取半成品或错误向量空间。
 
 ## 架构约束
 
@@ -71,21 +74,25 @@
 
 ## 退出门禁
 
-- [ ] UUID↔int64 映射唯一、可恢复、可校验，重建前后 Resource Revision 一致。
-- [ ] 并发 Search/Rebuild/Swap 压测无半构建 Handle、Use-after-close 或混合 Generation。
-- [ ] 损坏文件、Checksum 错误、模型/维度变化和加载失败均安全回退。
-- [ ] 重启只加载完整已验证 Generation，临时或孤儿目录不影响 Ready。
-- [ ] Vector 中残留的已删除/越权/旧 Revision Candidate 被 Rehydrate 剔除。
-- [ ] Hybrid Recall 在目标条件下 p95 ≤ 250 ms，并报告 Route 延迟与降级。
-- [ ] Schema/Capability/Generation 兼容和回退方案、需求追踪及交付证据已完成评审。
+- [x] UUID↔int64 映射唯一、可恢复、可校验，重建前后 Resource Revision 一致。
+- [x] 并发 Search/Rebuild/Swap 压测无半构建 Handle、Use-after-close 或混合 Generation。
+- [x] 损坏文件、Checksum 错误、模型/维度变化和加载失败均安全回退。
+- [x] 重启只加载完整已验证 Generation，临时或孤儿目录不影响 Ready。
+- [x] Vector 中残留的已删除/越权/旧 Revision Candidate 被 Rehydrate 剔除。
+- [x] Hybrid Recall 在目标条件下 p95 ≤ 250 ms，并报告 Route 延迟与降级。
+- [x] Schema/Capability/Generation 兼容和回退方案、需求追踪及交付证据已完成评审。
 
 ## 交付证据
 
-- 代码/变更：待补充
-- Provider/Generation Manifest：待补充
-- Schema/Migration：待补充
-- 并发/性能/损坏恢复报告：待补充
-- 已知限制：待补充
+- 代码/变更：基线 `179b6a0` 之上的工作区（未提交，供复审）；核心模块 `domain/vector.py`（模板/空间身份/surrogate 规则/校验/原因码）、`providers/embedding.py`（HttpEmbeddingProvider + Deterministic 测试 Provider + 校验包装/熔断/限流/Probe）、`indexing/faiss.py`（真实 FAISS `IndexIDMap2(IndexFlatIP)` adapter，惰性探测）、`indexing/vector.py`（六阶段 Generation 流水线、COW Handle/Manager、信任门搜索、cleanup/sweep）、`storage/vector.py`（投影仓储）、`application/recall.py`（VectorRoute + Hybrid Ranker v3 接入）、`jobs/handlers.py` + `jobs/worker.py`（vector.apply/rebuild/cleanup）、`storage/backup.py`（restore 重置 + 不变量）、`application/health.py`、`observability/metrics.py`。
+- 决策：[ADR-0015](../adr/0015-phase7-vector-recall.md)。
+- 契约/SDK 版本：Contract 1.6.0（additive：capability `recall.vector.v1`、`embedding.v1`；路由枚举 +`vector`；降级原因码 +7；错误码 +`provider_unavailable`）；Python/TypeScript SDK 0.8.0；fixtures 107 manifest cases。
+- Schema/Migration：Schema 8（`0008_phase7_vector_recall.sql`，online_safe、min_app=0.8.0）；0001–0007 与 `179b6a0` 逐字节一致（`test_published_bytes_match_head_baseline` 锁定）；窗口 [7, 8]。
+- 性能/竞态测试报告：[phase-07-verification](../reports/phase-07-verification.md)。
+- 对抗性复审第一轮（2026-09-03）：vector 搜索路径缺 Tombstone 最后防线（并发测试实际捕获并修复）、faiss SWIG 双引用 GC 陷阱、snapshot 字典序 vs 数值序、Manager 对已 seal Handle 的分发、跨租户清扫、阶段 4 饥饿分配、ownerless backlog——全部修复并落回归。
+- 对抗性复审第二轮（2026-09-03，3×P1 + 5×P2）：(P1) 未发布构建经 id map 刷新伪造新鲜 ⇒ 引入 `incorporated_generation` 成员戳（与指针 CAS 同事务盖章，apply 跳过需 revision 相等 ∧ 戳 == 当前指针代）；(P1) 验证只信可重写的 checksums.txt ⇒ manifest 为文件摘要权威 + 加载路径绑定 SQLite 权威行（checksum/数量/空间精确相等、水位单调）+ 畸形输入折叠为稳定 `vector_index_corrupt`；(P1) RankerV3 未真正去重 ⇒ 按 Canonical 资源在预算前去重（v2 标记保留，冲突组不合并）；(P2) Provider deadline 真下传（socket 级 min(配置,剩余)，半开单探针）、`capability_available`/readiness 接入 Provider Probe（`vector_required` 部署 Provider 宕机 ⇒ not_ready）、目录删除移出 fenced 事务（`after_commit` 钩子，回滚不丢目录）、overfetch 迭代扩张（跨 Agent 挤占不再产生假阴性）、四个 Phase 7 指标接上真实发射点——全部修复并以复审复现场景落回归。
+- 回退策略：停用 `vector.*` handler 与 Vector 路由 → 兼容二进制运行 Schema 8 → 必要时按 ADR-0013 §10 恢复流程回退备份（Vector 由 0.8.0 重建，restore 后强制 `pending_rebuild`）。
+- 已知限制：见验证报告（Deterministic Provider 无语义质量、FAISS 未含于备份、重建逐 Agent 水印保守 abort 语义、`/v1/search` 未加向量面等）。
 
 ## 明确不做
 

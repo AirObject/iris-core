@@ -1,1 +1,1 @@
-"""External provider adapters; implemented in later phases."""
+"""External provider adapters behind application ports (§24)."""

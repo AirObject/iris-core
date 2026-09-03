@@ -1,0 +1,25 @@
+{
+  "cache_until": null,
+  "candidates": [],
+  "completed_routes": [
+    "recent_context",
+    "profile_hybrid"
+  ],
+  "degraded_routes": [
+    {
+      "fallback": "route_skipped_canonical_intact",
+      "reason_code": "route_deadline_exceeded",
+      "retryable": true,
+      "route": "graph"
+    }
+  ],
+  "next_wake_at": null,
+  "partial": true,
+  "pending_event_ids": [],
+  "persona_content_hash": "",
+  "persona_revision": 0,
+  "request_id": "01a060aa-0000-7000-8000-000000000003",
+  "schema_version": 1,
+  "source_watermark": "7",
+  "trace": null
+}

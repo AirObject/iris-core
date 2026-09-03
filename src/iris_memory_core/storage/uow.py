@@ -76,6 +76,7 @@ from iris_memory_core.storage.spine import (
     ScheduleRepository,
     SurfaceRepository,
 )
+from iris_memory_core.storage.vector import VectorRepository
 
 BUSY_MESSAGES = ("database is locked", "database table is locked")
 
@@ -123,6 +124,7 @@ class Transaction:
         self.retention = RetentionRepository(connection, clock, ids)
         self.fts = FtsRepository(connection, clock, ids)
         self.usage = RecallUsageRepository(connection, clock, ids)
+        self.vector = VectorRepository(connection, clock, ids)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}
@@ -650,6 +652,7 @@ class Store:
         busy_retry_attempts: int = 8,
         busy_backoff_ms: float = 25.0,
         busy_observer: Callable[[str], None] | None = None,
+        verify_schema_window: bool = True,
     ) -> None:
         self.runtime = runtime
         self.clock: Clock = clock or SystemClock()
@@ -660,6 +663,12 @@ class Store:
         self._busy_retry_attempts = busy_retry_attempts
         self._busy_backoff_ms = busy_backoff_ms
         self._busy_observer = busy_observer
+        #: Restore's deletion-ledger replay operates on AUTHENTICATED legacy
+        #: bytes inside staging: an older-schema snapshot is replayed there
+        #: and switched in, and the ordinary startup migration (never the
+        #: restore path, ADR-0014 §12-10) brings it forward when the current
+        #: binary opens it. Only that path may bypass the window gate.
+        self._verify_schema_window = verify_schema_window
 
     def _note_busy(self, operation_class: str) -> None:
         if self._busy_observer is not None:
@@ -684,7 +693,7 @@ class Store:
 
     def _ready_connect(self) -> sqlite3.Connection:
         """Open a connection enforcing the schema compatibility window."""
-        return self.runtime.connect(verify_schema=True)
+        return self.runtime.connect(verify_schema=self._verify_schema_window)
 
     def _connect_with_retry(self) -> sqlite3.Connection:
         delay = self._busy_backoff_ms / 1000

@@ -4,13 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iris-memory-core"
-version = "0.7.0"
+version = "0.8.0"
 description = "Host-independent cognitive memory service"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-only"
 authors = [{ name = "Iris Memory Core contributors" }]
-dependencies = []
+# Phase 7 (ADR-0015): the FAISS adapter and its numpy bridge are runtime
+# dependencies; the imports stay lazy so a runtime without them degrades the
+# Vector capability instead of failing startup.
+dependencies = [
+  "faiss-cpu>=1.15,<2",
+  "numpy>=2.1,<3",
+]
 
 [project.scripts]
 iris-memory-core = "iris_memory_core.cli:main"
