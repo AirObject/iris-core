@@ -173,3 +173,32 @@ def test_cli_restore_and_recover_switch(tmp_path: Path, capsys: pytest.CaptureFi
     assert (target / "canonical.sqlite3").is_file()
     assert main(["recover-switch", str(target)]) == 0
     assert "recover_switch=none" in capsys.readouterr().out
+
+
+def test_serve_and_worker_report_startup_failures_without_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A misconfigured process entry point diagnoses, it does not crash (§35.4).
+
+    Both failure classes are covered: a ``ValueError`` from configuration
+    validation and a ``DomainError`` from the runtime allowlist — an operator
+    needs the diagnosis on stderr, not a stack trace.
+    """
+    for command in ("serve", "worker"):
+        assert main([command, "--database", str(Path.home() / "core.sqlite3")]) == 1
+        message = str(capsys.readouterr().err)
+        assert message.startswith(f"{command} startup failed: ")
+        assert "dedicated data directory" in message
+        assert "Traceback" not in message
+
+    from iris_memory_core.domain.errors import RuntimeNotAllowedError
+    from iris_memory_core.storage import runtime as runtime_module
+
+    def refuse(self: object, **kwargs: object) -> object:
+        raise RuntimeNotAllowedError("sqlite runtime is not in the allowlist")
+
+    monkeypatch.setattr(runtime_module.SQLiteRuntime, "connect", refuse)
+    assert main(["worker", "--database", str(tmp_path / "data" / "core.sqlite3")]) == 1
+    message = str(capsys.readouterr().err)
+    assert message.startswith("worker startup failed: ")
+    assert "Traceback" not in message

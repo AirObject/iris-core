@@ -1,0 +1,26 @@
+{
+  "additionalProperties": true,
+  "properties": {
+    "created_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "operation_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation_id",
+    "kind",
+    "status",
+    "created_us"
+  ],
+  "type": "object"
+}

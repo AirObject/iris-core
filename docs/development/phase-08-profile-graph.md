@@ -151,9 +151,10 @@
    `relations` 路由与最终 relation rehydrate 现与 Graph 遍历共用
    `relation_endpoints_visible`，同一份数据只有一套隐私口径。回归见
    `tests/integration/test_relation_endpoint_privacy.py`。
-9. **无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的 61 条
+9. ~~**无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的 61 条
    路径至今没有真实服务端，归 Phase 10 交付（ADR-0017 §3）。该项在传输层交付前
-   不得从任何阶段的已知限制中移除。
+   不得从任何阶段的已知限制中移除。~~
+   **已于 Phase 10 解除**：85 条已发布路径全部有真实 ASGI 实现并通过成功/失败双向契约测试，见 [phase-10](./phase-10-consolidation-reflection.md)。
 
 ## 明确不做
 

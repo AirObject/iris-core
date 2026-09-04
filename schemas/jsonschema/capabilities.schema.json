@@ -15,6 +15,14 @@
       "type": "array",
       "uniqueItems": true
     },
+    "deprecated_capabilities": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
     "schema_version": {
       "minimum": 1,
       "type": "integer"

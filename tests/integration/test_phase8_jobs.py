@@ -281,6 +281,8 @@ class TestStaleWorkerDiscipline:
         # directly — a NEWER deployment wrote it).
         import sqlite3
 
+        from iris_memory_core.domain.jobs import JOB_PAYLOAD_VERSION
+
         connection = sqlite3.connect(world.store.runtime.database)
         try:
             connection.execute(
@@ -289,9 +291,14 @@ class TestStaleWorkerDiscipline:
                 "payload_version, dedupe_key, coalesce_key, priority, status, "
                 "available_at_us, attempt_count, max_attempts, lease_generation, "
                 "created_us) VALUES ('future-job-1', ?, ?, 'graph.apply', 'claim', "
-                "'future-1', 1, ?, 2, 'future-graph-apply-1', "
+                "'future-1', 1, ?, ?, 'future-graph-apply-1', "
                 "'graph:claim:future-1', 5, 'pending', 0, 0, 8, 0, 1)",
-                (TENANT, world.agent, json.dumps({"version": 2})),
+                (
+                    TENANT,
+                    world.agent,
+                    json.dumps({"version": JOB_PAYLOAD_VERSION + 1}),
+                    JOB_PAYLOAD_VERSION + 1,
+                ),
             )
             connection.commit()
         finally:

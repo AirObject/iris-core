@@ -1,0 +1,12 @@
+{
+  "events": [
+    {
+      "resource_type": "admin_operation",
+      "resource_id": "operation-fixture-1",
+      "revision": null,
+      "action": "admin.backup.requested",
+      "reason_code": "fixture verification",
+      "created_us": 1000000
+    }
+  ]
+}

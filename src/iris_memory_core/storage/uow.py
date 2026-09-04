@@ -66,6 +66,7 @@ from iris_memory_core.storage.plans import (
     TaskRepository,
 )
 from iris_memory_core.storage.projection import GraphRepository, ProfileRepository
+from iris_memory_core.storage.reflection import ReflectionRepository
 from iris_memory_core.storage.repositories import (
     IdentityRepository,
     LedgerRepository,
@@ -130,6 +131,7 @@ class Transaction:
         self.profile = ProfileRepository(connection, clock, ids)
         self.graph = GraphRepository(connection, clock, ids)
         self.personas = PersonaRepository(connection, clock, ids)
+        self.reflection = ReflectionRepository(connection, clock, ids)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}
@@ -182,6 +184,9 @@ class Transaction:
         group = self.spaces.get_space_group(space_group_id)
         self._reject_tombstoned(group.tenant_id, "space_group", group.id)
         return group
+
+    def list_space_groups(self, tenant_id: str) -> tuple[SpaceGroup, ...]:
+        return self.spaces.list_space_groups(tenant_id)
 
     def update_space_group(
         self,
@@ -453,6 +458,11 @@ class Transaction:
             details=details,
             revision=revision,
         )
+
+    def list_audit_events(
+        self, tenant_id: str, *, after_us: int = 0, limit: int = 100
+    ) -> tuple[AuditEvent, ...]:
+        return self.ledger.list_audit_events(tenant_id, after_us=after_us, limit=limit)
 
     def advance_watermark(
         self,

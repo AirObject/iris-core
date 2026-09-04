@@ -1,0 +1,8 @@
+{
+  "external_identity_id": "identity-fixture-1",
+  "entity_id": "entity-fixture-1",
+  "method": "admin_confirmation",
+  "confidence": 1.1,
+  "proof": "fixture-proof",
+  "reason": "fixture verification"
+}

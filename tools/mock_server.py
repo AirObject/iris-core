@@ -1,15 +1,16 @@
 """Small dependency-free server for SDK consumer contract tests.
 
-Implements the deterministic Phase 2-9 contract surface (currently Schema 10):
+Implements the deterministic Phase 2-10 SDK-offline contract surface (Schema 11):
 health with the readiness report shape, metrics, capability negotiation,
 observation batches and cursors, active surfaces, recent context, state,
 focus, notes, tasks, cognitive events, explicit memory, recall/search/usage
 and the entity profile read surface. Responses are static fixtures — the mock
 validates envelope shapes, not business semantics.
 
-This is a test double, NOT the service: Core has no HTTP transport layer
-until Phase 10 (ADR-0017 §3), at which point the contract tests move to the
-real ASGI application and this mock is kept only for SDK offline cases.
+This is a test double, NOT the service. Since Phase 10 the real ASGI
+application in ``iris_memory_core.api`` serves every published path and the
+repository's contract tests run against it (ADR-0019 §10); this mock is kept
+only for the SDKs' offline cases.
 """
 
 from __future__ import annotations
@@ -19,46 +20,19 @@ import json
 import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+_CONTRACT_SOURCE = json.loads(
+    (Path(__file__).resolve().parents[1] / "contracts" / "source" / "contracts.json").read_text(
+        encoding="utf-8"
+    )
+)
 CAPABILITIES: dict[str, Any] = {
-    "api_version": "v1",
-    "schema_version": 10,
-    "capabilities": [
-        "active-surface.v1",
-        "artifacts.v1",
-        "claims.v1",
-        "cognitive-events.v1",
-        "contract.negotiation",
-        "embedding.v1",
-        "episodes.v1",
-        "error-envelope.v1",
-        "focus-items.v1",
-        "health.readiness.v2",
-        "health.v1",
-        "memory-forget.v1",
-        "metrics.v1",
-        "notes.v1",
-        "observe.batch.v1",
-        "outbox.jobs.v1",
-        "persona.evolution.v1",
-        "persona.state.v1",
-        "persona.v1",
-        "profile.v1",
-        "recall.graph.v1",
-        "recall.usage.v1",
-        "recall.vector.v1",
-        "recall.v1",
-        "recent-context.v1",
-        "relations.v1",
-        "retention.v1",
-        "schedules.v1",
-        "search.fts.v1",
-        "source-cursor.v1",
-        "state.v1",
-        "tasks.v1",
-    ],
+    "api_version": _CONTRACT_SOURCE["api_version"],
+    "schema_version": _CONTRACT_SOURCE["schema_version"],
+    "capabilities": _CONTRACT_SOURCE["capabilities"],
 }
 
 READINESS: dict[str, Any] = {
@@ -711,6 +685,56 @@ _PERSONA_REVIEW_PATTERN = re.compile(
     r"(?P<proposal_id>[^:]+):(?P<action>approve|reject)$"
 )
 _PERSONA_ROLLBACK_PATTERN = re.compile(r"^/v1/personas/(?P<agent_id>[^:]+):rollback$")
+_ENTITY_PATTERN = re.compile(r"^/v1/entities/(?P<entity_id>[^/]+)$")
+_ENTITY_RELATIONS_PATTERN = re.compile(r"^/v1/entities/(?P<entity_id>[^/]+)/relations$")
+_BINDING_REVIEW_PATTERN = re.compile(
+    r"^/v1/bindings/(?P<binding_id>[^:]+):(?P<action>confirm|revoke)$"
+)
+_SPACE_GROUP_BIND_PATTERN = re.compile(
+    r"^/v1/space-groups/(?P<group_id>[^/]+)/spaces/(?P<space_id>[^:]+):"
+    r"(?P<action>bind|unbind)$"
+)
+_INDEX_REBUILD_PATTERN = re.compile(
+    r"^/v1/admin/indexes/(?P<kind>recent_context|fts|vector|graph|profile):rebuild$"
+)
+
+_ENTITY_VIEW = {
+    "entity_id": "entity-1",
+    "kind": "person",
+    "display_name": "Example Person",
+    "state": "active",
+    "revision": 1,
+}
+_IDENTITY_VIEW = {
+    "external_identity_id": "identity-1",
+    "entity_id": "entity-1",
+    "provider": "example",
+    "subject_hash": "ab" * 32,
+    "realm": "default",
+}
+_BINDING_VIEW = {
+    "binding_id": "binding-1",
+    "external_identity_id": "identity-1",
+    "entity_id": "entity-1",
+    "state": "proposed",
+    "revision": 1,
+}
+_SPACE_GROUP_VIEW = {
+    "space_group_id": "group-1",
+    "name": "Example Group",
+    "description": "SDK offline fixture",
+    "revision": 1,
+    "space_ids": [],
+}
+
+
+def _admin_operation(kind: str) -> dict[str, object]:
+    return {
+        "operation_id": f"{kind}-1",
+        "kind": kind,
+        "status": "accepted",
+        "created_us": 1_700_000_000_000_000,
+    }
 
 
 class ContractRequestHandler(BaseHTTPRequestHandler):
@@ -760,6 +784,9 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
             received = getattr(self.server, "received_requests", None)
             if received is not None:
                 received.append((self.command, urlparse(self.path).path, value))
+            authorizations = getattr(self.server, "received_authorizations", None)
+            if authorizations is not None:
+                authorizations.append(self.headers.get("Authorization"))
             return value
         except (ValueError, json.JSONDecodeError):
             return None
@@ -777,6 +804,33 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/v1/capabilities":
             self._send(HTTPStatus.OK, CAPABILITIES)
+            return
+        entity_relations = _ENTITY_RELATIONS_PATTERN.match(parsed.path)
+        if entity_relations is not None:
+            self._send(HTTPStatus.OK, {"items": [dict(_RELATION_VIEW)]})
+            return
+        if _ENTITY_PATTERN.match(parsed.path) is not None:
+            self._send(HTTPStatus.OK, _ENTITY_VIEW)
+            return
+        if parsed.path == "/v1/space-groups":
+            self._send(HTTPStatus.OK, {"items": [dict(_SPACE_GROUP_VIEW)]})
+            return
+        if parsed.path == "/v1/admin/audit-events":
+            self._send(
+                HTTPStatus.OK,
+                {
+                    "events": [
+                        {
+                            "resource_type": "admin_operation",
+                            "resource_id": "audit-1",
+                            "revision": None,
+                            "action": "admin.backup.requested",
+                            "reason_code": "verification",
+                            "created_us": 1_700_000_000_000_000,
+                        }
+                    ]
+                },
+            )
             return
         if parsed.path == "/v1/recent-context":
             query = parse_qs(parsed.query)
@@ -1037,6 +1091,55 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/v1/negotiation":
             self._handle_negotiation()
+            return
+        if parsed.path == "/v1/identities":
+            self._read_json()
+            self._send(HTTPStatus.CREATED, _IDENTITY_VIEW)
+            return
+        if parsed.path == "/v1/bindings:prepare":
+            self._read_json()
+            self._send(HTTPStatus.CREATED, _BINDING_VIEW)
+            return
+        binding_review = _BINDING_REVIEW_PATTERN.match(parsed.path)
+        if binding_review is not None:
+            self._read_json()
+            view = dict(_BINDING_VIEW)
+            view["state"] = (
+                "confirmed" if binding_review.group("action") == "confirm" else "revoked"
+            )
+            view["revision"] = 2
+            self._send(HTTPStatus.OK, view)
+            return
+        if parsed.path == "/v1/space-groups":
+            self._read_json()
+            self._send(HTTPStatus.CREATED, _SPACE_GROUP_VIEW)
+            return
+        group_binding = _SPACE_GROUP_BIND_PATTERN.match(parsed.path)
+        if group_binding is not None:
+            self._read_json()
+            view = dict(_SPACE_GROUP_VIEW)
+            view["revision"] = 2
+            view["space_ids"] = (
+                [group_binding.group("space_id")] if group_binding.group("action") == "bind" else []
+            )
+            self._send(HTTPStatus.OK, view)
+            return
+        index_rebuild = _INDEX_REBUILD_PATTERN.match(parsed.path)
+        if index_rebuild is not None:
+            self._read_json()
+            self._send(HTTPStatus.ACCEPTED, _admin_operation(index_rebuild.group("kind")))
+            return
+        if parsed.path in {
+            "/v1/admin/backups",
+            "/v1/admin/exports",
+            "/v1/admin/reflections:dry-run",
+        }:
+            self._read_json()
+            self._send(HTTPStatus.ACCEPTED, _admin_operation(parsed.path.rsplit("/", 1)[-1]))
+            return
+        if re.match(r"^/v1/admin/reflections/[^:]+:replay$", parsed.path):
+            self._read_json()
+            self._send(HTTPStatus.ACCEPTED, _admin_operation("reflection_replay"))
             return
         if parsed.path == "/v1/observations:batch":
             self._handle_observe_batch()
@@ -2410,6 +2513,7 @@ def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer
     #: (method, path, parsed-body) tuples recorded by ``_read_json`` for the
     #: contract tests — observation only, never a validation layer.
     server.received_requests = []  # type: ignore[attr-defined]
+    server.received_authorizations = []  # type: ignore[attr-defined]
     return server
 
 

@@ -363,6 +363,13 @@ class SpaceRepository:
             updated_us=int(row["updated_us"]),
         )
 
+    def list_space_groups(self, tenant_id: str) -> tuple[SpaceGroup, ...]:
+        rows = self._connection.execute(
+            "SELECT id FROM space_groups WHERE tenant_id=? AND status='active' ORDER BY id",
+            (tenant_id,),
+        ).fetchall()
+        return tuple(self.get_space_group(str(row["id"])) for row in rows)
+
     def update_space_group(
         self,
         space_group_id: str,
@@ -1270,6 +1277,30 @@ class LedgerRepository:
             reason_code=reason_code,
             details=details or {},
             created_us=now_us,
+        )
+
+    def list_audit_events(
+        self, tenant_id: str, *, after_us: int = 0, limit: int = 100
+    ) -> tuple[AuditEvent, ...]:
+        rows = self._connection.execute(
+            "SELECT * FROM audit_events WHERE tenant_id=? AND created_us>? "
+            "ORDER BY created_us,id LIMIT ?",
+            (tenant_id, after_us, limit),
+        ).fetchall()
+        return tuple(
+            AuditEvent(
+                id=str(row["id"]),
+                tenant_id=str(row["tenant_id"]),
+                actor=str(row["actor"]),
+                action=str(row["action"]),
+                resource_type=str(row["resource_type"]),
+                resource_id=str(row["resource_id"]),
+                revision=int(row["revision"]) if row["revision"] is not None else None,
+                reason_code=str(row["reason_code"]),
+                details=dict(json.loads(str(row["details"]))),
+                created_us=int(row["created_us"]),
+            )
+            for row in rows
         )
 
     def advance_watermark(

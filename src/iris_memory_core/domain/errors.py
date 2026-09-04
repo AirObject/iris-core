@@ -169,6 +169,22 @@ class NotReadyError(DomainError):
     retryable = True
 
 
+class ProviderUnavailableError(DomainError):
+    """A bounded provider dependency cannot accept this background call."""
+
+    code = "provider_unavailable"
+
+    def __init__(
+        self,
+        message: str = "provider is unavailable",
+        *,
+        reason_code: str = "provider_unavailable",
+        retryable: bool = True,
+    ) -> None:
+        super().__init__(message, details={"reason_code": reason_code})
+        self.retryable = retryable
+
+
 class LeaseHeldError(DomainError):
     """Another holder owns the active lease for this agent (§25.2)."""
 
@@ -222,6 +238,12 @@ class InvalidRequestError(DomainError):
     """Malformed or semantically invalid request payload (contract code)."""
 
     code = "invalid_request"
+
+
+class UnsupportedVersionError(InvalidRequestError):
+    """No mutually supported public contract or payload version exists."""
+
+    code = "unsupported_version"
 
 
 class PersonaPolicyDeniedError(DomainError):

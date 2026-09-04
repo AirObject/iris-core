@@ -83,7 +83,7 @@ def _capability(access: AccessContext, capability: str, *, admin: bool = False) 
         raise AccessDeniedError(f"operation requires {capability}")
 
 
-def _json_object(raw: str) -> dict[str, Any]:
+def normalize_persona_layer(raw: str) -> dict[str, Any]:
     if raw == "":
         return {}
     parsed = json.loads(raw)
@@ -417,7 +417,7 @@ class PersonaService:
         changed = 0
         with self._uow.write() as tx:
             for state in tx.personas.due_states(now_us=now_us, limit=limit):
-                baseline = validate_state(_json_object(state.baseline_json))
+                baseline = validate_state(normalize_persona_layer(state.baseline_json))
                 result = tx.personas.put_state(
                     tenant_id=state.tenant_id,
                     agent_id=state.agent_id,
@@ -466,64 +466,20 @@ class PersonaService:
             raise InvalidRequestError("Persona proposal confidence must be within [0, 1]")
         if not generator or not generator_version:
             raise InvalidRequestError("Persona proposal generator identity is required")
-        flattened = flatten_patch(patch)
 
         def op(tx: Transaction) -> PersonaProposal:
-            current = tx.personas.current(agent_id)
-            if current.tenant_id != access.tenant_id:
-                raise AccessDeniedError("cross-tenant Persona proposal is denied")
-            if current.revision != base_revision:
-                raise PersonaBaseRevisionStaleError(
-                    "proposal base revision is no longer current",
-                    details={
-                        "base_revision": base_revision,
-                        "current_revision": current.revision,
-                    },
-                )
-            policy = tx.personas.current_policy(agent_id)
-            refs = self._validate_evidence(tx, access, agent_id, evidence_refs, required=True)
-            deltas = _field_deltas(current, flattened, refs)
-            now_us = self._clock.now_us()
-            previous_delta = tx.personas.published_delta_total(
-                agent_id, since_us=now_us - policy.cumulative_window_us
-            )
-            last_publication_us = tx.personas.last_proposal_publication_us(agent_id)
-            evaluation = _evaluate(
-                policy,
-                deltas,
-                refs,
-                confidence,
-                now_us=now_us,
-                previous_delta=previous_delta,
-                last_publication_us=last_publication_us,
-            )
-            proposal = tx.personas.insert_proposal(
-                tenant_id=access.tenant_id,
-                agent_id=agent_id,
+            return self._execute_create_proposal(
+                tx,
+                access,
+                agent_id,
                 base_revision=base_revision,
-                target_fields=tuple(flattened),
-                patch_json=canonical_json(dict(patch)),
-                field_deltas_json=canonical_json([_delta_json(item) for item in deltas]),
-                evidence_refs_json=canonical_json([item.ref for item in refs]),
+                patch=patch,
+                evidence_refs=evidence_refs,
                 confidence=confidence,
                 generator=generator,
                 generator_version=generator_version,
-                policy_evaluation_json=canonical_json(evaluation),
-                expires_us=expires_us or self._clock.now_us() + PERSONA_PROPOSAL_TTL_US,
-                actor=access.app_instance_id,
+                expires_us=expires_us,
             )
-            tx.audit(
-                tenant_id=access.tenant_id,
-                actor=access.app_instance_id,
-                action="persona.proposal_created",
-                resource_type="persona_proposal",
-                resource_id=proposal.id,
-                reason_code="policy_accepted",
-            )
-            # bounded_auto publishes only non-sensitive, policy-valid deltas.
-            if policy.mode is PersonaPolicyMode.BOUNDED_AUTO and not evaluation["requires_review"]:
-                proposal = self._publish_proposal(tx, access, proposal, "bounded_auto")
-            return proposal
 
         result = self._write(
             access,
@@ -545,6 +501,88 @@ class PersonaService:
         if self._metrics is not None:
             self._metrics.persona_proposal(result.status.value)
         return result
+
+    def _execute_create_proposal(
+        self,
+        tx: Transaction,
+        access: AccessContext,
+        agent_id: str,
+        *,
+        base_revision: int,
+        patch: Mapping[str, Any],
+        evidence_refs: Sequence[Mapping[str, object]],
+        confidence: float,
+        generator: str,
+        generator_version: str,
+        expires_us: int | None = None,
+    ) -> PersonaProposal:
+        """Phase 9 policy boundary for transaction-local callers.
+
+        Background reflection calls this inside the fenced Outbox commit;
+        policy evaluation and optional bounded-auto publication therefore
+        remain identical to the public application path.
+        """
+        _agent_access(access, agent_id)
+        _capability(access, PERSONA_REVIEW_CAPABILITY)
+        if not 0.0 <= confidence <= 1.0:
+            raise InvalidRequestError("Persona proposal confidence must be within [0, 1]")
+        if not generator or not generator_version:
+            raise InvalidRequestError("Persona proposal generator identity is required")
+        flattened = flatten_patch(patch)
+        current = tx.personas.current(agent_id)
+        if current.tenant_id != access.tenant_id:
+            raise AccessDeniedError("cross-tenant Persona proposal is denied")
+        if current.revision != base_revision:
+            raise PersonaBaseRevisionStaleError(
+                "proposal base revision is no longer current",
+                details={
+                    "base_revision": base_revision,
+                    "current_revision": current.revision,
+                },
+            )
+        policy = tx.personas.current_policy(agent_id)
+        refs = self._validate_evidence(tx, access, agent_id, evidence_refs, required=True)
+        deltas = _field_deltas(current, flattened, refs)
+        now_us = self._clock.now_us()
+        previous_delta = tx.personas.published_delta_total(
+            agent_id, since_us=now_us - policy.cumulative_window_us
+        )
+        last_publication_us = tx.personas.last_proposal_publication_us(agent_id)
+        evaluation = _evaluate(
+            policy,
+            deltas,
+            refs,
+            confidence,
+            now_us=now_us,
+            previous_delta=previous_delta,
+            last_publication_us=last_publication_us,
+        )
+        proposal = tx.personas.insert_proposal(
+            tenant_id=access.tenant_id,
+            agent_id=agent_id,
+            base_revision=base_revision,
+            target_fields=tuple(flattened),
+            patch_json=canonical_json(dict(patch)),
+            field_deltas_json=canonical_json([_delta_json(item) for item in deltas]),
+            evidence_refs_json=canonical_json([item.ref for item in refs]),
+            confidence=confidence,
+            generator=generator,
+            generator_version=generator_version,
+            policy_evaluation_json=canonical_json(evaluation),
+            expires_us=expires_us or self._clock.now_us() + PERSONA_PROPOSAL_TTL_US,
+            actor=access.app_instance_id,
+        )
+        tx.audit(
+            tenant_id=access.tenant_id,
+            actor=access.app_instance_id,
+            action="persona.proposal_created",
+            resource_type="persona_proposal",
+            resource_id=proposal.id,
+            reason_code="policy_accepted",
+        )
+        if policy.mode is PersonaPolicyMode.BOUNDED_AUTO and not evaluation["requires_review"]:
+            proposal = self._publish_proposal(tx, access, proposal, "bounded_auto")
+        return proposal
 
     def approve(
         self,
@@ -661,7 +699,7 @@ class PersonaService:
         policy = tx.personas.current_policy(proposal.agent_id)
         if policy.mode is PersonaPolicyMode.LOCKED:
             raise PersonaPolicyDeniedError("locked policy forbids Proposal publication")
-        patch = _json_object(proposal.patch_json)
+        patch = normalize_persona_layer(proposal.patch_json)
         flattened = flatten_patch(patch)
         raw_refs = json.loads(proposal.evidence_refs_json)
         if not isinstance(raw_refs, list) or any(not isinstance(item, dict) for item in raw_refs):
@@ -686,8 +724,8 @@ class PersonaService:
             ),
             last_publication_us=tx.personas.last_proposal_publication_us(proposal.agent_id),
         )
-        traits = _json_object(current.traits)
-        narrative = _json_object(current.narrative)
+        traits = normalize_persona_layer(current.traits)
+        narrative = normalize_persona_layer(current.narrative)
         if isinstance(patch.get("traits"), dict):
             traits.update(patch["traits"])
         if isinstance(patch.get("narrative"), dict):
@@ -697,7 +735,7 @@ class PersonaService:
             access,
             current=current,
             expected_revision=proposal.base_revision,
-            core=_json_object(current.core),
+            core=normalize_persona_layer(current.core),
             traits=validate_content_layer("traits", traits),
             narrative=validate_content_layer("narrative", narrative),
             policy=policy,
@@ -1067,7 +1105,10 @@ def _validate_policy_config(config: Mapping[str, object]) -> dict[str, object]:
 def _field_deltas(
     current: PersonaRecord, flattened: Mapping[str, Any], refs: Sequence[_Evidence]
 ) -> tuple[PersonaFieldDelta, ...]:
-    layers = {"traits": _json_object(current.traits), "narrative": _json_object(current.narrative)}
+    layers = {
+        "traits": normalize_persona_layer(current.traits),
+        "narrative": normalize_persona_layer(current.narrative),
+    }
     return tuple(
         PersonaFieldDelta(
             field=field,
@@ -1158,4 +1199,5 @@ __all__ = [
     "PERSONA_STATE_CAPABILITY",
     "PersonaService",
     "PersonaView",
+    "normalize_persona_layer",
 ]

@@ -32,8 +32,9 @@ KNOWN_PROFILE_BUILDER_VERSIONS = frozenset({PROFILE_BUILDER_VERSION})
 #: The ``profile.apply`` payload version THIS build's rebuild provably covers
 #: when settling the unleased backlog (future payload versions stay queued
 #: for a build that understands them; mirrors JOB_PAYLOAD_VERSION, review
-#: round 3).
-PROFILE_APPLY_PAYLOAD_VERSION = 1
+#: round 3). Phase 10 moved both to 2 together: the refs-only apply body is
+#: unchanged, so this build covers v1 and v2 alike (ADR-0019 §7).
+PROFILE_APPLY_PAYLOAD_VERSION = 2
 
 #: Default lag (unsettled ``profile.apply`` jobs for the requesting agent,
 #: including ownerless ones) beyond which the profile surface reports stale.

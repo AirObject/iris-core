@@ -277,9 +277,30 @@ class IdempotencyManager:
         transaction_ref: str,
     ) -> IdempotencyRecord:
         """Complete a lease this caller owns; fenced by the owner token."""
+        return self.complete_with(
+            record,
+            response_code=response_code,
+            response_body=response_body,
+            resource_refs=resource_refs,
+            transaction_ref=transaction_ref,
+            mutate=lambda _tx: None,
+        )
+
+    def complete_with(
+        self,
+        record: IdempotencyRecord,
+        *,
+        response_code: str,
+        response_body: str,
+        resource_refs: Sequence[str],
+        transaction_ref: str,
+        mutate: Callable[[StoreTransaction], None],
+    ) -> IdempotencyRecord:
+        """Atomically record an outcome with a short local business mutation."""
         refs_json = json.dumps(list(resource_refs), ensure_ascii=False, sort_keys=True)
         now_us = self._store.clock.now_us()
         with self._store.write() as tx:
+            mutate(tx)
             tx.raw().execute(
                 "INSERT INTO idempotency_outcomes (transaction_ref, result_code, result_body, "
                 "resource_refs, completed_us) VALUES (?, ?, ?, ?, ?)",
@@ -456,3 +477,7 @@ class IdempotencyManager:
                 )
         except Exception:
             pass
+
+    def abandon(self, record: IdempotencyRecord) -> None:
+        """Release an owned admission lease after a non-committed external failure."""
+        self._abandon(record)

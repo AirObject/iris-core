@@ -16,7 +16,7 @@ from iris_memory_core.domain.errors import InvalidRequestError
 
 # Every outbox payload and tick envelope carries an explicit format version;
 # workers fail closed on unknown versions (leave pending, never mis-execute).
-JOB_PAYLOAD_VERSION = 1
+JOB_PAYLOAD_VERSION = 2
 TICK_PAYLOAD_VERSION = 1
 
 MAX_JOB_KIND_LENGTH = 128
@@ -38,6 +38,7 @@ class CoalesceClass(StrEnum):
     GRAPH = "graph"
     FTS = "fts"
     VECTOR = "vector"
+    REFLECTION = "reflection"
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,8 +194,21 @@ _KINDS: dict[str, JobKindSpec] = dict(
             notes="Phase 5: §19.5 retention sweep (decay/archive/delete via "
             "the Forget machinery; protected resources skipped).",
         ),
-        _spec("episode.consolidation", priority=7, catch_up="latest"),
-        _spec("memory.reconciliation", priority=7, catch_up="coalesce"),
+        _spec(
+            "episode.consolidation",
+            priority=7,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 10: fixed-watermark bounded Episode consolidation.",
+        ),
+        _spec(
+            "memory.reconciliation",
+            priority=7,
+            coalesce=CoalesceClass.REFLECTION,
+            catch_up="coalesce",
+            enabled=True,
+            notes="Phase 10: deterministic candidate reconciliation and materialization.",
+        ),
         # Phase 6: FTS projection maintenance. fts.apply consumes the
         # refs-only change events (claim/episode/note.changed plus
         # memory.invalidated) and coalesces per resource; fts.rebuild runs
@@ -326,8 +340,20 @@ _KINDS: dict[str, JobKindSpec] = dict(
             enabled=True,
             notes="Phase 9: deterministically return expired Persona State to baseline.",
         ),
-        _spec("reflection.generate", priority=7, catch_up="latest"),
-        _spec("persona.evaluation", priority=6, catch_up="latest"),
+        _spec(
+            "reflection.generate",
+            priority=7,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 10: governed provider extraction into evidence-bound candidates.",
+        ),
+        _spec(
+            "persona.evaluation",
+            priority=6,
+            catch_up="latest",
+            enabled=True,
+            notes="Phase 10: policy-gated Persona Proposal evaluation only.",
+        ),
         _spec("backup.execute", priority=3, catch_up="all"),
         # Phase 2 spine kinds.
         _spec(

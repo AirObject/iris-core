@@ -13,12 +13,17 @@ import signal
 import sqlite3
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from iris_memory_core.application.outbox import JobCommit, JobWork
 from iris_memory_core.application.ports import Transaction
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.jobs import NewOutboxJob, OutboxJob
 from iris_memory_core.storage.uow import Store
+
+if TYPE_CHECKING:
+    from iris_memory_core.application.outbox import OutboxService
+    from iris_memory_core.application.reflection import ReflectionPipeline
 
 
 def _self_kill() -> None:
@@ -467,6 +472,180 @@ def scenario_forget(db_path: str, crash_at: str) -> None:
         _self_kill()
 
 
+def phase10_context(db_path: str) -> tuple[Store, OutboxService, ReflectionPipeline, str]:
+    """Reopen a Phase 10 world: store, outbox, pipeline and the space id.
+
+    Both the crashing child and the recovering parent build the pipeline
+    the same way, so recovery re-executes the SAME deterministic work the
+    doomed process was in the middle of committing.
+    """
+    from iris_memory_core.application.outbox import OutboxService
+    from iris_memory_core.application.reflection import ReflectionPipeline
+    from iris_memory_core.providers.cognitive import (
+        DeterministicCognitiveProvider,
+        ProviderGovernance,
+    )
+    from iris_memory_core.storage.migrations import MigrationRunner
+    from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_version
+
+    database = Path(db_path)
+    MigrationRunner(database).migrate()
+    runtime = SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),))
+    store = Store(runtime)
+    with store.read() as tx:
+        row = tx.raw().execute("SELECT id FROM spaces LIMIT 1").fetchone()
+        observation = tx.raw().execute("SELECT id,agent_id FROM observations LIMIT 1").fetchone()
+    space = str(row[0])
+    candidate = phase10_candidate("t1", str(observation[1]), space, str(observation[0]))
+    provider = DeterministicCognitiveProvider(
+        [candidate], summary={"title": "Preferences", "summary": "User prefers tea."}
+    )
+    pipeline = ReflectionPipeline(
+        store,
+        store.clock,
+        governance=ProviderGovernance(),
+        extraction=provider,
+        summarization=provider,
+    )
+    return store, OutboxService(store, store.clock), pipeline, space
+
+
+def phase10_candidate(
+    tenant: str, agent: str, space: str, observation_id: str
+) -> dict[str, object]:
+    """The one evidence-bound claim candidate this scenario reconciles."""
+    return {
+        "type": "claim",
+        "payload": {
+            "predicate": "preference.drink",
+            "value": "tea",
+            "canonical_text": "prefers tea",
+            "category": "preference",
+            "confidence": 0.7,
+            "importance": 0.5,
+            "source_authority": "extracted",
+        },
+        "evidence": [
+            {
+                "observation_id": observation_id,
+                "observation_revision": 1,
+                "start": 0,
+                "end": 8,
+            }
+        ],
+        "scope": {"tenant_id": tenant, "agent_id": agent, "space_id": space},
+        "privacy_labels": [],
+    }
+
+
+def phase10_drain(db_path: str, *, owner: str, steps: int = 12) -> None:
+    """Drain the Phase 10 outbox — the parent's recovery entry point."""
+    from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS
+    from iris_memory_core.jobs.worker import phase10_handlers
+
+    store, outbox, pipeline, _ = phase10_context(db_path)
+    handlers = phase10_handlers(pipeline=pipeline)
+    kinds = frozenset(handlers) & ENABLED_JOB_KINDS
+    with store.write() as tx:
+        tx.raw().execute("UPDATE outbox_jobs SET lease_expires_us = 0 WHERE status = 'leased'")
+    for _ in range(steps):
+        batch = outbox.claim(owner, kinds=kinds)
+        if not batch.jobs:
+            return
+        for job in batch.jobs:
+            outbox.execute(job, handlers[job.job_kind], owner=owner)
+
+
+def scenario_reflection(db_path: str, crash_at: str) -> None:
+    """Phase 10 fenced canonical commit of a reconciled candidate.
+
+    The consolidation and reflection stages run to completion first; the
+    kill is armed only around the reconciliation commit — the transaction
+    that turns an accepted candidate into a Canonical claim.
+    """
+    from iris_memory_core.application.observation import ObservationService
+    from iris_memory_core.application.provisioning import ProvisioningService
+    from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS, NewOutboxJob
+    from iris_memory_core.jobs.worker import phase10_handlers
+
+    ctx = setup(db_path)
+    admin = AccessContext("t1", "bootstrap", admin=True, agent_ids=frozenset({ctx.agent_id}))
+    space = (
+        ProvisioningService(ctx.store)
+        .create_space(admin, "direct", agent_id=ctx.agent_id, reason="kill9")
+        .id
+    )
+    access = AccessContext(
+        "t1",
+        "host",
+        agent_ids=frozenset({ctx.agent_id}),
+        allowed_space_ids=frozenset({space}),
+        admin=True,
+    )
+    now = ctx.store.clock.now_us()
+    ObservationService(ctx.store).observe_batch(
+        access,
+        [
+            {
+                "agent_id": ctx.agent_id,
+                "space_id": space,
+                "role": "user",
+                "kind": "message",
+                "idempotency_key": "kill9-phase10-observation",
+                "occurred_us": now,
+                "committed_us": now,
+                "content": "I prefer tea number 1",
+                "privacy_labels": [],
+            }
+        ],
+    )
+
+    store, outbox, pipeline, _ = phase10_context(db_path)
+    handlers = phase10_handlers(pipeline=pipeline)
+    with store.read() as tx:
+        watermark = tx.watermark("t1", ctx.agent_id)
+        occurred = int(tx.raw().execute("SELECT occurred_us FROM observations").fetchone()[0])
+    assert watermark is not None
+    now = store.clock.now_us()
+    outbox.enqueue(
+        NewOutboxJob(
+            tenant_id="t1",
+            agent_id=ctx.agent_id,
+            job_kind="episode.consolidation",
+            aggregate_type="observation_window",
+            aggregate_id="kill9-window",
+            source_revision=watermark.current_seq,
+            payload={
+                "version": 2,
+                "job_kind": "episode.consolidation",
+                "scope": {"space_id": space},
+                "topic_key": "preferences",
+                "window_start_us": occurred - 1,
+                "window_end_us": occurred + 1_000_000,
+            },
+            dedupe_key=f"kill9-consolidation:{ctx.agent_id}:{watermark.current_seq}",
+            available_at_us=now,
+        )
+    )
+    kinds = frozenset(handlers) & ENABLED_JOB_KINDS
+    for _ in range(12):
+        batch = outbox.claim("doomed", kinds=kinds)
+        assert batch.jobs, "reconciliation job never became claimable"
+        for job in batch.jobs:
+            if job.job_kind != "memory.reconciliation":
+                outbox.execute(job, handlers[job.job_kind], owner="doomed")
+                continue
+            # The claim transaction has committed; only the reconciliation
+            # work and its fenced completion CAS remain in the next commit.
+            if crash_at == "pre_commit":
+                _die_before_commit(store)
+            outbox.execute(job, handlers[job.job_kind], owner="doomed")
+            if crash_at == "post_commit":
+                _self_kill()
+            return
+    raise AssertionError("reconciliation job never appeared")
+
+
 SCENARIOS = {
     "observe": scenario_observe,
     "worker": scenario_worker,
@@ -478,6 +657,7 @@ SCENARIOS = {
     "trigger_scan": scenario_trigger_scan,
     "event_ack": scenario_event_ack,
     "forget": scenario_forget,
+    "reflection": scenario_reflection,
 }
 
 

@@ -1,0 +1,34 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "space_group_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "space_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "space_group_id",
+    "name",
+    "description",
+    "revision",
+    "space_ids"
+  ],
+  "type": "object"
+}

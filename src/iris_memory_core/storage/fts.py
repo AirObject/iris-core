@@ -740,3 +740,52 @@ class RecallUsageRepository:
             (tenant_id, request_id),
         ).fetchall()
         return tuple(cast("sqlite3.Row", row) for row in rows)
+
+    def insert_activation(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        request_id: str,
+        host_cycle_id: str,
+        candidate_id: str,
+        stage: str,
+        resource_type: str,
+        resource_id: str,
+        resource_revision: int,
+        activation_delta: float,
+        applied: bool,
+        reject_reason: str | None,
+        now_us: int,
+    ) -> tuple[str, bool]:
+        existing = self._connection.execute(
+            "SELECT id FROM recall_usage_activations WHERE tenant_id=? AND request_id=? "
+            "AND host_cycle_id=? AND candidate_id=? AND stage=?",
+            (tenant_id, request_id, host_cycle_id, candidate_id, stage),
+        ).fetchone()
+        if existing is not None:
+            return str(existing["id"]), False
+        activation_id = f"activation-{self._ids.new()}"
+        self._connection.execute(
+            "INSERT INTO recall_usage_activations "
+            "(id,tenant_id,agent_id,request_id,host_cycle_id,candidate_id,stage,"
+            "resource_type,resource_id,resource_revision,activation_delta,applied,"
+            "reject_reason,created_us) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                activation_id,
+                tenant_id,
+                agent_id,
+                request_id,
+                host_cycle_id,
+                candidate_id,
+                stage,
+                resource_type,
+                resource_id,
+                resource_revision,
+                activation_delta,
+                int(applied),
+                reject_reason,
+                now_us,
+            ),
+        )
+        return activation_id, True

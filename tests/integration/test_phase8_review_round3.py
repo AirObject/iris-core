@@ -348,10 +348,16 @@ class TestVerifyVerdictPersistence:
 
 class TestRebuildSettlementPayloadVersions:
     def test_rebuild_settles_only_understood_payload_versions(self, world: Phase8World) -> None:
+        from iris_memory_core.domain.graph import GRAPH_APPLY_PAYLOAD_VERSION
+        from iris_memory_core.domain.profile import PROFILE_APPLY_PAYLOAD_VERSION
+
         bob = world.entity("SettleBob")
         carol = world.entity("SettleCarol")
         world.relate("st-r1", bob, carol)
-        for version, tag in ((1, "v1"), (2, "v2")):
+        for version, tag in (
+            (GRAPH_APPLY_PAYLOAD_VERSION, "v1"),
+            (GRAPH_APPLY_PAYLOAD_VERSION + 1, "v2"),
+        ):
             _sqlite(
                 world,
                 "INSERT INTO outbox_jobs (id, tenant_id, agent_id, job_kind, "
@@ -392,9 +398,14 @@ class TestRebuildSettlementPayloadVersions:
             "payload_version, dedupe_key, coalesce_key, priority, status, "
             "available_at_us, attempt_count, max_attempts, lease_generation, "
             "created_us) VALUES ('r3-settle-p2', ?, ?, 'profile.apply', 'claim', "
-            "'settle-p2', 1, ?, 2, 'r3-settle-p2', 'profile:claim:settle-p2', "
+            "'settle-p2', 1, ?, ?, 'r3-settle-p2', 'profile:claim:settle-p2', "
             "5, 'pending', 0, 0, 8, 0, 1)",
-            (TENANT, world.agent, json.dumps({"version": 2})),
+            (
+                TENANT,
+                world.agent,
+                json.dumps({"version": PROFILE_APPLY_PAYLOAD_VERSION + 1}),
+                PROFILE_APPLY_PAYLOAD_VERSION + 1,
+            ),
         )
         world.profile.rebuild(TENANT)
         with world.store.read() as tx:

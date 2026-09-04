@@ -39,6 +39,7 @@ from iris_memory_core.application.episodes import RelationService
 from iris_memory_core.application.forget import ForgetService
 from iris_memory_core.application.memory import ClaimService
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.jobs import JOB_PAYLOAD_VERSION
 from iris_memory_core.domain.retention import ForgetSelector, ForgetSelectorKind
 from iris_memory_core.storage.backup import (
     BackupService,
@@ -704,9 +705,13 @@ class TestR4_5CascadeChangeEvents:
             if row["job_kind"] == "claim.changed"
         }
         payload = claim_events[(middle.claim_id, 2)]
-        assert payload == {"version": 1, "claim_id": middle.claim_id, "revision": 2}
+        assert payload == {
+            "version": JOB_PAYLOAD_VERSION,
+            "claim_id": middle.claim_id,
+            "revision": 2,
+        }
         assert claim_events[(downstream.claim_id, 2)] == {
-            "version": 1,
+            "version": JOB_PAYLOAD_VERSION,
             "claim_id": downstream.claim_id,
             "revision": 2,
         }
@@ -758,7 +763,7 @@ class TestR4_5CascadeChangeEvents:
         # is a revision-2 event alongside it.
         by_revision = {row["source_revision"]: json.loads(row["payload"]) for row in rows}
         assert by_revision[2] == {
-            "version": 1,
+            "version": JOB_PAYLOAD_VERSION,
             "relation_id": relation.relation_id,
             "revision": 2,
         }

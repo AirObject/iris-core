@@ -23,6 +23,7 @@ from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, OutboxService
 from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
+from iris_memory_core.application.reflection import ReflectionPipeline
 from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import LeaseFencedError
@@ -219,6 +220,16 @@ def phase9_handlers(clock: Clock) -> dict[str, JobWork]:
         "persona.revised": notification,
         "persona.revision_invalidated": notification,
         "persona.state_expire": persona_state_expire_handler(clock),
+    }
+
+
+def phase10_handlers(*, pipeline: ReflectionPipeline) -> dict[str, JobWork]:
+    """Evidence-driven Phase 10 handlers; provider work precedes fenced commit."""
+    return {
+        "episode.consolidation": pipeline.episode_consolidation_work,
+        "reflection.generate": pipeline.reflection_generate_work,
+        "memory.reconciliation": pipeline.reconciliation_work,
+        "persona.evaluation": pipeline.persona_evaluation_work,
     }
 
 

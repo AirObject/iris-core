@@ -48,6 +48,29 @@ function call(calls: readonly RecordedCall[], index: number): RecordedCall {
   return recorded;
 }
 
+test("Phase 10 management requests carry Bearer and idempotency headers", async () => {
+  const stub = stubFetch([
+    { operation_id: "backup-1", kind: "backup", status: "accepted", created_us: 1 },
+    { events: [] },
+  ]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local", {
+      bearerToken: "sdk-test-bearer",
+    });
+    await client.createBackup({ reason: "verification" }, { idempotencyKey: "backup-1" });
+    await client.listAuditEvents("security review", 0, 25);
+  } finally {
+    stub.restore();
+  }
+  const recorded = call(stub.calls, 0);
+  assert.equal(recorded.headers.Authorization, "Bearer sdk-test-bearer");
+  assert.equal(recorded.headers["Idempotency-Key"], "backup-1");
+  assert.deepEqual(recorded.body, { reason: "verification" });
+  const audit = call(stub.calls, 1);
+  assert.match(audit.url, /reason=security\+review/);
+  assert.match(audit.url, /limit=25/);
+});
+
 test("noteAction carries the lease proof on the wire", async () => {
   const stub = stubFetch([await readFixture("note-view.json")]);
   try {

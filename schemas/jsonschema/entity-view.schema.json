@@ -1,0 +1,30 @@
+{
+  "additionalProperties": true,
+  "properties": {
+    "display_name": {
+      "type": "string"
+    },
+    "entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "state": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "entity_id",
+    "kind",
+    "display_name",
+    "state",
+    "revision"
+  ],
+  "type": "object"
+}

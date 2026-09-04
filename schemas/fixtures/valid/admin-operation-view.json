@@ -1,0 +1,6 @@
+{
+  "operation_id": "operation-fixture-1",
+  "kind": "backup",
+  "status": "completed",
+  "created_us": 1000000
+}

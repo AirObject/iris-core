@@ -640,7 +640,9 @@ def test_enabled_kinds_only_safe_seed() -> None:
     # the three pointer-invariant checks. Phase 2's revocation notice is
     # enabled too — its producer enqueues unconditionally, so leaving it
     # unclaimable would pile up pending jobs (ADR-0010 §2, ADR-0017 §3).
-    # Everything else stays disabled and unclaimable (fail closed).
+    # Phase 10 enables the four cognitive kinds once their real, idempotent,
+    # fenced handlers exist (ADR-0019 §2). Everything else stays disabled and
+    # unclaimable (fail closed).
     assert (
         frozenset(
             {
@@ -675,6 +677,10 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "profile.apply",
                 "profile.rebuild",
                 "profile.cleanup",
+                "episode.consolidation",
+                "memory.reconciliation",
+                "reflection.generate",
+                "persona.evaluation",
             }
         )
         == ENABLED_JOB_KINDS

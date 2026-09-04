@@ -216,6 +216,7 @@ class TestFailClosed:
 
     def test_enabled_kinds_have_handlers(self, jobs_ctx: dict[str, Any]) -> None:
         from iris_memory_core.application.forget import ForgetService
+        from iris_memory_core.application.reflection import ReflectionPipeline
         from iris_memory_core.application.retention import RetentionService
         from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS
         from iris_memory_core.domain.vector import VectorSpaceConfig
@@ -229,6 +230,11 @@ class TestFailClosed:
             phase7_handlers,
             phase8_handlers,
             phase9_handlers,
+            phase10_handlers,
+        )
+        from iris_memory_core.providers.cognitive import (
+            DeterministicCognitiveProvider,
+            ProviderGovernance,
         )
         from iris_memory_core.providers.embedding import DeterministicEmbeddingProvider
 
@@ -268,6 +274,15 @@ class TestFailClosed:
                 profile=ProfileProjectionService(jobs_ctx["store"], jobs_ctx["store"].clock),
             ),
             **phase9_handlers(jobs_ctx["store"].clock),
+            **phase10_handlers(
+                pipeline=ReflectionPipeline(
+                    jobs_ctx["store"],
+                    jobs_ctx["store"].clock,
+                    governance=ProviderGovernance(),
+                    extraction=DeterministicCognitiveProvider(),
+                    summarization=DeterministicCognitiveProvider(),
+                )
+            ),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in (

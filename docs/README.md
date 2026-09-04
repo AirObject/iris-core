@@ -7,10 +7,10 @@
 | 文档 | 定位 | 状态 |
 | --- | --- | --- |
 | [架构与完整实施计划](./IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md) | 架构、领域、协议和实施顺序的唯一当前基线 | Baseline v1.1 |
-| [分阶段开发路线图](./development/README.md) | 阶段导航、依赖、里程碑和统一执行规则 | In progress（Phase 0–9 Completed，下一阶段 Phase 10） |
-| [ADR 索引](./adr/README.md) | 冻结边界决策及其取代关系 | 0001–0018 Accepted |
+| [分阶段开发路线图](./development/README.md) | 阶段导航、依赖、里程碑和统一执行规则 | In progress（Phase 0–10 Completed，下一阶段 Phase 11/12） |
+| [ADR 索引](./adr/README.md) | 冻结边界决策及其取代关系 | 0001–0019 Accepted |
 | [阶段文档](./development/) | 每阶段的范围、工作包、门禁与交付证据 | 15 份（Phase 0–14） |
-| [验证报告](./reports/) | 每阶段的实测门禁结果、复审修复与已知限制 | 10 份（Phase 0–9） |
+| [验证报告](./reports/) | 每阶段的实测门禁结果、复审修复与已知限制 | 11 份（Phase 0–10） |
 
 其他早期草案不作为新实现的需求来源。若历史材料与当前基线冲突，以当前基线和已接受 ADR 为准。
 

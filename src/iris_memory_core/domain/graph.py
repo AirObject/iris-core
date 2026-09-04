@@ -28,8 +28,10 @@ KNOWN_GRAPH_BUILDER_VERSIONS = frozenset({GRAPH_BUILDER_VERSION})
 #: The ``graph.apply`` payload version THIS build's rebuild provably covers
 #: when settling the unleased backlog (a future payload version's semantics
 #: are unknown here — those jobs stay queued for a build that understands
-#: them; mirrors JOB_PAYLOAD_VERSION, review round 3).
-GRAPH_APPLY_PAYLOAD_VERSION = 1
+#: them; mirrors JOB_PAYLOAD_VERSION, review round 3). Phase 10 moved both to
+#: 2 together: the refs-only apply body is unchanged, so this build covers v1
+#: and v2 alike (ADR-0019 §7).
+GRAPH_APPLY_PAYLOAD_VERSION = 2
 
 #: Default lag (unsettled ``graph.apply`` jobs for the requesting agent,
 #: including ownerless ones) beyond which the graph route degrades stale.

@@ -1,0 +1,29 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "entity_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provider": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "realm": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "subject": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "provider",
+    "subject",
+    "realm"
+  ],
+  "type": "object"
+}

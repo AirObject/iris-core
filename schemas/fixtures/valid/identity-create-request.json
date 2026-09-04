@@ -1,0 +1,6 @@
+{
+  "provider": "fixture",
+  "subject": "external-subject-1",
+  "realm": "default",
+  "entity_id": "entity-fixture-1"
+}

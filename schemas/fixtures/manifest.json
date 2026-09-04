@@ -2,6 +2,71 @@
   "cases": [
     {
       "expected": "accept",
+      "file": "forward/entity-view-future-field.json",
+      "schema": "entity-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/admin-operation-request.json",
+      "schema": "admin-operation-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/admin-operation-view.json",
+      "schema": "admin-operation-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/audit-event-list.json",
+      "schema": "audit-event-list"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/binding-request.json",
+      "schema": "binding-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/binding-view.json",
+      "schema": "binding-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/entity-view.json",
+      "schema": "entity-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/identity-create-request.json",
+      "schema": "identity-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/identity-view.json",
+      "schema": "identity-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/space-group-view.json",
+      "schema": "space-group-view"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/admin-operation-request-missing-reason.json",
+      "schema": "admin-operation-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/binding-request-bad-confidence.json",
+      "schema": "binding-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/identity-create-request-empty-provider.json",
+      "schema": "identity-create-request"
+    },
+    {
+      "expected": "accept",
       "file": "forward/capabilities-unknown-enum.json",
       "schema": "capabilities"
     },

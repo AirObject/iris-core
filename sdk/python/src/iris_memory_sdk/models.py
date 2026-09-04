@@ -22,6 +22,7 @@ class CapabilitiesEnvelope:
     api_version: str
     schema_version: int
     capabilities: tuple[str, ...]
+    deprecated_capabilities: tuple[str, ...] = ()
 
     @classmethod
     def from_value(cls, value: object) -> CapabilitiesEnvelope:
@@ -35,7 +36,14 @@ class CapabilitiesEnvelope:
         assert isinstance(api_version, str)
         assert type(schema_version) is int
         assert isinstance(capabilities, list)
-        return cls(api_version, schema_version, tuple(str(item) for item in capabilities))
+        deprecated = value.get("deprecated_capabilities", [])
+        assert isinstance(deprecated, list)
+        return cls(
+            api_version,
+            schema_version,
+            tuple(str(item) for item in capabilities),
+            tuple(str(item) for item in deprecated),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1848,6 +1856,95 @@ def _validate_search_response(value: object) -> tuple[str, ...]:
     return tuple(errors)
 
 
+def _validate_phase10_surface(schema: str, value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    request_fields = {
+        "identity-create-request": {"provider", "subject", "realm", "entity_id"},
+        "binding-request": {
+            "external_identity_id",
+            "entity_id",
+            "method",
+            "confidence",
+            "proof",
+            "expected_revision",
+            "reason",
+        },
+        "admin-operation-request": {
+            "agent_id",
+            "space_id",
+            "session_id",
+            "expected_revision",
+            "reason",
+            "destination",
+            "minimum_watermark",
+            "window_id",
+        },
+    }
+    if schema in request_fields:
+        for key in sorted(set(value) - request_fields[schema]):
+            errors.append(f"unknown field: {key}")
+    required_strings = {
+        "entity-view": ("entity_id", "kind", "display_name", "state"),
+        "identity-create-request": ("provider", "subject", "realm"),
+        "identity-view": ("external_identity_id", "provider", "subject_hash", "realm"),
+        "binding-request": ("reason",),
+        "binding-view": ("binding_id", "external_identity_id", "entity_id", "state"),
+        "space-group-view": ("space_group_id", "name", "description"),
+        "admin-operation-view": ("operation_id", "kind", "status"),
+    }
+    for field in required_strings.get(schema, ()):
+        if not isinstance(value.get(field), str) or (field != "display_name" and not value[field]):
+            errors.append(f"{field} must be a string")
+    if (
+        schema == "identity-view"
+        and value.get("entity_id") is not None
+        and not isinstance(value.get("entity_id"), str)
+    ):
+        errors.append("entity_id must be a string or null")
+    if schema in {"entity-view", "binding-view", "space-group-view"}:
+        revision = value.get("revision")
+        if type(revision) is not int or revision < 1:
+            errors.append("revision must be a positive integer")
+    if schema == "binding-request":
+        confidence = value.get("confidence")
+        if confidence is not None and (
+            not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not 0 <= confidence <= 1
+        ):
+            errors.append("confidence must be within 0..1")
+    if schema == "space-group-view":
+        spaces = value.get("space_ids")
+        if not isinstance(spaces, list) or not all(
+            isinstance(item, str) and item for item in spaces
+        ):
+            errors.append("space_ids must be an array of non-empty strings")
+    if schema == "admin-operation-request":
+        _require_non_empty_str(value.get("reason"), "reason", errors)
+    if schema == "admin-operation-view":
+        created = value.get("created_us")
+        if type(created) is not int or created < 0:
+            errors.append("created_us must be a non-negative integer")
+    if schema == "audit-event-list":
+        events = value.get("events")
+        if not isinstance(events, list):
+            errors.append("events must be an array")
+        else:
+            for index, event in enumerate(events):
+                if not isinstance(event, Mapping):
+                    errors.append(f"events[{index}] must be an object")
+                    continue
+                for field in ("resource_type", "resource_id", "action", "reason_code"):
+                    if not isinstance(event.get(field), str) or not event[field]:
+                        errors.append(f"events[{index}].{field} must be a non-empty string")
+                created = event.get("created_us")
+                if type(created) is not int or created < 0:
+                    errors.append(f"events[{index}].created_us must be non-negative")
+    return tuple(errors)
+
+
 def validate_contract(schema: str, value: object) -> tuple[str, ...]:
     validators = {
         "capabilities": _validate_capabilities,
@@ -1923,6 +2020,18 @@ def validate_contract(schema: str, value: object) -> tuple[str, ...]:
         "search-request": _validate_search_request,
         "search-response": _validate_search_response,
     }
+    if schema in {
+        "entity-view",
+        "identity-create-request",
+        "identity-view",
+        "binding-request",
+        "binding-view",
+        "space-group-view",
+        "admin-operation-request",
+        "admin-operation-view",
+        "audit-event-list",
+    }:
+        return _validate_phase10_surface(schema, value)
     validator = validators.get(schema)
     if validator is None:
         return (f"unknown schema: {schema}",)

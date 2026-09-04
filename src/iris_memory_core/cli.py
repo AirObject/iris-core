@@ -7,6 +7,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from iris_memory_core.domain.errors import DomainError
 from iris_memory_core.storage.migrations import MigrationError, MigrationRunner
 
 
@@ -69,12 +70,52 @@ def build_parser() -> argparse.ArgumentParser:
         "recover-switch", help="Finish or roll back an interrupted restore switch"
     )
     recover.add_argument("target_dir", type=Path)
+
+    def service_arguments(command: argparse.ArgumentParser) -> None:
+        command.add_argument("--config", type=Path)
+        command.add_argument("--database", type=Path)
+        command.add_argument("--grace-seconds", type=float)
+        command.add_argument("--allow-local-sqlite", action="store_true", default=None)
+        command.add_argument("--no-migrate", action="store_true", default=None)
+
+    serve_parser = subparsers.add_parser("serve", help="Run the authenticated ASGI service")
+    service_arguments(serve_parser)
+    serve_parser.add_argument("--host")
+    serve_parser.add_argument("--port", type=int)
+    serve_parser.add_argument("--disable-sse", action="store_true", default=None)
+    serve_parser.add_argument("--backup-root", type=Path)
+    serve_parser.add_argument("--export-root", type=Path)
+
+    worker_parser = subparsers.add_parser("worker", help="Run the fenced background worker")
+    service_arguments(worker_parser)
+    worker_parser.add_argument("--poll-seconds", type=float)
+    worker_parser.add_argument("--once", action="store_true")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command in {"serve", "worker"}:
+            from iris_memory_core.runtime import load_config, serve, worker
+
+            values = {
+                key: value
+                for key, value in vars(args).items()
+                if key not in {"command", "config", "once"}
+            }
+            if values.pop("no_migrate", None):
+                values["migrate"] = False
+            if values.pop("disable_sse", None):
+                values["sse_enabled"] = False
+            # Startup validation failures are an operator's problem, not a
+            # crash: report the diagnosis, not a traceback (§35.4).
+            try:
+                config = load_config(config_file=args.config, cli_values=values)
+                return worker(config, once=args.once) if args.command == "worker" else serve(config)
+            except (DomainError, ValueError) as error:
+                print(f"{args.command} startup failed: {error}", file=sys.stderr)
+                return 1
         if args.command == "migrate":
             runner = MigrationRunner(args.database, args.migrations)
             backup_performed = False

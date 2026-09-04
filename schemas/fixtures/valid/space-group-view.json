@@ -1,0 +1,7 @@
+{
+  "space_group_id": "group-fixture-1",
+  "name": "Fixture Group",
+  "description": "Fixture grouping",
+  "revision": 1,
+  "space_ids": ["space-fixture-1"]
+}

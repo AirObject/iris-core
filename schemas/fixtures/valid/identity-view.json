@@ -1,0 +1,7 @@
+{
+  "external_identity_id": "identity-fixture-1",
+  "entity_id": "entity-fixture-1",
+  "provider": "fixture",
+  "subject_hash": "f17d3dba36d51c66",
+  "realm": "default"
+}

@@ -38,7 +38,7 @@ from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.errors import NotFoundError
 from iris_memory_core.domain.fts import FTS_INDEXABLE_RESOURCE_TYPES
-from iris_memory_core.domain.jobs import NewOutboxJob, OutboxJob
+from iris_memory_core.domain.jobs import JOB_PAYLOAD_VERSION, NewOutboxJob, OutboxJob
 from iris_memory_core.domain.recent import recent_target_key
 from iris_memory_core.domain.vector import VECTOR_INDEXABLE_RESOURCE_TYPES
 from iris_memory_core.indexing.fts import FtsProjectionService
@@ -48,9 +48,17 @@ from iris_memory_core.indexing.vector import VectorProjectionService
 
 
 def _require_payload(job: OutboxJob) -> dict[str, object]:
+    """Accept every payload version this build understands (ADR-0019 §7).
+
+    Phase 10 bumped ``JOB_PAYLOAD_VERSION`` to 2, and a v1 row enqueued by an
+    older binary stays claimable and executable: the refs-only bodies these
+    handlers read are identical across both versions, so normalising a v1
+    payload to v2 means accepting it as-is. Anything above the supported
+    version fails closed rather than being mis-executed.
+    """
     payload = job.payload
     version = payload.get("version")
-    if version != 1:
+    if type(version) is not int or not 1 <= version <= JOB_PAYLOAD_VERSION:
         raise ValueError(f"unsupported payload version: {version!r}")
     return payload
 
@@ -294,6 +302,16 @@ def surface_lease_revoked_handler() -> JobWork:
             holder = tx.surfaces.active_lease(lease.tenant_id, lease.agent_id)
             if holder is not None and holder.lease_epoch <= fenced_epoch:
                 raise NotFoundError("revoked surface lease was not superseded by a newer epoch")
+            tx.reflection.append_event(
+                tenant_id=lease.tenant_id,
+                agent_id=lease.agent_id,
+                space_id=lease.holder_space_id,
+                event_type="surface.lease_revoked.v1",
+                resource_refs=({"resource_type": "surface_lease", "resource_id": lease.lease_id},),
+                source_watermark=job.source_revision,
+                occurred_us=lease.last_heartbeat_us,
+                event_id=f"sse:{job.id}",
+            )
 
         return commit
 
@@ -568,6 +586,18 @@ def cognitive_event_changed_handler() -> JobWork:
                 raise NotFoundError(
                     "cognitive event current pointer does not resolve to its revision number"
                 )
+            if event.status == "pending":
+                tx.reflection.append_event(
+                    tenant_id=event.tenant_id,
+                    agent_id=event.agent_id,
+                    space_group_id=event.space_group_id,
+                    space_id=event.space_id,
+                    event_type="cognitive_event.ready.v1",
+                    resource_refs=({"resource_type": "cognitive_event", "resource_id": event.id},),
+                    source_watermark=job.source_revision,
+                    occurred_us=event.created_us,
+                    event_id=f"sse:{job.id}",
+                )
 
         return commit
 
@@ -796,6 +826,22 @@ def memory_invalidated_handler(clock: Clock, gauge: BackpressureGauge | None = N
                     clock=clock,
                     gauge=gauge,
                 )
+            tx.reflection.append_event(
+                tenant_id=job.tenant_id,
+                agent_id=job.agent_id,
+                event_type="revision.invalidated.v1",
+                resource_refs=tuple(
+                    {
+                        "resource_type": str(item["resource_type"]),
+                        "resource_id": str(item["resource_id"]),
+                    }
+                    for item in resources
+                    if isinstance(item, dict)
+                ),
+                source_watermark=job.source_revision,
+                occurred_us=clock.now_us(),
+                event_id=f"sse:{job.id}",
+            )
 
         return commit
 
@@ -1090,6 +1136,25 @@ def persona_notification_handler() -> JobWork:
             record = tx.personas.by_revision(agent_id, revision)
             if record.id != job.aggregate_id or record.content_hash != digest:
                 raise RuntimeError("Persona notification revision/hash mismatch")
+            tx.reflection.append_event(
+                tenant_id=record.tenant_id,
+                agent_id=record.agent_id,
+                event_type=(
+                    "revision.invalidated.v1"
+                    if job.job_kind == "persona.revision_invalidated"
+                    else "persona.revised.v1"
+                ),
+                resource_refs=(
+                    {
+                        "resource_type": "persona_revision",
+                        "resource_id": record.id,
+                        "revision": record.revision,
+                    },
+                ),
+                source_watermark=job.source_revision,
+                occurred_us=record.created_us,
+                event_id=f"sse:{job.id}",
+            )
 
         return commit
 

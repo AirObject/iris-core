@@ -1,0 +1,32 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "entity_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "external_identity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "realm": {
+      "type": "string"
+    },
+    "subject_hash": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "external_identity_id",
+    "entity_id",
+    "provider",
+    "subject_hash",
+    "realm"
+  ],
+  "type": "object"
+}

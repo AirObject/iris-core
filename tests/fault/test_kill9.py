@@ -35,6 +35,9 @@ BOUNDARIES = {
     # Phase 5: forget atomicity across tombstone/erasure/ledger/watermark/
     # invalidation outbox (ADR-0005/0013).
     "forget": ["pre_tx", "pre_commit", "post_commit"],
+    # Phase 10: the fenced canonical commit that turns an accepted candidate
+    # into a Claim, plus its completion CAS (ADR-0019 §1, P10-PROCESS-01).
+    "reflection": ["pre_commit", "post_commit"],
 }
 
 
@@ -224,6 +227,70 @@ class TestWorkerKill9:
         claim = outbox.claim("recovery-worker")
         for job in claim.jobs:
             outbox.execute(job, business_result_work("recovery-worker"), owner="recovery-worker")
+
+
+class TestReflectionKill9:
+    """Phase 10 worker recovery at the reconciliation commit boundary."""
+
+    @pytest.mark.parametrize("crash_at", BOUNDARIES["reflection"])
+    def test_reflection_commit_atomicity(self, crash_at: str, tmp_path: Path) -> None:
+        for iteration in range(REPETITIONS):
+            database = tmp_path / f"reflection-{crash_at}-{iteration}.sqlite3"
+            _run_crash("reflection", crash_at, database)
+            counts = _reflection_counts(database)
+            # The window and the reflection run committed in earlier
+            # transactions and survive either kill point.
+            assert counts["sealed_windows"] == 1, (iteration, counts)
+            assert counts["committed_runs"] == 1, (iteration, counts)
+            if crash_at == "pre_commit":
+                # The canonical write and the completion CAS were staged in
+                # the doomed transaction: neither may be visible.
+                assert counts["claims"] == 0, (iteration, counts)
+                assert counts["materialized_candidates"] == 0, (iteration, counts)
+                assert counts["completed_reconciliations"] == 0, (iteration, counts)
+            else:
+                assert counts["claims"] == 1, (iteration, counts)
+                assert counts["completed_reconciliations"] == 1, (iteration, counts)
+            # Recovery re-executes the same reconciliation and must converge
+            # to exactly one logical claim, never two.
+            from tests.fault.kill9_scenarios import phase10_drain
+
+            phase10_drain(str(database), owner="recovery-worker")
+            recovered = _reflection_counts(database)
+            assert recovered["claims"] == 1, (iteration, recovered)
+            assert recovered["materialized_candidates"] == 1, (iteration, recovered)
+            assert recovered["completed_reconciliations"] == 1, (iteration, recovered)
+            assert recovered["reflection_records"] == 1, (iteration, recovered)
+
+
+def _reflection_counts(database: Path) -> dict[str, int]:
+    import sqlite3
+
+    connection = sqlite3.connect(database)
+    try:
+
+        def scalar(sql: str) -> int:
+            return int(connection.execute(sql).fetchone()[0])
+
+        return {
+            "sealed_windows": scalar(
+                "SELECT COUNT(*) FROM consolidation_windows WHERE status = 'sealed'"
+            ),
+            "reflection_records": scalar("SELECT COUNT(*) FROM reflection_records"),
+            "committed_runs": scalar(
+                "SELECT COUNT(*) FROM reflection_records WHERE status = 'committed'"
+            ),
+            "claims": scalar("SELECT COUNT(*) FROM claims"),
+            "materialized_candidates": scalar(
+                "SELECT COUNT(*) FROM cognitive_candidates WHERE canonical_resource_id IS NOT NULL"
+            ),
+            "completed_reconciliations": scalar(
+                "SELECT COUNT(*) FROM outbox_jobs "
+                "WHERE job_kind = 'memory.reconciliation' AND status = 'completed'"
+            ),
+        }
+    finally:
+        connection.close()
 
 
 class TestTickKill9:

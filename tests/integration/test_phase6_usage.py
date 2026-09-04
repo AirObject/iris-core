@@ -196,8 +196,8 @@ class TestIdempotentMerge:
             service.report(world.access, report)
 
 
-class TestUsageNeverMutatesCanonicalState:
-    def test_usage_leaves_claims_byte_identical(
+class TestUsageNeverMutatesFactSemantics:
+    def test_usage_only_increases_accessibility_and_never_confidence(
         self, usage_world: tuple[World, RecallUsageService, list[str]]
     ) -> None:
         world, service, ids = usage_world
@@ -208,7 +208,8 @@ class TestUsageNeverMutatesCanonicalState:
             try:
                 return list(
                     connection.execute(
-                        "SELECT id, confidence, importance, accessibility FROM claims ORDER BY id"
+                        "SELECT id, confidence, importance, accessibility, evidence_count "
+                        "FROM claims ORDER BY id"
                     )
                 )
             finally:
@@ -217,7 +218,20 @@ class TestUsageNeverMutatesCanonicalState:
         before = snapshot()
         for cycle in range(20):
             service.report(world.access, _report(ids, host_cycle=f"mut-{cycle}"))
-        assert snapshot() == before
+        after = snapshot()
+        assert [(row[0], row[1], row[2], row[4]) for row in after] == [
+            (row[0], row[1], row[2], row[4]) for row in before
+        ]
+        assert all(new[3] >= old[3] for old, new in zip(before, after, strict=True))
+        with world.store.read() as tx:
+            activations = (
+                tx.raw()
+                .execute("SELECT stage,activation_delta,applied FROM recall_usage_activations")
+                .fetchall()
+            )
+        assert activations
+        assert {str(row[0]) for row in activations} <= {"host_selected", "model_visible"}
+        assert all(float(row[1]) in {0.05, 0.10} for row in activations)
 
     def test_usage_rows_store_no_candidate_text(
         self, usage_world: tuple[World, RecallUsageService, list[str]]

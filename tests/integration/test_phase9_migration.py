@@ -70,7 +70,7 @@ def test_schema9_upgrade_preserves_bootstrap_bytes_pointer_and_hash(tmp_path: Pa
     )
 
     applied = MigrationRunner(database).migrate()
-    assert [item.version for item in applied] == [10]
+    assert [item.version for item in applied] == [10, 11]
     connection = sqlite3.connect(database)
     try:
         after = connection.execute(

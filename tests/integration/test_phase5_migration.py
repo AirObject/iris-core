@@ -93,7 +93,20 @@ def _migrate_to_phase4(database: Path) -> None:
             "persona_policies",
         ):
             connection.execute(f"DROP TABLE IF EXISTS {phase9_table}")
-        connection.execute("DELETE FROM schema_migrations WHERE version IN (6, 7, 8, 9, 10)")
+        for phase10_table in (
+            "recall_usage_activations",
+            "service_events",
+            "service_credentials",
+            "provider_budget_states",
+            "provider_circuit_states",
+            "provider_outcomes",
+            "cognitive_candidates",
+            "reflection_evidence",
+            "reflection_records",
+            "consolidation_windows",
+        ):
+            connection.execute(f"DROP TABLE IF EXISTS {phase10_table}")
+        connection.execute("DELETE FROM schema_migrations WHERE version IN (6, 7, 8, 9, 10, 11)")
         connection.commit()
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(
@@ -159,13 +172,13 @@ class TestUpgrade:
         try:
             from iris_memory_core.storage.migrations import current_app_version
 
-            assert current_app_version() == "0.10.0"
+            assert current_app_version() == "0.11.0"
         finally:
             connection.close()
         applied = MigrationRunner(database, default_migrations_path()).migrate()
         # Phase 6 ride-along: the 0.7.0 runner walks the Schema 5 source all
         # the way to the current released schema (ADR-0014 §10).
-        assert [item.version for item in applied] == [6, 7, 8, 9, 10]
+        assert [item.version for item in applied] == [6, 7, 8, 9, 10, 11]
         connection = sqlite3.connect(database)
         try:
             tables = {
@@ -188,15 +201,15 @@ class TestUpgrade:
             version = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
         finally:
             connection.close()
-        assert version == 10
+        assert version == 11
         assert not verify_database_invariants(database)
 
     def test_window_is_7_to_8(self) -> None:
-        # The 0.9.0 binary window (ADR-0016 §1): Schema 8 databases upgrade
-        # online; Schema 6 needs a 0.7.0 binary first (staged path).
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (9, 10)
-        verify_schema_compatible(9)
+        # The 0.11.0 binary window (ADR-0016 §1, ADR-0019 §1): Schema 10
+        # databases upgrade online; Schema 9 needs a 0.10.0 binary first.
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (10, 11)
         verify_schema_compatible(10)
+        verify_schema_compatible(11)
 
     def test_upgraded_database_openable_by_runtime(self, tmp_path: Path) -> None:
         database = tmp_path / "canonical.sqlite3"

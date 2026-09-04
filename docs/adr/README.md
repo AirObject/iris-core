@@ -24,5 +24,6 @@ Every ADR carries context, decision, rejected alternatives, consequences, and mi
 | [0016](./0016-phase8-profile-graph.md) | Phase 8 profile projection (field-level sourced summaries), relation graph allowlist projection with fenced generations, budget-bound graph route + profile route, canonical fallback | Accepted |
 | [0017](./0017-contract-surface-alignment.md) | Contract surface alignment: error-code supersession, endpoint naming adjudication, HTTP transport layer assigned to Phase 10 | Accepted |
 | [0018](./0018-phase9-persona.md) | Phase 9 complete Persona: additive bootstrap expansion, policy/evidence gates, atomic publication, state TTL and rollback-by-new-revision | Accepted |
+| [0019](./0019-phase10-consolidation-transport.md) | Phase 10 fixed-watermark consolidation/reflection, provider governance, credential/SSE transport, replay and process lifecycle | Accepted |
 
-Open conflicts blocking the next phase (Phase 10): **none**.
+Open conflicts blocking the next phases (Phase 11/12 host adapters): **none**.

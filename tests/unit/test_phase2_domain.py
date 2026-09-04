@@ -158,7 +158,7 @@ class TestJobKindRegistry:
             spec_for("nope.nope")
 
     def test_only_safe_handlers_enabled(self) -> None:
-        # Phase 8 enabled set: every kind has an implemented + tested
+        # Phase 10 enabled set: every kind has an implemented + tested
         # handler; no other kind is claimable (fail closed, §16).
         assert (
             frozenset(
@@ -194,6 +194,10 @@ class TestJobKindRegistry:
                     "persona.revised",
                     "persona.revision_invalidated",
                     "persona.state_expire",
+                    "episode.consolidation",
+                    "memory.reconciliation",
+                    "reflection.generate",
+                    "persona.evaluation",
                 }
             )
             == ENABLED_JOB_KINDS

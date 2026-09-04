@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "expected_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "external_identity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "method": {
+      "enum": [
+        "admin_confirmation",
+        "challenge_code"
+      ]
+    },
+    "proof": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "reason"
+  ],
+  "type": "object"
+}

@@ -73,13 +73,13 @@ def check_runtime(
 
 
 #: Application binary compatibility window for schema versions (§20.7). Outside
-#: this window Ready fails with ``schema_incompatible``. The 0.10.0 binary reads
-#: Schema 9 (Phase 8) databases and migrates them forward to Schema 10; a
-#: Schema 8 or older database must first pass through a 0.9.0 binary (the
+#: this window Ready fails with ``schema_incompatible``. The 0.11.0 binary reads
+#: Schema 10 databases and migrates them forward to Schema 11; a Schema 9 or
+#: older database must first pass through a 0.10.0 binary (the
 #: staged multi-version upgrade path keeps working — the window only bounds
 #: Ready, MigrationRunner may still walk multiple steps).
-SUPPORTED_SCHEMA_MIN = 9
-SUPPORTED_SCHEMA_MAX = 10
+SUPPORTED_SCHEMA_MIN = 10
+SUPPORTED_SCHEMA_MAX = 11
 
 
 def verify_schema_compatible(schema_version: int) -> None:

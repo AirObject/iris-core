@@ -1,0 +1,7 @@
+{
+  "entity_id": "entity-fixture-1",
+  "kind": "person",
+  "display_name": "Fixture Entity",
+  "state": "active",
+  "revision": 1
+}

@@ -34,7 +34,8 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from iris_memory_core.application.events import CognitiveEventService
-from iris_memory_core.application.focus import FocusService
+from iris_memory_core.application.focus import FocusService, _require_item_content_access
+from iris_memory_core.application.memory import _require_claim_access
 from iris_memory_core.application.ports import (
     Clock,
     MonotonicClock,
@@ -45,6 +46,7 @@ from iris_memory_core.application.ports import (
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.state import StateService
 from iris_memory_core.application.tasks import TaskService
+from iris_memory_core.application.write_support import enqueue_change_job
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
@@ -58,7 +60,7 @@ from iris_memory_core.domain.errors import (
     RevisionMismatchError,
     ScopeViolationError,
 )
-from iris_memory_core.domain.focus import FocusStatus
+from iris_memory_core.domain.focus import FocusKind, FocusStatus
 from iris_memory_core.domain.fts import build_fts_query
 from iris_memory_core.domain.graph import (
     GRAPH_MAX_DEPTH,
@@ -539,6 +541,12 @@ class StateRoute:
                         ),
                         privacy_labels=(),
                         expires_us=entry.expires_us,
+                        # Every published candidate carries a content hash:
+                        # hosts dedupe and cache on it, and the wire contract
+                        # requires it to be non-empty. State/focus/task rows
+                        # have no stored revision hash, so it is derived from
+                        # the canonical text the route actually served.
+                        content_hash=content_hash({"content": text})[:16],
                     )
                 )
             if len(candidates) >= limit:
@@ -626,6 +634,7 @@ class FocusRoute:
                     privacy_labels=revision.privacy_labels,
                     expires_us=revision.expires_us,
                     category=revision.kind,
+                    content_hash=content_hash({"content": revision.summary})[:16],
                 )
             )
         check_deadline(self._monotonic, deadline_us)
@@ -707,6 +716,7 @@ class DueTaskRoute:
                     ),
                     privacy_labels=revision.privacy_labels,
                     category="task",
+                    content_hash=content_hash({"content": text})[:16],
                 )
             )
         check_deadline(self._monotonic, deadline_us)
@@ -2762,6 +2772,11 @@ class RecallUsageReportResult:
     model_visible_count: int
     host_selected_count: int
     returned_count: int
+    #: Stage 1 of the funnel, replayed from the stored recall request: how
+    #: many candidates the routes retrieved BEFORE rehydrate dropped any
+    #: (ADR-0014 §7). Reporting it alongside the later stages is what makes
+    #: the published four-stage usage envelope complete.
+    retrieved_count: int = 0
 
 
 def _request_fingerprint(request: StructuredRecallRequest) -> str:
@@ -3149,6 +3164,143 @@ class RecallUsageService:
         self._uow = uow
         self._clock = clock
 
+    def _activate_claim(
+        self, tx: Transaction, access: AccessContext, candidate: RecallCandidate, delta: float
+    ) -> int:
+        claim = tx.claims.get(candidate.resource_id)
+        current = _require_claim_access(tx, access, claim)
+        if claim.current_revision != candidate.resource_revision:
+            raise RevisionMismatchError(
+                "claim", claim.id, candidate.resource_revision, claim.current_revision
+            )
+        now_us = self._clock.now_us()
+        accessibility = min(1.0, current.accessibility + delta)
+        if accessibility == current.accessibility:
+            return claim.current_revision
+        revision = claim.current_revision + 1
+        revision_id = tx.claims.insert_revision(
+            claim_id=claim.id,
+            tenant_id=claim.tenant_id,
+            revision=revision,
+            subject_entity_id=current.subject_entity_id,
+            predicate=current.predicate,
+            value_json=current.value_json,
+            canonical_text=current.canonical_text,
+            category=current.category,
+            privacy_labels=current.privacy_labels,
+            source_refs=current.source_refs,
+            status=current.status,
+            confidence=current.confidence,
+            importance=current.importance,
+            accessibility=accessibility,
+            source_authority=current.source_authority,
+            valid_from_us=current.valid_from_us,
+            valid_until_us=current.valid_until_us,
+            recorded_at_us=now_us,
+            extractor_version=current.extractor_version,
+            content_hash=current.content_hash,
+            created_by=f"usage:{access.app_instance_id}",
+        )
+        tx.claims.stamp_revision_superseded(current.id, superseded_at_us=now_us)
+        if (
+            tx.claims.advance_pointer(
+                claim.id,
+                expected_revision=claim.current_revision,
+                revision=revision,
+                revision_id=revision_id,
+                status=current.status,
+                accessibility=accessibility,
+            )
+            != 1
+        ):
+            tx.claims.raise_pointer_mismatch(claim.id, claim.current_revision)
+        tx.advance_watermark(claim.tenant_id, claim.agent_id, [("claim", claim.id, revision)])
+        tx.audit(
+            tenant_id=claim.tenant_id,
+            actor=f"access:{access.app_instance_id}",
+            action="claim.accessibility_activated",
+            resource_type="claim",
+            resource_id=claim.id,
+            reason_code="verified_recall_usage",
+            details={"activation_delta": delta},
+            revision=revision,
+        )
+        enqueue_change_job(
+            tx,
+            tenant_id=claim.tenant_id,
+            agent_id=claim.agent_id,
+            job_kind="claim.changed",
+            aggregate_type="claim",
+            aggregate_id=claim.id,
+            source_revision=revision,
+            payload={"claim_id": claim.id, "revision": revision},
+        )
+        return revision
+
+    def _activate_focus(
+        self, tx: Transaction, access: AccessContext, candidate: RecallCandidate, delta: float
+    ) -> int:
+        item = tx.focus.get(candidate.resource_id)
+        current = _require_item_content_access(tx, access, item)
+        if item.current_revision != candidate.resource_revision:
+            raise RevisionMismatchError(
+                "focus_item", item.id, candidate.resource_revision, item.current_revision
+            )
+        if item.status not in (FocusStatus.ACTIVE.value, FocusStatus.DORMANT.value):
+            raise ConflictError("focus item is not activatable")
+        now_us = self._clock.now_us()
+        activation = min(1.0, item.activation_base + delta)
+        if activation == item.activation_base:
+            return item.current_revision
+        revision = item.current_revision + 1
+        revision_id = tx.focus.insert_revision(
+            item_id=item.id,
+            tenant_id=item.tenant_id,
+            revision=revision,
+            kind=FocusKind(current.kind),
+            summary=current.summary,
+            structured_payload=current.structured_payload,
+            privacy_labels=current.privacy_labels,
+            source_refs=current.source_refs,
+            salience=current.salience,
+            activation=activation,
+            activation_base=activation,
+            importance=current.importance,
+            status=FocusStatus.ACTIVE,
+            promotion_policy=current.promotion_policy,
+            promotion_target_type=current.promotion_target_type,
+            promotion_target_id=current.promotion_target_id,
+            last_activated_us=now_us,
+            expires_us=current.expires_us,
+            created_by=f"usage:{access.app_instance_id}",
+        )
+        if (
+            tx.focus.advance_pointer(
+                item.id,
+                expected_revision=item.current_revision,
+                revision=revision,
+                revision_id=revision_id,
+                status=FocusStatus.ACTIVE,
+                activation=activation,
+                activation_base=activation,
+                last_activated_us=now_us,
+            )
+            != 1
+        ):
+            tx.focus.raise_pointer_mismatch(item.id, item.current_revision)
+        tx.advance_watermark(item.tenant_id, item.agent_id, [("focus_item", item.id, revision)])
+        tx.audit(
+            tenant_id=item.tenant_id,
+            actor=f"access:{access.app_instance_id}",
+            action="focus.usage_activated",
+            resource_type="focus_item",
+            resource_id=item.id,
+            reason_code="verified_recall_usage",
+            details={"activation_delta": delta},
+            revision=revision,
+        )
+        return revision
+
     def report(
         self, access: AccessContext, report: RecallUsageReportInput
     ) -> RecallUsageReportResult:
@@ -3213,6 +3365,7 @@ class RecallUsageService:
                     model_visible_count=len(stored_visible),
                     host_selected_count=len(stored_selected),
                     returned_count=len(returned),
+                    retrieved_count=int(row["retrieved_count"]),  # type: ignore[index]
                 )
             report_id, created = tx.usage.insert_report(
                 tenant_id=access.tenant_id,
@@ -3225,12 +3378,66 @@ class RecallUsageService:
                 model_visible_ids=model_visible,
                 reported_at_us=report.reported_at_us,
             )
+            response_json = row["response_json"]  # type: ignore[index]
+            candidates = (
+                {
+                    candidate.candidate_id: candidate
+                    for candidate in _result_from_json(str(response_json)).candidates
+                }
+                if response_json is not None
+                else {}
+            )
+            selected = set(host_selected) | set(model_visible)
+            for candidate_id in sorted(selected):
+                candidate = candidates.get(candidate_id)
+                stages = [
+                    ("host_selected", 0.05) for _ in range(int(candidate_id in set(host_selected)))
+                ] + [
+                    ("model_visible", 0.10) for _ in range(int(candidate_id in set(model_visible)))
+                ]
+                applied = False
+                reject_reason: str | None = None
+                resource_type = candidate.resource_type if candidate else "unknown"
+                resource_id = candidate.resource_id if candidate else candidate_id
+                resource_revision = candidate.resource_revision if candidate else 1
+                if candidate is None:
+                    reject_reason = "response_unavailable"
+                else:
+                    total_delta = sum(delta for _, delta in stages)
+                    try:
+                        if candidate.resource_type == "claim":
+                            self._activate_claim(tx, access, candidate, total_delta)
+                            applied = True
+                        elif candidate.resource_type == "focus_item":
+                            self._activate_focus(tx, access, candidate, total_delta)
+                            applied = True
+                        else:
+                            reject_reason = "resource_not_activatable"
+                    except (AccessDeniedError, ConflictError, NotFoundError, RevisionMismatchError):
+                        reject_reason = "resource_stale_or_inaccessible"
+                for stage, delta in stages:
+                    tx.usage.insert_activation(
+                        tenant_id=access.tenant_id,
+                        agent_id=agent_id,
+                        request_id=report.request_id,
+                        host_cycle_id=report.host_cycle_id,
+                        candidate_id=candidate_id,
+                        stage=stage,
+                        resource_type=resource_type,
+                        resource_id=resource_id,
+                        resource_revision=resource_revision,
+                        activation_delta=delta,
+                        applied=applied,
+                        reject_reason=reject_reason,
+                        now_us=self._clock.now_us(),
+                    )
             return RecallUsageReportResult(
                 report_id=report_id,
                 created=created,
                 model_visible_count=len(model_visible),
                 host_selected_count=len(host_selected),
                 returned_count=len(returned),
+                retrieved_count=int(row["retrieved_count"]),  # type: ignore[index]
             )
 
 

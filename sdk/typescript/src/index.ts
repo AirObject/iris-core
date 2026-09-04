@@ -2,8 +2,11 @@ export interface CapabilitiesEnvelope {
   readonly api_version: string;
   readonly schema_version: number;
   readonly capabilities: readonly string[];
+  readonly deprecated_capabilities?: readonly string[];
   readonly [futureField: string]: unknown;
 }
+
+export type IndexKind = "recent_context" | "fts" | "vector" | "graph" | "profile";
 
 export interface ErrorDetail {
   readonly code: string;
@@ -526,7 +529,81 @@ function validatePersonaRollbackRequest(value: unknown): string[] {
   return errors;
 }
 
+function validatePhase10Surface(schema: string, value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  const requestFields: Readonly<Record<string, readonly string[]>> = {
+    "identity-create-request": ["provider", "subject", "realm", "entity_id"],
+    "binding-request": ["external_identity_id", "entity_id", "method", "confidence", "proof", "expected_revision", "reason"],
+    "admin-operation-request": ["agent_id", "space_id", "session_id", "expected_revision", "reason", "destination", "minimum_watermark", "window_id"],
+  };
+  const allowed = requestFields[schema];
+  if (allowed !== undefined) {
+    for (const key of Object.keys(value)) {
+      if (!allowed.includes(key)) errors.push(`unknown field: ${key}`);
+    }
+  }
+  const requiredStrings: Readonly<Record<string, readonly string[]>> = {
+    "entity-view": ["entity_id", "kind", "display_name", "state"],
+    "identity-create-request": ["provider", "subject", "realm"],
+    "identity-view": ["external_identity_id", "provider", "subject_hash", "realm"],
+    "binding-request": ["reason"],
+    "binding-view": ["binding_id", "external_identity_id", "entity_id", "state"],
+    "space-group-view": ["space_group_id", "name", "description"],
+    "admin-operation-view": ["operation_id", "kind", "status"],
+  };
+  for (const field of requiredStrings[schema] ?? []) {
+    if (typeof value[field] !== "string" || (field !== "display_name" && value[field] === "")) {
+      errors.push(`${field} must be a string`);
+    }
+  }
+  if (["entity-view", "binding-view", "space-group-view"].includes(schema)) {
+    if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+      errors.push("revision must be a positive integer");
+    }
+  }
+  if (schema === "binding-request" && value.confidence !== undefined &&
+      (typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1)) {
+    errors.push("confidence must be within 0..1");
+  }
+  if (schema === "space-group-view" &&
+      (!Array.isArray(value.space_ids) || !value.space_ids.every((item: unknown) => typeof item === "string" && item.length > 0))) {
+    errors.push("space_ids must be an array of non-empty strings");
+  }
+  if (schema === "admin-operation-request") requireNonEmptyString(value.reason, "reason", errors);
+  if (schema === "admin-operation-view" &&
+      (!Number.isInteger(value.created_us) || Number(value.created_us) < 0)) {
+    errors.push("created_us must be a non-negative integer");
+  }
+  if (schema === "audit-event-list") {
+    if (!Array.isArray(value.events)) {
+      errors.push("events must be an array");
+    } else {
+      value.events.forEach((event: unknown, index: number) => {
+        if (!isRecord(event)) {
+          errors.push(`events[${index}] must be an object`);
+          return;
+        }
+        for (const field of ["resource_type", "resource_id", "action", "reason_code"] as const) {
+          if (typeof event[field] !== "string" || event[field].length === 0) {
+            errors.push(`events[${index}].${field} must be a non-empty string`);
+          }
+        }
+        if (!Number.isInteger(event.created_us) || Number(event.created_us) < 0) {
+          errors.push(`events[${index}].created_us must be non-negative`);
+        }
+      });
+    }
+  }
+  return errors;
+}
+
 export function validateContract(schema: string, value: unknown): readonly string[] {
+  if ([
+    "entity-view", "identity-create-request", "identity-view", "binding-request",
+    "binding-view", "space-group-view", "admin-operation-request",
+    "admin-operation-view", "audit-event-list",
+  ].includes(schema)) return validatePhase10Surface(schema, value);
   if (schema === "capabilities") return validateCapabilities(value);
   if (schema === "error-envelope") return validateErrorEnvelope(value);
   if (schema === "observation-batch-request") return validateObservationBatchRequest(value);
@@ -2529,18 +2606,20 @@ export interface LegalHoldView {
 
 export class AsyncIrisMemoryClient {
   readonly #baseUrl: string;
+  readonly #bearerToken: string | undefined;
 
-  public constructor(baseUrl: string) {
+  public constructor(baseUrl: string, options: { bearerToken?: string } = {}) {
     this.#baseUrl = baseUrl.replace(/\/$/, "");
+    this.#bearerToken = options.bearerToken;
   }
 
   public async capabilities(): Promise<CapabilitiesEnvelope> {
-    const response = await fetch(`${this.#baseUrl}/v1/capabilities`);
+    const response = await this.#request("/v1/capabilities");
     return asCapabilities(await response.json());
   }
 
   public async negotiate(apiVersions: readonly string[] = ["v1"]): Promise<CapabilitiesEnvelope> {
-    const response = await fetch(`${this.#baseUrl}/v1/negotiation`, {
+    const response = await this.#request("/v1/negotiation", {
       body: JSON.stringify({ api_versions: apiVersions }),
       headers: { "content-type": "application/json" },
       method: "POST",
@@ -2556,14 +2635,15 @@ export class AsyncIrisMemoryClient {
     if (options.idempotencyKey !== undefined) {
       headers["Idempotency-Key"] = options.idempotencyKey;
     }
-    const response = await fetch(`${this.#baseUrl}/v1/observations:batch`, {
+    const response = await this.#request(`/v1/observations:batch`, {
       body: JSON.stringify({ records }),
       headers,
       method: "POST",
     });
-    const errors = validateObservationBatchResponse(await response.json());
+    const value: unknown = await response.json();
+    const errors = validateObservationBatchResponse(value);
     if (errors.length > 0) throw new ContractValidationError(errors);
-    return (await response.json()) as ObservationBatchResponse;
+    return value as ObservationBatchResponse;
   }
 
   public async acquireSurfaceLease(input: {
@@ -2574,7 +2654,7 @@ export class AsyncIrisMemoryClient {
     allow_preempt?: boolean;
     reason?: string;
   }): Promise<LeaseView> {
-    const response = await fetch(`${this.#baseUrl}/v1/active-surfaces:acquire`, {
+    const response = await this.#request(`/v1/active-surfaces:acquire`, {
       body: JSON.stringify(input),
       headers: { "content-type": "application/json" },
       method: "POST",
@@ -2589,8 +2669,7 @@ export class AsyncIrisMemoryClient {
     leaseId: string,
     input: { lease_epoch: number; holder_app_instance_id: string; ttl_us: number },
   ): Promise<LeaseView> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/active-surfaces/${encodeURIComponent(leaseId)}:heartbeat`,
+    const response = await this.#request(`/v1/active-surfaces/${encodeURIComponent(leaseId)}:heartbeat`,
       {
         body: JSON.stringify(input),
         headers: { "content-type": "application/json" },
@@ -2607,8 +2686,7 @@ export class AsyncIrisMemoryClient {
     leaseId: string,
     input: { lease_epoch: number; holder_app_instance_id: string; reason?: string },
   ): Promise<LeaseView> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/active-surfaces/${encodeURIComponent(leaseId)}:release`,
+    const response = await this.#request(`/v1/active-surfaces/${encodeURIComponent(leaseId)}:release`,
       {
         body: JSON.stringify(input),
         headers: { "content-type": "application/json" },
@@ -2622,7 +2700,7 @@ export class AsyncIrisMemoryClient {
   }
 
   public async readiness(): Promise<Readonly<Record<string, unknown>>> {
-    const response = await fetch(`${this.#baseUrl}/health/ready`);
+    const response = await this.#request(`/health/ready`);
     const value: unknown = await response.json();
     const errors = validateReadinessReport(value);
     if (errors.length > 0) throw new ContractValidationError(errors);
@@ -2638,7 +2716,7 @@ export class AsyncIrisMemoryClient {
   }): Promise<RecentContextView> {
     const params = new URLSearchParams({ agent_id: input.agent_id, space_id: input.space_id });
     if (input.session_id != null) params.set("session_id", input.session_id);
-    const response = await fetch(`${this.#baseUrl}/v1/recent-context?${params.toString()}`);
+    const response = await this.#request(`/v1/recent-context?${params.toString()}`);
     const value: unknown = await response.json();
     const errors = validateRecentContextView(value);
     if (errors.length > 0) throw new ContractValidationError(errors);
@@ -2670,8 +2748,7 @@ export class AsyncIrisMemoryClient {
     if (input.expected_revision !== undefined) {
       body.expected_revision = input.expected_revision;
     }
-    const response = await fetch(
-      `${this.#baseUrl}/v1/state/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
+    const response = await this.#request(`/v1/state/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
       {
         body: JSON.stringify(body),
         headers: {
@@ -2695,8 +2772,7 @@ export class AsyncIrisMemoryClient {
     const params = new URLSearchParams({ agent_id: input.agent_id });
     if (input.space_id != null) params.set("space_id", input.space_id);
     if (input.session_id != null) params.set("session_id", input.session_id);
-    const response = await fetch(
-      `${this.#baseUrl}/v1/state/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}?${params.toString()}`,
+    const response = await this.#request(`/v1/state/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}?${params.toString()}`,
     );
     const value: unknown = await response.json();
     if (value === null || value === undefined) return null;
@@ -2715,7 +2791,7 @@ export class AsyncIrisMemoryClient {
     if (input.namespace !== undefined) params.set("namespace", input.namespace);
     if (input.space_id !== undefined) params.set("space_id", input.space_id);
     if (input.session_id !== undefined) params.set("session_id", input.session_id);
-    const response = await fetch(`${this.#baseUrl}/v1/state?${params.toString()}`);
+    const response = await this.#request(`/v1/state?${params.toString()}`);
     const body: unknown = await response.json();
     if (typeof body !== "object" || body === null || !Array.isArray((body as { items?: unknown }).items)) {
       throw new ContractValidationError(["items must be an array"]);
@@ -2735,8 +2811,7 @@ export class AsyncIrisMemoryClient {
     const params = new URLSearchParams({ agent_id: input.agent_id });
     if (input.space_id !== undefined) params.set("space_id", input.space_id);
     if (input.session_id !== undefined) params.set("session_id", input.session_id);
-    const response = await fetch(
-      `${this.#baseUrl}/v1/state/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}/history?${params.toString()}`,
+    const response = await this.#request(`/v1/state/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}/history?${params.toString()}`,
     );
     return (await response.json()) as Readonly<Record<string, unknown>>;
   }
@@ -2745,7 +2820,7 @@ export class AsyncIrisMemoryClient {
     input: Readonly<Record<string, unknown>>,
     options: { idempotencyKey: string },
   ): Promise<FocusView> {
-    const response = await fetch(`${this.#baseUrl}/v1/focus-items`, {
+    const response = await this.#request(`/v1/focus-items`, {
       body: JSON.stringify(input),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -2760,8 +2835,7 @@ export class AsyncIrisMemoryClient {
   }
 
   public async getFocusItem(focusItemId: string): Promise<FocusView> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/focus-items/${encodeURIComponent(focusItemId)}`,
+    const response = await this.#request(`/v1/focus-items/${encodeURIComponent(focusItemId)}`,
     );
     const value: unknown = await response.json();
     const errors = validateFocusView(value);
@@ -2781,7 +2855,7 @@ export class AsyncIrisMemoryClient {
     if (input.kind !== undefined) params.set("kind", input.kind);
     if (input.space_id !== undefined) params.set("space_id", input.space_id);
     if (input.session_id !== undefined) params.set("session_id", input.session_id);
-    const response = await fetch(`${this.#baseUrl}/v1/focus-items?${params.toString()}`);
+    const response = await this.#request(`/v1/focus-items?${params.toString()}`);
     const body: unknown = await response.json();
     if (typeof body !== "object" || body === null || !Array.isArray((body as { items?: unknown }).items)) {
       throw new ContractValidationError(["items must be an array"]);
@@ -2810,8 +2884,7 @@ export class AsyncIrisMemoryClient {
     if (input.promotion_target_type !== undefined) {
       body.promotion_target_type = input.promotion_target_type;
     }
-    const response = await fetch(
-      `${this.#baseUrl}/v1/focus-items/${encodeURIComponent(focusItemId)}:${action}`,
+    const response = await this.#request(`/v1/focus-items/${encodeURIComponent(focusItemId)}:${action}`,
       {
         body: JSON.stringify(body),
         headers: {
@@ -2839,7 +2912,7 @@ export class AsyncIrisMemoryClient {
       reason: input.reason,
     };
     if (input.session_id != null) body.session_id = input.session_id;
-    const response = await fetch(`${this.#baseUrl}/v1/admin/recent-context:rebuild`, {
+    const response = await this.#request(`/v1/admin/recent-context:rebuild`, {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
       method: "POST",
@@ -2857,7 +2930,7 @@ export class AsyncIrisMemoryClient {
       Object.entries(query).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    const response = await fetch(`${this.#baseUrl}/v1/admin/jobs${suffix}`);
+    const response = await this.#request(`/v1/admin/jobs${suffix}`);
     const body: unknown = await response.json();
     if (typeof body !== "object" || body === null || !Array.isArray((body as { jobs?: unknown }).jobs)) {
       throw new ContractValidationError(["jobs must be an array"]);
@@ -2871,8 +2944,7 @@ export class AsyncIrisMemoryClient {
   }
 
   public async retryAdminJob(jobId: string, input: { reason: string }): Promise<AdminJob> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/admin/jobs/${encodeURIComponent(jobId)}:retry`,
+    const response = await this.#request(`/v1/admin/jobs/${encodeURIComponent(jobId)}:retry`,
       {
         body: JSON.stringify(input),
         headers: { "content-type": "application/json" },
@@ -2893,7 +2965,7 @@ export class AsyncIrisMemoryClient {
     timezone?: string;
     catch_up_policy?: string;
   }): Promise<ScheduleView> {
-    const response = await fetch(`${this.#baseUrl}/v1/admin/schedules`, {
+    const response = await this.#request(`/v1/admin/schedules`, {
       body: JSON.stringify(input),
       headers: { "content-type": "application/json" },
       method: "POST",
@@ -2908,8 +2980,7 @@ export class AsyncIrisMemoryClient {
     scheduleId: string,
     input: { reason: string },
   ): Promise<Readonly<Record<string, unknown>>> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/admin/schedules/${encodeURIComponent(scheduleId)}:run`,
+    const response = await this.#request(`/v1/admin/schedules/${encodeURIComponent(scheduleId)}:run`,
       {
         body: JSON.stringify(input),
         headers: { "content-type": "application/json" },
@@ -2923,7 +2994,7 @@ export class AsyncIrisMemoryClient {
   // -- Phase 6: recall protocol ---------------------------------------------
 
   public async recall(input: RecallRequest): Promise<RecallResponse> {
-    const response = await fetch(`${this.#baseUrl}/v1/recall`, {
+    const response = await this.#request(`/v1/recall`, {
       body: JSON.stringify(input),
       headers: { "content-type": "application/json" },
       method: "POST",
@@ -2939,8 +3010,7 @@ export class AsyncIrisMemoryClient {
     input: RecallUsageReportRequest,
     options: { idempotencyKey: string },
   ): Promise<RecallUsageReportResponse> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/recall/${encodeURIComponent(requestId)}/usage`,
+    const response = await this.#request(`/v1/recall/${encodeURIComponent(requestId)}/usage`,
       {
         body: JSON.stringify(input),
         headers: {
@@ -2957,7 +3027,7 @@ export class AsyncIrisMemoryClient {
   }
 
   public async search(input: SearchRequest): Promise<SearchResponse> {
-    const response = await fetch(`${this.#baseUrl}/v1/search`, {
+    const response = await this.#request(`/v1/search`, {
       body: JSON.stringify(input),
       headers: { "content-type": "application/json" },
       method: "POST",
@@ -2974,7 +3044,7 @@ export class AsyncIrisMemoryClient {
     input: Readonly<Record<string, unknown>>,
     options: { idempotencyKey: string },
   ): Promise<NoteView> {
-    const response = await fetch(`${this.#baseUrl}/v1/notes`, {
+    const response = await this.#request(`/v1/notes`, {
       body: JSON.stringify(input),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3000,7 +3070,7 @@ export class AsyncIrisMemoryClient {
       const item = input[key];
       if (item !== undefined) params.set(key, item);
     }
-    const response = await fetch(`${this.#baseUrl}/v1/notes?${params.toString()}`);
+    const response = await this.#request(`/v1/notes?${params.toString()}`);
     const body: unknown = await response.json();
     if (typeof body !== "object" || body === null || !Array.isArray((body as { items?: unknown }).items)) {
       throw new ContractValidationError(["items must be an array"]);
@@ -3017,7 +3087,7 @@ export class AsyncIrisMemoryClient {
     input: Readonly<Record<string, unknown>>,
     options: { idempotencyKey: string },
   ): Promise<NoteView> {
-    const response = await fetch(`${this.#baseUrl}/v1/notes/${encodeURIComponent(noteId)}`, {
+    const response = await this.#request(`/v1/notes/${encodeURIComponent(noteId)}`, {
       body: JSON.stringify(input),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3053,8 +3123,7 @@ export class AsyncIrisMemoryClient {
     }
     if (input.lease_id !== undefined) body.lease_id = input.lease_id;
     if (input.lease_epoch !== undefined) body.lease_epoch = input.lease_epoch;
-    const response = await fetch(
-      `${this.#baseUrl}/v1/notes/${encodeURIComponent(noteId)}:${action}`,
+    const response = await this.#request(`/v1/notes/${encodeURIComponent(noteId)}:${action}`,
       {
         body: JSON.stringify(body),
         headers: {
@@ -3076,7 +3145,7 @@ export class AsyncIrisMemoryClient {
     input: Readonly<Record<string, unknown>>,
     options: { idempotencyKey: string },
   ): Promise<TaskView> {
-    const response = await fetch(`${this.#baseUrl}/v1/tasks`, {
+    const response = await this.#request(`/v1/tasks`, {
       body: JSON.stringify(input),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3101,7 +3170,7 @@ export class AsyncIrisMemoryClient {
       const item = input[key];
       if (item !== undefined) params.set(key, item);
     }
-    const response = await fetch(`${this.#baseUrl}/v1/tasks?${params.toString()}`);
+    const response = await this.#request(`/v1/tasks?${params.toString()}`);
     const body: unknown = await response.json();
     if (typeof body !== "object" || body === null || !Array.isArray((body as { items?: unknown }).items)) {
       throw new ContractValidationError(["items must be an array"]);
@@ -3118,7 +3187,7 @@ export class AsyncIrisMemoryClient {
     input: Readonly<Record<string, unknown>>,
     options: { idempotencyKey: string },
   ): Promise<TaskView> {
-    const response = await fetch(`${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}`, {
+    const response = await this.#request(`/v1/tasks/${encodeURIComponent(taskId)}`, {
       body: JSON.stringify(input),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3147,8 +3216,7 @@ export class AsyncIrisMemoryClient {
     },
   ): Promise<TaskView> {
     const { idempotencyKey, ...body } = input;
-    const response = await fetch(
-      `${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}:transition`,
+    const response = await this.#request(`/v1/tasks/${encodeURIComponent(taskId)}:transition`,
       {
         body: JSON.stringify(body),
         headers: {
@@ -3169,7 +3237,7 @@ export class AsyncIrisMemoryClient {
     input: Readonly<Record<string, unknown>>,
     options: { idempotencyKey: string },
   ): Promise<TaskStepView> {
-    const response = await fetch(`${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}/steps`, {
+    const response = await this.#request(`/v1/tasks/${encodeURIComponent(taskId)}/steps`, {
       body: JSON.stringify(input),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3198,8 +3266,7 @@ export class AsyncIrisMemoryClient {
     },
   ): Promise<TaskStepView> {
     const { idempotencyKey, ...body } = input;
-    const response = await fetch(
-      `${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}/steps/${encodeURIComponent(stepId)}:transition`,
+    const response = await this.#request(`/v1/tasks/${encodeURIComponent(taskId)}/steps/${encodeURIComponent(stepId)}:transition`,
       {
         body: JSON.stringify(body),
         headers: {
@@ -3220,8 +3287,7 @@ export class AsyncIrisMemoryClient {
     input: Readonly<Record<string, unknown>>,
     options: { idempotencyKey: string },
   ): Promise<Readonly<Record<string, unknown>>> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}/dependencies`,
+    const response = await this.#request(`/v1/tasks/${encodeURIComponent(taskId)}/dependencies`,
       {
         body: JSON.stringify(input),
         headers: {
@@ -3239,7 +3305,7 @@ export class AsyncIrisMemoryClient {
     input: Readonly<Record<string, unknown>>,
     options: { idempotencyKey: string },
   ): Promise<TriggerView> {
-    const response = await fetch(`${this.#baseUrl}/v1/tasks/${encodeURIComponent(taskId)}/triggers`, {
+    const response = await this.#request(`/v1/tasks/${encodeURIComponent(taskId)}/triggers`, {
       body: JSON.stringify(input),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3269,7 +3335,7 @@ export class AsyncIrisMemoryClient {
     if (input.lease_id !== undefined) params.set("lease_id", input.lease_id);
     if (input.lease_epoch !== undefined) params.set("lease_epoch", String(input.lease_epoch));
     if (input.limit !== undefined) params.set("limit", String(input.limit));
-    const response = await fetch(`${this.#baseUrl}/v1/cognitive-events?${params.toString()}`);
+    const response = await this.#request(`/v1/cognitive-events?${params.toString()}`);
     const body: unknown = await response.json();
     if (typeof body !== "object" || body === null || !Array.isArray((body as { items?: unknown }).items)) {
       throw new ContractValidationError(["items must be an array"]);
@@ -3295,8 +3361,7 @@ export class AsyncIrisMemoryClient {
     if (options.ack_token !== undefined) body.ack_token = options.ack_token;
     if (options.lease_id !== undefined) body.lease_id = options.lease_id;
     if (options.lease_epoch !== undefined) body.lease_epoch = options.lease_epoch;
-    const response = await fetch(
-      `${this.#baseUrl}/v1/cognitive-events/${encodeURIComponent(eventId)}:ack`,
+    const response = await this.#request(`/v1/cognitive-events/${encodeURIComponent(eventId)}:ack`,
       {
         body: JSON.stringify(body),
         headers: {
@@ -3323,7 +3388,7 @@ export class AsyncIrisMemoryClient {
       lease_epoch?: number;
     },
   ): Promise<ClaimView> {
-    const response = await fetch(`${this.#baseUrl}/v1/claims:remember`, {
+    const response = await this.#request(`/v1/claims:remember`, {
       body: JSON.stringify(withLeaseProof(record, options)),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3347,8 +3412,7 @@ export class AsyncIrisMemoryClient {
       lease_epoch?: number;
     },
   ): Promise<ClaimView> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/claims/${encodeURIComponent(claimId)}:correct`,
+    const response = await this.#request(`/v1/claims/${encodeURIComponent(claimId)}:correct`,
       {
         body: JSON.stringify(withLeaseProof(record, options)),
         headers: {
@@ -3365,8 +3429,7 @@ export class AsyncIrisMemoryClient {
   }
 
   public async getClaim(claimId: string): Promise<ClaimView> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/claims/${encodeURIComponent(claimId)}`,
+    const response = await this.#request(`/v1/claims/${encodeURIComponent(claimId)}`,
     );
     const value: unknown = await response.json();
     const errors = validateClaimView(value);
@@ -3402,7 +3465,7 @@ export class AsyncIrisMemoryClient {
     if (input.valid_at_us !== undefined) params.set("valid_at_us", String(input.valid_at_us));
     if (input.as_of_us !== undefined) params.set("as_of_us", String(input.as_of_us));
     if (input.limit !== undefined) params.set("limit", String(input.limit));
-    const response = await fetch(`${this.#baseUrl}/v1/claims?${params.toString()}`);
+    const response = await this.#request(`/v1/claims?${params.toString()}`);
     const value: unknown = await response.json();
     const errors = validateClaimSearchResponse(value);
     if (errors.length > 0) throw new ContractValidationError(errors);
@@ -3417,8 +3480,7 @@ export class AsyncIrisMemoryClient {
     if (query.as_of_us !== undefined) params.set("as_of_us", String(query.as_of_us));
     if (query.limit !== undefined) params.set("limit", String(query.limit));
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    const response = await fetch(
-      `${this.#baseUrl}/v1/claims/${encodeURIComponent(claimId)}/history${suffix}`,
+    const response = await this.#request(`/v1/claims/${encodeURIComponent(claimId)}/history${suffix}`,
     );
     const value: unknown = await response.json();
     const errors = validateClaimHistoryResponse(value);
@@ -3441,7 +3503,7 @@ export class AsyncIrisMemoryClient {
     if (options.idempotencyKey !== undefined) {
       headers["Idempotency-Key"] = options.idempotencyKey;
     }
-    const response = await fetch(`${this.#baseUrl}/v1/memory:forget`, {
+    const response = await this.#request(`/v1/memory:forget`, {
       body: JSON.stringify(withLeaseProof(record, options)),
       headers,
       method: "POST",
@@ -3460,7 +3522,7 @@ export class AsyncIrisMemoryClient {
       params.set("created_after_us", String(query.created_after_us));
     }
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    const response = await fetch(`${this.#baseUrl}/v1/memory/deletion-ledger${suffix}`);
+    const response = await this.#request(`/v1/memory/deletion-ledger${suffix}`);
     const value: unknown = await response.json();
     const errors = validateDeletionLedgerResponse(value);
     if (errors.length > 0) throw new ContractValidationError(errors);
@@ -3472,7 +3534,7 @@ export class AsyncIrisMemoryClient {
     options: { idempotencyKey: string },
   ): Promise<RetentionPolicyView> {
     // The contract requires the Idempotency-Key header on this write too.
-    const response = await fetch(`${this.#baseUrl}/v1/retention-policies`, {
+    const response = await this.#request(`/v1/retention-policies`, {
       body: JSON.stringify(record),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3489,7 +3551,7 @@ export class AsyncIrisMemoryClient {
   public async listRetentionPolicies(): Promise<{
     items: readonly RetentionPolicyView[];
   }> {
-    const response = await fetch(`${this.#baseUrl}/v1/retention-policies`);
+    const response = await this.#request(`/v1/retention-policies`);
     const value: unknown = await response.json();
     const errors = validateRetentionPolicyListResponse(value);
     if (errors.length > 0) throw new ContractValidationError(errors);
@@ -3504,7 +3566,7 @@ export class AsyncIrisMemoryClient {
     if (options.idempotencyKey !== undefined) {
       headers["Idempotency-Key"] = options.idempotencyKey;
     }
-    const response = await fetch(`${this.#baseUrl}/v1/legal-holds`, {
+    const response = await this.#request(`/v1/legal-holds`, {
       body: JSON.stringify(record),
       headers,
       method: "POST",
@@ -3524,8 +3586,7 @@ export class AsyncIrisMemoryClient {
     if (options.idempotencyKey !== undefined) {
       headers["Idempotency-Key"] = options.idempotencyKey;
     }
-    const response = await fetch(
-      `${this.#baseUrl}/v1/legal-holds/${encodeURIComponent(legalHoldId)}:release`,
+    const response = await this.#request(`/v1/legal-holds/${encodeURIComponent(legalHoldId)}:release`,
       {
         body: JSON.stringify(record),
         headers,
@@ -3549,7 +3610,7 @@ export class AsyncIrisMemoryClient {
       lease_epoch?: number;
     },
   ): Promise<EpisodeView> {
-    const response = await fetch(`${this.#baseUrl}/v1/episodes`, {
+    const response = await this.#request(`/v1/episodes`, {
       body: JSON.stringify(withLeaseProof(record, options)),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3576,8 +3637,7 @@ export class AsyncIrisMemoryClient {
   ): Promise<EpisodeView> {
     // The transition target rides the body (there is no query parameter for
     // it); the explicit argument always wins over a value inside the record.
-    const response = await fetch(
-      `${this.#baseUrl}/v1/episodes/${encodeURIComponent(episodeId)}:transition`,
+    const response = await this.#request(`/v1/episodes/${encodeURIComponent(episodeId)}:transition`,
       {
         body: JSON.stringify(withLeaseProof({ ...record, target }, options)),
         headers: {
@@ -3594,8 +3654,7 @@ export class AsyncIrisMemoryClient {
   }
 
   public async getEpisode(episodeId: string): Promise<EpisodeView> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/episodes/${encodeURIComponent(episodeId)}`,
+    const response = await this.#request(`/v1/episodes/${encodeURIComponent(episodeId)}`,
     );
     const value: unknown = await response.json();
     const errors = validateEpisodeView(value);
@@ -3614,7 +3673,7 @@ export class AsyncIrisMemoryClient {
       lease_epoch?: number;
     },
   ): Promise<RelationView> {
-    const response = await fetch(`${this.#baseUrl}/v1/relations`, {
+    const response = await this.#request(`/v1/relations`, {
       body: JSON.stringify(withLeaseProof(record, options)),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3629,8 +3688,7 @@ export class AsyncIrisMemoryClient {
   }
 
   public async getRelation(relationId: string): Promise<RelationView> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/relations/${encodeURIComponent(relationId)}`,
+    const response = await this.#request(`/v1/relations/${encodeURIComponent(relationId)}`,
     );
     const value: unknown = await response.json();
     const errors = validateRelationView(value);
@@ -3647,7 +3705,7 @@ export class AsyncIrisMemoryClient {
       lease_epoch?: number;
     },
   ): Promise<ArtifactView> {
-    const response = await fetch(`${this.#baseUrl}/v1/artifacts`, {
+    const response = await this.#request(`/v1/artifacts`, {
       body: JSON.stringify(withLeaseProof(record, options)),
       headers: {
         "Idempotency-Key": options.idempotencyKey,
@@ -3662,8 +3720,7 @@ export class AsyncIrisMemoryClient {
   }
 
   public async getArtifact(artifactId: string): Promise<ArtifactView> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/artifacts/${encodeURIComponent(artifactId)}`,
+    const response = await this.#request(`/v1/artifacts/${encodeURIComponent(artifactId)}`,
     );
     const value: unknown = await response.json();
     const errors = validateArtifactView(value);
@@ -3674,8 +3731,7 @@ export class AsyncIrisMemoryClient {
   // -- Phase 9: complete Persona ---------------------------------------------
 
   public async currentPersona(agentId: string): Promise<Record<string, unknown>> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/personas/${encodeURIComponent(agentId)}/current`,
+    const response = await this.#request(`/v1/personas/${encodeURIComponent(agentId)}/current`,
     );
     const value: unknown = await response.json();
     const errors = validatePersonaCurrentResponse(value);
@@ -3687,8 +3743,7 @@ export class AsyncIrisMemoryClient {
     agentId: string,
     limit = 100,
   ): Promise<Record<string, unknown>> {
-    const response = await fetch(
-      `${this.#baseUrl}/v1/personas/${encodeURIComponent(agentId)}/history?limit=${limit}`,
+    const response = await this.#request(`/v1/personas/${encodeURIComponent(agentId)}/history?limit=${limit}`,
     );
     const value: unknown = await response.json();
     const errors = validateContract("persona-history-response", value);
@@ -3769,6 +3824,117 @@ export class AsyncIrisMemoryClient {
     );
   }
 
+  // Phase 10 identity, grouping, reflection and administration surface.
+  public async getEntity(entityId: string): Promise<Record<string, unknown>> {
+    return (await (await this.#request(`/v1/entities/${encodeURIComponent(entityId)}`)).json()) as Record<string, unknown>;
+  }
+
+  public async getEntityRelations(entityId: string): Promise<Record<string, unknown>> {
+    return (await (await this.#request(`/v1/entities/${encodeURIComponent(entityId)}/relations`)).json()) as Record<string, unknown>;
+  }
+
+  public async createIdentity(
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    return this.#phase10Write("/v1/identities", record, options.idempotencyKey);
+  }
+
+  public async prepareBinding(
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    return this.#phase10Write("/v1/bindings:prepare", record, options.idempotencyKey);
+  }
+
+  public async reviewBinding(
+    bindingId: string,
+    action: "confirm" | "revoke",
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    return this.#phase10Write(
+      `/v1/bindings/${encodeURIComponent(bindingId)}:${action}`,
+      record,
+      options.idempotencyKey,
+    );
+  }
+
+  public async listSpaceGroups(): Promise<Record<string, unknown>> {
+    return (await (await this.#request("/v1/space-groups")).json()) as Record<string, unknown>;
+  }
+
+  public async createSpaceGroup(
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    return this.#phase10Write("/v1/space-groups", record, options.idempotencyKey);
+  }
+
+  public async setSpaceGroupBinding(
+    groupId: string,
+    spaceId: string,
+    action: "bind" | "unbind",
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    return this.#phase10Write(
+      `/v1/space-groups/${encodeURIComponent(groupId)}/spaces/${encodeURIComponent(spaceId)}:${action}`,
+      record,
+      options.idempotencyKey,
+    );
+  }
+
+  public async rebuildIndex(kind: IndexKind, record: Readonly<Record<string, unknown>>, options: { idempotencyKey: string }): Promise<Record<string, unknown>> {
+    return this.#phase10Write(`/v1/admin/indexes/${encodeURIComponent(kind)}:rebuild`, record, options.idempotencyKey);
+  }
+
+  public async createBackup(record: Readonly<Record<string, unknown>>, options: { idempotencyKey: string }): Promise<Record<string, unknown>> {
+    return this.#phase10Write("/v1/admin/backups", record, options.idempotencyKey);
+  }
+
+  public async createExport(record: Readonly<Record<string, unknown>>, options: { idempotencyKey: string }): Promise<Record<string, unknown>> {
+    return this.#phase10Write("/v1/admin/exports", record, options.idempotencyKey);
+  }
+
+  public async listAuditEvents(reason: string, afterUs = 0, limit = 100): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams({ reason, after_us: String(afterUs), limit: String(limit) });
+    return (await (await this.#request(`/v1/admin/audit-events?${query.toString()}`)).json()) as Record<string, unknown>;
+  }
+
+  public async dryRunReflection(record: Readonly<Record<string, unknown>>, options: { idempotencyKey: string }): Promise<Record<string, unknown>> {
+    return this.#phase10Write("/v1/admin/reflections:dry-run", record, options.idempotencyKey);
+  }
+
+  public async replayReflection(reflectionId: string, record: Readonly<Record<string, unknown>>, options: { idempotencyKey: string }): Promise<Record<string, unknown>> {
+    return this.#phase10Write(`/v1/admin/reflections/${encodeURIComponent(reflectionId)}:replay`, record, options.idempotencyKey);
+  }
+
+  async #phase10Write(
+    path: string,
+    record: Readonly<Record<string, unknown>>,
+    idempotencyKey?: string,
+  ): Promise<Record<string, unknown>> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (idempotencyKey !== undefined) headers["Idempotency-Key"] = idempotencyKey;
+    const response = await this.#request(path, { body: JSON.stringify(record), headers, method: "POST" });
+    return (await response.json()) as Record<string, unknown>;
+  }
+
+  async #request(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers: Record<string, string> = {};
+    new Headers(init.headers).forEach((value, key) => {
+      headers[key] = value;
+    });
+    if (isRecord(init.headers)) {
+      for (const [key, value] of Object.entries(init.headers)) {
+        if (typeof value === "string") headers[key] = value;
+      }
+    }
+    if (this.#bearerToken !== undefined) headers.Authorization = `Bearer ${this.#bearerToken}`;
+    return fetch(`${this.#baseUrl}${path}`, { ...init, headers });
+  }
+
   async #personaWrite(
     path: string,
     method: "POST" | "PATCH",
@@ -3776,7 +3942,7 @@ export class AsyncIrisMemoryClient {
     idempotencyKey: string,
     schema: string,
   ): Promise<Record<string, unknown>> {
-    const response = await fetch(`${this.#baseUrl}${path}`, {
+    const response = await this.#request(`${path}`, {
       body: JSON.stringify(record),
       headers: {
         "Idempotency-Key": idempotencyKey,

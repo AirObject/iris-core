@@ -198,7 +198,10 @@ class SurfaceCoordinatorService:
         validate_priority(priority)
         holder = _resolve_holder(access, holder_app_instance_id)
         validate_holder(holder_app_instance_id=holder, holder_space_id=holder_space_id)
-        reason_code = require_reason(reason) if allow_preempt else (reason or "")
+        # A preempting acquire must justify itself; an ordinary one still
+        # needs a stable audit reason, since every published audit row carries
+        # a non-empty reason code (mirrors the release path below).
+        reason_code = require_reason(reason) if allow_preempt else (reason or "holder_acquired")
         with self._uow.write() as tx:
             agent = tx.get_agent(agent_id)
             _same_tenant(access, agent.tenant_id)

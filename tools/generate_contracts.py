@@ -65,6 +65,11 @@ def capabilities_schema() -> dict[str, Any]:
                 "type": "array",
                 "uniqueItems": True,
             },
+            "deprecated_capabilities": {
+                "items": {"minLength": 1, "type": "string"},
+                "type": "array",
+                "uniqueItems": True,
+            },
             "schema_version": {"minimum": 1, "type": "integer"},
         },
         "required": ["api_version", "schema_version", "capabilities"],
@@ -2984,6 +2989,475 @@ def _focus_transition_op(
     }
 
 
+def phase10_components() -> dict[str, dict[str, Any]]:
+    return {
+        "EntityView": {
+            "additionalProperties": True,
+            "properties": {
+                "entity_id": _id(),
+                "kind": {"type": "string"},
+                "display_name": {"type": "string"},
+                "state": {"type": "string"},
+                "revision": {"type": "integer", "minimum": 1},
+            },
+            "required": ["entity_id", "kind", "display_name", "state", "revision"],
+            "type": "object",
+        },
+        "IdentityCreateRequest": {
+            "additionalProperties": False,
+            "properties": {
+                "provider": {"type": "string", "minLength": 1},
+                "subject": {"type": "string", "minLength": 1},
+                "realm": {"type": "string", "minLength": 1},
+                "entity_id": {"type": ["string", "null"]},
+            },
+            "required": ["provider", "subject", "realm"],
+            "type": "object",
+        },
+        "IdentityView": {
+            "additionalProperties": False,
+            "properties": {
+                "external_identity_id": _id(),
+                "entity_id": {"type": ["string", "null"]},
+                "provider": {"type": "string"},
+                "subject_hash": {"type": "string"},
+                "realm": {"type": "string"},
+            },
+            "required": ["external_identity_id", "entity_id", "provider", "subject_hash", "realm"],
+            "type": "object",
+        },
+        "BindingRequest": {
+            "additionalProperties": False,
+            "properties": {
+                "external_identity_id": _id(),
+                "entity_id": _id(),
+                "method": {"enum": ["admin_confirmation", "challenge_code"]},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "proof": {"type": "string", "minLength": 1},
+                "expected_revision": {"type": "integer", "minimum": 1},
+                "reason": {"type": "string", "minLength": 1},
+            },
+            "required": ["reason"],
+            "type": "object",
+        },
+        "BindingView": {
+            "additionalProperties": True,
+            "properties": {
+                "binding_id": _id(),
+                "external_identity_id": _id(),
+                "entity_id": _id(),
+                "state": {"type": "string"},
+                "revision": {"type": "integer", "minimum": 1},
+            },
+            "required": ["binding_id", "external_identity_id", "entity_id", "state", "revision"],
+            "type": "object",
+        },
+        "SpaceGroupView": {
+            "additionalProperties": False,
+            "properties": {
+                "space_group_id": _id(),
+                "name": {"type": "string"},
+                "description": {"type": "string"},
+                "revision": {"type": "integer", "minimum": 1},
+                "space_ids": {"type": "array", "items": _id()},
+            },
+            "required": ["space_group_id", "name", "description", "revision", "space_ids"],
+            "type": "object",
+        },
+        "AdminOperationRequest": {
+            "additionalProperties": False,
+            "properties": {
+                "agent_id": {"type": ["string", "null"]},
+                "space_id": {"type": ["string", "null"]},
+                "session_id": {"type": ["string", "null"]},
+                "expected_revision": {"type": ["integer", "null"], "minimum": 1},
+                "reason": {"type": "string", "minLength": 1},
+                "destination": {"type": ["string", "null"]},
+                "minimum_watermark": {"type": ["integer", "null"], "minimum": 0},
+                "window_id": {"type": ["string", "null"], "minLength": 1},
+            },
+            "required": ["reason"],
+            "type": "object",
+        },
+        "AdminOperationView": {
+            "additionalProperties": True,
+            "properties": {
+                "operation_id": _id(),
+                "kind": {"type": "string"},
+                "status": {"type": "string"},
+                "created_us": {"type": "integer", "minimum": 0},
+            },
+            "required": ["operation_id", "kind", "status", "created_us"],
+            "type": "object",
+        },
+        "AuditEventList": {
+            "additionalProperties": False,
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "additionalProperties": False,
+                        "properties": {
+                            "resource_type": _id(),
+                            "resource_id": _id(),
+                            "revision": {"type": ["integer", "null"], "minimum": 1},
+                            "action": {"type": "string", "minLength": 1},
+                            "reason_code": {"type": "string", "minLength": 1},
+                            "created_us": {"type": "integer", "minimum": 0},
+                        },
+                        "required": [
+                            "resource_type",
+                            "resource_id",
+                            "revision",
+                            "action",
+                            "reason_code",
+                            "created_us",
+                        ],
+                        "type": "object",
+                    },
+                }
+            },
+            "required": ["events"],
+            "type": "object",
+        },
+    }
+
+
+def _phase10_paths(error_response: dict[str, Any]) -> dict[str, Any]:
+    def path_id(name: str) -> dict[str, Any]:
+        return {
+            "in": "path",
+            "name": name,
+            "required": True,
+            "schema": _id(),
+        }
+
+    def body(schema: str) -> dict[str, Any]:
+        return {
+            "content": {"application/json": {"schema": {"$ref": f"#/components/schemas/{schema}"}}},
+            "required": True,
+        }
+
+    def body_required(schema: str, fields: list[str]) -> dict[str, Any]:
+        return {
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "allOf": [
+                            {"$ref": f"#/components/schemas/{schema}"},
+                            {"required": fields},
+                        ]
+                    }
+                }
+            },
+            "required": True,
+        }
+
+    reason_body = body("AdminOperationRequest")
+    idem = _idempotency_header()
+    return {
+        "/v1/entities/{entity_id}": {
+            "get": {
+                "operationId": "getEntity",
+                "parameters": [path_id("entity_id")],
+                "responses": {
+                    "200": _json_response("#/components/schemas/EntityView"),
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/entities/{entity_id}/relations": {
+            "get": {
+                "operationId": "getEntityRelations",
+                "parameters": [path_id("entity_id")],
+                "responses": {
+                    "200": {
+                        "description": "Visible relations",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["relations"],
+                                    "properties": {
+                                        "relations": {
+                                            "type": "array",
+                                            "items": {"$ref": "#/components/schemas/RelationView"},
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/identities": {
+            "post": {
+                "operationId": "createIdentity",
+                "parameters": [idem],
+                "requestBody": body("IdentityCreateRequest"),
+                "responses": {
+                    "201": _json_response("#/components/schemas/IdentityView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/bindings:prepare": {
+            "post": {
+                "operationId": "prepareBinding",
+                "parameters": [idem],
+                "requestBody": body_required(
+                    "BindingRequest",
+                    ["external_identity_id", "entity_id", "method", "proof", "reason"],
+                ),
+                "responses": {
+                    "201": _json_response("#/components/schemas/BindingView"),
+                    "400": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/bindings/{binding_id}:confirm": {
+            "post": {
+                "operationId": "confirmBinding",
+                "parameters": [path_id("binding_id"), idem],
+                "requestBody": body_required("BindingRequest", ["expected_revision", "reason"]),
+                "responses": {
+                    "200": _json_response("#/components/schemas/BindingView"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/bindings/{binding_id}:revoke": {
+            "post": {
+                "operationId": "revokeBinding",
+                "parameters": [path_id("binding_id"), idem],
+                "requestBody": body_required("BindingRequest", ["expected_revision", "reason"]),
+                "responses": {
+                    "200": _json_response("#/components/schemas/BindingView"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/space-groups": {
+            "get": {
+                "operationId": "listSpaceGroups",
+                "responses": {
+                    "200": {
+                        "description": "Visible groups",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["space_groups"],
+                                    "properties": {
+                                        "space_groups": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SpaceGroupView"
+                                            },
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "403": error_response,
+                },
+            },
+            "post": {
+                "operationId": "createSpaceGroup",
+                "parameters": [idem],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["name", "reason"],
+                                "properties": {
+                                    "name": {"type": "string", "minLength": 1},
+                                    "description": {"type": "string"},
+                                    "reason": {"type": "string", "minLength": 1},
+                                },
+                            }
+                        }
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "201": _json_response("#/components/schemas/SpaceGroupView"),
+                    "403": error_response,
+                },
+            },
+        },
+        "/v1/space-groups/{space_group_id}/spaces/{space_id}:bind": {
+            "post": {
+                "operationId": "bindSpaceGroup",
+                "parameters": [path_id("space_group_id"), path_id("space_id"), idem],
+                "requestBody": body_required(
+                    "AdminOperationRequest", ["reason", "expected_revision"]
+                ),
+                "responses": {
+                    "200": _json_response("#/components/schemas/SpaceGroupView"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/space-groups/{space_group_id}/spaces/{space_id}:unbind": {
+            "post": {
+                "operationId": "unbindSpaceGroup",
+                "parameters": [path_id("space_group_id"), path_id("space_id"), idem],
+                "requestBody": body_required(
+                    "AdminOperationRequest", ["reason", "expected_revision"]
+                ),
+                "responses": {
+                    "200": _json_response("#/components/schemas/SpaceGroupView"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/admin/indexes/{kind}:rebuild": {
+            "post": {
+                "operationId": "rebuildIndex",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "kind",
+                        "required": True,
+                        "schema": {"enum": ["recent_context", "fts", "vector", "profile", "graph"]},
+                    },
+                    idem,
+                ],
+                "requestBody": reason_body,
+                "responses": {
+                    "202": _json_response("#/components/schemas/AdminOperationView"),
+                    "400": error_response,
+                    "403": error_response,
+                },
+            }
+        },
+        "/v1/admin/backups": {
+            "post": {
+                "operationId": "createBackup",
+                "parameters": [idem],
+                "requestBody": reason_body,
+                "responses": {
+                    "202": _json_response("#/components/schemas/AdminOperationView"),
+                    "403": error_response,
+                },
+            }
+        },
+        "/v1/admin/exports": {
+            "post": {
+                "operationId": "createExport",
+                "parameters": [idem],
+                "requestBody": reason_body,
+                "responses": {
+                    "202": _json_response("#/components/schemas/AdminOperationView"),
+                    "403": error_response,
+                },
+            }
+        },
+        "/v1/admin/audit-events": {
+            "get": {
+                "operationId": "listAuditEvents",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "reason",
+                        "required": True,
+                        "schema": {"type": "string", "minLength": 1, "maxLength": 256},
+                    },
+                    {
+                        "in": "query",
+                        "name": "after_us",
+                        "required": False,
+                        "schema": {"type": "integer", "minimum": 0, "default": 0},
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "required": False,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 500,
+                            "default": 100,
+                        },
+                    },
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/AuditEventList"),
+                    "403": error_response,
+                },
+            }
+        },
+        "/v1/admin/reflections:dry-run": {
+            "post": {
+                "operationId": "dryRunReflection",
+                "parameters": [idem],
+                "requestBody": reason_body,
+                "responses": {
+                    "202": _json_response("#/components/schemas/AdminOperationView"),
+                    "403": error_response,
+                },
+            }
+        },
+        "/v1/admin/reflections/{reflection_id}:replay": {
+            "post": {
+                "operationId": "replayReflection",
+                "parameters": [path_id("reflection_id"), idem],
+                "requestBody": reason_body,
+                "responses": {
+                    "202": _json_response("#/components/schemas/AdminOperationView"),
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/events": {
+            "get": {
+                "operationId": "streamEvents",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "Last-Event-ID",
+                        "required": False,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resumable server-sent event stream",
+                        "content": {"text/event-stream": {"schema": {"type": "string"}}},
+                    },
+                    "403": error_response,
+                },
+            }
+        },
+    }
+
+
+def phase10_json_schema_files() -> dict[Path, dict[str, Any]]:
+    slugs = {
+        "EntityView": "entity-view",
+        "IdentityCreateRequest": "identity-create-request",
+        "IdentityView": "identity-view",
+        "BindingRequest": "binding-request",
+        "BindingView": "binding-view",
+        "SpaceGroupView": "space-group-view",
+        "AdminOperationRequest": "admin-operation-request",
+        "AdminOperationView": "admin-operation-view",
+        "AuditEventList": "audit-event-list",
+    }
+    return {
+        JSON_SCHEMA_DIRECTORY / f"{slugs[name]}.schema.json": schema
+        for name, schema in phase10_components().items()
+    }
+
+
 def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
     error_response = _json_response("#/components/schemas/ErrorEnvelope", "Stable error envelope")
     schemas = {
@@ -2997,6 +3471,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
         **phase6_components(),
         **phase8_components(),
         **phase9_components(),
+        **phase10_components(),
     }
     batch_request_body = {
         "content": {
@@ -3014,6 +3489,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
         "/health/live": {
             "get": {
                 "operationId": "getLiveness",
+                "security": [],
                 "responses": {
                     "200": {
                         "description": "Process is alive",
@@ -3040,7 +3516,10 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
                         "Readiness report: schema window, storage writability, "
                         "queue/scheduler lag, dead letters (Phase 2)",
                     ),
-                    "503": error_response,
+                    "503": _json_response(
+                        "#/components/schemas/ReadinessReport",
+                        "Authenticated readiness report while the process is not ready",
+                    ),
                 },
             }
         },
@@ -4615,7 +5094,35 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
                         "name": "entity_id",
                         "required": True,
                         "schema": {"type": "string", "minLength": 1},
-                    }
+                    },
+                    # Phase 10 additive narrowing (ADR-0019 §10): a profile read
+                    # is agent-scoped, so a credential that grants several
+                    # agents needs a way to name the one it is reading as.
+                    # Omitted, the transport uses the credential's sole agent.
+                    {
+                        "in": "query",
+                        "name": "agent_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "space_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "session_id",
+                        "required": False,
+                        "schema": {"type": "string", "minLength": 1},
+                    },
+                    {
+                        "in": "query",
+                        "name": "minimum_watermark",
+                        "required": False,
+                        "schema": {"type": "string", "pattern": "^(0|[1-9][0-9]{0,17})$"},
+                    },
                 ],
                 "responses": {
                     "200": _json_response("#/components/schemas/EntityProfileResponse"),
@@ -5014,8 +5521,17 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
             }
         },
     }
+    paths.update(_phase10_paths(error_response))
+    # The legacy route remains for one published window; negotiation exposes
+    # the replacement capability and clients should migrate to rebuildIndex.
+    paths["/v1/admin/recent-context:rebuild"]["post"]["deprecated"] = True
     return {
-        "components": {"schemas": schemas},
+        "components": {
+            "schemas": schemas,
+            "securitySchemes": {
+                "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "opaque"}
+            },
+        },
         "info": {
             "description": "Phase 5 contract and capability surface",
             "license": {"identifier": "AGPL-3.0-only", "name": "AGPL-3.0-only"},
@@ -5024,6 +5540,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
         },
         "openapi": "3.1.0",
         "paths": paths,
+        "security": [{"bearerAuth": []}],
     }
 
 
@@ -5076,6 +5593,7 @@ def generated_documents(source: Mapping[str, Any]) -> dict[Path, dict[str, Any]]
     documents.update(phase6_json_schema_files())
     documents.update(phase8_json_schema_files())
     documents.update(phase9_json_schema_files())
+    documents.update(phase10_json_schema_files())
     return documents
 
 

@@ -1,0 +1,32 @@
+{
+  "additionalProperties": true,
+  "properties": {
+    "binding_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "entity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "external_identity_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "state": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "binding_id",
+    "external_identity_id",
+    "entity_id",
+    "state",
+    "revision"
+  ],
+  "type": "object"
+}

@@ -394,7 +394,7 @@ class TestFailClosed:
             scheduler.create_schedule(
                 admin,
                 agent_id=None,
-                job_kind="episode.consolidation",
+                job_kind="backup.execute",
                 spec={"kind": "interval", "every_seconds": 60},
                 reason="nope",
             )
@@ -411,6 +411,7 @@ class TestFailClosed:
             phase7_handlers,
             phase8_handlers,
             phase9_handlers,
+            phase10_handlers,
         )
 
         ctx = phase3
@@ -419,6 +420,20 @@ class TestFailClosed:
 
         retention = RetentionService(
             ctx["store"], ctx["store"].clock, forget=ForgetService(ctx["store"], ctx["store"].clock)
+        )
+        from iris_memory_core.application.reflection import ReflectionPipeline
+        from iris_memory_core.providers.cognitive import (
+            DeterministicCognitiveProvider,
+            ProviderGovernance,
+        )
+
+        cognitive = DeterministicCognitiveProvider()
+        reflection = ReflectionPipeline(
+            ctx["store"],
+            ctx["store"].clock,
+            governance=ProviderGovernance(),
+            extraction=cognitive,
+            summarization=cognitive,
         )
         handlers = {
             **phase3_handlers(
@@ -440,6 +455,7 @@ class TestFailClosed:
                 profile=ProfileProjectionService(ctx["store"], ctx["store"].clock),
             ),
             **phase9_handlers(ctx["store"].clock),
+            **phase10_handlers(pipeline=reflection),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in ENABLED_JOB_KINDS:

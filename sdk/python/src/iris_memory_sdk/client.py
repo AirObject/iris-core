@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, cast
+from typing import Any, Literal, cast
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from iris_memory_sdk.models import CapabilitiesEnvelope, ErrorEnvelope
@@ -18,9 +19,16 @@ class IrisMemoryApiError(RuntimeError):
 
 
 class AsyncIrisMemoryClient:
-    def __init__(self, base_url: str, *, timeout_seconds: float = 5.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        timeout_seconds: float = 5.0,
+        bearer_token: str | None = None,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
+        self._bearer_token = bearer_token
 
     async def capabilities(self) -> CapabilitiesEnvelope:
         value = await asyncio.to_thread(self._request_json, "GET", "/v1/capabilities", None)
@@ -1233,6 +1241,196 @@ class AsyncIrisMemoryClient:
         )
         return cast(dict[str, Any], value)
 
+    # -- Phase 10: identity, groups, reflection and administration -------
+
+    async def get_entity(self, entity_id: str) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json, "GET", f"/v1/entities/{quote(entity_id, safe='')}", None
+        )
+        return cast(dict[str, Any], value)
+
+    async def get_entity_relations(self, entity_id: str) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/entities/{quote(entity_id, safe='')}/relations",
+            None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_identity(
+        self, record: dict[str, Any], *, idempotency_key: str
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/identities",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def prepare_binding(
+        self, record: dict[str, Any], *, idempotency_key: str
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/bindings:prepare",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def review_binding(
+        self,
+        binding_id: str,
+        record: dict[str, Any],
+        *,
+        confirm: bool,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        action = "confirm" if confirm else "revoke"
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/bindings/{quote(binding_id, safe='')}:{action}",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def list_space_groups(self) -> dict[str, Any]:
+        value = await asyncio.to_thread(self._request_json, "GET", "/v1/space-groups", None)
+        return cast(dict[str, Any], value)
+
+    async def create_space_group(
+        self, record: dict[str, Any], *, idempotency_key: str
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/space-groups",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def set_space_group_binding(
+        self,
+        space_group_id: str,
+        space_id: str,
+        record: dict[str, Any],
+        *,
+        bind: bool,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        action = "bind" if bind else "unbind"
+        path = (
+            f"/v1/space-groups/{quote(space_group_id, safe='')}/spaces/"
+            f"{quote(space_id, safe='')}:{action}"
+        )
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            path,
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def rebuild_index(
+        self,
+        kind: Literal["recent_context", "fts", "vector", "graph", "profile"],
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/admin/indexes/{quote(kind, safe='')}:rebuild",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_backup(
+        self, record: dict[str, Any], *, idempotency_key: str
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/admin/backups",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_export(
+        self, record: dict[str, Any], *, idempotency_key: str
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/admin/exports",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def list_audit_events(
+        self, *, reason: str, after_us: int = 0, limit: int = 100
+    ) -> dict[str, Any]:
+        query = urlencode({"reason": reason, "after_us": after_us, "limit": limit})
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/admin/audit-events?{query}",
+            None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def dry_run_reflection(
+        self, record: dict[str, Any], *, idempotency_key: str
+    ) -> dict[str, Any]:
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            "/v1/admin/reflections:dry-run",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def replay_reflection(
+        self,
+        reflection_id: str,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/admin/reflections/{quote(reflection_id, safe='')}:replay",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
     def _request_json(
         self,
         method: str,
@@ -1243,6 +1441,8 @@ class AsyncIrisMemoryClient:
     ) -> object:
         data = None if body is None else json.dumps(body).encode()
         headers = {"Content-Type": "application/json"}
+        if self._bearer_token is not None:
+            headers["Authorization"] = f"Bearer {self._bearer_token}"
         if extra_headers:
             headers.update(extra_headers)
         request = Request(

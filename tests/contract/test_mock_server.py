@@ -690,6 +690,34 @@ def recorded_mock_server() -> Iterator[Any]:
         thread.join(timeout=2)
 
 
+def test_phase10_python_sdk_surface_and_bearer_wire(recorded_mock_server: Any) -> None:
+    client = AsyncIrisMemoryClient(
+        f"http://127.0.0.1:{recorded_mock_server.server_port}",
+        bearer_token="sdk-test-bearer",
+    )
+    assert asyncio.run(client.get_entity("entity-1"))["entity_id"] == "entity-1"
+    identity = asyncio.run(
+        client.create_identity(
+            {"provider": "example", "realm": "default", "subject": "opaque"},
+            idempotency_key="identity-1",
+        )
+    )
+    assert identity["external_identity_id"] == "identity-1"
+    group = asyncio.run(
+        client.create_space_group(
+            {"name": "Example Group", "description": "SDK offline fixture"},
+            idempotency_key="group-1",
+        )
+    )
+    assert group["space_group_id"] == "group-1"
+    backup = asyncio.run(
+        client.create_backup({"reason": "verification"}, idempotency_key="backup-1")
+    )
+    assert backup["kind"] == "backups"
+    assert recorded_mock_server.received_authorizations
+    assert set(recorded_mock_server.received_authorizations) == {"Bearer sdk-test-bearer"}
+
+
 def test_ack_cognitive_event_carries_the_lease_proof_on_the_wire(
     recorded_mock_server: Any,
 ) -> None:
