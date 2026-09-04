@@ -24,7 +24,10 @@ from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_versi
 from iris_memory_core.storage.uow import Store
 from tests.conftest import MutableClock
 from tests.integration.test_phase5_claims import _Ctx
-from tests.integration.test_phase5_review_round4 import _downgrade_snapshot_to_round2
+from tests.integration.test_phase5_review_round4 import (
+    _downgrade_snapshot_to_round2,
+    migration_versions_from,
+)
 
 
 def _resource(resource_type: str, resource_id: str) -> ForgetSelector:
@@ -293,11 +296,9 @@ def test_legacy_restore_upgrades_before_replaying_colliding_requests(tmp_path: P
     # The restored legacy snapshot is Schema 6: the current binary's staged
     # upgrade path runs the ordinary startup migration before serving
     # (ADR-0014 §12-10 — restore itself never forward-migrates).
-    assert [item.version for item in MigrationRunner(target / "canonical.sqlite3").migrate()] == [
-        7,
-        8,
-        9,
-    ]
+    assert [
+        item.version for item in MigrationRunner(target / "canonical.sqlite3").migrate()
+    ] == migration_versions_from(7)
     with restored_store.read() as tx:
         rows = (
             tx.raw()

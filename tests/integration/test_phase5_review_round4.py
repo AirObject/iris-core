@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -44,8 +45,13 @@ from iris_memory_core.storage.backup import (
     verify_backup,
     verify_database_invariants,
 )
+from iris_memory_core.storage.fts import INDEX_TABLE as FTS_INDEX_TABLE
 from iris_memory_core.storage.idempotency import IdempotencyManager
-from iris_memory_core.storage.migrations import MigrationRunner, default_migrations_path
+from iris_memory_core.storage.migrations import (
+    MigrationRunner,
+    default_migrations_path,
+    discover_migrations,
+)
 from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_version
 from iris_memory_core.storage.uow import Store
 from tests.conftest import MutableClock, access_for
@@ -124,6 +130,59 @@ def _refresh_backup_checksums(backup_dir: Path) -> None:
     (backup_dir / "checksums.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+# A round-2 build predates Phase 6, so every table introduced by migration
+# 0007 and later has to disappear from the snapshot.  That list is DERIVED
+# from the migration files rather than hand-maintained: the hand-maintained
+# version silently went stale when Phase 9 added 0010, the rewind left the
+# persona tables behind while deleting their schema_migrations row, and the
+# replay died with "table persona_policies already exists".  Anything a
+# future migration creates is now dropped here without touching this file.
+_CREATE_TABLE_PATTERN = re.compile(
+    r"CREATE\s+(?:VIRTUAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\"'`\[]?(?P<name>\w+)",
+    re.IGNORECASE,
+)
+_SQL_LINE_COMMENT = re.compile(r"--[^\n]*")
+
+
+def migration_versions_from(minimum_version: int) -> list[int]:
+    """Migration versions >= ``minimum_version``, in apply order.
+
+    The replay expectation is derived for the same reason the drop list is:
+    a hardcoded ``[7, 8, 9]`` goes stale the moment a phase adds a migration.
+    """
+    return [
+        migration.version
+        for migration in discover_migrations(default_migrations_path())
+        if migration.version >= minimum_version
+    ]
+
+
+def tables_created_from_version(minimum_version: int) -> tuple[str, ...]:
+    """Tables that migrations >= ``minimum_version`` create, newest first.
+
+    Parsed from the migration SQL the runner itself discovers, so a snapshot
+    rewind cannot drift away from the schema it is rewinding.  Returned in
+    reverse creation order so dependants drop before their referents.
+    """
+    names: list[str] = []
+    for migration in discover_migrations(default_migrations_path()):
+        if migration.version < minimum_version:
+            continue
+        # Comments are stripped first: a prose "CREATE TABLE agents" in a
+        # migration header would otherwise make the rewind drop a Phase 1 table.
+        statements = _SQL_LINE_COMMENT.sub("", migration.sql)
+        for match in _CREATE_TABLE_PATTERN.finditer(statements):
+            name = match.group("name")
+            if name not in names:
+                names.append(name)
+    if not names:  # a parser that matches nothing would silently skip the rewind
+        raise AssertionError(
+            f"no CREATE TABLE parsed from migrations >= {minimum_version}; "
+            "the rewind would leave the newer schema in place"
+        )
+    return tuple(reversed(names))
+
+
 def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
     """Turn a fresh backup into a FAITHFUL older-build backup: the snapshot's
     tables rebuilt with the older column set AND the manifest rewritten into
@@ -162,34 +221,10 @@ def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
             "UPDATE schema_migrations SET checksum = ? WHERE version = 6",
             (_ROUND2_MIGRATION_CHECKSUM,),
         )
-        for table in (
-            "fts_index",
-            "fts_documents",
-            "fts_current",
-            "fts_generations",
-            "fts_projection_state",
-            "recall_usage_reports",
-            "recall_requests",
-        ):
+        # The FTS5 virtual table is created at runtime by the indexer, not by a
+        # migration, so it is the one name the parser cannot see.
+        for table in (FTS_INDEX_TABLE, *tables_created_from_version(7)):
             connection.execute(f"DROP TABLE IF EXISTS {table}")
-        for phase7_table in (
-            "vector_projection_state",
-            "vector_generations",
-            "vector_current",
-            "vector_id_map",
-            "vector_delta_ledger",
-            "profile_projection_state",
-            "profile_generations",
-            "profile_current",
-            "profile_subjects",
-            "profile_fields",
-            "graph_projection_state",
-            "graph_generations",
-            "graph_current",
-            "graph_nodes",
-            "graph_edges",
-        ):
-            connection.execute(f"DROP TABLE IF EXISTS {phase7_table}")
         connection.execute("DELETE FROM schema_migrations WHERE version >= 7")
         connection.commit()
     finally:
@@ -210,6 +245,46 @@ def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
         encoding="utf-8",
     )
     _refresh_backup_checksums(backup_dir)
+
+
+def test_rewind_drop_list_covers_every_table_migrations_add(tmp_path: Path) -> None:
+    """The derived drop list must agree with SQLite's own view of the schema.
+
+    Pins the defect this derivation replaced: the hand-maintained list missed
+    the tables migration 0010 added, so the rewind deleted their
+    ``schema_migrations`` rows while leaving the tables in place and the
+    replay died with ``table persona_policies already exists``.
+    """
+    published = default_migrations_path()
+    # ``migrate`` has no target version, so a Schema 6 build is reproduced by
+    # running against a migrations directory that stops at 0006.
+    upto_six = tmp_path / "migrations-6"
+    upto_six.mkdir()
+    for migration in discover_migrations(published):
+        if migration.version <= 6:
+            (upto_six / migration.path.name).write_bytes(migration.path.read_bytes())
+
+    def tables_at(migrations: Path, name: str) -> set[str]:
+        database = tmp_path / name
+        MigrationRunner(database, migrations).migrate()
+        connection = sqlite3.connect(database)
+        try:
+            return {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' "
+                    "AND name NOT LIKE 'sqlite_%'"
+                )
+            }
+        finally:
+            connection.close()
+
+    added = tables_at(published, "latest.sqlite3") - tables_at(upto_six, "schema6.sqlite3")
+    assert added, "migrations 0007+ must add tables for this test to mean anything"
+    assert added <= set(tables_created_from_version(7)), (
+        "the rewind would leave these tables behind: "
+        f"{sorted(added - set(tables_created_from_version(7)))}"
+    )
 
 
 class TestR4_1RealLegacySchemaBackup:
@@ -305,7 +380,7 @@ class TestR4_1RealLegacySchemaBackup:
         # startup migration (ADR-0014 §9: restore never forward-migrates).
         assert [
             item.version for item in MigrationRunner(target_dir / "canonical.sqlite3").migrate()
-        ] == [7, 8, 9]
+        ] == migration_versions_from(7)
 
         # "Can continue serving" includes the repository path that needs the
         # newly backfilled privacy key, not only deletion-ledger replay.
