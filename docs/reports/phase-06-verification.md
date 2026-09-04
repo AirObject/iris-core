@@ -124,6 +124,7 @@ CI 首轮全绿后的发布阻断级复审确认 9 项缺陷（7 项 P1、2 项 
 6. **Usage 不回写 accessibility/activation**：记录-only；激励路径归 Phase 10（ADR-0014 §7）。
 7. **`/v1/search` 请求面**暂无 `requested_privacy_labels`/`as_of` 参数（recall 面具备）；Phase 7+ 评估。
 8. **可索引资源集 = {claim, episode, note}**；Observation 由 recent 路由承担、Artifact 结构性不索引（ADR-0014 §1）。
+9. **无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的路径至今没有真实服务端，归 Phase 10 交付（ADR-0017 §3）。该项在传输层交付前不得从任何阶段的已知限制中移除。
 
 ## 9. `make ci` 摘要
 

@@ -1,6 +1,10 @@
 # Iris Memory Core：架构与完整实施计划
 
-> 文档状态：Architecture & Implementation Baseline v1.0
+> 文档状态：Architecture & Implementation Baseline v1.1
+>
+> v1.1（2026-09-03）：按 ADR-0017 对齐已发布契约面——错误码清单改为指向生成源、
+> 端点命名与路由名更正、§18.6 排序公式更正、§33.1 仓库树与 §35.2 卷布局更正、
+> HTTP 传输层归入 §36 阶段 10。领域语义与不变量未变。
 >
 > 适用范围：Iris Memory Core、公共协议、SDK、Bellis Adapter、AstrBot Bridge 及迁移工具
 >
@@ -1332,7 +1336,7 @@ class RecallResponse(BaseModel):
     trace: RecallTrace | None = None
 ```
 
-`completed_routes` 明确记录实际成功的 Route，例如 `recent_context`、`focus`、`task`、`profile`、`fts`、`vector`、`graph`。`degraded_routes` 为结构化对象，至少包含 Route、稳定原因码、是否可重试和所用回退。只要请求允许部分结果且至少一个关键 Route 成功，服务可返回 `partial=true`；否则返回稳定错误。
+`completed_routes` 明确记录实际成功的 Route。冻结的路由名为 `tasks`、`recent_context`、`state`、`focus`、`claims`、`relations`、`fts`、`vector`、`graph`、`profile`（ADR-0014 §3 裁定以内部名为准，`tasks` 为复数；Persona 不是路由，经响应顶层字段协调，绝不作为候选）。`degraded_routes` 为结构化对象，至少包含 Route、稳定原因码、是否可重试和所用回退；原因码冻结集由 ADR-0014 §10、ADR-0015 §7 与 ADR-0016 §6 共同定义。只要请求允许部分结果且至少一个关键 Route 成功，服务可返回 `partial=true`；否则返回稳定错误。
 
 `cache_until` 是结果可复用的最早失效边界，还必须受 Persona Revision、Source Watermark、Scope、Privacy、Tombstone Watermark 与宿主本地策略共同约束。
 
@@ -1364,23 +1368,18 @@ Deadline 使用单调时钟计算剩余预算；API 中的 `deadline_at` 只在�
 
 ### 18.6 排序与预算
 
-候选融合使用版本化、可配置但确定性的打分器：
+候选融合使用版本化、可配置但确定性的打分器。分量集合为 `relevance`、`authority`、`confidence`、`importance`、`accessibility`、`activation`、`recency`、`task_urgency`，每个分量先归一化到 `[0, 1]`，再按固定权重加权归一，最后减去惩罚项：
 
 ```text
 final_score =
-  relevance
-  + authority_weight
-  + confidence_weight
-  + importance_weight
-  + accessibility_weight
-  + activation_weight
-  + recency_weight
-  + task_urgency_weight
+  Σ(present[c] × weight[c]) / Σ(weight[c] for c in present)
   - conflict_penalty
   - redundancy_penalty
 ```
 
-各分量先归一化；缺失值按字段定义处理。稳定排序键为：
+关键性质：**缺失分量不等于零分**。`scores` 是 `dict[str, float | None]`，某分量缺失（键不存在或为 `None`）时既不贡献分子也不参与分母，因此不会把候选拉到虚假低分；显式 `0.0` 才是真实零分（§4.3“缺失维度保持 `null`，不能未经声明转换为 `0`”在排序层的落地）。具体权重表、Ranker 版本号与冲突/冗余判定规则由 ADR-0014 §5 冻结，ADR-0015 §6 的 v3 在其上增加跨路由的 `(resource_type, resource_id)` 去重——同一 Canonical 资源被多条路由命中时只占一个预算槽。
+
+稳定排序键为：
 
 ```text
 (-final_score, category_priority, occurred_at DESC, resource_id ASC)
@@ -1675,7 +1674,15 @@ Manifest 至少记录 Generation ID、Model、Dimension、Metric、Normalization
 
 ### 22.5 Graph 与 Profile
 
-Graph/Profile 记录 Builder Version 和 Source Watermark。版本未知、落后超过策略阈值或校验失败时，Recall 降级到 Canonical Claim/Relation，不读取不可信投影。投影重建不会阻塞 Observation、Forget、Task 和 Persona 操作。
+Graph/Profile 记录 Builder Version 和 Source Watermark。版本未知、落后超过策略阈值或校验失败时，Recall 降级到 Canonical Claim/Relation，不读取不可信投影。
+
+**投影重建不阻塞任何在线读取路径**，且**增量刷新**（`*.apply`）不阻塞在线写入。但全量重建（`fts.rebuild`、`graph.rebuild`、`profile.rebuild`）当前在单个写事务内完成收集、构建、校验与指针切换，因而在事务期间持有 §20.2 的单 Writer Gate，会阻塞并发写入。这是已知实现限制，不是设计意图：
+
+- 运维上，大租户的全量重建应安排在安静窗口；日常收敛依赖增量 `*.apply`。
+- 向量重建不受此限：ADR-0015 §5 的六阶段把 Provider 调用与索引构建放在事务外，只有发布复查与指针 CAS 在写事务内。
+- 后续若要让全量重建也不阻塞写入，需要把 SQLite 行投影改为同型的"事务外影子构建 + 短发布事务"，属独立 ADR 范围。
+
+在此之前，本节的"不阻塞"承诺对**读取路径与增量刷新**成立，对全量重建不成立。
 
 ### 22.6 Cache
 
@@ -1705,14 +1712,14 @@ schema_version
 - Schema：OpenAPI 3.1 + 独立发布的 JSON Schema。
 - 写请求：`Idempotency-Key` Header；并发修改在 Body 中提供 `expected_revision`。
 - 认证：每个 App Instance 独立 Bearer Credential；管理平面使用独立凭据和 Capability。
-- 事件通知：可选 SSE，首版至少支持 Persona Revised、Lease Revoked、Revision Invalidated 和 Cognitive Event Ready。
+- 事件通知：可选 SSE，首版至少支持 Persona Revised、Lease Revoked、Revision Invalidated 和 Cognitive Event Ready；与传输层一并在 Phase 10 交付（ADR-0017 §3）。
 - Trace：接受标准 Trace Context，不把 Trace ID 当幂等键。
 
 ### 23.2 能力协商
 
 ```text
 GET  /v1/capabilities
-POST /v1/negotiate
+POST /v1/negotiation
 ```
 
 响应至少声明：
@@ -1738,9 +1745,9 @@ POST   /v1/recall/{request_id}/usage
 POST   /v1/search
 
 # 显式记忆
-POST   /v1/memories:remember
-POST   /v1/memories:correct
-POST   /v1/memories:forget
+POST   /v1/claims:remember
+POST   /v1/claims/{claim_id}:correct
+POST   /v1/memory:forget
 
 # 实时与认知状态
 PUT    /v1/state/{namespace}/{key}
@@ -1748,7 +1755,12 @@ GET    /v1/state
 GET    /v1/recent-context
 GET    /v1/focus-items
 POST   /v1/focus-items
-POST   /v1/focus-items/{focus_item_id}:transition
+GET    /v1/focus-items/{focus_item_id}
+POST   /v1/focus-items/{focus_item_id}:activate
+POST   /v1/focus-items/{focus_item_id}:dormant
+POST   /v1/focus-items/{focus_item_id}:dismiss
+POST   /v1/focus-items/{focus_item_id}:expire
+POST   /v1/focus-items/{focus_item_id}:promote
 
 # Note
 GET    /v1/notes
@@ -1801,8 +1813,9 @@ GET    /v1/active-surfaces/current
 # 管理与运维
 GET    /v1/admin/jobs
 POST   /v1/admin/jobs/{job_id}:retry
-POST   /v1/admin/indexes/{kind}:rebuild
+POST   /v1/admin/schedules
 POST   /v1/admin/schedules/{schedule_id}:run
+POST   /v1/admin/indexes/{kind}:rebuild
 POST   /v1/admin/backups
 POST   /v1/admin/exports
 GET    /v1/admin/audit-events
@@ -1814,6 +1827,13 @@ GET    /metrics
 ```
 
 资源型接口可以在实现时补充标准 GET/List，但不得改变上述状态转换语义。高风险管理动作使用 `POST :verb`，不通过含糊的通用 PATCH 绕过领域校验。
+
+本清单是 `/v1` 的**目标端点面**，与某一时刻的已发布 OpenAPI 不必逐条相等。已发布的权威清单是 [`schemas/openapi/openapi.json`](../schemas/openapi/openapi.json)；两者的差集按 ADR-0017 §3 分为两类：
+
+- **已发布**：Observation、Recall/Search/Usage、State、Recent Context、Focus、Note、Task、CognitiveEvent、Claim/Episode/Relation/Artifact、Forget/Retention/Legal Hold、Entity Profile、Active Surface 与部分 Admin 端点（Phase 2–8）。
+- **待 Phase 10 传输层交付**：Entity/Identity/Binding/SpaceGroup 读写面、`/v1/admin/indexes/{kind}:rebuild`（届时取代过渡端点 `/v1/admin/recent-context:rebuild`）、`/v1/admin/backups`、`/v1/admin/exports`、`/v1/admin/audit-events`，以及 §23.1 的可选 SSE 事件面。这些能力的应用层实现已在 Phase 1/5 存在，缺的只是传输面。
+- **Phase 9 已发布**：全部 Persona 端点（应用层、OpenAPI、SDK 与 mock server；真实 HTTP
+  传输仍按 ADR-0017 由 Phase 10 交付）。
 
 ### 23.4 稳定错误 Envelope
 
@@ -1833,39 +1853,15 @@ GET    /metrics
 
 `message` 面向开发者但不包含敏感内容；客户端逻辑只依赖 `code`、HTTP Status 和结构化 Details。
 
-至少冻结以下错误码：
+**稳定错误码清单的唯一真源是 [`contracts/source/contracts.json`](../contracts/source/contracts.json) 的 `error_codes`**（ADR-0017 §1）。本章不复制该清单：一份需要手工同步的副本必然与生成物分叉，这正是 ADR-0017 记录的历史缺陷。清单变更由 `make contracts-check` 的兼容检查把关。
 
-```text
-unauthorized
-forbidden
-not_found
-tenant_not_found
-agent_not_found
-space_group_not_found
-space_not_found
-identity_not_found
-binding_conflict
-scope_denied
-privacy_denied
-lease_held
-lease_expired
-lease_fenced
-idempotency_key_reused
-revision_mismatch
-invalid_transition
-task_dependency_cycle
-persona_policy_denied
-persona_base_revision_stale
-deadline_exceeded
-minimum_watermark_unavailable
-provider_unavailable
-history_unavailable
-schema_version_unsupported
-capability_not_supported
-storage_full
-integrity_check_failed
-internal
-```
+清单必须满足以下规则：
+
+- 每个码在整个 `/v1` 内含义唯一，不提供等价别名；
+- 授权失败统一为单一码，不区分“未认证”“已认证但无权”“资源不存在但无权可见”——避免为调用方制造存在性探测面（§29.1）；
+- 资源缺失使用统一的 `not_found` 加 `details.resource_type`，不为每种资源新增码；
+- 只增不改语义：改名等同于删除，按 §23.5 需要新的 API Major Version，或按 ADR 显式记录取代关系；
+- 尚未启用但已为后续阶段保留的码（如 Persona 相关）在契约中缺席，由对应阶段的 ADR 启用。
 
 错误响应不得包含 Token、Provider Key、原始敏感文本、数据库路径或内部 Stack Trace。
 
@@ -2408,25 +2404,22 @@ iris-memory-core/
 ├── LICENSE
 ├── docs/
 │   ├── IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md
-│   ├── adr/
-│   ├── operations/
-│   └── migrations/
+│   ├── README.md              # 文档索引与维护规则
+│   ├── adr/                   # 冻结边界决策
+│   ├── development/           # 分阶段路线图与阶段文档
+│   ├── reports/               # 各阶段验证报告
+│   └── operations/            # 运维手册（Phase 14）
+├── contracts/
+│   └── source/                # 契约生成源（错误码/能力/版本的唯一真源）
 ├── schemas/
-│   ├── openapi/
-│   ├── jsonschema/
-│   └── fixtures/
+│   ├── openapi/               # 生成物
+│   ├── jsonschema/            # 生成物
+│   ├── compatibility/         # v1 兼容基线快照
+│   └── fixtures/              # valid / invalid / forward
 ├── src/iris_memory_core/
 │   ├── api/
 │   ├── application/
-│   ├── domain/
-│   │   ├── identity/
-│   │   ├── spaces/
-│   │   ├── observations/
-│   │   ├── cognition/
-│   │   ├── notes/
-│   │   ├── tasks/
-│   │   ├── memory/
-│   │   └── persona/
+│   ├── domain/               # 平铺模块（identity/scope/observation/memory/persona…）
 │   ├── storage/
 │   ├── indexing/
 │   ├── jobs/
@@ -2437,23 +2430,21 @@ iris-memory-core/
 ├── sdk/
 │   ├── python/
 │   └── typescript/
-├── migrations/
+├── migrations/                # 顺序、不可变、带 checksum
 ├── tests/
-│   ├── unit/
-│   ├── property/
+│   ├── unit/                  # 含 property-based 用例
 │   ├── integration/
 │   ├── contract/
-│   ├── e2e/
 │   ├── fault/
-│   └── performance/
-├── tools/
-│   ├── migration/
-│   ├── backup/
-│   └── diagnostics/
-└── deploy/
+│   ├── performance/
+│   └── e2e/                   # Phase 11/12 起
+├── tools/                     # 契约生成、边界与文档门禁、mock server
+└── deploy/                    # Phase 14 起
     ├── docker/
     └── compose/
 ```
+
+标注了阶段的目录在该阶段之前不存在；其余目录必须与本树保持一致。改变本树需要同时更新本章与受影响的阶段文档。本树只约束到**目录**一层——`domain/` 与 `application/` 内部是按聚合命名的平铺模块，不是子包；本章曾把 `domain/` 画成 8 个子包，与实现从第一天起就不一致。
 
 ### 33.2 Adapter 仓库
 
@@ -2526,8 +2517,8 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 ├── db/
 │   └── iris.sqlite3
 ├── vector/
-│   ├── current.json
-│   └── generations/
+│   ├── generations/
+│   └── tmp/
 ├── artifacts/
 ├── backups/
 ├── exports/
@@ -2536,6 +2527,8 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 ```
 
 目录由进程启动时创建并检查所有权。临时构建先写 `/data/tmp/<uuid>`，成功校验后原子移动。Backup 与 Export 不应默认和主数据共享唯一磁盘；生产部署将备份复制到独立加密介质。
+
+`vector/` 的位置由部署通过 `vector_root` 注入，本布局是推荐值（ADR-0017 §5）。该目录内**没有** Current Pointer 文件：SQLite 的 `vector_current` 表是唯一权威指针（ADR-0015 §5），文件系统只保存不可变 Generation 目录与暂存区。
 
 ### 35.3 容器要求
 
@@ -2701,16 +2694,18 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 
 退出条件：多端相同 Revision/Hash、Prompt Injection、并发发布、冷却期、回滚和状态回归测试通过。
 
-### 阶段 10：巩固与 Reflection
+### 阶段 10：巩固、Reflection 与传输层
 
 交付：
 
 - Episode Consolidation、Claim Extraction、Reconciliation；
 - Note/Task Candidate、Persona Evaluation；
 - ReflectionRecord 与候选防自循环；
-- Provider Budget、Circuit Breaker 和 Dead Letter 管理。
+- Provider Budget、Circuit Breaker 和 Dead Letter 管理；
+- **HTTP 传输层与进程入口**（ADR-0017 §3）：ASGI 应用与路由、Bearer 认证与 AccessContext 构造、领域错误到稳定 Envelope 的映射、`Idempotency-Key` 与 `expected_revision` 接线、能力协商与 `/health/*`、`/metrics`、可选 SSE 事件面，以及 `serve` / `worker` 两个进程命令；
+- **补齐仅缺传输面的端点**：Entity/Identity/Binding/SpaceGroup 读写面、`/v1/admin/indexes/{kind}:rebuild`、`/v1/admin/backups`、`/v1/admin/exports`、`/v1/admin/audit-events`。
 
-退出条件：固定 Watermark 可重放、无来源候选被拒绝、Provider 故障不影响 Canonical 在线功能。
+退出条件：固定 Watermark 可重放、无来源候选被拒绝、Provider 故障不影响 Canonical 在线功能；已发布 OpenAPI 的每条路径都有真实传输层实现并通过契约测试，`serve`/`worker` 可在干净环境启动并通过 Ready 检查。
 
 ### 阶段 11：Bellis Adapter
 
@@ -2867,7 +2862,7 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 - Core 提供完整 Persona 功能并保证多端版本稳定；
 - SpaceGroup 提供受 Scope/Privacy 控制的跨 Space 社区记忆；
 - Active Surface Coordinator 可选，支持 `off|advisory|required`；
-- 业务 API 使用 `/v1`，时间使用 RFC 3339；Health/Ready/Metrics 不版本化；
+- 业务 API 使用 `/v1`，时间使用 RFC 3339；Health/Ready/Metrics 不版本化；稳定错误码清单以契约生成源为唯一真源（ADR-0017 §1）；
 - Core、Schema、SDK 使用 Monorepo，宿主 Adapter 使用独立仓库；
 - Docker 与 Compose 在硬化阶段交付，不阻塞前期领域实现；
 - AGPL-3.0。

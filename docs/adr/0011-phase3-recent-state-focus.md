@@ -6,7 +6,7 @@
 
 ## 背景
 
-Phase 3 交付三类短期能力：可重建的 RecentContextProjection、版本化高频 StateRecord、Canonical FocusItem,以及只组合这三者的内部结构化 Recall Route 骨架（§9、§15.4、§18）。实现中存在多项跨阶段、不可逆或影响后续契约的语义选择，必须冻结为可审计决策，不得只埋在代码里。
+Phase 3 交付三类短期能力：可重建的 RecentContextProjection、版本化高频 StateRecord、Canonical FocusItem，以及只组合这三者的内部结构化 Recall Route 骨架（§9、§15.4、§18）。实现中存在多项跨阶段、不可逆或影响后续契约的语义选择，必须冻结为可审计决策，不得只埋在代码里。
 
 ## 决策
 
@@ -16,7 +16,7 @@ Phase 3 交付三类短期能力：可重建的 RecentContextProjection、版本
 - 重建纪律（shadow）：先以纯函数构建（`domain/recent.py::build_projection`，同一 Observation 集 + watermark + builder_version + estimator 三次重建逐字节一致），再以 `projection_invariants` 校验，最后在**同一写事务**内 insert generation + 原子 upsert 指针。任一步失败 → 指针不动 → 读取继续使用上一已验证 generation，或退回 Canonical Observation 窗口。不存在部分可见的"building"状态。
 - 读取终检：generation 服务前复算 `result_hash`、精确核对 pointer/generation/request target，并逐条复核 observation ref 的 revision/occurred/token 元数据、committed、tombstone、scope 与 privacy（含 subject consent）；任何一项不过 → 整代弃用，退回**带同等过滤**的 canonical 窗口读取。恢复不变量执行同一套结构/hash/target/ref 检查，损坏的备份不能切换上线。
 - 摘要段：仅携带 source refs / 覆盖数 / token 估算的确定性压缩段，不伪造自由文本摘要（无 Provider）。segment 切片端点必须钳制在未入窗前缀上（否则会把热窗观察重复计入段内——同为实现期修复）。
-- 过期/失效：`expires_us` 到期或 admin invalidate → 指针删除、generation 置 retired；读取自动降级为 canonical 窗口,maintenance 顺带清扫。
+- 过期/失效：`expires_us` 到期或 admin invalidate → 指针删除、generation 置 retired；读取自动降级为 canonical 窗口，maintenance 顺带清扫。
 
 ### 2. State 的身份、合并与投影 Job
 
@@ -37,8 +37,8 @@ Phase 3 交付三类短期能力：可重建的 RecentContextProjection、版本
 
 ### 4. 结构化 Recall 骨架的边界（Phase 6 预留）
 
-- 仅组合 `recent_context`、`state`、`focus` 三条路由；路由以 `RecallRoute` port 注入,Phase 6 增加路由不得改动这三条的语义。
-- 子 deadline 用 Monotonic Clock 计算：前两条路由各得总预算的 1/3,最后一条跑满剩余；协作式超时检查；超时路由入 `degraded_routes`（`route_deadline_exceeded`，retryable，fallback 描述），其余路由结果不受影响。**授权失败（AccessDenied/ScopeViolation）是请求级错误，直接抛出——绝不降级为路由失败**。
+- 仅组合 `recent_context`、`state`、`focus` 三条路由；路由以 `RecallRoute` port 注入，Phase 6 增加路由不得改动这三条的语义。
+- 子 deadline 用 Monotonic Clock 计算：前两条路由各得总预算的 1/3，最后一条跑满剩余；协作式超时检查；超时路由入 `degraded_routes`（`route_deadline_exceeded`，retryable，fallback 描述），其余路由结果不受影响。**授权失败（AccessDenied/ScopeViolation）是请求级错误，直接抛出——绝不降级为路由失败**。
 - 排序器版本化（RECALL_RANKER_VERSION=1）：固定分量权重、`(-final_score, category_priority, occurred DESC, id ASC)` 稳定键；candidate_id 由 `(route, resource_id, revision)` 哈希派生——同快照重放 100 次顺序与裁剪一致的前提。
 - Orchestrator 在读取 watermark、分配 deadline 或执行任一路由前先权威校验 Agent/Space/Session 请求 scope；授权失败不能被不可达 watermark 的早退遮蔽。最终 Rehydrate 对每个候选回读 Canonical 并复核 Scope/Privacy/Status/Expiry/Revision/Tombstone；`minimum_watermark` 不可达时无关键 Route 可成功，始终稳定 `not_ready`——绝不返回旧数据却标记完整（§20.6）。
 - Trace 只含 ID hash、数量、版本与耗时。**Persona 永不作为候选**。
@@ -76,25 +76,25 @@ Phase 3 交付三类短期能力：可重建的 RecentContextProjection、版本
 
 ## 否决的替代方案
 
-- Recent 投影直接在读取路径懒构建并缓存（无 generation/pointer）：无法表达"上一已验证版本"与原子切换,违反 ADR-0001 的版本化投影纪律。
-- State 用 upsert 原地覆盖 + `updated_at`：违反 ADR-0004 不可变 revision 语义,也无法做并发裁决。
-- 衰减按"每次乘以衰减因子"作用于存储值：重复运行指数复合、不幂等,maintenance 无法安全重放。
-- Focus 容量靠物理删除最旧 item：删除来源事实,违反"淘汰=状态转换且保留历史"。
-- 授权失败降级为路由失败：把横向越权变成可重试的"部分结果",安全语义完全错误。
-- 用复合列 UNIQUE 表达含 NULL 维度的 scope 唯一性：SQLite 将 NULL 视为互异,唯一性形同虚设。
-- by-ID 授权只查 tenant+agent（space 维度留给"资源 scope 自检"）：自比恒真,等于没有授权。
-- 列表请求未命名的维度不加 WHERE（当作通配符）：请求侧 null 一旦成为通配符,agent 级列表立即横向泄漏所有 Space/Session 记录。
-- Focus 变更不带幂等键、靠 expected_revision 天然防重：响应丢失后的合法重试只会得到 revision_mismatch,违反 §20.5"所有写操作可安全重试"的总不变量。
+- Recent 投影直接在读取路径懒构建并缓存（无 generation/pointer）：无法表达"上一已验证版本"与原子切换，违反 ADR-0001 的版本化投影纪律。
+- State 用 upsert 原地覆盖 + `updated_at`：违反 ADR-0004 不可变 revision 语义，也无法做并发裁决。
+- 衰减按"每次乘以衰减因子"作用于存储值：重复运行指数复合、不幂等，maintenance 无法安全重放。
+- Focus 容量靠物理删除最旧 item：删除来源事实，违反"淘汰=状态转换且保留历史"。
+- 授权失败降级为路由失败：把横向越权变成可重试的"部分结果"，安全语义完全错误。
+- 用复合列 UNIQUE 表达含 NULL 维度的 scope 唯一性：SQLite 将 NULL 视为互异，唯一性形同虚设。
+- by-ID 授权只查 tenant+agent（space 维度留给"资源 scope 自检"）：自比恒真，等于没有授权。
+- 列表请求未命名的维度不加 WHERE（当作通配符）：请求侧 null 一旦成为通配符，agent 级列表立即横向泄漏所有 Space/Session 记录。
+- Focus 变更不带幂等键、靠 expected_revision 天然防重：响应丢失后的合法重试只会得到 revision_mismatch，违反 §20.5"所有写操作可安全重试"的总不变量。
 
 ## 后果
 
 - Schema 4 新增 8 张 STRICT 表（recent generations/pointer、state policies/records/revisions、focus items/revisions）；`state_namespace_policies` 允许租户覆盖策略但内置默认保证零配置可用。
 - 备份恢复不变量扩展：state/focus 指针必须解析到对应 revision 行；recent 指针必须精确绑定同 target 的 verified generation，projection 内容哈希/结构必须自洽，引用 observation 的身份、revision 与 occurred time 必须一致。
 - 错误码未新增（invalid_state_transition/revision_mismatch/idempotency_key_reused/history_unavailable 等已在 v1 契约内）。
-- 性能口径：State Coalesced Write p95 以 Phase 2 同口径（单流、coalescing 生效）测量；8 并发突发在单 Writer Gate（§20.2）后的排队延迟另行如实报告,不混入写入路径口径。
+- 性能口径：State Coalesced Write p95 以 Phase 2 同口径（单流、coalescing 生效）测量；8 并发突发在单 Writer Gate（§20.2）后的排队延迟另行如实报告，不混入写入路径口径。
 
 ## 迁移影响
 
 - `migrations/0004_phase3_recent_state_focus.sql`（online_safe=true, lock_ms=200, min_app=0.4.0, recovery=none）；0001–0003 字节不变。
-- 兼容窗口 [3,4]：0.4.0 在线升级 Schema 3 库；Schema 2 库经 0.3.0 二进制分阶段前移（MigrationRunner 本身仍可一次走完 2→4,窗口只约束 Ready）。
+- 兼容窗口 [3,4]：0.4.0 在线升级 Schema 3 库；Schema 2 库经 0.3.0 二进制分阶段前移（MigrationRunner 本身仍可一次走完 2→4，窗口只约束 Ready）。
 - 不提供 Down Migration；State/Focus revision 与 recent generation 不经降级脚本删除或回拨。

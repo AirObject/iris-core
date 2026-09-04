@@ -155,6 +155,7 @@ Migration checksum（SHA-256，`MigrationRunner` 记录于 `schema_migrations`�
 5. **History 修剪边界**：retention decay 路径修剪 Revision 并推进 `history_available_from_us`（keep=10）；更早 `as_of` 返回 `history_unavailable`（契约语义，不伪造）。
 6. **Recall/FTS/Vector/Profile/Graph 未实现**（Phase 6+）：本阶段只交付 `memory.invalidated` 失效事件与结构化 Search。
 7. **旧备份恢复必须配合 deletion ledger 重放**：未提供 ledger 的恢复无法恢复备份后删除（§21.2 生产要求同步保存删除日志）。
+8. **无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的路径至今没有真实服务端，归 Phase 10 交付（ADR-0017 §3）。该项在传输层交付前不得从任何阶段的已知限制中移除。
 
 ## 9. `make ci` 摘要
 

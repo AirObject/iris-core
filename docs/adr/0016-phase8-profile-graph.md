@@ -341,5 +341,8 @@ per-generation 资源唯一、计数非负、switch_epoch ≥ 1、generation sta
 - `migrations/0009_phase8_profile_graph.sql`（online_safe=true, lock_ms=200,
   min_app=0.9.0, recovery=none）；0001–0008 与 `869f04d` 逐字节一致（测试锁定）。
 - 无 Down Migration。回退顺序：停用 `graph.*`/`profile.*` handler 与 graph/profile
-  路由 → 0.8.0 兼容二进制运行 Schema 9 库（窗口 [8,9] 允许；运行 Schema 9 需
-  0.9.0）→ 必要时按 ADR-0013 §10 回退备份（投影由 0.9.0 重建）。
+  路由 → **保持 0.9.0 二进制运行 Schema 9 库**（0.9.0 的窗口是 [8,9]；0.8.0 的窗口是
+  [7,8]，**不能**运行 Schema 9 库，Ready 会以 `schema_incompatible` 拒绝）→ 若必须
+  退回 0.8.0 二进制，只能按 ADR-0013 §10 从 Schema 8 备份隔离恢复（投影由重新升级到
+  0.9.0 后重建）。（初版本条把"0.8.0 运行 Schema 9"与"运行 Schema 9 需 0.9.0"并列，
+  自相矛盾；以 `storage/runtime.py` 的 `SUPPORTED_SCHEMA_MIN/MAX` 为准更正。）

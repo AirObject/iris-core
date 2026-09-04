@@ -56,7 +56,9 @@
 - 过期：horizon 或尝试上限 → expired；单次清扫超阈值折叠为 `summary.expired_events`（计数 + 有界 id 列表 + links）。取消为终态。
 - Recall 集成：`tasks` 路由为最高优先级结构化信号（category priority 0，due 任务 + rehydrate 终检）；`pending_event_ids` 只广播 id（≤50），正文留在事件端点授权之后。
 
-## 数据、契约与回退策略（已落地）
+## 数据、契约与回退策略
+
+> 本节记录的是**已落地**结果，不是计划。
 
 - `migrations/0005_phase4_notes_tasks_events.sql`（online_safe=true，lock_ms=200，min_app=0.5.0，recovery=none；SHA-256 `32ecc6f37f32b27443d03eb33c5365c4a0a9895b42c7df24fad6aa4a5a46f9e2`），13 张 STRICT 表；0001–0004 与 HEAD `b4587b1` 逐字节一致。
 - Schema 4→5 在线升级（真实 Phase 3 数据升级测试通过）；runtime 兼容窗口 [4,5]；空库安装 =5。
@@ -64,7 +66,9 @@
 - 契约 add-only：contract 1.2.0→**1.3.0**、schema 4→**5**、package **0.5.0**；新增 `notes.v1`、`tasks.v1`、`cognitive-events.v1` capability；13 条新路径（GET/POST /v1/notes、PATCH/:archive/:promote、GET/POST /v1/tasks、PATCH/:transition、steps、steps/:transition、dependencies、triggers、GET /v1/cognitive-events、:ack）；错误码新增 `task_dependency_cycle`；fixtures 35→52；OpenAPI 3.1 + 14 份独立 JSON Schema + mock server + 双 SDK（Python 12 方法/TS 12 方法，lockfile 更新）同步。
 - 回退（ADR-0012 迁移影响）：先停用 `note.review`/`task.trigger_scan` 与事件领取，保留 Pending Event/Tick/Occurrence Ledger，用兼容二进制或备份恢复；不把 Delivered/ACK 反推为完成态。
 
-## 量化验收基线（实测）
+## 量化验收基线
+
+> 下列数字为**实测值**，口径见验证报告。
 
 - 状态机与 DAG 性质：Note/Task/Step/CognitiveEvent 状态机与 Dependency 无环/ready 派生各 **200 个固定种子序列**（`tests/unit/test_phase4_domain.py`，3614 个参数化用例全绿）。
 - **50 并发相同 Expected Revision**：`test_fifty_threads_same_expected_revision_one_winner` 实测 ok=1、mismatch=49（稳定码）、revision 行=2、task.active 审计=1、transition outbox=1、watermark 恰好 +1。

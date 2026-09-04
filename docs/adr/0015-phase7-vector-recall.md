@@ -19,7 +19,7 @@ UUID↔signed int64 surrogate ID 映射、不可变 FAISS Generation（文件系
 - Core / Python SDK / TypeScript SDK **0.8.0**；Schema **8**（migration
   `0008_phase7_vector_recall.sql`，min_app=0.8.0，online_safe=true）；Contract **1.6.0**
   （纯 additive：capability `recall.vector.v1`、`embedding.v1`；路由枚举 +`vector`；降级原因码
-  +`vector_*` 6 个；错误码 +`provider_unavailable`——该码在基线 §23.4 冻结清单内，本阶段首次启用）。
+  +`vector_*` 7 个（见 §7；初版误记为 6 个，ADR-0017 §7 勘误）；错误码 +`provider_unavailable`——该码在基线 §23.4 冻结清单内，本阶段首次启用）。
 - Runtime 兼容窗口 **[7, 8]**：0.8.0 在线升级 Schema 7 库；Schema ≤6 需先经 0.7.0 二进制。
 - 0001–0007 字节不变（回归锁定扩展到以 `179b6a0` 为基线的 0007）。
 
@@ -99,7 +99,9 @@ UUID↔signed int64 surrogate ID 映射、不可变 FAISS Generation（文件系
 
 ### 5. FAISS Generation 生命周期（P7-GEN-01、§22.3–22.4）
 
-- **目录**（§35.2，由 db 路径派生 `<db>/vector/`）：`generations/<id>/{manifest.json,
+- **目录**（由部署经 `vector_root` 注入；§35.2 的推荐布局是 `/data/vector/`，测试装置
+  使用 db 同级目录——"由 db 路径派生"是初版的不准确表述，ADR-0017 §5 更正）：
+  `generations/<id>/{manifest.json,
   index.faiss, id-map.snapshot, checksums.txt}` + `tmp/` 暂存。SQLite `vector_current`
   是唯一权威指针；§35.2 的 `current.json` 诊断镜像本阶段不实现（不承诺、不读取），
   孤儿/退休代目录由全局保留集 + 回退窗口清扫（tmp/ 同窗清理）。
@@ -266,6 +268,9 @@ Vector Capability fail-closed 降级（与 ADR-0014 §1 FTS5 探测同法）。
 
 - `migrations/0008_phase7_vector_recall.sql`（online_safe=true, lock_ms=200,
   min_app=0.8.0, recovery=none）；0001–0007 与 `179b6a0` 逐字节一致（测试锁定）。
-- 无 Down Migration。回退顺序：停用 `vector.*` handler 与 Vector 路由 → 0.7.0 兼容二进制
-  运行 Schema 8 库（窗口 [7,8] 允许读旧 Schema 7；运行 Schema 8 需 0.8.0）→ 必要时按
-  ADR-0013 §10 回退备份（Vector 由 0.8.0 重建）。
+- 无 Down Migration。回退顺序：停用 `vector.*` handler 与 Vector 路由 → **保持 0.8.0
+  二进制运行 Schema 8 库**（0.8.0 的窗口是 [7,8]；0.7.0 的窗口是 [6,7]，**不能**运行
+  Schema 8 库，Ready 会以 `schema_incompatible` 拒绝）→ 若必须退回 0.7.0 二进制，只能
+  按 ADR-0013 §10 从 Schema 7 备份隔离恢复（Vector 由重新升级到 0.8.0 后重建）。
+  （初版本条把"0.7.0 运行 Schema 8"与"运行 Schema 8 需 0.8.0"并列，自相矛盾；
+  以 `storage/runtime.py` 的 `SUPPORTED_SCHEMA_MIN/MAX` 为准更正。）

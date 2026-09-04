@@ -53,7 +53,9 @@
 - `application/recall.py`：仅 recent_context/state/focus 三条 Route（`RecallRoute` port 注入，Phase 6 可扩展）；请求级 Agent/Space/Session 授权先于 watermark 早退；每 Route 子 deadline（I/O 前后协作检查 + Orchestrator port 边界权威复核）+ 候选上限；completed/degraded/partial Envelope（稳定原因码 + retryable + fallback；partial 至少有一个关键 Route 成功，全降级稳定 `not_ready`）；统一 Candidate 转换（deterministic candidate_id）；版本化排序器；Layer/Token Budget；最终 Canonical Rehydrate；minimum watermark 不可达时稳定 `not_ready`；safe trace；授权失败请求级抛出不降级；Persona 非候选。
 - **Phase 6 边界**：不实现 FTS/Vector/Graph/Provider/Recall Cache/Usage Report，不冻结 `/v1/recall` 协议。
 
-## 数据、契约与回退策略（已落地）
+## 数据、契约与回退策略
+
+> 本节记录的是**已落地**结果，不是计划。
 
 - `migrations/0004_phase3_recent_state_focus.sql`（online_safe=true，lock_ms=200，min_app=0.4.0，recovery=none；SHA-256 `c6174cbefd745d371d72f75a4e6adaeeb856dad780370e8c133ae4806a23ee9a`），8 张 STRICT 表；0001–0003 与 HEAD `8041552` 逐字节一致。
 - Schema 3→4 在线升级（真实 Phase 2 数据升级测试通过）；runtime 兼容窗口 [3,4]；Schema 2 库经 0.3.0 二进制分阶段前移（MigrationRunner 可一次走完 2→4，窗口只约束 Ready）。
@@ -61,7 +63,9 @@
 - 备份恢复不变量扩展（state/focus 指针解析、recent 指针→同 target verified generation、projection hash/结构、generation ref 的 observation 身份与 revision/time 一致）；Phase 1/2 备份路径保留（Phase 1 快照仍可恢复）。
 - 契约 add-only：contract 1.1.0→**1.2.0**、schema 3→**4**、package **0.4.0**；新增 `recent-context.v1`、`state.v1`、`focus-items.v1` capability；新路径 `/v1/recent-context`、`/v1/state/{namespace}/{key}`（PUT/GET）+ `/v1/state` + history、`/v1/focus-items`（POST/GET/list + `:activate/:dormant/:dismiss/:expire/:promote`）、`/v1/admin/recent-context:rebuild`（admin+权限测试）；fixtures 21→35；双 SDK 校验器与客户端方法同步；无 FastAPI 传输层（沿用应用层契约 + mock server 模式）。
 
-## 量化验收基线（实测）
+## 量化验收基线
+
+> 下列数字为**实测值**，口径见验证报告。
 
 - **State Coalesced Write p95 ≤ 25ms**：实测 **4.69ms**（顺序 coalesced 流、payload 121B、库内 2000 行 corpus 与 2000 pending 投影 Job；p50 3.69ms；`tests/performance/test_state_latency.py` 输出含环境行）。另如实报告 8 并发突发口径 p95 51.17ms——该数字度量的是进程内单 Writer Gate（§20.2）的队头阻塞而非写入路径本身；busy 事件 0。
 - **Recent 连续重建 3 次一致**：同一 Observation 集/Watermark/Builder/Estimator 下 refs、segments、token estimate 与 result hash 三次全等（`test_three_rebuilds_are_identical`，且 builder 性质测试每条 200 固定种子案例覆盖）。

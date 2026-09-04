@@ -137,7 +137,7 @@
 
 ## 6. 契约证据
 
-- `contracts.json`：contract_version 1.0.0→**1.1.0**、schema_version 2→**3**、package_version **0.3.0**；capabilities 追加 observe.batch.v1、source-cursor.v1、outbox.jobs.v1、schedules.v1、active-surface.v1、health.readiness.v2、metrics.v1。
+- `contracts.json`：contract_version 1.0.0→**1.1.0**、schema_version 2→**3**、package_version **0.3.0**；capabilities 追加 observe.batch.v1、source-cursor.v1、outbox.jobs.v1、schedules.v1、active-surface.v1、health.readiness.v2、metrics.v1。（`health.readiness.v2` 的 “v2” 指 `/health/ready` 响应从 Phase 0/1 的简单形态升级为结构化 `ReadinessReport`；被取代的 v1 形态当时归在 `health.v1` 之下，从未单独命名——见 ADR-0017 §7。）
 - OpenAPI 新路径：observations:batch、cursors、active-surfaces（acquire/heartbeat/release/current）、admin jobs（list/retry）、admin schedules（create/run）、/metrics（readiness 响应升级为 ReadinessReport）。
 - 错误码仅追加（27 个，v1 基线 22 个全保留）；fixtures 6→21 用例（三轮修复追加 session-without-space invalid 用例；record schema 补 `dependentRequired`）；Python/TS 校验器与客户端方法同步；TS lockfile 版本随包更新。
 

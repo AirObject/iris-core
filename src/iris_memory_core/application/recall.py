@@ -53,6 +53,7 @@ from iris_memory_core.domain.errors import (
     IdentityNotFoundError,
     InvalidRequestError,
     MinimumWatermarkUnavailableError,
+    NotFoundError,
     NotReadyError,
     RevisionMismatchError,
     ScopeViolationError,
@@ -833,6 +834,62 @@ class ClaimsRoute:
         )
 
 
+def endpoint_entity_visible(
+    tx: Transaction,
+    tenant_id: str,
+    entity_id: str,
+    request_scope: Scope,
+    access: AccessContext,
+    entity_cache: dict[str, Entity | None],
+) -> bool:
+    """One endpoint entity is alive and its own privacy labels pass.
+
+    Shared by the graph traversal and the canonical relations route/rehydrate
+    so both sides of the same data use ONE privacy verdict. Entities are
+    tenant-global, so their labels evaluate against the tenant-level data
+    scope. Fail closed on an unresolvable entity: the projection may
+    reference a row the canonical store no longer resolves.
+    """
+    entity = entity_cache.get(entity_id, _MISSING)
+    if entity is _MISSING:
+        entity = tx.identities.entities_by_id(tenant_id, {entity_id}).get(entity_id)
+        entity_cache[entity_id] = entity
+    if entity is None:
+        return False
+    if entity.state == EntityState.TOMBSTONED or tx.is_tombstoned(tenant_id, "entity", entity_id):
+        return False
+    if entity.privacy_labels:
+        entity_scope = Scope(tenant_id=tenant_id)
+        if not evaluate_privacy(entity.privacy_labels, entity_scope, request_scope, access):
+            return False
+    return True
+
+
+def relation_endpoints_visible(
+    tx: Transaction,
+    relation: Any,
+    request_scope: Scope,
+    access: AccessContext,
+    entity_cache: dict[str, Entity | None] | None = None,
+) -> bool:
+    """Both entities a relation names must be visible to this request.
+
+    A relation's text and refs NAME both endpoints, so a relation whose
+    target entity is ``restricted`` discloses that entity as surely as the
+    entity row would. The graph route has enforced this per edge since
+    ADR-0016 §11.8; running the same check here closes the divergence where
+    the canonical relations route returned what graph traversal refused
+    (ADR-0017 §8).
+    """
+    cache = {} if entity_cache is None else entity_cache
+    return all(
+        endpoint_entity_visible(
+            tx, request_scope.tenant_id, entity_id, request_scope, access, cache
+        )
+        for entity_id in (relation.source_entity_id, relation.target_entity_id)
+    )
+
+
 class RelationsRoute:
     """Canonical relations involving the speaker (Phase 6, §18.4)."""
 
@@ -871,6 +928,9 @@ class RelationsRoute:
             access.tenant_id, request.speaker_entity_id, agent_id=request.agent_id
         )
         candidates: list[RecallCandidate] = []
+        # Bounded by the candidate limit below — one entry per endpoint of
+        # at most ``limit`` relations.
+        entity_cache: dict[str, Entity | None] = {}
         # Valid time at the request's evaluation instant (as_of for
         # historical reads) — same rule the claim rehydrate applies.
         valid_at_us = request.as_of_us if request.as_of_us is not None else now_us
@@ -892,6 +952,12 @@ class RelationsRoute:
             if not scope_allows(data_scope, request_scope):
                 continue
             if not evaluate_privacy(revision.privacy_labels, data_scope, request_scope, access):
+                continue
+            # Both endpoints must be visible too: the candidate text names
+            # them, so a restricted endpoint would leak through a public
+            # relation (ADR-0017 §8; graph traversal has done this per edge
+            # since ADR-0016 §11.8).
+            if not relation_endpoints_visible(tx, relation, request_scope, access, entity_cache):
                 continue
             if relation.valid_from_us is not None and relation.valid_from_us > valid_at_us:
                 continue
@@ -1381,23 +1447,9 @@ class GraphRoute:
         bounded by the route's node/edge budgets (≤ fanout edges per level,
         ≤ depth levels), so a malicious hub cannot turn it into unbounded
         work either."""
-        entity = entity_cache.get(entity_id, _MISSING)
-        if entity is _MISSING:
-            entity = tx.identities.entities_by_id(tenant_id, {entity_id}).get(entity_id)
-            entity_cache[entity_id] = entity
-        if entity is None:
-            # Unknown endpoint: fail closed (the projection may reference an
-            # entity the canonical store no longer resolves).
-            return False
-        if entity.state == EntityState.TOMBSTONED or tx.is_tombstoned(
-            tenant_id, "entity", entity_id
-        ):
-            return False
-        if entity.privacy_labels:
-            entity_scope = Scope(tenant_id=tenant_id)
-            if not evaluate_privacy(entity.privacy_labels, entity_scope, request_scope, access):
-                return False
-        return True
+        return endpoint_entity_visible(
+            tx, tenant_id, entity_id, request_scope, access, entity_cache
+        )
 
     def collect(
         self,
@@ -2623,6 +2675,8 @@ class StructuredRecallOrchestrator:
             return "scope_mismatch"
         if not evaluate_privacy(revision.privacy_labels, data_scope, request_scope, access):
             return "privacy_blocked"
+        if not relation_endpoints_visible(tx, relation, request_scope, access):
+            return "endpoint_privacy_blocked"
         return None
 
     def _apply_budgets(
@@ -2633,16 +2687,21 @@ class StructuredRecallOrchestrator:
 
 
 def _persona_metadata(tx: Transaction, agent_id: str) -> tuple[int, str]:
-    """Top-level persona revision/hash — persona is never a candidate."""
+    """Top-level persona revision/hash — persona is never a candidate.
+
+    ``(0, "")`` is the *unavailable* signal, not revision zero (ADR-0017 §4).
+    §14 and ADR-0008 guarantee every Agent has a Published Persona from its
+    creation transaction, so the only legitimate causes are a missing or
+    tombstoned Agent and an empty Current Pointer. Everything else — storage
+    faults, corrupt rows — must surface as a request-level error instead of
+    being disguised as "this Agent has no persona".
+    """
     try:
         agent = tx.get_agent(agent_id)
-    except Exception:
-        return 0, ""
-    if agent.persona_current_revision_id is None:
-        return 0, ""
-    try:
+        if agent.persona_current_revision_id is None:
+            return 0, ""
         persona = tx.get_persona_revision(agent.persona_current_revision_id)
-    except Exception:
+    except NotFoundError:
         return 0, ""
     return persona.revision, persona.content_hash
 

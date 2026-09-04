@@ -193,9 +193,13 @@ binding 边判定与 rebuild 口径不一致——`_binding_drafts` 补 binding/
    容量评估。
 8. **无 Recall/投影结果缓存**（仓库现状）：失效边界 = Canonical 事务内 Outbox
    事件（ADR-0014 §6 冻结未来键语义；ADR-0016 §7 记录不适用）。
-9. **Canonical relations 路由不评估端点实体自身隐私标签**（Phase 5 既有行为）：
-   第三轮修复只约束 Graph 遍历路由；canonical 关系读取面引入端点隐私评估属
-   跨阶段语义变更，留待独立裁定（第三轮复审观察项）。
+9. ~~**Canonical relations 路由不评估端点实体自身隐私标签**~~ —— **已修复**
+   （ADR-0017 §8）：`relations` 路由与最终 relation rehydrate 现与 Graph 遍历共用
+   `relation_endpoints_visible`，同一份数据只有一套隐私口径。回归见
+   `tests/integration/test_relation_endpoint_privacy.py`。
+10. **无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的
+    61 条路径至今没有真实服务端，归 Phase 10 交付（ADR-0017 §3）。该项在传输层
+    交付前不得从任何阶段的已知限制中移除。
 
 ## 9. `make ci` 摘要
 

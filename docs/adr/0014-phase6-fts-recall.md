@@ -37,7 +37,7 @@ Phase 6 交付首个完整 Recall 协议：FTS5 可重建投影、结构化 + FT
 
 ### 4. Persona 与候选边界
 
-- Persona 只经响应顶层 `persona_revision` + `persona_content_hash` 返回（Phase 1 bootstrap persona 的 current revision；无 persona 时 revision=0、hash=""，SDK 不隐藏该状态）。Persona 修订进入 Recall Cache 键（见 §6）与 Usage 验证（report 携带 persona_revision 必须与请求时一致，`revision_mismatch` 否则）。Persona 永不作为候选（`test_persona_is_never_a_candidate` 延续）。
+- Persona 只经响应顶层 `persona_revision` + `persona_content_hash` 返回（Phase 1 bootstrap persona 的 current revision）。`revision=0`/`hash=""` 是**不可用信号，不是修订号**：§14 与 ADR-0008 保证每个 Agent 自创建起就有 Published Persona，因此该值在健康部署中不可达；出现时宿主必须按"Persona 不可用"处置（不注入 Persona Slot、不缓存），SDK 不隐藏该状态。解析失败的合法成因只有"Agent 不存在或已 Tombstone"与"Current Pointer 为空"两类，其余异常一律上抛为请求级错误（ADR-0017 §4）。Persona 修订进入 Recall Cache 键（见 §6）与 Usage 验证（report 携带 persona_revision 必须与请求时一致，`revision_mismatch` 否则）。Persona 永不作为候选（`test_persona_is_never_a_candidate` 延续）。
 
 ### 5. 排序、预算与确定性
 
@@ -71,7 +71,7 @@ Phase 6 不实现持久 Recall Cache（明确非目标；Phase 7+ 与 Vector 一
 
 - 同一 Release Train：Core/双 SDK 0.7.0、Schema 7（migration `0007_phase6_fts_recall.sql`，min_app=0.7.0）、Contract 1.5.0（additive：3 路径 `/v1/recall`、`/v1/recall/{request_id}/usage`、`/v1/search`；capabilities 新增 `recall.v1`、`recall.usage.v1`、`search.fts.v1`；错误码新增 `deadline_exceeded`、`identity_not_found`、`minimum_watermark_unavailable`——均在 §23.4 冻结清单内）。Runtime 兼容窗口 [6, 7]。
 - SDK 显式暴露：Scope、partial、degraded_routes（含原因码/retryable/fallback）、persona revision/hash、cache_until=null、usage 四阶段；未知可选枚举向前兼容（forward fixture：completed_routes 含未来路由名），SDK 对未知路由名不失败。
-- Degraded 原因码冻结集：`route_deadline_exceeded`、`route_failed`、`fts_rebuild_pending`、`fts_builder_unknown`、`fts_generation_stale`、`fts_index_corrupt`、`fts_unavailable`。
+- Degraded 原因码冻结集（8 项）：`route_deadline_exceeded`、`route_failed`、`fts_rebuild_pending`、`fts_builder_unknown`、`fts_generation_stale`、`fts_index_corrupt`、`fts_unavailable`、`fts_as_of_unsupported`。（初版漏列最后一项，但它自 Phase 6 起就在契约与实现中——见本 ADR §12.2 的 as_of 语义；ADR-0017 §7 记录本次勘误。）
 
 ### 11. Job Kind 推进
 

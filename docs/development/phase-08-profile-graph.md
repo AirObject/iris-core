@@ -146,9 +146,14 @@
 6. **节点预算耗尽时同边不产候选**（确定性 completeness quirk）。
 7. **Profile/Graph rebuild 的候选/预算默认值**（深度 2/扇出 16/节点 64/候选 12）为
    嵌入式部署保守值；服务端可注入更小值，放大需独立容量评估。
-8. **Canonical relations 路由不评估端点实体自身隐私标签**（Phase 5 既有行为，先于
-   Phase 8 存在）：第三轮修复只约束 Graph 遍历路由；canonical 关系读取面是否引入
-   端点隐私评估属跨阶段语义变更，留待独立裁定（第三轮复审观察项，未纳入本轮）。
+8. ~~**Canonical relations 路由不评估端点实体自身隐私标签**~~ —— **已修复**
+   （ADR-0017 §8）：第三轮复审把它记为跨阶段语义变更留待独立裁定；该裁定已完成——
+   `relations` 路由与最终 relation rehydrate 现与 Graph 遍历共用
+   `relation_endpoints_visible`，同一份数据只有一套隐私口径。回归见
+   `tests/integration/test_relation_endpoint_privacy.py`。
+9. **无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的 61 条
+   路径至今没有真实服务端，归 Phase 10 交付（ADR-0017 §3）。该项在传输层交付前
+   不得从任何阶段的已知限制中移除。
 
 ## 明确不做
 

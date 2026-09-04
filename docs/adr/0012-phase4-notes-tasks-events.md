@@ -114,17 +114,9 @@ Note/Task 的 audit details 只携带 kind、hash、计数与目标类型；调�
 3. **授权先于 Surface 状态查询**：Note/Task create 与 Observe/Pull 在缓存前先验证 Agent grant、Space/Session 容器和 Privacy envelope；未授权请求稳定返回 `access_denied`，不会以 `lease_expired`/`lease_fenced` 暴露目标 Agent 的 Surface 模式或活跃状态，也不会创建幂等记录。
 4. **Observe 与同一在线策略对齐**：Observation 的请求级幂等重放同样执行缓存前门禁，缓存未命中同样执行事务内门禁；lease proof 移出 Observation 请求指纹，合法 lease 轮换后的同 key/同逻辑载荷返回原结果，异载荷仍稳定 `idempotency_key_reused`。Coordinator 自身不可达仍由缓存前校验映射为 `not_ready`。
 
-## 否决的替代方案（四轮）
+## 否决的替代方案（初版）
 
-- 邻居可读 proof 的另一个修法——把 `current()` 对非持有者脱敏：可观测性面（谁持有、到何时）本身是运维需求；且脱敏挡不住其它泄漏渠道。凭证失效必须在验证点（绑定持有者）完成，而不是靠保密。
-- 接受"缓存回放绕过门禁"并只改 ADR 措辞：回放响应里带着资源 id 与逻辑结果，被 fence 的实例可以无限期继续获取它们——"required 下每次成功响应都持活 lease"这一验收语义不允许例外。
-- 保留 proof 在指纹内、把 `idempotency_key_reused` 当作特性：lease 轮换（preempt/TTL 到期后重新 acquire）是正常运行路径，合法重试必须能回放；错误码语义（key 复用 = 逻辑请求不同）不能被凭证轮换劫持。
-- off/advisory 下继续无条件拒绝无效 pull proof：违反 §25.1 模式定义本身——off 部署根本不应感知 lease 策略的存在。
-- TS 侧只在类型上加字段但不改手工构造的 body：类型是编译期承诺，wire body 才是服务端看到的真实——透传必须在 body 构造处断言。
-
-## 否决的替代方案（二轮）
-
-- 用文本相似度自动删除重复 Note：违反 §10.3（关联不删除），且删除标准不可审计。：违反 §10.3（关联不删除），且删除标准不可审计。
+- 用文本相似度自动删除重复 Note：违反 §10.3（关联不删除），且删除标准不可审计。
 - 后台复查直接创建 active Task：违反 §11.5 激活特权。
 - 把 ACK/投递成功当作完成证据：违反 §12.2（ACK≠完成）与 §15.2（未生效输出不是事实）。
 - 跨 Task Dependency：v1 明确不做（§11.3），需要时以新 ADR 引入。
@@ -151,6 +143,14 @@ Note/Task 的 audit details 只携带 kind、hash、计数与目标类型；调�
 - 摘要按 agent 汇总后对拉取者逐条过滤 links：摘要行的 scope 本身就是提权（计数与首 id 已泄漏）；必须按组继承精确 scope。
 - recall 在取满 50 条后用 Python 丢弃越界 id：重建批次饥饿；scope 匹配必须在 SQL 内与 LIMIT 同层。
 - pull 返回循环开始时的 pending current：调用方拿到 pending current + delivered revision 的矛盾对；CAS 后必须重读。
+
+## 否决的替代方案（四轮）
+
+- 邻居可读 proof 的另一个修法——把 `current()` 对非持有者脱敏：可观测性面（谁持有、到何时）本身是运维需求；且脱敏挡不住其它泄漏渠道。凭证失效必须在验证点（绑定持有者）完成，而不是靠保密。
+- 接受"缓存回放绕过门禁"并只改 ADR 措辞：回放响应里带着资源 id 与逻辑结果，被 fence 的实例可以无限期继续获取它们——"required 下每次成功响应都持活 lease"这一验收语义不允许例外。
+- 保留 proof 在指纹内、把 `idempotency_key_reused` 当作特性：lease 轮换（preempt/TTL 到期后重新 acquire）是正常运行路径，合法重试必须能回放；错误码语义（key 复用 = 逻辑请求不同）不能被凭证轮换劫持。
+- off/advisory 下继续无条件拒绝无效 pull proof：违反 §25.1 模式定义本身——off 部署根本不应感知 lease 策略的存在。
+- TS 侧只在类型上加字段但不改手工构造的 body：类型是编译期承诺，wire body 才是服务端看到的真实——透传必须在 body 构造处断言。
 
 ## 后果
 

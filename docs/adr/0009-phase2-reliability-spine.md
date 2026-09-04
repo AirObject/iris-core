@@ -46,7 +46,7 @@ WHERE id = :job
 
 ### 4. Coalescing 是白名单而非黑名单
 
-仅 State/Profile/Graph 刷新类（`recent_context.maintenance`、`focus.maintenance`、`profile.refresh`、`graph.refresh`）允许按 `(tenant, agent, kind, coalesce_key)` 合并 Pending 项并保留最高 Source Revision；leased 行永不合并（会破坏在途 Worker 的 CAS）。其他一切 kind（含 Observation、Forget、Task、Persona Proposal、审计相邻任务）禁止丢弃式合并——对禁用 kind 传 coalesce_key 即 `invalid_request`。白名单模式意味着新增 kind 默认不可合并，需要显式评审。
+仅 State/Profile/Graph 刷新类（`recent_context.maintenance`、`focus.maintenance`、`profile.refresh`、`graph.refresh`）允许按 `(tenant, agent, kind, coalesce_key)` 合并 Pending 项并保留最高 Source Revision；leased 行永不合并（会破坏在途 Worker 的 CAS）。其他一切 kind（含 Observation、Forget、Task、Persona Proposal、审计相邻任务）禁止丢弃式合并——对禁用 kind 传 coalesce_key 即 `invalid_request`。白名单模式意味着新增 kind 默认不可合并，需要显式评审。（后记：`profile.refresh`/`graph.refresh` 是 Phase 2 登记的占位 kind，从未启用、从无生产者，Phase 8 改以 `profile.apply`/`graph.apply` + `*.rebuild` 实现同一职责并各自持有 PROFILE/GRAPH coalesce 类；两个占位保留注册只是为了不改变 Phase 2 的注册表语义，见 ADR-0016 §7。它们在本白名单中的存在不代表可用路径。）
 
 **Dedupe key 命名一份内容**（三轮复核修复；四轮复核补齐遗漏分支）：入队先按 dedupe key 查找，命中行的 canonical payload 逐字节比较——相同则在任何状态（pending/retryable/leased/completed/dead）下吸收返回既有行：queued/in-flight 是在途重复，settled 是迟到的幂等重放（该键的结果已终局）；leased 行的相同 payload 重试不要求 revision 不增（内容相同即同一工作，revision 差异只是元数据）。**不同 payload 命中未决行是无条件 `idempotency_key_reused`**——三轮实现曾在 pending/retryable 且新任务带 coalesce_key 时保留"原地合并"例外，四轮复核证明该例外既与本规则冲突、又只检查新任务的 coalesce_key 而不看既有行的 kind 元组，使跨 kind 同键碰撞可以改写他 kind 行的 payload（kind/payload 不匹配 + 新工作丢失）；例外已删除。与 Observation 层同键异指纹的语义对齐：调用方想更新内容必须换新 dedupe key，而这正是 leased 行背后 follower 的创建方式（新键 + 同 coalesce key → 新 pending 行）；换派生 key 的 follower 方案被否决，因为它会让一个逻辑键映射多行、破坏 `UNIQUE(tenant, dedupe_key)` 的去重意义，且重试行为取决于无关行的存在与否。**合并只发生在 dedupe key 未命中之后**，经限定 `(tenant, agent, kind, coalesce_key)` 全元组的查找进入——dedupe 命中永不改写行，跨 kind 变异因此被结构性排除，而非依赖调用方纪律。
 
@@ -58,7 +58,7 @@ WHERE id = :job
 
 ### 6. Job Kind 注册表默认只启用安全 Handler
 
-注册表登记 §17.4 全部周期 kind 及其元数据（默认优先级、lane、catch-up、coalesce 类别），但本构建仅启用已有安全 Handler：`maintenance.selfcheck`（只读自检种子 Handler）。未启用的 kind：Scheduler 拒绝为其创建 Schedule（避免堆积不可领取任务），Worker 不领取其任务。Payload 显式版本化（version 1）；未知 payload version 的行不被领取、保持 pending（fail closed），入队侧拒绝高于当前版本的 payload。
+注册表登记 §17.4 全部周期 kind 及其元数据（默认优先级、lane、catch-up、coalesce 类别），但只启用已有安全 Handler。Phase 2 的启用集是 `maintenance.selfcheck`（只读自检种子 Handler）与 `surface.lease_revoked`（撤销通知的不变量校验——它的生产者在抢占事务内无条件入队，禁用会留下永不可领取的任务，见 ADR-0010 §2、ADR-0017 §3）；后续阶段各自在其 ADR 中推进启用集。未启用的 kind：Scheduler 拒绝为其创建 Schedule（避免堆积不可领取任务），Worker 不领取其任务。Payload 显式版本化（version 1）；未知 payload version 的行不被领取、保持 pending（fail closed），入队侧拒绝高于当前版本的 payload。
 
 ### 7. 背压判定含投影值
 
@@ -74,6 +74,39 @@ WHERE id = :job
 - **`space_group_id` 与 `space_id` 同时存在时必须命中真实绑定**：成员关系只存在于 append-only 的 `space_group_bindings` 历史——接受空间的当前活跃绑定，或覆盖记录 `occurred_us` 的历史绑定（解绑保留发生时归属，基线 §5.3：迟到观察仍可命名事实发生时空间所在的组；发生在解绑之后的事实不得再引用旧组）。`spaces.space_group_id` 列不是成员关系的事实来源。
 
 不满足层级关系的记录是 `invalid_request`（请求体无法构造合法 Scope，持久化会污染之后所有按维过滤的读取），与横向授权检查同批执行、零写入。
+
+## 否决的替代方案
+
+- **不透明游标（opaque cursor）**：单调性比较、gap 检测（`> current + 1`）与对账都需要全序；
+  不透明游标要额外的位置登记协议才能表达"更旧"。推迟到有真实平台需求时以新 ADR 引入
+  （§2）。
+- **信任调用方声明的 `actor_entity_id_at_ingest`**：即使实体真实存在且同租户，"调用方自行
+  声明 actor"也是伪造归属的路径；归属必须从外部身份经已确认绑定解析（§1）。
+- **Coalescing 用黑名单**：黑名单意味着新增 kind 默认可合并，一个未评审的 kind 就能获得
+  丢弃式合并语义。白名单使"可合并"成为显式评审结论（§4）。
+- **给 follower 派生新的 dedupe key**：会让一个逻辑键映射多行，破坏 `UNIQUE(tenant, dedupe_key)`
+  的去重意义，且重试行为取决于无关行是否存在。follower 用新键 + 同 coalesce key 创建（§4）。
+- **保留"pending/retryable 且带 coalesce_key 时原地合并"的例外**：该例外只检查新任务的
+  coalesce_key 而不看既有行的 kind 元组，使跨 kind 同键碰撞可以改写他 kind 行的 payload。
+  四轮复核删除（§4）。
+- **合并路径不计入背压字节**："不新增行"不等于"不新增压力"——payload 增大同样穿透字节
+  硬阈值（§7）。
+- **Dead Letter 重放绕过背压判定**：重放插入的是真实新行，满队列时必须与普通入队一样得到
+  `storage_full`（§7）。
+- **允许过期或被接管的 Worker 提交**：即使其计算本身成功；四重 CAS 的 rowcount≠1 必须回滚
+  整个事务（含业务结果）（§3）。
+- **把 `space_group_id`/`space_id`/`session_id` 当三个独立授权维度**：它们必须能构造出**一个**
+  合法 Scope，否则持久化的记录会污染之后所有按维过滤的读取（§8）。
+- **为未启用的 kind 允许创建 Schedule**：会堆积不可领取的任务（§6）。
+
+## 迁移影响
+
+- `migrations/0003_phase2_reliability_spine.sql`（online_safe=true）：新增 8 张表；0001/0002
+  逐字节不变。兼容窗口推进到 [2, 3]。
+- **不提供 Down Migration**：Outbox、Tick Ledger 与 Source Cursor 不得经降级脚本删除或回拨——
+  游标回拨会使已提交的观察被重新接受，Tick 回拨会重复已生效的调度效果。
+- 回退使用能理解 Schema 3 的兼容二进制，或按备份恢复流程回退；恢复后需复核本 ADR 在
+  "后果"中列出的备份恢复不变量。
 
 ## 后果
 

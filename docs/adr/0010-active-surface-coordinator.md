@@ -41,6 +41,36 @@
 
 从 `off` 开始部署；完成 Epoch/Fencing 验证后方可切换 `advisory`/`required`。模式切换是管理平面操作（admin + reason + revision CAS），逐 Agent 配置。持租约宿主可运行到本地已知 `expires_at` 加固定短 grace（2s）后停止对外互动；服务恢复后必须重新 Acquire，旧 epoch 不复用。
 
+## 否决的替代方案
+
+- **把活动租约当作记忆正确性的前提**：Coordinator 是产品层约束。任何模式下 Scope、Privacy、
+  Revision、Idempotency 与事务规则完全相同；`off` 也必须保证并发写入与多端人格版本安全。
+- **先通知旧 Holder、后 Fence**：通知与 fence 之间的窗口里旧 Holder 仍是权威持有者，可以继续
+  对外互动。顺序必须是同事务内先 fence CAS、再发通知（§2）。
+- **对非持有者脱敏 `current()`**：谁持有、到何时本身是运维可观测性需求，且脱敏挡不住其它
+  泄漏渠道。凭证失效必须在**验证点**完成（proof 绑定持有者身份），而不是靠保密（§1、
+  ADR-0012 §12.2）。
+- **允许已过期或被抢占进入 draining 的租约自行 Release**：fenced holder 不得再改写租约状态，
+  否则它能在被抢占后清除新持有者赖以仲裁的记录（§1）。
+- **回退到 `off` 时删除租约历史**：租约事件是 append-only 审计记录；模式回退不是历史撤销（§1）。
+- **Coordinator 不可达时放任裸 `OSError` 逃逸或降级为通用 `domain_error`**：此刻连"模式是否为
+  off/advisory"都无法证明，唯一安全行为是按未知状态 fail closed，并以稳定码 `not_ready`
+  表达（§3）。
+- **`advisory` 模式拒绝业务请求**：会把记忆服务变成单点可用性门槛，与模式定义直接冲突（§3）。
+- **管理平面也校验在线租约**：内部 Worker、备份、迁移、索引、Scheduler 与 Persona 管理属于
+  维护平面；让管理员凭据去"持有租约"等于允许它冒充活动宿主（§3）。
+
+## 迁移影响
+
+- `migrations/0003_phase2_reliability_spine.sql` 内新增 `surface_lease_state` /
+  `surface_leases` / `surface_lease_events` 三张表（与 ADR-0009 同一次迁移，窗口 [2, 3]）。
+- **不提供 Down Migration**：租约事件历史不经降级脚本删除。
+- **模式迁移是数据迁移之外的运行时迁移**：部署必须从 `off` 开始，完成 Epoch/Fencing 验证后
+  才逐 Agent 切换到 `advisory`/`required`（admin + reason + revision CAS）。直接以 `required`
+  上线会在 Coordinator 尚未验证时 fail closed 掉全部在线流量。
+- 回退到 `off` 立即停止在线校验，不需要数据变更，也不删除任何历史行；持租约宿主按本地
+  已知 `expires_at` 加固定 grace（2 s）自然停止。
+
 ## 后果
 
 - Schema 3 新增 `surface_lease_state` / `surface_leases` / `surface_lease_events` 三张表。
