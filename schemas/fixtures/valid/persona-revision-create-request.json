@@ -1,0 +1,8 @@
+{
+  "core": {"name": "Iris"},
+  "expected_revision": 1,
+  "narrative": {"summary": "A stable self narrative"},
+  "reason": "admin_publication",
+  "source_refs": [],
+  "traits": {"style": "warm"}
+}

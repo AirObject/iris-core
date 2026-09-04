@@ -1,6 +1,8 @@
 # Architecture Decision Records
 
-Phase 0 freezes the boundaries required by Phase 1. Accepted decisions are immutable historical records; replacements use a new ADR with explicit supersession and migration impact.
+Accepted decisions are immutable historical records; replacements use a new ADR with explicit supersession and migration impact. ADR-0001 to ADR-0008 froze the boundaries Phase 1 needed; each later phase adds the decisions that phase froze.
+
+Every ADR carries context, decision, rejected alternatives, consequences, and migration impact. Within-phase review rounds are appended to the phase's own ADR as dated revision sections rather than filed as new ADRs; a decision that changes another phase's frozen boundary gets a new ADR.
 
 | ADR | Decision | Status |
 | --- | --- | --- |
@@ -20,5 +22,7 @@ Phase 0 freezes the boundaries required by Phase 1. Accepted decisions are immut
 | [0014](./0014-phase6-fts-recall.md) | Phase 6 FTS5 generations, full recall protocol, fresh rehydrate boundary, deterministic fusion/budgets, usage four stages | Accepted |
 | [0015](./0015-phase7-vector-recall.md) | Phase 7 embedding provider port, FAISS generation lifecycle with fenced COW swap, surrogate ID map, delta ledger freshness, vector route + hybrid ranker v3 | Accepted |
 | [0016](./0016-phase8-profile-graph.md) | Phase 8 profile projection (field-level sourced summaries), relation graph allowlist projection with fenced generations, budget-bound graph route + profile route, canonical fallback | Accepted |
+| [0017](./0017-contract-surface-alignment.md) | Contract surface alignment: error-code supersession, endpoint naming adjudication, HTTP transport layer assigned to Phase 10 | Accepted |
+| [0018](./0018-phase9-persona.md) | Phase 9 complete Persona: additive bootstrap expansion, policy/evidence gates, atomic publication, state TTL and rollback-by-new-revision | Accepted |
 
-Open conflicts blocking Phase 1: **none**.
+Open conflicts blocking the next phase (Phase 10): **none**.

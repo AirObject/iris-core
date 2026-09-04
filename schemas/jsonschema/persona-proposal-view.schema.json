@@ -1,0 +1,136 @@
+{
+  "$id": "https://iris.memory/schemas/persona-proposal-view.schema.json",
+  "additionalProperties": true,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "base_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "created_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "evidence_refs": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "enum": [
+              "claim",
+              "episode",
+              "relation",
+              "task",
+              "persona_state"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "expires_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "field_deltas": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "generator": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "generator_version": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "patch": {
+      "type": "object"
+    },
+    "policy_evaluation": {
+      "type": "object"
+    },
+    "proposal_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "published_revision_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "review_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviewed_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "approved",
+        "rejected",
+        "published",
+        "expired"
+      ]
+    },
+    "target_fields": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "proposal_id",
+    "agent_id",
+    "base_revision",
+    "target_fields",
+    "patch",
+    "field_deltas",
+    "evidence_refs",
+    "confidence",
+    "generator",
+    "generator_version",
+    "policy_evaluation",
+    "status",
+    "created_us",
+    "expires_us",
+    "schema_version"
+  ],
+  "title": "PersonaProposalView",
+  "type": "object"
+}

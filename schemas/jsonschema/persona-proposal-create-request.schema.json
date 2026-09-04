@@ -1,0 +1,82 @@
+{
+  "$id": "https://iris.memory/schemas/persona-proposal-create-request.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "base_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "evidence_refs": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "enum": [
+              "claim",
+              "episode",
+              "relation",
+              "task",
+              "persona_state"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "expires_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "generator": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "generator_version": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "patch": {
+      "additionalProperties": false,
+      "maxProperties": 2,
+      "minProperties": 1,
+      "properties": {
+        "narrative": {
+          "type": "object"
+        },
+        "traits": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "base_revision",
+    "patch",
+    "evidence_refs",
+    "confidence",
+    "generator",
+    "generator_version"
+  ],
+  "title": "PersonaProposalCreateRequest",
+  "type": "object"
+}

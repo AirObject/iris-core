@@ -55,6 +55,7 @@ from iris_memory_core.domain.model import (
     Tombstone,
     WatermarkState,
 )
+from iris_memory_core.domain.persona import default_locked_policy_hash
 
 TOMBSTONE_RESOURCE_TYPES = frozenset(
     {"tenant", "agent", "space_group", "space", "session", "entity", "external_identity", "binding"}
@@ -226,6 +227,25 @@ class SpaceRepository:
                 BOOTSTRAP_PERSONA_SOURCE,
                 now_us,
             ),
+        )
+        policy_id = f"persona-policy-bootstrap:{agent_id}"
+        self._connection.execute(
+            "INSERT INTO persona_policies (id, tenant_id, agent_id, revision, mode, "
+            "allowed_fields_json, max_single_delta, max_cumulative_delta, cumulative_window_us, "
+            "min_evidence, min_distinct_sources, min_evidence_span_us, min_confidence, "
+            "cooldown_us, observation_us, sensitive_fields_json, rollback_threshold, "
+            "content_hash, status, created_by, reason_code, created_us, schema_version) "
+            "VALUES (?, ?, ?, 1, 'locked', '[]', 0, 0, 0, 1, 1, 0, 1, 0, 0, '[]', 0, ?, "
+            "'current', 'provisioning', 'bootstrap', ?, 1)",
+            (policy_id, tenant_id, agent_id, default_locked_policy_hash(), now_us),
+        )
+        self._connection.execute(
+            "INSERT INTO persona_revision_metadata (revision_id, tenant_id, agent_id, policy_id, "
+            "previous_revision_id, change_reason, source_refs_json, effective_from_us, "
+            "effective_until_us, created_by, lifecycle_status, schema_version) "
+            "VALUES (?, ?, ?, ?, NULL, 'bootstrap', '[]', ?, NULL, 'provisioning', "
+            "'published', 1)",
+            (revision_id, tenant_id, agent_id, policy_id, now_us),
         )
         return PersonaRevision(
             id=revision_id,

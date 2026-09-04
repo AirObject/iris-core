@@ -164,6 +164,7 @@ class TestJobKindRegistry:
             frozenset(
                 {
                     "maintenance.selfcheck",
+                    "surface.lease_revoked",
                     "observation.recorded",
                     "recent_context.maintenance",
                     "focus.maintenance",
@@ -190,6 +191,9 @@ class TestJobKindRegistry:
                     "profile.cleanup",
                     "memory.invalidated",
                     "retention.compaction",
+                    "persona.revised",
+                    "persona.revision_invalidated",
+                    "persona.state_expire",
                 }
             )
             == ENABLED_JOB_KINDS

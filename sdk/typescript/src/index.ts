@@ -380,6 +380,152 @@ function validateSearchResponse(value: unknown): string[] {
   return errors;
 }
 
+function validatePersonaRevisionView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const field of ["persona_id", "tenant_id", "agent_id", "policy_id", "created_by"] as const) {
+    requireNonEmptyString(value[field], field, errors);
+  }
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  for (const field of ["core", "traits", "narrative"] as const) {
+    if (!isRecord(value[field])) errors.push(`${field} must be an object`);
+  }
+  if (typeof value.content_hash !== "string" || !HASH_RE.test(value.content_hash)) {
+    errors.push("content_hash must be a sha256 hex digest");
+  }
+  if (!["published", "superseded", "revoked"].includes(String(value.status))) {
+    errors.push("status must be a known Persona revision status");
+  }
+  if (value.schema_version !== 1) errors.push("schema_version must be 1");
+  if (!Array.isArray(value.source_refs)) errors.push("source_refs must be an array");
+  return errors;
+}
+
+function validatePersonaPolicyView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.policy_id, "policy_id", errors);
+  if (!["locked", "manual", "bounded_auto"].includes(String(value.mode))) {
+    errors.push("mode must be locked|manual|bounded_auto");
+  }
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  for (const field of ["allowed_fields", "sensitive_fields"] as const) {
+    if (!Array.isArray(value[field])) errors.push(`${field} must be an array`);
+  }
+  if (typeof value.content_hash !== "string" || !HASH_RE.test(value.content_hash)) {
+    errors.push("content_hash must be a sha256 hex digest");
+  }
+  return errors;
+}
+
+function validatePersonaStateView(value: unknown): string[] {
+  if (value === null) return [];
+  if (!isRecord(value)) return ["root must be an object or null"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.persona_state_id, "persona_state_id", errors);
+  if (!Number.isInteger(value.revision) || Number(value.revision) < 1) {
+    errors.push("revision must be a positive integer");
+  }
+  if (!isRecord(value.state)) errors.push("state must be an object");
+  if (!isRecord(value.baseline)) errors.push("baseline must be an object");
+  if (value.decay_policy !== "expire_to_baseline") {
+    errors.push("decay_policy must be expire_to_baseline");
+  }
+  if (value.schema_version !== 1) errors.push("schema_version must be 1");
+  return errors;
+}
+
+function validatePersonaCurrentResponse(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  return [
+    ...validatePersonaRevisionView(value.revision).map((item) => `revision.${item}`),
+    ...validatePersonaPolicyView(value.policy).map((item) => `policy.${item}`),
+    ...validatePersonaStateView(value.state).map((item) => `state.${item}`),
+  ];
+}
+
+function validatePersonaRevisionCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!Number.isInteger(value.expected_revision) || Number(value.expected_revision) < 1) {
+    errors.push("expected_revision must be a positive integer");
+  }
+  for (const field of ["core", "traits", "narrative"] as const) {
+    if (!isRecord(value[field])) errors.push(`${field} must be an object`);
+  }
+  requireNonEmptyString(value.reason, "reason", errors);
+  return errors;
+}
+
+function validatePersonaStateUpdateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!Number.isInteger(value.expected_revision) || Number(value.expected_revision) < 0) {
+    errors.push("expected_revision must be a non-negative integer");
+  }
+  if (!isRecord(value.state)) errors.push("state must be an object");
+  if (!Number.isInteger(value.ttl_us) || Number(value.ttl_us) < 1 || Number(value.ttl_us) > 604800000000) {
+    errors.push("ttl_us must be within 1..604800000000");
+  }
+  return errors;
+}
+
+function validatePersonaProposalCreateRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (!Number.isInteger(value.base_revision) || Number(value.base_revision) < 1) {
+    errors.push("base_revision must be a positive integer");
+  }
+  if (!isRecord(value.patch) || Object.keys(value.patch).length === 0 || Object.keys(value.patch).some((key) => !["traits", "narrative"].includes(key))) {
+    errors.push("patch may contain only traits and narrative");
+  }
+  if (!Array.isArray(value.evidence_refs) || value.evidence_refs.length === 0) {
+    errors.push("evidence_refs must be a non-empty array");
+  }
+  if (typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) {
+    errors.push("confidence must be within [0, 1]");
+  }
+  requireNonEmptyString(value.generator, "generator", errors);
+  requireNonEmptyString(value.generator_version, "generator_version", errors);
+  return errors;
+}
+
+function validatePersonaProposalView(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.proposal_id, "proposal_id", errors);
+  requireNonEmptyString(value.agent_id, "agent_id", errors);
+  if (!["proposed", "approved", "rejected", "published", "expired"].includes(String(value.status))) {
+    errors.push("status must be a known Persona proposal status");
+  }
+  if (!Array.isArray(value.field_deltas)) errors.push("field_deltas must be an array");
+  if (value.schema_version !== 1) errors.push("schema_version must be 1");
+  return errors;
+}
+
+function validatePersonaReviewRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  requireNonEmptyString(value.reason, "reason", errors);
+  return errors;
+}
+
+function validatePersonaRollbackRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  for (const field of ["target_revision", "expected_revision"] as const) {
+    if (!Number.isInteger(value[field]) || Number(value[field]) < 1) {
+      errors.push(`${field} must be a positive integer`);
+    }
+  }
+  requireNonEmptyString(value.reason, "reason", errors);
+  return errors;
+}
+
 export function validateContract(schema: string, value: unknown): readonly string[] {
   if (schema === "capabilities") return validateCapabilities(value);
   if (schema === "error-envelope") return validateErrorEnvelope(value);
@@ -443,6 +589,22 @@ export function validateContract(schema: string, value: unknown): readonly strin
   if (schema === "search-request") return validateSearchRequest(value);
   if (schema === "search-response") return validateSearchResponse(value);
   if (schema === "entity-profile-response") return validateEntityProfileResponse(value);
+  if (schema === "persona-revision-view") return validatePersonaRevisionView(value);
+  if (schema === "persona-policy-view") return validatePersonaPolicyView(value);
+  if (schema === "persona-state-view") return validatePersonaStateView(value);
+  if (schema === "persona-current-response") return validatePersonaCurrentResponse(value);
+  if (schema === "persona-history-response") {
+    if (!isRecord(value) || !Array.isArray(value.items)) return ["items must be an array"];
+    return value.items.flatMap((item, index) =>
+      validatePersonaRevisionView(item).map((error) => `items[${index}].${error}`),
+    );
+  }
+  if (schema === "persona-revision-create-request") return validatePersonaRevisionCreateRequest(value);
+  if (schema === "persona-state-update-request") return validatePersonaStateUpdateRequest(value);
+  if (schema === "persona-proposal-create-request") return validatePersonaProposalCreateRequest(value);
+  if (schema === "persona-proposal-view") return validatePersonaProposalView(value);
+  if (schema === "persona-review-request") return validatePersonaReviewRequest(value);
+  if (schema === "persona-rollback-request") return validatePersonaRollbackRequest(value);
   return [`unknown schema: ${schema}`];
 }
 
@@ -3507,5 +3669,124 @@ export class AsyncIrisMemoryClient {
     const errors = validateArtifactView(value);
     if (errors.length > 0) throw new ContractValidationError(errors);
     return value as ArtifactView;
+  }
+
+  // -- Phase 9: complete Persona ---------------------------------------------
+
+  public async currentPersona(agentId: string): Promise<Record<string, unknown>> {
+    const response = await fetch(
+      `${this.#baseUrl}/v1/personas/${encodeURIComponent(agentId)}/current`,
+    );
+    const value: unknown = await response.json();
+    const errors = validatePersonaCurrentResponse(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as Record<string, unknown>;
+  }
+
+  public async personaHistory(
+    agentId: string,
+    limit = 100,
+  ): Promise<Record<string, unknown>> {
+    const response = await fetch(
+      `${this.#baseUrl}/v1/personas/${encodeURIComponent(agentId)}/history?limit=${limit}`,
+    );
+    const value: unknown = await response.json();
+    const errors = validateContract("persona-history-response", value);
+    if (errors.length > 0) throw new ContractValidationError([...errors]);
+    return value as Record<string, unknown>;
+  }
+
+  public async publishPersonaRevision(
+    agentId: string,
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    return this.#personaWrite(
+      `/v1/personas/${encodeURIComponent(agentId)}/revisions`,
+      "POST",
+      record,
+      options.idempotencyKey,
+      "persona-revision-view",
+    );
+  }
+
+  public async updatePersonaState(
+    agentId: string,
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    return this.#personaWrite(
+      `/v1/personas/${encodeURIComponent(agentId)}/state`,
+      "PATCH",
+      record,
+      options.idempotencyKey,
+      "persona-state-view",
+    );
+  }
+
+  public async createPersonaProposal(
+    agentId: string,
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    return this.#personaWrite(
+      `/v1/personas/${encodeURIComponent(agentId)}/evolution-proposals`,
+      "POST",
+      record,
+      options.idempotencyKey,
+      "persona-proposal-view",
+    );
+  }
+
+  public async reviewPersonaProposal(
+    agentId: string,
+    proposalId: string,
+    action: "approve" | "reject",
+    reason: string,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    const path = `/v1/personas/${encodeURIComponent(agentId)}/evolution-proposals/${encodeURIComponent(proposalId)}:${action}`;
+    return this.#personaWrite(
+      path,
+      "POST",
+      { reason },
+      options.idempotencyKey,
+      "persona-proposal-view",
+    );
+  }
+
+  public async rollbackPersona(
+    agentId: string,
+    record: Readonly<Record<string, unknown>>,
+    options: { idempotencyKey: string },
+  ): Promise<Record<string, unknown>> {
+    return this.#personaWrite(
+      `/v1/personas/${encodeURIComponent(agentId)}:rollback`,
+      "POST",
+      record,
+      options.idempotencyKey,
+      "persona-revision-view",
+    );
+  }
+
+  async #personaWrite(
+    path: string,
+    method: "POST" | "PATCH",
+    record: Readonly<Record<string, unknown>>,
+    idempotencyKey: string,
+    schema: string,
+  ): Promise<Record<string, unknown>> {
+    const response = await fetch(`${this.#baseUrl}${path}`, {
+      body: JSON.stringify(record),
+      headers: {
+        "Idempotency-Key": idempotencyKey,
+        "content-type": "application/json",
+      },
+      method,
+    });
+    const value: unknown = await response.json();
+    const errors = validateContract(schema, value);
+    if (errors.length > 0) throw new ContractValidationError([...errors]);
+    return value as Record<string, unknown>;
   }
 }

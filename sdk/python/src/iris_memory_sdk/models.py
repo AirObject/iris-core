@@ -1647,6 +1647,180 @@ def _validate_entity_profile_response(value: object) -> tuple[str, ...]:
     return tuple(errors)
 
 
+def _validate_persona_revision_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for field in ("persona_id", "tenant_id", "agent_id", "policy_id", "created_by"):
+        _require_non_empty_str(value.get(field), field, errors)
+    revision = value.get("revision")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        errors.append("revision must be a positive integer")
+    for field in ("core", "traits", "narrative"):
+        if not isinstance(value.get(field), Mapping):
+            errors.append(f"{field} must be an object")
+    digest = value.get("content_hash")
+    if not isinstance(digest, str) or _HASH_PATTERN.fullmatch(digest) is None:
+        errors.append("content_hash must be a sha256 hex digest")
+    if value.get("status") not in ("published", "superseded", "revoked"):
+        errors.append("status must be a known Persona revision status")
+    if value.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    if not isinstance(value.get("source_refs"), list):
+        errors.append("source_refs must be an array")
+    return tuple(errors)
+
+
+def _validate_persona_policy_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("policy_id"), "policy_id", errors)
+    if value.get("mode") not in ("locked", "manual", "bounded_auto"):
+        errors.append("mode must be locked|manual|bounded_auto")
+    revision = value.get("revision")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        errors.append("revision must be a positive integer")
+    for field in ("allowed_fields", "sensitive_fields"):
+        if not isinstance(value.get(field), list):
+            errors.append(f"{field} must be an array")
+    digest = value.get("content_hash")
+    if not isinstance(digest, str) or _HASH_PATTERN.fullmatch(digest) is None:
+        errors.append("content_hash must be a sha256 hex digest")
+    return tuple(errors)
+
+
+def _validate_persona_state_view(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, Mapping):
+        return ("root must be an object or null",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("persona_state_id"), "persona_state_id", errors)
+    revision = value.get("revision")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        errors.append("revision must be a positive integer")
+    for field in ("state", "baseline"):
+        if not isinstance(value.get(field), Mapping):
+            errors.append(f"{field} must be an object")
+    for field in ("started_us", "expires_us"):
+        raw = value.get(field)
+        if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
+            errors.append(f"{field} must be a non-negative integer")
+    if value.get("decay_policy") != "expire_to_baseline":
+        errors.append("decay_policy must be expire_to_baseline")
+    if value.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    return tuple(errors)
+
+
+def _validate_persona_current_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors = [f"revision.{item}" for item in _validate_persona_revision_view(value.get("revision"))]
+    errors.extend(f"policy.{item}" for item in _validate_persona_policy_view(value.get("policy")))
+    errors.extend(f"state.{item}" for item in _validate_persona_state_view(value.get("state")))
+    return tuple(errors)
+
+
+def _validate_persona_history_response(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping) or not isinstance(value.get("items"), list):
+        return ("items must be an array",)
+    errors: list[str] = []
+    for index, item in enumerate(value["items"]):
+        errors.extend(f"items[{index}].{error}" for error in _validate_persona_revision_view(item))
+    return tuple(errors)
+
+
+def _validate_persona_revision_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    expected = value.get("expected_revision")
+    if not isinstance(expected, int) or isinstance(expected, bool) or expected < 1:
+        errors.append("expected_revision must be a positive integer")
+    for field in ("core", "traits", "narrative"):
+        if not isinstance(value.get(field), Mapping):
+            errors.append(f"{field} must be an object")
+    _require_non_empty_str(value.get("reason"), "reason", errors)
+    return tuple(errors)
+
+
+def _validate_persona_state_update_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    expected = value.get("expected_revision")
+    if not isinstance(expected, int) or isinstance(expected, bool) or expected < 0:
+        errors.append("expected_revision must be a non-negative integer")
+    if not isinstance(value.get("state"), Mapping):
+        errors.append("state must be an object")
+    ttl = value.get("ttl_us")
+    if not isinstance(ttl, int) or isinstance(ttl, bool) or not 1 <= ttl <= 604_800_000_000:
+        errors.append("ttl_us must be within 1..604800000000")
+    return tuple(errors)
+
+
+def _validate_persona_proposal_create_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    base = value.get("base_revision")
+    if not isinstance(base, int) or isinstance(base, bool) or base < 1:
+        errors.append("base_revision must be a positive integer")
+    patch = value.get("patch")
+    if not isinstance(patch, Mapping) or not patch or set(patch) - {"traits", "narrative"}:
+        errors.append("patch may contain only traits and narrative")
+    refs = value.get("evidence_refs")
+    if not isinstance(refs, list) or not refs:
+        errors.append("evidence_refs must be a non-empty array")
+    confidence = value.get("confidence")
+    if (
+        not isinstance(confidence, (int, float))
+        or isinstance(confidence, bool)
+        or not 0 <= confidence <= 1
+    ):
+        errors.append("confidence must be within [0, 1]")
+    _require_non_empty_str(value.get("generator"), "generator", errors)
+    _require_non_empty_str(value.get("generator_version"), "generator_version", errors)
+    return tuple(errors)
+
+
+def _validate_persona_proposal_view(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("proposal_id"), "proposal_id", errors)
+    _require_non_empty_str(value.get("agent_id"), "agent_id", errors)
+    if value.get("status") not in ("proposed", "approved", "rejected", "published", "expired"):
+        errors.append("status must be a known Persona proposal status")
+    if not isinstance(value.get("field_deltas"), list):
+        errors.append("field_deltas must be an array")
+    if value.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    return tuple(errors)
+
+
+def _validate_persona_review_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    _require_non_empty_str(value.get("reason"), "reason", errors)
+    return tuple(errors)
+
+
+def _validate_persona_rollback_request(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    for field in ("target_revision", "expected_revision"):
+        revision = value.get(field)
+        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+            errors.append(f"{field} must be a positive integer")
+    _require_non_empty_str(value.get("reason"), "reason", errors)
+    return tuple(errors)
+
+
 def _validate_search_request(value: object) -> tuple[str, ...]:
     if not isinstance(value, Mapping):
         return ("root must be an object",)
@@ -1733,6 +1907,17 @@ def validate_contract(schema: str, value: object) -> tuple[str, ...]:
         "recall-request": _validate_recall_request,
         "recall-response": _validate_recall_response,
         "entity-profile-response": _validate_entity_profile_response,
+        "persona-revision-view": _validate_persona_revision_view,
+        "persona-policy-view": _validate_persona_policy_view,
+        "persona-state-view": _validate_persona_state_view,
+        "persona-current-response": _validate_persona_current_response,
+        "persona-history-response": _validate_persona_history_response,
+        "persona-revision-create-request": _validate_persona_revision_create_request,
+        "persona-state-update-request": _validate_persona_state_update_request,
+        "persona-proposal-create-request": _validate_persona_proposal_create_request,
+        "persona-proposal-view": _validate_persona_proposal_view,
+        "persona-review-request": _validate_persona_review_request,
+        "persona-rollback-request": _validate_persona_rollback_request,
         "recall-usage-report-request": _validate_recall_usage_report_request,
         "recall-usage-report-response": _validate_recall_usage_report_response,
         "search-request": _validate_search_request,

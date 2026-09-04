@@ -59,6 +59,7 @@ from iris_memory_core.storage.memory import (
     RelationRepository,
     RetentionRepository,
 )
+from iris_memory_core.storage.persona import PersonaRepository
 from iris_memory_core.storage.plans import (
     CognitiveEventRepository,
     NoteRepository,
@@ -128,6 +129,7 @@ class Transaction:
         self.vector = VectorRepository(connection, clock, ids)
         self.profile = ProfileRepository(connection, clock, ids)
         self.graph = GraphRepository(connection, clock, ids)
+        self.personas = PersonaRepository(connection, clock, ids)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}

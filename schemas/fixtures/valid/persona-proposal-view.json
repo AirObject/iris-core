@@ -1,0 +1,31 @@
+{
+  "agent_id": "agent-1",
+  "base_revision": 1,
+  "confidence": 0.92,
+  "created_us": 1700000000000000,
+  "evidence_refs": [
+    {"resource_id": "state-1", "resource_type": "persona_state", "revision": 1}
+  ],
+  "expires_us": 1702592000000000,
+  "field_deltas": [
+    {
+      "evidence_refs": ["persona_state:state-1"],
+      "field": "traits.style",
+      "magnitude": 1.0,
+      "new_value": "warm",
+      "old_value": null,
+      "reason_code": "evidence_supported_change"
+    }
+  ],
+  "generator": "reflection",
+  "generator_version": "1",
+  "patch": {"traits": {"style": "warm"}},
+  "policy_evaluation": {"decision": "manual_review"},
+  "proposal_id": "proposal-1",
+  "published_revision_id": null,
+  "review_reason": null,
+  "reviewed_by": null,
+  "schema_version": 1,
+  "status": "proposed",
+  "target_fields": ["traits.style"]
+}

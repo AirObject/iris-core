@@ -637,12 +637,15 @@ class TestAdminListing:
 def test_enabled_kinds_only_safe_seed() -> None:
     # Phase 3: rebuild, decay sweep, pointer check, observation→rebuild
     # scheduling, spine selfcheck. Phase 4 adds note review, trigger scan and
-    # the three pointer-invariant checks. Everything else stays disabled and
-    # unclaimable (fail closed).
+    # the three pointer-invariant checks. Phase 2's revocation notice is
+    # enabled too — its producer enqueues unconditionally, so leaving it
+    # unclaimable would pile up pending jobs (ADR-0010 §2, ADR-0017 §3).
+    # Everything else stays disabled and unclaimable (fail closed).
     assert (
         frozenset(
             {
                 "maintenance.selfcheck",
+                "surface.lease_revoked",
                 "observation.recorded",
                 "recent_context.maintenance",
                 "focus.maintenance",
@@ -657,6 +660,9 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "relation.changed",
                 "memory.invalidated",
                 "retention.compaction",
+                "persona.revised",
+                "persona.revision_invalidated",
+                "persona.state_expire",
                 "fts.apply",
                 "fts.rebuild",
                 "fts.cleanup",

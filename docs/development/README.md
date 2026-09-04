@@ -33,8 +33,8 @@ flowchart LR
 
 - **Persona 分两次落地**：Phase 1 在 Agent 创建事务中提供最小、锁定、不可变的 Published Persona 和 Current Pointer，以满足 Ready 与早期 Recall 的 Revision/Hash 不变量；Phase 9 再交付 State、Policy、Proposal、发布和回滚全能力。
 - **Active Surface Coordinator 归入可靠性脊柱**：原架构阶段清单没有单列它，但两个 Adapter 和顶层验收依赖 `off|advisory|required`。因此 Core 的持久 Lease/Epoch/Fencing 在 Phase 2 与 Worker Lease 基础设施一并完成，宿主行为在 Phase 11/12 验证。
-- **Phase 6 是首个可接入的 Recall 增量**：此时不依赖向量或外部 Provider，已经具备结构化 + FTS、最终 Rehydrate、预算、降级和 Usage 契约，可作为早期宿主集成基线。
-- **Phase 10 是完整 Core 功能冻结点**：Phase 11/12 之后只做协议消费和宿主生命周期映射，不应再为单一宿主修改 Canonical Domain。
+- **Phase 6 冻结首个完整 Recall 契约形状**：此时不依赖向量或外部 Provider，已经具备结构化 + FTS、最终 Rehydrate、预算、降级和 Usage 契约。但**真实宿主接入自 Phase 10 交付 HTTP 传输层后才开始**——Phase 2–8 交付的是应用层服务 + 生成契约 + mock server，不含传输层（ADR-0017 §3）。
+- **Phase 10 是完整 Core 功能冻结点，并交付 HTTP 传输层与进程入口**：ASGI 应用、认证与 AccessContext 构造、错误映射、能力协商、可选 SSE、`serve`/`worker` 命令，以及仅缺传输面的 Entity/Identity/Binding/SpaceGroup 与管理端点。Phase 11/12 之后只做协议消费和宿主生命周期映射，不应再为单一宿主修改 Canonical Domain。
 - **迁移研究前置、数据切换后置**：Phase 13 的源库盘点和只读扫描器可以早于 Adapter 开发，但写入目标库、增量追平和切换必须基于稳定 Schema/SDK/Adapter 版本。
 - **容器不是早期领域前置条件**：开发期保持本机 Python 可运行；生产镜像、只读根、SBOM、Soak 和恢复门禁集中在 Phase 14。
 
@@ -51,8 +51,8 @@ flowchart LR
 | M2 可解释召回 | [06 FTS Recall](./phase-06-fts-recall.md) | 无向量依赖的首个完整召回协议 | Completed |
 | M2 可解释召回 | [07 Vector Recall](./phase-07-vector-recall.md) | 可回退的混合语义召回 | Completed |
 | M2 可解释召回 | [08 Profile 与 Graph](./phase-08-profile-graph.md) | 画像与受限关系召回可重建 | Completed |
-| M3 人格与后台认知 | [09 完整 Persona](./phase-09-persona.md) | 多宿主共享受控、可回滚人格 | Planned |
-| M3 人格与后台认知 | [10 巩固与 Reflection](./phase-10-consolidation-reflection.md) | Evidence 驱动的后台提炼可重放 | Planned |
+| M3 人格与后台认知 | [09 完整 Persona](./phase-09-persona.md) | 多宿主共享受控、可回滚人格 | Completed |
+| M3 人格与后台认知 | [10 巩固、Reflection 与传输层](./phase-10-consolidation-reflection.md) | Evidence 驱动的后台提炼可重放；HTTP 传输层与进程入口就绪 | Planned |
 | M4 接入与迁移 | [11 Bellis Adapter](./phase-11-bellis-adapter.md) | Bellis 端到端闭环 | Planned |
 | M4 接入与迁移 | [12 AstrBot Bridge](./phase-12-astrbot-bridge.md) | AstrBot 端到端闭环 | Planned |
 | M4 接入与迁移 | [13 旧 Iris 数据迁移](./phase-13-legacy-migration.md) | 可审计、可重跑、可回退迁移 | Planned |

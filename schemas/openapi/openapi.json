@@ -3192,6 +3192,1048 @@
         "title": "ObservationBatchResponse",
         "type": "object"
       },
+      "PersonaCurrentResponse": {
+        "$id": "https://iris.memory/schemas/persona-current-response.schema.json",
+        "additionalProperties": true,
+        "properties": {
+          "policy": {
+            "additionalProperties": true,
+            "properties": {
+              "allowed_fields": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "content_hash": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "locked",
+                  "manual",
+                  "bounded_auto"
+                ]
+              },
+              "policy_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "sensitive_fields": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "policy_id",
+              "revision",
+              "mode",
+              "allowed_fields",
+              "sensitive_fields",
+              "content_hash"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "additionalProperties": true,
+            "properties": {
+              "agent_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "change_reason": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "content_hash": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "core": {
+                "type": "object"
+              },
+              "created_by": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "created_us": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "effective_from_us": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "effective_until_us": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "narrative": {
+                "type": "object"
+              },
+              "persona_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "policy_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "previous_revision_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "schema_version": {
+                "const": 1
+              },
+              "source_refs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "resource_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "resource_type": {
+                      "enum": [
+                        "claim",
+                        "episode",
+                        "relation",
+                        "task",
+                        "persona_state"
+                      ]
+                    },
+                    "revision": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "resource_type",
+                    "resource_id"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "status": {
+                "enum": [
+                  "published",
+                  "superseded",
+                  "revoked"
+                ]
+              },
+              "tenant_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "traits": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "persona_id",
+              "tenant_id",
+              "agent_id",
+              "revision",
+              "core",
+              "traits",
+              "narrative",
+              "policy_id",
+              "change_reason",
+              "source_refs",
+              "content_hash",
+              "effective_from_us",
+              "created_by",
+              "created_us",
+              "status",
+              "schema_version"
+            ],
+            "type": "object"
+          },
+          "state": {
+            "properties": {
+              "baseline": {
+                "type": "object"
+              },
+              "decay_policy": {
+                "const": "expire_to_baseline"
+              },
+              "expires_us": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "persona_state_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "schema_version": {
+                "const": 1
+              },
+              "source_refs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "resource_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "resource_type": {
+                      "enum": [
+                        "claim",
+                        "episode",
+                        "relation",
+                        "task",
+                        "persona_state"
+                      ]
+                    },
+                    "revision": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "resource_type",
+                    "resource_id"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "started_us": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "state": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "persona_state_id",
+              "revision",
+              "state",
+              "baseline",
+              "source_refs",
+              "started_us",
+              "expires_us",
+              "decay_policy",
+              "schema_version"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "revision",
+          "policy",
+          "state"
+        ],
+        "title": "PersonaCurrentResponse",
+        "type": "object"
+      },
+      "PersonaHistoryResponse": {
+        "$id": "https://iris.memory/schemas/persona-history-response.schema.json",
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "agent_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "change_reason": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "content_hash": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "core": {
+                  "type": "object"
+                },
+                "created_by": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "created_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "effective_from_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "effective_until_us": {
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "narrative": {
+                  "type": "object"
+                },
+                "persona_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "policy_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "previous_revision_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "schema_version": {
+                  "const": 1
+                },
+                "source_refs": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resource_id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "resource_type": {
+                        "enum": [
+                          "claim",
+                          "episode",
+                          "relation",
+                          "task",
+                          "persona_state"
+                        ]
+                      },
+                      "revision": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "resource_type",
+                      "resource_id"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "status": {
+                  "enum": [
+                    "published",
+                    "superseded",
+                    "revoked"
+                  ]
+                },
+                "tenant_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "traits": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "persona_id",
+                "tenant_id",
+                "agent_id",
+                "revision",
+                "core",
+                "traits",
+                "narrative",
+                "policy_id",
+                "change_reason",
+                "source_refs",
+                "content_hash",
+                "effective_from_us",
+                "created_by",
+                "created_us",
+                "status",
+                "schema_version"
+              ],
+              "type": "object"
+            },
+            "maxItems": 500,
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PersonaHistoryResponse",
+        "type": "object"
+      },
+      "PersonaPolicyView": {
+        "$id": "https://iris.memory/schemas/persona-policy-view.schema.json",
+        "additionalProperties": true,
+        "properties": {
+          "allowed_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "locked",
+              "manual",
+              "bounded_auto"
+            ]
+          },
+          "policy_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sensitive_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "policy_id",
+          "revision",
+          "mode",
+          "allowed_fields",
+          "sensitive_fields",
+          "content_hash"
+        ],
+        "title": "PersonaPolicyView",
+        "type": "object"
+      },
+      "PersonaProposalCreateRequest": {
+        "$id": "https://iris.memory/schemas/persona-proposal-create-request.schema.json",
+        "additionalProperties": false,
+        "properties": {
+          "base_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "enum": [
+                    "claim",
+                    "episode",
+                    "relation",
+                    "task",
+                    "persona_state"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "generator": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "generator_version": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "patch": {
+            "additionalProperties": false,
+            "maxProperties": 2,
+            "minProperties": 1,
+            "properties": {
+              "narrative": {
+                "type": "object"
+              },
+              "traits": {
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "base_revision",
+          "patch",
+          "evidence_refs",
+          "confidence",
+          "generator",
+          "generator_version"
+        ],
+        "title": "PersonaProposalCreateRequest",
+        "type": "object"
+      },
+      "PersonaProposalView": {
+        "$id": "https://iris.memory/schemas/persona-proposal-view.schema.json",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "base_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "created_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "enum": [
+                    "claim",
+                    "episode",
+                    "relation",
+                    "task",
+                    "persona_state"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "field_deltas": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "generator": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "generator_version": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "patch": {
+            "type": "object"
+          },
+          "policy_evaluation": {
+            "type": "object"
+          },
+          "proposal_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "published_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "review_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewed_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "status": {
+            "enum": [
+              "proposed",
+              "approved",
+              "rejected",
+              "published",
+              "expired"
+            ]
+          },
+          "target_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "agent_id",
+          "base_revision",
+          "target_fields",
+          "patch",
+          "field_deltas",
+          "evidence_refs",
+          "confidence",
+          "generator",
+          "generator_version",
+          "policy_evaluation",
+          "status",
+          "created_us",
+          "expires_us",
+          "schema_version"
+        ],
+        "title": "PersonaProposalView",
+        "type": "object"
+      },
+      "PersonaReviewRequest": {
+        "$id": "https://iris.memory/schemas/persona-review-request.schema.json",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "PersonaReviewRequest",
+        "type": "object"
+      },
+      "PersonaRevisionCreateRequest": {
+        "$id": "https://iris.memory/schemas/persona-revision-create-request.schema.json",
+        "additionalProperties": false,
+        "properties": {
+          "core": {
+            "maxProperties": 32,
+            "type": "object"
+          },
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "narrative": {
+            "maxProperties": 32,
+            "type": "object"
+          },
+          "reason": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "enum": [
+                    "claim",
+                    "episode",
+                    "relation",
+                    "task",
+                    "persona_state"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "traits": {
+            "maxProperties": 32,
+            "type": "object"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "core",
+          "traits",
+          "narrative",
+          "reason"
+        ],
+        "title": "PersonaRevisionCreateRequest",
+        "type": "object"
+      },
+      "PersonaRevisionView": {
+        "$id": "https://iris.memory/schemas/persona-revision-view.schema.json",
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "change_reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "core": {
+            "type": "object"
+          },
+          "created_by": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "created_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "effective_from_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "effective_until_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "narrative": {
+            "type": "object"
+          },
+          "persona_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "policy_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "previous_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "enum": [
+                    "claim",
+                    "episode",
+                    "relation",
+                    "task",
+                    "persona_state"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "published",
+              "superseded",
+              "revoked"
+            ]
+          },
+          "tenant_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "traits": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "persona_id",
+          "tenant_id",
+          "agent_id",
+          "revision",
+          "core",
+          "traits",
+          "narrative",
+          "policy_id",
+          "change_reason",
+          "source_refs",
+          "content_hash",
+          "effective_from_us",
+          "created_by",
+          "created_us",
+          "status",
+          "schema_version"
+        ],
+        "title": "PersonaRevisionView",
+        "type": "object"
+      },
+      "PersonaRollbackRequest": {
+        "$id": "https://iris.memory/schemas/persona-rollback-request.schema.json",
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target_revision",
+          "expected_revision",
+          "reason"
+        ],
+        "title": "PersonaRollbackRequest",
+        "type": "object"
+      },
+      "PersonaStateUpdateRequest": {
+        "$id": "https://iris.memory/schemas/persona-state-update-request.schema.json",
+        "additionalProperties": false,
+        "properties": {
+          "baseline": {
+            "maxProperties": 5,
+            "type": "object"
+          },
+          "expected_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "enum": [
+                    "claim",
+                    "episode",
+                    "relation",
+                    "task",
+                    "persona_state"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "state": {
+            "maxProperties": 5,
+            "type": "object"
+          },
+          "ttl_us": {
+            "maximum": 604800000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "state",
+          "ttl_us"
+        ],
+        "title": "PersonaStateUpdateRequest",
+        "type": "object"
+      },
+      "PersonaStateView": {
+        "$id": "https://iris.memory/schemas/persona-state-view.schema.json",
+        "properties": {
+          "baseline": {
+            "type": "object"
+          },
+          "decay_policy": {
+            "const": "expire_to_baseline"
+          },
+          "expires_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "persona_state_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "enum": [
+                    "claim",
+                    "episode",
+                    "relation",
+                    "task",
+                    "persona_state"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "started_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "persona_state_id",
+          "revision",
+          "state",
+          "baseline",
+          "source_refs",
+          "started_us",
+          "expires_us",
+          "decay_policy",
+          "schema_version"
+        ],
+        "title": "PersonaStateView",
+        "type": [
+          "object",
+          "null"
+        ]
+      },
       "ReadinessReport": {
         "$id": "https://schemas.iris-memory-core.local/v1/readiness-report.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -6204,7 +7246,7 @@
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.7.0"
+    "version": "1.8.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -9060,6 +10102,617 @@
             "description": "Stable error envelope"
           },
           "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/personas/{agent_id}/current": {
+      "get": {
+        "operationId": "getCurrentPersona",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaCurrentResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/personas/{agent_id}/evolution-proposals": {
+      "post": {
+        "operationId": "createPersonaEvolutionProposal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonaProposalCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaProposalView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/personas/{agent_id}/evolution-proposals/{proposal_id}:approve": {
+      "post": {
+        "operationId": "approvePersonaEvolutionProposal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonaReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaProposalView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/personas/{agent_id}/evolution-proposals/{proposal_id}:reject": {
+      "post": {
+        "operationId": "rejectPersonaEvolutionProposal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonaReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaProposalView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/personas/{agent_id}/history": {
+      "get": {
+        "operationId": "getPersonaHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/personas/{agent_id}/revisions": {
+      "post": {
+        "operationId": "publishPersonaRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonaRevisionCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaRevisionView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/personas/{agent_id}/state": {
+      "patch": {
+        "operationId": "updatePersonaState",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonaStateUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaStateView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/personas/{agent_id}:rollback": {
+      "post": {
+        "operationId": "rollbackPersona",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transport-retry safety for this write",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonaRollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaRevisionView"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
             "content": {
               "application/json": {
                 "schema": {

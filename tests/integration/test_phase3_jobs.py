@@ -410,6 +410,7 @@ class TestFailClosed:
             phase6_handlers,
             phase7_handlers,
             phase8_handlers,
+            phase9_handlers,
         )
 
         ctx = phase3
@@ -438,6 +439,7 @@ class TestFailClosed:
                 graph=GraphProjectionService(ctx["store"], ctx["store"].clock),
                 profile=ProfileProjectionService(ctx["store"], ctx["store"].clock),
             ),
+            **phase9_handlers(ctx["store"].clock),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in ENABLED_JOB_KINDS:

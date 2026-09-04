@@ -1131,3 +1131,75 @@ def test_search_rejects_zero_limit(mock_base_url: str) -> None:
             client.search("01a060aa-0000-7000-8000-000000000010", "language preference", limit=0)
         )
     assert captured.value.envelope.code == "invalid_request"
+
+
+def test_persona_sdk_surface_round_trip(mock_base_url: str) -> None:
+    client = AsyncIrisMemoryClient(mock_base_url)
+    current = asyncio.run(client.current_persona("agent-1"))
+    history = asyncio.run(client.persona_history("agent-1", limit=10))
+    revision = asyncio.run(
+        client.publish_persona_revision(
+            "agent-1",
+            {
+                "expected_revision": 1,
+                "core": {"name": "Iris"},
+                "traits": {"style": "warm"},
+                "narrative": {},
+                "source_refs": [],
+                "reason": "admin_publication",
+            },
+            idempotency_key="persona-revision-1",
+        )
+    )
+    state = asyncio.run(
+        client.update_persona_state(
+            "agent-1",
+            {
+                "expected_revision": 0,
+                "state": {"mood": 0.4},
+                "baseline": {"mood": 0.0},
+                "source_refs": [],
+                "ttl_us": 3_600_000_000,
+            },
+            idempotency_key="persona-state-1",
+        )
+    )
+    proposal = asyncio.run(
+        client.create_persona_proposal(
+            "agent-1",
+            {
+                "base_revision": 1,
+                "patch": {"traits": {"style": "warm"}},
+                "evidence_refs": [
+                    {"resource_type": "persona_state", "resource_id": "state-1", "revision": 1}
+                ],
+                "confidence": 0.92,
+                "generator": "reflection",
+                "generator_version": "1",
+            },
+            idempotency_key="persona-proposal-1",
+        )
+    )
+    reviewed = asyncio.run(
+        client.review_persona_proposal(
+            "agent-1",
+            "proposal-1",
+            approve=True,
+            reason="reviewed",
+            idempotency_key="persona-review-1",
+        )
+    )
+    rolled = asyncio.run(
+        client.rollback_persona(
+            "agent-1",
+            {"target_revision": 1, "expected_revision": 4, "reason": "operator_rollback"},
+            idempotency_key="persona-rollback-1",
+        )
+    )
+    assert validate_contract("persona-current-response", current) == ()
+    assert validate_contract("persona-history-response", history) == ()
+    assert validate_contract("persona-revision-view", revision) == ()
+    assert validate_contract("persona-state-view", state) == ()
+    assert validate_contract("persona-proposal-view", proposal) == ()
+    assert validate_contract("persona-proposal-view", reviewed) == ()
+    assert validate_contract("persona-revision-view", rolled) == ()

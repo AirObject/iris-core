@@ -1,0 +1,60 @@
+{
+  "$id": "https://iris.memory/schemas/persona-state-update-request.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "baseline": {
+      "maxProperties": 5,
+      "type": "object"
+    },
+    "expected_revision": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "source_refs": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "enum": [
+              "claim",
+              "episode",
+              "relation",
+              "task",
+              "persona_state"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "state": {
+      "maxProperties": 5,
+      "type": "object"
+    },
+    "ttl_us": {
+      "maximum": 604800000000,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "expected_revision",
+    "state",
+    "ttl_us"
+  ],
+  "title": "PersonaStateUpdateRequest",
+  "type": "object"
+}

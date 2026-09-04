@@ -1,0 +1,16 @@
+{
+  "$id": "https://iris.memory/schemas/persona-review-request.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "reason": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "reason"
+  ],
+  "title": "PersonaReviewRequest",
+  "type": "object"
+}

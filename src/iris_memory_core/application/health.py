@@ -232,5 +232,22 @@ class HealthService:
                 fatal = True
                 reasons.append("vector_capability_unavailable")
 
+        # Phase 9 (§14, ADR-0008): unlike optional projections, Persona is
+        # required for every ready Agent. Missing/misowned metadata or a hash
+        # mismatch is fatal and never represented as a legitimate revision 0.
+        try:
+            with self._uow.read() as tx:
+                persona_problems = tx.personas.integrity_problems()
+        except sqlite3.OperationalError:
+            persona_problems = ("persona_schema_unavailable",)
+        except Exception:
+            persona_problems = ("persona_integrity_unavailable",)
+        checks["persona_current_integrity"] = (
+            "ok" if not persona_problems else list(persona_problems)
+        )
+        if persona_problems:
+            fatal = True
+            reasons.extend(persona_problems)
+
         status = NOT_READY if fatal else (DEGRADED if degraded else READY)
         return ReadinessReport(status=status, checks=checks, reasons=tuple(reasons))

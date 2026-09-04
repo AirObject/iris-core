@@ -50,8 +50,15 @@ def selfcheck_handler(job: OutboxJob) -> JobCommit:
     return commit
 
 
+def _surface_lease_revoked() -> JobWork:
+    from iris_memory_core.jobs.handlers import surface_lease_revoked_handler
+
+    return surface_lease_revoked_handler()
+
+
 DEFAULT_HANDLERS: dict[str, JobWork] = {
     "maintenance.selfcheck": selfcheck_handler,
+    "surface.lease_revoked": _surface_lease_revoked(),
 }
 
 
@@ -77,6 +84,7 @@ def phase3_handlers(
         "focus.maintenance": focus_maintenance_handler(focus, clock),
         "state.projection": state_projection_handler(),
         "maintenance.selfcheck": selfcheck_handler,
+        "surface.lease_revoked": _surface_lease_revoked(),
     }
 
 
@@ -196,6 +204,21 @@ def phase8_handlers(
         "profile.apply": profile_apply_handler(profile),
         "profile.rebuild": profile_rebuild_handler(profile),
         "profile.cleanup": profile_cleanup_handler(profile),
+    }
+
+
+def phase9_handlers(clock: Clock) -> dict[str, JobWork]:
+    """Phase 9 Persona notification and state-expiry handlers."""
+    from iris_memory_core.jobs.handlers import (
+        persona_notification_handler,
+        persona_state_expire_handler,
+    )
+
+    notification = persona_notification_handler()
+    return {
+        "persona.revised": notification,
+        "persona.revision_invalidated": notification,
+        "persona.state_expire": persona_state_expire_handler(clock),
     }
 
 

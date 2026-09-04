@@ -382,6 +382,49 @@ class TestPreemption:
         assert sequence.index("preempted") < last_acquired
         assert sequence.index("fenced") < last_acquired
 
+    def test_revocation_notice_is_claimable_and_settles(
+        self,
+        surface: SurfaceCoordinatorService,
+        clocked_tenant_id: str,
+        phase2_agent: str,
+        clocked_store: Store,
+    ) -> None:
+        """The notice must not pile up unclaimable (ADR-0010 §2, ADR-0017 §3).
+
+        Before ``surface.lease_revoked`` had an enabled handler the job the
+        preemption transaction enqueues could never be leased: it stayed
+        pending forever, pinning ``oldest_pending_age`` and holding the
+        backpressure quota it was charged at enqueue time.
+        """
+        from iris_memory_core.application.outbox import OutboxService
+        from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS
+        from iris_memory_core.jobs.worker import DEFAULT_HANDLERS, OutboxWorker
+
+        host1 = holder_access(clocked_tenant_id, phase2_agent, "host-1")
+        host2 = holder_access(clocked_tenant_id, phase2_agent, "host-2")
+        surface.acquire(host1, phase2_agent, ttl_us=TTL)
+        surface.acquire(
+            host2, phase2_agent, ttl_us=TTL, priority=10, allow_preempt=True, reason="takeover"
+        )
+
+        assert "surface.lease_revoked" in ENABLED_JOB_KINDS
+        assert "surface.lease_revoked" in DEFAULT_HANDLERS
+
+        service = OutboxService(clocked_store, clocked_store.clock, enabled_kinds=ENABLED_JOB_KINDS)
+        worker = OutboxWorker(service, dict(DEFAULT_HANDLERS), owner="revocation-worker")
+        outcomes = worker.run_once()
+        assert outcomes["claimed"] >= 1
+        assert outcomes["completed"] == outcomes["claimed"]
+
+        with clocked_store.read() as tx:
+            row = (
+                tx.raw()
+                .execute("SELECT status FROM outbox_jobs WHERE job_kind = 'surface.lease_revoked'")
+                .fetchone()
+            )
+        assert row is not None
+        assert row[0] == "completed"
+
     def test_epoch_is_monotonic_across_cycles(
         self,
         surface: SurfaceCoordinatorService,

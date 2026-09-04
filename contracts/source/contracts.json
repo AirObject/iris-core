@@ -17,6 +17,9 @@
     "notes.v1",
     "observe.batch.v1",
     "outbox.jobs.v1",
+    "persona.evolution.v1",
+    "persona.state.v1",
+    "persona.v1",
     "profile.v1",
     "recall.graph.v1",
     "recall.usage.v1",
@@ -31,7 +34,7 @@
     "state.v1",
     "tasks.v1"
   ],
-  "contract_version": "1.7.0",
+  "contract_version": "1.8.0",
   "error_codes": [
     "access_denied",
     "artifact_invalid",
@@ -58,6 +61,8 @@
     "minimum_watermark_unavailable",
     "not_found",
     "not_ready",
+    "persona_base_revision_stale",
+    "persona_policy_denied",
     "protected_resource",
     "provider_unavailable",
     "reason_required",
@@ -73,6 +78,6 @@
     "unsafe_procedure_claim",
     "unsupported_version"
   ],
-  "package_version": "0.9.0",
-  "schema_version": 9
+  "package_version": "0.10.0",
+  "schema_version": 10
 }

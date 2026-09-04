@@ -1116,6 +1116,123 @@ class AsyncIrisMemoryClient:
         )
         return cast(dict[str, Any], value)
 
+    # -- Phase 9: complete Persona -------------------------------------------
+
+    async def current_persona(self, agent_id: str) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "GET",
+            f"/v1/personas/{quote(agent_id, safe='')}/current",
+            None,
+        )
+        return cast(dict[str, Any], value)
+
+    async def persona_history(self, agent_id: str, *, limit: int = 100) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        path = f"/v1/personas/{quote(agent_id, safe='')}/history?limit={limit}"
+        value = await asyncio.to_thread(self._request_json, "GET", path, None)
+        return cast(dict[str, Any], value)
+
+    async def publish_persona_revision(
+        self,
+        agent_id: str,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/personas/{quote(agent_id, safe='')}/revisions",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def update_persona_state(
+        self,
+        agent_id: str,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "PATCH",
+            f"/v1/personas/{quote(agent_id, safe='')}/state",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def create_persona_proposal(
+        self,
+        agent_id: str,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/personas/{quote(agent_id, safe='')}/evolution-proposals",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def review_persona_proposal(
+        self,
+        agent_id: str,
+        proposal_id: str,
+        *,
+        approve: bool,
+        reason: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        action = "approve" if approve else "reject"
+        path = (
+            f"/v1/personas/{quote(agent_id, safe='')}/evolution-proposals/"
+            f"{quote(proposal_id, safe='')}:{action}"
+        )
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            path,
+            {"reason": reason},
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
+    async def rollback_persona(
+        self,
+        agent_id: str,
+        record: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        value = await asyncio.to_thread(
+            self._request_json,
+            "POST",
+            f"/v1/personas/{quote(agent_id, safe='')}:rollback",
+            record,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(dict[str, Any], value)
+
     def _request_json(
         self,
         method: str,

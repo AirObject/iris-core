@@ -1,0 +1,7 @@
+{
+  "baseline": {"energy": 0.5, "mood": 0.0},
+  "expected_revision": 0,
+  "source_refs": [],
+  "state": {"energy": 0.8, "focus": ["release"], "mood": 0.4},
+  "ttl_us": 3600000000
+}

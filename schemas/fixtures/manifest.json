@@ -564,6 +564,56 @@
       "expected": "reject",
       "file": "invalid/task-view-bad-status.json",
       "schema": "task-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/persona-revision-create-request.json",
+      "schema": "persona-revision-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/persona-state-update-request.json",
+      "schema": "persona-state-update-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/persona-proposal-create-request.json",
+      "schema": "persona-proposal-create-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/persona-current-response.json",
+      "schema": "persona-current-response"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/persona-proposal-view.json",
+      "schema": "persona-proposal-view"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/persona-review-request.json",
+      "schema": "persona-review-request"
+    },
+    {
+      "expected": "accept",
+      "file": "valid/persona-rollback-request.json",
+      "schema": "persona-rollback-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/persona-proposal-create-request-core-change.json",
+      "schema": "persona-proposal-create-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/persona-state-update-request-bad-ttl.json",
+      "schema": "persona-state-update-request"
+    },
+    {
+      "expected": "reject",
+      "file": "invalid/persona-revision-create-request-missing-reason.json",
+      "schema": "persona-revision-create-request"
     }
   ]
 }

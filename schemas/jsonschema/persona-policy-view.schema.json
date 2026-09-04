@@ -1,0 +1,47 @@
+{
+  "$id": "https://iris.memory/schemas/persona-policy-view.schema.json",
+  "additionalProperties": true,
+  "properties": {
+    "allowed_fields": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "content_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "locked",
+        "manual",
+        "bounded_auto"
+      ]
+    },
+    "policy_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "sensitive_fields": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "policy_id",
+    "revision",
+    "mode",
+    "allowed_fields",
+    "sensitive_fields",
+    "content_hash"
+  ],
+  "title": "PersonaPolicyView",
+  "type": "object"
+}

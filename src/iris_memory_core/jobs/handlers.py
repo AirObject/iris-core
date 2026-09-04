@@ -265,6 +265,41 @@ def schedule_profile_apply(
     )
 
 
+def surface_lease_revoked_handler() -> JobWork:
+    """``surface.lease_revoked``: revocation invariant check (ADR-0010 §2).
+
+    Preemption fences the old holder and enqueues this notice in the SAME
+    transaction. Until the Phase 10 transport can push it to the host over
+    SSE (ADR-0017 §3), the job settles here after proving the revocation
+    really happened — the fenced lease must no longer be the authoritative
+    holder for its agent. Without an enabled handler the notice would sit
+    pending forever, pinning ``oldest_pending_age`` and consuming the
+    backpressure quota it was charged for at enqueue time.
+    """
+
+    def work(job: OutboxJob) -> JobCommit:
+        payload = _require_payload(job)
+        fenced_epoch = payload.get("fenced_epoch")
+        if not isinstance(fenced_epoch, int):
+            raise ValueError("surface.lease_revoked payload needs an integer fenced_epoch")
+
+        def commit(tx: Transaction) -> None:
+            lease = tx.surfaces.get_lease(job.aggregate_id)
+            if lease.tenant_id != job.tenant_id:
+                raise NotFoundError("surface lease tenant mismatch")
+            if lease.lease_epoch != fenced_epoch:
+                raise NotFoundError("surface lease epoch does not match the revoked epoch")
+            if lease.status == "active":
+                raise NotFoundError("revoked surface lease is still active")
+            holder = tx.surfaces.active_lease(lease.tenant_id, lease.agent_id)
+            if holder is not None and holder.lease_epoch <= fenced_epoch:
+                raise NotFoundError("revoked surface lease was not superseded by a newer epoch")
+
+        return commit
+
+    return work
+
+
 def observation_recorded_handler(
     uow: UnitOfWork, clock: Clock, gauge: BackpressureGauge | None = None
 ) -> JobWork:
@@ -1036,6 +1071,86 @@ def retention_compaction_handler(retention: RetentionService, clock: Clock) -> J
     return work
 
 
+def persona_notification_handler() -> JobWork:
+    """Verify a refs-only Persona notification before durable completion.
+
+    A later publication may already have superseded the referenced revision,
+    so validation addresses immutable history rather than requiring Current.
+    """
+
+    def work(job: OutboxJob) -> JobCommit:
+        payload = _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            agent_id = payload.get("agent_id")
+            revision = payload.get("persona_revision")
+            digest = payload.get("persona_content_hash")
+            if not isinstance(agent_id, str) or not isinstance(revision, int):
+                raise ValueError("Persona notification lacks agent/revision")
+            record = tx.personas.by_revision(agent_id, revision)
+            if record.id != job.aggregate_id or record.content_hash != digest:
+                raise RuntimeError("Persona notification revision/hash mismatch")
+
+        return commit
+
+    return work
+
+
+def persona_state_expire_handler(clock: Clock) -> JobWork:
+    """Return one still-current expired state to its stored baseline."""
+
+    def work(job: OutboxJob) -> JobCommit:
+        payload = _require_payload(job)
+
+        def commit(tx: Transaction) -> None:
+            agent_id = payload.get("agent_id")
+            state_id = payload.get("state_id")
+            revision = payload.get("state_revision")
+            expires_us = payload.get("expires_us")
+            if (
+                not isinstance(agent_id, str)
+                or not isinstance(state_id, str)
+                or not isinstance(revision, int)
+                or not isinstance(expires_us, int)
+            ):
+                raise ValueError("Persona state expiry payload is invalid")
+            if clock.now_us() < expires_us:
+                raise RuntimeError("Persona state expiry job claimed before its deadline")
+            current = tx.personas.current_state(agent_id)
+            if current is None or current.id != state_id or current.revision != revision:
+                return  # a newer state fenced this delayed expiry
+            baseline = current.baseline_json
+            result = tx.personas.put_state(
+                tenant_id=current.tenant_id,
+                agent_id=current.agent_id,
+                expected_revision=current.revision,
+                state_json=baseline,
+                baseline_json=baseline,
+                source_refs_json="[]",
+                started_us=current.expires_us,
+                expires_us=current.expires_us + 1,
+                created_by="persona-state-decay",
+            )
+            tx.audit(
+                tenant_id=current.tenant_id,
+                actor="persona-state-decay",
+                action="persona.state_expired",
+                resource_type="persona_state",
+                resource_id=result.id,
+                reason_code="ttl_expired",
+                revision=result.revision,
+            )
+            tx.advance_watermark(
+                current.tenant_id,
+                current.agent_id,
+                (("persona_state", result.id, result.revision),),
+            )
+
+        return commit
+
+    return work
+
+
 __all__ = [
     "claim_changed_handler",
     "cognitive_event_changed_handler",
@@ -1051,6 +1166,8 @@ __all__ = [
     "note_changed_handler",
     "note_review_handler",
     "observation_recorded_handler",
+    "persona_notification_handler",
+    "persona_state_expire_handler",
     "profile_apply_handler",
     "profile_cleanup_handler",
     "profile_rebuild_handler",

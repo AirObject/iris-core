@@ -1,0 +1,8 @@
+{
+  "base_revision": 1,
+  "confidence": 1.0,
+  "evidence_refs": [{"resource_id": "claim-1", "resource_type": "claim"}],
+  "generator": "hostile",
+  "generator_version": "1",
+  "patch": {"core": {"safety_boundaries": []}}
+}

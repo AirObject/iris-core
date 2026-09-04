@@ -224,6 +224,18 @@ class InvalidRequestError(DomainError):
     code = "invalid_request"
 
 
+class PersonaPolicyDeniedError(DomainError):
+    """A Persona policy deterministically refused a requested transition."""
+
+    code = "persona_policy_denied"
+
+
+class PersonaBaseRevisionStaleError(ConflictError):
+    """A Proposal was evaluated against a Persona that is no longer current."""
+
+    code = "persona_base_revision_stale"
+
+
 def require_reason(reason: str | None) -> str:
     """Management-plane and high-risk operations must carry a reason code."""
     if reason is None or not reason.strip():

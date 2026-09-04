@@ -304,6 +304,28 @@ _KINDS: dict[str, JobKindSpec] = dict(
             notes="Phase 8: verify the profile generation then delete "
             "retired generations beyond the rollback window.",
         ),
+        # Phase 9: Persona notifications are durable refs-only messages; the
+        # handlers verify the referenced immutable revision before marking
+        # delivery complete. Transport fan-out arrives in Phase 10. State
+        # expiry creates a deterministic baseline revision under fencing.
+        _spec(
+            "persona.revised",
+            priority=2,
+            enabled=True,
+            notes="Phase 9: persona.revised.v1 notification invariant check.",
+        ),
+        _spec(
+            "persona.revision_invalidated",
+            priority=1,
+            enabled=True,
+            notes="Phase 9: revision-invalidated notification invariant check.",
+        ),
+        _spec(
+            "persona.state_expire",
+            priority=4,
+            enabled=True,
+            notes="Phase 9: deterministically return expired Persona State to baseline.",
+        ),
         _spec("reflection.generate", priority=7, catch_up="latest"),
         _spec("persona.evaluation", priority=6, catch_up="latest"),
         _spec("backup.execute", priority=3, catch_up="all"),
@@ -323,7 +345,19 @@ _KINDS: dict[str, JobKindSpec] = dict(
             notes="Safety lane: bounded priority channel under backpressure.",
         ),
         _spec("correct.apply", priority=0, lane=JobLane.SAFETY),
-        _spec("surface.lease_revoked", priority=1, notes="Revocation notice after fencing."),
+        _spec(
+            "surface.lease_revoked",
+            priority=1,
+            enabled=True,
+            notes=(
+                "Revocation notice after fencing (ADR-0010 §2). Enabled: the "
+                "preemption transaction enqueues it unconditionally, so a "
+                "disabled kind would leave an unclaimable job pinning "
+                "oldest_pending_age and the backpressure quota. The handler "
+                "verifies the revocation invariant; host push lands with the "
+                "Phase 10 transport (ADR-0017 §3)."
+            ),
+        ),
         _spec(
             "maintenance.selfcheck",
             priority=8,

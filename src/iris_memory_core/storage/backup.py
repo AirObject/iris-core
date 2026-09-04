@@ -1383,6 +1383,28 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
                 problems.append(
                     "persona current pointer must reference the agent's own published revision"
                 )
+            if _has("persona_revision_metadata") and _has("persona_policies"):
+                incomplete = connection.execute(
+                    "SELECT COUNT(*) FROM agents a "
+                    "LEFT JOIN persona_revisions p ON p.id = a.persona_current_revision_id "
+                    "LEFT JOIN persona_revision_metadata m ON m.revision_id = p.id "
+                    "LEFT JOIN persona_policies pol ON pol.id = m.policy_id "
+                    "WHERE m.revision_id IS NULL OR m.agent_id <> a.id "
+                    "OR m.tenant_id <> a.tenant_id "
+                    "OR m.lifecycle_status <> 'published' OR pol.id IS NULL "
+                    "OR pol.agent_id <> a.id OR pol.tenant_id <> a.tenant_id"
+                ).fetchone()
+                if incomplete is not None and int(incomplete[0]) > 0:
+                    problems.append("persona current metadata or policy is incomplete")
+            if _has("persona_state_current") and _has("persona_states"):
+                bad_state = connection.execute(
+                    "SELECT COUNT(*) FROM persona_state_current c "
+                    "LEFT JOIN persona_states s ON s.id = c.state_id "
+                    "WHERE s.id IS NULL OR s.agent_id <> c.agent_id "
+                    "OR s.tenant_id <> c.tenant_id OR s.revision <> c.revision"
+                ).fetchone()
+                if bad_state is not None and int(bad_state[0]) > 0:
+                    problems.append("persona state current pointer is inconsistent")
         if _has("bindings") and _has("external_identities"):
             broken_bindings = connection.execute(
                 "SELECT COUNT(*) FROM bindings b JOIN external_identities i "

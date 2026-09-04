@@ -1,0 +1,26 @@
+{
+  "$id": "https://iris.memory/schemas/persona-rollback-request.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "expected_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "reason": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "target_revision": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "target_revision",
+    "expected_revision",
+    "reason"
+  ],
+  "title": "PersonaRollbackRequest",
+  "type": "object"
+}

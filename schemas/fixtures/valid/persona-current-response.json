@@ -1,0 +1,29 @@
+{
+  "policy": {
+    "allowed_fields": [],
+    "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "mode": "locked",
+    "policy_id": "policy-1",
+    "revision": 1,
+    "sensitive_fields": []
+  },
+  "revision": {
+    "agent_id": "agent-1",
+    "change_reason": "bootstrap",
+    "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "core": {"language": "und", "name_placeholder": true},
+    "created_by": "provisioning",
+    "created_us": 1700000000000000,
+    "effective_from_us": 1700000000000000,
+    "narrative": {},
+    "persona_id": "persona-1",
+    "policy_id": "policy-1",
+    "revision": 1,
+    "schema_version": 1,
+    "source_refs": [],
+    "status": "published",
+    "tenant_id": "tenant-1",
+    "traits": {}
+  },
+  "state": null
+}

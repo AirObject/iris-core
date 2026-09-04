@@ -28,6 +28,7 @@ METRIC_SPECS: dict[str, frozenset[str]] = {
     "iris_index_lag_revisions": frozenset({"index_kind"}),
     "iris_provider_requests_total": frozenset({"provider_kind", "outcome"}),
     "iris_provider_duration_seconds": frozenset({"provider_kind"}),
+    "iris_persona_proposals_total": frozenset({"outcome"}),
 }
 
 #: Labels that must NEVER appear on a metric (§31 forbidden cardinality).
@@ -156,6 +157,11 @@ class Metrics:
             float(duration_seconds),
             {"provider_kind": provider_kind},
         )
+
+    # -- Phase 9 convenience emitters ---------------------------------------
+
+    def persona_proposal(self, outcome: str) -> None:
+        self.inc("iris_persona_proposals_total", {"outcome": outcome})
 
     # -- output --------------------------------------------------------------
 

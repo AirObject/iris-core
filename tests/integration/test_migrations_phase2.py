@@ -112,7 +112,7 @@ class TestPublishedMigrationIntegrity:
             ).fetchall()
         finally:
             connection.close()
-        assert len(rows) == 9
+        assert len(rows) == 10
         on_disk = hashlib.sha256(
             (REPOSITORY_ROOT / "migrations" / "0003_phase2_reliability_spine.sql").read_bytes()
         ).hexdigest()
@@ -127,9 +127,9 @@ class TestSchemaUpgrade:
         assert current_schema_version(sqlite3.connect(database)) == 2
 
         applied = MigrationRunner(database).migrate()
-        # The 0.9.0 runner walks a Schema 2 database through 0003-0009
+        # The 0.10.0 runner walks a Schema 2 database through 0003-0010
         # (staged multi-version upgrades migrate through intermediates).
-        assert [item.version for item in applied] == [3, 4, 5, 6, 7, 8, 9]
+        assert [item.version for item in applied] == [3, 4, 5, 6, 7, 8, 9, 10]
 
         connection = sqlite3.connect(database)
         try:
@@ -160,7 +160,7 @@ class TestSchemaUpgrade:
         MigrationRunner(database).migrate()
         connection = sqlite3.connect(database)
         try:
-            assert current_schema_version(connection) == 9
+            assert current_schema_version(connection) == 10
         finally:
             connection.close()
 
@@ -170,13 +170,13 @@ class TestSchemaUpgrade:
         # The 0.9.0 binary window (ADR-0016 §1): Schema 8 (Phase 7)
         # databases upgrade forward online; Schema 6 needs a 0.7.0 binary
         # first (staged path).
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (8, 9)
-        verify_schema_compatible(8)
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (9, 10)
         verify_schema_compatible(9)
+        verify_schema_compatible(10)
         with pytest.raises(SchemaIncompatibleError):
-            verify_schema_compatible(10)
+            verify_schema_compatible(11)
         with pytest.raises(SchemaIncompatibleError):
-            verify_schema_compatible(7)
+            verify_schema_compatible(8)
 
     def test_upgraded_database_openable_by_runtime(self, tmp_path: Path) -> None:
         database = tmp_path / "runtime.sqlite3"
@@ -213,6 +213,24 @@ class TestPhase2BackupRestore:
             (now,),
         )
         connection.execute("UPDATE agents SET persona_current_revision_id = 'p1' WHERE id = 'a1'")
+        connection.execute(
+            "INSERT INTO persona_policies (id, tenant_id, agent_id, revision, mode, "
+            "allowed_fields_json, max_single_delta, max_cumulative_delta, cumulative_window_us, "
+            "min_evidence, min_distinct_sources, min_evidence_span_us, min_confidence, "
+            "cooldown_us, observation_us, sensitive_fields_json, rollback_threshold, "
+            "content_hash, status, created_by, reason_code, created_us) VALUES "
+            "('policy1','t1','a1',1,'locked','[]',0,0,0,1,1,0,1,0,0,'[]',0,"
+            "'6dfe909652dfc7a2dcb3174d2d6f092f7b74ab664159a1e790176c54632c6f98',"
+            "'current','test','fixture',?)",
+            (now,),
+        )
+        connection.execute(
+            "INSERT INTO persona_revision_metadata (revision_id, tenant_id, agent_id, policy_id, "
+            "previous_revision_id, change_reason, source_refs_json, effective_from_us, "
+            "effective_until_us, created_by, lifecycle_status) VALUES "
+            "('p1','t1','a1','policy1',NULL,'fixture','[]',?,NULL,'test','published')",
+            (now,),
+        )
         connection.execute(
             "INSERT INTO observations (id, tenant_id, agent_id, app_instance_id, idempotency_key, "
             "record_fingerprint, role, kind, effect_state, occurred_us, committed_us, created_us, "
@@ -298,7 +316,7 @@ class TestPhase2BackupRestore:
             source = self._phase2_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 9
+            assert report["schema_version"] == 10
             assert verify_backup(backup_dir).ok
 
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
@@ -343,4 +361,4 @@ class TestPhase2BackupRestore:
         service = BackupService(store)
         backup_dir = tmp_path / "catalog-backup"
         report = service.create_backup(backup_dir)
-        assert report.schema_version == 9
+        assert report.schema_version == 10

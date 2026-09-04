@@ -228,6 +228,7 @@ class TestFailClosed:
             phase6_handlers,
             phase7_handlers,
             phase8_handlers,
+            phase9_handlers,
         )
         from iris_memory_core.providers.embedding import DeterministicEmbeddingProvider
 
@@ -266,6 +267,7 @@ class TestFailClosed:
                 graph=GraphProjectionService(jobs_ctx["store"], jobs_ctx["store"].clock),
                 profile=ProfileProjectionService(jobs_ctx["store"], jobs_ctx["store"].clock),
             ),
+            **phase9_handlers(jobs_ctx["store"].clock),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in (

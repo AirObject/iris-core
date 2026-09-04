@@ -2537,6 +2537,348 @@ def phase8_json_schema_files() -> dict[Path, dict[str, Any]]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Phase 9 schemas (complete Persona; §14, ADR-0008)
+
+
+def _persona_evidence_ref() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "resource_type": {"enum": ["claim", "episode", "relation", "task", "persona_state"]},
+            "resource_id": _id(),
+            "revision": {"type": "integer", "minimum": 1},
+        },
+        "required": ["resource_type", "resource_id"],
+    }
+
+
+def _embedded_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in schema.items() if key not in {"$id", "$schema", "title"}}
+
+
+def persona_revision_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-revision-view.schema.json",
+        "title": "PersonaRevisionView",
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "persona_id": _id(),
+            "tenant_id": _id(),
+            "agent_id": _id(),
+            "revision": {"type": "integer", "minimum": 1},
+            "core": {"type": "object"},
+            "traits": {"type": "object"},
+            "narrative": {"type": "object"},
+            "policy_id": _id(),
+            "previous_revision_id": {"type": ["string", "null"]},
+            "change_reason": {"type": "string", "minLength": 1},
+            "source_refs": {"type": "array", "items": _persona_evidence_ref()},
+            "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "effective_from_us": {"type": "integer", "minimum": 0},
+            "effective_until_us": {"type": ["integer", "null"], "minimum": 0},
+            "created_by": _id(),
+            "created_us": {"type": "integer", "minimum": 0},
+            "status": {"enum": ["published", "superseded", "revoked"]},
+            "schema_version": {"const": 1},
+        },
+        "required": [
+            "persona_id",
+            "tenant_id",
+            "agent_id",
+            "revision",
+            "core",
+            "traits",
+            "narrative",
+            "policy_id",
+            "change_reason",
+            "source_refs",
+            "content_hash",
+            "effective_from_us",
+            "created_by",
+            "created_us",
+            "status",
+            "schema_version",
+        ],
+    }
+
+
+def persona_policy_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-policy-view.schema.json",
+        "title": "PersonaPolicyView",
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "policy_id": _id(),
+            "revision": {"type": "integer", "minimum": 1},
+            "mode": {"enum": ["locked", "manual", "bounded_auto"]},
+            "allowed_fields": {"type": "array", "items": {"type": "string"}},
+            "sensitive_fields": {"type": "array", "items": {"type": "string"}},
+            "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        },
+        "required": [
+            "policy_id",
+            "revision",
+            "mode",
+            "allowed_fields",
+            "sensitive_fields",
+            "content_hash",
+        ],
+    }
+
+
+def persona_state_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-state-view.schema.json",
+        "title": "PersonaStateView",
+        "type": ["object", "null"],
+        "properties": {
+            "persona_state_id": _id(),
+            "revision": {"type": "integer", "minimum": 1},
+            "state": {"type": "object"},
+            "baseline": {"type": "object"},
+            "source_refs": {"type": "array", "items": _persona_evidence_ref()},
+            "started_us": {"type": "integer", "minimum": 0},
+            "expires_us": {"type": "integer", "minimum": 0},
+            "decay_policy": {"const": "expire_to_baseline"},
+            "schema_version": {"const": 1},
+        },
+        "required": [
+            "persona_state_id",
+            "revision",
+            "state",
+            "baseline",
+            "source_refs",
+            "started_us",
+            "expires_us",
+            "decay_policy",
+            "schema_version",
+        ],
+    }
+
+
+def persona_current_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-current-response.schema.json",
+        "title": "PersonaCurrentResponse",
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "revision": _embedded_schema(persona_revision_view_schema()),
+            "policy": _embedded_schema(persona_policy_view_schema()),
+            "state": _embedded_schema(persona_state_view_schema()),
+        },
+        "required": ["revision", "policy", "state"],
+    }
+
+
+def persona_history_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-history-response.schema.json",
+        "title": "PersonaHistoryResponse",
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": _embedded_schema(persona_revision_view_schema()),
+                "maxItems": 500,
+            }
+        },
+        "required": ["items"],
+    }
+
+
+def persona_revision_create_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-revision-create-request.schema.json",
+        "title": "PersonaRevisionCreateRequest",
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "expected_revision": {"type": "integer", "minimum": 1},
+            "core": {"type": "object", "maxProperties": 32},
+            "traits": {"type": "object", "maxProperties": 32},
+            "narrative": {"type": "object", "maxProperties": 32},
+            "source_refs": {"type": "array", "items": _persona_evidence_ref()},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 256},
+        },
+        "required": ["expected_revision", "core", "traits", "narrative", "reason"],
+    }
+
+
+def persona_state_update_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-state-update-request.schema.json",
+        "title": "PersonaStateUpdateRequest",
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "expected_revision": {"type": "integer", "minimum": 0},
+            "state": {"type": "object", "maxProperties": 5},
+            "baseline": {"type": "object", "maxProperties": 5},
+            "ttl_us": {"type": "integer", "minimum": 1, "maximum": 604800000000},
+            "source_refs": {"type": "array", "items": _persona_evidence_ref()},
+        },
+        "required": ["expected_revision", "state", "ttl_us"],
+    }
+
+
+def persona_proposal_view_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-proposal-view.schema.json",
+        "title": "PersonaProposalView",
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "proposal_id": _id(),
+            "agent_id": _id(),
+            "base_revision": {"type": "integer", "minimum": 1},
+            "target_fields": {"type": "array", "items": {"type": "string"}},
+            "patch": {"type": "object"},
+            "field_deltas": {"type": "array", "items": {"type": "object"}},
+            "evidence_refs": {"type": "array", "items": _persona_evidence_ref()},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "generator": _id(),
+            "generator_version": _id(),
+            "policy_evaluation": {"type": "object"},
+            "status": {"enum": ["proposed", "approved", "rejected", "published", "expired"]},
+            "reviewed_by": {"type": ["string", "null"]},
+            "review_reason": {"type": ["string", "null"]},
+            "created_us": {"type": "integer", "minimum": 0},
+            "expires_us": {"type": "integer", "minimum": 0},
+            "published_revision_id": {"type": ["string", "null"]},
+            "schema_version": {"const": 1},
+        },
+        "required": [
+            "proposal_id",
+            "agent_id",
+            "base_revision",
+            "target_fields",
+            "patch",
+            "field_deltas",
+            "evidence_refs",
+            "confidence",
+            "generator",
+            "generator_version",
+            "policy_evaluation",
+            "status",
+            "created_us",
+            "expires_us",
+            "schema_version",
+        ],
+    }
+
+
+def persona_proposal_create_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-proposal-create-request.schema.json",
+        "title": "PersonaProposalCreateRequest",
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "base_revision": {"type": "integer", "minimum": 1},
+            "patch": {
+                "type": "object",
+                "additionalProperties": False,
+                "minProperties": 1,
+                "maxProperties": 2,
+                "properties": {
+                    "traits": {"type": "object"},
+                    "narrative": {"type": "object"},
+                },
+            },
+            "evidence_refs": {
+                "type": "array",
+                "minItems": 1,
+                "items": _persona_evidence_ref(),
+            },
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "generator": _id(),
+            "generator_version": _id(),
+            "expires_us": {"type": "integer", "minimum": 0},
+        },
+        "required": [
+            "base_revision",
+            "patch",
+            "evidence_refs",
+            "confidence",
+            "generator",
+            "generator_version",
+        ],
+    }
+
+
+def persona_review_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-review-request.schema.json",
+        "title": "PersonaReviewRequest",
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"reason": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "required": ["reason"],
+    }
+
+
+def persona_rollback_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://iris.memory/schemas/persona-rollback-request.schema.json",
+        "title": "PersonaRollbackRequest",
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "target_revision": {"type": "integer", "minimum": 1},
+            "expected_revision": {"type": "integer", "minimum": 1},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 256},
+        },
+        "required": ["target_revision", "expected_revision", "reason"],
+    }
+
+
+_PHASE9_COMPONENTS: dict[str, dict[str, Any]] = {}
+
+
+def phase9_components() -> dict[str, dict[str, Any]]:
+    global _PHASE9_COMPONENTS
+    if not _PHASE9_COMPONENTS:
+        _PHASE9_COMPONENTS = {
+            "PersonaRevisionView": persona_revision_view_schema(),
+            "PersonaPolicyView": persona_policy_view_schema(),
+            "PersonaStateView": persona_state_view_schema(),
+            "PersonaCurrentResponse": persona_current_response_schema(),
+            "PersonaHistoryResponse": persona_history_response_schema(),
+            "PersonaRevisionCreateRequest": persona_revision_create_request_schema(),
+            "PersonaStateUpdateRequest": persona_state_update_request_schema(),
+            "PersonaProposalView": persona_proposal_view_schema(),
+            "PersonaProposalCreateRequest": persona_proposal_create_request_schema(),
+            "PersonaReviewRequest": persona_review_request_schema(),
+            "PersonaRollbackRequest": persona_rollback_request_schema(),
+        }
+    return _PHASE9_COMPONENTS
+
+
+def phase9_json_schema_files() -> dict[Path, dict[str, Any]]:
+    return {
+        JSON_SCHEMA_DIRECTORY / f"{name}.schema.json": schema
+        for name, schema in {
+            "persona-revision-view": persona_revision_view_schema(),
+            "persona-policy-view": persona_policy_view_schema(),
+            "persona-state-view": persona_state_view_schema(),
+            "persona-current-response": persona_current_response_schema(),
+            "persona-history-response": persona_history_response_schema(),
+            "persona-revision-create-request": persona_revision_create_request_schema(),
+            "persona-state-update-request": persona_state_update_request_schema(),
+            "persona-proposal-view": persona_proposal_view_schema(),
+            "persona-proposal-create-request": persona_proposal_create_request_schema(),
+            "persona-review-request": persona_review_request_schema(),
+            "persona-rollback-request": persona_rollback_request_schema(),
+        }.items()
+    }
+
+
 def _idempotency_header() -> dict[str, Any]:
     return {
         "description": "Transport-retry safety for this write",
@@ -2654,6 +2996,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
         **phase5_components(),
         **phase6_components(),
         **phase8_components(),
+        **phase9_components(),
     }
     batch_request_body = {
         "content": {
@@ -4395,6 +4738,209 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
                 },
             },
         },
+        "/v1/personas/{agent_id}/current": {
+            "get": {
+                "operationId": "getCurrentPersona",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": _id(),
+                    }
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/PersonaCurrentResponse"),
+                    "403": error_response,
+                    "404": error_response,
+                    "503": error_response,
+                },
+            }
+        },
+        "/v1/personas/{agent_id}/history": {
+            "get": {
+                "operationId": "getPersonaHistory",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": _id(),
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {"type": "integer", "minimum": 1, "maximum": 500},
+                    },
+                ],
+                "responses": {
+                    "200": _json_response("#/components/schemas/PersonaHistoryResponse"),
+                    "403": error_response,
+                    "404": error_response,
+                },
+            }
+        },
+        "/v1/personas/{agent_id}/revisions": {
+            "post": {
+                "operationId": "publishPersonaRevision",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": _id(),
+                    },
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/PersonaRevisionCreateRequest"}
+                        }
+                    },
+                },
+                "responses": {
+                    "201": _json_response("#/components/schemas/PersonaRevisionView"),
+                    "400": error_response,
+                    "403": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/personas/{agent_id}/state": {
+            "patch": {
+                "operationId": "updatePersonaState",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": _id(),
+                    },
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/PersonaStateUpdateRequest"}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/PersonaStateView"),
+                    "400": error_response,
+                    "403": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/personas/{agent_id}/evolution-proposals": {
+            "post": {
+                "operationId": "createPersonaEvolutionProposal",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": _id(),
+                    },
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/PersonaProposalCreateRequest"}
+                        }
+                    },
+                },
+                "responses": {
+                    "201": _json_response("#/components/schemas/PersonaProposalView"),
+                    "400": error_response,
+                    "403": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/personas/{agent_id}/evolution-proposals/{proposal_id}:approve": {
+            "post": {
+                "operationId": "approvePersonaEvolutionProposal",
+                "parameters": [
+                    {"in": "path", "name": "agent_id", "required": True, "schema": _id()},
+                    {"in": "path", "name": "proposal_id", "required": True, "schema": _id()},
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/PersonaReviewRequest"}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/PersonaProposalView"),
+                    "400": error_response,
+                    "403": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/personas/{agent_id}/evolution-proposals/{proposal_id}:reject": {
+            "post": {
+                "operationId": "rejectPersonaEvolutionProposal",
+                "parameters": [
+                    {"in": "path", "name": "agent_id", "required": True, "schema": _id()},
+                    {"in": "path", "name": "proposal_id", "required": True, "schema": _id()},
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/PersonaReviewRequest"}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/PersonaProposalView"),
+                    "400": error_response,
+                    "403": error_response,
+                    "409": error_response,
+                },
+            }
+        },
+        "/v1/personas/{agent_id}:rollback": {
+            "post": {
+                "operationId": "rollbackPersona",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "agent_id",
+                        "required": True,
+                        "schema": _id(),
+                    },
+                    _idempotency_header(),
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/PersonaRollbackRequest"}
+                        }
+                    },
+                },
+                "responses": {
+                    "201": _json_response("#/components/schemas/PersonaRevisionView"),
+                    "400": error_response,
+                    "403": error_response,
+                    "404": error_response,
+                    "409": error_response,
+                },
+            }
+        },
         "/v1/retention-policies": {
             "get": {
                 "operationId": "listRetentionPolicies",
@@ -4529,6 +5075,7 @@ def generated_documents(source: Mapping[str, Any]) -> dict[Path, dict[str, Any]]
     documents.update(phase5_json_schema_files())
     documents.update(phase6_json_schema_files())
     documents.update(phase8_json_schema_files())
+    documents.update(phase9_json_schema_files())
     return documents
 
 

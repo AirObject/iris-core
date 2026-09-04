@@ -328,3 +328,80 @@ test("search posts query and scope on the wire", async () => {
   assert.equal(call(stub.calls, 0).body?.space_id, "space-1");
   assert.equal(call(stub.calls, 0).body?.limit, 25);
 });
+
+test("persona mutations carry idempotency keys and exact resource paths", async () => {
+  const current = (await readFixture("persona-current-response.json")) as {
+    revision: Record<string, unknown>;
+  };
+  const proposal = await readFixture("persona-proposal-view.json");
+  const state = {
+    persona_state_id: "state-1",
+    revision: 1,
+    state: { mood: 0.4 },
+    baseline: { mood: 0.0 },
+    source_refs: [],
+    started_us: 1_700_000_000_000_000,
+    expires_us: 1_700_003_600_000_000,
+    decay_policy: "expire_to_baseline",
+    schema_version: 1,
+  };
+  const stub = stubFetch([
+    current.revision,
+    state,
+    proposal,
+    proposal,
+    current.revision,
+  ]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.publishPersonaRevision(
+      "agent/one",
+      { expected_revision: 1, core: {}, traits: {}, narrative: {}, reason: "publish" },
+      { idempotencyKey: "persona-1" },
+    );
+    await client.updatePersonaState(
+      "agent/one",
+      { expected_revision: 0, state: { mood: 0.4 }, baseline: {}, ttl_us: 1000 },
+      { idempotencyKey: "persona-2" },
+    );
+    await client.createPersonaProposal(
+      "agent/one",
+      {
+        base_revision: 1,
+        patch: { traits: { style: "warm" } },
+        evidence_refs: [{ resource_type: "persona_state", resource_id: "state-1" }],
+        confidence: 0.9,
+        generator: "test",
+        generator_version: "1",
+      },
+      { idempotencyKey: "persona-3" },
+    );
+    await client.reviewPersonaProposal(
+      "agent/one",
+      "proposal/one",
+      "approve",
+      "reviewed",
+      { idempotencyKey: "persona-4" },
+    );
+    await client.rollbackPersona(
+      "agent/one",
+      { target_revision: 1, expected_revision: 2, reason: "rollback" },
+      { idempotencyKey: "persona-5" },
+    );
+  } finally {
+    stub.restore();
+  }
+  assert.equal(stub.calls.length, 5);
+  assert.match(call(stub.calls, 0).url, /personas\/agent%2Fone\/revisions$/);
+  assert.match(call(stub.calls, 1).url, /personas\/agent%2Fone\/state$/);
+  assert.match(call(stub.calls, 2).url, /personas\/agent%2Fone\/evolution-proposals$/);
+  assert.match(
+    call(stub.calls, 3).url,
+    /personas\/agent%2Fone\/evolution-proposals\/proposal%2Fone:approve$/,
+  );
+  assert.match(call(stub.calls, 4).url, /personas\/agent%2Fone:rollback$/);
+  for (const [index, expected] of ["persona-1", "persona-2", "persona-3", "persona-4", "persona-5"].entries()) {
+    assert.equal(call(stub.calls, index).headers["Idempotency-Key"], expected);
+  }
+  assert.equal(call(stub.calls, 3).body?.reason, "reviewed");
+});

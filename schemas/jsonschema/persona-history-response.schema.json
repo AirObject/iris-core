@@ -1,0 +1,141 @@
+{
+  "$id": "https://iris.memory/schemas/persona-history-response.schema.json",
+  "additionalProperties": true,
+  "properties": {
+    "items": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "change_reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "core": {
+            "type": "object"
+          },
+          "created_by": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "created_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "effective_from_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "effective_until_us": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "narrative": {
+            "type": "object"
+          },
+          "persona_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "policy_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "previous_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "enum": [
+                    "claim",
+                    "episode",
+                    "relation",
+                    "task",
+                    "persona_state"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "published",
+              "superseded",
+              "revoked"
+            ]
+          },
+          "tenant_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "traits": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "persona_id",
+          "tenant_id",
+          "agent_id",
+          "revision",
+          "core",
+          "traits",
+          "narrative",
+          "policy_id",
+          "change_reason",
+          "source_refs",
+          "content_hash",
+          "effective_from_us",
+          "created_by",
+          "created_us",
+          "status",
+          "schema_version"
+        ],
+        "type": "object"
+      },
+      "maxItems": 500,
+      "type": "array"
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "title": "PersonaHistoryResponse",
+  "type": "object"
+}

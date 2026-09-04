@@ -1,0 +1,79 @@
+{
+  "$id": "https://iris.memory/schemas/persona-state-view.schema.json",
+  "properties": {
+    "baseline": {
+      "type": "object"
+    },
+    "decay_policy": {
+      "const": "expire_to_baseline"
+    },
+    "expires_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "persona_state_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "source_refs": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource_type": {
+            "enum": [
+              "claim",
+              "episode",
+              "relation",
+              "task",
+              "persona_state"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "started_us": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "state": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "persona_state_id",
+    "revision",
+    "state",
+    "baseline",
+    "source_refs",
+    "started_us",
+    "expires_us",
+    "decay_policy",
+    "schema_version"
+  ],
+  "title": "PersonaStateView",
+  "type": [
+    "object",
+    "null"
+  ]
+}

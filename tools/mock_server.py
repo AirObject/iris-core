@@ -1,9 +1,15 @@
 """Small dependency-free server for SDK consumer contract tests.
 
-Implements the deterministic Phase 2 contract surface: health (with the
-readiness report shape), metrics, capability negotiation, observation batch,
-source cursors and the active-surface endpoints. Responses are static
-fixtures — the mock validates envelope shapes, not business semantics.
+Implements the deterministic Phase 2-9 contract surface (currently Schema 10):
+health with the readiness report shape, metrics, capability negotiation,
+observation batches and cursors, active surfaces, recent context, state,
+focus, notes, tasks, cognitive events, explicit memory, recall/search/usage
+and the entity profile read surface. Responses are static fixtures — the mock
+validates envelope shapes, not business semantics.
+
+This is a test double, NOT the service: Core has no HTTP transport layer
+until Phase 10 (ADR-0017 §3), at which point the contract tests move to the
+real ASGI application and this mock is kept only for SDK offline cases.
 """
 
 from __future__ import annotations
@@ -18,7 +24,7 @@ from urllib.parse import parse_qs, urlparse
 
 CAPABILITIES: dict[str, Any] = {
     "api_version": "v1",
-    "schema_version": 9,
+    "schema_version": 10,
     "capabilities": [
         "active-surface.v1",
         "artifacts.v1",
@@ -36,6 +42,9 @@ CAPABILITIES: dict[str, Any] = {
         "notes.v1",
         "observe.batch.v1",
         "outbox.jobs.v1",
+        "persona.evolution.v1",
+        "persona.state.v1",
+        "persona.v1",
         "profile.v1",
         "recall.graph.v1",
         "recall.usage.v1",
@@ -201,6 +210,78 @@ _STATE_HISTORY: dict[str, Any] = {
             "created_us": 1699999001000000,
         },
     ],
+}
+
+_PERSONA_REVISION: dict[str, Any] = {
+    "persona_id": "persona-1",
+    "tenant_id": "tenant-1",
+    "agent_id": "agent-1",
+    "revision": 1,
+    "core": {"language": "und", "name_placeholder": True},
+    "traits": {},
+    "narrative": {},
+    "policy_id": "policy-1",
+    "previous_revision_id": None,
+    "change_reason": "bootstrap",
+    "source_refs": [],
+    "content_hash": "1" * 64,
+    "effective_from_us": 1_700_000_000_000_000,
+    "effective_until_us": None,
+    "created_by": "provisioning",
+    "created_us": 1_700_000_000_000_000,
+    "status": "published",
+    "schema_version": 1,
+}
+
+_PERSONA_POLICY: dict[str, Any] = {
+    "policy_id": "policy-1",
+    "revision": 1,
+    "mode": "locked",
+    "allowed_fields": [],
+    "sensitive_fields": [],
+    "content_hash": "0" * 64,
+}
+
+_PERSONA_STATE: dict[str, Any] = {
+    "persona_state_id": "state-1",
+    "revision": 1,
+    "state": {"mood": 0.4, "energy": 0.8},
+    "baseline": {"mood": 0.0, "energy": 0.5},
+    "source_refs": [],
+    "started_us": 1_700_000_000_000_000,
+    "expires_us": 1_700_003_600_000_000,
+    "decay_policy": "expire_to_baseline",
+    "schema_version": 1,
+}
+
+_PERSONA_PROPOSAL: dict[str, Any] = {
+    "proposal_id": "proposal-1",
+    "agent_id": "agent-1",
+    "base_revision": 1,
+    "target_fields": ["traits.style"],
+    "patch": {"traits": {"style": "warm"}},
+    "field_deltas": [
+        {
+            "field": "traits.style",
+            "old_value": None,
+            "new_value": "warm",
+            "magnitude": 1.0,
+            "evidence_refs": ["persona_state:state-1"],
+            "reason_code": "evidence_supported_change",
+        }
+    ],
+    "evidence_refs": [{"resource_type": "persona_state", "resource_id": "state-1", "revision": 1}],
+    "confidence": 0.92,
+    "generator": "reflection",
+    "generator_version": "1",
+    "policy_evaluation": {"decision": "manual_review"},
+    "status": "proposed",
+    "reviewed_by": None,
+    "review_reason": None,
+    "created_us": 1_700_000_000_000_000,
+    "expires_us": 1_702_592_000_000_000,
+    "published_revision_id": None,
+    "schema_version": 1,
 }
 
 _FOCUS_VIEW: dict[str, Any] = {
@@ -620,6 +701,16 @@ _EPISODE_GET_PATTERN = re.compile(r"^/v1/episodes/(?P<episode_id>[^:/]+)$")
 _RELATION_GET_PATTERN = re.compile(r"^/v1/relations/(?P<relation_id>[^:/]+)$")
 _ARTIFACT_GET_PATTERN = re.compile(r"^/v1/artifacts/(?P<artifact_id>[^:/]+)$")
 _LEGAL_HOLD_RELEASE_PATTERN = re.compile(r"^/v1/legal-holds/(?P<legal_hold_id>[^:]+):release$")
+_PERSONA_CURRENT_PATTERN = re.compile(r"^/v1/personas/(?P<agent_id>[^/]+)/current$")
+_PERSONA_HISTORY_PATTERN = re.compile(r"^/v1/personas/(?P<agent_id>[^/]+)/history$")
+_PERSONA_REVISION_PATTERN = re.compile(r"^/v1/personas/(?P<agent_id>[^/]+)/revisions$")
+_PERSONA_STATE_PATTERN = re.compile(r"^/v1/personas/(?P<agent_id>[^/]+)/state$")
+_PERSONA_PROPOSAL_PATTERN = re.compile(r"^/v1/personas/(?P<agent_id>[^/]+)/evolution-proposals$")
+_PERSONA_REVIEW_PATTERN = re.compile(
+    r"^/v1/personas/(?P<agent_id>[^/]+)/evolution-proposals/"
+    r"(?P<proposal_id>[^:]+):(?P<action>approve|reject)$"
+)
+_PERSONA_ROLLBACK_PATTERN = re.compile(r"^/v1/personas/(?P<agent_id>[^:]+):rollback$")
 
 
 class ContractRequestHandler(BaseHTTPRequestHandler):
@@ -786,6 +877,23 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
                 self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "unknown status."))
                 return
             self._send(HTTPStatus.OK, {"jobs": [dict(_ADMIN_JOB)]})
+            return
+        if _PERSONA_CURRENT_PATTERN.match(parsed.path) is not None:
+            self._send(
+                HTTPStatus.OK,
+                {
+                    "revision": dict(_PERSONA_REVISION),
+                    "policy": dict(_PERSONA_POLICY),
+                    "state": None,
+                },
+            )
+            return
+        if _PERSONA_HISTORY_PATTERN.match(parsed.path) is not None:
+            limit = parse_qs(parsed.query).get("limit", ["100"])[0]
+            if not limit.isdigit() or not 1 <= int(limit) <= 500:
+                self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "limit out of range."))
+                return
+            self._send(HTTPStatus.OK, {"items": [dict(_PERSONA_REVISION)]})
             return
         # -- Phase 4 reads --------------------------------------------------
         if parsed.path == "/v1/notes":
@@ -1049,6 +1157,19 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
         if legal_hold_release is not None:
             self._handle_legal_hold_release()
             return
+        if _PERSONA_REVISION_PATTERN.match(parsed.path) is not None:
+            self._handle_persona_write("revision")
+            return
+        if _PERSONA_PROPOSAL_PATTERN.match(parsed.path) is not None:
+            self._handle_persona_write("proposal")
+            return
+        persona_review = _PERSONA_REVIEW_PATTERN.match(parsed.path)
+        if persona_review is not None:
+            self._handle_persona_write(persona_review.group("action"))
+            return
+        if _PERSONA_ROLLBACK_PATTERN.match(parsed.path) is not None:
+            self._handle_persona_write("rollback")
+            return
         self._send(HTTPStatus.NOT_FOUND, _error("invalid_request", "Unknown path."))
 
     def _handle_negotiation(self) -> None:
@@ -1174,6 +1295,9 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
 
     def do_PATCH(self) -> None:
         parsed = urlparse(self.path)
+        if _PERSONA_STATE_PATTERN.match(parsed.path) is not None:
+            self._handle_persona_write("state")
+            return
         if _NOTE_PATCH_PATTERN.match(parsed.path) is not None:
             self._handle_note_update()
             return
@@ -1181,6 +1305,37 @@ class ContractRequestHandler(BaseHTTPRequestHandler):
             self._handle_task_update()
             return
         self._send(HTTPStatus.NOT_FOUND, _error("invalid_request", "Unknown path."))
+
+    def _handle_persona_write(self, action: str) -> None:
+        value = self._read_json()
+        if not isinstance(value, dict):
+            self._send(HTTPStatus.BAD_REQUEST, _error("invalid_request", "Invalid JSON."))
+            return
+        if not self._require_idempotency():
+            return
+        if action in {"approve", "reject"}:
+            if not isinstance(value.get("reason"), str) or not value.get("reason"):
+                self._send(HTTPStatus.BAD_REQUEST, _error("reason_required", "reason required."))
+                return
+            result = dict(_PERSONA_PROPOSAL)
+            result["status"] = "published" if action == "approve" else "rejected"
+            result["reviewed_by"] = "mock-admin"
+            result["review_reason"] = value["reason"]
+            result["published_revision_id"] = "persona-2" if action == "approve" else None
+            self._send(HTTPStatus.OK, result)
+            return
+        if action == "proposal":
+            self._send(HTTPStatus.OK, _PERSONA_PROPOSAL)
+            return
+        if action == "state":
+            self._send(HTTPStatus.OK, _PERSONA_STATE)
+            return
+        revision = dict(_PERSONA_REVISION)
+        revision["revision"] = 2 if action == "revision" else 5
+        revision["persona_id"] = "persona-2" if action == "revision" else "persona-5"
+        revision["previous_revision_id"] = _PERSONA_REVISION["persona_id"]
+        revision["change_reason"] = value.get("reason", "admin_publication")
+        self._send(HTTPStatus.OK, revision)
 
     # -- Phase 4 handlers ------------------------------------------------------
 

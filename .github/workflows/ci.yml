@@ -10,9 +10,13 @@ permissions:
   contents: read
 
 jobs:
-  phase-0-gates:
+  # Full quality gate: format, lint, import + docs boundaries, mypy, tsc,
+  # contract drift/compatibility, pytest with coverage, TypeScript SDK tests.
+  # The timeout tracks the suite: Phase 8 measured ~436 s for pytest alone,
+  # so 15 minutes no longer left room for bootstrap, mypy and tsc.
+  quality-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -30,5 +34,5 @@ jobs:
           version: "0.11.29"
       - name: Install locked dependencies
         run: make bootstrap
-      - name: Run Phase 0 gates
+      - name: Run quality gates
         run: make ci

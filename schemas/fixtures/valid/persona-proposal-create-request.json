@@ -1,0 +1,10 @@
+{
+  "base_revision": 1,
+  "confidence": 0.92,
+  "evidence_refs": [
+    {"resource_id": "state-1", "resource_type": "persona_state", "revision": 1}
+  ],
+  "generator": "reflection",
+  "generator_version": "1",
+  "patch": {"traits": {"style": "warm"}}
+}
