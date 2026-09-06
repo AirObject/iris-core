@@ -1,0 +1,27 @@
+{
+  "samples_per_class": 20,
+  "responses_identical": true,
+  "cohorts": {
+    "wrong": {
+      "min_ms": 102.042,
+      "p50_ms": 103.967,
+      "p95_ms": 105.037
+    },
+    "expired": {
+      "min_ms": 102.868,
+      "p50_ms": 103.913,
+      "p95_ms": 105.392
+    },
+    "revoked": {
+      "min_ms": 102.575,
+      "p50_ms": 103.885,
+      "p95_ms": 105.145
+    },
+    "unknown": {
+      "min_ms": 102.577,
+      "p50_ms": 104.151,
+      "p95_ms": 105.062
+    }
+  },
+  "median_spread_ms": 0.266
+}

@@ -1,4 +1,8 @@
 # Phase 5 验证报告：显式长期记忆与 Episode
+2026-09-06 未闭合复审项的后续修复与验证见[联合修复报告](phase-05-06-07-08-review-fixes.md)。
+
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
 
 > 状态：Completed（第一轮实测 + 第二至第五轮对抗性复审修复后重测）  
 > 日期：2026-09-01（实现与第一轮实测）；2026-09-02（第二至第五轮评审修复与全量重跑）  
@@ -153,10 +157,9 @@ Migration checksum（SHA-256，`MigrationRunner` 记录于 `schema_migrations`�
 3. **external_ref 内容不校验**：结构上永不抓取；`content_hash` 为 locator 摘要，不是内容声明。
 4. **媒体类型默认白名单**较窄；放宽需 ADR 变更。
 5. **History 修剪边界**：retention decay 路径修剪 Revision 并推进 `history_available_from_us`（keep=10）；更早 `as_of` 返回 `history_unavailable`（契约语义，不伪造）。
-6. **Recall/FTS/Vector/Profile/Graph 未实现**（Phase 6+）：本阶段只交付 `memory.invalidated` 失效事件与结构化 Search。
+6. **历史缺口已关闭**：Recall/FTS、Vector、Profile/Graph 分别由 Phase 6、7、8 交付。
 7. **旧备份恢复必须配合 deletion ledger 重放**：未提供 ledger 的恢复无法恢复备份后删除（§21.2 生产要求同步保存删除日志）。
-8. **无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的路径至今没有真实服务端，归 Phase 10 交付（ADR-0017 §3）。该项在传输层交付前不得从任何阶段的已知限制中移除。
-
+8. **历史缺口已关闭**：真实 HTTP 传输由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；本报告的原始测试仍是当时应用层/mock 范围。
 ## 9. `make ci` 摘要
 
 （任何失败都会使本节重写。）
@@ -185,3 +188,13 @@ make ci
 ```
 
 mock-server 说明：契约验证使用测试进程管理的本机回环 HTTP server（`tests/contract/test_mock_server.py`，46 例）；受限沙箱禁止 `socket.bind`，最终 `make ci` 在允许 `127.0.0.1` 临时端口的本机执行环境完成。该 server 不访问外网。
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+- Forget 的 Canonical 生效在声明硬件、Selector 规模和并发下 p95 ≤ 100 ms；此指标不等待投影物理清理，但提交后所有当前读取必须立即拒绝目标。
+- Claim/Evidence、双时态、Scope/Privacy、Retention/Legal Hold 和 Tombstone 不可复活性质每项至少运行 200 个固定种子案例。
+- 并发 Recall/Correct/Forget 每类竞争场景至少重复 50 次；Forget 成功后的当前读取命中数必须为 0，历史读取仅按授权和保留策略返回。
+- 对 Cache 占位、旧 Outbox、旧索引 Candidate、Artifact、导入和 Backup Restore 六条复活路径分别执行至少 20 次故障/重放测试，目标内容返回数必须为 0。
+- Backup → 隔离 Restore → Tombstone/Pointer/Foreign Key/Artifact/Smoke Recall 校验连续通过 3 次；报告记录数据规模、RPO、RTO 与待重建投影。

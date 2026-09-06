@@ -1,15 +1,31 @@
 # Iris Memory Python SDK
 
-Dependency-free async client for Iris Memory Core: capability negotiation,
-stable error models, and forward-compatible fixture validation. Client
-methods track the release train and currently cover Phase 2–10: observation
-batches and cursors, surface leases, admin jobs/schedules, recent context,
-state records, focus items, notes, tasks and cognitive events, explicit
-memory (remember / correct / forget, episodes, relations, artifacts,
-retention, legal holds), recall / search / usage, the entity profile read
-surface, and the Phase 10 entity / identity / binding / space-group and
-admin surfaces. Run `pytest` (root) to validate the shared fixtures.
+Dependency-free asynchronous client for the Core public `/v1` API. Version
+`0.11.0` covers observations and cursors, leases, jobs, explicit memory,
+recall/search/usage, profiles, personas, identity and administrative resources.
+The separate Phase 13 console `/console/v1` API is not part of this SDK.
 
-The service now has a real HTTP transport layer (Phase 10, ADR-0019): the
-repository's contract tests run against the ASGI application, and
-`tools/mock_server.py` is kept only as this SDK's offline test double.
+## Transport limits
+
+The client runs `urllib.request.urlopen` through `asyncio.to_thread`, with a
+client-wide timeout (5 seconds by default). It has no per-call deadline,
+transport cancellation or SSE client. Cancelling the awaiting coroutine does
+not stop its in-flight worker request. `current_persona()` and
+`source_cursor()` return dictionaries rather than dedicated response types.
+These gaps are tracked in [Phase 12](../../docs/development/phase-12-astrbot-bridge.md);
+the SDK is not yet evidence of a working AstrBot integration.
+
+## Validation
+
+From the repository root:
+
+```sh
+UV_CACHE_DIR=.uv-cache uv run pytest sdk/python/tests -q --no-cov
+```
+
+This checks shared fixtures against the checkout. It does not verify registry
+installation or a real host process. Core contract tests exercise the ASGI
+application; `tools/mock_server.py` is an offline test double. Supported
+release combinations and SDK distribution must be verified separately before
+host release; the current Core package/Schema version is recorded in
+[`version-manifest.json`](../../schemas/version-manifest.json).

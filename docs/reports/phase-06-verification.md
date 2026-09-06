@@ -1,4 +1,8 @@
 # Phase 6 验证报告：FTS Recall
+2026-09-06 未闭合复审项的后续修复与验证见[联合修复报告](phase-05-06-07-08-review-fixes.md)。
+
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
 
 > 状态：Completed（实现 + 量化门禁实测 + 对抗性复审三轮修复后全量重跑）
 > 日期：2026-09-02
@@ -121,11 +125,10 @@ CI 首轮全绿后的发布阻断级复审确认 9 项缺陷（7 项 P1、2 项 
 3. **FTS 落后阈值**默认 10,000 个未结算 `fts.apply` 任务（可配，按请求 Agent 口径）；落后期间 FTS 路由 `fts_generation_stale` 降级而非阻塞。
 4. **FTS 不支持 as_of 历史检索**（结构化 claims 路由承担 as_of；FTS 路由稳定降级 `fts_as_of_unsupported`）。
 5. **Recall Cache 未实现**（ADR-0014 §6 显式非目标；`cache_until` 诚实返回 null，键语义已预冻结）。
-6. **Usage 不回写 accessibility/activation**：记录-only；激励路径归 Phase 10（ADR-0014 §7）。
+6. **历史缺口已关闭**：Usage 激励由 Phase 10 启用，仅影响 Accessibility/Activation，不影响 Confidence（ADR-0019 §9）。
 7. **`/v1/search` 请求面**暂无 `requested_privacy_labels`/`as_of` 参数（recall 面具备）；Phase 7+ 评估。
 8. **可索引资源集 = {claim, episode, note}**；Observation 由 recent 路由承担、Artifact 结构性不索引（ADR-0014 §1）。
-9. **无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的路径至今没有真实服务端，归 Phase 10 交付（ADR-0017 §3）。该项在传输层交付前不得从任何阶段的已知限制中移除。
-
+9. **历史缺口已关闭**：真实 HTTP 传输由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；本报告的原始测试仍是当时应用层/mock 范围。
 ## 9. `make ci` 摘要
 
 （任何失败都会使本节重写。）
@@ -154,3 +157,13 @@ make ci
 ```
 
 mock-server 说明：契约验证使用测试进程管理的本机回环 HTTP server（`tests/contract/test_mock_server.py`，52 例）；最终 `make ci` 在允许 `127.0.0.1` 临时端口的本地环境完成，不访问外网。
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+- 结构化 Recall p95 ≤ 50 ms、FTS Recall p95 ≤ 100 ms；报告必须声明硬件、数据规模、文本长度、并发、Candidate/Token 上限及冷/热索引状态。
+- 相同 Request、Canonical Snapshot、排序器和 Token Estimator 版本重放 100 次，Candidate 顺序、分数、冲突标记和裁剪结果完全一致。
+- 每个硬过滤维度（Tenant/Agent/SpaceGroup/Space/Session、Privacy、Status、Time、Tombstone、Revision、`as_of`）至少覆盖 200 个性质案例。
+- FTS 落后、损坏、Route 超时、Minimum Watermark 不可达、允许/禁止 Partial 各场景至少重复 20 次；响应 Envelope 与稳定原因码一致。
+- Usage 的 `model_visible ⊆ host_selected ⊆ returned` 性质至少运行 200 个生成案例；跨 Tenant/Request 伪造成功数必须为 0，重复 Report 100 次只产生一次逻辑累计。

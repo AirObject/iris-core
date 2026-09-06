@@ -1,5 +1,8 @@
 # Phase 0 Verification Report
 
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
+
 > Result: Passed  
 > Date: 2026-08-29  
 > Implementation commit: `a3a3e1d5dba70dbb3b2a385fd443a2ca8cf6c557`
@@ -62,3 +65,12 @@ ADR-0001 through ADR-0008 are Accepted. The ADR index records no open conflict b
 - Phase 0 intentionally exposes only health, capability, negotiation, stable error, SDK, and migration infrastructure; no business-domain table or endpoint is implemented.
 - The checked-in GitHub Actions workflow has not run on the remote service because the local commits have not been pushed. The same `make bootstrap && make ci` workflow passed in a dependency-clean local copy.
 - Container, production topology, and host adapters remain in their planned phases.
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+- Python 3.12+ 与 Node.js 22+ 的干净环境均能复现；CI 固定 Python 3.12。
+- 测试覆盖率不低于 80%，Format、Lint、Type Check 和全部测试零错误。
+- 契约连续生成两次字节一致；兼容基线、Python Fixture 和 TypeScript Fixture 结果一致。
+- Migration 至少覆盖空库升级、重复运行、未知文件名和已应用文件篡改四类场景。

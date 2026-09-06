@@ -1,73 +1,58 @@
 # Iris Memory Core
 
-Iris Memory Core is a host-independent cognitive memory service. This repository contains the accepted architecture baseline and the completed Phase 0–10 vertical slices: the SQLite canonical store, identity and scope, the observation journal with a transactional outbox and persistent scheduler, recent context / state / focus, notes / tasks / cognitive events, explicit long-term memory, the recall protocol with FTS, vector, graph and profile routes, the versioned Persona system, the evidence-driven background consolidation and reflection pipeline, and the HTTP transport layer.
-
-**The HTTP transport layer landed in Phase 10** (ADR-0017 §3, ADR-0019). All 85 published OpenAPI paths have a real ASGI implementation behind `iris-memory-core serve`, and background jobs run under `iris-memory-core worker`. `tools/mock_server.py` is now only an offline test double for the SDKs — contract tests run against the real transport.
+Iris Memory Core is a host-independent cognitive memory service built around a SQLite canonical store, versioned memory and Persona, explainable recall, and persistent background work. The HTTP service and worker are implemented. Bellis integration and the optional Web console are in progress; the AstrBot bridge is still planned. See the [roadmap](docs/development/README.md) for verified phase status and the [Phase 14 plan](docs/development/phase-14-hardening-release.md) for the remaining path to a stable release.
 
 ## Requirements
 
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/)
-- Node.js 22+ and npm
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/) in the range declared by `pyproject.toml`.
+- Node.js 22.12+ and npm for the TypeScript SDK and Console; CI uses Node.js 24.
 
-`faiss-cpu` and `numpy` are runtime dependencies (imported lazily — a runtime without them degrades the Vector capability instead of failing startup). `fastapi` and `uvicorn` back the transport layer. No external embedding or cognitive provider and no host adapter is required to run the test suite — the shipped cognitive provider is a deterministic in-process implementation.
+FAISS and NumPy are runtime dependencies with lazy imports and explicit Vector degradation. The default runtime wires deterministic providers; passing local tests does not establish production retrieval or cognitive quality. Production provider configuration and deployment validation remain release work.
 
-## Bootstrap
+## Development setup
 
 ```bash
 make bootstrap
 make ci
 ```
 
-`make bootstrap` creates the Python environment from `uv.lock` and installs the locked TypeScript toolchain. `make ci` performs format, lint, static type, contract drift/compatibility, Python test/coverage, and TypeScript SDK checks.
-
-Useful focused commands:
+`make bootstrap` installs locked Python and TypeScript SDK dependencies. `make ci` checks formatting, lint, imports, documentation, types, contract drift/compatibility, Python tests/coverage, and the TypeScript SDK. Console checks are currently separate:
 
 ```bash
-make format
-make lint
-make typecheck
-make contracts
-make contracts-check
-make test
-make sdk-test
+npm ci --prefix web/console
+npm run check --prefix web/console
 ```
 
-Run a disposable migration:
+These are verification commands, not a claim that the current workspace passes every gate. Current Console failures and the distinction between real and simulated browser coverage are recorded in the [Console report](docs/reports/phase-13-verification.md).
+
+Useful focused commands: `make format`, `make lint`, `make typecheck`, `make contracts`, `make contracts-check`, `make test`, and `make sdk-test`.
+
+## Run from the checkout
 
 ```bash
-uv run iris-memory-core migrate /tmp/iris-phase0.sqlite3
-uv run iris-memory-core schema-version /tmp/iris-phase0.sqlite3
+uv run iris-memory-core migrate /tmp/iris-dev/core.sqlite3
+uv run iris-memory-core schema-version /tmp/iris-dev/core.sqlite3
+uv run iris-memory-core serve --database /tmp/iris-dev/core.sqlite3 --allow-local-sqlite
 ```
 
-Run the service and the background worker. `--allow-local-sqlite` accepts the
-machine's own SQLite build instead of the pinned deployment allowlist — use it
-for development only:
+In another terminal:
 
 ```bash
-uv run iris-memory-core serve --database /tmp/iris/core.sqlite3 --allow-local-sqlite
+uv run iris-memory-core worker --database /tmp/iris-dev/core.sqlite3 --allow-local-sqlite
 ```
 
-```bash
-uv run iris-memory-core worker --database /tmp/iris/core.sqlite3 --allow-local-sqlite
-```
+`--allow-local-sqlite` accepts the local SQLite build for development. Production must satisfy the runtime allowlist. API access requires provisioned credentials; startup alone does not create a tenant or grant access. The Console is disabled by default; follow its [setup and credential instructions](web/console/README.md) to enable it. An installed package using the Console requires the `console` extra.
 
-Run the SDK offline test double:
+The SDK offline test double is available with `uv run python -m tools.mock_server --port 8765`; it does not provide real persistence or replace integration tests.
 
-```bash
-uv run python -m tools.mock_server --port 8765
-```
+## Documentation and contracts
 
-## Architecture and development
+- [Documentation index](docs/README.md): architecture, decisions, phase plans, evidence and integration guides.
+- [Contribution guide](CONTRIBUTING.md): change workflow and documentation rules.
+- [Python SDK](sdk/python/README.md) and [TypeScript SDK](sdk/typescript/README.md).
+- [Application integrations](application/README.md) and [Web Console](web/console/README.md).
 
-- [Architecture & Implementation Baseline](docs/IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)
-- [Documentation index](docs/README.md)
-- [Development roadmap](docs/development/README.md) — phase status, dependencies, milestones
-- [Latest delivery: Phase 10](docs/development/phase-10-consolidation-reflection.md) · [verification report](docs/reports/phase-10-verification.md)
-- [Accepted ADRs](docs/adr/README.md)
-- [Contribution guide](CONTRIBUTING.md)
-
-Generated OpenAPI and JSON Schema files are committed artifacts. Change `contracts/source/contracts.json`, run `make contracts`, and commit the source and generated changes together. Never edit an applied migration; add a new migration instead.
+Edit `contracts/source/contracts.json` for `/v1` or `contracts/source/console.json` for `/console/v1`, run `make contracts`, and include generated artifacts and fixtures in the same change. Never edit an applied migration; add a new one.
 
 ## License
 

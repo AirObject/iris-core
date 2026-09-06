@@ -1,4 +1,8 @@
 # Phase 7 验证报告：Vector Recall
+2026-09-06 未闭合复审项的后续修复与验证见[联合修复报告](phase-05-06-07-08-review-fixes.md)。
+
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
 
 > 状态：Completed（实现 + 量化门禁实测 + 两轮对抗性复审修复后全量重跑）
 > 日期：2026-09-03
@@ -170,11 +174,10 @@ Manager 对已 seal Handle 的分发。独立对抗性复审（15 类攻击面�
 5. **vector_projection_state 为全局单行**（复审 P3-9）：多租户共享一个部署时状态与 surrogate 计数全局；restore 是整库操作，全局重置语义正确，但单租户状态视图不存在。
 6. **`/v1/search` 未加向量面**：向量语义只在 Recall 路由（独立 HTTP 端点无架构依据）；Search 面的 vector 支持留待后续评估。
 7. **Rebuild 期间新建资源在文件构建窗口内落地仍会 abort 一次**（饥饿修复收窄但未消除窗口）；catch_up=latest + worker 重试收敛。
-8. **合同/mock 面**：mock server capabilities 已同步至 Schema 8 全集（补齐 Phase 6 即有的缺口）。
+8. **历史同步记录**：当时 mock capability 已与 Schema 8 对齐；当前版本以契约 Manifest 为准。
 9. **真孤儿目录按 mtime 年龄窗清除（第二轮复审引入）**：cleanup 删除行的目录由提交后钩子即时清除；但**无行孤儿**（崩溃构建残留）仍须老过回退窗口（默认 24h）才被清扫——这是对并发构建 rename 窗口的保守保护，可配 `retirement_window_us` 调低。
 10. **能力探针的缓存粒度**：probe 成功后永久缓存（运行时由熔断器把门），失败每 breaker 冷却重试至多一次；`vector_capability` 未接线（未传 callable）的部署 readiness 不感知 Provider 状态——这是部署装配项，ADR-0015 §11 已写明接线要求。
-11. **无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的路径至今没有真实服务端，归 Phase 10 交付（ADR-0017 §3）。该项在传输层交付前不得从任何阶段的已知限制中移除。
-
+11. **历史缺口已关闭**：真实 HTTP 传输由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；本报告的原始测试仍是当时应用层/mock 范围。
 ## 9. `make ci` 摘要
 
 （任何失败都会使本节重写。）
@@ -204,3 +207,13 @@ make ci
 
 后记（复审 P3 更正）：工作区为 179b6a0 之上 **68 个变更文件**（终测后按
 `git status --porcelain` 实点），未提交、未推送，供人工复审。
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+- Hybrid Recall 在声明硬件、语料规模、维度、并发、Candidate/Token 上限及冷/热 Handle 条件下 p95 ≤ 250 ms；分别报告 Embed、FAISS Search、Rehydrate 和融合耗时。
+- UUID↔`int64` 映射边界、唯一性、删除/失效和快照恢复性质每项至少运行 200 个固定种子案例，映射碰撞或错误复用数必须为 0。
+- 50 个并发 Search 与至少 10 轮 Build/Validate/Swap 交错运行，不得读取临时 Generation、混合模型空间、出现 Use-after-close 或返回未 Rehydrate Candidate。
+- 对 Manifest 缺失、Checksum 错误、截断文件、数量不符、错误维度、NaN/Inf、加载异常和孤儿临时目录分别至少执行 20 次；当前可信 Route 不受损或显式降级。
+- 模型/维度/Normalization/Template 切换前后各抽样至少 1,000 个已知 Resource Revision，ID Map、Content Hash、检索空间与 Canonical Rehydrate 结果全部匹配。

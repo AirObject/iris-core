@@ -1,34 +1,31 @@
 # Iris Memory Core 文档索引
 
-本目录以 [《架构与完整实施计划》](./IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md) 作为当前架构基线。开发工作按 [《分阶段开发路线图》](./development/README.md) 拆分，并在各阶段文档中维护范围、任务、测试门禁和交付证据。
+先看 [阶段路线图](./development/README.md) 了解实际进度，再阅读 [重规划后的 Phase 14](./development/phase-14-hardening-release.md)。阶段编号、实现存在、测试通过与稳定发布是不同证据，当前状态以路线图和对应报告为准。
 
-## 文档状态
+## 文档分工
 
-| 文档 | 定位 | 状态 |
-| --- | --- | --- |
-| [架构与完整实施计划](./IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md) | 架构、领域、协议和实施顺序的唯一当前基线 | Baseline v1.1 |
-| [分阶段开发路线图](./development/README.md) | 阶段导航、依赖、里程碑和统一执行规则 | In progress（Phase 0–10 Completed，下一阶段 Phase 11/12） |
-| [ADR 索引](./adr/README.md) | 冻结边界决策及其取代关系 | 0001–0019 Accepted |
-| [阶段文档](./development/) | 每阶段的范围、工作包、门禁与交付证据 | 15 份（Phase 0–14） |
-| [验证报告](./reports/) | 每阶段的实测门禁结果、复审修复与已知限制 | 11 份（Phase 0–10） |
+| 入口 | 唯一职责 |
+| --- | --- |
+| [项目 README](../README.md) | 安装、启动、常用命令与功能入口 |
+| [架构基线](./IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md) | 系统边界、领域模型、不变量和顶层验收；保留稳定章节锚点 |
+| [ADR 索引](./adr/README.md) | 设计决定、接受状态、取代关系及尚未裁决的边界 |
+| [阶段路线图](./development/README.md) | 阶段状态与依赖；各阶段维护交付摘要、剩余工作和退出门禁 |
+| [验证报告索引](./reports/README.md) | 历史实测、当前复测、失败与限制；不把旧测试数字当当前结果 |
+| [Console 设计与实现边界](./design/console-backend.md) | 合并后的后端/前端对接规范，区分已发布切片与后续设计 |
+| [Console 对接矩阵](../web/console/INTEGRATION_MATRIX.md) | 各功能的契约、后端、前端和真实联调差距 |
+| [贡献指南](../CONTRIBUTING.md) | 开发约束、文档维护与检查命令 |
 
-其他早期草案不作为新实现的需求来源。若历史材料与当前基线冲突，以当前基线和已接受 ADR 为准。
+## 协议真源
 
-**本表的状态列必须随阶段推进更新。** 它曾长期停留在"Phase 0 Completed"直到项目实际做到 Phase 8——阶段状态改变时，本表与 [ADR 索引](./adr/README.md) 的开放冲突声明必须同批修改。
+- 宿主 API：[契约源](../contracts/source/contracts.json) → [OpenAPI](../schemas/openapi/openapi.json) 与 [JSON Schema](../schemas/jsonschema/)。
+- 管理 API：[Console 契约源](../contracts/source/console.json) → [Console OpenAPI](../schemas/openapi/console.json) 与 [Console JSON Schema](../schemas/jsonschema/console/)。
+- 兼容与版本：[兼容基线](../schemas/compatibility/)、[Fixture](../schemas/fixtures/)、[版本 Manifest](../schemas/version-manifest.json)。
+- 使用与接入：[Python SDK](../sdk/python/README.md)、[TypeScript SDK](../sdk/typescript/README.md)、[应用接入](../application/README.md)、[Console 运行说明](../web/console/README.md)。
 
-## 推荐阅读顺序
+## 本轮整理与阅读规则
 
-1. 阅读架构基线的第 0～3、36、39～40 章，理解边界、不变量和完整闭环。
-2. 阅读分阶段开发路线图，确认当前阶段、依赖和跨阶段门禁。
-3. 开发前阅读对应阶段文档及其“架构约束”“退出门禁”。
-4. 涉及协议或冻结边界变更时，先新增 ADR，再更新架构基线和受影响阶段文档。
+2026-09-06 整理覆盖根目录、架构、Phase 0–14、ADR 索引、验证报告、Console 设计、SDK 和接入说明。已完成阶段的执行清单压缩为证据摘要；架构中的重复实施路线改为链接；原自动旧库迁移方案按 ADR-0022 替换，数据安全约束保留。
 
-## 文档维护规则
+Console 后端设计吸收原前端对接说明的有效约定，原独立文件删除；第 1/2/3 步和前端验证记录合并为 [Phase 13 验证报告](./reports/phase-13-verification.md)，保留日期、历史失败、联调边界及原始登录计时数据。阶段模板修齐必需结构。
 
-- 架构基线回答“系统是什么、为什么这样设计”；阶段文档回答“本阶段如何交付并证明完成”。
-- 同一领域定义不在阶段文档中另起一套模型；阶段文档通过链接引用基线，并只补充实施分解。
-- 阶段状态只能在交付证据齐全后改为 `Completed`，不能用代码已合并代替测试、迁移和文档门禁。
-- API、Schema、错误码或持久化语义发生变化时，同一变更必须同步更新契约、Fixture、ADR/基线和受影响阶段文档。
-- 凡是生成物或有 CI 校验的清单（错误码、能力、路由枚举、降级原因码），基线只描述规则并指向真源，**不复制清单本身**——需要手工同步的副本必然分叉（ADR-0017 §1 记录了一次真实分叉）。
-- 已知限制只能因为**问题被解决**而移除，不能因为换了一个阶段就不再提及。
-- 阶段输出若被后续阶段推翻，必须记录替代关系和迁移路径，不能静默改写历史决策。
+Accepted ADR 保留决策历史，历史报告保留实测证据；后续解除的限制注明由哪个阶段解决，仍有效的限制在当前阶段与 Phase 14 有归属。生成契约、Schema、Fixture、锁文件和数据库 Migration 各有机器用途，不作为“重复说明文档”删除。原文档路径与锚点引用随合并更新，文档维护只遵循贡献指南的一套规则。

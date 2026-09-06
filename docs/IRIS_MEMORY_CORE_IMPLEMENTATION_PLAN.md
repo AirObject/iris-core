@@ -1,20 +1,14 @@
-# Iris Memory Core：架构与完整实施计划
+# Iris Memory Core：架构基线
 
-> 文档状态：Architecture & Implementation Baseline v1.1
->
-> v1.1（2026-09-03）：按 ADR-0017 对齐已发布契约面——错误码清单改为指向生成源、
-> 端点命名与路由名更正、§18.6 排序公式更正、§33.1 仓库树与 §35.2 卷布局更正、
-> HTTP 传输层归入 §36 阶段 10。领域语义与不变量未变。
->
-> 适用范围：Iris Memory Core、公共协议、SDK、Bellis Adapter、AstrBot Bridge 及迁移工具
->
-> 目标读者：架构、后端、客户端适配、测试、运维与安全负责人
->
-> 技术基线：Python 3.12+、FastAPI、Pydantic 2、OpenAPI 3.1、SQLite WAL、FTS5、FAISS
->
-> 许可证：AGPL-3.0
+> 文档状态：Architecture Baseline v1.2（2026-09-06 整理）  
+> 适用范围：Core、宿主协议与 SDK、宿主适配器、Console 管理平面。  
+> 技术基线：Python 3.12+、FastAPI、Pydantic 2、OpenAPI 3.1、SQLite WAL、FTS5、FAISS；AGPL-3.0。
 
----
+本文件保留领域语义、不变量和发布要求，不作为实现完成清单。执行状态与路线只维护在[阶段索引](development/README.md)，剩余发布工作只维护在[Phase 14](development/phase-14-hardening-release.md)。已完成阶段的实测见各验证报告，历史数字不代表当前工作区重验。
+
+字段、枚举、端点、错误码与版本分别以[宿主契约源](../contracts/source/contracts.json)、[Console 契约源](../contracts/source/console.json)、[生成 Schema](../schemas/)及[版本 Manifest](../schemas/version-manifest.json)为准；本文不再复制伪 Schema 与手工端点表。具体数据结构见领域代码与不可变迁移。
+
+[ADR 索引](adr/README.md)记录冻结决策及后续取代关系。ADR-0017/0019 已闭合 HTTP 传输层，ADR-0020 明确 Bellis 插件接缝，ADR-0022 以 Console 文件导入取代旧库自动迁移；本次同步这些取代关系，不改变领域不变量。Console 的细节只维护在[合并设计](design/console-backend.md)。
 
 ## 0. 项目定义
 
@@ -36,8 +30,6 @@ Core 不依赖 Bellis、AstrBot 或任何单一聊天框架。宿主通过稳定
 ```
 
 所有可长期影响行为的内容都必须具备来源、作用域、隐私标签、版本和状态；所有缓存、全文索引、向量索引和画像都是可重建投影，不得成为事实源。
-
----
 
 ## 1. 设计目标与非目标
 
@@ -71,8 +63,6 @@ Core 不负责：
 
 Task 只描述、跟踪和提醒计划。宿主可以基于 Task 决定执行动作，但 Core 不执行动作，也不会仅因认知事件已经投递就把任务标记为完成。
 
----
-
 ## 2. 架构原则与不变量
 
 ### 2.1 核心原则
@@ -90,18 +80,16 @@ Task 只描述、跟踪和提醒计划。宿主可以基于 Task 决定执行动
 
 ### 2.2 必须始终成立的不变量
 
-- 所有公共 ID 使用 UUIDv7；向量索引另用服务端生成的 `int64` surrogate ID。
+- 公共领域 ID 的规范目标是 UUIDv7；向量索引另用服务端生成的 `int64` surrogate ID。当前 Reflection/Candidate 的确定性标识存在非 UUID 形态，兼容语义尚待 [Phase 14.0-C](development/phase-14-hardening-release.md)裁决；不能把规范目标当作已全面实现。
 - 所有写接口支持幂等；同一幂等键对应不同规范请求时返回冲突。
 - 所有时间字段在 API 中使用 UTC RFC 3339；数据库内部可额外保存整数微秒用于排序。
 - 任何 Recall 候选在返回前必须从 Canonical Store 重新读取并执行最终权限、状态、时效和 Tombstone 校验。
 - `confidence`、`importance`、`accessibility`、`activation`、`valence/arousal` 分开存储和演化。
 - 召回或复述只能提高 Accessibility/Activation，不能提高事实 Confidence。
 - Binding 变化不重写历史 Observation；系统同时提供“发生时身份”和“当前解析身份”。
-- 助手 Observation 只记录已经产生外部效果的内容；生成但未发送、被拦截、发送失败或被取消的文本不是已说事实。
+- 助手 Observation 只记录可信确认的实际效果。发送失败或取消后仍保留已确认前缀；生成但未发送、被拦截及其他未确认片段不能成为已说事实。
 - 后台调度由持久化 Schedule/Tick Ledger 驱动，进程内 Timer 不能成为唯一时钟。
 - Persona Core 不能由模型自动修改；人格回滚也必须生成新 Revision。
-
----
 
 ## 3. 总体架构
 
@@ -162,19 +150,11 @@ flowchart LR
 
 ### 3.1 进程与模块边界
 
-首个完整版本采用一个 API 进程和一个或多个 Worker 进程，共享同一 SQLite 数据库和本地持久卷。逻辑模块保持清晰边界：
+API 与一个或多个 Worker 进程共享同一节点的 SQLite 与本地持久卷。`api` 负责认证、校验与编码；`application` 管理用例、事务和 Recall 编排；`domain` 保存领域规则；`storage` 管理持久化、迁移、备份；`jobs` 管理 Outbox/Schedule/Lease；`indexing` 管理投影；`providers` 实现外部能力端口；`coordinator` 提供可选活动入口；`observability` 暴露低敏诊断。
 
-- `api`：认证、请求校验、版本协商、错误映射；
-- `domain`：Observation、Identity、Note、Task、Persona、Memory 等领域规则；
-- `application`：用例编排、事务边界、Recall Orchestrator；
-- `storage`：SQLite Repository、迁移、备份与历史读取；
-- `jobs`：Transactional Outbox、Schedule、Tick、Lease 与 Worker；
-- `indexing`：FTS、FAISS、Graph/Profile 投影；
-- `providers`：LLM、Embedding、Clock、Artifact 等端口；
-- `sdk`：生成的类型客户端、错误类型、幂等与重试辅助；
-- `coordinator`：可选活动入口协调模块。
+Core、公共 Schema 与 SDK 同处 Monorepo；宿主适配实现只能通过 SDK/HTTP 接入，不直接读取 Core 存储。Bellis 当前以独立插件包接入 `providers/memory-iris`，本仓库 `application/` 保存接入说明，交付与兼容状态见[Phase 11](development/phase-11-bellis-adapter.md)。AstrBot 的目标边界见[Phase 12](development/phase-12-astrbot-bridge.md)，不能由说明文档推断已有 Bridge 实现。
 
-Core、公共 Schema 和 SDK 位于同一 Monorepo，以同一契约测试和发布流程保证一致性。Bellis Adapter、AstrBot Bridge 以及未来宿主适配器位于独立仓库，只依赖已发布 SDK、JSON Schema 与契约夹具。
+Console 是同一 Core 的独立管理平面，默认关闭；`/console/v1` 认证、授权和浏览器会话遵循 [ADR-0022](adr/0022-management-console-plane.md)。读侧可新增有界投影；所有业务写复用应用服务与 UoW。
 
 ### 3.2 同步与异步边界
 
@@ -195,40 +175,19 @@ Core、公共 Schema 和 SDK 位于同一 Monorepo，以同一契约测试和发
 
 任何异步任务都必须携带 Source Revision，在提交结果前重新验证来源仍然有效。
 
----
-
 ## 4. 公共约定
 
 ### 4.1 标识符与引用
 
-所有公共领域对象使用 UUIDv7。引用统一为强类型结构，不接受无法校验的裸字符串：
+公共领域对象以 UUIDv7 为规范目标；现有 Reflection/Candidate 非 UUID 确定性标识的发布兼容性由 [Phase 14.0-C](development/phase-14-hardening-release.md)裁决，本次文档整理不更改标识规则。引用使用强类型结构并验证资源身份：
 
-```python
-class ResourceRef(BaseModel):
-    resource_type: Literal[
-        "observation", "episode", "claim", "entity", "external_identity",
-        "binding", "relation", "state_record", "focus_item", "note",
-        "task", "task_step", "task_trigger", "cognitive_event",
-        "persona_revision", "persona_state", "persona_proposal",
-        "reflection_record", "artifact", "tombstone", "audit_event"
-    ]
-    resource_id: UUID
-    revision: int | None = None
-```
+数据结构与校验见 [domain/model.py](../src/iris_memory_core/domain/model.py)；公共请求/响应以生成契约为准。
 
 `source_refs`、`evidence_refs`、`supersedes_ref`、`promotion_target_ref` 和 Recall `candidate_ref` 均使用该结构。
 
 向量层使用独立映射表：
 
-```text
-vector_surrogate_id: signed int64
-resource_type
-resource_id
-resource_revision
-embedding_model
-embedding_dimension
-status
-```
+数据结构与校验见 [domain/vector.py](../src/iris_memory_core/domain/vector.py)；公共请求/响应以生成契约为准。
 
 UUID 不直接压缩或哈希成 FAISS ID，以避免碰撞和跨语言不一致。
 
@@ -262,8 +221,6 @@ arousal        情感唤醒，可选，范围 [0, 1]
 - Idempotency 的请求指纹基于规范化方法、路径、主体、Scope 与业务 Payload。
 - 文本规范化只能用于检索和候选聚类，不能改变原始 Observation。
 
----
-
 ## 5. 租户、Agent 与空间模型
 
 ### 5.1 层级
@@ -290,14 +247,7 @@ Space 可以不属于 SpaceGroup。把多个 Space 绑定到同一 SpaceGroup �
 
 ### 5.2 Scope
 
-```python
-class Scope(BaseModel):
-    tenant_id: str
-    agent_id: str | None = None
-    space_group_id: str | None = None
-    space_id: str | None = None
-    session_id: str | None = None
-```
+数据结构与校验见 [domain/scope.py](../src/iris_memory_core/domain/scope.py)；公共请求/响应以生成契约为准。
 
 Scope 可见性采用逐维匹配：数据记录某维为 `null` 时可在该维向下可见；非 `null` 时必须与请求对应维完全相等。请求某维为 `null` 时，只能读取该维同为 `null` 的数据，不能把“未知”解释为通配符。
 
@@ -333,17 +283,7 @@ Space 绑定只影响社区内容，不隐式合并用户身份。SpaceGroup 的
 
 `AccessContext` 只能由认证凭据、服务端注册信息和经过校验的路由参数构造：
 
-```python
-class AccessContext(BaseModel):
-    tenant_id: str
-    app_instance_id: str
-    agent_ids: set[str]
-    allowed_space_group_ids: set[str]
-    allowed_space_ids: set[str]
-    capabilities: set[str]
-    data_purposes: set[str]
-    admin: bool = False
-```
+数据结构与校验见 [domain/access.py](../src/iris_memory_core/domain/access.py)；公共请求/响应以生成契约为准。
 
 调用方可以请求缩小权限，但不能通过 Payload 扩大权限。请求中的 `agent_id`、`space_group_id`、`space_id` 和 `session_id` 必须与 AccessContext 及服务器登记关系交叉校验。
 
@@ -359,8 +299,6 @@ class AccessContext(BaseModel):
 - 租户定义的自定义标签。
 
 最终可见性为 Scope、Privacy Label、主体同意状态、数据用途和资源策略的交集。
-
----
 
 ## 6. 身份与实体模型
 
@@ -438,8 +376,6 @@ Observation 同时保存：
 
 绑定、解绑或合并后不回写历史 Observation。审计、导出和历史查询可以选择 `identity_view=at_ingest|current`，默认业务 Recall 使用当前解析身份并保留原始引用。
 
----
-
 ## 7. Canonical 领域模型总览
 
 | 领域对象 | 作用 | 是否事实源 | 主要寿命 |
@@ -461,45 +397,21 @@ Observation 同时保存：
 
 L1/L2/L3 可以作为内部迁移、检索或认知处理术语，但不出现在公共宿主契约中。
 
----
-
 ## 8. Observation Journal
 
 ### 8.1 数据模型
 
-```text
-observation_id: UUIDv7
-tenant_id / agent_id
-space_group_id? / space_id? / session_id?
-app_instance_id
-source_event_id?
-source_stream?
-source_cursor?
-idempotency_key
-actor_external_identity_id?
-actor_entity_id_at_ingest?
-role: user | assistant | tool | system | external
-kind
-content?
-structured_payload?
-artifact_refs[]
-privacy_labels[]
-occurred_at
-committed_at
-effect_state: committed | partial
-schema_version
-revision
-```
+数据结构与校验见 [domain/observation.py](../src/iris_memory_core/domain/observation.py)；公共请求/响应以生成契约为准。
 
 Observation 是已经确认的事实，不保存 `pending` 或 `failed` 事件作为“发生过的内容”。失败尝试可以进入独立 Audit/Event 记录，但不能成为用户已看到、助手已说出或工具已完成的 Evidence。
 
 ### 8.2 提交语义
 
 - 用户消息：平台已接收并交给宿主处理后提交。
-- AstrBot 助手输出：仅在平台确认发送的 `after_message_sent` 或等价边界提交。
-- Bellis 助手输出：仅在 Scene/Output 已持久化 Commit 且输出开始生效后提交。
+- AstrBot 助手输出：必须有发送成功或部分实际效果的可信证明。已核查的 `after_message_sent` 在发送异常时也可能触发，不能单凭 Hook 名或触发时机提交；证据边界由 [Phase 12.0](development/phase-12-astrbot-bridge.md)裁决。
+- Bellis 助手输出：Scene Commit 只代表调度意图；必须有独立、幂等的可信 effect/progress 确认，再记录已确认生效的片段（Bellis ADR 0006 §3，接入状态见 [Phase 11](development/phase-11-bellis-adapter.md)）。
 - 流式或语音输出：只提交可确认已播放/显示的部分，标记 `effect_state=partial` 并保存范围。
-- 被策略拦截、网络发送失败、模型断流且未输出、Scene Cancel 的文本不得提交为助手 Observation。
+- completed/cancelled/failed 状态本身不证明实际效果。零确认时不记录助手内容；部分输出后取消或失败仍保留已确认前缀，未确认的 ScenePlan 文本不得补成事实。
 - 工具结果：只有外部系统确认效果后提交成功结果；请求、失败和超时进入 Audit/Event。
 
 Adapter 可以在本地短暂保存候选事件，但 Core 的 Observation API 只接受已提交语义。
@@ -531,27 +443,13 @@ outbox_enqueued
 
 Observe 在线路径不调用 LLM 或 Embedding。需要异步处理的每条 Observation 与对应 Outbox 事件在同一事务中落库。
 
----
-
 ## 9. 近期上下文、实时状态与关注项
 
 ### 9.1 RecentContextProjection
 
 `RecentContextProjection` 是从已提交 Observation 派生的近期上下文窗口，用于快速恢复某个 Session 或 Space 的最近交互。它不是长期记忆，也不是 Agent 当前“正在想什么”。
 
-```text
-projection_id
-tenant_id / agent_id
-space_group_id? / space_id / session_id?
-head_observation_id?
-tail_observation_id?
-hot_observation_refs[]
-summary_segments[]
-token_estimate
-source_watermark
-builder_version
-expires_at?
-```
+数据结构与校验见 [domain/recent.py](../src/iris_memory_core/domain/recent.py)；公共请求/响应以生成契约为准。
 
 规则：
 
@@ -566,19 +464,7 @@ expires_at?
 
 StateRecord 适合高频、可覆盖、强时效的当前状态，例如游戏地图、OBS 场景、在线状态、当前话题或设备模式：
 
-```text
-state_record_id
-scope
-namespace
-key
-value_json
-source_ref?
-source_authority
-observed_at
-expires_at?
-coalesce_key
-revision
-```
+数据结构与校验见 [domain/state.py](../src/iris_memory_core/domain/state.py)；公共请求/响应以生成契约为准。
 
 同一 `(scope, namespace, key)` 只保留当前指针和不可变历史。State Stream 写入可以按 Coalesce Key 合并尚未执行的投影任务，但不能跳过 Canonical State Revision。过期状态不参与 Recall；是否保留历史由 Namespace Policy 决定。
 
@@ -586,22 +472,7 @@ revision
 
 FocusItem 表示 Agent 持久化的认知关注：
 
-```text
-focus_item_id
-scope
-kind: goal | question | entity | clue | concern | affect | pending_input
-summary
-structured_value?
-privacy_labels[]
-source_refs[]
-salience
-activation
-importance
-status: active | dormant | promoted | dismissed | expired
-promotion_policy
-created_at / last_activated_at / expires_at?
-revision
-```
+数据结构与校验见 [domain/focus.py](../src/iris_memory_core/domain/focus.py)；公共请求/响应以生成契约为准。
 
 FocusItem 与 RecentContextProjection 的区别：
 
@@ -617,31 +488,13 @@ FocusItem 与 RecentContextProjection 的区别：
 
 `affect` 只提供 Persona State 的短时证据，不能直接修改 Persona Trait 或 Core。
 
----
-
 ## 10. Note
 
 Note 是独立领域对象，用于低成本捕获“重要但暂时不值得完整建模”的事项。它可以由宿主工具、管理员、确定性规则或后台候选审核创建。
 
 ### 10.1 数据模型
 
-```text
-note_id
-scope
-title
-body
-kind: important | idea | follow_up | promise | question | observation
-privacy_labels[]
-importance
-status: inbox | pinned | snoozed | archived | promoted | tombstoned
-source_refs[]
-due_at?
-snooze_until?
-review_after
-promotion_target_ref?
-created_at / updated_at / archived_at?
-revision
-```
+数据结构与校验见 [domain/note.py](../src/iris_memory_core/domain/note.py)；公共请求/响应以生成契约为准。
 
 ### 10.2 生命周期
 
@@ -677,78 +530,29 @@ Note Review 按以下顺序执行：
 
 自动抽取只能创建低权威候选；未经明确策略允许，不能把普通对话直接变成 Active Task 或高权威 Claim。
 
----
-
 ## 11. Task、TaskStep 与前瞻记忆
 
 Task 是 Core 中正式、持久化的计划和承诺对象。它既支持简单提醒，也支持多步骤、依赖、触发和可验证结果。
 
 ### 11.1 Task
 
-```text
-task_id
-scope
-parent_task_id?
-title
-goal
-owner_kind: agent | joint | entity | space_group
-owner_entity_id?
-privacy_labels[]
-status: proposed | active | waiting | blocked | completed | cancelled | archived
-priority
-next_action?
-due_at?
-progress_note?
-source_refs[]
-created_at / updated_at / completed_at?
-revision
-```
+数据结构与校验见 [domain/task.py](../src/iris_memory_core/domain/task.py)；公共请求/响应以生成契约为准。
 
 ### 11.2 TaskStep
 
-```text
-task_step_id
-task_id
-stable_key
-title
-description?
-status: pending | ready | in_progress | waiting | blocked | completed | skipped | cancelled
-ordinal
-expected_effect?
-completion_evidence_refs[]
-started_at? / completed_at?
-revision
-```
+数据结构与校验见 [domain/task.py](../src/iris_memory_core/domain/task.py)；公共请求/响应以生成契约为准。
 
 Step 使用稳定 ID，排序变化不改变身份。完成 Step 必须经过独立状态转换；涉及外部效果时需要实际成功 Observation 或等价 Evidence。
 
 ### 11.3 TaskDependency
 
-```text
-dependency_id
-task_id
-predecessor_step_id
-successor_step_id
-condition: completed | completed_or_skipped
-revision
-```
+数据结构与校验见 [domain/task.py](../src/iris_memory_core/domain/task.py)；公共请求/响应以生成契约为准。
 
 依赖写入必须执行环检测。Ready 状态由依赖满足情况确定，不能只从自然语言推断。跨 Task 依赖首版不提供；确有需要时通过后续 ADR 引入，避免分布式状态网失控。
 
 ### 11.4 TaskTrigger
 
-```text
-trigger_id
-task_id / task_step_id?
-kind: at_time | recurrence | observation_kind | state_condition | task_transition
-schedule_spec?
-condition_spec?
-timezone?
-catch_up_policy
-enabled
-next_fire_at?
-revision
-```
+数据结构与校验见 [domain/task.py](../src/iris_memory_core/domain/task.py)；公共请求/响应以生成契约为准。
 
 - 绝对时间使用 RFC 3339。
 - 重复计划使用受限、可解析、可验证的日程语法。
@@ -766,30 +570,11 @@ revision
 - 状态转换要求 `expected_revision` 和幂等键。
 - Task 的当前状态是 Canonical；Graph 中的依赖边仅为投影，不能反向驱动 Task。
 
----
-
 ## 12. CognitiveEvent 与宿主投递
 
 ### 12.1 数据模型
 
-```text
-cognitive_event_id
-scope
-kind
-object_ref
-occurrence_id?
-scheduled_at
-deliver_after
-expires_at?
-status: pending | delivered | acknowledged | expired | cancelled
-delivery_target?
-delivery_attempts
-last_delivery_at?
-delivered_lease_id? / delivered_lease_epoch?
-ack_id?
-acknowledged_at?
-revision
-```
+数据结构与校验见 [domain/event.py](../src/iris_memory_core/domain/event.py)；公共请求/响应以生成契约为准。
 
 ### 12.2 投递语义
 
@@ -801,28 +586,13 @@ revision
 - 外部动作完成必须提交实际效果 Observation，再显式推进 Task/Step。
 - 过期事件按 Policy 进入 Expired、合并为摘要事件或继续保留，不能静默消失。
 
----
-
 ## 13. 长期记忆模型
 
 ### 13.1 Episode
 
 Episode 是按 Agent、Space、Session、时间窗和主题形成的有界经历：
 
-```text
-episode_id
-scope
-title?
-summary
-participant_entity_ids[]
-observation_refs[]
-started_at / ended_at
-status: open | sealed | superseded | tombstoned
-importance
-valence? / arousal?
-extractor_version?
-revision
-```
+数据结构与校验见 [domain/memory.py](../src/iris_memory_core/domain/memory.py)；公共请求/响应以生成契约为准。
 
 Episode 不等于宿主 Session，也不能跨 Space 任意拼接原始聊天。推断出的参与者、主题、转折和情感都要保留 Evidence 与提取器版本。
 
@@ -830,39 +600,13 @@ Episode 不等于宿主 Session，也不能跨 Space 任意拼接原始聊天。
 
 Claim 表示可验证、可修正的语义陈述：
 
-```text
-claim_id
-scope
-subject_entity_id
-predicate
-value_json
-canonical_text
-category: identity | preference | relationship | fact | community | procedure | self_narrative
-privacy_labels[]
-status: active | disputed | superseded | retracted | expired | tombstoned
-confidence
-importance
-accessibility
-source_authority
-valid_from? / valid_until?
-recorded_at / superseded_at?
-extractor_version?
-revision
-```
+数据结构与校验见 [domain/memory.py](../src/iris_memory_core/domain/memory.py)；公共请求/响应以生成契约为准。
 
 去重键至少包含 Tenant、Agent、主体、谓词、规范值与 Scope。文本或向量相似只能产生候选，不能自动合并不同主体、不同 SpaceGroup 或不同有效时间的事实。
 
 Evidence 表示某个资源对 Claim 的支持、反驳或修正：
 
-```text
-evidence_id
-claim_id
-source_ref
-relation: supports | contradicts | corrects
-source_authority
-evidence_span?
-recorded_at
-```
+数据结构与校验见 [domain/memory.py](../src/iris_memory_core/domain/memory.py)；公共请求/响应以生成契约为准。
 
 每个 Active Claim 至少有一条有效 Evidence。冲突 Claim 可以并存并标记 `disputed`，高风险冲突交由人工或领域策略裁决。
 
@@ -870,19 +614,7 @@ recorded_at
 
 Relation 是有方向、有类型、有 Evidence 的 Entity 关系：
 
-```text
-relation_id
-scope
-source_entity_id
-relation_type
-target_entity_id
-privacy_labels[]
-confidence / importance / accessibility
-valid_from? / valid_until?
-status
-evidence_refs[]
-revision
-```
+数据结构与校验见 [domain/memory.py](../src/iris_memory_core/domain/memory.py)；公共请求/响应以生成契约为准。
 
 Graph 只投影 Canonical Relation、Verified Binding 和部分 Claim。多跳召回必须逐边执行 Scope/Privacy 过滤，并限制深度、扇出、总节点数和 Token Budget。昵称相似或模型联想不能直接创建 Relation。
 
@@ -894,13 +626,7 @@ Graph 只投影 Canonical Relation、Verified Binding 和部分 Claim。多跳�
 
 Profile 是 Entity、Relationship 或 SpaceGroup 的当前汇总视图，不是独立事实源。每个字段保存：
 
-```text
-source_claim_ids[]
-builder_version
-source_watermark
-freshness
-conflict_state
-```
+数据结构与校验见 [domain/profile.py](../src/iris_memory_core/domain/profile.py)；公共请求/响应以生成契约为准。
 
 Profile 可以按身份、偏好、关系、重要经历、长期目标、近期变化和交互建议分区。Agent 自身人格不得混入外部 Entity Profile。
 
@@ -908,29 +634,15 @@ Profile 可以按身份、偏好、关系、重要经历、长期目标、近期
 
 Artifact 用于承载不适合直接内联数据库的大文本、附件、媒体元数据或外部对象引用：
 
-```text
-artifact_id
-scope
-media_type
-storage_kind: inline | local_blob | external_ref
-locator
-content_hash
-size_bytes
-privacy_labels[]
-source_ref?
-status
-created_at
-```
+数据结构与校验见 [domain/memory.py](../src/iris_memory_core/domain/memory.py)；公共请求/响应以生成契约为准。
 
 Artifact Store 必须执行路径规范化、大小限制、媒体类型校验、哈希校验和引用计数。外部 URL 不能在 Recall 时自动抓取；抓取必须由受控 Ingest 流程完成。
-
----
 
 ## 14. Persona 系统
 
 Core 为每个 `(tenant_id, agent_id)` 提供完整 Persona 功能，确保不同宿主、不同 Space 和重启后的 Agent 都从同一版本化人格基线工作。
 
-Agent 创建事务必须同时建立初始 Persona 和 Current Pointer；没有有效 Published Persona 的 Agent 不能进入对外互动 Ready 状态。
+Agent 创建事务必须同时建立初始 Persona 和 Current Pointer；没有有效 Published Persona 的 Agent 不能进入对外互动 Ready 状态。Recall 中 `persona_revision=0` 仅表示人格不可用，不能当合法修订采用（ADR-0017 §4）。
 
 ### 14.1 Persona 分层
 
@@ -945,43 +657,15 @@ Persona 不等于外部用户 Profile，也不等于普通 Claim 集合。Core �
 
 ### 14.2 PersonaRevision
 
-```text
-persona_id
-tenant_id / agent_id
-revision
-core_json
-traits_json
-narrative_json
-policy_id
-previous_revision?
-change_reason
-source_refs[]
-content_hash
-effective_from
-effective_until?
-created_by
-created_at
-status: published | superseded | revoked
-```
+数据结构与校验见 [domain/persona.py](../src/iris_memory_core/domain/persona.py)；公共请求/响应以生成契约为准。
 
 PersonaRevision 不可变。当前人格由 Current Pointer 指向 Published Revision。发布和回滚均创建新 Revision，不把旧内容重新标为当前。每个宿主请求必须记录实际使用的 Persona Revision 和 Content Hash。
 
 ### 14.3 PersonaState
 
-```text
-persona_state_id
-tenant_id / agent_id
-revision
-state_json
-baseline_json
-source_refs[]
-started_at
-expires_at
-decay_policy
-created_by
-```
+数据结构与校验见 [domain/persona.py](../src/iris_memory_core/domain/persona.py)；公共请求/响应以生成契约为准。
 
-State 只允许 Schema 白名单字段和值域。到期后按策略回归 Baseline；回归过程确定性、可测试。单个用户、单次情绪、Prompt Injection 或模型自述不能直接改变 Trait/Core。
+State 只允许 Schema 白名单字段和值域。到期回归依赖 Worker 或启动 Catch-up，当前读取不单独屏蔽未扫描的过期 State，系统时钟回拨会推迟回归（[Phase 9 限制](reports/phase-09-verification.md#5-已知限制)）。单个用户、单次情绪、Prompt Injection 或模型自述不能直接改变 Trait/Core。
 
 ### 14.4 PersonaEvolutionPolicy
 
@@ -1008,21 +692,7 @@ Persona Core 始终不在 `bounded_auto` 范围内。
 
 ### 14.5 PersonaEvolutionProposal
 
-```text
-proposal_id
-persona_id
-base_revision
-target_fields[]
-patch
-field_deltas[]
-evidence_refs[]
-confidence
-generator / generator_version
-policy_evaluation
-status: proposed | approved | rejected | published | expired
-reviewed_by? / review_reason?
-created_at / expires_at
-```
+数据结构与校验见 [domain/persona.py](../src/iris_memory_core/domain/persona.py)；公共请求/响应以生成契约为准。
 
 每个 Field Delta 必须包含旧值、新值、变化幅度、证据和理由码。提案创建后若 Base Revision 已变化，发布前必须重新评估或过期，不允许直接套用到新版本。
 
@@ -1054,8 +724,6 @@ created_at / expires_at
 - 不请求、不保存、不展示私有 Chain-of-Thought；只保存简洁、结构化理由码。
 - Persona 管理接口与普通应用 Token 隔离，审批、发布和回滚要求管理权限及操作原因。
 - Core 的完整人格功能不意味着 Core 决定回复内容；最终表达、动作与安全仍由宿主负责。
-
----
 
 ## 15. 认知数据处理流程
 
@@ -1135,8 +803,6 @@ Recall 使用生命周期区分四个阶段：
 
 只有 `host_selected/model_visible` 能增强 Accessibility 或 Focus Activation。未选择的 Candidate 不因一次检索而增强。使用次数不改变 Confidence；明确纠正、独立 Evidence 和来源权威才改变事实可信度。
 
----
-
 ## 16. Transactional Outbox 与 Worker
 
 ### 16.1 原子性
@@ -1156,25 +822,7 @@ COMMIT
 
 ### 16.2 Outbox 数据模型
 
-```text
-outbox_id
-tenant_id / agent_id
-event_type
-aggregate_ref
-source_revision
-payload_json
-coalesce_key?
-priority
-status: pending | leased | completed | retryable | dead
-available_at
-attempt_count
-max_attempts
-lease_owner?
-lease_generation
-lease_expires_at?
-last_error_code?
-created_at / completed_at?
-```
+数据结构与校验见 [domain/jobs.py](../src/iris_memory_core/domain/jobs.py)；公共请求/响应以生成契约为准。
 
 ### 16.3 领取与 Fencing
 
@@ -1201,41 +849,15 @@ State 投影、Profile Refresh、Graph Refresh 等任务允许按 `(tenant, agen
 
 磁盘或队列接近硬阈值时，Ready 状态变为降级或不可写；低优先级派生任务延迟，Canonical Forget、Correct 和安全操作保留优先通道。超过安全阈值时返回 `storage_full`，不得接受后实际丢失。
 
----
-
 ## 17. 持久化 Schedule、Tick 与认知时钟
 
 ### 17.1 Schedule
 
-```text
-schedule_id
-scope
-job_kind
-schedule_spec
-timezone
-catch_up_policy: all | latest | coalesce | skip
-misfire_grace_seconds
-enabled
-next_tick_at
-last_tick_at?
-policy_version
-revision
-```
+数据结构与校验见 [domain/schedule.py](../src/iris_memory_core/domain/schedule.py)；公共请求/响应以生成契约为准。
 
 ### 17.2 Tick Ledger
 
-```text
-tick_id
-schedule_id
-scheduled_at
-occurrence_key
-observed_wall_time
-observed_monotonic_delta?
-status: pending | enqueued | completed | skipped | failed
-outbox_id?
-started_at? / completed_at?
-reason_code?
-```
+数据结构与校验见 [domain/schedule.py](../src/iris_memory_core/domain/schedule.py)；公共请求/响应以生成契约为准。
 
 Tick 的幂等键至少是 `(schedule_id, scheduled_at, policy_version)`。Scheduler 在同一事务中记录 Tick 并创建 Outbox，防止重启时重复或漏执行。
 
@@ -1267,74 +889,23 @@ Reflection 固定读取一个 Source Watermark，只输出带 Source Refs 的简
 
 在线 Observe/Recall 的资源优先级高于低优先级巩固。长时间积压必须暴露 Lag、Oldest Pending Age 和 Provider Degradation。
 
----
-
 ## 18. Recall 协议
 
 ### 18.1 RecallRequest
 
-```python
-class RecallRequest(BaseModel):
-    schema_version: Literal[1]
-    request_id: UUID
-    scope: Scope
-    actors: list[ExternalActorRef]
-    topic: str
-    purpose: Literal["reply", "planning", "reflection", "tool"]
-    categories: set[str] | None = None
-    resource_types: set[str] | None = None
-    token_budget: int
-    layer_budgets: dict[str, int] | None = None
-    requested_privacy_labels: set[str] | None = None
-    as_of: str | None = None
-    minimum_watermark: str | None = None
-    deadline_at: datetime
-    include_trace: bool = False
-```
+数据结构与校验见 [domain/recall.py](../src/iris_memory_core/domain/recall.py)；公共请求/响应以生成契约为准。
 
 `actors` 至少包含当前说话人的 ExternalIdentity；服务端自行解析 Entity，不信任调用方提供的内部 Entity ID。直播批次可附带有界数量的其他参与者和权重。
 
 ### 18.2 RecallCandidate
 
-```python
-class RecallCandidate(BaseModel):
-    candidate_id: UUID
-    resource_ref: ResourceRef
-    content_hash: str
-    text: str
-    category: str
-    placement: Literal["working", "memory"]
-    subject_entity_id: UUID | None = None
-    scope: Scope
-    privacy_labels: set[str]
-    source_refs: list[ResourceRef]
-    scores: dict[str, float | None]
-    final_score: float
-    token_estimate: int
-    conflict_state: str | None = None
-    expires_at: datetime | None = None
-```
+数据结构与校验见 [domain/recall.py](../src/iris_memory_core/domain/recall.py)；公共请求/响应以生成契约为准。
 
 Persona 通过 Response 顶层的 Persona Revision 协调，不作为普通候选。必要的自我 Narrative Evidence 可以作为 `memory` Candidate，但不能覆盖已发布 Persona。
 
 ### 18.3 RecallResponse Envelope
 
-```python
-class RecallResponse(BaseModel):
-    schema_version: Literal[1]
-    request_id: UUID
-    source_watermark: str
-    persona_revision: int
-    persona_content_hash: str
-    candidates: list[RecallCandidate]
-    pending_event_ids: list[UUID]
-    completed_routes: list[str]
-    degraded_routes: list[DegradedRoute]
-    partial: bool
-    cache_until: datetime | None
-    next_wake_at: datetime | None
-    trace: RecallTrace | None = None
-```
+数据结构与校验见 [domain/recall.py](../src/iris_memory_core/domain/recall.py)；公共请求/响应以生成契约为准。
 
 `completed_routes` 明确记录实际成功的 Route。冻结的路由名为 `tasks`、`recent_context`、`state`、`focus`、`claims`、`relations`、`fts`、`vector`、`graph`、`profile`（ADR-0014 §3 裁定以内部名为准，`tasks` 为复数；Persona 不是路由，经响应顶层字段协调，绝不作为候选）。`degraded_routes` 为结构化对象，至少包含 Route、稳定原因码、是否可重试和所用回退；原因码冻结集由 ADR-0014 §10、ADR-0015 §7 与 ADR-0016 §6 共同定义。只要请求允许部分结果且至少一个关键 Route 成功，服务可返回 `partial=true`；否则返回稳定错误。
 
@@ -1344,7 +915,7 @@ class RecallResponse(BaseModel):
 
 Recall Orchestrator 为每个 Route 分配子 Deadline 和候选上限：
 
-1. Persona、Recent Context、Focus、State、Active/Due Task 为结构化高优先级 Route。
+1. Persona 元数据独立读取；Recent Context、Focus、State、Active/Due Task 为结构化高优先级 Route。
 2. Profile、Claim 和 Relation 为结构化长期 Route。
 3. FTS 和 Vector 并行执行，Graph 受深度与扇出限制。
 4. Route 超时后取消等待并写入 `degraded_routes`，不阻塞其他已完成结果。
@@ -1389,20 +960,9 @@ final_score =
 
 ### 18.7 Usage Report
 
-```python
-class RecallUsageReport(BaseModel):
-    request_id: UUID
-    host_cycle_id: str
-    returned_candidate_ids: list[UUID]
-    host_selected_candidate_ids: list[UUID]
-    model_visible_candidate_ids: list[UUID]
-    persona_revision: int
-    reported_at: datetime
-```
+数据结构与校验见 [domain/recall.py](../src/iris_memory_core/domain/recall.py)；公共请求/响应以生成契约为准。
 
 Core 自行保存 `retrieved` 与 `returned` 阶段；`returned_candidate_ids` 是宿主对已收到集合的完整性回显。服务验证所有 Candidate 确属该 Request，且 `model_visible ⊆ host_selected ⊆ returned`。重复 Report 幂等合并，调用方不能伪造其他 Tenant 的访问统计。对隐私敏感资源只保存 Candidate ID 和阶段，不保存宿主完整 Prompt。
-
----
 
 ## 19. Remember、Correct、Forget 与保留
 
@@ -1427,15 +987,7 @@ Correct 在单一事务中：
 
 Forget 可以作用于单个 Resource、Subject+Predicate、Session、Space 或经授权的数据请求范围。每个 Tombstone 保存：
 
-```text
-tombstone_id
-scope
-target_selector
-effective_revision
-reason_code
-requested_by
-created_at
-```
+数据结构与校验见 [domain/model.py](../src/iris_memory_core/domain/model.py)；公共请求/响应以生成契约为准。
 
 Tombstone 写入后立即影响 Canonical 读取；索引清理可以异步，但最终 Rehydrate 保证旧索引结果不能复活。后台 Worker、备份恢复、重建和导入都必须比较 Tombstone Watermark。
 
@@ -1454,8 +1006,6 @@ Tombstone 写入后立即影响 Canonical 读取；索引清理可以异步，�
 - Tombstone 和必要审计元数据。
 
 自动归档、压缩和清理都必须记录 Policy Version、原因和处理数量。
-
----
 
 ## 20. SQLite Canonical Store
 
@@ -1507,48 +1057,13 @@ PRAGMA recursive_triggers = OFF;
 
 ### 20.4 Schema 组织
 
-核心表按 Aggregate 分为：
+实际表名、约束与版本由[不可变迁移](../migrations/)定义，不维护第二份手工表清单。Canonical 对象的 Current Pointer、不可变 Revision、Evidence、Tombstone、Audit 与 Outbox 必须在同一事务下保持联合不变量。投影表与业务事实源分离，复杂状态转换由领域/应用服务执行。
 
-```text
-tenants / agents
-space_groups / spaces / sessions / space_group_bindings
-entities / entity_revisions / external_identities / identity_attributes
-bindings / binding_revisions / entity_redirects
-observations / source_stream_cursors / artifacts
-recent_context_projections / state_records / state_record_revisions
-focus_items / focus_item_revisions
-notes / note_revisions
-tasks / task_revisions / task_steps / task_step_revisions
-task_dependencies / task_triggers / cognitive_events
-episodes / episode_revisions
-claims / claim_revisions / evidence
-relations / relation_revisions
-profile_projection_state / graph_projection_state
-personas / persona_revisions / persona_states
-persona_policies / persona_evolution_proposals
-resource_tombstones / resource_links
-idempotency_records / audit_events
-outbox / schedules / tick_ledger
-fts_projection_state / vector_projection_state / vector_id_map
-agent_watermarks / backup_catalog / migration_runs
-```
-
-每个 Current 表只保存当前指针、常用索引字段和状态；完整业务内容在 Revision 表不可变保存。Foreign Key 与唯一约束表达能由数据库保证的不变量，复杂状态转换由 Domain Service 保证并以测试覆盖。
+当前 Schema 支持范围以[版本 Manifest](../schemas/version-manifest.json)与运行时检查为准，阶段文档中旧兼容窗口只属于历史证据。
 
 ### 20.5 幂等记录
 
-```text
-tenant_id
-app_instance_id
-operation
-idempotency_key
-request_fingerprint
-status: in_progress | completed | failed_replayable
-response_code
-response_body
-resource_refs[]
-created_at / expires_at
-```
+数据结构与校验见 [storage/idempotency.py](../src/iris_memory_core/storage/idempotency.py)；公共请求/响应以生成契约为准。
 
 同一键和同一 Fingerprint 返回首次结果；同一键不同 Fingerprint 返回 `idempotency_key_reused`。进程在 `in_progress` 时崩溃，由恢复逻辑检查关联事务结果，不能盲目重复副作用。
 
@@ -1568,38 +1083,19 @@ Agent Watermark 是 Tenant+Agent 范围内单调递增的提交序列。每个 C
 - Migration Run 记录版本、耗时、行数、校验结果和失败位置。
 - 应用二进制声明支持的最小/最大 Schema Version，越界时拒绝 Ready。
 
----
-
 ## 21. 备份、恢复与导出
 
 ### 21.1 备份
 
-运行中备份使用 SQLite Online Backup API，不能直接复制活跃数据库文件。一次完整备份包含：
+运行中备份使用 SQLite Online Backup API，不能直接复制活跃数据库。格式、Manifest、HMAC、Artifact 清单和校验由 [storage/backup.py](../src/iris_memory_core/storage/backup.py)定义；Manifest 必须与库内 Schema、Watermark、Tombstone 与删除账本交叉对账，不能只信可重写文件中的声明。
 
-```text
-manifest.json
-canonical.sqlite3
-artifacts/（或加密对象清单）
-faiss/（可选，可重建）
-config-fingerprint.json（不含 Secret）
-checksums.txt
-```
-
-Manifest 保存 Schema Version、SQLite Runtime、Agent Watermarks、Tombstone Watermark、Artifact 清单、创建时间和校验和。FAISS/FTS 可以不进入备份，但恢复后必须标记待重建。
+当前备份保存 Canonical 与受控 local blob；FAISS 文件不进备份，恢复后 FTS/Vector/Profile/Graph 清空不可信投影并标记待重建。不得夹带外部 vector 目录或把投影作为恢复事实源（ADR-0013、0015、0016）。
 
 ### 21.2 恢复
 
-恢复流程必须：
+恢复先在隔离 staging 校验 Manifest/HMAC/哈希、SQLite Integrity/Foreign Key、Schema 兼容与 Canonical 联合不变量。备份后已执行的删除，必须使用独立保存的删除账本按身份差分在 staging 内重放；重放、checkpoint 和复核全部成功后才能原子切换目录。禁止先切库后补删。
 
-1. 在隔离目录校验 Manifest 和所有哈希；
-2. 验证 SQLite Integrity、Foreign Key 与 Schema 兼容性；
-3. 验证 Tombstone、Current Pointer、Outbox 和 Tick Ledger 不变量；
-4. 原子切换到恢复目录；
-5. 重建或验证 FTS/FAISS/Profile/Graph；
-6. 执行 Smoke Recall 与写入测试；
-7. Ready 后才开放宿主流量。
-
-恢复较旧备份后，备份时间之后的 Forget 请求无法凭空保留，因此生产恢复策略必须同步保存合规删除日志或使用不早于强制删除边界的备份。恢复操作需要显式审计。
+切换采用 journal、目录 fsync 与 `recover-switch` 恢复；数据库和 Artifact 同次切换。投影完成验证/重建、Smoke Recall/写入与 Ready 门禁后才开放宿主流量。恢复过程要求原因与审计；缺少备份后删除记录时不能宣称恢复保留了那些删除（[ADR-0013 §10](adr/0013-phase5-long-term-memory.md#10-旧备份删除重放deletion-ledger)）。
 
 ### 21.3 备份与导出的区别
 
@@ -1615,8 +1111,6 @@ Manifest 保存 Schema Version、SQLite Runtime、Agent Watermarks、Tombstone W
 - 定期在临时目录执行自动恢复演练和抽样 Recall 校验。
 - 至少记录 RPO、RTO、最近成功备份、最近成功恢复演练和待重建投影。
 
----
-
 ## 22. FTS5、FAISS 与派生投影
 
 ### 22.1 FTS5
@@ -1631,45 +1125,24 @@ Tokenizer、规范化、停用词和语言配置必须版本化。Builder Versio
 
 Embedding 输入由资源类型模板生成，保存：
 
-```text
-embedding_model
-embedding_dimension
-normalization
-template_version
-content_hash
-source_revision
-```
+数据结构与校验见 [domain/vector.py](../src/iris_memory_core/domain/vector.py)；公共请求/响应以生成契约为准。
 
 Provider 返回维度不符、NaN/Inf 或空向量时拒绝写入。模型切换创建新 Generation，不在同一索引中混用不同空间。
 
 ### 22.3 FAISS Generation
 
-每个向量 Generation 目录包含：
+Generation 由不可变索引、ID Map 快照、Manifest 与校验摘要组成，格式及生命周期由 [ADR-0015](adr/0015-phase7-vector-recall.md)和 [indexing/vector.py](../src/iris_memory_core/indexing/vector.py)定义。
 
-```text
-manifest.json
-index.faiss
-id-map.snapshot
-checksums.txt
-```
+构建读取固定来源快照，Provider 调用与文件构建在事务外完成；发布前重新验证 Canonical Revision、模型空间、成员戳、数量、checksum 与 Watermark。完整文件原子重命名后，以 SQLite `vector_current` 的指针 CAS 发布；SQLite 是唯一 Current Pointer，不存在文件系统 Current Manifest Pointer。
 
-Manifest 至少记录 Generation ID、Model、Dimension、Metric、Normalization、Builder Version、Source Watermark、向量数量和哈希。
-
-构建流程：
-
-1. 在临时目录从 Canonical 有效 Revision 构建完整新 Generation。
-2. Flush 并校验文件、ID Map、数量和抽样查询。
-3. 写入完整 Manifest 与 Checksum。
-4. 原子重命名目录并更新 Current Manifest Pointer。
-5. API 进程加载新 Handle，验证成功后以 Copy-on-write 方式交换。
-6. 旧 Handle 等待在途查询释放后关闭，旧 Generation 延迟清理。
+API 加载时将文件与 SQLite 权威行交叉验证，成功后 COW 交换只读 Handle；旧引用释放后才清理旧代。失败可继续使用仍可信的前代，否则明确降级。切换事务仍有全租户枚举的写门成本，不宣称大规模重建无写入影响。
 
 ### 22.4 并发规则
 
 - 同一个 FAISS Handle 不允许并发 `search` 与 `add/remove/write`。
 - 在线查询只读当前不可变 Handle。
 - 增量更新写入 Delta Ledger 或构建新 Generation，不原地修改查询 Handle。
-- Handle Swap 使用进程内锁；跨进程由 Manifest Pointer 和 Generation ID 协调。
+- Handle Swap 使用进程内锁；跨进程由 SQLite `vector_current` 指针和 Generation ID 协调。
 - 加载失败继续使用上一已验证 Generation，并将 Vector Route 标为 Degraded。
 
 ### 22.5 Graph 与 Profile
@@ -1686,21 +1159,9 @@ Graph/Profile 记录 Builder Version 和 Source Watermark。版本未知、落�
 
 ### 22.6 Cache
 
-缓存键必须包含：
+Core 当前没有 Recall/投影结果缓存，`cache_until` 返回 null；这是 [ADR-0014 §6](adr/0014-phase6-fts-recall.md)保留的非目标，不能把“键已设计”描述成“缓存已实现”。宿主 Persona Cache 与 Core Recall Cache 是不同能力。
 
-```text
-tenant_id / agent_id
-space_group_id? / space_id? / session_id?
-purpose / actor-set hash / query hash
-source_watermark
-tombstone_watermark
-persona_revision
-schema_version
-```
-
-缓存值只保存 ResourceRef、Revision 和必要渲染数据；命中后仍执行 Canonical Rehydrate。Forget、Correct、Binding、SpaceGroup 绑定和 Persona 发布会通过 Outbox 失效相关键。
-
----
+未来启用结果缓存时，键必须覆盖 Tenant/Agent/SpaceGroup/Space/Session、Purpose/Actor/Query、Source/Tombstone Watermark、Persona Revision 与 Schema Version。值只保存 ResourceRef、Revision 及必要渲染数据；命中仍执行 Canonical Rehydrate。Forget、Correct、Binding、SpaceGroup 与 Persona 变化必须使相关条目失效。
 
 ## 23. HTTP API 与能力协商
 
@@ -1712,7 +1173,7 @@ schema_version
 - Schema：OpenAPI 3.1 + 独立发布的 JSON Schema。
 - 写请求：`Idempotency-Key` Header；并发修改在 Body 中提供 `expected_revision`。
 - 认证：每个 App Instance 独立 Bearer Credential；管理平面使用独立凭据和 Capability。
-- 事件通知：可选 SSE，首版至少支持 Persona Revised、Lease Revoked、Revision Invalidated 和 Cognitive Event Ready；与传输层一并在 Phase 10 交付（ADR-0017 §3）。
+- 事件通知：可选 SSE，首版至少支持 Persona Revised、Lease Revoked、Revision Invalidated 和 Cognitive Event Ready；已由 Phase 10 交付，跨进程扇出与连接背压的发布证明见 Phase 14（ADR-0019）。
 - Trace：接受标准 Trace Context，不把 Trace ID 当幂等键。
 
 ### 23.2 能力协商
@@ -1736,104 +1197,11 @@ SDK 在启动时协商并缓存结果。不支持必需能力时立即失败；�
 
 ### 23.3 主要端点
 
-```text
-# Observation 与 Recall
-POST   /v1/observations:batch
-GET    /v1/observations/cursors/{source_stream}
-POST   /v1/recall
-POST   /v1/recall/{request_id}/usage
-POST   /v1/search
+[宿主 OpenAPI](../schemas/openapi/openapi.json)是 `/v1` 路径、操作和形状的权威清单；[Console OpenAPI](../schemas/openapi/console.json)独立定义 `/console/v1`，两者分别维护兼容基线。删除了原手工“目标端点”表，避免不存在的 Job/Schedule 管理路径被误认为已经发布。
 
-# 显式记忆
-POST   /v1/claims:remember
-POST   /v1/claims/{claim_id}:correct
-POST   /v1/memory:forget
+[Phase 10 验证报告](reports/phase-10-verification.md)记录当时 85 条宿主路径、91 个 operation 的真实 ASGI 成功/失败测试；这是历史范围，不代替当前工作区逐 operation 重验。Persona、Identity/Binding/SpaceGroup、备份/导出/审计、索引重建与可选 SSE 已有真实传输。
 
-# 实时与认知状态
-PUT    /v1/state/{namespace}/{key}
-GET    /v1/state
-GET    /v1/recent-context
-GET    /v1/focus-items
-POST   /v1/focus-items
-GET    /v1/focus-items/{focus_item_id}
-POST   /v1/focus-items/{focus_item_id}:activate
-POST   /v1/focus-items/{focus_item_id}:dormant
-POST   /v1/focus-items/{focus_item_id}:dismiss
-POST   /v1/focus-items/{focus_item_id}:expire
-POST   /v1/focus-items/{focus_item_id}:promote
-
-# Note
-GET    /v1/notes
-POST   /v1/notes
-PATCH  /v1/notes/{note_id}
-POST   /v1/notes/{note_id}:archive
-POST   /v1/notes/{note_id}:promote
-
-# Task 与认知事件
-GET    /v1/tasks
-POST   /v1/tasks
-PATCH  /v1/tasks/{task_id}
-POST   /v1/tasks/{task_id}:transition
-POST   /v1/tasks/{task_id}/steps
-POST   /v1/tasks/{task_id}/steps/{step_id}:transition
-POST   /v1/tasks/{task_id}/dependencies
-POST   /v1/tasks/{task_id}/triggers
-GET    /v1/cognitive-events
-POST   /v1/cognitive-events/{event_id}:ack
-
-# Entity、身份和空间
-GET    /v1/entities/{entity_id}
-GET    /v1/entities/{entity_id}/profile
-GET    /v1/entities/{entity_id}/relations
-POST   /v1/identities
-POST   /v1/bindings:prepare
-POST   /v1/bindings/{binding_id}:confirm
-POST   /v1/bindings/{binding_id}:revoke
-GET    /v1/space-groups
-POST   /v1/space-groups
-POST   /v1/space-groups/{group_id}/spaces:bind
-POST   /v1/space-groups/{group_id}/spaces/{space_id}:unbind
-
-# Persona
-GET    /v1/personas/{agent_id}/current
-GET    /v1/personas/{agent_id}/history
-POST   /v1/personas/{agent_id}/revisions
-PATCH  /v1/personas/{agent_id}/state
-POST   /v1/personas/{agent_id}/evolution-proposals
-POST   /v1/personas/{agent_id}/evolution-proposals/{proposal_id}:approve
-POST   /v1/personas/{agent_id}/evolution-proposals/{proposal_id}:reject
-POST   /v1/personas/{agent_id}:rollback
-
-# 可选活动入口
-POST   /v1/active-surfaces:acquire
-POST   /v1/active-surfaces/{lease_id}:heartbeat
-POST   /v1/active-surfaces/{lease_id}:release
-GET    /v1/active-surfaces/current
-
-# 管理与运维
-GET    /v1/admin/jobs
-POST   /v1/admin/jobs/{job_id}:retry
-POST   /v1/admin/schedules
-POST   /v1/admin/schedules/{schedule_id}:run
-POST   /v1/admin/indexes/{kind}:rebuild
-POST   /v1/admin/backups
-POST   /v1/admin/exports
-GET    /v1/admin/audit-events
-
-# 不版本化运维端点
-GET    /health/live
-GET    /health/ready
-GET    /metrics
-```
-
-资源型接口可以在实现时补充标准 GET/List，但不得改变上述状态转换语义。高风险管理动作使用 `POST :verb`，不通过含糊的通用 PATCH 绕过领域校验。
-
-本清单是 `/v1` 的**目标端点面**，与某一时刻的已发布 OpenAPI 不必逐条相等。已发布的权威清单是 [`schemas/openapi/openapi.json`](../schemas/openapi/openapi.json)；两者的差集按 ADR-0017 §3 分为两类：
-
-- **已发布**：Observation、Recall/Search/Usage、State、Recent Context、Focus、Note、Task、CognitiveEvent、Claim/Episode/Relation/Artifact、Forget/Retention/Legal Hold、Entity Profile、Active Surface 与部分 Admin 端点（Phase 2–8）。
-- **待 Phase 10 传输层交付**：Entity/Identity/Binding/SpaceGroup 读写面、`/v1/admin/indexes/{kind}:rebuild`（届时取代过渡端点 `/v1/admin/recent-context:rebuild`）、`/v1/admin/backups`、`/v1/admin/exports`、`/v1/admin/audit-events`，以及 §23.1 的可选 SSE 事件面。这些能力的应用层实现已在 Phase 1/5 存在，缺的只是传输面。
-- **Phase 9 已发布**：全部 Persona 端点（应用层、OpenAPI、SDK 与 mock server；真实 HTTP
-  传输仍按 ADR-0017 由 Phase 10 交付）。
+`/v1/admin/recent-context:rebuild` 按 ADR-0017 标记弃用，由通用索引重建路径接替；在 ADR-0006 要求的窗口结束前保持兼容。任何新增或删除路径均通过契约生成与兼容检查，不靠修改本文清单发布。
 
 ### 23.4 稳定错误 Envelope
 
@@ -1861,7 +1229,7 @@ GET    /metrics
 - 授权失败统一为单一码，不区分“未认证”“已认证但无权”“资源不存在但无权可见”——避免为调用方制造存在性探测面（§29.1）；
 - 资源缺失使用统一的 `not_found` 加 `details.resource_type`，不为每种资源新增码；
 - 只增不改语义：改名等同于删除，按 §23.5 需要新的 API Major Version，或按 ADR 显式记录取代关系；
-- 尚未启用但已为后续阶段保留的码（如 Persona 相关）在契约中缺席，由对应阶段的 ADR 启用。
+- 新码只随真实能力与兼容检查发布，不在架构文档中提前登记为可用。
 
 错误响应不得包含 Token、Provider Key、原始敏感文本、数据库路径或内部 Stack Trace。
 
@@ -1871,8 +1239,6 @@ GET    /metrics
 - 新枚举在不能安全忽略时通过 Capability 预协商。
 - 删除字段、改变 Scope/Privacy 默认值、改变身份唯一键或时间语义需要新的 API Major Version。
 - Schema、SDK 和契约夹具同版本发布；Adapter CI 必须对支持范围内最新 Patch 运行 Consumer Contract。
-
----
 
 ## 24. Provider 边界
 
@@ -1908,11 +1274,11 @@ ArtifactProvider
 - Timeout、重试和预算按 Job Kind 独立配置。
 - 生产配置启动时验证 Model ID 可用性；无效配置导致相关 Capability Degraded 或 Ready 失败，取决于是否为必需能力。
 
+当前 `runtime.py` 仍装配确定性认知与 Embedding Provider。`HttpEmbeddingProvider` 已有适配代码，但真实配置 → Worker 构建 → API 召回的装配闭环和真实模型质量不能由 Fake 测试证明；当前缺口以 Phase 13/14 为准。
+
 ### 24.4 故障与熔断
 
 Provider 故障不能阻止 Observation、Forget、Correct、Task 状态转换或 Persona 当前版本读取。Recall 在允许的 Route 上降级；后台任务进入 Retry/Dead Letter。熔断恢复使用有限 Probe，避免积压任务瞬间击穿外部服务。
-
----
 
 ## 25. 可选 Active Surface Coordinator
 
@@ -1934,19 +1300,7 @@ required  在线互动请求必须携带有效 Lease 与 Epoch
 
 Lease 以 `(tenant_id, agent_id)` 为唯一活动域：
 
-```text
-lease_id
-tenant_id / agent_id
-holder_space_id
-holder_app_instance_id
-lease_epoch
-priority
-status: active | draining | released | expired
-acquired_at
-expires_at
-last_heartbeat_at
-revision
-```
+数据结构与校验见 [domain/surface.py](../src/iris_memory_core/domain/surface.py)；公共请求/响应以生成契约为准。
 
 Acquire、抢占或重新获取都递增 `lease_epoch`。旧 Epoch 的请求返回 `lease_fenced`。直播等入口可以按 Tenant Policy 具有更高优先级，但抢占过程必须先 Fence 旧 Holder，再通知其停止对外互动。
 
@@ -1961,6 +1315,8 @@ Required 模式下，下列应用平面在线操作要求 Lease：
 
 身份绑定、管理纠正/删除、数据导出、备份、内部 Worker、Scheduler、索引和 Persona 管理属于管理/维护平面，不要求活动 Lease，但需要独立权限和审计。管理员凭据不能冒充活动宿主驱动对外回复。
 
+这是完整策略要求；当前 Focus 写与 Recall 应用服务缺少 Surface 注入，Phase 4 报告登记的跨阶段覆盖缺口不能因 HTTP 已交付而视为关闭。发布前须核实入口、服务、契约和双 SDK 的同一 Required 矩阵，证据归 Phase 14。
+
 ### 25.4 故障语义
 
 - `required` 模式 Acquire 不可用时 Fail Closed。
@@ -1969,11 +1325,9 @@ Required 模式下，下列应用平面在线操作要求 Lease：
 - `advisory` 模式只报告 `lease_warning`，不会把记忆服务变成单点可用性门槛。
 - Coordinator 关闭或故障不会破坏 Canonical 数据、人格版本或 Recall 权限校验。
 
----
-
 ## 26. Bellis Adapter
 
-Bellis Adapter 位于独立仓库，负责把 Bellis Memory Provider 契约映射为 Core 公共协议。它不实现第二套记忆、人格或身份事实源。
+Bellis Adapter 按 [ADR-0020](adr/0020-bellis-adapter-plugin-seam.md)以独立插件包接入，负责把 Bellis 插件契约映射为 Core 公共协议。它不实现第二套记忆、人格或身份事实源。
 
 ### 26.1 职责
 
@@ -1987,31 +1341,18 @@ Bellis Adapter 位于独立仓库，负责把 Bellis Memory Provider 契约映�
 
 ### 26.2 ContextBlock 映射
 
-每个 Block 至少保留：
+字段与枚举映射以 [ADR-0020 §3/§12](adr/0020-bellis-adapter-plugin-seam.md)及插件 `mapping.ts` 为唯一真源。`resource_type` 决定宿主闭枚举，未知值拒绝；保留原 provider category，priority 按响应顺序推导，不能把 final_score 伪装为 confidence。宿主 privacyScope 原值与 Core privacy_labels 分开保存。以上是规范映射要求；现有 `categoryMap` 可绕过默认拒绝，Hash 验证与 Audit 尚未闭合，现状差异以 [ADR-0020 §13](adr/0020-bellis-adapter-plugin-seam.md#13-现状核对2026-09-06)为准。
 
-```text
-id              = candidate_id
-revision        = resource_ref.revision
-contentHash     = candidate.content_hash
-text            = candidate.text
-category        = candidate.category（显式映射，不从文本猜测）
-placement       = working | memory
-priority        = 标准化后的排序优先级
-tokenEstimate   = candidate.token_estimate
-privacyScope    = candidate.privacy_labels
-sourceRefs      = candidate.source_refs
-expiresAt       = candidate.expires_at / response.cache_until
-```
-
-Adapter 不直接拼接 Prompt，不把普通 Memory Block 升级为 System 内容。只有通过 Persona Schema 校验、Revision/Hash 与 Response 一致的 Persona 数据能进入 Bellis 预留 Persona Slot，并且不能覆盖 Bellis 安全层。
+Adapter 只返回结构化记忆/Persona 数据；宿主拥有 Prompt 渲染与可信 Persona Slot。Persona 的 Revision/Hash 与 Recall 二次校验一致后才能采用，不能覆盖宿主安全层。
 
 ### 26.3 Observe 边界
 
-- Bellis Scene 已持久化 Commit 且输出开始生效后，才提交 Assistant Observation。
-- Scene Cancel、策略阻断和未播放输出不提交。
-- 部分语音/流式输出按确认的文本或 Segment 范围提交 Partial Observation。
-- Session Record 批次使用稳定 Event ID、Source Stream/Cursor 和 Idempotency Key。
-- Adapter Crash 后从 Core Cursor 与 Bellis Commit Log 对账，避免重复或漏交。
+- Scene Commit 是播放前的调度意图，Assistant Observation 必须来自独立的 effect/progress 确认事实；确认绑定 Session、连接代际、Scene/Cue 与 segment 范围，并有幂等、乱序、范围合并和重启规则。
+- completed/cancelled/failed 均只记录实际确认范围；取消或失败后的已确认前缀保留，零确认才产生零助手内容。
+- 宿主须在同一事务写确认事实与 Observe 投影，以稳定 Event ID、Cursor 和幂等键交付。重启对账读取确认账本，不能从 Scene Commit Log 整段文本补造播放事实。
+- Observe/Usage 的成功只表示 Core 已持久接收或业务幂等确认，内存入队和后台调度都不算 ACK。远端确认前宿主保留 Outbox 行及重试责任；超时、取消、TTL 或队列满不能静默丢弃。
+
+以上对齐 Bellis 已接受的 ADR 0006 §3/§4，取代旧 Scene Commit/Cancel 简化表述。实际 effect 协议与宿主 Outbox 尚需落地证明，不能因 ADR 已接受而标记接入完成（[Phase 11](development/phase-11-bellis-adapter.md)）。
 
 ### 26.4 在线降级
 
@@ -2019,26 +1360,15 @@ Adapter 不直接拼接 Prompt，不把普通 Memory Block 升级为 System 内�
 - Vector Route 降级：保留结构化、Recent Context 和 FTS 结果。
 - Persona 当前版本不可取得且无已验证缓存：Bellis 不使用过期或未知人格；按宿主配置进入 Degraded/Not Ready。
 - Cache 命中仍验证 Persona Revision、Content Hash、Watermark 与 `cache_until`。
-- Usage Report 失败可通过有界 Outbox 重试，不阻塞当前回复。
+- Usage 由宿主后台 Outbox 调用；失败返回宿主并保留重试责任。容量高水位限制新工作准入、保留活动输出确认空间；磁盘硬限制显式 not-ready。
 
 ### 26.5 Bellis 契约测试
 
-Adapter 仓库必须消费发布的 OpenAPI/JSON Schema 和固定 Fixture，覆盖：
-
-- ContextBlock 字段、类别与 Content Hash；
-- Deadline 和 Partial Response；
-- Persona Slot 与 Revision；
-- Session Commit、Cancel、Partial Output；
-- Cache Invalidation；
-- State Coalescing；
-- Lease Off/Advisory/Required；
-- Core 不可用和版本不兼容。
-
----
+Consumer Contract 覆盖映射、Privacy、Deadline/Partial、实际输出/Cancel/Partial、Persona/Cache、State、Usage 与 Lease 模式。真实宿主启动、故障重连、Core 当前 Schema 兼容矩阵和发布分发证明单独由[Phase 11](development/phase-11-bellis-adapter.md)交付，离线 Fixture 通过不表示这些闭环已经完成。
 
 ## 27. AstrBot Bridge
 
-AstrBot Bridge 位于独立仓库，负责平台事件、生命周期钩子和 Core 协议之间的转换。
+AstrBot Bridge 的目标是隔离平台事件、生命周期钩子与 Core 协议。以下是接入约束，实际实现和验证状态只见 [Phase 12](development/phase-12-astrbot-bridge.md)。
 
 ### 27.1 职责
 
@@ -2067,9 +1397,9 @@ AstrBot Bridge 位于独立仓库，负责平台事件、生命周期钩子和 C
 ### 27.3 事件边界
 
 - 用户消息在 AstrBot 已确认接收时提交 Observation。
-- 助手消息只在 `after_message_sent` 或平台等价成功回调提交。
+- 助手消息须有发送成功/部分效果的可信证明。`after_message_sent` 即使发送异常也可能触发，不能单凭该 Hook 生成 Observation；适配证明由 [Phase 12.0](development/phase-12-astrbot-bridge.md)冻结。
 - `on_llm_response`、文本生成完成或发送前 Hook 不得作为已说事实。
-- 发送失败、被撤销前未生效、被审核拦截的文本只写本地/审计失败事件。
+- 发送失败、撤销或审核拦截时，未确认部分只写本地/审计失败事件；已取得可信效果证明的前缀仍可提交 Observation。
 - 平台支持 Source Event ID 时同时使用 Source Cursor 与 Idempotency Key。
 
 ### 27.4 非活动入口
@@ -2095,8 +1425,6 @@ Coordinator 为 `required` 且 Bridge 无有效 Lease 时：
 - Bridge 重启后的 Cursor 对账；
 - Core 超时、不可用和版本不兼容；
 - Lease 抢占与 Fencing。
-
----
 
 ## 28. SDK 与契约发布
 
@@ -2124,8 +1452,6 @@ SDK 不隐藏 Scope、Partial、Degraded Route、Persona Revision 或 Usage Repo
 - Breaking Change 先发布迁移说明和双读/双写窗口，再进入新 Major。
 - Fixture 是契约的一部分，不能只依赖生成客户端编译通过。
 
----
-
 ## 29. 安全与隐私
 
 ### 29.1 威胁模型
@@ -2143,12 +1469,11 @@ SDK 不隐藏 Scope、Partial、Degraded Route、Persona Revision 或 Usage Repo
 
 ### 29.2 认证与授权
 
-- App Instance 使用独立、可轮换 Credential。
-- Credential 绑定 Tenant、允许 Agent/Space、Capability、用途和过期时间。
-- 管理平面与应用平面凭据隔离。
-- Scope 从 Credential 和服务端注册关系推导；Body 只能收窄。
-- 高风险动作包括 Binding、SpaceGroup Binding、Forget、Persona 发布/回滚、Backup/Export，均要求原因与 Audit。
-- 服务到 Provider 使用独立最小权限 Secret，通过环境 Secret/File/系统 Secret Store 注入。
+宿主 `/v1` 使用独立、可轮换的不透明 Bearer Credential；Tenant、Agent/Space、Capability、Purpose 由服务端派生，请求体只允许收窄。高风险 Binding、Forget、Persona 发布/回滚、Backup/Export 要求原因与 Audit。
+
+Console 使用独立运营密钥及会话表；首把 Owner 只能离线签发。Cookie/CSRF/Origin、近期重认证、不可变 Grant 与最后 Owner 保护遵循 [ADR-0022](adr/0022-management-console-plane.md)，不能复用宿主 Bearer 或通过 `admin=True` 跳过逐资源授权。
+
+Provider Secret 使用最小权限引用或受控加密封装，密钥不会随错误、日志或普通导出返回。
 
 ### 29.3 Prompt 与模型安全
 
@@ -2162,7 +1487,7 @@ SDK 不隐藏 Scope、Partial、Degraded Route、Persona Revision 或 Usage Repo
 ### 29.4 数据保护
 
 - 传输使用 TLS；本机 Unix Socket 也需文件权限保护。
-- 备份和 Artifact 静态加密；SQLite 全盘加密由部署环境或受支持扩展提供。
+- 发布部署须提供备份与 Artifact 静态加密、独立密钥保管和轮换；SQLite 全盘加密由部署环境或受支持扩展承担。当前 HMAC 完整性校验不等同于静态加密，实际交付和演练见 Phase 14。
 - Secret 永不进入数据库备份、配置导出、日志或诊断包。
 - 导出按 Scope、主体、用途和 Privacy 重新授权。
 - 删除策略覆盖 Canonical、Artifact、投影、缓存、备份保留和恢复流程。
@@ -2185,8 +1510,6 @@ occurred_at
 ```
 
 审计正文不复制敏感内容，只保存必要引用、哈希和原因码。审计本身有严格权限、保留和防篡改策略。
-
----
 
 ## 30. 性能与容量目标
 
@@ -2215,8 +1538,6 @@ occurred_at
 - 每 Tenant/Agent 的公平调度；
 - Provider 成本和每日预算。
 
----
-
 ## 31. 可观测性
 
 ### 31.1 结构化日志
@@ -2241,29 +1562,9 @@ persona_revision?
 
 ### 31.2 指标
 
-建议指标：
+现有指标名与类型以 [observability/metrics.py](../src/iris_memory_core/observability/metrics.py)及实际发射点为准，不维护第二份手工“建议指标”表。指标只使用低基数标签，禁止 user_id、完整 Scope、任意 URL、内容正文或自由文本错误值。
 
-```text
-iris_http_requests_total{method,route,status_class}
-iris_http_duration_seconds{route}
-iris_recall_duration_seconds{route_kind}
-iris_recall_partial_total{reason_code}
-iris_recall_candidates{stage,category}
-iris_observations_total{role,kind}
-iris_outbox_jobs{status,job_kind}
-iris_outbox_oldest_age_seconds{job_kind}
-iris_schedule_lag_seconds{job_kind}
-iris_provider_requests_total{provider_kind,outcome}
-iris_provider_duration_seconds{provider_kind}
-iris_index_generation{index_kind}
-iris_index_lag_revisions{index_kind}
-iris_sqlite_busy_total{operation_class}
-iris_storage_free_bytes
-iris_persona_proposals_total{outcome}
-iris_active_surface_leases{status}
-```
-
-禁止把 `tenant_id`、`agent_id`、`space_id`、`entity_id`、`task_id`、`request_id`、原始错误文本或查询文本作为常规 Metric Label。按租户诊断使用受控日志/管理查询，不制造高基数时序。
+当前 `/metrics` 是租户级 JSON 快照，`iris_schedule_lag_seconds` 尚未出现在该传输面；格式、采集端点、告警、跨进程聚合和采集权限由 Phase 14 验证。Console 统计另走按授权可见集合计算的有界查询/投影，新鲜度和覆盖区间须诚实披露（ADR-0022）。
 
 ### 31.3 Trace
 
@@ -2284,176 +1585,66 @@ Trace 覆盖 API、Repository、Recall Route、Provider、Outbox 和 Projection�
 
 响应不暴露路径、Secret 或敏感资源 ID。
 
----
-
 ## 32. 测试策略
 
 ### 32.1 测试层次
 
-```text
-领域单元测试
-  → Repository / Migration 集成测试
-  → API / Schema 契约测试
-  → Worker / Provider / Index 故障测试
-  → Adapter Consumer Contract
-  → Bellis / AstrBot E2E
-  → 长时间 Soak / Recovery Drill
-```
+领域/性质 → Repository/Migration → 真实 API 契约 → Worker/Provider/Index 故障 → Adapter Consumer Contract → 真实宿主 E2E → 性能/Soak/Recovery。每层证明自己的边界，不能用 mock、Fake Provider、TestClient 或小规模恢复替代更外层的验收。具体发布命令、数据集与门禁只维护在 Phase 14。
 
 ### 32.2 领域与性质测试
 
-使用示例测试和 Property-based Test 覆盖：
-
-- Scope Null 语义、SpaceGroup/Space 隔离和 Privacy 交集；
-- Entity Redirect、Binding 冲突和发生时/当前身份；
-- Revision、Expected Revision、双时态和历史读取；
-- Idempotency Key 重试与 Payload 冲突；
-- Note、Task、TaskStep、CognitiveEvent 和 Persona 状态机；
-- Task Dependency 环检测；
-- Persona Policy 的字段、幅度、证据窗口和冷却期；
-- Score 缺失值、归一化和稳定排序；
-- Tombstone 不可复活。
+覆盖 Scope/Privacy、Identity/Binding、Revision/双时态、幂等、各对象状态机、Task 依赖环、Persona Policy、评分缺失值与 Tombstone 不复活。固定种子与失败回归应证明不变量，不仅镜像实现。
 
 ### 32.3 并发与事务测试
 
-- 并发 Observation 相同/不同幂等键；
-- 并发 Correct/Forget/Recall；
-- 多 Worker 抢占、Lease 过期和 Generation Fencing；
-- Schedule 双实例选主、Tick 重放和时钟回拨；
-- Persona 同 Base Revision 并发发布；
-- Active Surface Acquire、抢占、Heartbeat 和旧 Epoch 请求；
-- SQLite Busy、进程 Kill、磁盘满和事务中断。
-
-每个测试都验证 Canonical 数据、Outbox、Audit、Watermark 和 Current Pointer 的联合不变量。
+交错 Observe、Correct/Forget/Recall、Worker Lease/Generation、Tick、Persona CAS 与 Active Surface。SQLite Busy、强杀、磁盘满或事务中断后，联合验证 Canonical、Outbox、Audit、Watermark、Evidence 与 Current Pointer，不能只检查单表行数。
 
 ### 32.4 Recall 与索引测试
 
-- FTS、Vector、Graph 任一路由超时或损坏；
-- Partial/Completed/Degraded Route Envelope；
-- 最终 Rehydrate 剔除已删除、过期、越权和旧 Revision；
-- Generation Build、校验、Handle Swap 与回退；
-- Model/Dimension/Builder Version 不匹配；
-- Token/Layer Budget 和稳定 Tie-breaker；
-- Cache 在 Forget、Binding、SpaceGroup、Persona 变化后失效；
-- Usage Report 只更新实际 Model-visible Candidate。
+验证 Route 超时/损坏/落后、准确 Partial/Degraded Envelope、最终 Rehydrate、不可变 Generation 发布与回退、模型空间隔离、稳定排序/预算、Usage 子集。未来启用 Cache 时追加完整失效矩阵；没有 Cache 的部署不虚构命中测试。
 
 ### 32.5 时间测试
 
-所有 Clock 可注入，覆盖：
-
-- Task 到期、重复计划和 Occurrence 幂等；
-- IANA 时区、夏令时跳过/重复；
-- 系统时钟前跳、回拨、暂停和重启 Catch-up；
-- Note Review、Focus Decay、Persona State TTL；
-- Deadline 单调计时；
-- CognitiveEvent ACK、重投和过期。
+Clock 注入覆盖时区/DST、回拨/前跳/休眠/重启 Catch-up、Occurrence 去重、State/Focus/Note/Persona 到期、Deadline 单调预算与 Event ACK/重投。墙钟 TTL 与 Worker 扫描的已知边界单独给证据。
 
 ### 32.6 Persona 测试
 
-- Core 仅能由管理路径修改；
-- Trait 在 `locked|manual|bounded_auto` 下的行为；
-- 单一恶意用户或 Prompt Injection 无法发布人格变化；
-- Base Revision Stale 时 Proposal 不能发布；
-- 多端读取相同 Revision/Hash；
-- 发布通知、Cache Invalidation 和离线重连；
-- Rollback 产生新 Revision；
-- Persona State 到期回归；
-- Narrative 只能引用有效 Evidence。
+覆盖管理权限、locked/manual/bounded_auto、Core 禁止自动修改、证据与冷却期、Stale Base Revision、并发发布、回滚新 Revision、TTL，以及宿主通知丢失/缓存失效/离线重连后的 Revision/Hash 收敛。
 
 ### 32.7 安全测试
 
-- Tenant/Agent/SpaceGroup/Space/Entity 横向越权；
-- Body Scope 提权；
-- Admin Token 用于应用平面；
-- 恶意 ResourceRef、Artifact 路径与超大 Payload；
-- Prompt Injection、未知 Entity ID、伪造 Evidence；
-- 日志、Metric、Trace、错误和导出泄漏扫描；
-- 备份恢复后的 Tombstone 与 Privacy；
-- 依赖、SQLite Runtime 和容器镜像漏洞扫描。
+跨 Tenant/Agent/Group/Space/Entity、Body 提权、管理/宿主/Console 凭据串用、恶意 Ref/Artifact/导入、Prompt Injection/伪造 Evidence、Provider 出站策略及可观察面泄漏均须有拒绝证据。恢复和导入后再次验证 Tombstone/Privacy；依赖与部署安全门禁归 Phase 14。
 
 ### 32.8 Adapter E2E
 
-Bellis 和 AstrBot 各自维护最小真实生命周期 E2E：
+真实宿主闭环必须包含：用户 Observation → Recall/Persona → 最终模型可见集合与 Usage → 实际输出 Observation → Note/Task/Forget → Core/Adapter 重启与 Cursor 对账。发送失败、部分输出、版本不兼容、Provider/Route/Coordinator 故障分别证明明确降级。
 
-1. 用户事件提交并获得 Watermark；
-2. Recall 获取 Persona 与 Memory；
-3. 宿主选择 Context 并回传 Usage；
-4. 助手实际输出后提交 Observation；
-5. Note/Task/Forget 生效；
-6. Core 重启、Adapter 重连和 Cursor 对账；
-7. 部分 Route、Provider、Coordinator 故障降级。
+Bellis 与 AstrBot 各自独立验证；一个宿主通过不能代替另一个。现有覆盖和缺口分别见 Phase 11/12。
 
 ### 32.9 性能与 Soak
 
-- 在目标数据量下分别测冷/热索引。
-- 混合 Observe、Recall、State、Task 和 Worker 负载运行至少 24 小时。
-- 注入 Provider 慢响应、Worker Crash、FAISS 损坏、磁盘逼近阈值和备份任务。
-- 验证 WAL 增长、Checkpoint、内存、文件句柄、Queue Lag 和 Tail Latency。
-- Soak 结束执行 Integrity Check、投影重建和 Recall 抽样一致性。
-
----
+按 §30 声明硬件、规模、冷/热状态与并发。混合 Observe/Recall/State/Task/Worker 运行至少 24 小时，注入 Provider 慢响应、Worker Crash、索引损坏、磁盘阈值与备份负载；记录尾延迟、WAL、内存、句柄、Queue Lag，并在结束后执行 Integrity、投影重建和 Recall 抽样。任务计划不是已经取得的 Soak 证据。
 
 ## 33. 仓库与代码组织
 
 ### 33.1 Core Monorepo
 
-```text
-iris-memory-core/
-├── pyproject.toml
-├── README.md
-├── LICENSE
-├── docs/
-│   ├── IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md
-│   ├── README.md              # 文档索引与维护规则
-│   ├── adr/                   # 冻结边界决策
-│   ├── development/           # 分阶段路线图与阶段文档
-│   ├── reports/               # 各阶段验证报告
-│   └── operations/            # 运维手册（Phase 14）
-├── contracts/
-│   └── source/                # 契约生成源（错误码/能力/版本的唯一真源）
-├── schemas/
-│   ├── openapi/               # 生成物
-│   ├── jsonschema/            # 生成物
-│   ├── compatibility/         # v1 兼容基线快照
-│   └── fixtures/              # valid / invalid / forward
-├── src/iris_memory_core/
-│   ├── api/
-│   ├── application/
-│   ├── domain/               # 平铺模块（identity/scope/observation/memory/persona…）
-│   ├── storage/
-│   ├── indexing/
-│   ├── jobs/
-│   ├── providers/
-│   ├── coordinator/
-│   ├── security/
-│   └── observability/
-├── sdk/
-│   ├── python/
-│   └── typescript/
-├── migrations/                # 顺序、不可变、带 checksum
-├── tests/
-│   ├── unit/                  # 含 property-based 用例
-│   ├── integration/
-│   ├── contract/
-│   ├── fault/
-│   ├── performance/
-│   └── e2e/                   # Phase 11/12 起
-├── tools/                     # 契约生成、边界与文档门禁、mock server
-└── deploy/                    # Phase 14 起
-    ├── docker/
-    └── compose/
-```
+| 路径 | 职责 |
+| --- | --- |
+| `src/iris_memory_core/` | API、应用/领域、存储、任务、索引、Provider、协调与可观测性 |
+| `contracts/source/`、`schemas/`、`sdk/` | 两个契约源、生成物、兼容基线与宿主 SDK |
+| `migrations/`、`tests/`、`tools/` | 不可变迁移、验证与工程门禁 |
+| `docs/` | 基线、ADR、阶段状态、Console 设计与历史证据 |
+| `application/` | Bellis/AstrBot 接入说明；不证明适配代码已交付 |
+| `web/console/` | Console 前端 |
 
-标注了阶段的目录在该阶段之前不存在；其余目录必须与本树保持一致。改变本树需要同时更新本章与受影响的阶段文档。本树只约束到**目录**一层——`domain/` 与 `application/` 内部是按聚合命名的平铺模块，不是子包；本章曾把 `domain/` 画成 8 个子包，与实现从第一天起就不一致。
+`domain/` 与 `application/` 的聚合模块使用平铺结构，Console 增设专用子包。容器、Compose、运维手册的新增路径由 Phase 14 落实，尚未存在的目录不列作已交付代码。
 
 ### 33.2 Adapter 仓库
 
-```text
-iris-memory-bellis-adapter/
-iris-memory-astrbot-bridge/
-```
+适配代码必须保持独立包/插件边界，仅依赖宿主框架与发布 SDK、Schema、Fixture、HTTP/Event 契约；不得复制 Core 领域模型或直接访问 SQLite/FAISS。
 
-Adapter 仓库不得复制 Core Domain Model 或直接访问 Core SQLite/FAISS 文件。它们只依赖发布的 SDK、Schema、Fixture 和 HTTP/Event 契约。
+Bellis 当前实现路径与插件接缝由 [Phase 11](development/phase-11-bellis-adapter.md)、[ADR-0020](adr/0020-bellis-adapter-plugin-seam.md)维护；AstrBot 的承载方式与真实生命周期证据由 [Phase 12](development/phase-12-astrbot-bridge.md)闭合，不预设一个尚不存在的独立仓库。
 
 ### 33.3 依赖方向
 
@@ -2466,8 +1657,6 @@ adapter → sdk + host framework
 ```
 
 Domain 不导入 FastAPI、SQLite、FAISS、Provider SDK、Bellis 或 AstrBot 类型。
-
----
 
 ## 34. 配置与运行模式
 
@@ -2489,8 +1678,6 @@ Domain 不导入 FastAPI、SQLite、FAISS、Provider SDK、Bellis 或 AstrBot �
 - 端口、磁盘、索引 Manifest 和必需 Capability。
 
 开发阶段支持本机 Python 进程直接运行。容器镜像和 Compose 是硬化阶段的交付物，不作为早期领域实现与测试的前置条件。
-
----
 
 ## 35. 部署与运维
 
@@ -2575,233 +1762,93 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 - 数据删除请求与备份保留；
 - Adapter 版本不兼容和回滚。
 
----
-
 ## 36. 实施阶段
 
-每个阶段都以可运行、可测试、可迁移的纵向切片结束。后续阶段不得通过绕过前一阶段不变量来加速。
+阶段状态、依赖与验收顺序只维护在[阶段索引](development/README.md)。下列历史标题仅保留链接锚点，避免旧深链失效；不再复制工作包、交付清单或完成状态。
 
 ### 阶段 0：架构冻结与工程骨架
 
-交付：
-
-- ADR：Canonical/Projection、Scope Null、Identity、Revision、Tombstone、API Version、Repository Boundary；
-- Python 工程、Lint、Type Check、Test、Migration Runner；
-- OpenAPI/JSON Schema 生成与兼容检查；
-- 基础 CI、AGPL-3.0、开发说明。
-
-退出条件：Domain 不依赖框架；Schema Fixture 能被 Python/TypeScript 同时验证。
+见 [Phase 0](development/phase-00-architecture-scaffold.md)。
 
 ### 阶段 1：持久化内核、身份与空间
 
-交付：
-
-- SQLite Runtime Guard、WAL、Repository、Unit of Work；
-- Tenant、Agent、SpaceGroup、Space、Session；
-- AccessContext、Privacy Policy；
-- Entity、ExternalIdentity、Binding、Redirect、字段权威；
-- Revision、Watermark、Idempotency、Audit、Tombstone；
-- Online Backup 与最小 Restore 验证。
-
-退出条件：跨 Scope 越权测试、并发 Revision、Binding History 和 Backup Restore 全部通过。
+见 [Phase 1](development/phase-01-persistence-identity-scope.md)。
 
 ### 阶段 2：Observation、Outbox 与持久调度
 
-交付：
-
-- Observation Batch、实际效果语义、Source Stream/Cursor；
-- Transactional Outbox、Worker Lease Generation、Retry/Dead Letter/Backpressure；
-- Schedule、Tick Ledger、Catch-up、时区和时间异常处理；
-- Observation/Job/Health 基础指标。
-
-退出条件：Kill -9、重复事件、Cursor 对账、旧 Worker Fencing 和时钟回拨测试通过。
+见 [Phase 2](development/phase-02-observation-outbox-scheduler.md)。
 
 ### 阶段 3：近期上下文、State 与 Focus
 
-交付：
-
-- RecentContextProjection 与版本化摘要；
-- StateRecord 与 Coalescing；
-- FocusItem、容量、衰减、休眠和晋升；
-- 结构化 Recall Route。
-
-退出条件：Recent Context 与 Focus 语义无重叠，重启可恢复，Space 私有数据不跨端泄漏。
+见 [Phase 3](development/phase-03-recent-state-focus.md)。
 
 ### 阶段 4：Note、Task 与 CognitiveEvent
 
-交付：
-
-- Note 生命周期、Review 和 Promotion；
-- Task、TaskStep、Dependency、Trigger；
-- CognitiveEvent 投递、ACK、重投与过期；
-- 受限重复日程与 Task Due Scan。
-
-退出条件：依赖环、重复 Occurrence、ACK≠完成、发送失败不推进任务等测试通过。
+见 [Phase 4](development/phase-04-notes-tasks-events.md)。
 
 ### 阶段 5：显式长期记忆与 Episode
 
-交付：
-
-- Remember/Correct/Forget/Search；
-- Episode、Claim、Evidence、Relation、Artifact；
-- 双时态与历史读取；
-- Retention 和 Tombstone 全链路。
-
-退出条件：修正保留历史，删除后所有 Canonical/Cache/Index 路径不可复活。
+见 [Phase 5](development/phase-05-long-term-memory.md)。
 
 ### 阶段 6：FTS Recall
 
-交付：
-
-- FTS5 Projection、Builder Version、影子重建；
-- RecallRequest/Candidate/Response、Deadline、Route、Token Budget；
-- Final Canonical Rehydrate；
-- Usage Report。
-
-退出条件：FTS 延迟目标、Partial Envelope、稳定排序和删除竞态测试通过。
+见 [Phase 6](development/phase-06-fts-recall.md)。
 
 ### 阶段 7：Vector Recall
 
-交付：
-
-- Embedding Port 与模型验证；
-- `int64` ID Map；
-- FAISS Generation/Manifest/Checksum；
-- Copy-on-write Handle Swap、回退和混合排序。
-
-退出条件：并发 Search/Rebuild、损坏 Generation、模型维度变化和重启测试通过。
+见 [Phase 7](development/phase-07-vector-recall.md)。
 
 ### 阶段 8：Profile 与 Graph
 
-交付：
-
-- ProfileProjection；
-- Relation Graph、Builder Watermark、受限多跳 Recall；
-- Binding 变化后的重建；
-- 投影故障回退到 Canonical Claim/Relation。
-
-退出条件：逐边 Privacy、扇出预算、旧 Builder 拒绝和重建一致性测试通过。
+见 [Phase 8](development/phase-08-profile-graph.md)。
 
 ### 阶段 9：完整 Persona
 
-交付：
-
-- Persona Core/Trait/Narrative Revision；
-- Persona State TTL 与 Baseline；
-- Policy、Proposal、Manual/Bounded Auto 发布；
-- Current Pointer、History、Rollback、通知和 Cache Invalidation；
-- Persona API 与管理权限。
-
-退出条件：多端相同 Revision/Hash、Prompt Injection、并发发布、冷却期、回滚和状态回归测试通过。
+见 [Phase 9](development/phase-09-persona.md)。
 
 ### 阶段 10：巩固、Reflection 与传输层
 
-交付：
-
-- Episode Consolidation、Claim Extraction、Reconciliation；
-- Note/Task Candidate、Persona Evaluation；
-- ReflectionRecord 与候选防自循环；
-- Provider Budget、Circuit Breaker 和 Dead Letter 管理；
-- **HTTP 传输层与进程入口**（ADR-0017 §3）：ASGI 应用与路由、Bearer 认证与 AccessContext 构造、领域错误到稳定 Envelope 的映射、`Idempotency-Key` 与 `expected_revision` 接线、能力协商与 `/health/*`、`/metrics`、可选 SSE 事件面，以及 `serve` / `worker` 两个进程命令；
-- **补齐仅缺传输面的端点**：Entity/Identity/Binding/SpaceGroup 读写面、`/v1/admin/indexes/{kind}:rebuild`、`/v1/admin/backups`、`/v1/admin/exports`、`/v1/admin/audit-events`。
-
-退出条件：固定 Watermark 可重放、无来源候选被拒绝、Provider 故障不影响 Canonical 在线功能；已发布 OpenAPI 的每条路径都有真实传输层实现并通过契约测试，`serve`/`worker` 可在干净环境启动并通过 Ready 检查。
+见 [Phase 10](development/phase-10-consolidation-reflection.md)。
 
 ### 阶段 11：Bellis Adapter
 
-交付：
-
-- 独立仓库、TypeScript SDK 接入；
-- ContextBlock、Persona Slot、State/Observe/Usage 映射；
-- Scene Commit/Cancel/Partial Output；
-- Deadline、Cache、降级和 Consumer Contract。
-
-退出条件：Bellis E2E 闭环及 Core 重启恢复通过。
+见 [Phase 11](development/phase-11-bellis-adapter.md)。
 
 ### 阶段 12：AstrBot Bridge
 
-交付：
-
-- 独立仓库、生命周期与 Space/Identity 映射；
-- Recall/Persona 注入和工具；
-- `after_message_sent` 实际效果提交；
-- Cursor 对账、降级和 Consumer Contract。
-
-退出条件：群聊/私聊、发送失败/重复 Hook、Bridge 重启和 Core 故障 E2E 通过。
+见 [Phase 12](development/phase-12-astrbot-bridge.md)。
 
 ### 阶段 13：旧 Iris 数据迁移
 
-交付：
-
-- 只读扫描、映射报告、Dry Run、分批导入、校验与回滚工具；
-- L1/L2/L3、画像、图谱、Persona、任务类数据的映射策略；
-- Source Legacy Ref、导入幂等键和冲突报告；
-- 双写/冻结/切换运行手册。
-
-退出条件：代表性数据集全量演练，数量、哈希、引用、Recall 抽样和 Tombstone 校验通过。
+旧标题保留作兼容锚点；原自动迁移路线已被 ADR-0022 取代，实际阶段为 Web 管理控制台。见 [Phase 13](development/phase-13-web-console.md)。
 
 ### 阶段 14：硬化、容器与发布
 
-交付：
-
-- Docker Image、Compose、只读根文件系统、Healthcheck 和优雅关闭；
-- SBOM、依赖/镜像扫描、Secret 与 Backup 加密；
-- 性能基线、24h+ Soak、故障注入、恢复演练；
-- 运维手册、告警、Release/Upgrade/Rollback 流程。
-
-退出条件：所有顶层验收项通过，部署包可在干净环境重复安装、升级、备份和恢复。
-
----
+见 [Phase 14](development/phase-14-hardening-release.md)。
 
 ## 37. 旧 Iris 数据迁移
 
 ### 37.1 原则
 
-- 迁移工具只读源库，不直接修改源数据。
-- 每个导入对象保留 `legacy_source`、原 ID、源哈希和转换版本。
-- 迁移写入使用稳定幂等键，可重复 Dry Run 和分批执行。
-- 不把旧 L1/L2/L3 编号直接暴露为新公共类型。
-- 无法证明主体、Scope、时间或来源的内容进入隔离候选，不自动成为 Active Claim。
-- 旧 Persona 与用户 Profile 严格分开。
+本节标题保留旧引用；原“连接源库、扫描、双写、追平、切换”方案已由 [ADR-0022](adr/0022-management-console-plane.md)取代，不再作为交付要求。当前仅支持规划中的运营者上传纯数据文件导入，实施状态见 [Phase 13](development/phase-13-web-console.md)。
+
+导入与灾难恢复不同：源端由运营者自行导出，Core 不接受源库连接串、服务器路径、远程 URL、SQL/pickle 或备份目录。导入必须保留来源与转换版本，服务端生成目标 ID，逐条通过应用服务授权、Evidence、Revision、Tombstone 与审计门禁。无法证明主体、Scope、时间或来源的材料隔离审核；上传本身不证明历史外部效果。
 
 ### 37.2 映射
 
-| 旧数据 | 目标对象 |
-| --- | --- |
-| 原始对话/消息 | Observation |
-| L1 FIFO 与滚动摘要 | Observation + RecentContextProjection 重建输入 |
-| L2 长期记忆 | Episode 或 Claim + Evidence |
-| L3 实体/关系 | Entity、Claim、Relation 候选 |
-| 用户画像/群画像 | Claim/Evidence；Profile 重新构建 |
-| 实时状态 | StateRecord 或过期历史 |
-| 随手记录 | Note |
-| 计划/承诺/提醒 | Task、TaskStep、TaskTrigger 候选 |
-| Persona 固定设定 | Persona Core 管理导入候选 |
-| Persona Evolution 历史 | Persona Trait/Narrative Proposal 或历史 Revision 候选 |
-| FAISS/FTS | 不迁移为事实；从 Canonical 数据重建 |
+目标资源格式以 Console 的导入契约和服务端校验器为准，不在旧库结构未经核查时冻结 L1/L2/L3 映射表。Persona 与外部用户 Profile 严格分开；历史 Persona 只形成待审 Proposal，Task 为草稿且 Trigger 禁用，历史 Assistant/Tool/System 材料默认隔离。凭据、权限、审计、Tombstone、调度/投递/Usage 与全部投影都不作为外部数据导入；目标投影从 Canonical 重建。
 
 ### 37.3 迁移步骤
 
-1. 盘点源 Schema、编码、时区、Persona/用户隔离方式和删除记录。
-2. 生成只读统计与异常报告。
-3. 建立平台账号到 ExternalIdentity、旧 Persona 到 Agent 的显式映射。
-4. Dry Run 输出目标数量、冲突、孤儿引用、未知 Scope 和风险项。
-5. 先导入身份/空间，再导入 Observation，最后导入派生长期内容和 Persona 候选。
-6. 重建 FTS/FAISS/Profile/Graph。
-7. 对数量、哈希、引用、时间、主体、Recall 和删除语义抽样校验。
-8. 在受控窗口双写或冻结旧服务，追平增量 Cursor。
-9. 切换 Adapter，并保留可回退的只读旧服务与迁移 Manifest。
+`upload → validate → review → commit` 使用服务端保存的校验报告和 report hash；校验阶段只写 staging。提交默认要求已校验的本地备份，逐条复核权限与删除水位，业务写入与进度 checkpoint 同事务提交。来源键为 `(tenant, source_namespace, resource_type, source_id)`，支持幂等重跑与断点续传。
+
+导入后检查数量、引用、时间、Evidence、Tombstone 与抽样 Recall，并重建投影。批量导入没有“恢复备份式回滚”承诺：安全恢复仍走离线 restore/recover-switch 及删除账本重放。详细执行和验收只维护在[Console 设计](design/console-backend.md)。
 
 ### 37.4 冲突处理
 
-- 同一事实不同值：保留多条 Evidence，标为 Disputed。
-- 昵称同名：不合并 Entity。
-- 缺失 Scope：进入 Restricted Quarantine，等待人工映射。
-- 缺失时间：保存 `occurred_at_precision=unknown`，不能伪造精确时间。
-- 旧 Persona 自动演进内容：不直接进入 Core/Trait Current，先按 Policy 审核。
-- 旧删除记录：优先导入 Tombstone，再导入其他内容，防止重建复活。
+现有 Canonical 冲突只允许 skip/quarantine，不覆盖；同名昵称不合并 Entity，未知 Scope/时间不伪造，Persona 不直接发布。长期来源账本记录删除标记，换目标 UUID 或 dataset_id 不得复活已删除资源；身份与内容均改写且缺失 lineage 的外部材料无法可靠归同，必须作为新的不可信材料审核。
 
----
+原方案中的“导入旧 Tombstone/删除账本”已取消。外部数据导入拒绝此类记录，但 §21 的灾难恢复仍必须保留并重放 Core 自己的删除账本；两者不是同一授权入口。
 
 ## 38. 顶层验收标准
 
@@ -2812,7 +1859,7 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 - Canonical Store、Revision、Watermark、Idempotency 和 Outbox 原子性通过故障测试。
 - Scope Null、SpaceGroup、Privacy、Entity Binding 和发生时身份语义明确且有性质测试。
 - Correct 保留历史；Forget 在 Cache/FTS/FAISS/Graph/Backup Restore 路径不可复活。
-- Observation 只记录实际外部效果。
+- Observation 只记录可信确认的实际外部效果；失败/取消后的已确认前缀保留，零确认时不产生助手内容，Scene Commit 或单个发送 Hook 不构成效果证明。
 - Task Event ACK 不会误标完成。
 
 ### 38.2 Persona
@@ -2842,48 +1889,18 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 ### 38.5 接入与发布
 
 - Core/Schema/SDK Monorepo 契约一致。
-- Bellis Adapter 与 AstrBot Bridge 位于独立仓库并通过 Consumer Contract/E2E。
+- Bellis Adapter 与 AstrBot Bridge 保持独立包/插件边界，声明与当前 Core Schema/Contract 的支持矩阵并通过 Consumer Contract/真实宿主 E2E。
 - Active Surface Coordinator 在 Off/Advisory/Required 三种模式行为符合定义。
-- 旧 Iris 迁移可 Dry Run、可幂等重跑、可审计和可回退。
+- Console 文件导入经过 validate/review/commit、幂等续传、Tombstone 不复活与审计验证；灾难恢复独立通过删除账本和隔离恢复门禁。
 - Docker、Compose、SBOM、Soak、恢复手册在硬化阶段完整交付。
-
----
 
 ## 39. 决策基线
 
-以下内容作为实现期间的冻结边界：
+冻结边界与取代关系统一维护在 [ADR 索引](adr/README.md)，本文不再重复一份决策清单。Canonical/Projection、Scope Null、Identity、Revision/Tombstone、Persona 权限、Observation 实际效果与 API 兼容性变更必须先有 ADR，并提供必要的协议/数据版本、迁移与回退证据。
 
-- Python 3.12+、FastAPI、Pydantic 2、OpenAPI 3.1；
-- SQLite WAL 为 Canonical Truth，FTS5/FAISS/Profile/Graph 为可重建投影；
-- 公共 ID 使用 UUIDv7，FAISS 使用独立 `int64` surrogate ID；
-- RecentContextProjection 与 FocusItem 分离；
-- Note 为独立一等领域对象；
-- Task 包含稳定 TaskStep、Dependency、Trigger 与 CognitiveEvent；
-- Core 提供完整 Persona 功能并保证多端版本稳定；
-- SpaceGroup 提供受 Scope/Privacy 控制的跨 Space 社区记忆；
-- Active Surface Coordinator 可选，支持 `off|advisory|required`；
-- 业务 API 使用 `/v1`，时间使用 RFC 3339；Health/Ready/Metrics 不版本化；稳定错误码清单以契约生成源为唯一真源（ADR-0017 §1）；
-- Core、Schema、SDK 使用 Monorepo，宿主 Adapter 使用独立仓库；
-- Docker 与 Compose 在硬化阶段交付，不阻塞前期领域实现；
-- AGPL-3.0。
-
-后续 ADR 可以确定阈值、默认权重、具体 Provider、日程语法子集、备份周期和部署资源，但不能绕过本章冻结的不变量。若确需改变身份唯一键、Scope Null、Tombstone、Persona 权限、Observation 实际效果或 Canonical/Projection 边界，必须提升协议或数据版本并提供迁移方案。
-
----
+阈值、默认权重、Provider、日程子集和部署资源可以在这些边界内演进；不得以“实现方便”绕开 §2 的不变量。
 
 ## 40. 完成定义
 
-Iris Memory Core 的完成不是“可以把文本写入向量库”，而是以下闭环可长期稳定运行：
+只有真实外部效果、可追溯身份/Scope/Evidence、受控人格、预算内召回、实际 Usage，以及故障后的调度/投影/恢复持续构成闭环，才满足完成定义。实际是否达到该标准以[Phase 14 的发布证据](development/phase-14-hardening-release.md)判定，不能从本架构目标或历史 Completed 标签推断。
 
-```text
-真实外部效果被准确记录
-  → 身份、空间、隐私和时间可追溯
-  → 近期上下文、关注、便签和任务各司其职
-  → 长期事实有 Evidence、Revision 与 Tombstone
-  → Persona 在 Core 中完整、受控、可回滚并跨端一致
-  → Recall 在预算内给出可解释的完整或降级结果
-  → 宿主回传实际使用情况
-  → 调度、投影、备份和恢复在故障后继续正确工作
-```
-
-达到这一闭环后，Bellis、AstrBot 和未来宿主可以共享同一 Agent 的记忆与人格，同时保留各自的交互、安全和动作边界。

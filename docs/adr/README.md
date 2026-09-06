@@ -25,5 +25,15 @@ Every ADR carries context, decision, rejected alternatives, consequences, and mi
 | [0017](./0017-contract-surface-alignment.md) | Contract surface alignment: error-code supersession, endpoint naming adjudication, HTTP transport layer assigned to Phase 10 | Accepted |
 | [0018](./0018-phase9-persona.md) | Phase 9 complete Persona: additive bootstrap expansion, policy/evidence gates, atomic publication, state TTL and rollback-by-new-revision | Accepted |
 | [0019](./0019-phase10-consolidation-transport.md) | Phase 10 fixed-watermark consolidation/reflection, provider governance, credential/SSE transport, replay and process lifecycle | Accepted |
+| [0020](./0020-bellis-adapter-plugin-seam.md) | Phase 11 Bellis Adapter: in-host plugin shape, host-monorepo delivery, staged SDK distribution, candidate/block mapping, persona source of truth in Core | Accepted（历史修订 §11/12；当前差异见 §13） |
+| 0021 | *(reserved)* Phase 12 AstrBot Bridge prerequisite adjudications — effect boundary, delivery-location time-box, Python SDK distribution, identity mapping | Not yet written |
+| [0022](./0022-management-console-plane.md) | Phase 13 management console plane supersedes the automated legacy migration: separate `/console/v1` contract, operator keys and browser sessions, manual import/export, versioned embedding provider config, typed runtime settings | Accepted |
 
-Open conflicts blocking the next phases (Phase 11/12 host adapters): **none**.
+## 当前未闭环边界（2026-09-06）
+
+- **Phase 11**：已接受的插件边界不代表宿主接线完成。Bellis ADR 0006 已调整 effect/progress 与远端 ACK 语义；当前兼容范围、映射和 Persona 恢复缺口见 [ADR-0020 §13](./0020-bellis-adapter-plugin-seam.md#13-现状核对2026-09-06) 与 [验证报告](../reports/phase-11-verification.md)。
+- **Phase 12**：ADR-0021 仍未撰写，effect、交付位置、SDK 与身份映射等裁决保持开放，见 [12.0](../development/phase-12-astrbot-bridge.md)。不能声明所有接入边界均无冲突。
+- **Phase 13**：ADR-0022 已接受；已实现读面的非 UUID Canonical ID 与 Console UUIDv7 契约仍冲突，见 [合并验证报告](../reports/phase-13-verification.md)。目标设计尚有未发布模块。
+- **Phase 14**：上述事项、Required Surface 入口覆盖与发布范围冻结归 [14.0](../development/phase-14-hardening-release.md#140-前置阶段闭环与候选范围冻结)；发布硬化尚未验收。
+
+ADR-0022 supersedes the delivery path of the original Phase 13 ("legacy Iris data migration"), not its data-safety requirements; the retained requirements and their new home are tabulated in [ADR-0022 迁移影响](./0022-management-console-plane.md#迁移影响). It was accepted on 2026-09-05 as Phase 13 implementation started.

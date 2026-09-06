@@ -1,5 +1,7 @@
 # Phase 10 验证报告：巩固、Reflection 与传输层
 
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+
 > 状态：Completed（实现 + 门禁实测 + 收尾阶段补测后全量重跑）
 > 日期：2026-09-05
 > 基线 commit：`1241a28`（test: derive legacy snapshot rewind coverage）之上的工作区
@@ -176,12 +178,36 @@ coverage 插桩下的挂钟抖动，不是召回路径回归；本报告如实�
 
 ## 5. 已知限制
 
-Phase 10 的已知限制记在
-[phase-10](../development/phase-10-consolidation-reflection.md#已知限制)，共 6 条：
-随包 Provider 是确定性 Fake、SSE 只在单进程验证、`/metrics` 是每租户 JSON 快照而非
-Prometheus 文本、`serve` 未单独构造进程级 SIGKILL、Dead Letter 没有独立管理端点、
-旧 rebuild 路径的弃用窗口未到期。
+1. **随包发布的认知 Provider 是确定性 Fake**：`DeterministicCognitiveProvider` 实现四个
+   Port 的完整治理语义（超时、重试、预算、并发、熔断、Schema/Evidence 校验），但不做真实
+   模型推理。接入真实模型只需在 `providers/` 增加适配器，不改应用层；本阶段的重放、故障与
+   预算数字都来自 Fake，不代表任何真实模型的抽取质量。
+2. **SSE 是可选面且默认单进程内存扇出**：事件 cursor 持久在 `service_events`，客户端可用
+   `Last-Event-ID` 恢复；但跨进程扇出、连接数上限与背压策略只在单进程下验证。关闭 SSE 时
+   capability 不声明且端点 `not_ready`，宿主必须按能力协商结果决定是否订阅。
+3. **`/metrics` 是每租户 JSON 快照，不是 Prometheus 文本格式**：它报告 Job Kind、Oldest
+   Pending、候选/拒绝数量与 Provider 成本，满足本阶段的低敏诊断门禁；`iris_schedule_lag_seconds`
+   仍只存在于进程内注册表，尚未出现在传输面快照上。导出格式与抓取端点归 Phase 14。
+4. **`serve()` 的 uvicorn 绑定路径与进程级 SIGKILL 未单独验证**：启动/Ready/优雅关闭的
+   20 次重复走的是 `create_app` + ASGI lifespan（`TestClient`），真实端口绑定、
+   `timeout_graceful_shutdown` 计时与连接排空没有独立用例；进程级强杀也未构造。传输层不
+   持有额外的可丢失状态，其在线写入复用已被 observe/state/task/forget/reflection 强杀场景
+   覆盖的事务边界，因此这是覆盖缺口而非已知缺陷。真实进程级演练归 Phase 14 的部署硬化。
+5. **Dead Letter 管理是数据面而非独立管理端点**：重放经
+   `POST /v1/admin/reflections/{reflection_id}:replay` 与 Outbox 记录完成，没有独立的
+   Dead Letter 列表/批量端点；运维需要通过审计事件与 `/metrics` 快照定位。
+6. **旧路径弃用窗口未到期**：`/v1/admin/recent-context:rebuild` 与
+   `admin.recent-context-rebuild.v1` 在本发布窗口内保持可用，移除时机按 ADR-0006 另行决定。
 
-Phase 5–9 曾逐阶段登记的"无 HTTP 传输层"一条自本阶段起解除：85 条已发布路径全部有真实
-ASGI 实现并通过成功/失败双向契约测试。历史阶段文档中的该条目保留原文并加注解除说明，
-不做删除。
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+- 相同 Canonical Snapshot、Watermark、Builder/Prompt/Policy 版本和确定性参数连续重放 3 次，候选 ID/指纹、Evidence refs、拒绝原因和差异摘要一致。
+- 无来源、未知 Entity、越权 Scope、任意代码 Trigger、自动 Active Task、直接 Persona Core 修改与自循环 Evidence 每类至少运行 200 个生成案例，非法提交成功数必须为 0。
+- 在 Provider 超时、429/5xx、无效 JSON、超限输出、熔断、预算耗尽和恢复 Probe 下各执行至少 20 轮；Observation、Forget、Correct、Task 转换和 Persona Current 仍满足既有正确性与延迟门禁。
+- Correct/Forget/Source Revision 变化、Lease 过期和 Worker 抢占各至少重复 50 次，过期 Job 的 Canonical 提交成功数必须为 0。
+- Dead Letter 以新 Outbox ID 重放 100 次不产生重复逻辑资源；积压指标必须报告 Job Kind、Lag、Oldest Pending、候选/拒绝数量和成本，且日志泄漏扫描无正文、Secret 或完整 External ID。
+- 已发布 OpenAPI 的**每一条**路径都有至少一个成功用例与一个失败用例的传输层契约测试；未实现路径数必须为 0。
+- 契约 `error_codes` 的每个码都有一条产生它的传输层测试；越权矩阵覆盖 Tenant/Agent/SpaceGroup/Space/Entity 双向，Body 提权成功数必须为 0。
+- `serve`/`worker` 在干净环境连续启动、优雅关闭、`kill -9` 恢复各至少 20 次；优雅关闭在默认 30 s 内完成且无已提交事务丢失（§30、§35.4）。

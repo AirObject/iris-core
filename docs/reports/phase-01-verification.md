@@ -1,5 +1,8 @@
 # Phase 1 Verification Report
 
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
+
 > Result: Passed（`make ci` exit 0）  
 > Date: 2026-08-29（评审修复：2026-08-30、2026-08-31 ×2）  
 > Implementation commit: `aecedd379669ae6a21319fd0fc80551dfd75c2d6`
@@ -140,8 +143,7 @@ make ci
 
 ## 已知限制
 
-- Phase 1 未交付 HTTP 端点、Observation、检索索引、完整 Persona 演进和宿主租约（按计划
-  属于 Phase 2+）。
+- **历史范围已接续**：Observation、Recall/索引、Persona 演进、Surface 与 HTTP 已由 Phase 2–10 交付，不能列作当前未实现能力。
 - 本地开发 SQLite 3.50.4 不在官方 Allowlist；生产 Ready 使用官方清单，升级运行时或通过
   ADR 扩展清单前，部署必须显式 Pin。
 - 双端挑战码仅保留契约位（`method='challenge_code'`），产品流程按计划在后续阶段实现。
@@ -155,5 +157,14 @@ make ci
   超出时在成功结果上发出告警，绝不把已提交迁移报告成失败。
 - 备份 HMAC 密钥目前由操作员文件承载；密钥托管/轮换（KMS、密钥链）按计划在硬化阶段
   引入。
-- Backup 的 artifacts/ 与 faiss/ 清单目录按计划在对应阶段扩展。
+- **历史扩展已交付**：Phase 5 纳入 local blob 与删除账本；Phase 7 明确 FAISS 不进入备份，恢复后重建。
 - RTO 数值依赖数据规模；当前记录的是空库至小规模种子数据下的实测值，未做规模基准。
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+- Scope、Privacy、Binding、Redirect、Revision 和幂等性质测试每项至少运行 200 个生成案例。
+- 同一 Expected Revision 的 50 个并发写入必须恰好一个成功，其余均返回 `revision_mismatch`。
+- 横向越权矩阵覆盖 Tenant、Agent、SpaceGroup、Space、Entity 的读写两种方向，允许的 Body Scope 只能收窄。
+- Backup → 隔离 Restore → Smoke Read/Write 连续执行 3 次；RPO 必须为最后一个已提交事务，RTO 在声明数据规模下记录实测值。

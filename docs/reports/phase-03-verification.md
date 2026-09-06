@@ -1,5 +1,8 @@
 # Phase 3 验证报告：近期上下文、State 与 Focus
 
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
+
 > 结果：**通过（make ci exit 0）**  
 > 日期：2026-08-31 · 实现基线：Phase 2 提交 `8041552` 之上的 Phase 3 实现  
 > 版本列车：Core/Python SDK/TypeScript SDK = **0.4.0** · Schema **4** · API v1 · Contract 1.2.0
@@ -204,9 +207,9 @@ ADR-0011 全文见 [adr/0011](../adr/0011-phase3-recent-state-focus.md)。要点
 - Space 热窗口按 §5.2 严格空值语义只含 session-less 观察；session 内容需经 session 窗口恢复（安全默认，若宿主需要"空间聚合窗口"须以新 ADR 显式放宽）。
 - State 历史按 Namespace Policy 同事务裁剪——高频无历史 namespace 只保当前 revision（有意的有界性）；审计事件仍完整。
 - `recent_context.maintenance` 的 handler 在 worker 内执行完整重建（窗口有界，本阶段规模内事务短）；超大规模 target 需要分片策略，属后续优化。
-- 结构化 Recall 为内部骨架：无 `/v1/recall` 契约、无缓存与 Usage Report（Phase 6 冻结）；路由为串行执行（deadline 语义已就绪，并行化为 Phase 6 优化）。
+- **历史缺口已关闭**：完整 Recall/Usage 契约与并行 Route 由 Phase 6 交付；Core Recall Cache 仍为显式非目标。
 - 单 Writer Gate（§20.2）下 8 并发突发写 p95 51ms（队头排队，非写入路径）；对更高并发写吞吐需要批量写事务或写入合并，超出本阶段范围。
-- 应用层契约 + mock server 模式保留（无 FastAPI 传输层）；admin rebuild 接口以 mock 契约验证，服务端实现带权限测试。
+- **历史缺口已关闭**：真实 HTTP 传输由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；本报告的原始测试仍是当时应用层/mock 范围。
 - Kill-9 以 `os.kill(self, SIGKILL)` 于精确边界自毁（等价进程死亡语义；掉电部分写由 SQLite FULL+WAL 承担）。
 - 背压租户/Agent 配额在 enqueue 短事务内聚合查询（O(pending)），超大规模需增量计数表（沿袭 Phase 2 已知限制）。
 
@@ -215,3 +218,15 @@ ADR-0011 全文见 [adr/0011](../adr/0011-phase3-recent-state-focus.md)。要点
 - Phase 4 依赖就绪：短期读取 Route、Focus Promotion seam（target type + 待回填 id + 审计）、可注入时间、Schedule Job Kind。
 - Phase 6 可复用 RecallOrchestrator 骨架（RecallRoute port / Envelope / rehydrate / 预算 / deadline），新增路由无需改动三条现有路由语义。
 - 性能数据复现：`uv run pytest tests/performance -s`（输出环境与 p95 行）。
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+> 下列数字为**实测值**，口径见验证报告。
+
+- **State Coalesced Write p95 ≤ 25ms**：实测 **4.69ms**（顺序 coalesced 流、payload 121B、库内 2000 行 corpus 与 2000 pending 投影 Job；p50 3.69ms；`tests/performance/test_state_latency.py` 输出含环境行）。另如实报告 8 并发突发口径 p95 51.17ms——该数字度量的是进程内单 Writer Gate（§20.2）的队头阻塞而非写入路径本身；busy 事件 0。
+- **Recent 连续重建 3 次一致**：同一 Observation 集/Watermark/Builder/Estimator 下 refs、segments、token estimate 与 result hash 三次全等（`test_three_rebuilds_are_identical`，且 builder 性质测试每条 200 固定种子案例覆盖）。
+- **Focus 性质测试每条 ≥200 案例**：容量驱逐/状态机/衰减纯函数/幂等/score/summary/clamp 全部以 `CASES = 200` 固定种子驱动（`tests/unit/test_phase3_domain.py` + `test_focus_items.py`）。
+- **故障注入**：新增 10 个边界（state_put 4、focus_transition 2、recent_rebuild 4）× 20 次 = **200 次**（累计 Phase 2 的 140 次之外）；恢复后无悬空 pointer、无未提交 observation ref、无跨 Space 内容、无过期对象参与 Recall，重放收敛。
+- **Structured Recall 重放/超时**：相同输入+Canonical 快照 100 次重放顺序与裁剪完全一致；每条路由超时场景 20 次，Envelope 准确标记 completed/degraded/partial 与稳定原因码。

@@ -1,5 +1,8 @@
 # Phase 2 验证报告：Observation、Outbox 与持久调度
 
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
+
 > 结果：**通过（make ci exit 0）**  
 > 日期：2026-08-30 · 实现基线：Phase 1 提交 `90097e0` 之上的 Phase 2 实现提交  
 > 版本列车：Core/Python SDK/TypeScript SDK = **0.3.0** · Schema **3** · API v1 · Contract 1.1.0
@@ -180,7 +183,7 @@
 
 ### 8.1 第二轮复核修复（同日）
 
-第二轮独立复核（仍为 Changes Requested）发现的 3 项 P0、4 项 P1 遗留缺陷已全部修复并配套可失败回归测试（明细同样见 phase-02 文档第二轮记录表）：
+第二轮独立复核（仍为 Changes Requested）发现的 3 项 P0、4 项 P1 遗留缺陷已全部修复并配套可失败回归测试（明细以本节复核记录为准）：
 
 - **跨 Agent 边界**（P0）：agent-owned space/session 只接受归属 Agent 的 Observation 与租约 holder space；heartbeat/release 重演 holder space 授权（撤销 grant 立即闭门且不改状态）；`current()` 要求 Agent grant。
 - **Actor 归属**（P0）：`actor_entity_id_at_ingest` 必须伴随 `actor_external_identity_id`——调用方内部 Entity ID 单独出现即 `invalid_request`（§6.4），零写入。
@@ -195,12 +198,22 @@
 
 - 游标限定十进制整数（不透明游标待真实平台需求+新 ADR）；日程语法限定 interval/daily。
 - 磁盘恢复滞回是进程内状态：跨进程一致，但不共享 trip 标志（秒级窗口内另一进程可能按即时读数放行——磁盘读数本身是权威值，语义安全）。
-- 默认仅启用 `maintenance.selfcheck` 种子 Handler；其余 §17.4 kind 等待对应阶段启用（未启用的 outbox 任务保持 pending，不堆积 Schedule）。
+- **历史占位已接续**：各领域 Handler 随后续阶段启用，Phase 10 接入四类认知流水线；运行时实际装配以 `runtime.py` 为准。
 - 背压的租户/Agent 配额在 enqueue 短事务内聚合查询（当前规模 O(pending)；超大规模需增量计数表，属后续优化）。
-- `GET /v1/observations/cursors` 的服务端实现存在，SDK 客户端方法以 mock 契约验证；真实传输层未引入。
+- **历史缺口已关闭**：真实 HTTP 传输由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；本报告的原始测试仍是当时应用层/mock 范围。
 - Kill -9 测试以 `os.kill(self, SIGKILL)` 于精确边界自毁（等价于外部 kill -9 的进程死亡语义；不等价于掉电瞬间的存储层部分写，后者由 SQLite FULL 同步+WAL 承担）。
 
 ## 10. 遗留给后续阶段
 
 - Phase 3 依赖（幂等观察流、固定 Source Revision/Watermark、可靠 Outbox、可注入时钟、持久 Schedule/Tick、可选 Lease/Epoch）全部就绪。
 - 性能数据复现：`uv run pytest tests/performance -s`（输出环境与 p95 行）。
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+- 单条 Observation p95 ≤ 30 ms，100 条 Batch p95 ≤ 150 ms；报告声明硬件、并发、Payload 和数据库状态。
+- 每个事务边界和 Worker 提交边界的 Kill-9 场景至少重复 20 次，逻辑效果不得丢失或重复。
+- 50 个并发 Worker/Holder 的抢占测试中，过期 Generation/Epoch 的提交成功数必须为 0。
+- 时间测试至少覆盖 UTC、一个有 DST 的正时区、一个有 DST 的负时区和一个无 DST 的 IANA 时区，并覆盖前跳、回拨和重复时刻。
+- 软/硬队列和磁盘阈值必须配置化；达到硬阈值时普通写稳定返回 `storage_full`，Forget/Correct 安全通道仍可用。

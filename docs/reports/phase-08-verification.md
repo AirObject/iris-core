@@ -1,4 +1,8 @@
 # Phase 8 验证报告：Profile 与 Graph
+2026-09-06 未闭合复审项的后续修复与验证见[联合修复报告](phase-05-06-07-08-review-fixes.md)。
+
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
 
 > 状态：Completed（实现 + 量化门禁实测 + 两轮对抗性复审修复后全量重跑）
 > 日期：2026-09-03
@@ -193,14 +197,8 @@ binding 边判定与 rebuild 口径不一致——`_binding_drafts` 补 binding/
    容量评估。
 8. **无 Recall/投影结果缓存**（仓库现状）：失效边界 = Canonical 事务内 Outbox
    事件（ADR-0014 §6 冻结未来键语义；ADR-0016 §7 记录不适用）。
-9. ~~**Canonical relations 路由不评估端点实体自身隐私标签**~~ —— **已修复**
-   （ADR-0017 §8）：`relations` 路由与最终 relation rehydrate 现与 Graph 遍历共用
-   `relation_endpoints_visible`，同一份数据只有一套隐私口径。回归见
-   `tests/integration/test_relation_endpoint_privacy.py`。
-10. **无 HTTP 传输层**（应用层契约 + mock server 模式）：已发布 OpenAPI 的
-    61 条路径至今没有真实服务端，归 Phase 10 交付（ADR-0017 §3）。该项在传输层
-    交付前不得从任何阶段的已知限制中移除。
-
+9. **历史缺口已关闭**：ADR-0017 §8 统一 canonical relations 与 Graph 的端点隐私，回归为 `test_relation_endpoint_privacy.py`。
+10. **历史缺口已关闭**：真实 HTTP 传输由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；本报告的原始测试仍是当时应用层/mock 范围。
 ## 9. `make ci` 摘要
 
 （任何失败都会使本节重写。）
@@ -232,3 +230,18 @@ make ci
 `git status --porcelain` 实点）：Phase 8 主体 75 文件 + 第三轮复审新增
 `tests/integration/test_phase8_review_round3.py`，其余第三轮修改（src 8、tests 3、
 docs 3）均落在已计入文件内。未提交、未推送，供人工复审。
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+- Profile 的每个非空字段必须有至少一个仍有效的 Source Claim；对 100% 字段执行自动引用校验，并抽样比较 Canonical 回退内容与冲突状态。✅
+  （200+ 主体、100% 字段逐来源校验 + Canonical 回退等价断言）
+- Scope、Privacy、Status、Valid Time、Tombstone 的逐边过滤性质每项至少运行 200 个生成图案例；跨 Tenant/Agent/SpaceGroup/Entity 的未授权路径返回数必须为 0。✅
+  （每性质 200 案例；跨租户信任门 fail closed、跨 agent/privacy 零返回）
+- 使用至少为配置深度、扇出和节点上限 10 倍的高连接图压测，实际访问与返回不得突破任一限制，Deadline 到达后不得继续扩展。✅
+  （160 扇出 × 深度 2 恶意图；BFS 计数器 ≤ 全部预算；到期时钟证明扩展停止）
+- 对同一 Canonical Snapshot 和 Builder Version 连续全量重建 3 次，Profile 来源集合、Graph 边集合、Watermark 和 Manifest Checksum 一致。✅
+  （profile/graph 各 3 连重建 checksum/集合全等 + 100 次请求重放 signature 唯一）
+- Binding/Redirect/SpaceGroup/Correct/Forget 与查询竞态各至少重复 50 次；变更提交后旧字段/边/Cache 的当前返回数必须为 0，Route 故障准确报告 Canonical 回退。✅
+  （correct/forget/binding-revoke 各 50 轮 + redirect/tombstone/SpaceGroup 失效）

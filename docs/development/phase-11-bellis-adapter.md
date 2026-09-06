@@ -1,106 +1,72 @@
 # 阶段 11：Bellis Adapter
 
-> 状态：Planned  
+> 状态：In progress（插件与离线门禁已交付；宿主接线、当前版本兼容与发布验收未完成）  
+> 复核日期：2026-09-06  
 > 前置阶段：[阶段 10](./phase-10-consolidation-reflection.md)  
-> 可与：[阶段 12](./phase-12-astrbot-bridge.md) 并行  
-> 目标版本：Bellis Adapter 0.1.0（Core API/Schema v1 兼容范围在 Phase 10 冻结）  
-> 架构依据：[§26 Bellis Adapter](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#26-bellis-adapter)、[§28 SDK 与契约发布](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#28-sdk-与契约发布)、[§32.8 Adapter E2E](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#328-adapter-e2e)、[§36 阶段 11](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#阶段-11bellis-adapter)
+> 交付版本：`@iris-memory/bellis-provider` 0.1.0；TypeScript SDK 0.11.1  
+> 决策记录：[ADR-0020](../adr/0020-bellis-adapter-plugin-seam.md)  
+> 架构依据：[§26 Bellis Adapter](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#26-bellis-adapter)、[§28 SDK 与契约发布](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#28-sdk-与契约发布)、[§32.8 Adapter E2E](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#328-adapter-e2e)
 
 ## 阶段目标
 
-在独立 `iris-memory-bellis-adapter` 仓库中完成 Bellis 与 Core 公共协议的薄映射，打通用户事件、Recall、可信 Persona Slot、ContextBlock、Usage、实际生效输出和重启对账的端到端闭环。
+经公共 SDK 把 Bellis 用户事件、Recall、可信 Persona、ContextBlock、Usage 和实际生效输出接入 Core。插件已在 Bellis `providers/memory-iris/` 实现；存在插件不代表宿主运行时闭环已验收。
 
 ## 架构约束
 
-- Adapter 只依赖发布的 TypeScript SDK、Schema、Fixture 和 HTTP/Event 契约，不复制 Core Domain Model 或访问 SQLite/FAISS 文件。
-- Scene 只有在持久化 Commit 且输出开始生效后才形成 Assistant Observation；Cancel/未播放内容不得提交。
-- 普通 Candidate 不能升级为 System/Persona 内容；Persona Revision/Hash 必须通过专用 Schema 校验。
-- Core 不可用时只使用 Bellis 自有 Session 短期上下文，不伪造长期记忆或未知 Persona。
-- Usage Report 重试不能阻塞当前回复，并且必须准确反映真正 Model-visible 的 Candidate。
+映射、可信槽位和插件分发以 [ADR-0020](../adr/0020-bellis-adapter-plugin-seam.md) 为准；Observe/ACK 另须落实 Bellis 已接受的 ADR 0006（`docs/adr/0006-documentation-and-delivery-boundaries.md`，2026-09-06）修订。Core 不引入 Bellis 类型或依赖；普通记忆不能升级为系统指令。Scene Commit 是播放前意图，实际效果由独立 effect/progress 确认事实证明；取消或失败后仍保留已确认前缀，未确认、未播放内容不能形成 Assistant Observation。
 
 ## 需求追踪
 
-| 需求 ID | 基线要求 | 工作包 | 验证门禁 |
-| --- | --- | --- | --- |
-| P11-CONTRACT-01 | 独立仓库、SDK 支持范围、Capability 与 Consumer Contract | 11.1 | 最小/最大版本 Fixture 与 CI 矩阵 |
-| P11-CONTEXT-01 | Recall Candidate 到 ContextBlock 的无损显式映射 | 11.2 | 字段、Hash、预算、Partial 与降级测试 |
-| P11-PERSONA-01 | 专用可信 Persona Slot、Revision/Hash 与失效 | 11.3 | 缓存、通知、离线重连和安全优先级测试 |
-| P11-EFFECT-01 | Scene Commit/Cancel/Partial 与实际效果 Observation 边界 | 11.4 | 生命周期、工具效果、Cursor 和幂等测试 |
-| P11-USAGE-01 | Usage 精确反映 Model-visible 且异步重试 | 11.4 | 子集、失败恢复、本地 Outbox 和隐私测试 |
-| P11-RECOVERY-01 | Core/Adapter 重启、Lease 与显式降级 | 11.5 | 对账、Fencing、模式矩阵和 E2E |
+| 需求 ID | 当前交付 | 剩余验收 |
+| --- | --- | --- |
+| P11-CONTRACT-01 | 独立插件包、SDK 安装物消费与兼容矩阵 | 当前 Core Schema 14 兼容；公开分发；宿主 CI；最小/当前/最大组合 |
+| P11-CONTEXT-01 | 以 resource type 为主键的字段/类别映射、预算与宿主过滤 | 真实 Core 候选与 Context Builder E2E；审计字段/Hash；分类覆盖边界与矩阵策略 |
+| P11-PERSONA-01 | Hash 校验、可信结构、缓存与失效逻辑 | 宿主槽位接线；撤销/Hash 失败禁用旧缓存；刷新失败恢复与安全优先级 E2E |
+| P11-EFFECT-01 | 已确认输出/工具效果过滤；Core 成功后才确认交付 | 独立 effect/progress ACK、连接代际/片段范围及取消后已确认前缀闭环 |
+| P11-USAGE-01 | Usage 子集校验；远端失败返回宿主 | 宿主 Outbox 持久化与异步重试，不阻塞当前回复 |
+| P11-RECOVERY-01 | Lease 模式、旧队列兼容、Cursor 诊断 | 双向对账补投、进程崩溃恢复及完整 Fencing 矩阵 |
 
 ## 工作包
 
-### 11.1 独立仓库与契约
+原 11.1–11.5 的实现清单已合并为上表；不再重复安排已有代码。未关闭工作由 [Phase 14](./phase-14-hardening-release.md) 统一排期，Phase 11 状态随实际验收更新。
 
-- 建立独立仓库、TypeScript SDK 版本范围、Capability Negotiation、Consumer Contract 和 CI。
-- 定义 Bellis Session/Scene/Audience/State 到 Tenant/Agent/SpaceGroup/Space/Session 的配置映射。
-- 对最小和最大支持的 Core API/Schema 版本运行固定 Fixture。
-
-### 11.2 Recall 与 ContextBlock
-
-- 在 Bellis Deadline 内调用 Recall，映射 Candidate ID/Revision/Hash/Category/Placement/Token/Privacy/Source/Expiry。
-- 保留 Core 排序与类别的显式语义，不从文本猜测 Placement 或 Priority。
-- 处理 Completed/Degraded Routes、Partial、Minimum Watermark、Cache Until 和 Next Wake。
-
-### 11.3 Persona Slot
-
-- 获取和缓存 `(agent_id, persona_revision, content_hash)`，注入 Bellis 预留可信 Persona Slot。
-- 监听 Revision Invalidated/Persona Revised；版本或哈希不一致立即丢弃缓存。
-- Persona 不覆盖 Bellis 安全层、工具权限和输出策略。
-
-### 11.4 Observe、State 与 Usage
-
-- 将已提交 Session Record、实际生效输出、确认工具效果和 State Stream 映射到 Observation/StateRecord。
-- Commit Log 使用稳定 Event ID、Source Stream/Cursor、Idempotency Key；Partial Output 保存确认片段范围。
-- 回传 returned/host_selected/model_visible，失败进入有界本地 Outbox。
-
-### 11.5 恢复、降级与可选 Lease
-
-- Adapter Crash 后从 Core Cursor 与 Bellis Commit Log 对账。
-- 实现 Off/Advisory/Required Active Surface 行为、Heartbeat/Fencing 和抢占停止。
-- Core/Vector/Persona/版本协商故障采用显式降级，记录低敏诊断。
+1. 更新 Provider 默认协商范围和兼容矩阵并验证 Schema 14；当前最大值为 11，默认配置无法正常协商当前 Core 0.12.0 / Schema 14。
+2. 完成 Bellis Memory Gateway、Context Builder、Persona Slot、持久化 Outbox 与运行时接线；独立确认事实绑定 Session、连接代际、Scene/Cue 和 segment 范围，验证乱序/重复/取消后已确认前缀。实现 Cursor 补投、远端领先处理与 Persona 撤销/刷新失败恢复。
+3. 保留无 SDK 源码 alias 的 registry 消费，完成公开 npm 发布及宿主 workspace/CI 中间态退出；补齐映射审计和 categoryMap 覆盖边界，执行真实双进程与故障矩阵，形成可复现交付证据。
 
 ## 数据、契约与回退策略
 
-- 本阶段代码、配置、Fixture 和发布物只进入独立 `iris-memory-bellis-adapter` 仓库；Core Monorepo 只维护公共 SDK/Schema/Mock Server 与兼容矩阵，不引入 Bellis 类型或运行时依赖。
-- Adapter 本地只持久化有界重试元数据、Cursor/Commit 对账位置和已验证 Persona Cache Key，不形成第二 Canonical Store；Payload 设置容量、TTL、文件权限和可选静态加密。
-- 建立 Bellis 事件/Scene/State 与 Core Scope/Observation/State/Usage 的版本化映射表；Consumer Contract 同时对 Adapter 支持范围的最小、最大和当前 Core Patch 运行。
-- 发布顺序为兼容 Core/Schema/SDK → Adapter；新增 Core 可选字段或能力先协商后启用。未知必需 Schema、Persona Hash 不符或 Required Lease 无效时 Fail Closed，不猜测映射。
-- 回退优先回滚 Adapter 至仍在兼容矩阵内的版本；切换前停止新 Cycle、Flush 已确认事件并保存 Cursor。Core 回退不得早于仍被 Adapter 使用的最小版本，本地队列按稳定 Event ID 继续幂等提交。
+- 当前新 Observe/Usage 请求直接等待 Core 返回；失败由宿主负责持久化重试。Adapter 仅保留历史 pending 队列兼容、Cursor 和经校验的 Persona 快照，不能当作已完成的宿主 Outbox。
+- 发布顺序、SDK 安装物验证及中间态退出遵循 ADR-0020。回退前停止新 Cycle、保存已确认事件与 Cursor，随后回滚至已验证的兼容组合。
+- 当前矩阵仍指向 Core 0.11.x / Schema 11；不能只上调配置上限后宣称兼容。最低、当前、最高版本须有真实消费结果。
 
 ## 量化验收基线
 
-- Consumer Contract 必须覆盖支持范围的最小、最大和当前 Core API/Schema/SDK 组合；所有固定成功、错误、未知可选字段、未知枚举和降级 Fixture 结果一致。
-- 同一 Commit/Partial Segment/Tool Effect/Usage 事件重放 100 次，只产生一次 Core 逻辑效果；Cancel、未播放、失败和未生效输出的 Assistant Observation 数必须为 0。
-- 在 Observe 前后、Cursor 持久化前后、Usage 入队前后和 Lease 抢占时各执行至少 20 次 Adapter/Core 崩溃恢复，对账后重复或漏交的已确认事件数必须为 0。
-- Off/Advisory/Required、Acquire/Heartbeat/Preempt/Expiry/Fencing 每个组合至少运行 20 次；旧 Epoch 的在线请求成功数必须为 0，Required 无 Lease 时不得进入回复链路。
-- Bellis E2E 连续运行至少 100 个 Cycle，逐 Cycle 验证 Persona Revision/Hash、ContextBlock Hash、Token Budget、Model-visible Usage 与实际输出 Observation 闭环。
+以下是尚需完成的验收要求，离线测试数不能替代：
+
+- 支持范围的最小/当前/最大 Core、Schema、SDK 组合均通过成功、错误、未知字段/枚举和降级 Fixture。
+- 同一 Commit、Partial Segment、Tool Effect、Usage 各重放 100 次，只形成一次逻辑效果；未播放、未生效内容及取消/失败中的未确认内容产生的 Assistant Observation 为 0；已确认前缀以 Partial 保留，不能因最终取消/失败而丢失。
+- Observe 前后、Cursor 持久化前后、Usage 入队前后及 Lease 抢占窗口中，Adapter/Core 各至少 20 次崩溃恢复，已确认事件重复与漏交均为 0。
+- Off/Advisory/Required 与 Acquire/Heartbeat/Preempt/Expiry/Fencing 的适用组合各至少 20 次；旧 Epoch 成功数为 0，Required 无有效 Lease 不进入回复链路。
+- 真实 Core ASGI + Bellis Runtime 连续至少 100 Cycle，逐次核对 Persona Revision/Hash、ContextBlock、Token Budget、Model-visible Usage 和实际输出 Observation。
 
 ## 退出门禁
 
-- [ ] ContextBlock 每个字段、Content Hash、类别、Token 和 SourceRefs 通过 Consumer Contract。
-- [ ] Scene Commit/Cancel/Partial/未播放和工具成功/失败边界测试通过。
-- [ ] Persona Slot Revision/Hash、失效通知、离线重连和安全优先级测试通过。
-- [ ] Deadline、Partial、Vector 降级、Core 超时和不兼容版本行为符合契约。
-- [ ] Adapter/Core 任一侧重启后 Cursor 对账无重复或漏交 Observation。
-- [ ] 用户事件 → Recall/Persona → Model-visible Usage → 实际输出 Observation 的 Bellis E2E 通过。
-- [ ] 版本矩阵、本地状态迁移、升级/回退方案、需求追踪和交付证据已完成评审。
+- [x] 当前包内 typecheck/lint/format/test 通过；23 个离线用例，SDK 经已安装包解析，无 Core 源码 alias。
+- [ ] 当前 Core/Schema 兼容、真实候选词表、最小/当前/最大消费矩阵完成。
+- [ ] 宿主接线、Scene/Persona/Usage E2E 完成；插件通过不替代宿主通过。
+- [ ] Cursor 双向对账与补投、完整重启和 Lease 故障矩阵完成。
+- [ ] SDK 公开发布、`providers/*` 并入宿主 workspace、`link:` 替换及宿主 CI 门禁完成。
+- [ ] 安装物 build/pack、升级/回退、版本矩阵和发布证据完成本次候选版本复核。
 
 ## 交付证据
 
-- Adapter 仓库/版本：待补充
-- Core/SDK/Schema 兼容矩阵：待补充
-- Consumer Contract：待补充
-- E2E/恢复报告：待补充
-- 已知限制：待补充
+[Phase 11 验证报告](../reports/phase-11-verification.md) 集中保存本次实测、历史记录与未完成项。2026-09-06 实测：Provider 23 tests，TypeScript SDK 18 tests；当前 Provider 构建和双进程 E2E 未在本轮重跑。
 
 ## 明确不做
 
-- 不在 Adapter 内实现第二套记忆、画像、Persona 或检索排序。
-- 不直接拼接最终 Prompt 或绕过 Bellis 的安全/输出编排。
-- 不提交生成但未生效、取消或失败的输出。
+不在 Adapter 内建立第二记忆库、复制 Core 检索/画像逻辑、拼接最终 Prompt 或绕过宿主安全与输出编排。
 
 ## 交接条件
 
-Phase 13 可以把 Bellis 切换和 Cursor 追平纳入迁移运行手册；Phase 14 可以将本 Adapter 纳入版本矩阵、升级和回滚演练。
+Phase 14 承接本页未关闭门禁，不把它们按历史完成项处理。Phase 13 管理控制台按 [ADR-0022](../adr/0022-management-console-plane.md) 审阅、导出和手动导入数据；已取消的跨系统迁移/双写工具与本 Adapter 必须具备的运行时 Cursor 对账是两件事。

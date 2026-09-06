@@ -1,5 +1,8 @@
 # Phase 4 验证报告：Note、Task 与 CognitiveEvent
 
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
+
 > 结果：**通过（make ci exit 0，含 2026-09-01 一/二/三/四轮审核修订回归）**  
 > 日期：2026-08-31（初版）· 2026-09-01（审核修订、二轮/三轮/四轮审核修订与回归证据）· 实现基线：Phase 3 提交 `b4587b1` 之上的 Phase 4 实现  
 > 版本列车：Core/Python SDK/TypeScript SDK = **0.5.0** · Schema **5** · API v1 · Contract 1.3.0
@@ -152,7 +155,7 @@
 
 1. **扫描粒度**：`task.trigger_scan` 每 agent 处理有界触发器批（≤500×2 类）与观察批（≤500/触发器）；超大积压跨多个 tick **收敛**（时间类按 next_fire、条件类按 last_scan 陈旧度排序轮转；observation 批次截断时游标只推进到已读行的 committed_us−1，ledger 排除使 LIMIT 只约束新行——§8 R6/R7 回归证实 600 条两批积压两轮全部收敛）。pull 与事件列表的空间信封在 SQL 内执行（§8.1 R6），信封外事件不占用批次；tombstone 复查仍在应用层（forget 稀疏，不构成饥饿面）。
 2. **state_condition 求值键**：条件对状态值 JSON 对象的 `value` 键求值（无该键则整体比较）；嵌套路径比较不支持——需要时以新 ADR 扩展字段路径语法。数值比较语义：lt/le/gt/ge 要求数字 comparand（创建时校验），活值不可比较时判定不匹配。
-3. **无 FastAPI 传输层**：沿 Phase 2/3 的应用层契约 + mock server 消费者测试模式；真实传输层归 Phase 14 硬化。
+3. **历史缺口已关闭**：真实 HTTP 传输由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；本报告的原始测试仍是当时应用层/mock 范围。
 4. **tasks recall 路由需显式注入**：orchestrator 不注入 TaskService 时保持 Phase 3 三路由语义（兼容默认），宿主接入时显式构造。
 5. **trigger origin 声明由调用方给出**：conversation/background origin 无论如何不能激活（安全不变量），但 explicit_tool origin 的声明信任调用方凭据（服务端认证的 app instance）。
 6. **无跨 Task 依赖 / 无 cron 语法**：§11.3 与 ADR-0009 §5 的既定边界。
@@ -239,3 +242,18 @@
 | 4 | P2 | ADR §11 仍称四轮实现“在写事务内、访问检查后调用门禁”，与实际缓存前单次校验矛盾；Observation 仍把 lease epoch 放入指纹并让缓存命中绕过门禁 | ADR-0010/0012、开发文档与本报告统一记录双阶段门禁；Observation 同步 gate-before-cache + in-tx，并把 proof 移出指纹 | `test_observation_gate_runs_before_cache_and_proof_is_not_fingerprint_material`：旧 proof 过期后缓存回放拒绝；同实例新 lease、同 key/同载荷返回原 Observation ids，不报 key reuse；Coordinator 故障 Observe/Pull 仍 `not_ready` |
 
 扩展调用链检查确认：全部在线 `check_online` 调用均携带认证 app identity；Note 3、Task 7、ACK 1 个幂等写均同时存在缓存前与事务内门禁；Event cancel 按 §25.3 既定边界继续属于不设闸路径；maintenance sweeps 未被误接入在线门禁。
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+> 下列数字为**实测值**，口径见验证报告。
+
+- 状态机与 DAG 性质：Note/Task/Step/CognitiveEvent 状态机与 Dependency 无环/ready 派生各 **200 个固定种子序列**（`tests/unit/test_phase4_domain.py`，3614 个参数化用例全绿）。
+- **50 并发相同 Expected Revision**：`test_fifty_threads_same_expected_revision_one_winner` 实测 ok=1、mismatch=49（稳定码）、revision 行=2、task.active 审计=1、transition outbox=1、watermark 恰好 +1。
+- **同一 Trigger Revision/计划时刻重复 100 次**：`test_recurrence_scans_are_idempotent_hundred_times` 实测 2 个到期时刻 → 恰好 2 个 Occurrence + 2 个逻辑 CognitiveEvent，100 轮扫描零新增。
+- **同一 Event 重复投递/ACK 100 次**：`test_ack_is_idempotent_hundred_times` 实测同一 ack_id、恰 3 个 revision（created→delivered→acknowledged）、attempts=1。
+- 时间矩阵：UTC、Europe/Berlin、America/New_York、Asia/Tokyo（+ 澳洲半时区）覆盖 DST 缺失（skip/postpone）、重复（first/second）、前跳、回拨（`test_clock_back_slew_does_not_duplicate`）、休眠（`test_sleep_then_catch_up_bounded`：10 秒沉睡 → 有界 3 个 enqueued + 显式 skipped）与重启 catch-up（`test_restart_recovers_from_persisted_marker`）。
+- **20 次 Holder fence 场景**：`test_twenty_fence_scenarios_redeliver_same_id` 实测 20 轮抢占式 fence 全部重投同一 event id，最终恰 20 个事件、零重复。
+- 负向端到端：delivered/acked/expired/投递失败四场景下 Task/Step 状态与证据引用零变化；CognitiveEvent 作为完成证据被结构性拒绝。
+- 故障注入：新增 9 个边界（task_transition pre_revision/pre_pointer/pre_commit/post_commit、trigger_scan pre_occurrence/pre_commit/post_commit、event_ack pre_commit/post_commit）× 20 = **180 次**真 SIGKILL，恢复后 `verify_database_invariants` 零违例且重放收敛。

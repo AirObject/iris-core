@@ -1,5 +1,8 @@
 # Phase 9 验证报告：完整 Persona
 
+> 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
+> 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
+
 > 状态：Completed（实现 + 门禁实测 + 收尾阶段补测后全量重跑）
 > 日期：2026-09-04
 > 基线 commit：`0267211`（feat: complete phase 8 profile graph）之上的工作区
@@ -133,5 +136,24 @@ coverage                  83.62%（门槛 80%）
 
 ## 5. 已知限制
 
-Phase 9 的已知限制记在 [phase-09](../development/phase-09-persona.md#已知限制)，共 6 条，
-其中"无 HTTP 传输层"在 Phase 10 交付前不得从任何阶段移除（ADR-0017 §3）。
+1. **离线重连、宿主 Cache 采用与通知丢失重放未做端到端验证**：Core 只证明 Outbox 事件是
+   refs-only 且缓存键为 `(agent_id, revision, content_hash)`。传输层已在 Phase 10 交付；宿主采用、失效重连与通知重放仍需 Phase 11/12 的端到端证据。
+2. **`bounded_auto` 的累计窗口按已发布 Proposal 统计**：管理员直接 `publish_revision` 不计入
+   累计幅度——管理平面被视为授权旁路，不是自动演进。
+3. **State 到期依赖 Worker 或启动 Catch-up 扫描**：两者都未运行时，过期 State 仍会被
+   `current` 读到；宿主不得把 State 当作强一致的到期语义使用。
+4. **Evidence 只接受当前 Revision 的资源**：历史 Revision 或已撤销资源一律 fail closed，
+   因此跨越长时间窗口的 Proposal 需要在证据仍 current 时提交。
+5. **时钟回拨会推迟 State 到期**：到期判定是 `expires_us <= now_us` 的直接比较，没有独立的
+   单调时钟来源。系统时钟回拨期间过期 State 继续被 `current` 返回，回拨结束后由同一确定性
+   扫描收敛；本阶段没有单独构造回拨用例。
+
+## 原阶段验收目标
+
+下列门槛从已归档阶段计划移入，保留未被实测证明的要求。它们是当时的验收目标，不能从本报告 Passed/Completed 标签推断逐项均已完成；是否达到须与前文的样本、测试与限制核对。尚未闭合项由 Phase 14 的发布矩阵承接。
+
+- Persona Current Read 在声明硬件、并发和缓存状态下 p95 ≤ 20 ms；响应 Revision 与 Content Hash 必须和 RecallResponse 顶层值 100% 一致。
+- locked/manual/bounded_auto、字段 Allowlist、单次/累计幅度、Evidence 数量/多样性/时间窗、冷却期和 Stale Base 性质每项至少运行 200 个固定种子案例。
+- 50 个客户端以同一 Base/Expected Revision 并发发布时恰好一个成功，其余返回稳定 `revision_mismatch` 或 `persona_base_revision_stale`，只产生一个 Current Pointer 逻辑推进。
+- State TTL 测试覆盖 UTC、时钟前跳/回拨、暂停和重启 Catch-up；连续 3 次同一时钟轨迹得到相同 Baseline 回归 Revision 和状态值。
+- 发布、通知丢失、离线重连、Cache 失效、宿主采用和回滚链路各至少重复 20 次；所有宿主最终收敛到同一 Revision/Hash，未知或哈希不符 Persona 的采用数为 0。
