@@ -1,0 +1,17 @@
+{
+  "reason_codes": [
+    "credential_issue",
+    "credential_rotation",
+    "credential_revocation",
+    "credential_update",
+    "session_revocation",
+    "security_incident",
+    "operator_request",
+    "offline_recovery"
+  ],
+  "templates": [
+    "owner",
+    "maintainer",
+    "viewer"
+  ]
+}

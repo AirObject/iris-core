@@ -1,0 +1,5 @@
+src/api/generated.d.ts
+src/api/protocol.json
+node_modules
+dist
+test-results
