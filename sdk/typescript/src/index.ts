@@ -2157,6 +2157,84 @@ export interface ObservationRecordInput {
   readonly [futureField: string]: unknown;
 }
 
+export interface SourceCursorEnvelope {
+  readonly source_stream: string;
+  readonly cursor_position: number | null;
+  readonly gap_policy: "accept" | "reject" | "mark";
+  readonly [futureField: string]: unknown;
+}
+
+export interface PersonaRevisionResponse {
+  readonly agent_id: string;
+  readonly revision: number;
+  readonly content_hash: string;
+  readonly core: Readonly<Record<string, unknown>>;
+  readonly traits: Readonly<Record<string, unknown>>;
+  readonly narrative: Readonly<Record<string, unknown>>;
+  readonly effective_from_us: number;
+  readonly status: "published" | "superseded" | "revoked";
+  readonly [futureField: string]: unknown;
+}
+
+export interface PersonaPolicyResponse {
+  readonly mode: "locked" | "manual" | "bounded_auto";
+  readonly [futureField: string]: unknown;
+}
+
+export interface PersonaStateResponse {
+  readonly state: Readonly<Record<string, unknown>>;
+  readonly baseline: Readonly<Record<string, unknown>>;
+  readonly expires_us: number;
+  readonly [futureField: string]: unknown;
+}
+
+export interface PersonaCurrentResponse {
+  readonly revision: PersonaRevisionResponse;
+  readonly policy: PersonaPolicyResponse;
+  readonly state: PersonaStateResponse | null;
+  readonly [futureField: string]: unknown;
+}
+
+export interface CoreEvent {
+  readonly cursor: string;
+  readonly event_id: string;
+  readonly event_type: string;
+  readonly occurred_at: string;
+  readonly source_watermark: number;
+  readonly resource_refs: ReadonlyArray<Readonly<Record<string, unknown>>>;
+}
+
+/** Parse one finite Core SSE response while retaining the resumable cursor. */
+export function parseEventStream(payload: string): readonly CoreEvent[] {
+  const events: CoreEvent[] = [];
+  for (const frame of payload.split(/\r?\n\r?\n/)) {
+    let cursor: string | undefined;
+    let eventType: string | undefined;
+    const data: string[] = [];
+    for (const line of frame.split(/\r?\n/)) {
+      if (line.startsWith("id:")) cursor = line.slice(3).trim();
+      else if (line.startsWith("event:")) eventType = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+    }
+    if (cursor === undefined || eventType === undefined || data.length === 0) continue;
+    const decoded: unknown = JSON.parse(data.join("\n"));
+    if (!isRecord(decoded)) throw new ContractValidationError(["SSE data must be an object"]);
+    for (const field of ["event_id", "event_type", "occurred_at"] as const) {
+      if (typeof decoded[field] !== "string" || decoded[field].length === 0) {
+        throw new ContractValidationError([`SSE data.${field} must be a non-empty string`]);
+      }
+    }
+    if (!Number.isInteger(decoded.source_watermark) || Number(decoded.source_watermark) < 0) {
+      throw new ContractValidationError(["SSE data.source_watermark must be non-negative"]);
+    }
+    if (!Array.isArray(decoded.resource_refs)) {
+      throw new ContractValidationError(["SSE data.resource_refs must be an array"]);
+    }
+    events.push({ ...(decoded as Omit<CoreEvent, "cursor">), cursor });
+  }
+  return events;
+}
+
 export interface ObservationBatchResponse {
   readonly accepted_observation_ids: readonly string[];
   readonly duplicate_observation_ids: readonly string[];
@@ -2607,38 +2685,56 @@ export interface LegalHoldView {
 export class AsyncIrisMemoryClient {
   readonly #baseUrl: string;
   readonly #bearerToken: string | undefined;
+  readonly #fetch: typeof fetch;
 
-  public constructor(baseUrl: string, options: { bearerToken?: string } = {}) {
+  public constructor(
+    baseUrl: string,
+    options: { bearerToken?: string; fetch?: typeof fetch } = {},
+  ) {
     this.#baseUrl = baseUrl.replace(/\/$/, "");
     this.#bearerToken = options.bearerToken;
+    this.#fetch = options.fetch ?? fetch;
   }
 
-  public async capabilities(): Promise<CapabilitiesEnvelope> {
-    const response = await this.#request("/v1/capabilities");
+  public async capabilities(options: { signal?: AbortSignal } = {}): Promise<CapabilitiesEnvelope> {
+    const response = await this.#request("/v1/capabilities", { signal: options.signal ?? null });
     return asCapabilities(await response.json());
   }
 
-  public async negotiate(apiVersions: readonly string[] = ["v1"]): Promise<CapabilitiesEnvelope> {
+  public async negotiate(
+    apiVersions: readonly string[] = ["v1"],
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CapabilitiesEnvelope> {
     const response = await this.#request("/v1/negotiation", {
       body: JSON.stringify({ api_versions: apiVersions }),
       headers: { "content-type": "application/json" },
       method: "POST",
+      signal: options.signal ?? null,
     });
     return asCapabilities(await response.json());
   }
 
   public async observeBatch(
     records: readonly ObservationRecordInput[],
-    options: { idempotencyKey?: string } = {},
+    options: {
+      idempotencyKey?: string;
+      signal?: AbortSignal;
+      lease_id?: string;
+      lease_epoch?: number;
+    } = {},
   ): Promise<ObservationBatchResponse> {
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (options.idempotencyKey !== undefined) {
       headers["Idempotency-Key"] = options.idempotencyKey;
     }
+    const body: Record<string, unknown> = { records };
+    if (options.lease_id !== undefined) body.lease_id = options.lease_id;
+    if (options.lease_epoch !== undefined) body.lease_epoch = options.lease_epoch;
     const response = await this.#request(`/v1/observations:batch`, {
-      body: JSON.stringify({ records }),
+      body: JSON.stringify(body),
       headers,
       method: "POST",
+      signal: options.signal ?? null,
     });
     const value: unknown = await response.json();
     const errors = validateObservationBatchResponse(value);
@@ -2653,11 +2749,12 @@ export class AsyncIrisMemoryClient {
     priority?: number;
     allow_preempt?: boolean;
     reason?: string;
-  }): Promise<LeaseView> {
+  }, options: { signal?: AbortSignal } = {}): Promise<LeaseView> {
     const response = await this.#request(`/v1/active-surfaces:acquire`, {
       body: JSON.stringify(input),
       headers: { "content-type": "application/json" },
       method: "POST",
+      signal: options.signal ?? null,
     });
     const value: unknown = await response.json();
     const errors = validateLeaseView(value);
@@ -2668,12 +2765,14 @@ export class AsyncIrisMemoryClient {
   public async heartbeatSurfaceLease(
     leaseId: string,
     input: { lease_epoch: number; holder_app_instance_id: string; ttl_us: number },
+    options: { signal?: AbortSignal } = {},
   ): Promise<LeaseView> {
     const response = await this.#request(`/v1/active-surfaces/${encodeURIComponent(leaseId)}:heartbeat`,
       {
         body: JSON.stringify(input),
         headers: { "content-type": "application/json" },
         method: "POST",
+        signal: options.signal ?? null,
       },
     );
     const value: unknown = await response.json();
@@ -2685,12 +2784,14 @@ export class AsyncIrisMemoryClient {
   public async releaseSurfaceLease(
     leaseId: string,
     input: { lease_epoch: number; holder_app_instance_id: string; reason?: string },
+    options: { signal?: AbortSignal } = {},
   ): Promise<LeaseView> {
     const response = await this.#request(`/v1/active-surfaces/${encodeURIComponent(leaseId)}:release`,
       {
         body: JSON.stringify(input),
         headers: { "content-type": "application/json" },
         method: "POST",
+        signal: options.signal ?? null,
       },
     );
     const value: unknown = await response.json();
@@ -2993,22 +3094,29 @@ export class AsyncIrisMemoryClient {
 
   // -- Phase 6: recall protocol ---------------------------------------------
 
-  public async recall(input: RecallRequest): Promise<RecallResponse> {
+  public async recall(
+    input: RecallRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<RecallResponse> {
     const response = await this.#request(`/v1/recall`, {
       body: JSON.stringify(input),
       headers: { "content-type": "application/json" },
       method: "POST",
+      signal: options.signal ?? null,
     });
     if (!response.ok) {
       throw new ContractValidationError([`recall failed with ${response.status}`]);
     }
-    return (await response.json()) as RecallResponse;
+    const value: unknown = await response.json();
+    const errors = validateRecallResponse(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as RecallResponse;
   }
 
   public async reportRecallUsage(
     requestId: string,
     input: RecallUsageReportRequest,
-    options: { idempotencyKey: string },
+    options: { idempotencyKey: string; signal?: AbortSignal },
   ): Promise<RecallUsageReportResponse> {
     const response = await this.#request(`/v1/recall/${encodeURIComponent(requestId)}/usage`,
       {
@@ -3018,12 +3126,16 @@ export class AsyncIrisMemoryClient {
           "content-type": "application/json",
         },
         method: "POST",
+        signal: options.signal ?? null,
       },
     );
     if (!response.ok) {
       throw new ContractValidationError([`usage report failed with ${response.status}`]);
     }
-    return (await response.json()) as RecallUsageReportResponse;
+    const value: unknown = await response.json();
+    const errors = validateRecallUsageReportResponse(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as RecallUsageReportResponse;
   }
 
   public async search(input: SearchRequest): Promise<SearchResponse> {
@@ -3730,13 +3842,45 @@ export class AsyncIrisMemoryClient {
 
   // -- Phase 9: complete Persona ---------------------------------------------
 
-  public async currentPersona(agentId: string): Promise<Record<string, unknown>> {
+  public async currentPersona(
+    agentId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PersonaCurrentResponse> {
     const response = await this.#request(`/v1/personas/${encodeURIComponent(agentId)}/current`,
+      { signal: options.signal ?? null },
     );
     const value: unknown = await response.json();
     const errors = validatePersonaCurrentResponse(value);
     if (errors.length > 0) throw new ContractValidationError(errors);
-    return value as Record<string, unknown>;
+    return value as unknown as PersonaCurrentResponse;
+  }
+
+  public async sourceCursor(
+    sourceStream: string,
+    agentId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<SourceCursorEnvelope> {
+    const params = new URLSearchParams({ agent_id: agentId });
+    const response = await this.#request(
+      `/v1/observations/cursors/${encodeURIComponent(sourceStream)}?${params.toString()}`,
+      { signal: options.signal ?? null },
+    );
+    const value: unknown = await response.json();
+    const errors = validateSourceCursorEnvelope(value);
+    if (errors.length > 0) throw new ContractValidationError(errors);
+    return value as SourceCursorEnvelope;
+  }
+
+  public async events(
+    options: { after?: string; signal?: AbortSignal } = {},
+  ): Promise<readonly CoreEvent[]> {
+    const headers: Record<string, string> = { Accept: "text/event-stream" };
+    if (options.after !== undefined) headers["Last-Event-ID"] = options.after;
+    const response = await this.#request("/v1/events", { headers, signal: options.signal ?? null });
+    if (!response.ok) {
+      throw new ContractValidationError([`event stream failed with ${response.status}`]);
+    }
+    return parseEventStream(await response.text());
   }
 
   public async personaHistory(
@@ -3923,16 +4067,17 @@ export class AsyncIrisMemoryClient {
 
   async #request(path: string, init: RequestInit = {}): Promise<Response> {
     const headers: Record<string, string> = {};
-    new Headers(init.headers).forEach((value, key) => {
-      headers[key] = value;
-    });
-    if (isRecord(init.headers)) {
+    if (init.headers instanceof Headers || Array.isArray(init.headers)) {
+      new Headers(init.headers).forEach((value, key) => {
+        headers[key] = value;
+      });
+    } else if (isRecord(init.headers)) {
       for (const [key, value] of Object.entries(init.headers)) {
         if (typeof value === "string") headers[key] = value;
       }
     }
     if (this.#bearerToken !== undefined) headers.Authorization = `Bearer ${this.#bearerToken}`;
-    return fetch(`${this.#baseUrl}${path}`, { ...init, headers });
+    return this.#fetch(`${this.#baseUrl}${path}`, { ...init, headers });
   }
 
   async #personaWrite(

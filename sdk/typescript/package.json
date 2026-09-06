@@ -7,14 +7,34 @@
   "engines": {
     "node": ">=22"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
   "license": "AGPL-3.0-only",
+  "main": "./dist/src/index.js",
   "name": "@iris-memory/sdk",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AirObject/iris_memory_core.git",
+    "directory": "sdk/typescript"
+  },
   "scripts": {
     "build": "tsc --project tsconfig.json",
+    "prepack": "npm run build",
     "test": "npm run build && node --test dist/test/*.test.js",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "type": "module",
-  "version": "0.11.0"
+  "types": "./dist/src/index.d.ts",
+  "version": "0.11.1"
 }
