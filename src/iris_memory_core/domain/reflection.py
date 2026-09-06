@@ -218,6 +218,14 @@ class CredentialRecord:
     created_us: int
     expires_us: int
     revoked_us: int | None = None
+    label: str | None = None
+    description: str | None = None
+    token_prefix: str | None = None
+    created_by: str | None = None
+    revoke_reason: str | None = None
+    revoke_after_us: int | None = None
+    console_revision: int = 1
+    rotated_from_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

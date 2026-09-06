@@ -1,0 +1,28 @@
+{
+  "expected_revision": 1,
+  "grants": {
+    "agent_selector": {
+      "mode": "all"
+    },
+    "allow_restricted": false,
+    "custom_privacy_labels": [],
+    "data_purposes": [
+      "recall"
+    ],
+    "permissions": [
+      "memory.read"
+    ],
+    "session_selector": {
+      "mode": "all"
+    },
+    "space_group_selector": {
+      "ids": [],
+      "mode": "ids"
+    },
+    "space_selector": {
+      "mode": "all"
+    },
+    "subject_entity_ids": []
+  },
+  "reason_code": "credential_update"
+}

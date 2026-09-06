@@ -507,7 +507,19 @@ class FtsProjectionService:
         # per-agent applied watermark over still-pending holes (false
         # fresh), and non-indexable traffic advances the live seq without
         # ever enqueueing an apply (permanent false stale).
-        backlog = tx.outbox.unsettled_job_count(tenant_id, agent_id, "fts.apply")
+        # A committed change already counts while its producer event is
+        # waiting to enqueue apply. Ownerless erasures affect this tenant.
+        backlog = sum(
+            tx.outbox.unsettled_job_count(tenant_id, agent_id, kind)
+            + tx.outbox.unsettled_null_agent_job_count(tenant_id, kind)
+            for kind in (
+                "claim.changed",
+                "episode.changed",
+                "note.changed",
+                "memory.invalidated",
+                "fts.apply",
+            )
+        )
         if backlog > fts_staleness_limit():
             raise FtsDegradedError(FTS_REASON_GENERATION_STALE)
         if tx.tombstone_watermark() < pointer.tombstone_watermark:

@@ -390,8 +390,9 @@ class OutboxRepository:
             raise ConflictError("outbox payload exceeds the byte ceiling")
         existing = self._by_dedupe_key(job.tenant_id, job.dedupe_key)
         if existing is not None:
-            if existing.status not in ("completed", "dead") and payload_json != canonical_json(
-                existing.payload
+            if existing.status not in ("completed", "dead") and (
+                payload_json != canonical_json(existing.payload)
+                or job.payload_version != existing.payload_version
             ):
                 raise IdempotencyKeyReusedError(
                     "dedupe key already names different content",
@@ -416,14 +417,21 @@ class OutboxRepository:
         keep_revision = max(existing.source_revision, job.source_revision)
         payload = (
             payload_json
-            if job.source_revision >= existing.source_revision
+            if (job.payload_version, job.source_revision)
+            >= (existing.payload_version, existing.source_revision)
             else (canonical_json(existing.payload))
         )
         cursor = self._connection.execute(
-            "UPDATE outbox_jobs SET source_revision = ?, payload = ?, "
+            "UPDATE outbox_jobs SET source_revision = ?, payload = ?, payload_version = ?, "
             "available_at_us = MIN(available_at_us, ?) WHERE id = ? AND status IN "
             f"({_REQUEUEABLE})",
-            (keep_revision, payload, job.available_at_us, existing.id),
+            (
+                keep_revision,
+                payload,
+                max(existing.payload_version, job.payload_version),
+                job.available_at_us,
+                existing.id,
+            ),
         )
         if cursor.rowcount != 1:
             raise ConflictError("coalesce target changed inside the transaction")

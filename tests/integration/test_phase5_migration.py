@@ -16,6 +16,7 @@ from iris_memory_core.storage.runtime import (
     verify_schema_compatible,
 )
 from tests.conftest import local_allowed_versions
+from tests.migration_support import migrate_through
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -39,8 +40,7 @@ def _migrate_to_phase4(database: Path) -> None:
     """Build a Phase 4 (Schema 5) database: install everything, seed Phase 4
     rows, then roll the schema bookkeeping back to version 5 by dropping the
     Phase 5 tables — exactly the shape a real 0.5.0 database has."""
-    runner = MigrationRunner(database)
-    runner.migrate()
+    migrate_through(database, 11)
     connection = sqlite3.connect(database)
     try:
         for table in (
@@ -172,13 +172,13 @@ class TestUpgrade:
         try:
             from iris_memory_core.storage.migrations import current_app_version
 
-            assert current_app_version() == "0.11.0"
+            assert current_app_version() == "0.12.0"
         finally:
             connection.close()
         applied = MigrationRunner(database, default_migrations_path()).migrate()
         # Phase 6 ride-along: the 0.7.0 runner walks the Schema 5 source all
         # the way to the current released schema (ADR-0014 §10).
-        assert [item.version for item in applied] == [6, 7, 8, 9, 10, 11]
+        assert [item.version for item in applied] == [6, 7, 8, 9, 10, 11, 12, 13, 14]
         connection = sqlite3.connect(database)
         try:
             tables = {
@@ -201,15 +201,16 @@ class TestUpgrade:
             version = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
         finally:
             connection.close()
-        assert version == 11
+        assert version == 14
         assert not verify_database_invariants(database)
 
     def test_window_is_7_to_8(self) -> None:
-        # The 0.11.0 binary window (ADR-0016 §1, ADR-0019 §1): Schema 10
+        # The 0.12.0 binary window (ADR-0016 §1, ADR-0019 §1): Schema 11 through 14.
         # databases upgrade online; Schema 9 needs a 0.10.0 binary first.
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (10, 11)
-        verify_schema_compatible(10)
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (11, 14)
         verify_schema_compatible(11)
+        verify_schema_compatible(12)
+        verify_schema_compatible(13)
 
     def test_upgraded_database_openable_by_runtime(self, tmp_path: Path) -> None:
         database = tmp_path / "canonical.sqlite3"

@@ -23,6 +23,7 @@ from iris_memory_core.storage.backup import (
 from iris_memory_core.storage.migrations import MigrationRunner
 from iris_memory_core.storage.runtime import current_schema_version
 from tests.conftest import local_allowed_versions
+from tests.migration_support import migrate_through
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -60,7 +61,7 @@ class TestPublishedMigrationIntegrity:
             ).fetchall()
         finally:
             connection.close()
-        assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
         for _version, name, checksum in rows:
             on_disk = hashlib.sha256(
                 (REPOSITORY_ROOT / "migrations" / name).read_bytes()
@@ -81,13 +82,13 @@ class TestPublishedMigrationIntegrity:
     def test_empty_database_installs_all_six(self, tmp_path: Path) -> None:
         database = tmp_path / "empty.sqlite3"
         MigrationRunner(database).migrate()
-        assert current_schema_version(sqlite3.connect(database)) == 11
+        assert current_schema_version(sqlite3.connect(database)) == 14
 
 
 def _phase3_database(tmp_path: Path) -> Path:
     """A Schema 4 database with real Phase 3 rows, rolled back from 6."""
     database = tmp_path / "canonical.sqlite3"
-    MigrationRunner(database).migrate()
+    migrate_through(database, 11)
     connection = sqlite3.connect(database)
     try:
         connection.execute("PRAGMA foreign_keys = OFF")
@@ -219,7 +220,7 @@ class TestSchema4To5Upgrade:
     def test_phase3_data_upgrades_intact(self, tmp_path: Path) -> None:
         database = _phase3_database(tmp_path)
         applied = MigrationRunner(database).migrate()
-        assert [item.version for item in applied] == [5, 6, 7, 8, 9, 10, 11]
+        assert [item.version for item in applied] == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
         connection = sqlite3.connect(database)
         try:
             assert int(connection.execute("SELECT COUNT(*) FROM observations").fetchone()[0]) == 1
@@ -354,7 +355,7 @@ class TestPhase4RestoreInvariants:
             source = self._phase4_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 11
+            assert report["schema_version"] == 14
             assert verify_backup(backup_dir).ok
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
             target.parent.mkdir(parents=True, exist_ok=True)

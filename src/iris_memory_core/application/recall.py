@@ -30,12 +30,12 @@ import json
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from typing import Any, Protocol
 
 from iris_memory_core.application.events import CognitiveEventService
 from iris_memory_core.application.focus import FocusService, _require_item_content_access
-from iris_memory_core.application.memory import _require_claim_access
+from iris_memory_core.application.memory import _require_claim_access, resolve_current_entity
 from iris_memory_core.application.ports import (
     Clock,
     MonotonicClock,
@@ -866,7 +866,9 @@ def endpoint_entity_visible(
         entity_cache[entity_id] = entity
     if entity is None:
         return False
-    if entity.state == EntityState.TOMBSTONED or tx.is_tombstoned(tenant_id, "entity", entity_id):
+    if entity.state in (EntityState.TOMBSTONED, EntityState.REDIRECTED) or tx.is_tombstoned(
+        tenant_id, "entity", entity_id
+    ):
         return False
     if entity.privacy_labels:
         entity_scope = Scope(tenant_id=tenant_id)
@@ -2739,7 +2741,16 @@ def _resolve_actor_entity(
             "external actor identity has no verified binding",
             details={"provider": provider, "realm": realm},
         )
-    return binding.entity_id
+    resolved = resolve_current_entity(tx, tenant_id, binding.entity_id)
+    entity = tx.identities.entities_by_id(tenant_id, {resolved}).get(resolved)
+    if (
+        entity is None
+        or entity.state == EntityState.REDIRECTED
+        or tx.is_tombstoned(tenant_id, "external_identity", identity.id)
+        or tx.is_tombstoned(tenant_id, "binding", binding.id)
+    ):
+        raise IdentityNotFoundError("external actor has no resolvable terminal entity")
+    return resolved
 
 
 # ---------------------------------------------------------------------------
@@ -2779,7 +2790,11 @@ class RecallUsageReportResult:
     retrieved_count: int = 0
 
 
-def _request_fingerprint(request: StructuredRecallRequest) -> str:
+def _request_fingerprint(
+    request: StructuredRecallRequest,
+    access: AccessContext,
+    actors: tuple[ExternalActorRef, ...] | None,
+) -> str:
     """Stable digest of the request's logical content for replay identity.
 
     The deadline is EXCLUDED: ``build_request`` re-derives it from the wall
@@ -2788,7 +2803,24 @@ def _request_fingerprint(request: StructuredRecallRequest) -> str:
     dims, filters, budgets, purpose, as_of — is included.
     """
     payload: dict[str, object] = {
-        "version": 1,
+        "version": 2,
+        "speaker_entity_id": request.speaker_entity_id,
+        "actors": [
+            {
+                "provider": actor.provider,
+                "realm": actor.realm,
+                "external_id": actor.external_id,
+                "weight": actor.weight,
+            }
+            for actor in actors
+        ]
+        if actors is not None
+        else None,
+        "access": {
+            item.name: sorted(value) if isinstance(value, frozenset) else value
+            for item in fields(access)
+            for value in (getattr(access, item.name),)
+        },
         "request_id": request.request_id,
         "agent_id": request.agent_id,
         "space_group_id": request.space_group_id,
@@ -3101,43 +3133,40 @@ class RecallService:
         """
         if request.speaker_entity_id is not None:
             request = replace(request, speaker_entity_id=None)
-        fingerprint = _request_fingerprint(request)
+        effective = request
         with self._uow.read() as tx:
             # Authenticate BEFORE the replay short-circuit: an unauthorized
             # probe must never learn whether the request id already exists.
             StructuredRecallOrchestrator._authorize_request(tx, access, request)
+            if actors is not None:
+                if not actors:
+                    raise InvalidRequestError("actors must contain the current speaker")
+                speaker = actors[0]
+                effective = replace(
+                    request,
+                    speaker_entity_id=_resolve_actor_entity(
+                        tx, access.tenant_id, speaker.provider, speaker.realm, speaker.external_id
+                    ),
+                )
+            fingerprint = _request_fingerprint(effective, access, actors)
             existing = tx.usage.get_request(access.tenant_id, request.request_id)
             if existing is not None:
-                if str(existing["request_fingerprint"]) != fingerprint:  # type: ignore[index]
-                    raise InvalidRequestError(
-                        "recall request id was already used by a different request",
-                        details={"request_id": request.request_id},
-                    )
-                stored = existing["response_json"]  # type: ignore[index]
-                if stored is None:
-                    raise ConflictError(
-                        "recall response for this request id was scrubbed by an erasure",
-                        details={"request_id": request.request_id},
-                    )
-                return _result_from_json(str(stored))
-        effective = request
-        if actors is not None:
-            speaker = actors[0] if actors else None
-            if speaker is None:
-                raise InvalidRequestError("actors must contain the current speaker")
-            with self._uow.read() as tx:
-                speaker_entity_id = _resolve_actor_entity(
-                    tx,
-                    access.tenant_id,
-                    speaker.provider,
-                    speaker.realm,
-                    speaker.external_id,
-                )
-            effective = replace(request, speaker_entity_id=speaker_entity_id)
+                return self._replay(existing, fingerprint, request.request_id)
         result = self._orchestrator.recall(access, effective)
         returned_ids = [candidate.candidate_id for candidate in result.candidates]
         resource_ids = sorted({candidate.resource_id for candidate in result.candidates})
         with self._uow.write() as tx:
+            # The writer gate serializes publication with both another
+            # first response and Forget's tombstone/scrub transaction.
+            StructuredRecallOrchestrator._authorize_request(tx, access, effective)
+            existing = tx.usage.get_request(access.tenant_id, effective.request_id)
+            if existing is not None:
+                return self._replay(existing, fingerprint, effective.request_id)
+            if any(
+                tx.is_tombstoned(access.tenant_id, candidate.resource_type, candidate.resource_id)
+                for candidate in result.candidates
+            ):
+                raise ConflictError("recall resources were erased before response publication")
             tx.usage.insert_request(
                 request_id=effective.request_id,
                 tenant_id=access.tenant_id,
@@ -3155,6 +3184,21 @@ class RecallService:
                 response_json=_result_to_json(result),
             )
         return result
+
+    @staticmethod
+    def _replay(existing: Any, fingerprint: str, request_id: str) -> StructuredRecallResult:
+        if str(existing["request_fingerprint"]) != fingerprint:
+            raise InvalidRequestError(
+                "recall request id was already used by a different request or access context",
+                details={"request_id": request_id},
+            )
+        stored = existing["response_json"]
+        if stored is None:
+            raise ConflictError(
+                "recall response for this request id was scrubbed by an erasure",
+                details={"request_id": request_id},
+            )
+        return _result_from_json(str(stored))
 
 
 class RecallUsageService:

@@ -8,6 +8,7 @@ import sqlite3
 from collections.abc import Mapping, Sequence
 
 from iris_memory_core.application.ports import Clock, IdentifierGenerator
+from iris_memory_core.domain.errors import RevisionMismatchError
 from iris_memory_core.domain.hashing import canonical_json
 from iris_memory_core.domain.observation import (
     ArtifactRef,
@@ -650,7 +651,60 @@ class ReflectionRepository:
             "AND revoked_us IS NULL AND expires_us>?",
             (token_sha256, now_us),
         ).fetchone()
-        return self._credential(row) if row is not None else None
+        if row is None:
+            return None
+        record = self._credential(row)
+        if record.revoke_after_us is not None and record.revoke_after_us <= now_us:
+            return None
+        return record
+
+    def credential(self, credential_id: str) -> CredentialRecord | None:
+        row = self._connection.execute(
+            "SELECT * FROM service_credentials WHERE id=?", (credential_id,)
+        ).fetchone()
+        return self._credential(row) if row else None
+
+    def credentials(
+        self, tenant_id: str, *, limit: int = 201, after: tuple[int, str] | None = None
+    ) -> tuple[CredentialRecord, ...]:
+        condition = " AND (created_us,id)<(?,?)" if after else ""
+        return tuple(
+            self._credential(row)
+            for row in self._connection.execute(
+                "SELECT * FROM service_credentials WHERE tenant_id=? AND plane='application'"
+                + condition
+                + " ORDER BY created_us DESC,id DESC LIMIT ?",
+                (tenant_id, *(after or ()), limit),
+            )
+        )
+
+    def save_credential_metadata(self, record: CredentialRecord, *, expected_revision: int) -> None:
+        cursor = self._connection.execute(
+            "UPDATE service_credentials SET label=?,description=?,token_prefix=?,created_by=?,"
+            "revoke_reason=?,revoke_after_us=?,console_revision=?,expires_us=?,revoked_us=? "
+            "WHERE id=? AND COALESCE(console_revision,1)=?",
+            (
+                record.label,
+                record.description,
+                record.token_prefix,
+                record.created_by,
+                record.revoke_reason,
+                record.revoke_after_us,
+                record.console_revision,
+                record.expires_us,
+                record.revoked_us,
+                record.id,
+                expected_revision,
+            ),
+        )
+        if cursor.rowcount != 1:
+            current = self.credential(record.id)
+            raise RevisionMismatchError(
+                "service_credential",
+                record.id,
+                expected_revision,
+                current.console_revision if current else None,
+            )
 
     def touch_credential(self, credential_id: str, *, now_us: int) -> None:
         self._connection.execute(
@@ -870,6 +924,22 @@ class ReflectionRepository:
             created_us=int(row["created_us"]),
             expires_us=int(row["expires_us"]),
             revoked_us=row["revoked_us"],
+            **{
+                name: row[name]
+                for name in (
+                    "label",
+                    "description",
+                    "token_prefix",
+                    "created_by",
+                    "revoke_reason",
+                    "revoke_after_us",
+                    "rotated_from_id",
+                )
+                if name in row.keys()  # noqa: SIM118 -- sqlite3.Row membership tests values
+            },
+            console_revision=(row["console_revision"] or 1)
+            if "console_revision" in row.keys()  # noqa: SIM118 -- sqlite3.Row tests values
+            else 1,
         )
 
     @staticmethod

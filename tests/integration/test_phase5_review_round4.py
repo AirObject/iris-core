@@ -143,6 +143,10 @@ _CREATE_TABLE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SQL_LINE_COMMENT = re.compile(r"--[^\n]*")
+_CREATE_INDEX_PATTERN = re.compile(
+    r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?P<name>\w+)",
+    re.IGNORECASE,
+)
 
 
 def migration_versions_from(minimum_version: int) -> list[int]:
@@ -224,6 +228,15 @@ def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
         )
         # The FTS5 virtual table is created at runtime by the indexer, not by a
         # migration, so it is the one name the parser cannot see.
+        # Later migrations can also add indexes to OLD tables. Rewinding
+        # only newly created tables leaves those indexes behind and makes
+        # the ordinary upgrade fail on duplicate CREATE INDEX statements.
+        for migration in discover_migrations(default_migrations_path()):
+            if migration.version >= 7:
+                for match in _CREATE_INDEX_PATTERN.finditer(
+                    _SQL_LINE_COMMENT.sub("", migration.sql)
+                ):
+                    connection.execute(f"DROP INDEX IF EXISTS {match.group('name')}")
         for table in (FTS_INDEX_TABLE, *tables_created_from_version(7)):
             connection.execute(f"DROP TABLE IF EXISTS {table}")
         connection.execute("DELETE FROM schema_migrations WHERE version >= 7")

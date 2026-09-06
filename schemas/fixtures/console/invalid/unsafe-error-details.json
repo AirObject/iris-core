@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "access_denied",
+    "details": {
+      "kind": "authentication_required",
+      "token": "fixture-must-be-rejected"
+    },
+    "message": "authentication required",
+    "retryable": false
+  },
+  "request_id": "01991bab-a000-7000-8000-000000000001"
+}

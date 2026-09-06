@@ -175,19 +175,28 @@ class _RateLimiter:
         self._last = _monotonic_now()
         self._lock = threading.Lock()
 
-    def acquire(self) -> None:
-        with self._lock:
-            while True:
+    def acquire(self, *, deadline_monotonic_us: int | None = None) -> None:
+        while True:
+            with self._lock:
                 now = _monotonic_now()
+                remaining = (
+                    None
+                    if deadline_monotonic_us is None
+                    else deadline_monotonic_us / 1_000_000 - now
+                )
+                if remaining is not None and remaining <= 0:
+                    raise EmbeddingProviderError(OUTCOME_TIMEOUT, retryable=True)
                 self._tokens = min(1.0, self._tokens + (now - self._last) * self._refill_per_s)
                 self._last = now
                 if self._tokens >= 1.0:
                     self._tokens -= 1.0
                     return
-                # Sleeping under the lock is bounded by 1/qps (ms scale at
-                # any sane configuration) and keeps callers honest without a
-                # queue of its own.
-                time.sleep(max(0.0005, (1.0 - self._tokens) / self._refill_per_s))
+                delay = max(0.0005, (1.0 - self._tokens) / self._refill_per_s)
+                if remaining is not None:
+                    delay = min(delay, remaining)
+            # Sleep outside the mutex: a short-deadline caller must not
+            # wait behind another caller's entire refill interval.
+            time.sleep(delay)
 
 
 @dataclass(slots=True)
@@ -335,19 +344,16 @@ class ValidatingEmbeddingProvider:
         deadline_monotonic_us: int | None = None,
     ) -> list[Sequence[float]]:
         self._breaker.before_call()
-        self._rate.acquire()
         digest = embedding_input_digest("\x1e".join(texts))
         started = _monotonic_now()
-        timeout_s = self._limits.timeout_us / 1_000_000
-        if deadline_monotonic_us is not None:
-            remaining_s = (deadline_monotonic_us - _monotonic_now_us()) / 1_000_000
-            if remaining_s <= 0.0:
-                self._record_failure(OUTCOME_TIMEOUT, texts, started, digest)
-                raise EmbeddingProviderError(OUTCOME_TIMEOUT, retryable=True) from None
-            # Cap the transport timeout by the caller's remaining budget so
-            # the socket itself aborts at the deadline.
-            timeout_s = min(timeout_s, remaining_s)
         try:
+            self._rate.acquire(deadline_monotonic_us=deadline_monotonic_us)
+            timeout_s = self._limits.timeout_us / 1_000_000
+            if deadline_monotonic_us is not None:
+                remaining_s = (deadline_monotonic_us - _monotonic_now_us()) / 1_000_000
+                if remaining_s <= 0.0:
+                    raise EmbeddingProviderError(OUTCOME_TIMEOUT, retryable=True)
+                timeout_s = min(timeout_s, remaining_s)
             raw = self._call(texts, timeout_s=timeout_s)
         except EmbeddingProviderError as error:
             self._record_failure(error.reason_code, texts, started, digest)

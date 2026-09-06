@@ -22,6 +22,7 @@ from pydantic import ConfigDict, TypeAdapter, ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from iris_memory_core.api import views
+from iris_memory_core.api.console.config import ConsoleConfig
 from iris_memory_core.api.errors import (
     domain_error_handler,
     envelope,
@@ -1149,7 +1150,7 @@ class TransportRuntime:
                 access=access,
                 request_scope=request_scope,
             )
-            return 200, views.profile_view("entity", entity_id, value)
+            return 200, views.profile_view(value.subject.kind, value.subject.subject_id, value)
         if operation_id == "getEntityRelations":
             entity_id = str(path["entity_id"])
             self.identities.get_entity(access, Scope(tenant_id=access.tenant_id), entity_id)
@@ -1621,6 +1622,8 @@ def create_app(
     backup_root: Path | None = None,
     export_root: Path | None = None,
     backup_signing_key: bytes | None = None,
+    enable_console: bool = False,
+    console_config: ConsoleConfig | None = None,
 ) -> FastAPI:
     contract = _load_contract(contract_path)
     credential_service = credentials or CredentialService(uow, cast(Any, uow).clock)
@@ -1657,6 +1660,12 @@ def create_app(
     app.state.runtime = runtime
     app.state.frozen_openapi = contract
     app.openapi = lambda: contract  # type: ignore[method-assign]
+    if enable_console:
+        from iris_memory_core.api.console.app import create_console_app
+
+        if not isinstance(uow, Store):
+            raise ValueError("Console requires a configured SQLite Store")
+        app.mount("/console", create_console_app(store=uow, config=console_config), name="console")
     app.add_exception_handler(DomainError, domain_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(StarletteHTTPException, http_error_handler)  # type: ignore[arg-type]

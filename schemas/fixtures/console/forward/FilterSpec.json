@@ -1,0 +1,6 @@
+{
+  "future_optional": "allowed",
+  "key": "status",
+  "label": "状态",
+  "type": "string"
+}

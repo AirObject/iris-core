@@ -1,0 +1,23 @@
+{
+  "data": {
+    "contract_version": "1.0.0",
+    "display_timezone": "UTC",
+    "import_in_progress": false,
+    "maintenance": false,
+    "modules": [],
+    "pending_restart": false,
+    "permissions": [],
+    "read_only": false,
+    "upload_limits": {
+      "file_bytes": "52428800",
+      "json_depth": 20,
+      "record_bytes": "262144",
+      "records": "100000"
+    }
+  },
+  "meta": {
+    "as_of": "2026-09-05T08:00:00.000000Z",
+    "contract_version": "1.0.0",
+    "request_id": "01991bab-a000-7000-8000-000000000001"
+  }
+}

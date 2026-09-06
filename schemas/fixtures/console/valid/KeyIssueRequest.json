@@ -1,0 +1,29 @@
+{
+  "expires_at": "2026-09-06T00:00:00.000000Z",
+  "grants": {
+    "agent_selector": {
+      "mode": "all"
+    },
+    "allow_restricted": false,
+    "custom_privacy_labels": [],
+    "data_purposes": [
+      "recall"
+    ],
+    "permissions": [
+      "memory.read"
+    ],
+    "session_selector": {
+      "mode": "all"
+    },
+    "space_group_selector": {
+      "ids": [],
+      "mode": "ids"
+    },
+    "space_selector": {
+      "mode": "all"
+    },
+    "subject_entity_ids": []
+  },
+  "label": "viewer",
+  "template": "viewer"
+}

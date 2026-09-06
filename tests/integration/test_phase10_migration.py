@@ -29,8 +29,13 @@ from iris_memory_core.storage.uow import Store
 
 
 def test_empty_database_and_schema10_upgrade_apply_0011(tmp_path: Path) -> None:
+    phase10_dir = tmp_path / "schema11"
+    phase10_dir.mkdir()
+    for migration in sorted(default_migrations_path().glob("*.sql")):
+        if int(migration.name[:4]) <= 11:
+            shutil.copy2(migration, phase10_dir / migration.name)
     database = tmp_path / "empty.sqlite3"
-    applied = MigrationRunner(database).migrate()
+    applied = MigrationRunner(database, phase10_dir).migrate()
     assert applied[-1].version == 11
     with sqlite3.connect(database) as connection:
         tables = {
@@ -63,7 +68,7 @@ def test_empty_database_and_schema10_upgrade_apply_0011(tmp_path: Path) -> None:
             "VALUES ('preserved','active',1,'1970-01-01T00:00:00Z')"
         )
         connection.commit()
-    assert [item.version for item in MigrationRunner(upgraded).migrate()] == [11]
+    assert [item.version for item in MigrationRunner(upgraded, phase10_dir).migrate()] == [11]
     with sqlite3.connect(upgraded) as connection:
         assert connection.execute("SELECT status FROM tenants WHERE id='preserved'").fetchone() == (
             "active",
@@ -71,12 +76,13 @@ def test_empty_database_and_schema10_upgrade_apply_0011(tmp_path: Path) -> None:
 
 
 def test_schema_compatibility_window_is_exactly_previous_and_current() -> None:
-    verify_schema_compatible(10)
     verify_schema_compatible(11)
+    verify_schema_compatible(12)
+    verify_schema_compatible(13)
     with pytest.raises(SchemaIncompatibleError):
-        verify_schema_compatible(9)
+        verify_schema_compatible(10)
     with pytest.raises(SchemaIncompatibleError):
-        verify_schema_compatible(12)
+        verify_schema_compatible(15)
 
 
 def test_credentials_are_hashed_rotatable_and_never_exported(

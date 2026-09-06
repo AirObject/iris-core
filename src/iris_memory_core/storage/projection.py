@@ -76,6 +76,18 @@ class ProfileRepository:
         self._clock = clock
         self._ids = ids
 
+    def subjects_citing_claim(
+        self, tenant_id: str, generation_id: str, claim_id: str
+    ) -> tuple[ProfileSubjectKey, ...]:
+        rows = self._connection.execute(
+            "SELECT DISTINCT subject_kind, subject_id FROM profile_fields "
+            "WHERE tenant_id = ? AND generation_id = ? AND EXISTS "
+            "(SELECT 1 FROM json_each(source_refs_json) source "
+            "WHERE json_extract(source.value, '$.claim_id') = ?)",
+            (tenant_id, generation_id, claim_id),
+        ).fetchall()
+        return tuple(ProfileSubjectKey(str(row[0]), str(row[1])) for row in rows)
+
     # -- global projection state ---------------------------------------------
 
     def projection_state(self) -> str:

@@ -1,0 +1,23 @@
+{
+  "data": [
+    {
+      "created_at": "2026-09-06T00:00:00.000000Z",
+      "current": true,
+      "expires_at": "2026-09-06T00:00:00.000000Z",
+      "id": "01991bf3-1000-7000-8000-000000000001",
+      "idle_expires_at": "2026-09-06T00:00:00.000000Z",
+      "last_active_at": "2026-09-06T00:00:00.000000Z",
+      "reauth_until": null
+    }
+  ],
+  "meta": {
+    "as_of": "2026-09-06T00:00:00.000000Z",
+    "contract_version": "1.0.0",
+    "page": {
+      "has_more": false,
+      "limit": 50,
+      "next_cursor": null
+    },
+    "request_id": "01991bf3-1000-7000-8000-000000000001"
+  }
+}

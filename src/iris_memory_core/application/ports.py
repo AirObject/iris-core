@@ -13,6 +13,7 @@ from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from iris_memory_core.application.console.ports import ConsoleReadRepository, ConsoleRepository
 from iris_memory_core.domain.event import (
     DEFAULT_MAX_DELIVERY_ATTEMPTS,
     CognitiveEventCurrent,
@@ -1898,6 +1899,10 @@ class RecallUsageSurface(Protocol):
 
 
 class ProfileSurface(Protocol):
+    def subjects_citing_claim(
+        self, tenant_id: str, generation_id: str, claim_id: str
+    ) -> tuple[ProfileSubjectKey, ...]: ...
+
     """Repository surface for the profile projection (ADR-0016 §2)."""
 
     def projection_state(self) -> str: ...
@@ -2330,6 +2335,13 @@ class ReflectionSurface(Protocol):
     def credential_by_digest(
         self, token_sha256: str, *, now_us: int
     ) -> CredentialRecord | None: ...
+    def credential(self, credential_id: str) -> CredentialRecord | None: ...
+    def credentials(
+        self, tenant_id: str, *, limit: int = 201, after: tuple[int, str] | None = None
+    ) -> tuple[CredentialRecord, ...]: ...
+    def save_credential_metadata(
+        self, record: CredentialRecord, *, expected_revision: int
+    ) -> None: ...
     def touch_credential(self, credential_id: str, *, now_us: int) -> None: ...
     def revoke_credential(self, credential_id: str, *, now_us: int) -> int: ...
     def insert_credential(
@@ -2444,6 +2456,12 @@ class Transaction(Protocol):
 
     @property
     def reflection(self) -> ReflectionSurface: ...
+
+    @property
+    def console(self) -> ConsoleRepository: ...
+
+    @property
+    def console_reads(self) -> ConsoleReadRepository: ...
 
     # --- tenants, agents, spaces -------------------------------------
     def insert_tenant(self, tenant_id: str, *, status: str) -> Tenant: ...

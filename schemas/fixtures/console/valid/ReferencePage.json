@@ -1,0 +1,18 @@
+{
+  "data": [
+    {
+      "direction": "outgoing",
+      "id": "018bcfe5-6800-7000-8000-000000000001",
+      "relation": "source",
+      "resource": {
+        "resource_id": "018bcfe5-6800-7000-8000-000000000002",
+        "resource_type": "note"
+      }
+    }
+  ],
+  "meta": {
+    "as_of": "2023-11-14T22:13:20.000000Z",
+    "contract_version": "1.0.0",
+    "request_id": "018bcfe5-6800-7000-8000-000000000001"
+  }
+}

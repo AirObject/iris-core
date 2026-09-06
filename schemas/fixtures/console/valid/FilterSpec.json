@@ -1,0 +1,5 @@
+{
+  "key": "status",
+  "label": "状态",
+  "type": "string"
+}

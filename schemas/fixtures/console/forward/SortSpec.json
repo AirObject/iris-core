@@ -1,0 +1,6 @@
+{
+  "direction": "desc",
+  "future_optional": "allowed",
+  "key": "created_at_desc",
+  "label": "创建时间"
+}

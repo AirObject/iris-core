@@ -1,0 +1,17 @@
+{
+  "actions": [],
+  "collection": "notes",
+  "create_schema": null,
+  "filters": [],
+  "future_optional": "allowed",
+  "label": "便签",
+  "list_columns": [],
+  "resource_type": "note",
+  "sorts": [],
+  "supports": {
+    "forget": false,
+    "history": true,
+    "references": true
+  },
+  "update_schema": null
+}

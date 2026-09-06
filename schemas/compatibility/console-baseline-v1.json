@@ -1,0 +1,543 @@
+{
+  "paths": {
+    "/console/v1/auth/login": [
+      "post"
+    ],
+    "/console/v1/auth/logout": [
+      "post"
+    ],
+    "/console/v1/auth/reauth": [
+      "post"
+    ],
+    "/console/v1/auth/refresh": [
+      "post"
+    ],
+    "/console/v1/auth/session": [
+      "get"
+    ],
+    "/console/v1/auth/sessions": [
+      "get"
+    ],
+    "/console/v1/auth/sessions/{id}:revoke": [
+      "post"
+    ],
+    "/console/v1/bootstrap": [
+      "get"
+    ],
+    "/console/v1/keys": [
+      "get",
+      "post"
+    ],
+    "/console/v1/keys/{id}": [
+      "patch"
+    ],
+    "/console/v1/keys/{id}:revoke": [
+      "post"
+    ],
+    "/console/v1/keys/{id}:rotate": [
+      "post"
+    ],
+    "/console/v1/lookups/agents": [
+      "get"
+    ],
+    "/console/v1/lookups/entities": [
+      "get"
+    ],
+    "/console/v1/lookups/sessions": [
+      "get"
+    ],
+    "/console/v1/lookups/space-groups": [
+      "get"
+    ],
+    "/console/v1/lookups/spaces": [
+      "get"
+    ],
+    "/console/v1/memory/artifacts": [
+      "get"
+    ],
+    "/console/v1/memory/artifacts/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/artifacts/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/artifacts/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/bindings": [
+      "get"
+    ],
+    "/console/v1/memory/bindings/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/bindings/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/bindings/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/candidates": [
+      "get"
+    ],
+    "/console/v1/memory/candidates/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/candidates/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/candidates/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/claims": [
+      "get"
+    ],
+    "/console/v1/memory/claims/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/claims/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/claims/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/cognitive-events": [
+      "get"
+    ],
+    "/console/v1/memory/cognitive-events/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/cognitive-events/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/cognitive-events/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/entities": [
+      "get"
+    ],
+    "/console/v1/memory/entities/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/entities/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/entities/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/episodes": [
+      "get"
+    ],
+    "/console/v1/memory/episodes/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/episodes/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/episodes/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/focus-items": [
+      "get"
+    ],
+    "/console/v1/memory/focus-items/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/focus-items/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/focus-items/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/identities": [
+      "get"
+    ],
+    "/console/v1/memory/identities/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/identities/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/identities/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/notes": [
+      "get"
+    ],
+    "/console/v1/memory/notes/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/notes/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/notes/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/observations": [
+      "get"
+    ],
+    "/console/v1/memory/observations/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/observations/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/observations/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/reflections": [
+      "get"
+    ],
+    "/console/v1/memory/reflections/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/reflections/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/reflections/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/relations": [
+      "get"
+    ],
+    "/console/v1/memory/relations/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/relations/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/relations/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/resource-types": [
+      "get"
+    ],
+    "/console/v1/memory/states": [
+      "get"
+    ],
+    "/console/v1/memory/states/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/states/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/states/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/tasks": [
+      "get"
+    ],
+    "/console/v1/memory/tasks/{id}": [
+      "get"
+    ],
+    "/console/v1/memory/tasks/{id}/dependencies": [
+      "get"
+    ],
+    "/console/v1/memory/tasks/{id}/history": [
+      "get"
+    ],
+    "/console/v1/memory/tasks/{id}/references": [
+      "get"
+    ],
+    "/console/v1/memory/tasks/{id}/steps": [
+      "get"
+    ],
+    "/console/v1/memory/tasks/{id}/triggers": [
+      "get"
+    ],
+    "/console/v1/personas/{agent_id}": [
+      "get"
+    ],
+    "/console/v1/personas/{agent_id}/history": [
+      "get"
+    ],
+    "/console/v1/personas/{agent_id}/proposals": [
+      "get"
+    ],
+    "/console/v1/service-credentials": [
+      "get",
+      "post"
+    ],
+    "/console/v1/service-credentials/{id}": [
+      "patch"
+    ],
+    "/console/v1/service-credentials/{id}:revoke": [
+      "post"
+    ],
+    "/console/v1/service-credentials/{id}:rotate": [
+      "post"
+    ]
+  },
+  "required_schema_fields": {
+    "BootstrapEnvelope": [
+      "data",
+      "meta"
+    ],
+    "BootstrapView": [
+      "contract_version",
+      "permissions",
+      "modules",
+      "read_only",
+      "maintenance",
+      "upload_limits",
+      "display_timezone",
+      "pending_restart",
+      "import_in_progress"
+    ],
+    "ColumnSpec": [
+      "key",
+      "label",
+      "type"
+    ],
+    "DecimalCount": [],
+    "EmptyRequest": [],
+    "ErrorDetails": [],
+    "ErrorEnvelope": [
+      "error",
+      "request_id"
+    ],
+    "FilterSpec": [
+      "key",
+      "label",
+      "type"
+    ],
+    "Grant": [
+      "permissions",
+      "agent_selector",
+      "space_group_selector",
+      "space_selector",
+      "session_selector",
+      "subject_entity_ids",
+      "custom_privacy_labels",
+      "allow_restricted",
+      "data_purposes"
+    ],
+    "KeyActionRequest": [
+      "expected_revision",
+      "reason_code"
+    ],
+    "KeyIssueRequest": [
+      "label",
+      "expires_at",
+      "template",
+      "grants"
+    ],
+    "KeyUpdateRequest": [
+      "expected_revision",
+      "reason_code"
+    ],
+    "KeyView": [
+      "id",
+      "tenant_id",
+      "token_prefix",
+      "label",
+      "description",
+      "template",
+      "grants",
+      "can_delegate",
+      "delegable_subject_entity_ids",
+      "status",
+      "revision",
+      "created_at",
+      "expires_at",
+      "created_by",
+      "rotated_from_id",
+      "confirmation_expires_at",
+      "revoked_at",
+      "revoke_reason"
+    ],
+    "KeyViewEnvelope": [
+      "data",
+      "meta"
+    ],
+    "KeyViewPage": [
+      "data",
+      "meta"
+    ],
+    "LoginRequest": [
+      "key"
+    ],
+    "Meta": [
+      "request_id",
+      "contract_version",
+      "as_of"
+    ],
+    "Page": [
+      "next_cursor",
+      "has_more",
+      "limit"
+    ],
+    "ReadGrant": [
+      "permissions",
+      "agent_selector",
+      "space_group_selector",
+      "space_selector",
+      "session_selector",
+      "subject_entity_ids",
+      "custom_privacy_labels",
+      "allow_restricted",
+      "data_purposes"
+    ],
+    "ReadSelector": [],
+    "ReasonCode": [],
+    "ReauthView": [
+      "reauth_until"
+    ],
+    "ReauthViewEnvelope": [
+      "data",
+      "meta"
+    ],
+    "ReferencePage": [
+      "data",
+      "meta"
+    ],
+    "ReferenceView": [
+      "id",
+      "direction",
+      "relation",
+      "resource"
+    ],
+    "ResourcePage": [
+      "data",
+      "meta"
+    ],
+    "ResourceRef": [
+      "resource_type",
+      "resource_id"
+    ],
+    "ResourceScope": [
+      "agent_id",
+      "space_group_id",
+      "space_id",
+      "session_id"
+    ],
+    "ResourceTypeDescriptor": [
+      "collection",
+      "resource_type",
+      "label",
+      "list_columns",
+      "filters",
+      "sorts",
+      "create_schema",
+      "update_schema",
+      "actions",
+      "supports"
+    ],
+    "ResourceTypePage": [
+      "data",
+      "meta"
+    ],
+    "ResourceView": [
+      "id",
+      "resource_type",
+      "revision",
+      "scope",
+      "status",
+      "fields",
+      "privacy_labels",
+      "source_refs",
+      "created_at",
+      "updated_at",
+      "available_actions",
+      "blocked_actions"
+    ],
+    "ResourceViewEnvelope": [
+      "data",
+      "meta"
+    ],
+    "SecretView": [
+      "key",
+      "secret_available"
+    ],
+    "SecretViewEnvelope": [
+      "data",
+      "meta"
+    ],
+    "Selector": [],
+    "ServiceCredentialIssueRequest": [
+      "label",
+      "expires_at",
+      "app_instance_id",
+      "data_purposes"
+    ],
+    "ServiceCredentialPage": [
+      "data",
+      "meta"
+    ],
+    "ServiceCredentialRotateRequest": [
+      "expected_revision",
+      "reason_code"
+    ],
+    "ServiceCredentialSecret": [
+      "key",
+      "secret_available"
+    ],
+    "ServiceCredentialSecretEnvelope": [
+      "data",
+      "meta"
+    ],
+    "ServiceCredentialView": [
+      "id",
+      "tenant_id",
+      "app_instance_id",
+      "plane",
+      "label",
+      "description",
+      "token_prefix",
+      "created_by",
+      "revision",
+      "created_at",
+      "expires_at",
+      "revoked_at",
+      "revoke_after",
+      "rotated_from_id",
+      "revoke_reason",
+      "agent_ids",
+      "space_group_ids",
+      "space_ids",
+      "entity_ids",
+      "capabilities",
+      "data_purposes"
+    ],
+    "ServiceCredentialViewEnvelope": [
+      "data",
+      "meta"
+    ],
+    "SessionRevokeRequest": [
+      "reason_code"
+    ],
+    "SessionSummary": [
+      "id",
+      "created_at",
+      "expires_at",
+      "idle_expires_at",
+      "last_active_at",
+      "reauth_until",
+      "current"
+    ],
+    "SessionSummaryPage": [
+      "data",
+      "meta"
+    ],
+    "SessionView": [
+      "session",
+      "operator",
+      "permissions",
+      "grants",
+      "csrf_token"
+    ],
+    "SessionViewEnvelope": [
+      "data",
+      "meta"
+    ],
+    "SortSpec": [
+      "key",
+      "label",
+      "direction"
+    ],
+    "Total": [
+      "value",
+      "exact",
+      "duration_us"
+    ]
+  }
+}

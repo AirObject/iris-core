@@ -20,14 +20,18 @@ import hashlib
 from dataclasses import dataclass
 from typing import Protocol
 
+from iris_memory_core.application.memory import resolve_current_entity
 from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.errors import AccessDeniedError, NotFoundError
+from iris_memory_core.domain.identity import EntityState
 from iris_memory_core.domain.memory import (
     CLAIM_CURRENT_VISIBLE_STATUSES,
     ClaimCurrent,
     ClaimRevision,
     claim_value_hash,
 )
+from iris_memory_core.domain.privacy import evaluate_privacy
 from iris_memory_core.domain.profile import (
     KNOWN_PROFILE_BUILDER_VERSIONS,
     MAX_FIELD_SOURCES,
@@ -358,6 +362,13 @@ class ProfileProjectionService:
         except Exception:
             return ()
         subjects = [ProfileSubjectKey("entity", claim.subject_entity_id)]
+        pointer = tx.profile.pointer(tenant_id)
+        if pointer is not None:
+            # Read old membership from the projection, not revision history:
+            # history may be pruned and the current target may have changed.
+            subjects.extend(
+                tx.profile.subjects_citing_claim(tenant_id, pointer.generation_id, claim.id)
+            )
         try:
             revision = tx.claims.current_revision_row(claim.id)
         except Exception:
@@ -379,7 +390,7 @@ class ProfileProjectionService:
             and revision.category in ("community", "fact")
         ):
             subjects.append(ProfileSubjectKey("space_group", claim.space_group_id))
-        return tuple(subjects)
+        return tuple(set(subjects))
 
     # -- trust gate and reads -------------------------------------------------------------
 
@@ -490,6 +501,25 @@ class ProfileProjectionService:
         the canonical read paths apply — the structured surface never
         widens what the request may see."""
         with self._uow.read() as tx:
+            if subject.kind == "entity":
+                subject = ProfileSubjectKey(
+                    "entity", resolve_current_entity(tx, tenant_id, subject.subject_id)
+                )
+                entity = tx.identities.entities_by_id(tenant_id, {subject.subject_id}).get(
+                    subject.subject_id
+                )
+                if entity is None or entity.state == EntityState.REDIRECTED:
+                    raise NotFoundError("profile subject has no terminal entity")
+                if (
+                    access is not None
+                    and request_scope is not None
+                    and not evaluate_privacy(
+                        entity.privacy_labels, Scope(tenant_id=tenant_id), request_scope, access
+                    )
+                ):
+                    raise AccessDeniedError(
+                        "terminal profile entity privacy is outside the access context"
+                    )
             fallback_view: ProfileView | None = None
             try:
                 pointer, generation = self.trusted_generation_in_tx(
@@ -558,12 +588,15 @@ class ProfileProjectionService:
             return True
 
         def _fail() -> bool:
+            tx.profile.retire_generation(pointer.generation_id)
             tx.profile.set_projection_state("pending_rebuild")
             return False
 
         try:
             generation = tx.profile.get_generation(pointer.generation_id)
         except Exception:
+            return _fail()
+        if generation.status != "verified":
             return _fail()
         subjects = tx.profile.subjects_for_generation(tenant_id, generation.id)
         stored_fields = tx.profile.field_count(tenant_id, generation.id)

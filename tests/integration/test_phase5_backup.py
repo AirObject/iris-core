@@ -69,7 +69,7 @@ class TestBackupRestoreDrill:
             service = BackupService(store)
             backup_dir = tmp_path / f"backup-{round_index}"
             report = service.create_backup(backup_dir)
-            assert report.schema_version == 11
+            assert report.schema_version == 14
             verify = verify_backup(backup_dir)
             assert verify.ok, verify.problems
             assert (backup_dir / "artifacts").is_dir()

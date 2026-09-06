@@ -5545,13 +5545,16 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def build_version_manifest(source: Mapping[str, Any]) -> dict[str, Any]:
+    from tools.generate_console_contracts import load_source as console_source
+
+    release = console_source()["runtime_versions"]
     source_hash = hashlib.sha256(SOURCE_PATH.read_bytes()).hexdigest()
     return {
         "api_version": source["api_version"],
         "contract_source_sha256": source_hash,
         "contract_version": source["contract_version"],
-        "package_version": source["package_version"],
-        "schema_version": source["schema_version"],
+        "package_version": release["package_version"],
+        "schema_version": release["schema_version"],
     }
 
 
@@ -5600,7 +5603,9 @@ def generated_documents(source: Mapping[str, Any]) -> dict[Path, dict[str, Any]]
 def _write_or_check(documents: Mapping[Path, Mapping[str, Any]], check: bool) -> list[Path]:
     drifted: list[Path] = []
     for path, document in documents.items():
-        rendered = canonical_json(document)
+        # Invalid Unicode fixtures must remain escaped JSON, while ordinary
+        # UTF-8 output (including the frozen host artifacts) stays byte-identical.
+        rendered = canonical_json(document).encode("utf-8", "backslashreplace").decode("utf-8")
         if check:
             if not path.exists() or path.read_text(encoding="utf-8") != rendered:
                 drifted.append(path)
@@ -5617,6 +5622,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     source = load_source()
     documents = generated_documents(source)
+    from tools.generate_console_contracts import generated_documents as console_documents
+
+    documents.update(console_documents())
     drifted = _write_or_check(documents, args.check)
     if drifted:
         for path in drifted:

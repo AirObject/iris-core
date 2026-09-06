@@ -1,0 +1,46 @@
+{
+  "csrf_token": "fixture-only-csrf",
+  "future_optional_field": {
+    "enabled": true
+  },
+  "grants": {
+    "agent_selector": {
+      "mode": "all"
+    },
+    "allow_restricted": false,
+    "custom_privacy_labels": [],
+    "data_purposes": [
+      "recall"
+    ],
+    "future_optional_scope": null,
+    "permissions": [
+      "memory.read"
+    ],
+    "session_selector": {
+      "mode": "all"
+    },
+    "space_group_selector": {
+      "ids": [],
+      "mode": "ids"
+    },
+    "space_selector": {
+      "mode": "all"
+    },
+    "subject_entity_ids": []
+  },
+  "operator": {
+    "key_id": "01991bf3-1000-7000-8000-000000000001",
+    "label": "viewer",
+    "template": "viewer",
+    "tenant_id": "01991bf3-1000-7000-8000-000000000001"
+  },
+  "permissions": [
+    "memory.read"
+  ],
+  "session": {
+    "expires_at": "2026-09-06T00:00:00.000000Z",
+    "id": "01991bf3-1000-7000-8000-000000000001",
+    "idle_expires_at": "2026-09-06T00:00:00.000000Z",
+    "reauth_until": null
+  }
+}

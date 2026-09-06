@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "access_denied",
+    "details": {
+      "kind": "permission_denied"
+    },
+    "message": "permission denied",
+    "retryable": false
+  },
+  "request_id": "01991bab-a000-7000-8000-000000000001"
+}

@@ -78,8 +78,8 @@ def check_runtime(
 #: older database must first pass through a 0.10.0 binary (the
 #: staged multi-version upgrade path keeps working — the window only bounds
 #: Ready, MigrationRunner may still walk multiple steps).
-SUPPORTED_SCHEMA_MIN = 10
-SUPPORTED_SCHEMA_MAX = 11
+SUPPORTED_SCHEMA_MIN = 11
+SUPPORTED_SCHEMA_MAX = 14
 
 
 def verify_schema_compatible(schema_version: int) -> None:

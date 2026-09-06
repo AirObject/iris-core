@@ -998,8 +998,9 @@ class TestInvalidationRaces:
             world.graph.apply_change_in_tx(
                 tx, tenant_id=TENANT, resource_type="entity", resource_id=alice
             )
-        # Canonical relations keep their ids; edges are re-derived 1:1.
-        assert len([e for e in _all_edges(world) if e.edge_kind == "relation"]) == 2
+        # Canonical relations retain their historical ids, but a redirected
+        # endpoint is no longer eligible for current graph traversal.
+        assert len([e for e in _all_edges(world) if e.edge_kind == "relation"]) == 0
         # Entity tombstone: the entity's edges die with it.
         from iris_memory_core.domain.identity import EntityState
 

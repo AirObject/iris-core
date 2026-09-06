@@ -1,0 +1,6 @@
+{
+  "future_optional": "allowed",
+  "key": "title",
+  "label": "标题",
+  "type": "string"
+}

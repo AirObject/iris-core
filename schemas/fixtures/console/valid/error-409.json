@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "revision_mismatch",
+    "details": {
+      "kind": "revision_conflict"
+    },
+    "message": "revision conflict",
+    "retryable": false
+  },
+  "request_id": "01991bab-a000-7000-8000-000000000001"
+}

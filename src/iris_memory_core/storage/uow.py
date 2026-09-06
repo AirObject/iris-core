@@ -51,6 +51,8 @@ from iris_memory_core.storage.cognitive import (
     RecentContextRepository,
     StateRepository,
 )
+from iris_memory_core.storage.console import ConsoleRepository
+from iris_memory_core.storage.console_reads import ConsoleReadRepository
 from iris_memory_core.storage.fts import FtsRepository, RecallUsageRepository
 from iris_memory_core.storage.memory import (
     ArtifactRepository,
@@ -132,6 +134,8 @@ class Transaction:
         self.graph = GraphRepository(connection, clock, ids)
         self.personas = PersonaRepository(connection, clock, ids)
         self.reflection = ReflectionRepository(connection, clock, ids)
+        self.console = ConsoleRepository(connection)
+        self.console_reads = ConsoleReadRepository(connection)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}

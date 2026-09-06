@@ -334,6 +334,9 @@ def cascade_claim_evidence_loss(
     retracted: set[str] = set()
     while pending:
         claim_id = pending.pop()
+        # A surviving fan-in node may lose another source later in this
+        # closure. Track only queued work, not every node ever visited.
+        queued.remove(claim_id)
         claim = tx.claims.get(claim_id)
         # disputed claims are as current as active ones (§13.2): a dispute is
         # a challenge, not a pardon from the evidence invariant.

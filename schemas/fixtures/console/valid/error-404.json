@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "not_found",
+    "details": {},
+    "message": "resource not found",
+    "retryable": false
+  },
+  "request_id": "01991bab-a000-7000-8000-000000000001"
+}

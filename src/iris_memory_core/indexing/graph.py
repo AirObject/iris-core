@@ -680,12 +680,17 @@ class GraphProjectionService:
             return True
 
         def _fail() -> bool:
+            # Quarantine the actual generation as well as global readiness:
+            # another tenant's successful rebuild cannot re-admit it.
+            tx.graph.retire_generation(pointer.generation_id)
             tx.graph.set_projection_state("pending_rebuild")
             return False
 
         try:
             generation = tx.graph.get_generation(pointer.generation_id)
         except Exception:
+            return _fail()
+        if generation.status != "verified":
             return _fail()
         rows = tx.graph.all_edges(tenant_id, generation.id)
         stored_nodes = tx.graph.node_count(tenant_id, generation.id)
@@ -792,7 +797,7 @@ def _entity_admitted(entities: dict[str, Entity], entity_id: str) -> bool:
     entity = entities.get(entity_id)
     if entity is None:
         return False
-    return entity.state != EntityState.TOMBSTONED
+    return entity.state not in (EntityState.TOMBSTONED, EntityState.REDIRECTED)
 
 
 def _entities_for(

@@ -24,6 +24,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="iris-memory-core")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    from iris_memory_core.api.console.offline import configure
+
+    configure(subparsers.add_parser("console", help="Offline Console operator commands"))
+
     migrate = subparsers.add_parser("migrate", help="Apply pending migrations")
     migrate.add_argument("database", type=Path)
     migrate.add_argument("--migrations", type=Path)
@@ -85,6 +89,13 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--disable-sse", action="store_true", default=None)
     serve_parser.add_argument("--backup-root", type=Path)
     serve_parser.add_argument("--export-root", type=Path)
+    serve_parser.add_argument("--enable-console", action="store_true", default=None)
+    serve_parser.add_argument("--console-assets", type=Path)
+    serve_parser.add_argument("--console-bind", metavar="HOST:PORT")
+    serve_parser.add_argument("--console-origin")
+    serve_parser.add_argument("--console-allowed-hosts")
+    serve_parser.add_argument("--console-trusted-proxy-ips")
+    serve_parser.add_argument("--console-dev-http", action="store_true", default=None)
 
     worker_parser = subparsers.add_parser("worker", help="Run the fenced background worker")
     service_arguments(worker_parser)
@@ -96,6 +107,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "console":
+            from iris_memory_core.api.console.offline import run
+
+            return run(args)
         if args.command in {"serve", "worker"}:
             from iris_memory_core.runtime import load_config, serve, worker
 

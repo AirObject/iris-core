@@ -870,7 +870,7 @@ class VectorProjectionService:
         if not ok:
             return False
         circuit = getattr(self._provider, "circuit_state", "closed")
-        return circuit != "open"
+        return circuit == "closed"
 
     def _current_probe(self) -> tuple[bool, str]:
         """Cached startup probe: a successful result stays cached (the
@@ -881,9 +881,18 @@ class VectorProjectionService:
         with self._probe_lock:
             cached = self._probe
             now_us = self._clock.now_us()
-            if cached is not None and cached[0]:
+            circuit = getattr(self._provider, "circuit_state", "closed")
+            if circuit == "open":
+                # Discard success from an earlier closed circuit epoch.
+                self._probe = None
+                return False, "circuit_open"
+            if cached is not None and cached[0] and circuit == "closed":
                 return cached
-            if cached is not None and now_us - self._probe_at_us < self._probe_cooldown_us():
+            if (
+                cached is not None
+                and not cached[0]
+                and now_us - self._probe_at_us < self._probe_cooldown_us()
+            ):
                 return cached
             probe = getattr(self._provider, "probe", None)
             probed = probe() if callable(probe) else (True, "not_probeable")

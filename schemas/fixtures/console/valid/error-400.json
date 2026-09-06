@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "invalid_request",
+    "details": {
+      "kind": "validation_failed"
+    },
+    "message": "request failed validation",
+    "retryable": false
+  },
+  "request_id": "01991bab-a000-7000-8000-000000000001"
+}

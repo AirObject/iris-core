@@ -6,7 +6,7 @@ import hashlib
 import hmac
 from collections.abc import Sequence
 
-from iris_memory_core.application.ports import Clock, UnitOfWork
+from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import AccessDeniedError, InvalidRequestError
 from iris_memory_core.domain.reflection import CredentialRecord
@@ -43,38 +43,74 @@ class CredentialService:
         data_purposes: Sequence[str] = (),
         rotated_from_id: str | None = None,
     ) -> CredentialRecord:
-        if plane not in {"application", "management"}:
-            raise InvalidRequestError("credential plane must be application or management")
-        if expires_us <= self._clock.now_us():
-            raise InvalidRequestError("credential expiry must be in the future")
-        digest = token_digest(token)
         with self._uow.write() as tx:
-            tx.get_tenant(tenant_id)
-            record = tx.reflection.insert_credential(
-                token_sha256=digest,
+            return self.issue_in_transaction(
+                tx,
+                token,
                 tenant_id=tenant_id,
                 app_instance_id=app_instance_id,
                 plane=plane,
+                expires_us=expires_us,
                 agent_ids=agent_ids,
                 space_group_ids=space_group_ids,
                 space_ids=space_ids,
                 entity_ids=entity_ids,
                 capabilities=capabilities,
                 data_purposes=data_purposes,
-                expires_us=expires_us,
                 rotated_from_id=rotated_from_id,
             )
-            tx.audit(
-                tenant_id=tenant_id,
-                actor="credential-admin",
-                action="credential.issued",
-                resource_type="service_credential",
-                resource_id=record.id,
-                reason_code="credential_rotation" if rotated_from_id else "credential_issue",
-                details={"plane": plane, "capability_count": len(record.capabilities)},
-            )
-            if rotated_from_id is not None:
-                tx.reflection.revoke_credential(rotated_from_id, now_us=self._clock.now_us())
+
+    def issue_in_transaction(
+        self,
+        tx: Transaction,
+        token: str,
+        *,
+        tenant_id: str,
+        app_instance_id: str,
+        plane: str,
+        expires_us: int,
+        agent_ids: Sequence[str] = (),
+        space_group_ids: Sequence[str] = (),
+        space_ids: Sequence[str] = (),
+        entity_ids: Sequence[str] = (),
+        capabilities: Sequence[str] = (),
+        data_purposes: Sequence[str] = (),
+        rotated_from_id: str | None = None,
+        actor: str = "credential-admin",
+        revoke_predecessor: bool = True,
+    ) -> CredentialRecord:
+        """Shared issuance command for host callers and Console atomic rotation."""
+        if plane not in {"application", "management"}:
+            raise InvalidRequestError("credential plane must be application or management")
+        if expires_us <= self._clock.now_us():
+            raise InvalidRequestError("credential expiry must be in the future")
+        digest = token_digest(token)
+        tx.get_tenant(tenant_id)
+        record = tx.reflection.insert_credential(
+            token_sha256=digest,
+            tenant_id=tenant_id,
+            app_instance_id=app_instance_id,
+            plane=plane,
+            agent_ids=agent_ids,
+            space_group_ids=space_group_ids,
+            space_ids=space_ids,
+            entity_ids=entity_ids,
+            capabilities=capabilities,
+            data_purposes=data_purposes,
+            expires_us=expires_us,
+            rotated_from_id=rotated_from_id,
+        )
+        tx.audit(
+            tenant_id=tenant_id,
+            actor=actor,
+            action="credential.issued",
+            resource_type="service_credential",
+            resource_id=record.id,
+            reason_code="credential_rotation" if rotated_from_id else "credential_issue",
+            details={"plane": plane, "capability_count": len(record.capabilities)},
+        )
+        if rotated_from_id is not None and revoke_predecessor:
+            tx.reflection.revoke_credential(rotated_from_id, now_us=self._clock.now_us())
         return record
 
     def authenticate(self, token: str) -> AccessContext:

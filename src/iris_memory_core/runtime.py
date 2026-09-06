@@ -14,6 +14,7 @@ from typing import Any
 import uvicorn
 
 from iris_memory_core.api import create_app
+from iris_memory_core.api.console.config import ConsoleConfig, parse_bind
 from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.forget import ForgetService
 from iris_memory_core.application.notes import NoteService
@@ -61,8 +62,44 @@ class ServiceConfig:
     allow_local_sqlite: bool = False
     backup_root: Path | None = None
     export_root: Path | None = None
+    enable_console: bool = False
+    console_assets: Path | None = None
+    console_bind: str | None = None
+    console_origin: str = "https://localhost"
+    console_allowed_hosts: tuple[str, ...] = ("localhost",)
+    console_trusted_proxy_ips: tuple[str, ...] = ()
+    console_dev_http: bool = False
+
+    def console_config(self) -> ConsoleConfig:
+        host = parse_bind(self.console_bind)[0] if self.console_bind else self.host
+        return ConsoleConfig(
+            origin=self.console_origin,
+            dev_http=self.console_dev_http,
+            bind_host=host,
+            allowed_hosts=self.console_allowed_hosts,
+            trusted_proxy_ips=self.console_trusted_proxy_ips,
+            assets=self.console_assets,
+        )
 
     def validate(self) -> None:
+        if self.enable_console:
+            self.console_config().validate()
+            if self.console_bind and parse_bind(self.console_bind) == (self.host, self.port):
+                raise ValueError("console bind must differ from the application bind")
+            if self.console_assets is not None:
+                assets = self.console_assets.resolve()
+                roots = (self.database.parent, self.backup_root, self.export_root)
+                if any(
+                    root is not None
+                    and (
+                        root.resolve().is_relative_to(assets)
+                        or assets.is_relative_to(root.resolve())
+                    )
+                    for root in roots
+                ):
+                    raise ValueError(
+                        "console assets must be separate from private data directories"
+                    )
         if not self.host or not 1 <= self.port <= 65535:
             raise ValueError("serve host/port is invalid")
         if not 0 < self.grace_seconds <= 300:
@@ -112,7 +149,7 @@ def load_config(
         if key in env:
             values[name] = env[key]
     values.update({key: value for key, value in (cli_values or {}).items() if value is not None})
-    for name in ("database", "backup_root", "export_root"):
+    for name in ("database", "backup_root", "export_root", "console_assets"):
         if name in values and values[name] is not None:
             values[name] = Path(str(values[name]))
     for name in ("port",):
@@ -121,7 +158,22 @@ def load_config(
     for name in ("grace_seconds", "poll_seconds"):
         if name in values:
             values[name] = float(values[name])
-    for name in ("migrate", "sse_enabled", "allow_local_sqlite"):
+    for name in ("console_allowed_hosts", "console_trusted_proxy_ips"):
+        if name in values:
+            raw_list = values[name]
+            if isinstance(raw_list, str):
+                values[name] = tuple(item.strip() for item in raw_list.split(",") if item.strip())
+            elif isinstance(raw_list, list) and all(isinstance(item, str) for item in raw_list):
+                values[name] = tuple(raw_list)
+            elif not isinstance(raw_list, tuple):
+                raise ValueError(f"{name} must be a list of strings")
+    for name in (
+        "migrate",
+        "sse_enabled",
+        "allow_local_sqlite",
+        "enable_console",
+        "console_dev_http",
+    ):
         if name in values and isinstance(values[name], str):
             raw = values[name].strip().lower()
             if raw not in {"true", "false", "1", "0", "yes", "no"}:
@@ -138,7 +190,7 @@ def load_config(
 def open_store(config: ServiceConfig) -> Store:
     config.validate()
     if config.migrate:
-        MigrationRunner(config.database).migrate(app_version="0.11.0")
+        MigrationRunner(config.database).migrate(app_version="0.12.0")
     allowed = (sqlite_runtime_version(),) if config.allow_local_sqlite else None
     runtime = SQLiteRuntime(config.database, allowed_versions=allowed)
     store = Store(runtime)
@@ -159,7 +211,13 @@ def serve(config: ServiceConfig) -> int:
         sse_enabled=config.sse_enabled,
         backup_root=config.backup_root,
         export_root=config.export_root,
+        enable_console=config.enable_console and config.console_bind is None,
+        console_config=config.console_config() if config.enable_console else None,
     )
+    if config.enable_console and config.console_bind:
+        from iris_memory_core.api.console.listening import serve_separate
+
+        return serve_separate(app, config)
     server = uvicorn.Server(
         uvicorn.Config(
             app,
@@ -168,6 +226,8 @@ def serve(config: ServiceConfig) -> int:
             log_level="info",
             timeout_graceful_shutdown=max(1, int(config.grace_seconds)),
             lifespan="on",
+            proxy_headers=not config.enable_console,
+            access_log=not config.enable_console,
         )
     )
     server.run()

@@ -80,8 +80,8 @@ def test_migration_0009_metadata() -> None:
 
 def test_empty_database_installs_all_nine(database: Path) -> None:
     applied = MigrationRunner(database).migrate()
-    assert [item.version for item in applied] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-    assert current_schema_version(sqlite3.connect(database)) == 11
+    assert [item.version for item in applied] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    assert current_schema_version(sqlite3.connect(database)) == 14
 
 
 def test_double_migration_is_a_noop(database: Path) -> None:
@@ -90,15 +90,16 @@ def test_double_migration_is_a_noop(database: Path) -> None:
 
 
 def test_window_is_8_to_9() -> None:
-    assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (10, 11)
+    assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (11, 14)
     verify_schema_compatible(11)
-    verify_schema_compatible(11)
+    verify_schema_compatible(12)
+    verify_schema_compatible(13)
     from iris_memory_core.domain.errors import SchemaIncompatibleError
 
     with pytest.raises(SchemaIncompatibleError):
-        verify_schema_compatible(9)
+        verify_schema_compatible(10)
     with pytest.raises(SchemaIncompatibleError):
-        verify_schema_compatible(12)
+        verify_schema_compatible(15)
 
 
 def test_checksum_recorded_in_db_matches_disk(database: Path) -> None:
@@ -110,7 +111,7 @@ def test_checksum_recorded_in_db_matches_disk(database: Path) -> None:
         ).fetchall()
     finally:
         connection.close()
-    assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     for version, checksum in rows:
         migration = next(
             item

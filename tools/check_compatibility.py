@@ -57,6 +57,9 @@ def main() -> int:
     baseline = _load(COMPATIBILITY_BASELINE_PATH)
     openapi = _load(OPENAPI_PATH)
     changes = find_breaking_changes(baseline, openapi)
+    from tools.generate_console_contracts import BASELINE, OPENAPI
+
+    changes += find_breaking_changes(_load(BASELINE), _load(OPENAPI))
     for change in changes:
         print(change)
     if changes:

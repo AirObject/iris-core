@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "actions": [],
+      "collection": "notes",
+      "create_schema": null,
+      "filters": [],
+      "label": "便签",
+      "list_columns": [],
+      "resource_type": "note",
+      "sorts": [],
+      "supports": {
+        "forget": false,
+        "history": true,
+        "references": true
+      },
+      "update_schema": null
+    }
+  ],
+  "future_optional": "allowed",
+  "meta": {
+    "as_of": "2023-11-14T22:13:20.000000Z",
+    "contract_version": "1.0.0",
+    "request_id": "018bcfe5-6800-7000-8000-000000000001"
+  }
+}

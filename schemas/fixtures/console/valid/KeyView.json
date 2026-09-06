@@ -1,0 +1,43 @@
+{
+  "can_delegate": false,
+  "confirmation_expires_at": null,
+  "created_at": "2026-09-06T00:00:00.000000Z",
+  "created_by": "offline",
+  "delegable_subject_entity_ids": [],
+  "description": "",
+  "expires_at": "2026-09-06T00:00:00.000000Z",
+  "grants": {
+    "agent_selector": {
+      "mode": "all"
+    },
+    "allow_restricted": false,
+    "custom_privacy_labels": [],
+    "data_purposes": [
+      "recall"
+    ],
+    "permissions": [
+      "memory.read"
+    ],
+    "session_selector": {
+      "mode": "all"
+    },
+    "space_group_selector": {
+      "ids": [],
+      "mode": "ids"
+    },
+    "space_selector": {
+      "mode": "all"
+    },
+    "subject_entity_ids": []
+  },
+  "id": "01991bf3-1000-7000-8000-000000000001",
+  "label": "viewer",
+  "revision": 1,
+  "revoke_reason": null,
+  "revoked_at": null,
+  "rotated_from_id": null,
+  "status": "active",
+  "template": "viewer",
+  "tenant_id": "01991bf3-1000-7000-8000-000000000001",
+  "token_prefix": "imc_op_01991bf3"
+}
