@@ -37,7 +37,7 @@ Use Conventional Commits: `type(scope): summary`, with an optional scope, follow
 - Architecture and ADRs define semantics; contracts, generated schemas, fixtures and version manifests define machine-readable surfaces. Do not maintain a second manual enumeration of generated routes, errors or capabilities.
 - Reports state date, candidate version/commit, environment, command, result and unverified scope. Preserve historical evidence; mark limitations resolved by later phases with their replacement reference. Carry unresolved items to a named work package.
 - When merging documents, move unique valid content first, update inbound links and heading anchors, then remove redundant files. Accepted decisions retain history and explicit supersession; a documentation cleanup does not accept an unwritten ADR or certify unfinished implementation.
-- Run `uv run python -m tools.check_docs`. The scan includes root, docs, SDK, application and Console hand-written Markdown and skips dependency/build caches.
+- Run `uv run python -m tools.check_docs`. The scan includes root, docs, SDK, hosts and Console hand-written Markdown and skips dependency/build caches.
 
 ## Change review
 

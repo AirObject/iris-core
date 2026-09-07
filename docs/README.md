@@ -20,7 +20,7 @@
 - 宿主 API：[契约源](../contracts/source/contracts.json) → [OpenAPI](../schemas/openapi/openapi.json) 与 [JSON Schema](../schemas/jsonschema/)。
 - 管理 API：[Console 契约源](../contracts/source/console.json) → [Console OpenAPI](../schemas/openapi/console.json) 与 [Console JSON Schema](../schemas/jsonschema/console/)。
 - 兼容与版本：[兼容基线](../schemas/compatibility/)、[Fixture](../schemas/fixtures/)、[版本 Manifest](../schemas/version-manifest.json)。
-- 使用与接入：[Python SDK](../sdk/python/README.md)、[TypeScript SDK](../sdk/typescript/README.md)、[应用接入](../application/README.md)、[Console 运行说明](../web/console/README.md)。
+- 使用与接入：[Python SDK](../sdk/python/README.md)、[TypeScript SDK](../sdk/typescript/README.md)、[宿主接入](../hosts/README.md)、[Console 运行说明](../web/console/README.md)。
 
 ## 本轮整理与阅读规则
 

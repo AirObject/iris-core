@@ -11,11 +11,11 @@
 
 本阶段暂缓，移出当前 pip 包与 Phase 14 稳定发布的前置门禁；不表示完成或永久取消。以下裁决、工作包和验收基线保留为恢复执行时的清单，当前不启动 ADR-0021、Bridge 实现或仅为 AstrBot 所需的 SDK 扩展。恢复须明确更新阶段状态、兼容范围及发布依赖；Core 通用协议与多宿主隔离不变量仍然有效。
 
-通过 Python SDK 把 AstrBot 生命周期、稳定身份、群聊/私聊、Recall/Persona、记忆工具、实际发送效果和重启对账接入 Core。[预留目录](../../application/astrbot_plugin_iris_memory_api/) 当前只有 README，无插件代码、依赖声明、元数据、测试或版本矩阵；Core 和 Python SDK 已存在不等于 Bridge 已实施。
+通过 Python SDK 把 AstrBot 生命周期、稳定身份、群聊/私聊、Recall/Persona、记忆工具、实际发送效果和重启对账接入 Core。[预留目录](../../hosts/astrbot_plugin_iris_memory_api/) 当前只有 README，无插件代码、依赖声明、元数据、测试或版本矩阵；Core 和 Python SDK 已存在不等于 Bridge 已实施。
 
 ## 架构约束
 
-- Core 发布物与依赖闭包不引入 AstrBot/QQ 类型、Hook 或平台 SDK；临时同仓布局须满足 [application 隔离不变量](../../application/README.md#隔离不变量)。实现只能依赖公共 SDK，不读取 Core 数据库。
+- Core 发布物与依赖闭包不引入 AstrBot/QQ 类型、Hook 或平台 SDK；临时同仓布局须满足 [hosts 隔离不变量](../../hosts/README.md#隔离不变量)。实现只能依赖公共 SDK，不读取 Core 数据库。
 - 用户消息在确认接收后提交；助手只在经裁决的实际效果边界提交。`on_llm_response` 和 `after_message_sent` 均不能直接视作发送成功证明。
 - Realm 使用平台实例 `platform_id`；Space/Session/ExternalIdentity 从结构化平台、群和账号标识推导，不能以昵称或 `unified_msg_origin` 作为长期唯一键。
 - Persona 与普通 Memory 分槽，Hash/Revision 必须校验；Required 模式无有效 Lease 时不 Recall、不调用回复模型、不注入上下文，也不提交在线聊天 Observation。
@@ -43,7 +43,7 @@ ADR-0021 定稿前不进入 12.1。下列六项合并了旧文档散布的裁决
 | 裁决 | 当前事实及待定内容 |
 | --- | --- |
 | 12.0-1 实际效果边界 | 当前 AstrBot 普通/分段发送路径捕获 `event.send()` 异常后仍可触发 `OnAfterMessageSentEvent`；基类 `send()` 返回 None，无统一成功回执。需裁决包装逐次发送、采用平台回执、推动携带结果的宿主 Hook，或明确降级为尽力边界。未裁决前不得宣称失败发送的 Observation 为 0 |
-| 12.0-2 交付位置 | 已定为 `application/astrbot_plugin_iris_memory_api/` 临时同仓、后转独立仓库；ADR 仍须写明拆分触发条件、负责人和截止时间盒。不得破坏 application 的隔离不变量 |
+| 12.0-2 交付位置 | 已定为 `hosts/astrbot_plugin_iris_memory_api/` 临时同仓、后转独立仓库；ADR 仍须写明拆分触发条件、负责人和截止时间盒。不得破坏 hosts 的隔离不变量 |
 | 12.0-3 Python SDK 分发 | 当前 SDK 为 0.11.0，没有 Bridge 安装物/registry 消费证据。须选择分发通道及中间态退出条件；同仓布局不允许用源码 alias 或可编辑安装充当发布验收 |
 | 12.0-4 SDK 能力归属 | 当前 `urlopen` + `asyncio.to_thread` 仅有构造级 5 秒超时，无真正取消、per-call deadline 或 SSE，Persona/Cursor 返回 dict。需裁决公共 SDK 升级或薄封装归属与版本规则 |
 | 12.0-5 身份映射 | `unique_session` 可重写群 session_id，内置 builder 表外返回 None；同类型平台可有多个实例。固定结构化输入与 Realm 命名空间，明确历史绑定和人工导入语义 |
@@ -81,7 +81,7 @@ ADR-0021 定稿前不进入 12.1。下列六项合并了旧文档散布的裁决
 
 - [ ] ADR-0021 的六项裁决完成；SDK 分发与仓库拆分分别记录时间盒、负责人及关闭证据。
 - [ ] SDK deadline/取消/SSE/typed 响应有测试；registry 安装物符号和独立 CI 通过，无源码 alias。
-- [ ] application 隔离不变量有构建/依赖/导入/测试收集证据，Bridge 生命周期和配置完成。
+- [ ] hosts 隔离不变量有构建/依赖/导入/测试收集证据，Bridge 生命周期和配置完成。
 - [ ] 映射、Persona/Memory、工具、效果边界、Usage 与 Lease 门禁通过。
 - [ ] Cursor 对账含补投，真实双进程群/私聊 E2E 与崩溃恢复达到上述量化标准。
 - [ ] 兼容/升级/回退与发布证据完整，两个中间态分别关闭；任何延期须明确范围和接受记录。

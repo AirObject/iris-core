@@ -1637,7 +1637,7 @@ Clock 注入覆盖时区/DST、回拨/前跳/休眠/重启 Catch-up、Occurrence
 | `contracts/source/`、`schemas/`、`sdk/` | 两个契约源、生成物、兼容基线与宿主 SDK |
 | `migrations/`、`tests/`、`tools/` | 不可变迁移、验证与工程门禁 |
 | `docs/` | 基线、ADR、阶段状态、Console 设计与历史证据 |
-| `application/` | Bellis/AstrBot 接入说明；不证明适配代码已交付 |
+| `hosts/` | Bellis/AstrBot 接入说明；不证明适配代码已交付 |
 | `web/console/` | Console 前端 |
 
 `domain/` 与 `application/` 的聚合模块使用平铺结构，Console 增设专用子包。容器、Compose、运维手册的新增路径由 Phase 14 落实，尚未存在的目录不列作已交付代码。

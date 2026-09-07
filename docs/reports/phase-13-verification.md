@@ -22,7 +22,7 @@
 | Console 独立执行 `lint`、`typecheck`、`test`、`build` | 全部通过，**29 tests passed**，生产产物扫描通过；不抵消生成类型漂移 |
 | `CONSOLE_BROWSER_EXECUTABLE='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' npm run test:browser --prefix web/console` | **5 passed**，7.2s；真实认证/密钥与显式业务 Fixture 的边界仍如下文所述，未补齐真实 Memory 读面联调 |
 
-另复核全部 65 份手写 Markdown 的本地链接与锚点（包含 application/frontend），无断链。临时执行日志为 `/tmp/iris-workspace-ci-local.log`、`/tmp/iris-workspace-sdk.log`、`/tmp/iris-console-check.log`、`/tmp/iris-console-browser.log`；这些本机文件不作为长期仓库产物。
+另复核全部 65 份手写 Markdown 的本地链接与锚点（包含宿主接入目录（现为 `hosts/`）和前端），无断链。临时执行日志为 `/tmp/iris-workspace-ci-local.log`、`/tmp/iris-workspace-sdk.log`、`/tmp/iris-console-check.log`、`/tmp/iris-console-browser.log`；这些本机文件不作为长期仓库产物。
 
 ## 文档整理时的核查与复测
 

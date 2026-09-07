@@ -4,7 +4,7 @@
 
 ## 决定
 
-Core wheel 显式包含 Migration、两套 OpenAPI 和业务 capability 真源，通过内部包资源解析器读取。sdist 使用白名单，只包含重建 Core 所需文件；独立 SDK、前端、仓库根 application 宿主目录与开发缓存不进入产物。缺失或空 Migration 目录必须失败，不能报告 Schema 0 迁移成功。源码开发允许从经过布局校验的 editable checkout 读取同一真源，安装物不按当前工作目录寻找资源。
+Core wheel 显式包含 Migration、两套 OpenAPI 和业务 capability 真源，通过内部包资源解析器读取。sdist 使用白名单，只包含重建 Core 所需文件；独立 SDK、前端、仓库根 hosts 宿主目录与开发缓存不进入产物。缺失或空 Migration 目录必须失败，不能报告 Schema 0 迁移成功。源码开发允许从经过布局校验的 editable checkout 读取同一真源，安装物不按当前工作目录寻找资源。
 
 Console 的 ResourceView.id、ResourceRef.resource_id 与 ReferenceView.id 是 1–128 字符的不透明 Canonical 标识符，与现有详情路由参数一致。保持现有 UUID ID，同时允许 Reflection/Candidate 的确定性 ID；不重写 Canonical 主键或建立第二套 ID 映射。认证密钥、Session、请求 ID 等 UUIDv7 约束不变。客户端 URL 编码 ID，不能将它作为路径、表名或对象名执行。权限校验与绑定查询仍在服务端执行。
 

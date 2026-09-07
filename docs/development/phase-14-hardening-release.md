@@ -25,7 +25,7 @@
 | Phase 11/12 | Bellis Provider、AstrBot Bridge、平台 Hook、宿主类型/SDK/配置模板不进入 Core wheel/sdist、extras、依赖闭包或 entry points；不构建、不发布、不执行其宿主验收 |
 | 公共 SDK | Python/TS SDK 是独立的通用协议客户端，保留兼容检查，源码不并入 Core 包。Python SDK 单独的 pip 产物和 TS npm 产物不因 Core 发包而自动发布，也不恢复宿主专属扩展任务 |
 | Phase 13 | Core 的 `/console/v1` 后端、认证及必要契约属于可选管理功能，默认关闭。Web 前端按独立静态产物交付，不把 Node 工程、node_modules 或开发服务器打入 Core pip 包；SDK 不自动获得管理权限 |
-| 工程与部署 | Docker/Compose、前端和客户端可用于配套部署及验收，分别记录产物。sdist 只包含重建 Core 所需的源码/资源/构建元数据及 Core 文档/验证材料；排除仓库根 `application/` 宿主目录、独立 SDK/前端工程和开发缓存。`src/iris_memory_core/application/` 属于 Core 内部应用层，不能误删 |
+| 工程与部署 | Docker/Compose、前端和客户端可用于配套部署及验收，分别记录产物。sdist 只包含重建 Core 所需的源码/资源/构建元数据及 Core 文档/验证材料；排除仓库根 `hosts/` 宿主目录、独立 SDK/前端工程和开发缓存。`src/iris_memory_core/application/` 属于 Core 内部应用层，不能误删 |
 
 ### 公共方法与内部访问边界
 
@@ -103,7 +103,7 @@
 - 配套通用 SDK 和 Console 静态产物独立构建/安装用于消费验证，不并入 Core wheel/sdist，也不要求本轮公开发布 SDK/npm；记录各自产物与锁文件摘要。Core 客户端黑盒测试只经核准公共方法调用真实服务，不能 import `storage`、`indexing`、`jobs`、内部 `application` 或读取 Core 数据目录来完成业务操作。
 - 对已安装产物检查公共导出、方法签名、DTO/异常及 CLI/HTTP 清单与 14.0-F 一致；未知导出或入口令 CI 失败。SDK 不依赖 Core 私有模块，文档示例不访问 `_request_json` 等私有传输方法；检测返回对象/属性/类型标注中是否泄漏连接、索引、队列或容器。
 - 在现有 `make ci` 基础上接入 Console `types:check`、lint、typecheck、单元测试、生产 build 和真实后端 browser 测试；统一覆盖 Core 两套契约、通用客户端消费、公共接口边界与安装 Smoke，不执行 Phase 11/12 的插件分发或宿主 E2E。已有白盒领域/存储测试保留，不能用它们代替公共接口黑盒验收。
-- 文档检查覆盖根目录、`docs/`、SDK、`application/` 和 `web/console/` 的手写 Markdown 路径/锚点；生成清单只校验真源与生成物，不复制到说明文档。
+- 文档检查覆盖根目录、`docs/`、SDK、`hosts/` 和 `web/console/` 的手写 Markdown 路径/锚点；生成清单只校验真源与生成物，不复制到说明文档。
 
 **通过条件**：Core 产物及运行资源齐备；干净环境安装及统一 CI 全过，宿主依赖/适配器代码/测试密钥/生产模拟模式为零，公开导出与白名单完全一致，公共方法不返回或接收私有组件。
 

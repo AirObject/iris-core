@@ -51,7 +51,7 @@ The SDK offline test double is available with `uv run python -m tools.mock_serve
 - [Contribution guide](CONTRIBUTING.md): change workflow and documentation rules.
 - [Python SDK](sdk/python/README.md) and [TypeScript SDK](sdk/typescript/README.md).
 - [Public method mapping and change gate](docs/development/public-api.md).
-- [Application integrations](application/README.md) and [Web Console](web/console/README.md).
+- [Host integrations](hosts/README.md) and [Web Console](web/console/README.md).
 
 Edit `contracts/source/contracts.json` for `/v1` or `contracts/source/console.json` for `/console/v1`, run `make contracts`, and include generated artifacts and fixtures in the same change. Never edit an applied migration; add a new one.
 

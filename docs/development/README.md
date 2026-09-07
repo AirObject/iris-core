@@ -51,7 +51,7 @@ flowchart LR
     G --> R[14.1–14.6 稳定发布]
 ```
 
-Phase 11 保留 Bellis 仓库现有插件（ADR-0020），Phase 12 保留本仓库 `application/` 预留位置，二者均暂缓。Phase 13 继续维护 Core 独立 `/console/v1` 管理平面及配套前端，不因适配器暂缓而取消。14.1 打包/CI 与 14.2 部署准备可提前开展；当前稳定发布验收 Core 与 Phase 13，调用方只经既定公共方法访问 Core。pip 内容、独立 SDK/前端产物及验收边界见 [Phase 14 发布路径](./phase-14-hardening-release.md#pip-包发布路径)。
+Phase 11 保留 Bellis 仓库现有插件（ADR-0020），Phase 12 保留本仓库 `hosts/` 预留位置，二者均暂缓。Phase 13 继续维护 Core 独立 `/console/v1` 管理平面及配套前端，不因适配器暂缓而取消。14.1 打包/CI 与 14.2 部署准备可提前开展；当前稳定发布验收 Core 与 Phase 13，调用方只经既定公共方法访问 Core。pip 内容、独立 SDK/前端产物及验收边界见 [Phase 14 发布路径](./phase-14-hardening-release.md#pip-包发布路径)。
 
 ## 仍有效的规划决定
 

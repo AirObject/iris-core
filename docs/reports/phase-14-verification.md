@@ -10,9 +10,9 @@
 - **14.0-E Required Lease**：按 [ADR-0024](../adr/0024-online-recall-focus-lease.md) 接通 Recall 与 Focus 创建/激活/状态转换。授权先于 Proof 检查，重放重新验权，写事务/响应发布再次 fencing；Proof 不进入业务指纹。Python/TS 客户端携带可选 Proof。
 - **14.0-F 接口变更门禁**：增加 [显式方法映射](../development/public-api.md) 和机器快照，核对 79 个 Python/79 个 TS 方法、91 个业务及 111 个 Console operation、导出/签名/DTO/异常属性、CLI 子命令/参数、Schema 摘要。源码和隔离安装物均受检查；候选输出不能直接覆盖已审阅快照。此项不替代逐方法权限矩阵、真实进程消费和 OS 隔离验收。
 - **版本来源一致性**：修复 Console bootstrap/meta/前端合成响应遗留的 1.0.0 常量，并从发布契约读取版本；修复 `/v1/capabilities` 仍宣告 Schema 11 的问题，安装 Smoke 强制校验协商为 Schema 15，源版本与包版本/Console runtime_versions 交叉检查。
-- **14.1 安装资源**：Core wheel 显式包含 15 个 Migration、两套 OpenAPI 和 capability 真源，sdist 白名单排除独立客户端、前端、根 application 宿主目录及缓存。资源从包内读取；缺失/空 Migration 失败关闭。验证脚本检查资源字节、归档成员、依赖、extras 和唯一 CLI entry point。
+- **14.1 安装资源**：Core wheel 显式包含 15 个 Migration、两套 OpenAPI 和 capability 真源，sdist 白名单排除独立客户端、前端、根 hosts 宿主目录及缓存。资源从包内读取；缺失/空 Migration 失败关闭。验证脚本检查资源字节、归档成员、依赖、extras 和唯一 CLI entry point。
 - **14.1 公共客户端消费**：新增受控离线 `init`，事务内创建租户/Agent/空间/受限业务凭据；可由可信操作者显式登记新身份、确认 Binding 并设置 Surface 模式。凭据文件独占创建、0600、拒绝覆盖和符号链接，标准输出不含 Token。独立 SDK 补 LICENSE/py.typed，不并入 Core。
-- **14.1 CI**：`make ci` 纳入 Console 生成检查/lint/typecheck/测试/生产构建/浏览器用例和全新构建安装 Smoke；CI 安装 Chromium。文档门禁扩展至根目录、application、SDK、Console 手写 Markdown，跳过依赖与构建缓存。
+- **14.1 CI**：`make ci` 纳入 Console 生成检查/lint/typecheck/测试/生产构建/浏览器用例和全新构建安装 Smoke；CI 安装 Chromium。文档门禁扩展至根目录、hosts、SDK、Console 手写 Markdown，跳过依赖与构建缓存。
 
 ## 执行证据
 
