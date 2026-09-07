@@ -1,6 +1,6 @@
 UV := UV_CACHE_DIR=.uv-cache uv
 
-.PHONY: bootstrap format format-check lint typecheck contracts contracts-check public-api-check test sdk-test console-check console-browser package-check ci clean
+.PHONY: bootstrap format format-check lint typecheck contracts contracts-check public-api-check test test-affected sdk-test console-check console-browser package-check ci clean
 
 bootstrap:
 	$(UV) sync --group dev --frozen
@@ -35,6 +35,10 @@ public-api-check:
 
 test:
 	$(UV) run pytest
+
+test-affected:
+	@test -n "$(strip $(TESTS))" || { echo 'Set TESTS to explicit affected test paths or node IDs.'; exit 2; }
+	$(UV) run pytest $(TESTS) --no-cov
 
 sdk-test:
 	npm test --prefix sdk/typescript

@@ -7,10 +7,14 @@ Read the [roadmap](docs/development/README.md), the relevant phase document and 
 ```bash
 make bootstrap
 make format
+make test-affected TESTS="tests/integration/test_console_persona_commands.py"
+# Once at the end of the work package:
 make ci
 ```
 
-For Console changes also run `npm run check --prefix web/console` (including the production build) and the relevant real-backend browser tests described in the [Console README](web/console/README.md). The root CI includes these frontend and installation gates; install Playwright Chromium or set `CONSOLE_BROWSER_EXECUTABLE` before running locally.
+Work on one explicitly bounded work package at a time. During implementation, run the affected test subset and relevant static, contract, browser or migration checks. `test-affected` requires explicit test paths and disables repository-wide coverage collection for that local subset; full CI retains its existing coverage and performance thresholds. Run full `make ci` once when the work package is ready for acceptance, not after every feature or edit. Investigate a failed gate and rerun affected checks; repeat full CI only when changes or an unresolved integration concern justify it. Preserve failures in the report; do not automatically repeat unchanged full runs. Long Soak and recovery campaigns are scheduled separately from interactive goals. See the [work-package queue](docs/development/work-packages.md).
+
+For affected Console changes also run `npm run check --prefix web/console` (including the production build) and the relevant real-backend browser tests described in the [Console README](web/console/README.md). The root CI includes these frontend and installation gates; install Playwright Chromium or set `CONSOLE_BROWSER_EXECUTABLE` before running locally.
 
 The domain package may import only the Python standard library and domain-safe primitives. It must not import API, storage, indexing, provider, coordinator, SDK or host framework packages.
 

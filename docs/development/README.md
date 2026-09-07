@@ -5,6 +5,8 @@
 
 本页是阶段状态与依赖的统一入口。项目编号为 Phase 0–14；本次核查覆盖 Phase 0–13，不能把“已经推进到 Phase 13”理解为所有前序门禁均已通过。Phase 0–10 有完整历史切片报告，Phase 13 仍在实施；Phase 11/12 均按项目负责人 2026-09-06 要求暂缓。Phase 14 的 pip 范围仅为 Core 功能与既定公共接口，不包含两个适配器，也不以其验收或分发为前置条件。
 
+2026-09-07：整体 Phase 14 goal 已停止；后续只按[单一工作包队列](./work-packages.md)逐个启动。14.4/14.5 另行安排后台批次，不纳入交互式目标。
+
 ## 阶段状态与证据
 
 | 阶段 | 状态 | 已交付范围与证据 |
@@ -23,7 +25,7 @@
 | [11 Bellis Adapter](./phase-11-bellis-adapter.md) | Deferred | 暂时不再执行，移出当前发布门禁；已有插件、历史验证及未完成项保留；[报告](../reports/phase-11-verification.md) |
 | [12 AstrBot Bridge](./phase-12-astrbot-bridge.md) | Deferred | 暂时不再执行，移出当前发布门禁；保留裁决、SDK、Bridge 与验证待办，恢复时重新确认依赖 |
 | [13 Web 管理控制台](./phase-13-web-console.md) | In progress | 认证已有历史验证；读面与 State/Note/Focus/Task 主资源及步骤管理写入已接通真实浏览器，其他业务切片未完成；[合并报告](../reports/phase-13-verification.md) |
-| [14 前置闭环、生产硬化与稳定发布](./phase-14-hardening-release.md) | In progress | 读面/Required Lease、Core 包资源与独立 SDK 安装门禁已实施；[实施报告](../reports/phase-14-verification.md)，尚未通过稳定发布验收 |
+| [14 前置闭环、生产硬化与稳定发布](./phase-14-hardening-release.md) | Paused | 读面/Required Lease、Core 包资源与独立 SDK 安装门禁已实施；[实施报告](../reports/phase-14-verification.md)，尚未通过稳定发布验收 |
 
 `Completed` 表示该阶段当时的退出证据齐全，不表示当前工作区全量回归或生产发布通过。测试日期、环境、失败与未验证范围以报告为准。
 
