@@ -1,2 +1,7 @@
 * text=auto eol=lf
 *.md text eol=lf whitespace=-trailing-space
+
+# Machine-generated artifacts: collapse in reviews and omit textual diffs.
+schemas/jsonschema/** linguist-generated=true -diff
+schemas/fixtures/** linguist-generated=true -diff
+web/console/src/api/generated.d.ts linguist-generated=true -diff
