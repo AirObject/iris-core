@@ -60,4 +60,4 @@ Deadline 测试先执行实际数据库/过滤工作，再让受控单调时钟�
 
 [最终候选审计](evidence/w02/final-candidate-audit.json)确认 CI 启动后的代码/测试/配置没有漂移，差异仅为报告、证据与检查点；[打包输入](evidence/w02/package-inputs.json)与启动快照一致。[产物摘要](evidence/w02/artifact-digests.json)记录本次新构建四个安装物，未发布到外部仓库。全部原始失败均保留，只有 `ci-001` 是完整 CI 收尾结果。
 
-开始 Commit 为 `0959259`；结束 Commit 为携带本报告与本包变更的独立提交，完整哈希由提交后的串行检查点记录，避免提交自引用。W03 仅在该提交完成后启动。
+开始 Commit 为 `0959259`；结束 Commit 为 `4c6277b296cbf5bce46ca5e099532de753350991`。W03 仅在该提交完成后启动。

@@ -1,0 +1,15 @@
+{
+  "command": [
+    "make",
+    "format-check",
+    "lint",
+    "typecheck",
+    "contracts-check",
+    "public-api-check"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 300,
+  "created_at": "2026-09-07T17:18:47.292826+00:00",
+  "head": "4c6277b296cbf5bce46ca5e099532de753350991",
+  "supervisor_pid": 13755
+}

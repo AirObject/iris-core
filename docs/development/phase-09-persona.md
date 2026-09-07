@@ -9,6 +9,8 @@
 
 本页归档交付范围；测试实测、复审过程与限制集中在[验证报告](../reports/phase-09-verification.md)。后续状态与未关闭工作以[阶段索引](README.md)及[Phase 14](phase-14-hardening-release.md)为准。
 
+2026-09-08 [W03](../reports/w03-persona-quantitative-gates.md)已补充 Policy 各项 200 案例、50 客户端 HTTP 发布以及三次 UTC 回拨/重启轨迹，全部定向门禁与完整收尾 CI 已通过（14768 passed / 85.55% 覆盖率），本轮原量化缺口已闭合。通用客户端网络离线恢复归 W16，Phase 11/12 保持 Deferred。
+
 ## 阶段目标
 
 交付 Persona Core/Trait/Narrative Revision、State TTL、Policy/Proposal、受控发布与回滚、Current/History、通知引用和管理权限边界。

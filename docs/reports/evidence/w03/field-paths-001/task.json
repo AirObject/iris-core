@@ -1,0 +1,15 @@
+{
+  "command": [
+    ".venv/bin/pytest",
+    "--no-cov",
+    "-s",
+    "tests/integration/cognition/test_persona_policy_quantitative.py",
+    "-k",
+    "allowlist or sensitive_field"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 180,
+  "created_at": "2026-09-07T17:21:21.100089+00:00",
+  "head": "4c6277b296cbf5bce46ca5e099532de753350991",
+  "supervisor_pid": 14486
+}

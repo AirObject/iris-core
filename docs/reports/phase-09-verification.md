@@ -1,5 +1,7 @@
 # Phase 9 验证报告：完整 Persona
 
+2026-09-08 原量化缺口的当前验证见 [W03](w03-persona-quantitative-gates.md)：各项 Policy 200 案例、50 HTTP 客户端并发与三次 UTC 回拨/重启轨迹已通过，完整 CI 为 14768 passed / 85.55% 覆盖率，真实浏览器与隔离安装亦通过。下方历史样本数与 Completed 标签不代替本轮收尾结果。
+
 > 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
 > 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
 

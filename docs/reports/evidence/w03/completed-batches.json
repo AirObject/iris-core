@@ -1,0 +1,252 @@
+{
+  "scope": "W03 diagnostic, affected and complete CI batches; ci-001 is final acceptance",
+  "batches": [
+    {
+      "batch": "ci-001",
+      "command": [
+        "env",
+        "CI=1",
+        "CONSOLE_BROWSER_EXECUTABLE=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "make",
+        "ci"
+      ],
+      "timeout_seconds": 3600,
+      "started_at": "2026-09-07T17:24:32.269880+00:00",
+      "supervisor_pid": 15418,
+      "child_pid": 15423,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T17:47:44.422249+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "10a73478f62641998fc5674fc7b418a5a4fe66bf73e9fba5d454bb2efc333815",
+          "bytes": 376
+        },
+        "result.json": {
+          "sha256": "4b6936122290f5fbc4a5272674a1acb01a1bffb35112579c387b01f1aaec015d",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "8cb7708d3e6457bdda964c0ae04f8e0e2cf7b95655fa3006888dc8dcaf41aed7",
+          "bytes": 232466
+        },
+        "candidate-files.json": {
+          "sha256": "31da527740a70d77a9f9f1cd2b24c39e8dac8c56921d372f7b2f38cb0e4214ab",
+          "bytes": 193082
+        }
+      }
+    },
+    {
+      "batch": "clock-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/cognition/test_persona_clock_trajectories.py -s"
+      ],
+      "timeout_seconds": 120,
+      "started_at": "2026-09-07T17:15:35.913196+00:00",
+      "supervisor_pid": 12838,
+      "child_pid": 12845,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T17:15:36.594026+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "fa38b89f786b6527c01ece4468a919ffaeb77dff1645823c891f2863345075ab",
+          "bytes": 347
+        },
+        "result.json": {
+          "sha256": "ca8823049570fbfd7d48be4a5f3cd4796d15a7a120d5931903bd3936f2c95f85",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "ff906f8e97cc07c5f047fd397065af0927f77a0597f8919e3ef9b989ab7794c5",
+          "bytes": 1139
+        }
+      }
+    },
+    {
+      "batch": "field-paths-001",
+      "command": [
+        ".venv/bin/pytest",
+        "--no-cov",
+        "-s",
+        "tests/integration/cognition/test_persona_policy_quantitative.py",
+        "-k",
+        "allowlist or sensitive_field"
+      ],
+      "timeout_seconds": 180,
+      "started_at": "2026-09-07T17:21:21.434159+00:00",
+      "supervisor_pid": 14486,
+      "child_pid": 14495,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T17:21:55.411442+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "6f93fc7d4633ebfcd8143069c2b09c7ef30eb50320be0c39722ec27696e01222",
+          "bytes": 402
+        },
+        "result.json": {
+          "sha256": "152b6177de80421c8a1fa81674f29f23492a651edf0440bf344fa54fca9af1a9",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "af5c8e015e2ab2c2847c43783b46062a698eb02b5cc7da252463310fe9f6b7c5",
+          "bytes": 28336
+        }
+      }
+    },
+    {
+      "batch": "http-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/cognition/test_persona_http_concurrency.py -s"
+      ],
+      "timeout_seconds": 180,
+      "started_at": "2026-09-07T17:17:57.685135+00:00",
+      "supervisor_pid": 13485,
+      "child_pid": 13528,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T17:18:02.634247+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "4a8664e88bbf5a1f041bf3ab8d65bb0df0aaa0d4e28b603a317c2dc1594935f4",
+          "bytes": 345
+        },
+        "result.json": {
+          "sha256": "29a60bce8bbe66071e0d453ed22149b868842d160fdb51408644af672d12e205",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "b949d43a7204873b73cb72945645674579c5b5396bb0d4534714125cc8128f05",
+          "bytes": 1506
+        }
+      }
+    },
+    {
+      "batch": "policy-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/cognition/test_persona_policy_quantitative.py -s"
+      ],
+      "timeout_seconds": 600,
+      "started_at": "2026-09-07T17:16:17.678154+00:00",
+      "supervisor_pid": 13042,
+      "child_pid": 13047,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T17:20:10.595451+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "e6670c6b3a594f895d2f913497ea2a90cf750c4b8039bf8d2b584f676b1c86c4",
+          "bytes": 348
+        },
+        "result.json": {
+          "sha256": "6a269d49f77bb9b9a45185beacb3ba1c583ed03cc14e9163708b67f364f7d7d6",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "b7cda37edd4d03feb55b4fca301dc0f82e7c371c5adf469092991f4d1c5ca83f",
+          "bytes": 203996
+        }
+      }
+    },
+    {
+      "batch": "policy-smoke-001",
+      "command": [
+        ".venv/bin/pytest",
+        "--no-cov",
+        "tests/integration/cognition/test_persona_policy_quantitative.py",
+        "-k",
+        "0 or 1",
+        "-x"
+      ],
+      "timeout_seconds": 120,
+      "started_at": "2026-09-07T17:13:23.660406+00:00",
+      "supervisor_pid": 11911,
+      "child_pid": 11917,
+      "status": "timed_out",
+      "exit_code": 124,
+      "finished_at": "2026-09-07T17:15:23.666330+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "f7e6581ecfafcfde64ff81dc16c800d20e949d3c9fe3c27140e1ac5fc0375666",
+          "bytes": 380
+        },
+        "result.json": {
+          "sha256": "a54b40ae0833ed31f292ebcc380bda6984086e4c576a24a4d1b4f8e1f33b298c",
+          "bytes": 202
+        },
+        "output.log": {
+          "sha256": "1dc301b8c6b4113cc9ea93998fdd524046f56c6bf18e2cea6ab1b2a9418712a7",
+          "bytes": 2021
+        }
+      }
+    },
+    {
+      "batch": "regression-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/cognition/test_persona.py tests/integration/console/test_console_persona*.py tests/integration/migrations/test_persona_migration.py tests/unit/test_persona_domain.py"
+      ],
+      "timeout_seconds": 600,
+      "started_at": "2026-09-07T17:21:21.434152+00:00",
+      "supervisor_pid": 14487,
+      "child_pid": 14496,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T17:21:55.656617+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "be31f37c8598a7a69f8b2aef88d6fa7a0a6342b5d4391b24822462d92108cc41",
+          "bytes": 465
+        },
+        "result.json": {
+          "sha256": "22dd3e15f93e915e76a441f1e9eaa550e8214a9dae4a607f7ab4790771f6d1a7",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "bf868baca1bd17f66736426233323e461211704c458bf74ffa62f88245120365",
+          "bytes": 3140
+        }
+      }
+    },
+    {
+      "batch": "static-001",
+      "command": [
+        "make",
+        "format-check",
+        "lint",
+        "typecheck",
+        "contracts-check",
+        "public-api-check"
+      ],
+      "timeout_seconds": 300,
+      "started_at": "2026-09-07T17:18:48.723916+00:00",
+      "supervisor_pid": 13755,
+      "child_pid": 13787,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T17:18:55.650457+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "11b124ea4bda564c853355b4594e32e304196c2a0bc17004739e5229af042804",
+          "bytes": 343
+        },
+        "result.json": {
+          "sha256": "d05a47dd096f5a650f7b3d18cd157ae0ffa60e392527dab20b4c6651fcc4a4b0",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "c6900e86ca200f8e308bd804a65b5ccbd4b5438950968c0f588daa99d546d88d",
+          "bytes": 970
+        }
+      }
+    }
+  ]
+}

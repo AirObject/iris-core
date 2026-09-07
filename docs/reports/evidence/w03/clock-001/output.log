@@ -1,0 +1,12 @@
+UV_CACHE_DIR=.uv-cache uv run pytest tests/integration/cognition/test_persona_clock_trajectories.py -s --no-cov
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 1 item
+
+tests/integration/cognition/test_persona_clock_trajectories.py {"W03_clock_trajectory": [["initial", 0, 1, 0.8, 2000000], ["replaced", 750000, 2, 0.4, 4750000], ["old-job-fenced", 2000000, 2, 0.4, 4750000], ["clock-backward", 1000000, 2, 0.4, 4750000], ["worker-paused-past-expiry", 6000000, 2, 0.4, 4750000], ["rollback-delays-expiry", 3000000, 2, 0.4, 4750000], ["restart-catch-up", 5000000, 3, -0.1, 4750001], ["late-job-fenced-after-catch-up", 5000000, 3, -0.1, 4750001], ["rollback-cannot-resurrect", 1000000, 3, -0.1, 4750001], ["newer-state-after-rollback", 1100000, 4, 0.6, 7100000], ["new-state-expires-once", 8000000, 5, 0.2, 7100001]], "identical_replays": 3}
+.
+
+============================== 1 passed in 0.23s ===============================

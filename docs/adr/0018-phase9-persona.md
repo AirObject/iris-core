@@ -62,6 +62,13 @@ State、演进 Policy/Proposal、管理发布、回滚与多宿主失效协议�
   不一致视为 fatal。
 - `iris_persona_proposals_total{outcome}` 只使用低基数状态标签；日志、通知与指标均不携带内容。
 
+2026-09-08 W03 验证澄清（沿用现有语义）：TTL 判定使用 UTC 壁钟的
+`expires_us <= now_us`；Worker 暂停时 Current 读取不会自行推进修订，壁钟回拨到到期点之前
+会推迟尚未提交的到期处理。恢复 Worker 或执行 Catch-up 后，以当前 State 的 ID/Revision
+终检并最多推进一次 baseline 修订；该提交完成后的回拨不会恢复旧 State。基线修订的
+`started_us` 锚定原 `expires_us`，不锚定实际恢复时间，因此同一轨迹的逻辑修订和值可重放。
+这是既有到期协议的显式说明，不引入新的单调时钟到期规则或自动读取副作用。
+
 ### 6. 契约面
 
 - 发布 Current、History、Revision Create、State Update、Proposal Create、Approve、Reject、

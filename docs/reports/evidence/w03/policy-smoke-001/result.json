@@ -1,0 +1,8 @@
+{
+  "started_at": "2026-09-07T17:13:23.660406+00:00",
+  "supervisor_pid": 11911,
+  "child_pid": 11917,
+  "status": "timed_out",
+  "exit_code": 124,
+  "finished_at": "2026-09-07T17:15:23.666330+00:00"
+}

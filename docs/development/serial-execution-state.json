@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T17:08:23.055908+00:00",
+  "updated_at": "2026-09-07T17:49:26.412007+00:00",
   "automation_id": null,
   "sequence": [
     "W01",
@@ -24,21 +24,27 @@
     "W19",
     "W20"
   ],
-  "current_package": "W02",
+  "current_package": "W03",
   "status": "completed_pending_commit",
-  "start_commit": "095925932ce789ffeba8126a3f96604afbf60caf",
+  "start_commit": "4c6277b296cbf5bce46ca5e099532de753350991",
   "completed_packages": [
     {
       "package": "W01",
       "commit": "095925932ce789ffeba8126a3f96604afbf60caf",
       "report": "docs/reports/w01-http-recall-assembly.md",
       "final_ci": ".work-package-runs/W01/ci-002/result.json"
+    },
+    {
+      "package": "W02",
+      "commit": "4c6277b296cbf5bce46ca5e099532de753350991",
+      "report": "docs/reports/w02-graph-quantitative-gates.md",
+      "final_ci": ".work-package-runs/W02/ci-001/result.json"
     }
   ],
-  "report": "docs/reports/w02-graph-quantitative-gates.md",
+  "report": "docs/reports/w03-persona-quantitative-gates.md",
   "next_actions": [
-    "Commit W02 alone with completed report/queue and evidence after final documentation/diff check.",
-    "Immediately create W03 report/checkpoint from that commit and implement the original Persona quantitative gates; no scheduled automation."
+    "Commit W03 alone after final report/queue/doc diff checks.",
+    "Immediately create W04 report and checkpoint from W03 commit; review current Operation and trusted backup design/ADR/migration requirements."
   ],
   "constraints": [
     "No synchronous long validation, dense polling, idle wait or starting later packages before current acceptance.",
@@ -49,26 +55,28 @@
   "blockers": [],
   "background_tasks": [],
   "verification": {
-    "budgets-001": "Test selector TestTraversalBudgets did not exist; zero tests ran. Corrected to TestBudgets in budgets-002.",
-    "budgets-002": "9 passed, 3 failed: actual deadline expiry escaped checks during visibility/admissibility/candidate work.",
-    "budgets-003": "11 passed, 1 failed: test wrapper must preserve staticmethod binding.",
-    "budgets-004": "12 passed: actual budget and deadline gates passed after fixes.",
-    "races-001": "pytest -k selector parsed as option; no tests. Replaced with explicit node ids.",
-    "races-002": "Fixture used unsupported explicit ClaimService space_group_id; corrected to service-derived scope.",
-    "races-003": "3 passed, 2 failed. Binding revocation leaked old in-flight content; fixed actor re-resolution under publication writer gate. Redirect fixture must read current entity revision after binding.",
-    "races-004": "250 passed (50 per mutation), 56.23 seconds. Enhanced post-rebuild replay/Profile assertions included in affected-002.",
-    "static-001": "format/lint/docs/Python+TS types/contracts/API snapshots passed.",
-    "affected-001": "Nonexistent test_phase4_recall.py selector; zero tests. Corrected using actual Recall publication/replay paths.",
-    "affected-002": "306 passed, 150 failed (142.65s): added direct entity Profile read lacked Entity ids in test credential envelope; query/replay gates passed.",
-    "profile-diagnostic-001": "Confirmed access_denied for omitted Entity credential grant. Added explicit speaker/replacement Entity grants for profile read.",
-    "affected-003": "456 passed in 149.80s: all W02 enhanced gates, original 5x200 properties, W01 HTTP and Recall publication/replay regression.",
-    "ci-001": "PASSED: 11966 functional tests / 85.52% coverage, 11 performance, 19 TS SDK, 29 Console unit, 20 real browser; fresh packages and isolated SDK/API/Worker smoke passed."
+    "policy-smoke-001": "Timed out at 120s: -k 0 or 1 selected 1792 cases, more than intended; no reported failures before timeout. Complete 2800-case batch uses measured 600s bound.",
+    "clock-001": "Passed: three identical UTC day-boundary/forward/backward/pause/restart/late-job trajectories.",
+    "http-001": "Passed: 50 distinct credential+HTTP clients, 1 published, 49 revision_mismatch, 50/50 Current+Recall Revision/Hash matches.",
+    "static-001": "format/lint/docs/types/contracts/public API all passed; subsequent allowlist/sensitive-field broadening will be checked in final CI.",
+    "policy-001": "2800 passed in 232.54s; all 14 properties x200. Broadened allowlist/sensitive paths revalidated separately before final CI.",
+    "field-paths-001": "400 passed in 33.57s; allowlist and sensitive fields cover legal Trait/Narrative paths.",
+    "regression-001": "142 passed in 33.72s; existing Persona service/Console authorization/CAS/transactions/recovery/migration/domain tests.",
+    "ci-001": "PASSED: 14768 functional / 85.55%, 11 performance, 19 SDK, 29 Console unit, 20 real browser, fresh packages and isolated installation/API/Worker/SDK. No material candidate drift; 211 package inputs match; four artifact hashes identical to W02.",
+    "ci-001-performance": "11 passed in 42.49s; Persona Current 200 warm-cache reads, concurrency 1, p95 1.89ms / median 1.35ms; full CI still pending."
   },
   "contract_version": "1.11.0",
   "continuation_policy": "User cancelled scheduled automation. Continue active goal from actual background process/session completion events, with no clock sleeps or scheduled-time phase barriers.",
   "automation_status": "deleted by user request on 2026-09-08 Asia/Shanghai",
   "goal_runtime_status": "active (get_goal confirmed after user resumed)",
-  "previous_goal_turn_classification": "progress: W02 affected-003 passed 456 gates; ci-001 launched and checkpointed.",
-  "current_goal_turn_classification": "progress: actual ci-001 exited 0; complete evidence archived, candidate/package inputs verified; preparing independent W02 commit.",
-  "last_verified_live_session": 58678
+  "previous_goal_turn_classification": "verified wait: cell 209 live; W03 CI remained nonterminal while performance evidence was recorded.",
+  "current_goal_turn_classification": "progress: ci-001 completed exit 0; final evidence archived and candidate/package hashes verified, preparing W03 commit.",
+  "completion_watch": {
+    "exec_cell_id": "209",
+    "session_id": 38934,
+    "store_key": "w03_ci_completion_watch",
+    "mode": "Await existing native process handle; completion emits result. No scheduled automation.",
+    "status": "completed successfully; exec cell consumed"
+  },
+  "ci_candidate_material_drift": []
 }

@@ -1,0 +1,114 @@
+{
+  "source": "Successful real-service batch outputs; enhanced fields and final CI use current test candidate",
+  "policy_cases": {
+    "policy-001": {
+      "locked": 200,
+      "manual": 200,
+      "bounded_auto": 200,
+      "allowlist": 200,
+      "single_delta": 200,
+      "cumulative_delta": 200,
+      "evidence_count": 200,
+      "evidence_diversity": 200,
+      "evidence_span": 200,
+      "cooldown": 200,
+      "stale_base": 200,
+      "confidence": 200,
+      "observation_window": 200,
+      "sensitive_field": 200
+    },
+    "field-paths-001": {
+      "allowlist": 200,
+      "sensitive_field": 200
+    }
+  },
+  "clock": {
+    "W03_clock_trajectory": [
+      [
+        "initial",
+        0,
+        1,
+        0.8,
+        2000000
+      ],
+      [
+        "replaced",
+        750000,
+        2,
+        0.4,
+        4750000
+      ],
+      [
+        "old-job-fenced",
+        2000000,
+        2,
+        0.4,
+        4750000
+      ],
+      [
+        "clock-backward",
+        1000000,
+        2,
+        0.4,
+        4750000
+      ],
+      [
+        "worker-paused-past-expiry",
+        6000000,
+        2,
+        0.4,
+        4750000
+      ],
+      [
+        "rollback-delays-expiry",
+        3000000,
+        2,
+        0.4,
+        4750000
+      ],
+      [
+        "restart-catch-up",
+        5000000,
+        3,
+        -0.1,
+        4750001
+      ],
+      [
+        "late-job-fenced-after-catch-up",
+        5000000,
+        3,
+        -0.1,
+        4750001
+      ],
+      [
+        "rollback-cannot-resurrect",
+        1000000,
+        3,
+        -0.1,
+        4750001
+      ],
+      [
+        "newer-state-after-rollback",
+        1100000,
+        4,
+        0.6,
+        7100000
+      ],
+      [
+        "new-state-expires-once",
+        8000000,
+        5,
+        0.2,
+        7100001
+      ]
+    ],
+    "identical_replays": 3
+  },
+  "http": {
+    "distinct_clients_and_credentials": 50,
+    "published": 1,
+    "revision_mismatch": 49,
+    "current_recall_matches": 50,
+    "source_batch": "http-001"
+  }
+}

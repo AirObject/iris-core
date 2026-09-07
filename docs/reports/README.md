@@ -31,3 +31,5 @@
 - [W01 HTTP Recall 接线与能力声明](./w01-http-recall-assembly.md)：Completed，完整 `ci-002` 通过，独立提交 `0959259`。
 
 - [W02 Graph 原量化门禁](w02-graph-quantitative-gates.md)：Completed，真实路由预算、五类各 50 次竞态及完整 CI 已通过。
+
+- [W03 Persona 原量化门禁](w03-persona-quantitative-gates.md)：Completed，Policy 每项 200 案例、50 客户端发布、三次时钟轨迹及完整 CI 通过。
