@@ -27,6 +27,8 @@ from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, OutboxService
 from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.provider_generations import ProviderGenerations
+from iris_memory_core.application.ports.provider_secrets import ConfiguredEmbeddingRuntime
 from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.reflection import ReflectionPipeline
@@ -36,6 +38,7 @@ from iris_memory_core.domain.errors import LeaseFencedError
 from iris_memory_core.domain.jobs import ENABLED_JOB_KINDS, OutboxJob
 from iris_memory_core.indexing.fts import FtsProjectionService
 from iris_memory_core.indexing.graph import GraphProjectionService
+from iris_memory_core.indexing.managed_vector import ManagedVectorProjection
 from iris_memory_core.indexing.profile import ProfileProjectionService
 from iris_memory_core.indexing.vector import VectorProjectionService
 
@@ -167,7 +170,7 @@ def phase6_handlers(
 
 def phase7_handlers(
     *,
-    projection: VectorProjectionService,
+    projection: VectorProjectionService | ManagedVectorProjection,
 ) -> dict[str, JobWork]:
     """Phase 7 handlers: vector projection apply/rebuild/cleanup (ADR-0015
     §8). The rebuild handler's work() stage runs the provider calls and the
@@ -245,14 +248,22 @@ def phase14_handlers(
     ids: IdentifierGenerator,
     *,
     archives: TrustedBackupArchive | None = None,
+    embedding_runtime: ConfiguredEmbeddingRuntime | None = None,
+    provider_generations: ProviderGenerations | None = None,
 ) -> dict[str, JobWork]:
     from iris_memory_core.application.console.execution_context import WorkerExecutionContext
     from iris_memory_core.application.console.operations import ConsoleOperations
+    from iris_memory_core.application.console.provider_activation_work import ProviderActivations
+    from iris_memory_core.application.console.provider_probes import ProviderProbes
 
     operations = ConsoleOperations(WorkerExecutionContext(uow, clock, ids))
     return {
         "console.memory_forget": operations.batch_work,
         "console.trusted_backup": BackupOperations(operations.context, archives).work,
+        "console.embedding_probe": ProviderProbes(operations.context, embedding_runtime).work,
+        "console.embedding_activate": ProviderActivations(
+            operations.context, embedding_runtime, provider_generations
+        ).work,
     }
 
 
@@ -316,8 +327,17 @@ class OutboxWorker:
                         return
 
         renewal = None
-        if any(job.job_kind == "console.trusted_backup" for job in batch.jobs):
-            renewal = Thread(target=renew, name="outbox-backup-lease", daemon=True)
+        if any(
+            job.job_kind
+            in {
+                "console.trusted_backup",
+                "console.embedding_probe",
+                "console.embedding_activate",
+                "vector.rebuild",
+            }
+            for job in batch.jobs
+        ):
+            renewal = Thread(target=renew, name="outbox-operation-lease", daemon=True)
             renewal.start()
         try:
             for job in batch.jobs:
