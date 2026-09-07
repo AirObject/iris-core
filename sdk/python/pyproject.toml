@@ -9,7 +9,23 @@ description = "Async Python client for Iris Memory Core"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-only"
+keywords = ["memory", "recall", "persona", "sqlite", "agents"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+authors = [{ name = "Iris Memory Core contributors" }]
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/AirObject/iris_memory_core"
+Documentation = "https://github.com/AirObject/iris_memory_core/blob/main/README.md"
+Issues = "https://github.com/AirObject/iris_memory_core/issues"
+Changelog = "https://github.com/AirObject/iris_memory_core/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/iris_memory_sdk"]

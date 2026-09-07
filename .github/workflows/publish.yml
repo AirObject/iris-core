@@ -1,0 +1,80 @@
+name: Build and publish Python distributions
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload verified artifacts to PyPI after release approval
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v9
+        with:
+          version: "0.11.29"
+      - name: Install locked dependencies
+        run: make bootstrap
+      - name: Install browser runtime
+        working-directory: web/console
+        run: npx playwright install --with-deps chromium
+      - name: Verify candidate
+        run: make ci
+      - name: Build distributions
+        run: |
+          uv build --no-sources --out-dir dist/core
+          uv build --no-sources sdk/python --out-dir dist/sdk
+      - name: Verify the exact upload artifacts
+        run: |
+          uv run python -m tools.check_distribution dist/core/*
+          uv run python -m tools.check_installation dist/core/*.whl dist/sdk/*.whl --allow-local-sqlite
+          sha256sum dist/core/* dist/sdk/* > dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    # Explicit opt-in, tag-only, and disabled until maintainers configure the
+    # environment, release evidence and both PyPI Trusted Publishers.
+    if: inputs.publish && startsWith(github.ref, 'refs/tags/') && vars.PYPI_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+      - uses: astral-sh/setup-uv@v9
+        with:
+          version: "0.11.29"
+      - name: Verify artifact checksums
+        run: sha256sum --check dist/SHA256SUMS
+      - name: Publish the verified distributions
+        run: uv publish --trusted-publishing always dist/core/* dist/sdk/*

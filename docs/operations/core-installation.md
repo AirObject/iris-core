@@ -1,5 +1,7 @@
 # Core 安装与可信初始化
 
+[English](core-installation.en.md)
+
 本页说明当前开发候选的安装路径；生产运行时、隔离、恢复与发布验收仍按 [Phase 14](../development/phase-14-hardening-release.md) 执行。Core、Python SDK、TS SDK、Console 静态文件分别交付，不包含 Bellis/AstrBot 适配器。
 
 ## 构建与安装物检查

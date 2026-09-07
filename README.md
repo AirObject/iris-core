@@ -23,7 +23,7 @@ cd web/console
 npx playwright install chromium
 ```
 
-These are verification commands, not a claim that the current workspace passes every gate. Current results and remaining release gates are recorded in the [Phase 14 report](docs/reports/phase-14-verification.md). The [installation guide](docs/operations/core-installation.md) describes the trusted CLI bootstrap and public SDK boundary.
+These are verification commands, not a claim that the current workspace passes every gate. Current results and remaining release gates are recorded in the [Phase 14 report](docs/reports/phase-14-verification.md). The [installation guide](docs/operations/core-installation.en.md) describes the trusted CLI bootstrap and public SDK boundary.
 
 `make test` measures functional coverage; `make test-performance` runs latency budgets without coverage instrumentation. `make ci` requires both. See [test navigation](tests/README.md) for focused paths.
 
@@ -50,6 +50,7 @@ The SDK offline test double is available with `uv run python -m tools.mock_serve
 ## Documentation and contracts
 
 - [Documentation index](docs/README.md): architecture, decisions, phase plans, evidence and integration guides.
+- [Changelog](CHANGELOG.md), [security policy](SECURITY.md), and [publication procedure](docs/operations/publishing.md).
 - [Contribution guide](CONTRIBUTING.md): change workflow and documentation rules.
 - [Python SDK](sdk/python/README.md) and [TypeScript SDK](sdk/typescript/README.md).
 - [Public method mapping and change gate](docs/development/public-api.md).

@@ -9,6 +9,15 @@ description = "Host-independent cognitive memory service"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-only"
+keywords = ["memory", "recall", "persona", "sqlite", "agents"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 authors = [{ name = "Iris Memory Core contributors" }]
 # Phase 7 (ADR-0015): the FAISS adapter and its numpy bridge are runtime
 # dependencies; the imports stay lazy so a runtime without them degrades the
@@ -20,6 +29,12 @@ dependencies = [
   "numpy>=2.1,<3",
   "uvicorn>=0.35,<1",
 ]
+
+[project.urls]
+Repository = "https://github.com/AirObject/iris_memory_core"
+Documentation = "https://github.com/AirObject/iris_memory_core/blob/main/README.md"
+Issues = "https://github.com/AirObject/iris_memory_core/issues"
+Changelog = "https://github.com/AirObject/iris_memory_core/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 console = ["cryptography>=46,<52"]

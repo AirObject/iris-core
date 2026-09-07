@@ -41,3 +41,7 @@ CONSOLE_BROWSER_EXECUTABLE='/Applications/Google Chrome.app/Contents/MacOS/Googl
 | `tests/backend/serve_fixture.py` | 应用服务初始化临时库、离线签发测试密钥，监听回环；无认证依赖替换、不接生产库、不输出密钥，临时凭据文件 0600 |
 
 协议、交互和安全约定集中在 [前端接入约定](../../docs/design/console-backend.md#13-前端接入约定)，功能状态见 [对接矩阵](./INTEGRATION_MATRIX.md)，历史通过及当前失败见 [验证记录](../../docs/reports/phase-13-verification.md)。模拟测试仅证明前端状态/请求编排，不能证明后端授权、领域事务、备份、Provider 出站或数据往返。
+
+## Package version
+
+The private frontend package version (`0.1.0`) is independent of Core and the Console HTTP contract. Runtime versions come from bootstrap metadata and generated protocol declarations; changing the frontend package label does not certify a Core release.
