@@ -22,6 +22,14 @@ Applied migrations are immutable. Use the next sequential number and test both a
 
 Run `make public-api-check` for public interface changes. The [public interface gate](docs/development/public-api.md) checks an explicit SDK operation mapping and reviewed export/signature/DTO/HTTP/CLI snapshot, including installed wheels. Generate a separate candidate for review; do not accept unknown methods or update a snapshot merely to silence CI.
 
+## Commits
+
+Keep each commit within one work package from the [work-package queue](docs/development/work-packages.md) or the relevant phase's requirement tracking and work-package sections. Split a larger work package into smaller, independently reviewable and verifiable changes; do not accumulate a whole Phase into one commit. Keep unrelated fixes and cleanup separate. Each implementation commit must leave its affected checks runnable so bisect can isolate a regression; full `make ci` remains a work-package acceptance gate.
+
+Commit a migration, source contract changes, regenerated schemas/fixtures/types and version manifests together with the code that requires them, their tests and affected documentation. Split by behavior, not by directory or layer: separating these dependent changes leaves intermediate commits with incompatible code or contract drift. Run `make contracts` and `make contracts-check` before committing contract changes; generated files remain tracked even when their diffs are collapsed. A smaller commit must preserve this consistency. Reverting code does not undo an applied migration; retain the phase's explicit data and rollback strategy.
+
+Use Conventional Commits: `type(scope): summary`, with an optional scope, following existing types such as `feat`, `fix`, `docs` and `test`. Write summaries and bodies in English, consistent with code comments and the majority of existing commit messages; architecture/ADR and development documents retain their Chinese prose. Use an imperative summary naming the behavior changed, such as `feat(console): expose statistics freshness`, rather than a Phase completion label. Reference the existing work-package number and requirement ID in the body, and record verification or link its report, including unresolved gates. A checkpoint commit does not establish work-package acceptance.
+
 ## Documentation maintenance
 
 - The [documentation index](docs/README.md) defines each document's responsibility. Keep phase status in the roadmap and the corresponding phase; link to evidence instead of copying reports into plans.
