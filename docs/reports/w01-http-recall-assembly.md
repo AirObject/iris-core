@@ -4,7 +4,7 @@
 
 ## 候选与范围
 
-- 开始 Commit：`e2a6bbd7793f7bd4b73a51d32149eb8e3015ed33`；结束 Commit 为首次将本报告标记 Completed 的 W01 独立提交，准确哈希由提交后的串行检查点记录。
+- 开始 Commit：`e2a6bbd7793f7bd4b73a51d32149eb8e3015ed33`；结束 Commit：`095925932ce789ffeba8126a3f96604afbf60caf`。
 - 当前版本真源：Core 0.13.0、Schema 20、开工 Contract 1.10.0；当前候选 Contract 1.11.0，Core/Schema 不变，无新迁移。
 - 开工已有未提交的构建指南、工作队列、阶段/报告索引及核查报告；保留原内容，以用户最新串行授权覆盖旧停止规则。
 - 实施 API/Worker 共用的私有 Recall 装配接缝，默认接入 Graph；Vector 未配置时不声明支持，显式配置后保留路由，由原有投影/Provider 信任门负责故障降级。

@@ -1,0 +1,12 @@
+UV_CACHE_DIR=.uv-cache uv run pytest tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_runtime_races.py tests/integration/recall/test_graph_http_fallbacks.py tests/integration/recall/test_graph_profile_graph.py tests/integration/recall/test_graph_profile_concurrency.py tests/integration/runtime/test_http_recall_assembly.py tests/integration/recall/test_phase4_recall.py -s --no-cov
+ERROR: file or directory not found: tests/integration/recall/test_phase4_recall.py
+
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 0 items
+
+============================ no tests ran in 0.01s =============================
+make: *** [test-affected] Error 4

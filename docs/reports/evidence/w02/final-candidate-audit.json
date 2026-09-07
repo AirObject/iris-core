@@ -1,0 +1,30 @@
+{
+  "verified_at": "2026-09-07T17:02:39.763871+00:00",
+  "batch": "ci-001",
+  "material_drift": [],
+  "report_evidence_checkpoint_drift": [
+    "docs/development/serial-execution-state.json",
+    "docs/reports/evidence/w02/artifact-digests.json",
+    "docs/reports/evidence/w02/ci-001/candidate-files.json",
+    "docs/reports/evidence/w02/ci-001/output.log",
+    "docs/reports/evidence/w02/ci-001/result.json",
+    "docs/reports/evidence/w02/ci-001/task.json",
+    "docs/reports/evidence/w02/completed-batches.json",
+    "docs/reports/w02-graph-quantitative-gates.md"
+  ],
+  "package_input_hashes_match": true,
+  "package_input_count": 211,
+  "ci_result": {
+    "started_at": "2026-09-07T16:41:20.085892+00:00",
+    "supervisor_pid": 99656,
+    "child_pid": 99662,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T17:00:51.523708+00:00"
+  },
+  "core_version": "0.13.0",
+  "schema_version": 20,
+  "business_contract_version": "1.11.0",
+  "python_sdk_version": "0.11.1",
+  "typescript_sdk_version": "0.11.2"
+}

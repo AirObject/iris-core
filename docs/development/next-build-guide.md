@@ -1,6 +1,6 @@
 # 后续构建指导：Core 集成闭环、Console 补齐与稳定发布
 
-> 状态：In progress；2026-09-07 最新用户授权已启动 W01→W20 串行执行，W01 验收完成，独立提交后立即 W02。  
+> 状态：In progress；2026-09-07 最新用户授权已启动 W01→W20 串行执行，W01 已独立提交，当前 W02。  
 > 更新日期：2026-09-07  
 > 起始代码基线：`e2a6bbd7793f7bd4b73a51d32149eb8e3015ed33`；Core 0.13.0 / Schema 20。实际开工时重新读取版本真源与工作区状态。  
 > 依据：[完成情况核查](../reports/phase-completion-audit-2026-09-07.md)、[架构基线](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)、[Console 设计](../design/console-backend.md)、[Phase 14 发布要求](phase-14-hardening-release.md)。
@@ -36,7 +36,7 @@ Phase 11/12 继续 Deferred：不开发 Bellis/AstrBot 适配、不做其分发�
 
 ## 3. 建议顺序与依赖
 
-**下一包建议执行 W01：HTTP Recall 接线与能力声明。** 它优先于原队列的统计，因为当前服务会声明 Vector/Graph 能力，却在没有执行两条路由时返回完整响应。
+**当前执行 W02：Graph 原量化门禁。** W01 HTTP Recall 接线与能力声明已完成并独立提交；原先能力声明与路由漏接线问题的修复和完整验收见 [W01 报告](../reports/w01-http-recall-assembly.md)。
 
 | 顺序 | 工作包 | 对应原范围 | 必需依赖 |
 | --- | --- | --- | --- |

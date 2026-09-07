@@ -1,0 +1,5 @@
+UV_CACHE_DIR=.uv-cache uv run pytest tests/integration/recall/test_graph_runtime_races.py -k "-0]" --no-cov
+ERROR: usage: pytest [options] [file_or_dir] [file_or_dir] [...]
+pytest: error: argument -k: expected one argument
+
+make: *** [test-affected] Error 4

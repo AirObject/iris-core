@@ -82,9 +82,13 @@ def execute(root: Path) -> int:
 def main() -> int:
     if sys.argv[1] == "--execute":
         return execute(Path(sys.argv[2]))
-    root = Path(sys.argv[1]).resolve()
-    timeout = int(sys.argv[2])
-    command = sys.argv[3:]
+    arguments = sys.argv[1:]
+    attached = arguments[0] == "--attached"
+    if attached:
+        arguments = arguments[1:]
+    root = Path(arguments[0]).resolve()
+    timeout = int(arguments[1])
+    command = arguments[2:]
     if timeout <= 0 or not command:
         raise ValueError("positive timeout and command required")
     root.mkdir(parents=True, exist_ok=False)
@@ -97,6 +101,15 @@ def main() -> int:
     }
     save(root / "candidate-files.json", candidate_files())
     (root / "candidate.patch").write_bytes(subprocess.check_output(["git", "diff", "HEAD"]))
+    if attached:
+        # The tool's background session owns this supervisor. Waiting on that
+        # session wakes on completion rather than a scheduled observation time.
+        spec["supervisor_pid"] = os.getpid()
+        save(root / "task.json", spec)
+        print(json.dumps({"run_directory": str(root), "supervisor_pid": os.getpid()}), flush=True)
+        code = execute(root)
+        print((root / "result.json").read_text(), flush=True)
+        return code
     save(root / "task.json", spec)
     with (root / "supervisor.log").open("ab", buffering=0) as log:
         supervisor = subprocess.Popen(

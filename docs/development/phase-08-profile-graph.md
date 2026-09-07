@@ -11,6 +11,8 @@
 
 2026-09-07 W01 当前接线候选已通过真实 ASGI 与安装后的 Core/Worker/公共 SDK 路由命中；2026-09-08 收尾 `ci-002` 已完整通过，见[W01 报告](../reports/w01-http-recall-assembly.md)。此更新不覆盖历史量化限制：Graph 原量化门禁仍归 W02，生产 Embedding 管理与真实出站仍归 W05。
 
+2026-09-08 [W02](../reports/w02-graph-quantitative-gates.md)已通过真实 GraphRoute 深度/扇出/节点 10 倍压力与五类各 50 次 HTTP 查询竞态；收尾 CI、浏览器和隔离安装通过。原量化缺口已由本轮证据闭合，生产和稳定发布要求仍归后续工作包。
+
 ## 阶段目标
 
 交付可重建 Profile/Graph 投影、逐边/端点隐私过滤、有界多跳 Recall、Builder/Watermark 信任门和 Canonical 降级。

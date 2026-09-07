@@ -1,0 +1,13 @@
+UV_CACHE_DIR=.uv-cache uv run pytest tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_profile_graph.py::TestTraversalBudgets --no-cov
+ERROR: not found: /Users/cassia/Local/Code/iris_memory_core/tests/integration/recall/test_graph_profile_graph.py::TestTraversalBudgets
+(no match in any of [<Module test_graph_profile_graph.py>])
+
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 0 items
+
+============================ no tests ran in 0.06s =============================
+make: *** [test-affected] Error 4

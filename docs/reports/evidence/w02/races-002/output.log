@@ -1,0 +1,362 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 5 items
+
+tests/integration/recall/test_graph_runtime_races.py FFFFF               [100%]
+
+=================================== FAILURES ===================================
+____ test_http_mutation_race_rejects_old_fields_edges_and_replay[binding-0] ____
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10b76ad50>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b76a840>
+mutation = 'binding', round_index = 0
+
+    @pytest.mark.parametrize("round_index", range(50))
+    @pytest.mark.parametrize("mutation", ["binding", "redirect", "space_group", "correct", "forget"])
+    def test_http_mutation_race_rejects_old_fields_edges_and_replay(
+        world: Phase8World, monkeypatch: pytest.MonkeyPatch, mutation: str, round_index: int
+    ) -> None:
+        speaker = world.entity(f"speaker-{round_index}")
+        external_id = f"actor-{round_index}"
+        binding = world.bind_identity(speaker, external_id)
+        target = world.entity("target")
+        replacement = world.entity("replacement")
+        provisioning = ProvisioningService(world.store)
+        group = provisioning.create_space_group(world.admin_access, "group", reason="test")
+        world.access = replace(world.access, allowed_space_group_ids=frozenset({group.id}))
+        with world.store.read() as tx:
+            space_revision = tx.get_space(world.space).revision
+        provisioning.bind_space_to_group(
+            world.admin_access, world.space, group.id, expected_revision=space_revision, reason="test"
+        )
+        canary = f"obsolete-{mutation}-{round_index}"
+>       claim = world.remember(
+            f"race-{round_index}",
+            canary,
+            speaker,
+            category="relationship",
+            value={"target_entity_id": target, "label": canary},
+            space_group_id=group.id,
+        )
+
+tests/integration/recall/test_graph_runtime_races.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10b76ad50>
+key = 'race-0', text = 'obsolete-binding-0'
+subject = '01a07cb6-1799-7323-b5af-8a3cfd6c9cad'
+overrides = {'category': 'relationship', 'space_group_id': '01a07cb6-17a3-7415-b59c-5669b5838a94', 'value': {'label': 'obsolete-binding-0', 'target_entity_id': '01a07cb6-17a0-7c20-8fa1-9c2a285944ed'}}
+payload = {'agent_id': '01a07cb6-1790-7d1a-88d2-69eb38b6e739', 'canonical_text': 'obsolete-binding-0', 'category': 'relationship', 'evidence': [{'source_id': '01a07cb6-17a9-7e1a-ae9f-3f8cb3e14414', 'source_type': 'observation'}], ...}
+
+    def remember(
+        self,
+        key: str,
+        text: str,
+        subject: str,
+        **overrides: Any,
+    ) -> Any:
+        payload: dict[str, Any] = {
+            "agent_id": self.agent,
+            "space_id": self.space,
+            "subject_entity_id": subject,
+            "predicate": f"p_{key}",
+            "value": {"k": key},
+            "canonical_text": text,
+            "category": "fact",
+            "evidence": [{"source_type": "observation", "source_id": self.observation()}],
+            "idempotency_key": f"p8-idem-{key}",
+        }
+        payload.update(overrides)
+>       return self.claims.remember(self.access, **payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClaimService.remember() got an unexpected keyword argument 'space_group_id'
+
+tests/integration/recall/graph_profile_helpers.py:149: TypeError
+___ test_http_mutation_race_rejects_old_fields_edges_and_replay[redirect-0] ____
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10c8f2b40>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c925430>
+mutation = 'redirect', round_index = 0
+
+    @pytest.mark.parametrize("round_index", range(50))
+    @pytest.mark.parametrize("mutation", ["binding", "redirect", "space_group", "correct", "forget"])
+    def test_http_mutation_race_rejects_old_fields_edges_and_replay(
+        world: Phase8World, monkeypatch: pytest.MonkeyPatch, mutation: str, round_index: int
+    ) -> None:
+        speaker = world.entity(f"speaker-{round_index}")
+        external_id = f"actor-{round_index}"
+        binding = world.bind_identity(speaker, external_id)
+        target = world.entity("target")
+        replacement = world.entity("replacement")
+        provisioning = ProvisioningService(world.store)
+        group = provisioning.create_space_group(world.admin_access, "group", reason="test")
+        world.access = replace(world.access, allowed_space_group_ids=frozenset({group.id}))
+        with world.store.read() as tx:
+            space_revision = tx.get_space(world.space).revision
+        provisioning.bind_space_to_group(
+            world.admin_access, world.space, group.id, expected_revision=space_revision, reason="test"
+        )
+        canary = f"obsolete-{mutation}-{round_index}"
+>       claim = world.remember(
+            f"race-{round_index}",
+            canary,
+            speaker,
+            category="relationship",
+            value={"target_entity_id": target, "label": canary},
+            space_group_id=group.id,
+        )
+
+tests/integration/recall/test_graph_runtime_races.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10c8f2b40>
+key = 'race-0', text = 'obsolete-redirect-0'
+subject = '01a07cb6-17ee-742b-a59a-d39011643d92'
+overrides = {'category': 'relationship', 'space_group_id': '01a07cb6-17f7-706e-b8da-a98036a534a2', 'value': {'label': 'obsolete-redirect-0', 'target_entity_id': '01a07cb6-17f4-7688-95fd-615be84cad2d'}}
+payload = {'agent_id': '01a07cb6-17e5-70a7-8f87-65fd15e7f0d2', 'canonical_text': 'obsolete-redirect-0', 'category': 'relationship', 'evidence': [{'source_id': '01a07cb6-17fd-7768-ab1f-56041c421e09', 'source_type': 'observation'}], ...}
+
+    def remember(
+        self,
+        key: str,
+        text: str,
+        subject: str,
+        **overrides: Any,
+    ) -> Any:
+        payload: dict[str, Any] = {
+            "agent_id": self.agent,
+            "space_id": self.space,
+            "subject_entity_id": subject,
+            "predicate": f"p_{key}",
+            "value": {"k": key},
+            "canonical_text": text,
+            "category": "fact",
+            "evidence": [{"source_type": "observation", "source_id": self.observation()}],
+            "idempotency_key": f"p8-idem-{key}",
+        }
+        payload.update(overrides)
+>       return self.claims.remember(self.access, **payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClaimService.remember() got an unexpected keyword argument 'space_group_id'
+
+tests/integration/recall/graph_profile_helpers.py:149: TypeError
+__ test_http_mutation_race_rejects_old_fields_edges_and_replay[space_group-0] __
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10c926870>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c927f80>
+mutation = 'space_group', round_index = 0
+
+    @pytest.mark.parametrize("round_index", range(50))
+    @pytest.mark.parametrize("mutation", ["binding", "redirect", "space_group", "correct", "forget"])
+    def test_http_mutation_race_rejects_old_fields_edges_and_replay(
+        world: Phase8World, monkeypatch: pytest.MonkeyPatch, mutation: str, round_index: int
+    ) -> None:
+        speaker = world.entity(f"speaker-{round_index}")
+        external_id = f"actor-{round_index}"
+        binding = world.bind_identity(speaker, external_id)
+        target = world.entity("target")
+        replacement = world.entity("replacement")
+        provisioning = ProvisioningService(world.store)
+        group = provisioning.create_space_group(world.admin_access, "group", reason="test")
+        world.access = replace(world.access, allowed_space_group_ids=frozenset({group.id}))
+        with world.store.read() as tx:
+            space_revision = tx.get_space(world.space).revision
+        provisioning.bind_space_to_group(
+            world.admin_access, world.space, group.id, expected_revision=space_revision, reason="test"
+        )
+        canary = f"obsolete-{mutation}-{round_index}"
+>       claim = world.remember(
+            f"race-{round_index}",
+            canary,
+            speaker,
+            category="relationship",
+            value={"target_entity_id": target, "label": canary},
+            space_group_id=group.id,
+        )
+
+tests/integration/recall/test_graph_runtime_races.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10c926870>
+key = 'race-0', text = 'obsolete-space_group-0'
+subject = '01a07cb6-1835-7b79-ae59-0c72b749ad96'
+overrides = {'category': 'relationship', 'space_group_id': '01a07cb6-183e-72ff-949d-0aab44466f35', 'value': {'label': 'obsolete-space_group-0', 'target_entity_id': '01a07cb6-183b-752d-854a-6d66e99043d5'}}
+payload = {'agent_id': '01a07cb6-182c-715f-90ef-38eb4c518a89', 'canonical_text': 'obsolete-space_group-0', 'category': 'relationship', 'evidence': [{'source_id': '01a07cb6-1844-75b6-b394-48aa0edce520', 'source_type': 'observation'}], ...}
+
+    def remember(
+        self,
+        key: str,
+        text: str,
+        subject: str,
+        **overrides: Any,
+    ) -> Any:
+        payload: dict[str, Any] = {
+            "agent_id": self.agent,
+            "space_id": self.space,
+            "subject_entity_id": subject,
+            "predicate": f"p_{key}",
+            "value": {"k": key},
+            "canonical_text": text,
+            "category": "fact",
+            "evidence": [{"source_type": "observation", "source_id": self.observation()}],
+            "idempotency_key": f"p8-idem-{key}",
+        }
+        payload.update(overrides)
+>       return self.claims.remember(self.access, **payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClaimService.remember() got an unexpected keyword argument 'space_group_id'
+
+tests/integration/recall/graph_profile_helpers.py:149: TypeError
+____ test_http_mutation_race_rejects_old_fields_edges_and_replay[correct-0] ____
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10c802cf0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c4f97c0>
+mutation = 'correct', round_index = 0
+
+    @pytest.mark.parametrize("round_index", range(50))
+    @pytest.mark.parametrize("mutation", ["binding", "redirect", "space_group", "correct", "forget"])
+    def test_http_mutation_race_rejects_old_fields_edges_and_replay(
+        world: Phase8World, monkeypatch: pytest.MonkeyPatch, mutation: str, round_index: int
+    ) -> None:
+        speaker = world.entity(f"speaker-{round_index}")
+        external_id = f"actor-{round_index}"
+        binding = world.bind_identity(speaker, external_id)
+        target = world.entity("target")
+        replacement = world.entity("replacement")
+        provisioning = ProvisioningService(world.store)
+        group = provisioning.create_space_group(world.admin_access, "group", reason="test")
+        world.access = replace(world.access, allowed_space_group_ids=frozenset({group.id}))
+        with world.store.read() as tx:
+            space_revision = tx.get_space(world.space).revision
+        provisioning.bind_space_to_group(
+            world.admin_access, world.space, group.id, expected_revision=space_revision, reason="test"
+        )
+        canary = f"obsolete-{mutation}-{round_index}"
+>       claim = world.remember(
+            f"race-{round_index}",
+            canary,
+            speaker,
+            category="relationship",
+            value={"target_entity_id": target, "label": canary},
+            space_group_id=group.id,
+        )
+
+tests/integration/recall/test_graph_runtime_races.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10c802cf0>
+key = 'race-0', text = 'obsolete-correct-0'
+subject = '01a07cb6-187b-74b5-9931-38af58bb670c'
+overrides = {'category': 'relationship', 'space_group_id': '01a07cb6-1884-7ab6-bcef-57a419da2d0d', 'value': {'label': 'obsolete-correct-0', 'target_entity_id': '01a07cb6-1881-7ce3-92c2-9058572903ff'}}
+payload = {'agent_id': '01a07cb6-1873-79c8-bf7f-5338005bfefb', 'canonical_text': 'obsolete-correct-0', 'category': 'relationship', 'evidence': [{'source_id': '01a07cb6-188a-78f7-94a2-f60fff0fab14', 'source_type': 'observation'}], ...}
+
+    def remember(
+        self,
+        key: str,
+        text: str,
+        subject: str,
+        **overrides: Any,
+    ) -> Any:
+        payload: dict[str, Any] = {
+            "agent_id": self.agent,
+            "space_id": self.space,
+            "subject_entity_id": subject,
+            "predicate": f"p_{key}",
+            "value": {"k": key},
+            "canonical_text": text,
+            "category": "fact",
+            "evidence": [{"source_type": "observation", "source_id": self.observation()}],
+            "idempotency_key": f"p8-idem-{key}",
+        }
+        payload.update(overrides)
+>       return self.claims.remember(self.access, **payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClaimService.remember() got an unexpected keyword argument 'space_group_id'
+
+tests/integration/recall/graph_profile_helpers.py:149: TypeError
+____ test_http_mutation_race_rejects_old_fields_edges_and_replay[forget-0] _____
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10c925100>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c925f10>
+mutation = 'forget', round_index = 0
+
+    @pytest.mark.parametrize("round_index", range(50))
+    @pytest.mark.parametrize("mutation", ["binding", "redirect", "space_group", "correct", "forget"])
+    def test_http_mutation_race_rejects_old_fields_edges_and_replay(
+        world: Phase8World, monkeypatch: pytest.MonkeyPatch, mutation: str, round_index: int
+    ) -> None:
+        speaker = world.entity(f"speaker-{round_index}")
+        external_id = f"actor-{round_index}"
+        binding = world.bind_identity(speaker, external_id)
+        target = world.entity("target")
+        replacement = world.entity("replacement")
+        provisioning = ProvisioningService(world.store)
+        group = provisioning.create_space_group(world.admin_access, "group", reason="test")
+        world.access = replace(world.access, allowed_space_group_ids=frozenset({group.id}))
+        with world.store.read() as tx:
+            space_revision = tx.get_space(world.space).revision
+        provisioning.bind_space_to_group(
+            world.admin_access, world.space, group.id, expected_revision=space_revision, reason="test"
+        )
+        canary = f"obsolete-{mutation}-{round_index}"
+>       claim = world.remember(
+            f"race-{round_index}",
+            canary,
+            speaker,
+            category="relationship",
+            value={"target_entity_id": target, "label": canary},
+            space_group_id=group.id,
+        )
+
+tests/integration/recall/test_graph_runtime_races.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10c925100>
+key = 'race-0', text = 'obsolete-forget-0'
+subject = '01a07cb6-18c1-739a-a02d-b15d35b5e70b'
+overrides = {'category': 'relationship', 'space_group_id': '01a07cb6-18ca-7d8f-a418-9ecafa4eb117', 'value': {'label': 'obsolete-forget-0', 'target_entity_id': '01a07cb6-18c7-729a-a519-94fbf40ad6a4'}}
+payload = {'agent_id': '01a07cb6-18b9-7c77-9c4c-3328384a3b69', 'canonical_text': 'obsolete-forget-0', 'category': 'relationship', 'evidence': [{'source_id': '01a07cb6-18d0-7b44-bc4f-15de985d0dbb', 'source_type': 'observation'}], ...}
+
+    def remember(
+        self,
+        key: str,
+        text: str,
+        subject: str,
+        **overrides: Any,
+    ) -> Any:
+        payload: dict[str, Any] = {
+            "agent_id": self.agent,
+            "space_id": self.space,
+            "subject_entity_id": subject,
+            "predicate": f"p_{key}",
+            "value": {"k": key},
+            "canonical_text": text,
+            "category": "fact",
+            "evidence": [{"source_type": "observation", "source_id": self.observation()}],
+            "idempotency_key": f"p8-idem-{key}",
+        }
+        payload.update(overrides)
+>       return self.claims.remember(self.access, **payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClaimService.remember() got an unexpected keyword argument 'space_group_id'
+
+tests/integration/recall/graph_profile_helpers.py:149: TypeError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[binding-0]
+FAILED tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[redirect-0]
+FAILED tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[space_group-0]
+FAILED tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[correct-0]
+FAILED tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[forget-0]
+======================== 5 failed, 2 warnings in 0.59s =========================

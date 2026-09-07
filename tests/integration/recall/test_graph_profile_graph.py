@@ -465,72 +465,31 @@ class TestBudgets:
         world.rebuild()
         return hub
 
-    def test_malicious_high_connectivity_never_exceeds_budgets(self, world: Phase8World) -> None:
-        from iris_memory_core.application.recall import GraphRoute
+    def test_malicious_high_connectivity_never_exceeds_budgets(
+        self, world: Phase8World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from iris_memory_core.domain.graph import (
             GRAPH_MAX_DEPTH,
             GRAPH_MAX_FANOUT,
             GRAPH_MAX_NODES,
         )
+        from tests.integration.recall.graph_execution_probe import GraphExecutionProbe
 
         hub = self._build_malicious_graph(world)
-        # The stored connectivity is ≥10x every budget.
-        with world.store.read() as tx:
-            pointer = tx.graph.pointer(TENANT)
-            assert pointer is not None
-            hub_edges = tx.graph.edges_for_source(
-                TENANT, pointer.generation_id, hub, node_kind="entity"
-            )
-        assert len(hub_edges) >= GRAPH_MAX_FANOUT * 10
-        assert GRAPH_MAX_FANOUT * 10 > GRAPH_MAX_NODES
-
-        # Replicate the route's own BFS with hard budget counters: with
-        # 10x connectivity, every budget still binds exactly.
-        route = GraphRoute(world.graph)
-        with world.store.read() as tx:
-            _pointer, generation = world.graph.trusted_generation_in_tx(
-                tx, tenant_id=TENANT, agent_id=world.agent
-            )
-            request_scope = Scope(
-                tenant_id=TENANT,
-                agent_id=world.agent,
-                space_group_id=None,
-                space_id=world.space,
-                session_id=None,
-            )
-            start = ("entity", hub)
-            visited = {start}
-            frontier = [start]
-            depth = 0
-            traversed = 0
-            while frontier and depth < GRAPH_MAX_DEPTH:
-                next_frontier = []
-                fanout = 0
-                for node_kind, node_id in sorted(frontier):
-                    edges = tx.graph.edges_for_source(
-                        TENANT, generation.id, node_id, node_kind=node_kind
-                    )
-                    for edge in edges:
-                        if fanout >= GRAPH_MAX_FANOUT:
-                            break
-                        if not route._edge_visible(
-                            tx, edge, request_scope, world.access, world.clock.now_us()
-                        ):
-                            continue
-                        fanout += 1
-                        traversed += 1
-                        target = (edge.target_node_kind, edge.target_node_id)
-                        if target not in visited and len(visited) < GRAPH_MAX_NODES:
-                            visited.add(target)
-                            next_frontier.append(target)
-                frontier = next_frontier
-                depth += 1
-        assert depth <= GRAPH_MAX_DEPTH
-        assert len(visited) <= GRAPH_MAX_NODES
-        assert traversed <= GRAPH_MAX_DEPTH * GRAPH_MAX_FANOUT
-        # End-to-end: the candidate cap binds regardless of connectivity.
+        # This fixture pressures fanout; W02's separate sparse fixtures also
+        # exceed depth and node limits by >=10x without copying traversal.
+        assert len(_edges_of(world, hub)) >= GRAPH_MAX_FANOUT * 10
+        probe = GraphExecutionProbe()
+        probe.install(monkeypatch)
         result = world.recall_as_speaker("hub-qq", candidate_limits={ROUTE_GRAPH: 5})
         assert ROUTE_GRAPH in result.completed_routes
+        assert probe.calls == 1 and probe.candidate_count == 5
+        assert len(probe.visited) <= GRAPH_MAX_NODES
+        assert probe.max_depth <= GRAPH_MAX_DEPTH
+        assert max(probe.fanout_by_depth.values()) <= GRAPH_MAX_FANOUT
+        assert probe.reads and all(
+            limit == GRAPH_MAX_FANOUT * 4 and rows <= limit for _, limit, rows in probe.reads
+        )
         graph_hits = [c for c in result.candidates if c.route == ROUTE_GRAPH]
         assert len(graph_hits) <= 5
 

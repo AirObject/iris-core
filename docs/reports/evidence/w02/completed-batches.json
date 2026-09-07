@@ -1,0 +1,429 @@
+{
+  "scope": "W02 ended diagnostic, affected and complete CI batches; ci-001 is the final acceptance",
+  "batches": [
+    {
+      "batch": "affected-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_runtime_races.py tests/integration/recall/test_graph_http_fallbacks.py tests/integration/recall/test_graph_profile_graph.py tests/integration/recall/test_graph_profile_concurrency.py tests/integration/runtime/test_http_recall_assembly.py tests/integration/recall/test_phase4_recall.py -s"
+      ],
+      "timeout_seconds": 600,
+      "started_at": "2026-09-07T16:34:58.493753+00:00",
+      "supervisor_pid": 97445,
+      "child_pid": 97452,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T16:34:58.786775+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "32364a5e70cb488e44a54b56e77f19229cc6bc644f22faa57c84624e16ff0415",
+          "bytes": 660
+        },
+        "result.json": {
+          "sha256": "f54c92c6086397074aa60607d5c9b4f031cbd170c5b3a532d0b30c4955c2c4fc",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "3ed45fb62ec406035225102374891655a66bc419d7cbd588edeecb0e921540b3",
+          "bytes": 897
+        }
+      }
+    },
+    {
+      "batch": "affected-002",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_runtime_races.py tests/integration/recall/test_graph_http_fallbacks.py tests/integration/recall/test_graph_profile_graph.py tests/integration/recall/test_graph_profile_concurrency.py tests/integration/runtime/test_http_recall_assembly.py tests/integration/recall/test_recall_publication_revalidation.py tests/integration/recall/test_recall_backlog_identity_and_replay.py tests/integration/recall/test_graph_profile_privacy_and_consistency.py -s"
+      ],
+      "timeout_seconds": 600,
+      "started_at": "2026-09-07T16:35:11.310544+00:00",
+      "supervisor_pid": 97514,
+      "child_pid": 97518,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T16:37:35.178264+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "0781b3a24d2875e0b3bde30dbe5f7f2aa18ebe0436ac214e9b78fe94a3653955",
+          "bytes": 817
+        },
+        "result.json": {
+          "sha256": "ebb0cfdf43610758da59673dac344db5f06d1091520cdfa8a818682682b9a4ab",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "5dec73f69eebff577fab6cd02f5d0263cc815b0d10b4c3bfa6f3ca84b0b1bc2f",
+          "bytes": 1415414
+        }
+      }
+    },
+    {
+      "batch": "affected-003",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_runtime_races.py tests/integration/recall/test_graph_http_fallbacks.py tests/integration/recall/test_graph_profile_graph.py tests/integration/recall/test_graph_profile_concurrency.py tests/integration/runtime/test_http_recall_assembly.py tests/integration/recall/test_recall_publication_revalidation.py tests/integration/recall/test_recall_backlog_identity_and_replay.py tests/integration/recall/test_graph_profile_privacy_and_consistency.py -s"
+      ],
+      "timeout_seconds": 600,
+      "started_at": "2026-09-07T16:37:46.267281+00:00",
+      "supervisor_pid": 98460,
+      "child_pid": 98467,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T16:40:17.364059+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "600978aa4afd838e7bd0147a674e94aeaa05db4ceb7b479a68047003beda8b28",
+          "bytes": 817
+        },
+        "result.json": {
+          "sha256": "df680ebd6f8353086ce55cc355c366d167dadbb771c7ede0ee217b4bc7de5831",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "d456563391dbf1c34c9b8df7289197604f778ce121ced292950797be82bc20a0",
+          "bytes": 20398
+        }
+      }
+    },
+    {
+      "batch": "budgets-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_profile_graph.py::TestTraversalBudgets"
+      ],
+      "timeout_seconds": 600,
+      "started_at": "2026-09-07T16:24:03.568902+00:00",
+      "supervisor_pid": 94250,
+      "child_pid": 94256,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T16:24:04.082274+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "089163f427c00d52258d0712c0ba6242806e7e1cd3cf7194233b864faaeda2ed",
+          "bytes": 411
+        },
+        "result.json": {
+          "sha256": "a1554198fd6e04b53f70f1ceec3016761cb9ab19b19dd75125e2a2ca4a3b8642",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "b6e6098552bfc9146806b806e80abed6926a5b82ef0fedce8d11b9602b69cbc2",
+          "bytes": 760
+        }
+      }
+    },
+    {
+      "batch": "budgets-002",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_profile_graph.py::TestBudgets"
+      ],
+      "timeout_seconds": 600,
+      "started_at": "2026-09-07T16:24:38.706605+00:00",
+      "supervisor_pid": 94439,
+      "child_pid": 94445,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T16:24:57.614795+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "0da6325795e26eaa09ab1e6b65a4499d0f7d5237a288333fc80045d4d7c01c75",
+          "bytes": 402
+        },
+        "result.json": {
+          "sha256": "4240481ce30541194d290637946faab907412d84f7722f25fd90ef45199df8d2",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "69d45ecd771ebc9a0af91656b07eed0099c95f16f16c0a608ec9bb46e693cac6",
+          "bytes": 10166
+        }
+      }
+    },
+    {
+      "batch": "budgets-003",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_profile_graph.py::TestBudgets"
+      ],
+      "timeout_seconds": 600,
+      "started_at": "2026-09-07T16:25:46.652490+00:00",
+      "supervisor_pid": 94745,
+      "child_pid": 94751,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T16:26:05.342529+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "6cbb23454ca088c46bc3c7d414851c6a2685a1c57f75ffcd0c35f7768305c05a",
+          "bytes": 402
+        },
+        "result.json": {
+          "sha256": "70a34906c93bbcc41908b35d96cd8853034e4d0b531485ec8d063f7fd3afdb12",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "cc7be1949bae125fcdfb1b96944fcfb98ac51612d2ecb883ce42ae97dbb837ab",
+          "bytes": 5273
+        }
+      }
+    },
+    {
+      "batch": "budgets-004",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_profile_graph.py::TestBudgets"
+      ],
+      "timeout_seconds": 180,
+      "started_at": "2026-09-07T16:29:45.158529+00:00",
+      "supervisor_pid": 95838,
+      "child_pid": 95843,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T16:30:04.704562+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "7d24ea86b41396791b8cc8fafefbcfbb263dac182af35b071a99350363a9d140",
+          "bytes": 402
+        },
+        "result.json": {
+          "sha256": "ba4c76b9cc22cef837a0ac3604efff91ea54d0abb5c506eaafda6baf1281a725",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "51213b14ce09b1aea7b112fb1ee01e1ac1d6bffb6de021f2f9e796cd992d9168",
+          "bytes": 1556
+        }
+      }
+    },
+    {
+      "batch": "ci-001",
+      "command": [
+        "env",
+        "CI=1",
+        "CONSOLE_BROWSER_EXECUTABLE=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "make",
+        "ci"
+      ],
+      "timeout_seconds": 3600,
+      "started_at": "2026-09-07T16:41:20.085892+00:00",
+      "supervisor_pid": 99656,
+      "child_pid": 99662,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T17:00:51.523708+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "3a394403c530828386b3f9836592046392cd9ac3a49ae52a3a649a33b10590b2",
+          "bytes": 376
+        },
+        "result.json": {
+          "sha256": "4119e84e40be6d928cdbc6bf7ab32cb9355d76a9ff105b21947d45031e1af3db",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "0fa6cecfd8b2ef7f564c1ae7491938d571019c425ef250c14db9c1762635de6a",
+          "bytes": 229065
+        },
+        "candidate-files.json": {
+          "sha256": "fb4e3d0e761463e482b115c7ae1a57517db1504c94b549dc4847043ccc045d18",
+          "bytes": 188893
+        }
+      }
+    },
+    {
+      "batch": "profile-diagnostic-001",
+      "command": [
+        ".venv/bin/pytest",
+        "--no-cov",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[correct-0]"
+      ],
+      "timeout_seconds": 60,
+      "started_at": "2026-09-07T16:37:05.803876+00:00",
+      "supervisor_pid": 98255,
+      "child_pid": 98261,
+      "exit_code": 1,
+      "status": "failed",
+      "finished_at": "2026-09-07T16:37:06.901673+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "7497a7d4c2729f33f700c4257a03dee5d13dbcbd1a7c8477e1df23d382ce744d",
+          "bytes": 406
+        },
+        "result.json": {
+          "sha256": "6cf8fbde7fa70f8b08e1f09c54c5aba5bf96b56c5a5c828fda29a87ac1a90a13",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "03ab4ae373386e66885b8c1a5bd5966b6ef7d66e17be1b8578012ae3ebf6f714",
+          "bytes": 10835
+        }
+      }
+    },
+    {
+      "batch": "races-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/recall/test_graph_runtime_races.py -k \"-0]\""
+      ],
+      "timeout_seconds": 180,
+      "started_at": "2026-09-07T16:31:28.549489+00:00",
+      "supervisor_pid": 96389,
+      "child_pid": 96396,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T16:31:28.847050+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "ff02fe20ce0baf6adadff5a8ba48d4ce750bbad1a12171904fede1d7cc7bede8",
+          "bytes": 345
+        },
+        "result.json": {
+          "sha256": "77e4811d4dc35b95370c3f583551231a9692731f7239ee1ce23370934b68481d",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "b8bffc9636db2f7d632ba575f347410812969020b18a898509b2a16867cbee5e",
+          "bytes": 258
+        }
+      }
+    },
+    {
+      "batch": "races-002",
+      "command": [
+        ".venv/bin/pytest",
+        "--no-cov",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[binding-0]",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[redirect-0]",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[space_group-0]",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[correct-0]",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[forget-0]"
+      ],
+      "timeout_seconds": 180,
+      "started_at": "2026-09-07T16:31:43.031599+00:00",
+      "supervisor_pid": 96464,
+      "child_pid": 96469,
+      "exit_code": 1,
+      "status": "failed",
+      "finished_at": "2026-09-07T16:31:43.976974+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "e2bd5855064b0669b249487d02aa58f1e6e6d21e96a2f3c9d5c4db6d7886bd24",
+          "bytes": 939
+        },
+        "result.json": {
+          "sha256": "c2ba97d4d36c70b5d27063ae615d9c928cfce57dbe7c68a7a72cda88fdc0e634",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "b58673879b7f6e05849064d572aa7966435b83f65d128be8b9ae59dda51e404a",
+          "bytes": 18760
+        }
+      }
+    },
+    {
+      "batch": "races-003",
+      "command": [
+        ".venv/bin/pytest",
+        "--no-cov",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[binding-0]",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[redirect-0]",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[space_group-0]",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[correct-0]",
+        "tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[forget-0]"
+      ],
+      "timeout_seconds": 180,
+      "started_at": "2026-09-07T16:32:40.705154+00:00",
+      "supervisor_pid": 96763,
+      "child_pid": 96768,
+      "exit_code": 1,
+      "status": "failed",
+      "finished_at": "2026-09-07T16:32:42.562871+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "7506bc5ab8d793d9fedcc9935af9743c7bf992bcedfa1fe6661ce0780072516a",
+          "bytes": 939
+        },
+        "result.json": {
+          "sha256": "1bec179c9dd578459893176356c4deb356971f809f6e62de140bc5439398acba",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "eb47e2d45f25bbf3126fd1076765e4966750fdd5205aa335327d52998445e6d8",
+          "bytes": 18048
+        }
+      }
+    },
+    {
+      "batch": "races-004",
+      "command": [
+        ".venv/bin/pytest",
+        "--no-cov",
+        "-s",
+        "tests/integration/recall/test_graph_runtime_races.py"
+      ],
+      "timeout_seconds": 600,
+      "started_at": "2026-09-07T16:33:13.764167+00:00",
+      "supervisor_pid": 96918,
+      "child_pid": 96925,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T16:34:09.995755+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "3d21a89aa628d23afe9ae545ca8b9abefee747cb9907afb4889fca2b07a28ab8",
+          "bytes": 345
+        },
+        "result.json": {
+          "sha256": "e07656e00fb99f32c3c31835b20340fd58ea381bf864845e414d7fa29c7516b3",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "6bd4f4bc79bd749adeab078d5c4ec2fbb8c64c751b4aa1fcf86b1e5d0dc86e9b",
+          "bytes": 18934
+        }
+      }
+    },
+    {
+      "batch": "static-001",
+      "command": [
+        "make",
+        "format-check",
+        "lint",
+        "typecheck",
+        "contracts-check",
+        "public-api-check"
+      ],
+      "timeout_seconds": 300,
+      "started_at": "2026-09-07T16:34:19.909001+00:00",
+      "supervisor_pid": 97223,
+      "child_pid": 97229,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T16:34:24.204291+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "1a94b7b74b03269307dea34a1463b33969eda60e5779311be75f94db760750e6",
+          "bytes": 343
+        },
+        "result.json": {
+          "sha256": "6607509f3f70d7447aedf7475d44a33840b7470ea4f148768f198e43541eb3bb",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "61f9d0d177a90f4285d1ee62162794882e7d0ce1736131a2f42199eb6536e858",
+          "bytes": 970
+        }
+      }
+    }
+  ]
+}

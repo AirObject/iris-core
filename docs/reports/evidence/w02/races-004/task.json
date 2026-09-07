@@ -1,0 +1,13 @@
+{
+  "command": [
+    ".venv/bin/pytest",
+    "--no-cov",
+    "-s",
+    "tests/integration/recall/test_graph_runtime_races.py"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 600,
+  "created_at": "2026-09-07T16:33:13.507543+00:00",
+  "head": "095925932ce789ffeba8126a3f96604afbf60caf",
+  "supervisor_pid": 96918
+}

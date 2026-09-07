@@ -1,0 +1,304 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 5 items
+
+tests/integration/recall/test_graph_runtime_races.py FF...               [100%]
+
+=================================== FAILURES ===================================
+____ test_http_mutation_race_rejects_old_fields_edges_and_replay[binding-0] ____
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10cc57fb0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b734c80>
+mutation = 'binding', round_index = 0
+
+    @pytest.mark.parametrize("round_index", range(50))
+    @pytest.mark.parametrize("mutation", ["binding", "redirect", "space_group", "correct", "forget"])
+    def test_http_mutation_race_rejects_old_fields_edges_and_replay(
+        world: Phase8World, monkeypatch: pytest.MonkeyPatch, mutation: str, round_index: int
+    ) -> None:
+        speaker = world.entity(f"speaker-{round_index}")
+        external_id = f"actor-{round_index}"
+        binding = world.bind_identity(speaker, external_id)
+        target = world.entity("target")
+        replacement = world.entity("replacement")
+        provisioning = ProvisioningService(world.store)
+        group = provisioning.create_space_group(world.admin_access, "group", reason="test")
+        world.access = replace(world.access, allowed_space_group_ids=frozenset({group.id}))
+        with world.store.read() as tx:
+            space_revision = tx.get_space(world.space).revision
+        provisioning.bind_space_to_group(
+            world.admin_access, world.space, group.id, expected_revision=space_revision, reason="test"
+        )
+        canary = f"obsolete-{mutation}-{round_index}"
+        claim = world.remember(
+            f"race-{round_index}",
+            canary,
+            speaker,
+            category="relationship",
+            value={"target_entity_id": target, "label": canary},
+        )
+        world.rebuild()
+        credentials = CredentialService(world.store, world.clock)
+        token = "w02-race-test-token-at-least-thirty-two-bytes"
+        credentials.issue(
+            token,
+            tenant_id=TENANT,
+            app_instance_id="w02-client",
+            plane="application",
+            expires_us=world.clock.now_us() + 10_000_000_000,
+            agent_ids=[world.agent],
+            space_ids=[world.space],
+            space_group_ids=[group.id],
+            data_purposes=["reply"],
+            capabilities=json.loads(Path("contracts/source/contracts.json").read_text())[
+                "capabilities"
+            ],
+        )
+        app = create_app(world.store, credentials=credentials)
+        request = request_for(world, "graph")
+        request["request_id"] = f"w02-{mutation}-{round_index}"
+        request["scope"]["space_group_id"] = group.id
+        request["actors"][0]["external_id"] = external_id
+        request["candidate_limits"]["profile"] = 20
+        collected, committed = Event(), Event()
+        original = StructuredRecallOrchestrator._run_routes
+        race_request = dict(request, request_id=request["request_id"] + "-race")
+    
+        def hold_collected(self: Any, actual: Any, *args: Any, **kwargs: Any) -> Any:
+            result = original(self, actual, *args, **kwargs)
+            if actual.request_id == race_request["request_id"]:
+                # Both real routes produced this old canonical revision before the writer commits.
+                assert {c.route for c in result[2] if c.resource_id == claim.claim_id} == {
+                    "graph",
+                    "profile",
+                }
+                collected.set()
+                assert committed.wait(10), "writer did not release query barrier"
+            return result
+    
+        with TestClient(app, headers={"Authorization": "Bearer " + token}) as client:
+            baseline = client.post("/v1/recall", json=request)
+            assert baseline.status_code == 200, baseline.text
+            assert canary in baseline.text
+            assert any(
+                c["resource_ref"]["resource_id"] == claim.claim_id
+                for c in baseline.json()["candidates"]
+            )
+            monkeypatch.setattr(StructuredRecallOrchestrator, "_run_routes", hold_collected)
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pending = pool.submit(client.post, "/v1/recall", json=race_request)
+                try:
+                    assert collected.wait(10), "query failed to reach the real collection barrier"
+                    if mutation == "binding":
+                        world.identities.revoke_binding(
+                            world.admin_access,
+                            binding.id,
+                            expected_revision=binding.revision,
+                            reason="race",
+                        )
+                    elif mutation == "redirect":
+                        world.identities.redirect_entity(
+                            world.admin_access, speaker, replacement, expected_revision=1, reason="race"
+                        )
+                    elif mutation == "space_group":
+                        with world.store.read() as tx:
+                            revision = tx.get_space(world.space).revision
+                        provisioning.unbind_space_from_group(
+                            world.admin_access, world.space, expected_revision=revision, reason="race"
+                        )
+                    elif mutation == "correct":
+                        world.claims.correct(
+                            world.access,
+                            claim.claim_id,
+                            expected_revision=claim.revision,
+                            canonical_text="replacement content",
+                            value={"target_entity_id": replacement},
+                            evidence=[{"source_type": "observation", "source_id": world.observation()}],
+                            reason="race",
+                            idempotency_key="correct-race",
+                        )
+                    else:
+                        ForgetService(world.store, world.clock, idempotency=world.idem).forget(
+                            world.access,
+                            ForgetSelector(
+                                kind=ForgetSelectorKind.RESOURCE,
+                                resource_type="claim",
+                                resource_id=claim.claim_id,
+                            ),
+                            reason="race",
+                            idempotency_key="forget-race",
+                        )
+                finally:
+                    committed.set()
+                response = pending.result(timeout=10)
+            expected_status = {
+                "binding": 404,
+                "redirect": 409,
+                "space_group": 404,
+                "correct": 200,
+                "forget": 200,
+            }
+>           assert response.status_code == expected_status[mutation], response.text
+E           AssertionError: {"schema_version":1,"request_id":"w02-binding-0-race","source_watermark":"2","persona_revision":1,"persona_content_hash":"51215dbd432521fb35e891f7f106fac9105bab4221abbea5042b2ccee40418d9","candidates":[{"candidate_id":"cand:307b441fbe4ee48f","resource_ref":{"resource_type":"claim","resource_id":"01a07cb6-f961-78d9-9925-f27b0793cd52","revision":1},"content_hash":"0c1da6489f39e4771a913a0cc6cc9808b75e1e325c750c48b692251311eedbce","text":"obsolete-binding-0","category":"relationship","placement":"memory","scope":{"space_group_id":null,"space_id":"01a07cb6-f93d-7c03-bcdf-3a6df8724115","session_id":null},"privacy_labels":[],"source_refs":[{"resource_type":"claim","resource_id":"01a07cb6-f961-78d9-9925-f27b0793cd52","revision":1}],"scores":{"confidence":0.5,"importance":0.5,"accessibility":1.0,"authority":0.5,"recency":1.0},"final_score":0.672414,"token_estimate":5,"subject_entity_id":"01a07cb6-f946-7714-a4aa-7f0134059291","conflict_state":null,"expires_at":null}],"pending_event_ids":[],"completed_routes":["tasks","recent_context","state","focus","claims","relations","graph","profile"],"degraded_routes":[{"route":"fts","reason_code":"fts_rebuild_pending","retryable":true,"fallback":"route_skipped_canonical_intact"}],"partial":true,"cache_until":null,"next_wake_at":null,"trace":{"request_hash":"bc91d9c21b15a668","ranker_version":3,"total_duration_us":32255,"routes":[{"route":"tasks","outcome":"completed","candidate_count":0,"duration_us":12037,"fallback":null},{"route":"recent_context","outcome":"completed","candidate_count":0,"duration_us":12148,"fallback":null},{"route":"state","outcome":"completed","candidate_count":0,"duration_us":12362,"fallback":null},{"route":"focus","outcome":"completed","candidate_count":0,"duration_us":12058,"fallback":null},{"route":"claims","outcome":"completed","candidate_count":0,"duration_us":9507,"fallback":null},{"route":"relations","outcome":"completed","candidate_count":0,"duration_us":11837,"fallback":null},{"route":"fts","outcome":"degraded","candidate_count":0,"duration_us":13167,"fallback":"fts_rebuild_pending"},{"route":"graph","outcome":"completed","candidate_count":1,"duration_us":10174,"fallback":null},{"route":"profile","outcome":"completed","candidate_count":2,"duration_us":5157,"fallback":null}],"rehydrated_out":0,"missing_score_components":3}}
+E           assert 200 == 404
+E            +  where 200 = <Response [200 OK]>.status_code
+
+tests/integration/recall/test_graph_runtime_races.py:159: AssertionError
+___ test_http_mutation_race_rejects_old_fields_edges_and_replay[redirect-0] ____
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10cdd6cc0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10cdd6120>
+mutation = 'redirect', round_index = 0
+
+    @pytest.mark.parametrize("round_index", range(50))
+    @pytest.mark.parametrize("mutation", ["binding", "redirect", "space_group", "correct", "forget"])
+    def test_http_mutation_race_rejects_old_fields_edges_and_replay(
+        world: Phase8World, monkeypatch: pytest.MonkeyPatch, mutation: str, round_index: int
+    ) -> None:
+        speaker = world.entity(f"speaker-{round_index}")
+        external_id = f"actor-{round_index}"
+        binding = world.bind_identity(speaker, external_id)
+        target = world.entity("target")
+        replacement = world.entity("replacement")
+        provisioning = ProvisioningService(world.store)
+        group = provisioning.create_space_group(world.admin_access, "group", reason="test")
+        world.access = replace(world.access, allowed_space_group_ids=frozenset({group.id}))
+        with world.store.read() as tx:
+            space_revision = tx.get_space(world.space).revision
+        provisioning.bind_space_to_group(
+            world.admin_access, world.space, group.id, expected_revision=space_revision, reason="test"
+        )
+        canary = f"obsolete-{mutation}-{round_index}"
+        claim = world.remember(
+            f"race-{round_index}",
+            canary,
+            speaker,
+            category="relationship",
+            value={"target_entity_id": target, "label": canary},
+        )
+        world.rebuild()
+        credentials = CredentialService(world.store, world.clock)
+        token = "w02-race-test-token-at-least-thirty-two-bytes"
+        credentials.issue(
+            token,
+            tenant_id=TENANT,
+            app_instance_id="w02-client",
+            plane="application",
+            expires_us=world.clock.now_us() + 10_000_000_000,
+            agent_ids=[world.agent],
+            space_ids=[world.space],
+            space_group_ids=[group.id],
+            data_purposes=["reply"],
+            capabilities=json.loads(Path("contracts/source/contracts.json").read_text())[
+                "capabilities"
+            ],
+        )
+        app = create_app(world.store, credentials=credentials)
+        request = request_for(world, "graph")
+        request["request_id"] = f"w02-{mutation}-{round_index}"
+        request["scope"]["space_group_id"] = group.id
+        request["actors"][0]["external_id"] = external_id
+        request["candidate_limits"]["profile"] = 20
+        collected, committed = Event(), Event()
+        original = StructuredRecallOrchestrator._run_routes
+        race_request = dict(request, request_id=request["request_id"] + "-race")
+    
+        def hold_collected(self: Any, actual: Any, *args: Any, **kwargs: Any) -> Any:
+            result = original(self, actual, *args, **kwargs)
+            if actual.request_id == race_request["request_id"]:
+                # Both real routes produced this old canonical revision before the writer commits.
+                assert {c.route for c in result[2] if c.resource_id == claim.claim_id} == {
+                    "graph",
+                    "profile",
+                }
+                collected.set()
+                assert committed.wait(10), "writer did not release query barrier"
+            return result
+    
+        with TestClient(app, headers={"Authorization": "Bearer " + token}) as client:
+            baseline = client.post("/v1/recall", json=request)
+            assert baseline.status_code == 200, baseline.text
+            assert canary in baseline.text
+            assert any(
+                c["resource_ref"]["resource_id"] == claim.claim_id
+                for c in baseline.json()["candidates"]
+            )
+            monkeypatch.setattr(StructuredRecallOrchestrator, "_run_routes", hold_collected)
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pending = pool.submit(client.post, "/v1/recall", json=race_request)
+                try:
+                    assert collected.wait(10), "query failed to reach the real collection barrier"
+                    if mutation == "binding":
+                        world.identities.revoke_binding(
+                            world.admin_access,
+                            binding.id,
+                            expected_revision=binding.revision,
+                            reason="race",
+                        )
+                    elif mutation == "redirect":
+>                       world.identities.redirect_entity(
+                            world.admin_access, speaker, replacement, expected_revision=1, reason="race"
+
+tests/integration/recall/test_graph_runtime_races.py:118: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/iris_memory_core/application/identity.py:1076: in redirect_entity
+    _code, body, replayed = self._run_operation(
+src/iris_memory_core/application/identity.py:125: in _run_operation
+    code, body, _refs = op(tx)
+                        ^^^^^^
+src/iris_memory_core/application/identity.py:1064: in op
+    redirect = self._redirect_entity_in_tx(
+src/iris_memory_core/application/identity.py:1020: in _redirect_entity_in_tx
+    tx.update_entity_state(
+src/iris_memory_core/storage/uow.py:310: in update_entity_state
+    return self.identities.update_entity_state(
+src/iris_memory_core/storage/repositories.py:762: in update_entity_state
+    new_revision = _cas_bump(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+connection = <sqlite3.Connection object at 0x10cdfae30>, table = 'entities'
+row_id = '01a07cb6-fa18-7548-bc3b-92f6394e1a05', expected_revision = 1
+assignments = {'state': 'redirected'}, now_us = 1700000000000000
+
+    def _cas_bump(
+        connection: sqlite3.Connection,
+        table: str,
+        row_id: str,
+        expected_revision: int,
+        assignments: dict[str, Any],
+        now_us: int,
+    ) -> int:
+        """Compare-and-set revision bump; raises the stable mismatch error on conflict."""
+        sets = ", ".join(f"{column} = ?" for column in assignments)
+        values = list(assignments.values())
+        cursor = connection.execute(
+            f"UPDATE {table} SET {sets}, revision = revision + 1, updated_us = ? "
+            f"WHERE id = ? AND revision = ?",
+            (*values, now_us, row_id, expected_revision),
+        )
+        if cursor.rowcount == 1:
+            return expected_revision + 1
+        row = _one(connection, f"SELECT revision FROM {table} WHERE id = ?", (row_id,))
+        if row is None:
+            raise NotFoundError(f"{table} {row_id} not found")
+>       raise RevisionMismatchError(table, row_id, expected_revision, int(row["revision"]))
+E       iris_memory_core.domain.errors.RevisionMismatchError: revision_mismatch: expected revision 1 does not match current revision 2
+
+src/iris_memory_core/storage/repositories.py:123: RevisionMismatchError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[binding-0]
+FAILED tests/integration/recall/test_graph_runtime_races.py::test_http_mutation_race_rejects_old_fields_edges_and_replay[redirect-0]
+=================== 2 failed, 3 passed, 2 warnings in 1.36s ====================

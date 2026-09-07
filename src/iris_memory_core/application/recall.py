@@ -1488,6 +1488,7 @@ class GraphRoute:
             agent_id=request.agent_id,
             minimum_watermark=request.minimum_watermark,
         )
+        check_deadline(self._monotonic, deadline_us)
         request_scope = Scope(
             tenant_id=access.tenant_id,
             agent_id=request.agent_id,
@@ -1514,8 +1515,9 @@ class GraphRoute:
             fanout_used = 0
             frontier.sort()
             for node_kind, node_id in frontier:
-                if len(visited) >= self._max_nodes:
+                if len(visited) >= self._max_nodes or fanout_used >= self._max_fanout:
                     break
+                check_deadline(self._monotonic, deadline_us)
                 edges = tx.graph.edges_for_source(
                     access.tenant_id,
                     generation.id,
@@ -1523,15 +1525,18 @@ class GraphRoute:
                     node_kind=node_kind,
                     limit=self._edge_read_limit(),
                 )
+                check_deadline(self._monotonic, deadline_us)
                 for edge in edges:
                     if fanout_used >= self._max_fanout:
                         break
                     check_deadline(self._monotonic, deadline_us)
                     if self._edge_kinds is not None and edge.edge_kind not in (self._edge_kinds):
                         continue
-                    if not self._edge_visible(
+                    visible = self._edge_visible(
                         tx, edge, request_scope, access, valid_at_us, entity_cache
-                    ):
+                    )
+                    check_deadline(self._monotonic, deadline_us)
+                    if not visible:
                         continue
                     # Canonical currency BEFORE any use of the edge: an
                     # edge whose resource drifted (correct / revoke /
@@ -1539,7 +1544,11 @@ class GraphRoute:
                     # neither become a candidate NOR expand the frontier —
                     # validating only at candidacy left the next hop
                     # reachable through a stale edge (review round 3).
-                    if not self._projection.resource_still_admissible(tx, access.tenant_id, edge):
+                    admissible = self._projection.resource_still_admissible(
+                        tx, access.tenant_id, edge
+                    )
+                    check_deadline(self._monotonic, deadline_us)
+                    if not admissible:
                         continue
                     fanout_used += 1
                     target = (edge.target_node_kind, edge.target_node_id)
@@ -1555,6 +1564,7 @@ class GraphRoute:
                     candidate = self._candidate_for_edge(
                         tx, request, access, edge, request_scope, depth + 1, now_us
                     )
+                    check_deadline(self._monotonic, deadline_us)
                     if candidate is not None:
                         candidates.append(candidate)
                         if len(candidates) >= limit:
@@ -3214,6 +3224,16 @@ class RecallService:
             # The writer gate serializes publication with both another
             # first response and Forget's tombstone/scrub transaction.
             StructuredRecallOrchestrator._authorize_request(tx, access, effective)
+            if actors is not None:
+                # Binding revocation / entity redirect can commit while the
+                # routes hold candidates. Canonical resource revisions alone
+                # do not fence the actor that authorized their collection.
+                speaker = actors[0]
+                current_speaker = _resolve_actor_entity(
+                    tx, access.tenant_id, speaker.provider, speaker.realm, speaker.external_id
+                )
+                if current_speaker != effective.speaker_entity_id:
+                    raise ConflictError("recall actor changed while the request was executing")
             require_surface_online_in_tx(
                 self._surface,
                 tx,

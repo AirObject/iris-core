@@ -1,6 +1,8 @@
 # Phase 8 验证报告：Profile 与 Graph
 2026-09-06 未闭合复审项的后续修复与验证见[联合修复报告](phase-05-06-07-08-review-fixes.md)。
 
+2026-09-08 原量化门禁已由 [W02](w02-graph-quantitative-gates.md)补齐：真实 GraphRoute 观测替换复制 BFS 的预算证明，五类各 50 次 HTTP 查询竞态通过，收尾 CI 为 11966 passed / 85.52% 覆盖率，真实浏览器与隔离安装也通过。以下历史数字不代替 W02 的当前证据，稳定发布验收仍由后续工作包承担。
+
 > 归档证据：以下版本、测试数量、耗时与覆盖率是本阶段执行时的历史快照，未在本次文档整理中重跑；不能作为当前发布已通过的证明。当前状态见[阶段索引](../development/README.md)，发布重验见[Phase 14](../development/phase-14-hardening-release.md)。
 > 后续闭环：HTTP/进程入口已由 [Phase 10](../development/phase-10-consolidation-reflection.md)交付；旧报告中的应用层/mock 范围只描述当时环境。
 

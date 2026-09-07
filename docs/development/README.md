@@ -5,7 +5,7 @@
 
 本页是阶段状态与依赖的统一入口。项目编号为 Phase 0–14；最新完成情况核查覆盖 Phase 1–10、13–14，不能把“已经推进到 Phase 13”理解为所有前序门禁均已通过。Phase 0–10 保留历史切片报告，Phase 13 仍有未完成功能；Phase 11/12 均按项目负责人 2026-09-06 要求暂缓。Phase 14 的 pip 范围仅为 Core 功能与既定公共接口，不包含两个适配器，也不以其验收或分发为前置条件。
 
-2026-09-07：整体 Phase 14 goal 已停止；后续按[构建指导](./next-build-guide.md)和[单一工作包队列](./work-packages.md)逐包启动。最新用户授权已启动 W01→W20 串行执行，W01 专属接线门禁及完整 CI 已通过，进入 W02 前完成独立提交；每包全部验收和单独提交后立即续作，长任务后台运行并按实际完成结果续作，原定时 automation 已取消。见[队列及执行检查点](./work-packages.md#当前执行授权)。
+2026-09-07：整体 Phase 14 goal 已停止；后续按[构建指导](./next-build-guide.md)和[单一工作包队列](./work-packages.md)逐包启动。最新用户授权已启动 W01→W20 串行执行，W01 专属接线门禁及完整 CI 已通过，独立提交 `0959259` 已完成，当前 W02；每包全部验收和单独提交后立即续作，长任务后台运行并按实际完成结果续作，原定时 automation 已取消。见[队列及执行检查点](./work-packages.md#当前执行授权)。
 
 ## 阶段状态与证据
 
@@ -19,7 +19,7 @@
 | [05 长期记忆与 Episode](./phase-05-long-term-memory.md) | Completed | Remember/Correct/Forget、Artifact 与删除账本；[报告](../reports/phase-05-verification.md) |
 | [06 FTS Recall](./phase-06-fts-recall.md) | Completed | 完整 Recall 契约、FTS 与 Usage；[报告](../reports/phase-06-verification.md) |
 | [07 Vector Recall](./phase-07-vector-recall.md) | Completed（历史切片） | Provider/FAISS/混合路由有实现；W01 候选已接 HTTP Vector 并通过真实 SDK 命中，完整 `ci-002` 已通过；生产 Provider 配置由 W05 承接；[历史报告](../reports/phase-07-verification.md) |
-| [08 Profile 与 Graph](./phase-08-profile-graph.md) | Completed（历史切片） | Profile 已接 HTTP；W01 候选已接 GraphRoute 并通过真实两跳命中，完整 `ci-002` 已通过；原量化门禁由 W02 补齐；[历史报告](../reports/phase-08-verification.md) |
+| [08 Profile 与 Graph](./phase-08-profile-graph.md) | Completed（历史切片） | Profile 已接 HTTP；W01 候选已接 GraphRoute 并通过真实两跳命中，完整 `ci-002` 已通过；原量化门禁已由 W02 补齐并通过完整 CI；[历史报告](../reports/phase-08-verification.md) |
 | [09 Persona](./phase-09-persona.md) | Completed（历史切片） | State/Policy/Proposal、发布回滚已实现；原 Policy 性质、TTL 回拨及通用客户端证据由 W03/W16 补齐；[历史报告](../reports/phase-09-verification.md) |
 | [10 巩固、Reflection 与 HTTP](./phase-10-consolidation-reflection.md) | Completed（历史切片） | 流水线/ASGI/serve/worker 已实现；W01 Recall 组合专属门禁和完整 `ci-002` 均通过；真实认知 Provider/生产进程仍待 W06/W16；[历史报告](../reports/phase-10-verification.md) |
 | [11 Bellis Adapter](./phase-11-bellis-adapter.md) | Deferred | 暂时不再执行，移出当前发布门禁；已有插件、历史验证及未完成项保留；[报告](../reports/phase-11-verification.md) |

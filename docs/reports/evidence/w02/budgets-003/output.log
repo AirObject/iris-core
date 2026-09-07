@@ -1,0 +1,92 @@
+UV_CACHE_DIR=.uv-cache uv run pytest tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_profile_graph.py::TestBudgets --no-cov
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 12 items
+
+tests/integration/recall/test_graph_runtime_budgets.py ......F.          [ 66%]
+tests/integration/recall/test_graph_profile_graph.py ....                [100%]
+
+=================================== FAILURES ===================================
+_ test_deadline_expiring_during_real_work_stops_before_next_expansion[admissibility] _
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10d325f10>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d218ec0>
+stage = 'admissibility'
+
+    @pytest.mark.parametrize("stage", ["read", "visibility", "admissibility", "candidate"])
+    def test_deadline_expiring_during_real_work_stops_before_next_expansion(
+        world: Phase8World, monkeypatch: pytest.MonkeyPatch, stage: str
+    ) -> None:
+        assert world.speaker_entity is not None
+        world.relate("deadline", world.speaker_entity, world.entity("deadline-target"))
+        world.graph.rebuild(TENANT)
+        clock = ControlledMonotonic()
+        target_class, name = {
+            "read": (GraphRepository, "edges_for_source"),
+            "visibility": (GraphRoute, "_edge_visible"),
+            "admissibility": (GraphProjectionService, "resource_still_admissible"),
+            "candidate": (GraphRoute, "_candidate_for_edge"),
+        }[stage]
+        original = getattr(target_class, name)
+        calls = 0
+    
+        def expire_after_actual_work(*args: Any, **kwargs: Any) -> Any:
+            nonlocal calls
+            assert clock.value < 100, "work continued after the deadline"
+            result = original(*args, **kwargs)
+            calls += 1
+            clock.value = 100
+            return result
+    
+        monkeypatch.setattr(target_class, name, expire_after_actual_work)
+        probe = GraphExecutionProbe()
+        probe.install(monkeypatch)
+        route = GraphRoute(world.graph, monotonic=clock, max_depth=1)
+        request = StructuredRecallRequest(
+            request_id=f"deadline-{stage}",
+            agent_id=world.agent,
+            space_id=world.space,
+            speaker_entity_id=world.speaker_entity,
+            candidate_limits={"graph": 1},
+            deadline_monotonic_us=100,
+        )
+        with world.store.read() as tx, pytest.raises(RouteDeadlineExceeded):
+>           route.collect(tx, request, world.access, deadline_us=100, now_us=world.clock.now_us())
+
+tests/integration/recall/test_graph_runtime_budgets.py:172: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/integration/recall/graph_execution_probe.py:47: in traced_collect
+    return collect(route, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/iris_memory_core/application/recall.py:1547: in collect
+    admissible = self._projection.resource_still_admissible(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = (<iris_memory_core.indexing.graph.GraphProjectionService object at 0x10d21b680>, <iris_memory_core.storage.uow.Transac...us=None, content_hash='b3b0081ac4a1a3f8bdba35b17acf2a48af88486d5a33934dc0e8cd87213386bc', created_us=1700000000000000))
+kwargs = {}, @py_assert1 = None, @py_assert4 = None, @py_assert3 = None
+
+    def expire_after_actual_work(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        assert clock.value < 100, "work continued after the deadline"
+>       result = original(*args, **kwargs)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: GraphProjectionService.resource_still_admissible() takes 3 positional arguments but 4 were given
+
+tests/integration/recall/test_graph_runtime_budgets.py:154: TypeError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/recall/test_graph_runtime_budgets.py::test_deadline_expiring_during_real_work_stops_before_next_expansion[admissibility]
+================== 1 failed, 11 passed, 2 warnings in 18.19s ===================
+make: *** [test-affected] Error 1

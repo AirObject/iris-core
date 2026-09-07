@@ -9,9 +9,9 @@
 
 ## 当前执行授权
 
-2026-09-08 最新补充：已按用户要求取消定时 automation；继续现有 goal，以后台任务实际完成结果触发收尾和下一包，不设置定时阶段门、不执行 clock sleep。下方十分钟跟进描述为先前配置，现已取消。
+2026-09-08 最新补充：已按用户要求删除定时 automation `w01-w20`；继续现有 goal，以后台任务实际完成结果触发收尾和下一包，不设置定时阶段门、不执行 clock sleep。
 
-2026-09-07 最新用户指令覆盖此前“完成后停止、下一包另行下达”的规则：使用 goal 严格按 W01→W20 串行推进，每包全部验收、收尾 `make ci`、报告/队列更新并单独提交后立即进入下一包，无需逐包确认。长任务后台运行，automation `w01-w20` 每 10 分钟按[持久检查点](serial-execution-state.json)跟进；后台验收未完成不得关闭或跳包。Phase 11/12 保持 Deferred。下文历史下达描述以本段最新授权为准。
+2026-09-07 用户指令覆盖此前“完成后停止、下一包另行下达”的规则：使用 goal 严格按 W01→W20 串行推进，每包全部验收、收尾 `make ci`、报告/队列更新并单独提交后立即进入下一包，无需逐包确认。长任务后台运行，在[持久检查点](serial-execution-state.json)保存会话/进程、日志和实际结果；后台验收未完成不得关闭或跳包。Phase 11/12 保持 Deferred。下文历史下达描述以本段及最新补充授权为准。
 
 ## 下达与收尾规则
 
@@ -21,12 +21,12 @@
 
 ## 交互式工作包队列
 
-W01 已完成验收并以独立提交交接，下一包为 W02，其余保持 Planned。新的建议顺序先处理核查确认的 Recall 能力声明与接线问题；原“13.6 统计下一项”调整为 W07。独立准备可并行，但不得跳过[指导中的必需依赖](next-build-guide.md#3-建议顺序与依赖)。
+W01 已独立提交；W02 已完成全部验收，正在独立提交交接，W03 仅在该提交完成后启动。其余保持 Planned。新的建议顺序先处理核查确认的 Recall 能力声明与接线问题；原“13.6 统计下一项”调整为 W07。独立准备可并行，但不得跳过[指导中的必需依赖](next-build-guide.md#3-建议顺序与依赖)。
 
 | 工作包 | 原范围 | 状态/交接 |
 | --- | --- | --- |
-| [W01 HTTP Recall 接线与能力声明](next-build-guide.md#w01-http-recall-接线与能力声明) | Phase 7/8/10，14.0-D/F | Completed；[W01 报告](../reports/w01-http-recall-assembly.md)，完整 `ci-002` 通过：11705 项功能测试、85.50% 覆盖率、20 项真实浏览器与独立安装 Recall；随本次 W01 提交交接 |
-| [W02 Graph 原量化门禁](next-build-guide.md#w02-graph-原量化门禁) | Phase 8，14.0-D | Planned |
+| [W01 HTTP Recall 接线与能力声明](next-build-guide.md#w01-http-recall-接线与能力声明) | Phase 7/8/10，14.0-D/F | Completed；[W01 报告](../reports/w01-http-recall-assembly.md)，完整 `ci-002` 通过：11705 项功能测试、85.50% 覆盖率、20 项真实浏览器与独立安装 Recall；Commit `0959259` |
+| [W02 Graph 原量化门禁](next-build-guide.md#w02-graph-原量化门禁) | Phase 8，14.0-D | Completed；[W02 报告](../reports/w02-graph-quantitative-gates.md)，456 项定向回归、11966 项功能/85.52% 覆盖率、完整 CI/浏览器/安装通过；与本包独立提交交接 |
 | [W03 Persona 原量化门禁](next-build-guide.md#w03-persona-原量化门禁) | Phase 9，14.0-D | Planned |
 | [W04 Operation 扩展与可信备份流程](next-build-guide.md#w04-operation-扩展与可信备份流程) | 13.11 最小前置 | Planned |
 | [W05 Embedding Provider 全链路](next-build-guide.md#w05-embedding-provider-全链路) | 13.9，14.2 | Planned |

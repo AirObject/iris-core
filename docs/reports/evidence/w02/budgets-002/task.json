@@ -1,0 +1,12 @@
+{
+  "command": [
+    "make",
+    "test-affected",
+    "TESTS=tests/integration/recall/test_graph_runtime_budgets.py tests/integration/recall/test_graph_profile_graph.py::TestBudgets"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 600,
+  "created_at": "2026-09-07T16:24:38.439473+00:00",
+  "head": "095925932ce789ffeba8126a3f96604afbf60caf",
+  "supervisor_pid": 94439
+}
