@@ -1,7 +1,7 @@
 {
   "api_version": "v1",
-  "contract_source_sha256": "aa5b40de44dca242b5e5d6a7106083863aba1aeffef80efc4e8b4dcdeb2b50ad",
+  "contract_source_sha256": "5b6c6a951f0829633c6576ba24deccd69970abe97996cd5a10d42cd484340f80",
   "contract_version": "1.11.0",
-  "package_version": "0.14.0",
-  "schema_version": 21
+  "package_version": "0.15.0",
+  "schema_version": 22
 }

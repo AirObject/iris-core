@@ -44,10 +44,18 @@ def test_terminal_task_cascade_and_restore(
             migration = (default_migrations_path() / "0019_task_deletion_lookups.sql").read_text()
             for name in re.findall(r"CREATE INDEX (\w+)", migration):
                 connection.execute(f"DROP INDEX {name}")
-            connection.execute("DROP TABLE console_operation_problems")
-            connection.execute("DROP TABLE console_operation_forget")
-            connection.execute("DROP TABLE console_operation_backups")
-            connection.execute("DROP TABLE console_operations")
+            # A genuine Schema18 snapshot cannot retain tables from later
+            # Console/Provider migrations. Only remove empty future tables;
+            # nonempty data here would invalidate this historical fixture.
+            future_tables = dict.fromkeys(
+                name
+                for source in sorted(default_migrations_path().glob("*.sql"))
+                if int(source.name[:4]) > 18
+                for name in re.findall(r"(?m)^CREATE TABLE (\w+)", source.read_text())
+            )
+            for name in reversed(future_tables):
+                assert connection.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0] == 0
+                connection.execute(f"DROP TABLE {name}")
             connection.execute("DELETE FROM schema_migrations WHERE version>=19")
             connection.execute("DELETE FROM migration_runs WHERE version>=19")
         connection.close()  # Checkpoint the fixture before hashing its immutable snapshot.
@@ -109,7 +117,7 @@ def test_terminal_task_cascade_and_restore(
             for m in MigrationRunner(destination / "canonical.sqlite3").migrate(
                 allow_offline=True, backup_performed=True
             )
-        ] == [19, 20, 21]
+        ] == [19, 20, 21, 22]
     restored = Store(
         SQLiteRuntime(
             destination / "canonical.sqlite3", allowed_versions=(sqlite_runtime_version(),)

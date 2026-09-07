@@ -142,6 +142,7 @@ def test_backfill_historic_tombstone_without_duplicate(
         19,
         20,
         21,
+        22,
     ]
     assert runner.migrate() == ()
     with sqlite3.connect(store.runtime.database) as conn:
@@ -165,7 +166,7 @@ def test_backfill_historic_tombstone_without_duplicate(
         for migration in MigrationRunner(restored_database).migrate(
             allow_offline=True, backup_performed=True
         )
-    ] == [17, 18, 19, 20, 21]
+    ] == [17, 18, 19, 20, 21, 22]
     restored = Store(SQLiteRuntime(restored_database, allowed_versions=(sqlite_runtime_version(),)))
     with restored.read() as tx:
         for identifier in (historic.id, newer.id):

@@ -99,6 +99,7 @@ def legacy_store(tmp_path: Path) -> tuple[Store, list[ConsoleOperation]]:
             row = asdict(record)
             payload = row.pop("forget")
             row.pop("backup")
+            row.pop("provider")
             row.update(payload)
             tx.raw().execute(
                 f"INSERT INTO console_operations ({','.join(row)}) "
@@ -136,7 +137,10 @@ def test_schema20_upgrade_requires_backup_and_preserves_every_forget_field(tmp_p
     destination = tmp_path / "pre-upgrade"
     backup.create_backup(destination)
     assert backup.verify_backup(destination).ok
-    assert [m.version for m in runner.migrate(allow_offline=True, backup_performed=True)] == [21]
+    assert [m.version for m in runner.migrate(allow_offline=True, backup_performed=True)] == [
+        21,
+        22,
+    ]
     assert runner.migrate() == ()
     assert_history(store.runtime.database, records)
     with sqlite3.connect(store.runtime.database) as connection:
@@ -172,5 +176,5 @@ def test_schema20_backup_restores_history_then_upgrades_with_verified_backup(
     assert [
         m.version
         for m in MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
-    ] == [21]
+    ] == [21, 22]
     assert_history(database, records)

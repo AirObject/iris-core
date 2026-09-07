@@ -69,6 +69,7 @@ from iris_memory_core.storage.plans import (
     TaskRepository,
 )
 from iris_memory_core.storage.projection import GraphRepository, ProfileRepository
+from iris_memory_core.storage.provider_configs import ProviderConfigRepository
 from iris_memory_core.storage.reflection import ReflectionRepository
 from iris_memory_core.storage.repositories import (
     IdentityRepository,
@@ -137,6 +138,7 @@ class Transaction:
         self.reflection = ReflectionRepository(connection, clock, ids)
         self.console = ConsoleRepository(connection)
         self.console_operations = ConsoleOperationRepository(connection)
+        self.providers = ProviderConfigRepository(connection)
         self.console_reads = ConsoleReadRepository(connection, writable=writable)
         self._connection = connection
         self._writable = writable

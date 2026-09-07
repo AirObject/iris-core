@@ -30,6 +30,7 @@ from iris_memory_core.application.ports.memory import (
 from iris_memory_core.application.ports.notes import NoteSurface
 from iris_memory_core.application.ports.observation import ObservationSurface
 from iris_memory_core.application.ports.persona import PersonaSurface
+from iris_memory_core.application.ports.provider_configs import ProviderConfigRepository
 from iris_memory_core.application.ports.recall import RecallUsageSurface, RecentContextSurface
 from iris_memory_core.application.ports.reflection import ReflectionSurface
 from iris_memory_core.application.ports.retention import RetentionSurface
@@ -144,6 +145,9 @@ class Transaction(Protocol):
 
     @property
     def console_operations(self) -> ConsoleOperationRepository: ...
+
+    @property
+    def providers(self) -> ProviderConfigRepository: ...
 
     @property
     def console_reads(self) -> ConsoleReadRepository: ...

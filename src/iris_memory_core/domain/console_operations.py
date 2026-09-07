@@ -1,6 +1,6 @@
 """Internal durable management intent, separate from Canonical Task plans."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +18,17 @@ class TrustedBackupPayload:
     result_ref: str | None = None
     manifest_hash: str | None = None
     verified_us: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderOperationPayload:
+    config_id: str
+    content_revision: int
+    action: str
+    expected_serving_epoch: int
+    plan_hash: str | None = None
+    generation_id: str | None = None
+    plan_json: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +55,7 @@ class ConsoleOperation:
     problems_count: int = 0
     forget: ForgetOperationPayload | None = None
     backup: TrustedBackupPayload | None = None
+    provider: ProviderOperationPayload | None = None
 
     @property
     def forget_payload(self) -> ForgetOperationPayload:

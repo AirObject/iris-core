@@ -128,6 +128,11 @@ class VectorRepository:
         reset is whole-database too; the id map and the surrogate counter
         SURVIVE so surrogate assignment stays stable across restores. State
         flips to pending_rebuild."""
+        from iris_memory_core.storage.provider_restore import reset_provider_projection
+
+        reset_provider_projection(
+            self._connection, now_us=now_us if now_us is not None else self._clock.now_us()
+        )
         self._connection.execute("DELETE FROM vector_delta_ledger")
         self._connection.execute("DELETE FROM vector_current")
         self._connection.execute("DELETE FROM vector_generations")
@@ -469,6 +474,49 @@ class VectorRepository:
             (tenant_id,),
         ).fetchall()
         return tuple(_generation_from_row(row) for row in rows)
+
+    def reactivate_generation(
+        self,
+        tenant_id: str,
+        generation: VectorGenerationRecord,
+        *,
+        expected_epoch: int,
+        source_watermark: int,
+        tombstone_watermark: int,
+        agent_watermarks: dict[str, int],
+    ) -> VectorGenerationRecord:
+        """Called only after exact retained-content verification in the same transaction.
+
+        Immutable bytes/digests/space stay unchanged. Lifecycle and proven watermarks
+        advance together with the caller's pointer/configuration publication fence.
+        """
+        current = self.get_generation(generation.id)
+        if (
+            current != generation
+            or current.tenant_id != tenant_id
+            or self.current_epoch(tenant_id) != expected_epoch
+            or current.status not in {"retired", "verified"}
+            or source_watermark < current.source_watermark
+            or tombstone_watermark < current.tombstone_watermark
+        ):
+            raise ConflictError("retained vector generation moved")
+        watermarks = current.agent_watermarks()
+        for agent, watermark in agent_watermarks.items():
+            watermarks[agent] = max(watermarks.get(agent, 0), watermark)
+        self._connection.execute(
+            "UPDATE vector_generations SET status='verified',retired_us=NULL,verified_us=?,"
+            "source_watermark=?,tombstone_watermark=?,agent_watermarks_json=? "
+            "WHERE id=? AND tenant_id=?",
+            (
+                self._clock.now_us(),
+                source_watermark,
+                tombstone_watermark,
+                canonical_json(watermarks),
+                generation.id,
+                tenant_id,
+            ),
+        )
+        return self.get_generation(generation.id)
 
     def retire_generation(self, generation_id: str, *, now_us: int | None = None) -> int:
         stamp = now_us if now_us is not None else self._clock.now_us()

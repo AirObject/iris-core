@@ -8,6 +8,7 @@ from iris_memory_core.domain.console_operations import (
     ForgetOperationPayload,
     OperationProblem,
     OperationSummary,
+    ProviderOperationPayload,
     TrustedBackupPayload,
 )
 from iris_memory_core.domain.errors import ConflictError
@@ -32,15 +33,33 @@ class ConsoleOperationRepository:
         else:
             value.pop("forget_id")
             value.pop("backup_id")
+            value.pop("provider_id", None)
             kind = value["kind"]
-            payload_type = (
-                ForgetOperationPayload if kind == "memory_forget" else TrustedBackupPayload
+            payload_type: (
+                type[ForgetOperationPayload]
+                | type[TrustedBackupPayload]
+                | type[ProviderOperationPayload]
             )
-            table = (
-                "console_operation_forget"
-                if kind == "memory_forget"
-                else "console_operation_backups"
-            )
+            if kind == "memory_forget":
+                field_name, payload_type, table = (
+                    "forget",
+                    ForgetOperationPayload,
+                    "console_operation_forget",
+                )
+            elif kind == "trusted_backup":
+                field_name, payload_type, table = (
+                    "backup",
+                    TrustedBackupPayload,
+                    "console_operation_backups",
+                )
+            elif kind == "embedding_provider":
+                field_name, payload_type, table = (
+                    "provider",
+                    ProviderOperationPayload,
+                    "console_operation_providers",
+                )
+            else:
+                raise ValueError("unknown operation kind")
             saved = self._connection.execute(
                 f"SELECT {','.join(field.name for field in fields(payload_type))} FROM {table} "
                 "WHERE operation_id=?",
@@ -48,7 +67,7 @@ class ConsoleOperationRepository:
             ).fetchone()
             if saved is None:
                 raise ValueError("operation typed payload is missing")
-            value["forget" if kind == "memory_forget" else "backup"] = payload_type(**dict(saved))
+            value[field_name] = payload_type(**dict(saved))
         return ConsoleOperation(**value)
 
     def get(self, tenant_id: str, identifier: str) -> ConsoleOperation | None:
@@ -60,10 +79,20 @@ class ConsoleOperationRepository:
 
     def insert(self, operation: ConsoleOperation) -> None:
         row = asdict(operation)
-        forget, backup = row.pop("forget"), row.pop("backup")
-        if operation.kind == "memory_forget" and forget is not None and backup is None:
+        forget, backup, provider = row.pop("forget"), row.pop("backup"), row.pop("provider")
+        if (
+            operation.kind == "memory_forget"
+            and forget is not None
+            and backup is None
+            and provider is None
+        ):
             payload, table, reference = forget, "console_operation_forget", "forget_id"
-        elif operation.kind == "trusted_backup" and backup is not None and forget is None:
+        elif (
+            operation.kind == "trusted_backup"
+            and backup is not None
+            and forget is None
+            and provider is None
+        ):
             payload, table, reference = backup, "console_operation_backups", "backup_id"
             if (
                 operation.status != "queued"
@@ -71,6 +100,19 @@ class ConsoleOperationRepository:
                 or backup["result_ref"] is not None
             ):
                 raise ValueError("new backup must be unexecuted")
+        elif (
+            operation.kind == "embedding_provider"
+            and provider is not None
+            and forget is None
+            and backup is None
+        ):
+            payload, table, reference = provider, "console_operation_providers", "provider_id"
+            if (
+                operation.status != "queued"
+                or operation.processed
+                or provider["generation_id"] is not None
+            ):
+                raise ValueError("new provider operation must be unexecuted")
         else:
             raise ValueError("operation kind and payload differ")
         row[reference] = operation.id
@@ -134,6 +176,11 @@ class ConsoleOperationRepository:
                     operation.backup.verified_us,
                     operation.id,
                 ),
+            )
+        elif operation.provider is not None:
+            self._connection.execute(
+                "UPDATE console_operation_providers SET generation_id=? WHERE operation_id=?",
+                (operation.provider.generation_id, operation.id),
             )
         changed = self._connection.execute(
             f"UPDATE console_operations SET {','.join(name + '=?' for name in names)} "

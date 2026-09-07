@@ -223,6 +223,17 @@ class VectorSurface(Protocol):
 
     def all_pointer_generation_ids(self) -> tuple[str, ...]: ...
 
+    def reactivate_generation(
+        self,
+        tenant_id: str,
+        generation: VectorGenerationRecord,
+        *,
+        expected_epoch: int,
+        source_watermark: int,
+        tombstone_watermark: int,
+        agent_watermarks: dict[str, int],
+    ) -> VectorGenerationRecord: ...
+
     def retire_generation(self, generation_id: str, *, now_us: int | None = None) -> int: ...
 
     def delete_retired_generations(
