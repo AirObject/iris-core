@@ -818,7 +818,86 @@ class VectorMetrics(Protocol):
     def index_lag(self, index_kind: str, lag_revisions: int) -> None: ...
 
 
-class VectorProjectionService:
+class VectorProjectionMaintenance:
+    """Local projection cleanup needs metadata and files, never a provider secret."""
+
+    def __init__(
+        self,
+        uow: UnitOfWork,
+        clock: Clock,
+        *,
+        vector_root: Path,
+        space: VectorSpaceConfig,
+        retirement_window_us: int = VECTOR_RETIREMENT_WINDOW_US,
+    ) -> None:
+        self._uow, self._clock = uow, clock
+        self._root = Path(vector_root)
+        self._retirement_window_us = retirement_window_us
+        self.manager = VectorIndexManager(self._root / "generations", space)
+
+    def cleanup_in_tx(self, tx: Transaction, tenant_id: str) -> tuple[int, tuple[str, ...]]:
+        """Database half of physical cleanup: invalid id-map rows and retired
+        generation rows beyond the retention window. Returns the removed
+        generation ids — their DIRECTORIES are unlinked by
+        :meth:`remove_generation_dirs` only after this transaction commits.
+        Directory removal must never happen inside the fenced commit
+        transaction: if the completion CAS later fails, SQLite rolls the
+        rows back, and no rollback can restore an unlinked directory
+        (review finding)."""
+        id_rows = tx.vector.id_map_delete_invalid(tenant_id)
+        cutoff = self._clock.now_us() - self._retirement_window_us
+        removed = tx.vector.delete_retired_generations(tenant_id, older_than_us=cutoff)
+        return id_rows, removed
+
+    def remove_generation_dirs(self, generation_ids: Sequence[str]) -> tuple[str, ...]:
+        """Remove the directories of generations whose ROWS a committed
+        cleanup already deleted (the ids ``cleanup_in_tx`` returned). These
+        are provably safe: the row was retired beyond the rollback window
+        before deletion, and generation ids are never reused (uuid
+        component). The process's own loaded serving generation is never
+        removed. Called POST-commit only — inside the fenced transaction a
+        rolled-back completion CAS could not restore unlinked directories."""
+        loaded = self.manager.loaded_generation
+        removed: list[str] = []
+        for generation_id in generation_ids:
+            if generation_id == loaded:
+                continue
+            directory = self.manager.generation_dir(generation_id)
+            if directory.is_dir():
+                shutil.rmtree(directory, ignore_errors=True)
+                removed.append(generation_id)
+        return tuple(removed)
+
+    def sweep_filesystem(self) -> tuple[str, ...]:
+        """Filesystem half of cleanup, run OUTSIDE any fenced transaction:
+        remove generation directories that no COMMITTED row retains (orphans
+        from an interrupted build/publish, or rows a completed cleanup just
+        deleted) plus abandoned tmp staging directories.
+
+        The retained set is recomputed here against committed state, is
+        GLOBAL (every tenant's generation rows and pointers — the
+        generations root is shared; a per-tenant set would delete another
+        tenant's serving directory), and always includes this process's
+        loaded serving generation. Another process's loaded handle is safe
+        under POSIX unlink semantics: faiss reads load the index fully into
+        memory, so removal never faults an in-flight search. Only
+        directories older than the retirement window are removed — a
+        concurrent build may have just renamed one into place before its
+        switch transaction lands. Unreadable entries are ignored, never
+        trusted."""
+        with self._uow.read() as tx:
+            retained = set(tx.vector.all_generation_ids())
+            retained.update(tx.vector.all_pointer_generation_ids())
+        loaded = self.manager.loaded_generation
+        if loaded is not None:
+            retained.add(loaded)
+        cutoff = self._clock.now_us() - self._retirement_window_us
+        removed = self.manager.sweep_orphans(retained, older_than_us=cutoff)
+        removed += self.manager.sweep_tmp(older_than_us=cutoff)
+        return removed
+
+
+class VectorProjectionService(VectorProjectionMaintenance):
     """Rebuild, apply, search and cleanup for one tenant-facing vector
     projection bound to one vector space and one embedding provider."""
 
@@ -852,7 +931,11 @@ class VectorProjectionService:
 
     # -- capability ------------------------------------------------------------
 
-    def capability_available(self) -> bool:
+    def resolve_in_tx(self, tx: Transaction, tenant_id: str) -> VectorProjectionService:
+        """A deployment-fixed provider already supplies its immutable binding."""
+        return self
+
+    def capability_available(self, tenant_id: str | None = None) -> bool:
         """The vector capability is real only when BOTH halves answer:
         FAISS is importable AND the embedding provider is usable — probed
         (model answers with the configured dimension/normalization, max
@@ -1080,6 +1163,24 @@ class VectorProjectionService:
                 details={"expected_epoch": prepared.expected_epoch},
             )
         previous = tx.vector.pointer(tenant_id)
+        # Another prepared build may have refreshed the shared ID map under
+        # another space. Publish this generation's exact member identities and
+        # space atomically, using the surrogates already verified in its files.
+        prepared_ids = dict(zip(prepared.survivors, prepared.surrogates, strict=True))
+        for entry in now_entries:
+            tx.vector.id_map_upsert(
+                tenant_id=tenant_id,
+                resource_type=entry.resource_type,
+                resource_id=entry.resource_id,
+                resource_revision=entry.resource_revision,
+                surrogate_id=prepared_ids[
+                    (entry.resource_type, entry.resource_id, entry.resource_revision)
+                ],
+                agent_id=entry.agent_id,
+                space=self._space,
+                content_hash=entry.content_hash,
+                now_us=self._clock.now_us(),
+            )
         generation = tx.vector.insert_generation(
             tenant_id=tenant_id,
             space=self._space,
@@ -1553,67 +1654,6 @@ class VectorProjectionService:
         return results
 
     # -- cleanup -----------------------------------------------------------------------
-
-    def cleanup_in_tx(self, tx: Transaction, tenant_id: str) -> tuple[int, tuple[str, ...]]:
-        """Database half of physical cleanup: invalid id-map rows and retired
-        generation rows beyond the retention window. Returns the removed
-        generation ids — their DIRECTORIES are unlinked by
-        :meth:`remove_generation_dirs` only after this transaction commits.
-        Directory removal must never happen inside the fenced commit
-        transaction: if the completion CAS later fails, SQLite rolls the
-        rows back, and no rollback can restore an unlinked directory
-        (review finding)."""
-        id_rows = tx.vector.id_map_delete_invalid(tenant_id)
-        cutoff = self._clock.now_us() - self._retirement_window_us
-        removed = tx.vector.delete_retired_generations(tenant_id, older_than_us=cutoff)
-        return id_rows, removed
-
-    def remove_generation_dirs(self, generation_ids: Sequence[str]) -> tuple[str, ...]:
-        """Remove the directories of generations whose ROWS a committed
-        cleanup already deleted (the ids ``cleanup_in_tx`` returned). These
-        are provably safe: the row was retired beyond the rollback window
-        before deletion, and generation ids are never reused (uuid
-        component). The process's own loaded serving generation is never
-        removed. Called POST-commit only — inside the fenced transaction a
-        rolled-back completion CAS could not restore unlinked directories."""
-        loaded = self.manager.loaded_generation
-        removed: list[str] = []
-        for generation_id in generation_ids:
-            if generation_id == loaded:
-                continue
-            directory = self.manager.generation_dir(generation_id)
-            if directory.is_dir():
-                shutil.rmtree(directory, ignore_errors=True)
-                removed.append(generation_id)
-        return tuple(removed)
-
-    def sweep_filesystem(self) -> tuple[str, ...]:
-        """Filesystem half of cleanup, run OUTSIDE any fenced transaction:
-        remove generation directories that no COMMITTED row retains (orphans
-        from an interrupted build/publish, or rows a completed cleanup just
-        deleted) plus abandoned tmp staging directories.
-
-        The retained set is recomputed here against committed state, is
-        GLOBAL (every tenant's generation rows and pointers — the
-        generations root is shared; a per-tenant set would delete another
-        tenant's serving directory), and always includes this process's
-        loaded serving generation. Another process's loaded handle is safe
-        under POSIX unlink semantics: faiss reads load the index fully into
-        memory, so removal never faults an in-flight search. Only
-        directories older than the retirement window are removed — a
-        concurrent build may have just renamed one into place before its
-        switch transaction lands. Unreadable entries are ignored, never
-        trusted."""
-        with self._uow.read() as tx:
-            retained = set(tx.vector.all_generation_ids())
-            retained.update(tx.vector.all_pointer_generation_ids())
-        loaded = self.manager.loaded_generation
-        if loaded is not None:
-            retained.add(loaded)
-        cutoff = self._clock.now_us() - self._retirement_window_us
-        removed = self.manager.sweep_orphans(retained, older_than_us=cutoff)
-        removed += self.manager.sweep_tmp(older_than_us=cutoff)
-        return removed
 
     # -- query embedding + restore reset -------------------------------------------------
 
