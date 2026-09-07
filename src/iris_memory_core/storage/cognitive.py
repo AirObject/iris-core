@@ -11,10 +11,16 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from typing import Any
 
 from iris_memory_core.application.ports import Clock, IdentifierGenerator
-from iris_memory_core.domain.errors import ConflictError, NotFoundError, RevisionMismatchError
+from iris_memory_core.domain.errors import (
+    ConflictError,
+    NotFoundError,
+    NotReadyError,
+    RevisionMismatchError,
+)
 from iris_memory_core.domain.focus import (
     FocusItemCurrent,
     FocusRevision,
@@ -425,6 +431,33 @@ class RecentContextRepository:
 class StateRepository:
     """State namespace policies plus immutable revisions/current pointer."""
 
+    def erase_content(self, record_id: str, *, now_us: int) -> None:
+        deadline = time.monotonic() + 0.150
+        steps = 0
+
+        def stop() -> int:
+            nonlocal steps
+            steps += 1_000
+            return int(steps > 2_000_000 or time.monotonic() > deadline)
+
+        self._connection.set_progress_handler(stop, 1_000)
+        try:
+            self._connection.execute(
+                "UPDATE state_record_revisions SET value_json='{}', source_ref=NULL, "
+                "coalesce_key=NULL WHERE record_id=?",
+                (record_id,),
+            )
+            self._connection.execute(
+                "UPDATE state_records SET updated_us=? WHERE id=?",
+                (now_us, record_id),
+            )
+        except sqlite3.OperationalError as error:
+            if "interrupt" in str(error).lower():
+                raise NotReadyError("State erasure exceeds its transaction budget") from None
+            raise
+        finally:
+            self._connection.set_progress_handler(None, 0)
+
     def __init__(self, connection: sqlite3.Connection, clock: Clock, ids: IdentifierGenerator):
         self._connection = connection
         self._clock = clock
@@ -487,9 +520,17 @@ class StateRepository:
     def find(self, scope_key: str, namespace: str, key: str) -> StateRecord | None:
         row = _one(
             self._connection,
-            "SELECT * FROM state_records WHERE scope_key = ? AND namespace = ? AND key = ?",
+            "SELECT * FROM state_records WHERE scope_key=? AND namespace=? AND key=? "
+            "AND deleted_us IS NULL LIMIT 1",
             (scope_key, namespace, key),
         )
+        if row is None:
+            row = _one(
+                self._connection,
+                "SELECT * FROM state_records WHERE scope_key=? AND namespace=? AND key=? "
+                "ORDER BY created_us DESC,id DESC LIMIT 1",
+                (scope_key, namespace, key),
+            )
         return _state_record_from_row(row) if row is not None else None
 
     def get(self, record_id: str) -> StateRecord:
@@ -660,7 +701,7 @@ class StateRepository:
         session request also sees the space-level and agent-level records
         above it.
         """
-        clauses = ["r.tenant_id = ?"]
+        clauses = ["r.tenant_id = ?", "r.deleted_us IS NULL"]
         params: list[Any] = [tenant_id]
         if agent_id is not None:
             clauses.append("r.agent_id = ?")
@@ -707,8 +748,42 @@ class StateRepository:
         ]
 
 
+FOCUS_NOT_TOMBSTONED = (
+    "NOT EXISTS (SELECT 1 FROM resource_tombstones _rt "
+    "WHERE _rt.tenant_id=focus_items.tenant_id AND _rt.resource_type='focus_item' "
+    "AND _rt.resource_id=focus_items.id)"
+)
+
+
 class FocusRepository:
     """Focus current rows plus immutable revisions."""
+
+    def erase_content(self, item_id: str, *, now_us: int) -> None:
+        deadline = time.monotonic() + 0.150
+        steps = 0
+
+        def stop() -> int:
+            nonlocal steps
+            steps += 1_000
+            return int(steps > 2_000_000 or time.monotonic() > deadline)
+
+        self._connection.set_progress_handler(stop, 1_000)
+        try:
+            self._connection.execute(
+                "UPDATE focus_item_revisions SET summary='<erased>', structured_payload=NULL, "
+                "source_refs='[]', privacy_labels='[]', promotion_policy='' WHERE item_id=?",
+                (item_id,),
+            )
+            self._connection.execute(
+                "UPDATE focus_items SET summary='<erased>', updated_us=? WHERE id=?",
+                (now_us, item_id),
+            )
+        except sqlite3.OperationalError as error:
+            if "interrupt" in str(error).lower():
+                raise NotReadyError("Focus erasure exceeds its transaction budget") from None
+            raise
+        finally:
+            self._connection.set_progress_handler(None, 0)
 
     def __init__(self, connection: sqlite3.Connection, clock: Clock, ids: IdentifierGenerator):
         self._connection = connection
@@ -898,7 +973,9 @@ class FocusRepository:
         """Active items in eviction order: lowest (activation, created, id) first."""
         rows = self._connection.execute(
             "SELECT * FROM focus_items WHERE tenant_id = ? AND agent_id = ? "
-            "AND status = 'active' ORDER BY activation, created_us, id",
+            "AND status = 'active' AND "
+            + FOCUS_NOT_TOMBSTONED
+            + " ORDER BY activation, created_us, id",
             (tenant_id, agent_id),
         ).fetchall()
         return [_focus_current_from_row(row) for row in rows]
@@ -912,7 +989,7 @@ class FocusRepository:
         kind: str | None = None,
         limit: int = 500,
     ) -> list[FocusItemCurrent]:
-        clauses = ["tenant_id = ?", "agent_id = ?"]
+        clauses = ["tenant_id = ?", "agent_id = ?", FOCUS_NOT_TOMBSTONED]
         params: list[Any] = [tenant_id, agent_id]
         if statuses:
             placeholders = ",".join("?" for _ in statuses)
@@ -944,7 +1021,7 @@ class FocusRepository:
         """
         rows = self._connection.execute(
             "SELECT * FROM focus_items WHERE tenant_id = ? AND agent_id = ? "
-            "AND status IN ('active', 'dormant') ORDER BY "
+            "AND status IN ('active', 'dormant') AND " + FOCUS_NOT_TOMBSTONED + " ORDER BY "
             "CASE WHEN status = 'active' THEN 0 "
             "WHEN expires_us IS NOT NULL AND expires_us <= ? THEN 1 ELSE 2 END, "
             "updated_us, id LIMIT ?",

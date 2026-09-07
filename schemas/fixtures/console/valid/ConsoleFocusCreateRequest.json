@@ -1,0 +1,10 @@
+{
+  "fields": {
+    "kind": "goal",
+    "summary": "Focus fixture"
+  },
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "agent-1"
+  }
+}

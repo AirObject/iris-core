@@ -15,6 +15,11 @@ application version. Applied files are immutable; tampering is rejected by
 SHA-256 checksum. ``lock_ms`` sets the SQLite lock-acquisition timeout and an
 observation threshold for the whole migration transaction window; an overrun
 after COMMIT is surfaced as a success warning, never as a false failure.
+
+An optional ``bootstrap_safe=true`` allows an explicitly marked migration on
+the initial empty installation only. Existing application tables or recorded
+migrations disable that exception, including a partially completed bootstrap.
+The app-version gate still applies; unmarked offline migrations stay gated.
 """
 
 from __future__ import annotations
@@ -36,7 +41,7 @@ META_PATTERN = re.compile(
     r"lock_ms=(?P<lock_ms>[0-9]+)\s+"
     r"min_app=(?P<min_app>[0-9A-Za-z.+-]*)\s+"
     r"max_app=(?P<max_app>[0-9A-Za-z.+-]*)\s+"
-    r"recovery=(?P<recovery>[a-z_]+)\s*$"
+    r"recovery=(?P<recovery>[a-z_]+)(?:\s+bootstrap_safe=(?P<bootstrap_safe>true|false))?\s*$"
 )
 
 #: ``recovery`` declares the precondition an operator must satisfy before a
@@ -111,6 +116,7 @@ class MigrationMeta:
     min_app: str
     max_app: str
     recovery: str
+    bootstrap_safe: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +130,9 @@ class Migration:
 
 
 def default_migrations_path() -> Path:
-    return Path(__file__).resolve().parents[3] / "migrations"
+    from iris_memory_core._resources import runtime_resource
+
+    return runtime_resource("migrations")
 
 
 def parse_meta(source: str, filename: str, *, version: int) -> tuple[MigrationMeta | None, str]:
@@ -154,11 +162,14 @@ def parse_meta(source: str, filename: str, *, version: int) -> tuple[MigrationMe
         min_app=match.group("min_app"),
         max_app=match.group("max_app"),
         recovery=recovery,
+        bootstrap_safe=match.group("bootstrap_safe") == "true",
     )
     return meta, (rest if newline else "")
 
 
 def discover_migrations(path: Path) -> tuple[Migration, ...]:
+    if not path.is_dir() or not any(path.glob("*.sql")):
+        raise MigrationNameError("migration directory is missing or empty")
     migrations: list[Migration] = []
     seen_versions: set[int] = set()
     for migration_path in sorted(path.glob("*.sql")):
@@ -440,6 +451,14 @@ class MigrationRunner:
                     "SELECT version, name, checksum FROM schema_migrations"
                 )
             }
+            bootstrap = (
+                not recorded
+                and not connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                    "AND name NOT LIKE 'sqlite_%' "
+                    "AND name NOT IN ('schema_migrations', 'migration_runs') LIMIT 1"
+                ).fetchone()
+            )
             for migration in migrations:
                 existing = recorded.get(migration.version)
                 if existing is not None:
@@ -454,6 +473,7 @@ class MigrationRunner:
                     backup_performed=backup_performed,
                     running_version=running_version,
                     running_raw=running_raw,
+                    bootstrap=bootstrap,
                 )
                 warning = self._apply(connection, migration)
                 if warning is not None:
@@ -497,11 +517,14 @@ class MigrationRunner:
         backup_performed: bool,
         running_version: tuple[int, ...],
         running_raw: str,
+        bootstrap: bool = False,
     ) -> None:
         meta = migration.meta
         if meta is None:
             return
-        if not meta.online_safe or meta.recovery != "none":
+        if (not meta.online_safe or meta.recovery != "none") and not (
+            bootstrap and meta.bootstrap_safe
+        ):
             if not allow_offline:
                 raise MigrationNotOnlineSafe(
                     f"migration {migration.name} is not online-safe"

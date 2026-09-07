@@ -1,0 +1,12 @@
+{
+  "fields": {
+    "body": "通过 Console 提交",
+    "kind": "idea",
+    "title": "人工便签"
+  },
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "01a07600-0000-7000-8000-000000000001",
+    "tenant_id": "another-tenant"
+  }
+}

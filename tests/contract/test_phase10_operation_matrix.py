@@ -573,26 +573,33 @@ def _drive_success(world: dict[str, Any], client: TestClient) -> dict[str, int]:
     )
 
     # --- recall, search, recent context -----------------------------------
-    recalled = api.call(
-        "recall",
+    recall_request = {
+        "schema_version": 1,
+        "request_id": "matrix-recall-1",
+        "scope": {"agent_id": agent, "space_id": space},
+        "actors": [
+            {
+                "provider": "local",
+                "realm": "default",
+                "external_id": "matrix-actor",
+                "weight": 1.0,
+            }
+        ],
+        "topic": "preferences",
+        "purpose": "reply",
+        "token_budget": 512,
+        "deadline_at": _iso(now + 5_000_000),
+    }
+    recalled = api.call("recall", body=recall_request).json()
+    revalidated = api.call(
+        "revalidateRecall",
         body={
             "schema_version": 1,
-            "request_id": "matrix-recall-1",
-            "scope": {"agent_id": agent, "space_id": space},
-            "actors": [
-                {
-                    "provider": "local",
-                    "realm": "default",
-                    "external_id": "matrix-actor",
-                    "weight": 1.0,
-                }
-            ],
-            "topic": "preferences",
-            "purpose": "reply",
-            "token_budget": 512,
             "deadline_at": _iso(now + 5_000_000),
+            "requests": [recall_request],
         },
     ).json()
+    assert revalidated["results"][0]["status"] == "valid"
     returned = [item["candidate_id"] for item in recalled["candidates"]]
     api.call(
         "reportRecallUsage",

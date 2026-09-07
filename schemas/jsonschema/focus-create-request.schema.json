@@ -37,6 +37,14 @@
         "pending_input"
       ]
     },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
     "privacy_labels": {
       "items": {
         "type": "string"

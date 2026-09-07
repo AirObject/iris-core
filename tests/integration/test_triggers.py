@@ -422,7 +422,7 @@ class TestConditionKinds:
             ctx["access"],
             watched.task_id,
             "activate",
-            expected_revision=1,
+            expected_revision=2,
             origin="admin",
             reason="go",
             idempotency_key="tt2",
@@ -431,7 +431,7 @@ class TestConditionKinds:
             ctx["access"],
             watched.task_id,
             "complete",
-            expected_revision=2,
+            expected_revision=3,
             origin="admin",
             reason="done",
             idempotency_key="tt3",
@@ -1158,3 +1158,46 @@ class TestAuditRegressions:
                 ctx["store"], clock, idempotency=None
             ).expire_sweep_in_tx(tx, agent_id_scope=(ctx["tenant"], ctx["agent"]))
         assert expired == 1
+
+
+def test_child_revisions_do_not_hide_or_repeat_status_transition(trig_ctx: dict[str, Any]) -> None:
+    ctx = trig_ctx
+    task = _task(ctx, "child-transition")
+    ctx["tasks"].create_trigger(
+        ctx["access"],
+        task.task_id,
+        kind="task_transition",
+        condition_spec={"task_id": task.task_id, "from_status": "active", "to_status": "waiting"},
+        idempotency_key="anchored-trigger",
+    )
+    ctx["tasks"].transition(
+        ctx["access"],
+        task.task_id,
+        "waiting",
+        expected_revision=2,
+        origin="explicit_tool",
+        reason="wait",
+        idempotency_key="anchored-wait",
+    )
+    ctx["tasks"].create_step(
+        ctx["access"],
+        task.task_id,
+        stable_key="one",
+        title="One",
+        idempotency_key="anchor-child-one",
+    )
+    with ctx["store"].write() as tx:
+        first = ctx["tasks"].trigger_scan(tx, tenant_id=ctx["tenant"], agent_id=ctx["agent"])
+        assert tx.tasks.latest_task_transition(task.task_id) == (3, "waiting", "active")
+    assert first.occurrences_created == 1
+    ctx["tasks"].create_step(
+        ctx["access"],
+        task.task_id,
+        stable_key="two",
+        title="Two",
+        idempotency_key="anchor-child-two",
+    )
+    with ctx["store"].write() as tx:
+        replay = ctx["tasks"].trigger_scan(tx, tenant_id=ctx["tenant"], agent_id=ctx["agent"])
+        assert tx.tasks.get_task(task.task_id).current_revision == 5
+    assert replay.occurrences_created == 0

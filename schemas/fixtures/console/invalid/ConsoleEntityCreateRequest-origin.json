@@ -1,0 +1,8 @@
+{
+  "fields": {
+    "display_name": "Reviewed person",
+    "kind": "person"
+  },
+  "origin": "forged",
+  "reason_code": "operator_request"
+}

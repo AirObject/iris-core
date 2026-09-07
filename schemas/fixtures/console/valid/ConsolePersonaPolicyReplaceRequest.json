@@ -1,0 +1,21 @@
+{
+  "config": {
+    "allowed_fields": [
+      "traits.style"
+    ],
+    "cooldown_us": "0",
+    "cumulative_window_us": "0",
+    "max_cumulative_delta": 1.0,
+    "max_single_delta": 1.0,
+    "min_confidence": 1.0,
+    "min_distinct_sources": "1",
+    "min_evidence": "1",
+    "min_evidence_span_us": "0",
+    "mode": "manual",
+    "observation_us": "0",
+    "rollback_threshold": 1.0,
+    "sensitive_fields": []
+  },
+  "expected_revision": 1,
+  "reason_code": "operator_request"
+}

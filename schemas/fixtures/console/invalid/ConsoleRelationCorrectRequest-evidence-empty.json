@@ -1,0 +1,9 @@
+{
+  "evidence": [],
+  "expected_revision": 1,
+  "fields": {
+    "source_entity_id": "entity-b",
+    "target_entity_id": "entity-a"
+  },
+  "reason_code": "operator_request"
+}

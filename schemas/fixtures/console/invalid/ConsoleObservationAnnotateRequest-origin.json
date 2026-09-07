@@ -1,0 +1,9 @@
+{
+  "expected_revision": 1,
+  "fields": {
+    "body": "关联便签保留原事件",
+    "title": "补充说明"
+  },
+  "origin": "console",
+  "reason_code": "operator_request"
+}

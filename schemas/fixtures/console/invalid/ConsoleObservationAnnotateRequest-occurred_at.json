@@ -1,0 +1,9 @@
+{
+  "expected_revision": 1,
+  "fields": {
+    "body": "关联便签保留原事件",
+    "title": "补充说明"
+  },
+  "occurred_at": "2020-01-01T00:00:00.000000Z",
+  "reason_code": "operator_request"
+}

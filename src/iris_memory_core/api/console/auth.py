@@ -136,9 +136,13 @@ async def body(request: Request, schema_name: str) -> dict[str, Any]:
                 collected.extend(chunk)
     except TimeoutError:
         raise ConsoleError("invalid_request", kind="validation_failed", status=400) from None
+    return decode_json(bytes(collected), schema_name)
+
+
+def decode_json(raw: bytes, schema_name: str) -> dict[str, Any]:
     try:
         value = json.loads(
-            collected.decode("utf-8"), object_pairs_hook=_pairs, parse_constant=_reject_constant
+            raw.decode("utf-8"), object_pairs_hook=_pairs, parse_constant=_reject_constant
         )
         _depth(value)
         components = load_contract()["components"]["schemas"]

@@ -1,0 +1,6 @@
+{
+  "expected_revision": 1,
+  "promotion_target_type": "script",
+  "reason_code": "operator_request",
+  "target_status": "promoted"
+}

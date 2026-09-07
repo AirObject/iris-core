@@ -13,6 +13,7 @@ from typing import Any
 
 import uvicorn
 
+from iris_memory_core import __version__
 from iris_memory_core.api import create_app
 from iris_memory_core.api.console.config import ConsoleConfig, parse_bind
 from iris_memory_core.application.focus import FocusService
@@ -38,6 +39,7 @@ from iris_memory_core.jobs.worker import (
     phase8_handlers,
     phase9_handlers,
     phase10_handlers,
+    phase14_handlers,
 )
 from iris_memory_core.providers.cognitive import (
     DeterministicCognitiveProvider,
@@ -190,7 +192,7 @@ def load_config(
 def open_store(config: ServiceConfig) -> Store:
     config.validate()
     if config.migrate:
-        MigrationRunner(config.database).migrate(app_version="0.12.0")
+        MigrationRunner(config.database).migrate(app_version=__version__)
     allowed = (sqlite_runtime_version(),) if config.allow_local_sqlite else None
     runtime = SQLiteRuntime(config.database, allowed_versions=allowed)
     store = Store(runtime)
@@ -271,6 +273,7 @@ def worker(config: ServiceConfig, *, once: bool = False) -> int:
         ),
         **phase9_handlers(store.clock),
         **phase10_handlers(pipeline=pipeline),
+        **phase14_handlers(store, store.clock, store.ids),
     }
     runtime = OutboxWorker(service, handlers)
     stopping = threading.Event()

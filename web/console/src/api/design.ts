@@ -3,7 +3,9 @@
 import type { components } from "./generated";
 export type Bootstrap = components["schemas"]["BootstrapView"];
 export type Session = components["schemas"]["SessionView"];
-export type Meta = components["schemas"]["Meta"] & {
+// Unpublished modules still use their own action descriptors; live Task child
+// descriptors are validated against the generated Console contract on the server.
+export type Meta = Pick<components["schemas"]["Meta"], "request_id" | "contract_version" | "as_of" | "page" | "total" | "warnings"> & {
   page?: { next_cursor: string | null; has_more: boolean; limit: number };
   warnings?: string[];
   source?: string;
@@ -38,6 +40,7 @@ export type Value =
   | { [key: string]: Value };
 export type Fields = Record<string, Value>;
 export interface Field {
+  default?: Value;
   key: string;
   label: string;
   type:
@@ -54,8 +57,10 @@ export interface Field {
     | "lookup"
     | "secret";
   required?: boolean;
+  allow_empty?: boolean;
   options?: string[];
   lookup?: string;
+  lookup_parent_id?: string;
   description?: string;
   minimum?: string;
   maximum?: string;
@@ -71,17 +76,23 @@ export interface Action {
   fields: Field[];
   reason_codes: string[];
   high_risk?: boolean;
+  initial_revision?: 0;
   description?: string;
 }
+type ResourceDescriptor = components["schemas"]["ResourceTypeDescriptor"];
 export interface ResourceType {
   collection: string;
   resource_type: string;
   label: string;
   permission: string;
-  columns: string[];
+  list_columns: ResourceDescriptor["list_columns"];
+  create_schema: ResourceDescriptor["create_schema"];
+  update_schema: ResourceDescriptor["update_schema"];
+  supports: ResourceDescriptor["supports"];
   filters: Field[];
-  sorts: string[];
+  sorts: ResourceDescriptor["sorts"];
   create?: Action;
+  upload?: Action;
   actions: Action[];
   read_only?: boolean;
   append_only?: boolean;
@@ -258,10 +269,10 @@ export const terminal = (status: string) =>
     "cancelled_partial",
   ].includes(status);
 export const cas = (value: { revision?: number; version_token?: string }) =>
-  value.version_token
-    ? { version_token: value.version_token }
-    : value.revision !== undefined
-      ? { expected_revision: value.revision }
+  value.revision != null
+    ? { expected_revision: value.revision }
+    : value.version_token
+      ? { version_token: value.version_token }
       : {};
 export const uniqueById = <T extends { id: string }>(items: T[]): T[] => [
   ...new Map(items.map((item) => [item.id, item])).values(),

@@ -1,0 +1,11 @@
+{
+  "fields": {
+    "kind": "goal",
+    "summary": "Focus fixture"
+  },
+  "origin": "forbidden",
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "agent-1"
+  }
+}

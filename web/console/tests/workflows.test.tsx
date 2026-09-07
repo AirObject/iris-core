@@ -1,3 +1,4 @@
+import { CONTRACT_VERSION } from "../src/api/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -13,6 +14,7 @@ import {
   type Resource,
 } from "../src/api/design";
 import {
+  encodeFields,
   ActionButton,
   ActionDialog,
   Environment,
@@ -25,7 +27,7 @@ import { reportUsable } from "../src/pages/Transfers";
 import { action, makeResource, resourceTypes } from "../src/mock/fixtures";
 import { createMockTransport } from "../src/mock/server";
 const bootstrap: Bootstrap = {
-  contract_version: "1.0.0",
+  contract_version: CONTRACT_VERSION,
   permissions: ["memory.read", "memory.write", "memory.forget"],
   modules: ["memory"],
   read_only: false,
@@ -62,9 +64,12 @@ describe("domain safeguards", () => {
         { id: "a", v: 2 },
       ]),
     ).toEqual([{ id: "a", v: 2 }]);
-    expect(cas({ version_token: "opaque", revision: 1 })).toEqual({
-      version_token: "opaque",
-    });
+    expect(cas({ version_token: "opaque", revision: 1 })).toEqual({ expected_revision: 1 });
+    expect(cas({ version_token: "opaque" })).toEqual({ version_token: "opaque" });
+    expect(encodeFields([
+      { key: "body", label: "正文", type: "text", allow_empty: true },
+      { key: "snooze_until_at", label: "推迟至", type: "string" },
+    ], { body: "", snooze_until_at: null })).toEqual({ body: "" });
   });
   it("does not offer arbitrary updates on append-only, projection, or event resources", () => {
     for (const collection of [

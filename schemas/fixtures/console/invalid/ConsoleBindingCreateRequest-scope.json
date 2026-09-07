@@ -1,0 +1,8 @@
+{
+  "fields": {
+    "entity_id": "entity-1",
+    "external_identity_id": "identity-1"
+  },
+  "reason_code": "operator_request",
+  "scope": "forged"
+}

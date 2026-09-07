@@ -1,13 +1,15 @@
 # 阶段 12：AstrBot Bridge
 
-> 状态：Planned（前置裁决未完成；无 Bridge 实现）  
+> 状态：Deferred（2026-09-06 按项目负责人要求暂时不再执行；前置裁决未完成，无 Bridge 实现）  
 > 复核日期：2026-09-06  
-> 前置阶段：[阶段 10](./phase-10-consolidation-reflection.md)；可与 [阶段 11](./phase-11-bellis-adapter.md) 并行  
+> 前置阶段：[阶段 10](./phase-10-consolidation-reflection.md)；本阶段与 [阶段 11](./phase-11-bellis-adapter.md) 当前均暂缓  
 > 目标：AstrBot Bridge 0.1.0；实际版本、Core/SDK 兼容范围待验收确定  
 > 决策记录：ADR-0021 尚不存在；交付位置已定，其余裁决见工作包  
 > 架构依据：[§27 AstrBot Bridge](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#27-astrbot-bridge)、[§28 SDK 与契约发布](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#28-sdk-与契约发布)、[§32.8 Adapter E2E](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#328-adapter-e2e)
 
 ## 阶段目标
+
+本阶段暂缓，移出当前 pip 包与 Phase 14 稳定发布的前置门禁；不表示完成或永久取消。以下裁决、工作包和验收基线保留为恢复执行时的清单，当前不启动 ADR-0021、Bridge 实现或仅为 AstrBot 所需的 SDK 扩展。恢复须明确更新阶段状态、兼容范围及发布依赖；Core 通用协议与多宿主隔离不变量仍然有效。
 
 通过 Python SDK 把 AstrBot 生命周期、稳定身份、群聊/私聊、Recall/Persona、记忆工具、实际发送效果和重启对账接入 Core。[预留目录](../../application/astrbot_plugin_iris_memory_api/) 当前只有 README，无插件代码、依赖声明、元数据、测试或版本矩阵；Core 和 Python SDK 已存在不等于 Bridge 已实施。
 

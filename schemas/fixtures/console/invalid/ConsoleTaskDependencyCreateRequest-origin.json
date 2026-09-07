@@ -1,0 +1,9 @@
+{
+  "expected_revision": 3,
+  "fields": {
+    "predecessor_step_id": "step-a",
+    "successor_step_id": "step-b"
+  },
+  "origin": "host",
+  "reason_code": "operator_request"
+}

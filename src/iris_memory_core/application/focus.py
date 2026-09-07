@@ -13,8 +13,8 @@ are ordinary focus: nothing here writes Persona Trait/Core.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, cast
 
 from iris_memory_core.application.ports import (
     Clock,
@@ -22,7 +22,10 @@ from iris_memory_core.application.ports import (
     Transaction,
     UnitOfWork,
 )
+from iris_memory_core.application.surface import SurfaceCoordinatorService
+from iris_memory_core.application.write_support import require_surface_online_in_tx
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.console import CommandActor
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     ConflictError,
@@ -30,6 +33,7 @@ from iris_memory_core.domain.errors import (
     InvalidRequestError,
     InvalidTransitionError,
     NotFoundError,
+    ScopeViolationError,
     require_reason,
 )
 from iris_memory_core.domain.focus import (
@@ -189,12 +193,280 @@ class FocusService:
         capacity: FocusCapacityPolicy | None = None,
         estimator: TokenEstimator | None = None,
         idempotency: IdempotencyRunner | None = None,
+        surface: SurfaceCoordinatorService | None = None,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._capacity = capacity or DEFAULT_FOCUS_CAPACITY
         self._estimator = estimator or DefaultTokenEstimator()
         self._idempotency = idempotency
+        self._surface = surface
+
+    def _gate(
+        self,
+        tx: Transaction,
+        access: AccessContext,
+        agent_id: str,
+        lease_id: str | None,
+        lease_epoch: int | None,
+    ) -> None:
+        require_surface_online_in_tx(
+            self._surface,
+            tx,
+            access.tenant_id,
+            agent_id,
+            lease_id=lease_id,
+            lease_epoch=lease_epoch,
+            app_instance_id=access.app_instance_id,
+        )
+
+    def _item_preflight(
+        self,
+        access: AccessContext,
+        item_id: str,
+        lease_id: str | None,
+        lease_epoch: int | None,
+    ) -> None:
+        if self._surface is not None:
+            with self._uow.read() as tx:
+                item = tx.focus.get(item_id)
+                _require_item_content_access(tx, access, item)
+                self._gate(tx, access, item.agent_id, lease_id, lease_epoch)
+
+    def create_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        fields: dict[str, Any],
+        *,
+        privacy_labels: list[str],
+        source_refs: list[dict[str, Any]],
+    ) -> tuple[str, str, list[str]]:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.console.resources import ResourceRef
+
+        if actor.operation != "focus.create" or not actor.scope.agent_id:
+            raise InvalidRequestError("invalid managed focus creation")
+        if not {"kind", "summary"} <= fields.keys() or fields.keys() - {
+            "kind",
+            "summary",
+            "salience",
+            "importance",
+            "activation",
+            "promotion_policy",
+            "expires_us",
+            "structured_payload",
+        }:
+            raise InvalidRequestError("invalid managed focus fields")
+        labels, refs = _parse_privacy_labels(privacy_labels), _parse_source_refs(source_refs)
+        access = command_access(
+            tx,
+            actor,
+            CommandTarget(
+                "focus_item",
+                actor.scope,
+                privacy_labels=labels,
+                source_refs=tuple(
+                    ResourceRef(
+                        str(ref["resource_type"]),
+                        str(ref["resource_id"]),
+                        cast(int | None, ref.get("revision")),
+                    )
+                    for ref in refs
+                ),
+            ),
+            now_us=self._clock.now_us(),
+        )
+        payload = {
+            "agent_id": actor.scope.agent_id,
+            "space_id": actor.scope.space_id,
+            "session_id": actor.scope.session_id,
+            "salience": 0.5,
+            "importance": 0.5,
+            "activation": 0.5,
+            "promotion_policy": "",
+            "expires_us": None,
+            "structured_payload": None,
+            **fields,
+            "privacy_labels": list(labels),
+            "source_refs": [dict(ref) for ref in refs],
+        }
+        if payload["kind"] not in ALL_FOCUS_KINDS:
+            raise InvalidRequestError("invalid managed focus kind")
+        try:
+            validate_summary(payload["summary"])
+            validate_scores(
+                salience=payload["salience"],
+                importance=payload["importance"],
+                activation=payload["activation"],
+            )
+        except InvalidFocusItemError as error:
+            raise InvalidRequestError(str(error)) from error
+        if payload["expires_us"] is not None and payload["expires_us"] <= self._clock.now_us():
+            raise InvalidRequestError("focus expiry must be in the future")
+        return self._execute_create(tx, access, payload, command_actor=actor)
+
+    def _command_item_access(
+        self, tx: Transaction, actor: CommandActor, item: FocusItemCurrent, operation: str
+    ) -> AccessContext:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.console.resources import ResourceRef
+
+        if actor.operation != operation or actor.scope != _item_scope(item):
+            raise AccessDeniedError("focus command scope or operation mismatch")
+        current = tx.focus.current_revision_row(item.id)
+        target = CommandTarget(
+            "focus_item",
+            _item_scope(item),
+            privacy_labels=current.privacy_labels,
+            source_refs=tuple(
+                ResourceRef(
+                    str(ref["resource_type"]),
+                    str(ref["resource_id"]),
+                    cast(int | None, ref.get("revision")),
+                )
+                for ref in current.source_refs
+            ),
+            resource_id=item.id,
+        )
+        return command_access(tx, actor, target, now_us=self._clock.now_us())
+
+    def mutate_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        item_id: str,
+        *,
+        expected_revision: int,
+        fields: dict[str, Any],
+    ) -> tuple[str, str, list[str]]:
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise InvalidRequestError("expected revision must be positive")
+        item = tx.focus.get(item_id)
+        access = self._command_item_access(tx, actor, item, actor.operation)
+        payload = {
+            "item_id": item_id,
+            "expected_revision": expected_revision,
+            "reason": actor.reason_code,
+        }
+        if actor.operation == "focus.activate" and not fields:
+            return self._execute_activate(tx, access, payload, command_actor=actor)
+        if actor.operation == "focus.update":
+            return self._update_for_command(tx, actor, item, expected_revision, fields)
+        if (
+            actor.operation != "focus.transition"
+            or "target_status" not in fields
+            or set(fields) - {"target_status", "promotion_target_type"}
+            or fields["target_status"] not in {"dormant", "dismissed", "expired", "promoted"}
+        ):
+            raise InvalidRequestError("invalid managed focus transition")
+        payload.update(
+            target=fields["target_status"],
+            promotion_target_type=fields.get("promotion_target_type"),
+        )
+        return self._execute_transition(
+            tx, access, payload, FocusStatus(fields["target_status"]), command_actor=actor
+        )
+
+    def _update_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        item: FocusItemCurrent,
+        expected_revision: int,
+        fields: dict[str, Any],
+    ) -> tuple[str, str, list[str]]:
+        access = self._command_item_access(tx, actor, item, "focus.update")
+        current = _require_item_content_access(tx, access, item, managed=True)
+        if item.status not in {"active", "dormant"}:
+            raise InvalidTransitionError("terminal focus cannot be edited")
+        if not fields or fields.keys() - {
+            "summary",
+            "structured_payload",
+            "salience",
+            "importance",
+        }:
+            raise InvalidRequestError("invalid managed focus update fields")
+        summary = fields.get("summary", current.summary)
+        salience, importance = (
+            fields.get("salience", current.salience),
+            fields.get("importance", current.importance),
+        )
+        try:
+            validate_summary(summary)
+            validate_scores(salience=salience, importance=importance, activation=current.activation)
+        except InvalidFocusItemError as error:
+            raise InvalidRequestError(str(error)) from error
+        if item.current_revision != expected_revision:
+            tx.focus.raise_pointer_mismatch(item.id, expected_revision)
+        evicted = (
+            self._enforce_capacity(
+                tx,
+                _item_scope(item),
+                incoming_kind=item.kind,
+                incoming_tokens=self._estimator.estimate(summary),
+                exclude_item_id=item.id,
+                command_actor=actor,
+            )
+            if item.status == "active"
+            else []
+        )
+        activation = decayed_activation(
+            item.activation_base,
+            item.last_activated_us,
+            self._clock.now_us(),
+            half_life_us=self._capacity.half_life_us,
+        )
+        revision = item.current_revision + 1
+        revision_id = tx.focus.insert_revision(
+            item_id=item.id,
+            tenant_id=item.tenant_id,
+            revision=revision,
+            kind=FocusKind(current.kind),
+            summary=summary,
+            structured_payload=fields.get("structured_payload", current.structured_payload),
+            privacy_labels=current.privacy_labels,
+            source_refs=current.source_refs,
+            salience=salience,
+            importance=importance,
+            activation=activation,
+            activation_base=item.activation_base,
+            status=FocusStatus(item.status),
+            promotion_policy=current.promotion_policy,
+            promotion_target_type=current.promotion_target_type,
+            promotion_target_id=current.promotion_target_id,
+            last_activated_us=item.last_activated_us,
+            expires_us=current.expires_us,
+            created_by=actor.audit_actor,
+        )
+        if (
+            tx.focus.advance_pointer(
+                item.id,
+                expected_revision=expected_revision,
+                revision=revision,
+                revision_id=revision_id,
+                status=item.status,
+                activation=activation,
+            )
+            != 1
+        ):
+            tx.focus.raise_pointer_mismatch(item.id, expected_revision)
+        tx.advance_watermark(item.tenant_id, item.agent_id, [("focus_item", item.id, revision)])
+        tx.audit(
+            tenant_id=item.tenant_id,
+            actor=actor.audit_actor,
+            action="focus.updated",
+            resource_type="focus_item",
+            resource_id=item.id,
+            reason_code=actor.reason_code,
+            details={"fields": sorted(fields)},
+            revision=revision,
+        )
+        return (
+            "focus.updated",
+            json.dumps({"revision_id": revision_id}),
+            [f"focus_item:{item.id}", *[f"focus_item:{identifier}" for identifier in evicted]],
+        )
 
     # -- create ---------------------------------------------------------------
 
@@ -216,6 +488,8 @@ class FocusService:
         source_refs: list[dict[str, Any]] | None = None,
         structured_payload: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
     ) -> FocusCreateResult:
         if idempotency_key is None:
             raise InvalidRequestError("focus creation requires an idempotency key")
@@ -232,6 +506,18 @@ class FocusService:
             raise InvalidRequestError(str(error)) from error
         refs = _parse_source_refs(source_refs)
         labels = _parse_privacy_labels(privacy_labels)
+        if self._surface is not None:
+            with self._uow.read() as tx:
+                scope = _authorize_scope(
+                    tx,
+                    access,
+                    agent_id=agent_id,
+                    space_id=space_id,
+                    session_id=session_id,
+                )
+                if not evaluate_privacy(labels, scope, scope, access):
+                    raise AccessDeniedError("focus privacy labels are outside the access context")
+                self._gate(tx, access, agent_id, lease_id, lease_epoch)
         now_us = self._clock.now_us()
         if expires_us is not None and expires_us <= now_us:
             raise InvalidRequestError("expires_us must be in the future")
@@ -256,7 +542,7 @@ class FocusService:
             operation="focus:create",
             idempotency_key=idempotency_key,
             request_fingerprint=request_fingerprint("focus:create", payload),
-            execute=lambda tx: self._execute_create(tx, access, payload),
+            execute=lambda tx: self._execute_create(tx, access, payload, lease_id, lease_epoch),
         )
         body = json.loads(result.body)
         # Creation replay is also a by-ID outcome: current authorization and
@@ -264,6 +550,8 @@ class FocusService:
         with self._uow.read() as tx:
             item = tx.focus.get(body["item_id"])
             _require_item_content_access(tx, access, item)
+            if result.replayed:
+                self._gate(tx, access, item.agent_id, lease_id, lease_epoch)
         return FocusCreateResult(
             item_id=body["item_id"],
             revision=int(body["revision"]),
@@ -272,23 +560,43 @@ class FocusService:
         )
 
     def _execute_create(
-        self, tx: Transaction, access: AccessContext, payload: dict[str, Any]
+        self,
+        tx: Transaction,
+        access: AccessContext,
+        payload: dict[str, Any],
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+        *,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
-        scope = _authorize_scope(
+        from iris_memory_core.application.write_support import authorize_scope
+
+        scope = authorize_scope(
             tx,
             access,
             agent_id=payload["agent_id"],
             space_id=payload["space_id"],
             session_id=payload["session_id"],
+            space_group_id=command_actor.scope.space_group_id if command_actor else None,
         )
-        if not evaluate_privacy(tuple(payload["privacy_labels"]), scope, scope, access):
+        if command_actor is not None and scope != command_actor.scope:
+            raise AccessDeniedError("managed focus scope mismatch")
+        labels = tuple(
+            label
+            for label in payload["privacy_labels"]
+            if command_actor is None or label != "restricted"
+        )
+        if not evaluate_privacy(labels, scope, scope, access):
             raise AccessDeniedError("focus privacy labels are outside the access context")
+        if command_actor is None:
+            self._gate(tx, access, payload["agent_id"], lease_id, lease_epoch)
         now_us = self._clock.now_us()
         evicted = self._enforce_capacity(
             tx,
             scope,
             incoming_kind=payload["kind"],
             incoming_tokens=self._estimator.estimate(payload["summary"]),
+            command_actor=command_actor,
         )
         scope_key = focus_scope_key(
             scope.tenant_id,
@@ -335,7 +643,9 @@ class FocusService:
             promotion_target_id=None,
             last_activated_us=now_us,
             expires_us=payload["expires_us"],
-            created_by=f"access:{access.app_instance_id}",
+            created_by=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
         )
         wired = tx.focus.set_initial_pointer(item_id, revision_id)
         if wired != 1:
@@ -343,11 +653,13 @@ class FocusService:
         tx.advance_watermark(scope.tenant_id, scope.agent_id or "", [("focus_item", item_id, 1)])
         tx.audit(
             tenant_id=scope.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
             action="focus.created",
             resource_type="focus_item",
             resource_id=item_id,
-            reason_code="attention_capture",
+            reason_code=command_actor.reason_code if command_actor else "attention_capture",
             details={
                 "kind": payload["kind"],
                 "evicted": len(evicted),
@@ -356,10 +668,24 @@ class FocusService:
             revision=1,
         )
         body = json.dumps({"item_id": item_id, "revision": 1, "evicted": list(evicted)})
-        return "focus.created", body, [f"focus_item:{item_id}"]
+        return (
+            "focus.created",
+            body,
+            [
+                f"focus_item:{item_id}",
+                *([f"focus_item:{identifier}" for identifier in evicted] if command_actor else []),
+            ],
+        )
 
     def _enforce_capacity(
-        self, tx: Transaction, scope: Scope, *, incoming_kind: str, incoming_tokens: int
+        self,
+        tx: Transaction,
+        scope: Scope,
+        *,
+        incoming_kind: str,
+        incoming_tokens: int,
+        command_actor: CommandActor | None = None,
+        exclude_item_id: str | None = None,
     ) -> list[str]:
         """Evict lowest-attention active items to dormant until the new item fits.
 
@@ -367,7 +693,11 @@ class FocusService:
         deterministic. Dormant items do not count against the working-set
         limits; dismissed/expired/promoted never do.
         """
-        active = list(tx.focus.active_items(scope.tenant_id, scope.agent_id or ""))
+        active = [
+            item
+            for item in tx.focus.active_items(scope.tenant_id, scope.agent_id or "")
+            if item.id != exclude_item_id
+        ]
         quota = self._capacity.kind_quotas or {}
         kind_quota = quota.get(incoming_kind, self._capacity.max_items)
         summaries = {item.id: tx.focus.current_revision_row(item.id).summary for item in active}
@@ -392,12 +722,19 @@ class FocusService:
                     "focus capacity cannot admit the item",
                     details={"kind": incoming_kind},
                 )
+            if command_actor is not None:
+                self._command_item_access(
+                    tx,
+                    replace(command_actor, scope=_item_scope(victim), operation="focus.capacity"),
+                    victim,
+                    "focus.capacity",
+                )
             self._transition(
                 tx,
                 scope.tenant_id,
                 victim,
                 FocusStatus.DORMANT,
-                actor="focus:capacity",
+                actor=command_actor.audit_actor if command_actor else "focus:capacity",
                 reason_code="focus_capacity_eviction",
                 now_us=self._clock.now_us(),
                 activation_override=decayed_activation(
@@ -422,6 +759,8 @@ class FocusService:
         expected_revision: int,
         reason: str | None = None,
         idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
     ) -> FocusRevision:
         """Explicit activation: refresh + bounded boost of the activation base.
 
@@ -434,6 +773,7 @@ class FocusService:
             raise IdempotencyUnavailableError(
                 "idempotency key supplied but no idempotency runner is configured"
             )
+        self._item_preflight(access, item_id, lease_id, lease_epoch)
         reason_code = require_reason(reason)
         payload = {
             "item_id": item_id,
@@ -446,7 +786,7 @@ class FocusService:
             operation="focus:activate",
             idempotency_key=idempotency_key,
             request_fingerprint=request_fingerprint("focus:activate", payload),
-            execute=lambda tx: self._execute_activate(tx, access, payload),
+            execute=lambda tx: self._execute_activate(tx, access, payload, lease_id, lease_epoch),
         )
         body = json.loads(result.body)
         # Revision rows are immutable, so a replay re-reads the exact row the
@@ -457,20 +797,46 @@ class FocusService:
         with self._uow.read() as tx:
             item = tx.focus.get(item_id)
             revision = tx.focus.get_revision(body["revision_id"])
-            return _require_item_content_access(tx, access, item, revision=revision)
+            visible = _require_item_content_access(tx, access, item, revision=revision)
+            if result.replayed:
+                self._gate(tx, access, item.agent_id, lease_id, lease_epoch)
+            return visible
 
     def _execute_activate(
-        self, tx: Transaction, access: AccessContext, payload: dict[str, Any]
+        self,
+        tx: Transaction,
+        access: AccessContext,
+        payload: dict[str, Any],
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+        *,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         item_id = payload["item_id"]
         expected_revision = payload["expected_revision"]
         item = tx.focus.get(item_id)
-        current = _require_item_content_access(tx, access, item)
+        if command_actor is not None:
+            access = self._command_item_access(tx, command_actor, item, "focus.activate")
+        current = _require_item_content_access(tx, access, item, managed=command_actor is not None)
+        if command_actor is None:
+            self._gate(tx, access, item.agent_id, lease_id, lease_epoch)
         if item.status not in (FocusStatus.ACTIVE.value, FocusStatus.DORMANT.value):
             raise InvalidTransitionError(
                 f"focus item cannot be activated from {item.status!r}",
                 details={"from": item.status, "to": "active"},
             )
+        evicted = (
+            self._enforce_capacity(
+                tx,
+                _item_scope(item),
+                incoming_kind=item.kind,
+                incoming_tokens=self._estimator.estimate(current.summary),
+                exclude_item_id=item.id,
+                command_actor=command_actor,
+            )
+            if command_actor is not None and item.status == FocusStatus.DORMANT.value
+            else []
+        )
         now_us = self._clock.now_us()
         boost = self._capacity.activation_boost
         new_base = clamp01(item.activation_base + boost)
@@ -493,7 +859,9 @@ class FocusService:
             promotion_target_id=current.promotion_target_id,
             last_activated_us=now_us,
             expires_us=current.expires_us,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
         )
         updated = tx.focus.advance_pointer(
             item.id,
@@ -512,7 +880,9 @@ class FocusService:
         )
         tx.audit(
             tenant_id=item.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
             action="focus.activated",
             resource_type="focus_item",
             resource_id=item.id,
@@ -521,7 +891,11 @@ class FocusService:
             revision=item.current_revision + 1,
         )
         body = json.dumps({"revision_id": revision_id})
-        return "focus.activated", body, [f"focus_item:{item.id}"]
+        return (
+            "focus.activated",
+            body,
+            [f"focus_item:{item.id}", *[f"focus_item:{identifier}" for identifier in evicted]],
+        )
 
     def transition(
         self,
@@ -533,6 +907,8 @@ class FocusService:
         reason: str | None = None,
         promotion_target_type: str | None = None,
         idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
     ) -> FocusRevision:
         """dormant | dismiss | expire | promote (action aliases) with CAS.
 
@@ -545,6 +921,7 @@ class FocusService:
             raise IdempotencyUnavailableError(
                 "idempotency key supplied but no idempotency runner is configured"
             )
+        self._item_preflight(access, item_id, lease_id, lease_epoch)
         reason_code = require_reason(reason)
         alias = {"dismiss": "dismissed", "expire": "expired", "promote": "promoted"}
         canonical = alias.get(target, target)
@@ -553,7 +930,9 @@ class FocusService:
         except ValueError:
             raise InvalidRequestError(f"unknown focus status: {target!r}") from None
         try:
-            validate_promotion_target(promotion_target_type if target == "promote" else None)
+            validate_promotion_target(
+                promotion_target_type if target_status is FocusStatus.PROMOTED else None
+            )
         except InvalidFocusItemError as error:
             raise InvalidRequestError(str(error)) from error
         # All state-dependent checks (authorization, state-machine legality,
@@ -573,13 +952,38 @@ class FocusService:
             operation="focus:transition",
             idempotency_key=idempotency_key,
             request_fingerprint=request_fingerprint("focus:transition", payload),
-            execute=lambda tx: self._execute_transition(tx, access, payload, target_status),
+            execute=lambda tx: self._execute_transition(
+                tx, access, payload, target_status, lease_id, lease_epoch
+            ),
         )
         body = json.loads(result.body)
         with self._uow.read() as tx:
             item = tx.focus.get(item_id)
             revision = tx.focus.get_revision(body["revision_id"])
-            return _require_item_content_access(tx, access, item, revision=revision)
+            visible = _require_item_content_access(tx, access, item, revision=revision)
+            if result.replayed:
+                self._gate(tx, access, item.agent_id, lease_id, lease_epoch)
+            if revision.promotion_target_id and revision.promotion_target_type:
+                from iris_memory_core.application.promotion import (
+                    PromotionSource,
+                    focus_promotion_evidence,
+                    require_promotion_references,
+                )
+
+                source = PromotionSource.from_focus(item, revision)
+                focus_promotion_evidence(tx, access, source, revision.promotion_target_type)
+                require_promotion_references(
+                    tx,
+                    access,
+                    source.scope,
+                    (
+                        {
+                            "resource_type": revision.promotion_target_type,
+                            "resource_id": revision.promotion_target_id,
+                        },
+                    ),
+                )
+            return visible
 
     def _execute_transition(
         self,
@@ -587,12 +991,20 @@ class FocusService:
         access: AccessContext,
         payload: dict[str, Any],
         target_status: FocusStatus,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
+        *,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         item_id = payload["item_id"]
         expected_revision = payload["expected_revision"]
         promotion_target_type = payload["promotion_target_type"]
         item = tx.focus.get(item_id)
-        current = _require_item_content_access(tx, access, item)
+        if command_actor is not None:
+            access = self._command_item_access(tx, command_actor, item, "focus.transition")
+        current = _require_item_content_access(tx, access, item, managed=command_actor is not None)
+        if command_actor is None:
+            self._gate(tx, access, item.agent_id, lease_id, lease_epoch)
         # State-machine legality runs BEFORE argument checks so an illegal
         # move always reports invalid_state_transition, whatever the caller
         # did or did not supply. It also runs on the row the CAS will target,
@@ -614,6 +1026,30 @@ class FocusService:
             raise InvalidRequestError("promotion requires a promotion_target_type")
         if target_status is not FocusStatus.PROMOTED and promotion_target_type is not None:
             raise InvalidRequestError("promotion_target_type is only valid for promote")
+        if target_status is FocusStatus.PROMOTED:
+            try:
+                validate_promotion_target(promotion_target_type)
+            except InvalidFocusItemError as error:
+                raise InvalidRequestError(str(error)) from error
+        if item.current_revision != expected_revision:
+            tx.focus.raise_pointer_mismatch(item.id, expected_revision)
+        promotion_target_id = None
+        extra_refs: list[str] = []
+        if target_status is FocusStatus.PROMOTED:
+            from iris_memory_core.application.promotion import PromotionSource, materialize_focus
+
+            promotion_target_id = materialize_focus(
+                tx,
+                access,
+                PromotionSource.from_focus(item, current),
+                str(promotion_target_type),
+                actor=command_actor.audit_actor
+                if command_actor
+                else f"access:{access.app_instance_id}",
+                now_us=self._clock.now_us(),
+                command_actor=command_actor,
+            )
+            extra_refs.append(f"{promotion_target_type}:{promotion_target_id}")
         now_us = self._clock.now_us()
         new_activation = decayed_activation(
             item.activation_base,
@@ -637,12 +1073,12 @@ class FocusService:
             status=target_status,
             promotion_policy=current.promotion_policy,
             promotion_target_type=promotion_target_type,
-            # Phase 3 seam: the target id stays NULL until the owning
-            # phase (Note/Task/Episode/Claim) materializes the object.
-            promotion_target_id=None,
+            promotion_target_id=promotion_target_id,
             last_activated_us=item.last_activated_us,
             expires_us=current.expires_us,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
         )
         updated = tx.focus.advance_pointer(
             item.id,
@@ -666,11 +1102,13 @@ class FocusService:
         details: dict[str, object] = {"activation": new_activation}
         if target_status is FocusStatus.PROMOTED:
             details["promotion_target_type"] = promotion_target_type
-            details["promotion_target_id"] = None
+            details["promotion_target_id"] = promotion_target_id
             details["promotion_policy"] = current.promotion_policy
         tx.audit(
             tenant_id=item.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
             action=action,
             resource_type="focus_item",
             resource_id=item.id,
@@ -679,7 +1117,7 @@ class FocusService:
             revision=item.current_revision + 1,
         )
         body = json.dumps({"revision_id": revision_id})
-        return action, body, [f"focus_item:{item.id}"]
+        return action, body, [f"focus_item:{item.id}", *extra_refs]
 
     def _transition(
         self,
@@ -885,7 +1323,11 @@ class FocusService:
         item_scope = _item_scope(item)
         if not evaluate_privacy(revision.privacy_labels, item_scope, item_scope, access):
             return None
-        return item, revision
+        return item, (
+            _require_item_content_access(tx, access, item, revision=revision)
+            if revision.promotion_target_id
+            else revision
+        )
 
     def list_items(
         self,
@@ -954,7 +1396,14 @@ class FocusService:
                 continue
             if not evaluate_privacy(revision.privacy_labels, data_scope, request, access):
                 continue
-            visible.append((item, revision))
+            visible.append(
+                (
+                    item,
+                    _require_item_content_access(tx, access, item, revision=revision)
+                    if revision.promotion_target_id
+                    else revision,
+                )
+            )
         return visible
 
     def history(
@@ -964,9 +1413,10 @@ class FocusService:
             item = tx.focus.get(item_id)
             _require_item_content_access(tx, access, item)
             revisions = list(tx.focus.history(item.id, limit=limit))
-            for revision in revisions:
+            return [
                 _require_item_content_access(tx, access, item, revision=revision)
-            return revisions
+                for revision in revisions
+            ]
 
 
 def _item_scope(item: FocusItemCurrent) -> Scope:
@@ -985,6 +1435,7 @@ def _require_item_content_access(
     item: FocusItemCurrent,
     *,
     revision: FocusRevision | None = None,
+    managed: bool = False,
 ) -> FocusRevision:
     """Authorize one content-bearing Focus read or mutation at call time.
 
@@ -1002,8 +1453,28 @@ def _require_item_content_access(
         raise ConflictError("focus revision does not belong to the requested item")
     item_scope = _item_scope(item)
     for candidate in (current, checked):
-        if not evaluate_privacy(candidate.privacy_labels, item_scope, item_scope, access):
+        labels = tuple(
+            label for label in candidate.privacy_labels if not managed or label != "restricted"
+        )
+        if not evaluate_privacy(labels, item_scope, item_scope, access):
             raise AccessDeniedError("focus item's privacy labels are outside the access context")
+    if checked.promotion_target_id and checked.promotion_target_type:
+        from iris_memory_core.application.promotion import require_promotion_references
+
+        try:
+            require_promotion_references(
+                tx,
+                access,
+                item_scope,
+                (
+                    {
+                        "resource_type": checked.promotion_target_type,
+                        "resource_id": checked.promotion_target_id,
+                    },
+                ),
+            )
+        except (NotFoundError, AccessDeniedError, ScopeViolationError):
+            return replace(checked, promotion_target_id=None, promotion_target_type=None)
     return checked
 
 

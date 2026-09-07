@@ -1,0 +1,11 @@
+{
+  "evidence": [],
+  "expected_revision": 1,
+  "fields": {
+    "mode": "supersede",
+    "value": {
+      "topic": "reading"
+    }
+  },
+  "reason_code": "operator_request"
+}

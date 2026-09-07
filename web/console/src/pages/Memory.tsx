@@ -26,6 +26,8 @@ import {
   useEnvironment,
   useQuery,
 } from "../components/core";
+import { EntityAttributes, EntityAttributeDialog } from "./EntityAttributes";
+import { ArtifactUpload } from "./ArtifactUpload";
 import { OperationPanel } from "../components/Operation";
 export function MemoryPage() {
   const { collection } = useParams();
@@ -54,7 +56,7 @@ export function MemoryPage() {
 function MemoryCollection({ type }: { type: ResourceType }) {
   const [filters, setFilters] = useState<Fields>({});
   const [applied, setApplied] = useState<Fields>({});
-  const [sort, setSort] = useState(type.sorts[0] ?? "");
+  const [sort, setSort] = useState(type.sorts[0]?.key ?? "");
   const [cursor, setCursor] = useState("");
   const [rows, setRows] = useState<Resource[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -62,6 +64,7 @@ function MemoryCollection({ type }: { type: ResourceType }) {
   const id = params.get("id");
   const [action, setAction] = useState<Action>();
   const [forget, setForget] = useState(false);
+  const [upload, setUpload] = useState(false);
   const [result, setResult] = useState<Result<Accepted>>();
   const { epoch, bootstrap } = useEnvironment();
   const canForget =
@@ -69,6 +72,7 @@ function MemoryCollection({ type }: { type: ResourceType }) {
     !bootstrap.read_only &&
     !bootstrap.maintenance &&
     type.actions.some((a) => a.id === "forget");
+  useEffect(() => { setUpload(false); }, [epoch]);
   const queryString = new URLSearchParams({
     limit: "50",
     ...(sort ? { sort } : {}),
@@ -80,6 +84,7 @@ function MemoryCollection({ type }: { type: ResourceType }) {
     ...(cursor ? { cursor } : {}),
   }).toString();
   const path = `/memory/${type.collection}`;
+  const MemoryActionDialog = action?.id === "attributes" ? EntityAttributeDialog : ActionDialog;
   const q = useQuery<Resource[]>(`${path}?${queryString}`);
   const detail = useQuery<Resource>(
     id ? `${path}/${encodeURIComponent(id)}` : null,
@@ -118,6 +123,7 @@ function MemoryCollection({ type }: { type: ResourceType }) {
         onSubmit={(e) => {
           e.preventDefault();
           setApplied({ ...filters });
+          q.refresh();
         }}
       >
         <FieldsForm
@@ -127,9 +133,9 @@ function MemoryCollection({ type }: { type: ResourceType }) {
         />
         <label>
           排序
-          <select value={sort} onChange={(e) => setSort(e.target.value)}>
+          <select aria-label="排序" value={sort} onChange={(e) => setSort(e.target.value)}>
             {type.sorts.map((s) => (
-              <option key={s}>{s}</option>
+              <option key={s.key} value={s.key}>{s.label} · {s.direction}</option>
             ))}
           </select>
         </label>
@@ -138,20 +144,22 @@ function MemoryCollection({ type }: { type: ResourceType }) {
           刷新
         </button>
       </form>
+      {upload && type.upload && <ArtifactUpload action={type.upload} onClose={() => setUpload(false)} onSuccess={() => refresh()} />}
       <div className="toolbar">
-        {type.create && (
+        {type.upload && <ActionButton action={type.upload} onClick={() => setUpload(true)} />}
+        {type.create_schema && type.create && (
           <ActionButton
             action={type.create}
             onClick={() => setAction(type.create)}
           />
         )}
         <button
-          disabled={!selected.length || !canForget}
+          disabled={!selected.length || selected.length > (type.supports.forget_max_targets ?? 50) || !canForget}
           onClick={() => setForget(true)}
         >
           预览所选 Forget ({selected.length})
         </button>
-        <button
+        {type.supports.forget_selector && <button
           disabled={!rows.length || !canForget}
           onClick={() => {
             setSelected([]);
@@ -159,7 +167,7 @@ function MemoryCollection({ type }: { type: ResourceType }) {
           }}
         >
           预览筛选集合 Forget
-        </button>
+        </button>}
       </div>
       <ErrorNotice error={q.error} />
       <MetaLine meta={q.meta} />
@@ -171,11 +179,11 @@ function MemoryCollection({ type }: { type: ResourceType }) {
           <table>
             <thead>
               <tr>
-                <th>选择</th>
-                {type.columns.map((c) => (
-                  <th key={c}>{c}</th>
+                <th scope="col">选择</th>
+                {type.list_columns.map((c) => (
+                  <th scope="col" key={c.key}>{c.label}</th>
                 ))}
-                <th>操作</th>
+                <th scope="col">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -195,13 +203,13 @@ function MemoryCollection({ type }: { type: ResourceType }) {
                       }
                     />
                   </td>
-                  {type.columns.map((c) => (
-                    <td key={c}>
+                  {type.list_columns.map((c) => (
+                    <td key={c.key}>
                       {String(
-                        row.fields[c] ??
-                          (c === "id"
+                        row.fields[c.key] ??
+                          (c.key === "id"
                             ? row.id
-                            : c === "status"
+                            : c.key === "status"
                               ? row.status
                               : "—"),
                       )}
@@ -249,7 +257,7 @@ function MemoryCollection({ type }: { type: ResourceType }) {
                 />
                 <div className="toolbar">
                   {type.actions
-                    .filter((a) => a.id !== "forget")
+                    .filter((a) => a.id !== "forget" && (a.id !== "update" || type.update_schema !== null))
                     .map((a) => (
                       <ActionButton
                         key={a.id}
@@ -273,16 +281,17 @@ function MemoryCollection({ type }: { type: ResourceType }) {
                     查看 Canonical 来源
                   </Link>
                 )}
-                <Related path={`${path}/${id}/history`} title="修订历史" />
-                <Related
-                  path={`${path}/${id}/references`}
+                {type.collection === "entities" && <EntityAttributes key={detail.meta?.request_id} path={`${path}/${encodeURIComponent(id)}/attributes`} />}
+                {type.supports.history && <Related path={`${path}/${encodeURIComponent(id)}/history`} title="修订历史" />}
+                {type.supports.references && <Related
+                  path={`${path}/${encodeURIComponent(id)}/references`}
                   title="入向 / 出向引用"
-                />
+                />}
                 {type.collection === "tasks" &&
                   ["steps", "dependencies", "triggers"].map((child) => (
                     <TaskChildren
                       key={child}
-                      path={`${path}/${id}/${child}`}
+                      path={`${path}/${encodeURIComponent(id)}/${child}`}
                       parent={detail.data!}
                       kind={child}
                       onSuccess={refresh}
@@ -294,12 +303,12 @@ function MemoryCollection({ type }: { type: ResourceType }) {
         </section>
       )}
       {action && (
-        <ActionDialog
+        <MemoryActionDialog
           action={action}
           path={
             action === type.create
               ? path
-              : `${path}/${id}${action.suffix ?? (action.id === "update" ? "" : `:${action.id}`)}`
+              : `${path}/${encodeURIComponent(id ?? "")}${action.id === "attributes" ? "/attributes" : action.suffix ?? (action.id === "update" ? "" : `:${action.id}`)}`
           }
           resource={action === type.create ? undefined : detail.data}
           onClose={() => setAction(undefined)}
@@ -313,8 +322,8 @@ function MemoryCollection({ type }: { type: ResourceType }) {
         <ForgetDialog
           targets={selectedResources}
           selector={
-            !id && !selected.length
-              ? { collection: type.collection, filters: applied, sort }
+            type.supports.forget_selector && !id && !selected.length
+              ? { collection: type.collection, filters: Object.fromEntries(Object.entries(applied).filter(([, value]) => value !== "")), sort }
               : undefined
           }
           onClose={() => setForget(false)}
@@ -397,7 +406,6 @@ function TaskChildren({
         {q.meta?.descriptor?.create && (
           <ActionButton
             action={q.meta.descriptor.create}
-            resource={parent}
             onClick={() =>
               setSelection({ action: q.meta!.descriptor!.create! })
             }
@@ -418,13 +426,20 @@ function TaskChildren({
         ))}
       </QueryState>
       {selection && (
-        <ActionDialog
+        <TaskChildActionDialog
+          detailPath={kind === "triggers" && selection.resource ? `${path}/${encodeURIComponent(selection.resource.id)}` : undefined}
           action={selection.action}
-          path={`${path}${selection.resource ? `/${selection.resource.id}${selection.action.id === "update" ? "" : `:${selection.action.id}`}` : ""}`}
-          resource={selection.resource ?? parent}
+          path={`${path}${selection.resource ? `/${encodeURIComponent(selection.resource.id)}${selection.action.id === "update" ? "" : `:${selection.action.id}`}` : ""}`}
+          resource={selection.resource}
           bodyBuilder={(fields, reason) => ({
             ...cas(parent),
-            fields,
+            ...(selection.resource ? {
+              ...(selection.action.id === "update" ? { fields: {
+                ...fields,
+                ...(kind === "triggers" ? { task_step_id: fields.task_step_id ?? null } : {}),
+              } } : fields),
+              child_expected_revision: selection.resource.revision,
+            } : { fields }),
             reason_code: reason,
           })}
           onClose={() => setSelection(undefined)}
@@ -436,6 +451,14 @@ function TaskChildren({
       )}
     </section>
   );
+}
+function TaskChildActionDialog(props: Parameters<typeof ActionDialog>[0] & { detailPath?: string }) {
+  const detail = useQuery<Resource>(props.detailPath ?? null);
+  if (!props.detailPath) return <ActionDialog {...props} />;
+  if (detail.data) return <ActionDialog {...props} resource={detail.data} />;
+  return <Dialog title={props.action.label} onClose={props.onClose}>
+    <QueryState query={detail}><span>正在读取触发器配置</span></QueryState>
+  </Dialog>;
 }
 export function ForgetDialog({
   targets,
@@ -460,6 +483,12 @@ export function ForgetDialog({
   const lock = useRef(false);
   const { bootstrap } = useEnvironment();
   const descriptor = useQuery<ResourceType[]>("/memory/resource-types");
+  const modes = descriptor.data
+    ? ["soft", "erase"].filter((candidate) => targets.every((target) => {
+        const spec = descriptor.data?.find((row) => row.resource_type === target.resource_type);
+        return (spec?.supports.forget_modes ?? ["soft", "erase"]).some((mode) => mode === candidate);
+      }))
+    : ["soft"];
   const reasons = [
     ...new Set(
       descriptor.data?.flatMap((t) =>
@@ -476,7 +505,7 @@ export function ForgetDialog({
     setError(undefined);
     try {
       if (commit && preview) {
-        const r = await api.action<Accepted>(`${base}:forget`, {
+        const r = await api.action<Accepted | import("../api/generated").components["schemas"]["ConsoleOperation"]>(`${base}:forget`, {
           method: "POST",
           key: key.current,
           body: {
@@ -486,7 +515,7 @@ export function ForgetDialog({
           },
           userActivity: true,
         });
-        onSuccess(r);
+        onSuccess({ ...r, data: "id" in r.data ? { operation: r.data } : r.data });
         onClose();
       } else {
         const r = await api.action<Preview>(`${base}:forget-preview`, {
@@ -531,20 +560,22 @@ export function ForgetDialog({
     >
       <p className="notice">
         soft 和 erase 均不可撤销。保护资源和 Legal Hold
-        不能绕过。筛选批量目标由服务器固定，后续匹配项不会加入。
+        不能绕过。每次最多 500 项；超过 50 项分批执行。筛选预览会固定当前目标，后续新增匹配内容不会加入。
       </p>
       <label>
         方式
         <select
-          disabled={busy}
+          disabled={busy || !descriptor.data}
           value={mode}
           onChange={(e) => {
             setMode(e.target.value);
+            key.current = crypto.randomUUID();
+            setConfirmed(false);
             setPreview(undefined);
           }}
         >
-          <option value="soft">soft · Tombstone 与投影摘除</option>
-          <option value="erase">erase · 追加内容擦除</option>
+          {modes.includes("soft") && <option value="soft">soft · Tombstone 与投影摘除</option>}
+          {modes.includes("erase") && <option value="erase">erase · 追加内容擦除</option>}
         </select>
       </label>
       <Reason
@@ -586,12 +617,14 @@ export function ForgetDialog({
           >
             按预览提交 Forget
           </button>
-          <button onClick={() => setPreview(undefined)}>重新预览</button>
+          <button disabled={busy} onClick={() => { setPreview(undefined); setConfirmed(false); key.current = crypto.randomUUID(); }}>重新预览</button>
         </>
       ) : (
         <button
           disabled={
             busy ||
+            !descriptor.data ||
+            !modes.includes(mode) ||
             !reason ||
             bootstrap.read_only ||
             bootstrap.maintenance ||

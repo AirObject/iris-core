@@ -412,6 +412,7 @@ class TestFailClosed:
             phase8_handlers,
             phase9_handlers,
             phase10_handlers,
+            phase14_handlers,
         )
 
         ctx = phase3
@@ -456,6 +457,7 @@ class TestFailClosed:
             ),
             **phase9_handlers(ctx["store"].clock),
             **phase10_handlers(pipeline=reflection),
+            **phase14_handlers(ctx["store"], ctx["store"].clock, ctx["store"].ids),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in ENABLED_JOB_KINDS:

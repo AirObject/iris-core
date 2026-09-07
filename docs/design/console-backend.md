@@ -10,13 +10,15 @@ Console 在 `/console/v1` 提供独立管理平面，最终范围包括密钥、
 
 | 范围 | 当前工作区事实 | 尚未完成 |
 | --- | --- | --- |
-| 契约、启用、静态托管、认证与两类密钥 | 后端第 1、2 步历史完整 CI 通过；Console 默认关闭 | 当前工作区整体回归及生产 TLS/代理验收 |
-| 授权与读面 | 第 3 步已新增资源注册表、15 类资源读路由、lookup、Task 子资源、Persona 读面和迁移 0013；OpenAPI 88 个路径、90 个 HTTP 操作 | Reflection/Candidate 非 UUID 标识与 ResourceView UUIDv7 契约冲突；读面专项 53 passed / 1 failed |
-| React 前端 | 认证/密钥有有限真实浏览器联调；业务页、mock 与设计适配器已存在 | `types:check` 当前失败；Memory 页仍使用旧 descriptor 字段，未完成真实读面接入 |
-| 管理写入、Forget、统计、导入导出、Provider、Settings、Operation/运维 | 本文保留目标语义，前端只有设计适配与模拟验证 | 后端第 4–10 步尚待实施，不能由页面存在推定服务可用 |
-| 版本与迁移 | Schema 14 / Python 0.12.0 / `/v1` Contract 1.9.0 / Console Contract 1.0.0 | 当前迁移与完整发布门禁不能引用旧 Schema 11/12 的结果替代 |
+| 契约、启用、静态托管、认证与两类密钥 | Console 默认关闭；最新回归见 [Phase 14 报告](../reports/phase-14-verification.md) | 生产 TLS/代理验收 |
+| 授权与读面 | 资源、lookup、Task 子资源和 Persona 读面；路径以生成契约为准；ADR-0023 已修复非 UUID 冲突，专项回归通过 | 生产规模与完整权限/容量门禁 |
+| React 前端 | 生成类型与正式 descriptor 已对齐；真实 Note 列表/详情/历史、认证及密钥流程通过浏览器验证 | 其余业务页仍仅有模拟验证 |
+| 管理写入 | ADR-0025 执行器、State 创建/更正/过期、Note 与 Focus 创建/编辑/状态转换、Focus 激活及 Task 主资源/步骤/依赖/触发器管理已接通，复用领域事务与严格契约 | 其他资源写入和 Forget 尚待实施 |
+| 固定筛选与批量 Forget Operation | ADR-0042、Schema 20 已整合：1–500 固定根、每批 50、实际授权/fence、进度/问题分页/取消及恢复阻塞；当前组合验收中 | 完整 CI 与安装证据待补；其他 Operation 类型未实现 |
+| 统计、导入导出、Provider、Settings、其他运维 | 本文保留目标语义，前端只有设计适配与模拟验证 | 真实领域接线与发布门禁 |
+| 版本与迁移 | Schema 20 / Python 0.13.0 / `/v1` Contract 1.10.0 / Console Contract 1.1.0 | 已有库须按 ADR-0026 离线备份升级；完整发布门禁不能引用旧 Schema 的结果替代 |
 
-§2–4 说明公共边界及已实现认证；§5 的 memory/lookup、Task 子资源与 Persona GET 已接线但未验收，保留/Hold 及写动作仍为目标；§6–11 全部是未实施规格。文中的未来接口、表和设计上限不能作为部署现状。实施次序与退出门禁只在阶段文档维护。
+§2–4 说明公共边界及已实现认证；§5 的 memory/lookup、Task 子资源与 Persona GET 已接线并通过读面专项验证，保留/Hold 及写动作仍为目标；§6–10 与 §11 的其他运维动作仍是目标规格；批量 Forget Operation 的当前实现以 ADR-0042 为准。文中的未来接口、表和设计上限不能作为部署现状。实施次序与退出门禁只在阶段文档维护。
 
 bootstrap 当前根据权限发布 `keys`、`service_credentials`，并在 `memory.read` 与 `console.manage` Purpose 同时满足时发布 `memory`。其中 `pending_restart=false`、`import_in_progress=false` 是当前固定返回值，不能据此认为 Settings/导入已经接线。
 
@@ -51,7 +53,7 @@ flowchart TD
 
 Console 的业务写入必须进入同一组应用服务及 UnitOfWork，事务包含授权复核、CAS、Revision、Current Pointer、Watermark、Audit、Outbox 和导入账本。不得在路由中执行领域表 INSERT/UPDATE，也不得为批量任务复制一套领域校验。
 
-待实施的管理写面将新增内部 `CommandActor`，携带 `origin=console|manual_import`、运营密钥 ID、租户、授权快照版本及经过校验的操作范围；只能由服务端构造。写服务通过公共事务执行器接收它。`/v1` 继续使用原来的宿主入口，客户端不能在 Payload 中指定该来源。
+已实施的管理执行器与 Note 写面使用内部 `CommandActor`，携带 `origin=console|manual_import`、运营密钥 ID、租户、授权快照版本及经过校验的操作范围；只能由服务端构造。Note 写服务通过内部共享事务执行器接收它；`manual_import` 来源保留给后续导入执行器，当前不能使用。`/v1` 继续使用原来的宿主入口，客户端不能在 Payload 中指定该来源。
 
 管理编辑不冒充在线宿主、不借用活动 Lease。新增明确的管理命令分支只跳过“宿主正在产生外部效果”所需的 Surface Lease 校验；Scope、Privacy、Evidence、Revision、保护策略全部保留。管理端不提供发送消息、报告 Usage 或伪造 CognitiveEvent ACK 的动作。不能通过 `surface=None` 临时装配绕过所有校验。
 
@@ -172,7 +174,7 @@ Cookie、服务端到期和 token 更新规则参考 [OWASP Session Management](
   "data": [],
   "meta": {
     "request_id": "req_example",
-    "contract_version": "1.0.0",
+    "contract_version": "1.1.0",
     "as_of": "2026-09-05T08:00:00.000000Z",
     "page": {"next_cursor": null, "has_more": false, "limit": 50},
     "watermarks": {"canonical": "1802", "tombstone": "44"}
@@ -180,7 +182,7 @@ Cookie、服务端到期和 token 更新规则参考 [OWASP Session Management](
 }
 ```
 
-示例 ID 为说明性占位。当前资源 Schema 要求 UUIDv7，但既有 Reflection/Candidate 使用 `reflection:<fingerprint>` / `candidate:<hash>`，因此真实读面 Fixture 失败。不能重写既有 Canonical ID 来迎合浏览器。待裁决方案是资源 ID 使用有长度上限的不透明字符串，并按各资源既有标识生成 Fixture；请求 ID 与幂等键分别保持现有 UUIDv7/UUIDv4 规则。本次文档整理没有修改契约或宣告该裁决已完成。
+示例 ID 为说明性占位。按 [ADR-0023](../adr/0023-release-resources-and-console-identifiers.md)，资源 ID 使用 1–128 字符的不透明字符串，兼容既有 `reflection:<fingerprint>` / `candidate:<hash>`；非 UUID、空值和超长 Fixture 已纳入契约验证。请求 ID 与幂等键分别保持现有 UUIDv7/UUIDv4 规则。
 
 ### 4.2 幂等与并发
 
@@ -234,7 +236,7 @@ Cookie、服务端到期和 token 更新规则参考 [OWASP Session Management](
 
 ## 5. 各类记忆的管理语义
 
-本节资源矩阵的新增、修改、删除均为待实施目标；当前描述接口的 create/update Schema 为 null，写动作以 `not_implemented` 禁用。GET 路由的当前状态见 §1。
+本节资源矩阵保留完整目标。Observation 当前人工提交和关联便签注释、State 创建、更正和过期、Note 创建、编辑和状态转换及 Focus 创建、编辑、激活、状态转换已实现；有写权限的描述接口发布 create/update Schema，详情按当前 Grant 与状态发现动作。其他资源写 Schema 仍为 null，Forget 尚未实现。GET 路由的当前状态见 §1。
 
 “增删改查”按领域对象定义，不把所有表强行包装成可任意 PATCH/DELETE 的行。对不可变原始事实，修改意味着补充更正记录；对投影，修改必须回到来源。所有不可用动作都由后端描述接口返回原因。
 
@@ -245,21 +247,21 @@ Cookie、服务端到期和 token 更新规则参考 [OWASP Session Management](
 | 资源集合 | 新增 | 修改与状态动作 | 删除语义 / 限制 |
 | --- | --- | --- | --- |
 | `observations` | 只记录当前真实的人工提交事件；历史消息走导入审核 | 原文、发生时身份、外部效果不可编辑；`:annotate` 创建关联 Note/Evidence，保留原事件 | Forget；正文和派生 Evidence 一同处理 |
-| `states` | StateService.put，验证 namespace、作用域、source_authority、TTL | 新 Revision；只准写允许 `user` 来源的 namespace；过期使用 `:expire` | 补齐 State Forget；历史与 Current 都服从 Tombstone；自然键复用须显式新建而非复活旧 ID |
-| `focus-items` | FocusService.create | 新增受控 `update` 命令；`:activate`、`:transition` 保留既有状态机和衰减语义 | `:transition` dismissed 用于取消关注；Forget 才擦除，需扩展支持 |
+| `states` | StateService.put，验证 namespace、作用域、source_authority、TTL | 新 Revision；只准写允许 `user` 来源的 namespace；过期使用 `:expire` | 固定集合 soft/erase 已实现（ADR-0040）；历史与 Current 服从 Tombstone；自然键复用须显式新建不同 ID |
+| `focus-items` | FocusService.create | 新增受控 `update` 命令；`:activate`、`:transition` 保留既有状态机和衰减语义 | `:transition` dismissed 用于取消关注；固定集合 Forget soft/erase 已实现（ADR-0039），保留提升目标 |
 | `notes` | NoteService.create | update/transition；置顶、归档、snooze/promotion 均走领域规则 | Forget；置顶、承诺等保护资源需先按业务规则解除保护 |
-| `tasks` | TaskService.create | 更新；步骤、依赖、触发器子资源；完成必须有 Evidence | cancel 是取消计划；Forget 仅允许可擦除的终止任务，级联 Step/Dependency/Trigger，取消未投递事件；未履行承诺保持保护 |
+| `tasks` | TaskService.create | 更新；步骤、依赖、触发器子资源；完成必须有 Evidence | 固定 soft/erase 已实现并通过组合验收（ADR-0041）；仅可删除的终态，级联 Step/Dependency/Trigger，取消 pending/delivered 事件并保留 ACK；未履行承诺与独立子计划保持保护 |
 | `claims` | ClaimService.remember，必须有有效 Evidence | `:correct` 新 Revision；更正事实与撤回证据不可用通用字段修改代替 | Forget，并处理 Relation/Profile/Graph/Recall 依赖 |
 | `episodes` | EpisodeService.create | transition 已有；补齐修改摘要/边界/来源的 revision 命令 | Forget，失效依赖证据 |
 | `relations` | RelationService.create，端点必须可见 | 补齐 `correct`、`transition`，验证两端、方向、证据与双时态 | Forget；不能直接编辑 graph_edges |
 | `artifacts` | 仅 inline 文本或受限上传的原始附件；服务端分配存储 ID | 内容寻址对象不可原地修改；替换创建新 Artifact，再更正引用者 | Forget；本地 blob 清理异步，外部 URL 不自动访问 |
 | `entities`、`identities`、`bindings` | IdentityService / ProvisioningService | 属性写入、显式确认/撤销 Binding、受控 redirect；不按昵称合并 | Entity 使用 tombstone_entity；Identity/Binding 撤销关系，不抹掉发生时身份历史 |
 | Persona | 使用独立 `/personas/{agent_id}` 命名空间创建 Revision/Proposal/State | 发布、approve/reject、rollback 均走 PersonaService，回滚产生新 Revision | 可删除未发布草稿、拒绝 Proposal、清除过期 State；Published/Core/Current 整体删除拒绝，必须保留有效人格指针 |
-| `cognitive-events` | 由 Task/调度领域自动产生 | 只读投递状态；`:dismiss` 表示管理端终止待投递事件，补齐服务命令 | 无正文编辑、手工伪造 ACK 或直接删除投递账本 |
+| `cognitive-events` | 由 Task/调度领域自动产生 | 读取投递状态和次数；`:dismiss` 已按 [ADR-0043](../adr/0043-console-event-dismiss.md) 实现 pending/delivered → cancelled，当前完整组合验收通过 | 无正文编辑、手工伪造 ACK 或直接删除投递账本 |
 | `reflections`、`candidates` | 后台流水线产出；Console 可请求 dry-run/replay | 查看输入版本、拒绝原因、人工 review；不得直接把输出 JSON 改成已采纳 | 原 Reflection 只读；候选可 reject/过期，清理按保留策略 |
 | RecentContext、FTS、Vector、Profile、Graph | 后台构建 | 只读检查、来源跳转与 rebuild | 不接受 CRUD/导入；Forget 来源后由失效链处理 |
 
-State/Focus 更正、Task 子对象移除/禁用、Episode/Relation 更正及事件 dismiss 是本阶段明确的新领域工作，不是已存在 Console 接口。它们必须补齐 Audit、Revision、Tombstone、关联失效、恢复与 Final Rehydrate 的测试后才能在 capabilities 中标为可用。
+State/Focus、Task 子对象移除/禁用与 Episode/Relation 更正已按各自 ADR 接通。事件 dismiss 已整合：复用当前 CommandActor、事件 CAS、审计和失效作业；取消后的待投递 Recall ID 在重放/发布/批量重验时失效，已包含取消的备份保留业务状态，不产生 Tombstone 或永久删除账本。Operation 与 Event 切片的当前完整组合和独立安装门禁已通过；这不代表其余 Console 模块或稳定发布门禁已完成。
 
 ### 5.2 查询与编辑接口
 
@@ -310,6 +312,8 @@ State/Focus 更正、Task 子对象移除/禁用、Episode/Relation 更正及事
 新增的正文位于 `fields`，Scope 单独提交。返回的 tenant 由会话表达，写入不接受 tenant_id。SourceRef 和 Evidence 采用既有领域含义，时间字段在 Console 适配器统一转换。描述 Schema 的 `$id` 绑定 Console 契约版本。
 
 ### 5.3 Persona、身份和保留策略
+
+当前发布与回滚切片按 [ADR-0044](../adr/0044-console-persona-publication.md) 实现：实际 CommandActor、Persona/Policy 双 CAS、当前 Evidence 与近期认证；另有只读 `/personas/{agent_id}/commands` 返回授权后的表单元数据。独立页面已接通 Current/历史/提案读取，发布与回滚已通过主目录完整 CI、真实浏览器和独立安装验收。State 更新与到期清理已按 [ADR-0045](../adr/0045-console-persona-state.md) 通过完整组合验收。Proposal 创建/批准/拒绝已按 [ADR-0046](../adr/0046-console-persona-proposals.md) 通过完整组合验收；Policy 编辑已按 [ADR-0047](../adr/0047-console-persona-policy.md) 通过完整组合验收；Draft 清理和保留管理仍为目标规格。 Persona 各类表单的并发差异提示已补齐并整合，专项验证通过、完整组合待运行，见 Phase14 验证报告。
 
 Persona 路由：`GET /personas/{agent_id}`、`GET /personas/{agent_id}/history`、`POST /personas/{agent_id}/revisions`、`PATCH /personas/{agent_id}/state`、`GET/POST /personas/{agent_id}/proposals`、`POST .../proposals/{id}:approve|:reject`、`POST /personas/{agent_id}:rollback`。补充 `POST .../state:clear` 与 `POST .../drafts/{id}:discard` 仅作用于允许清理的状态/未发布草稿。
 
@@ -712,6 +716,8 @@ stateDiagram-v2
 
 ### 11.1 统一的异步 Operation 模型
 
+当前仅 memory_forget 已整合，按 [ADR-0042](../adr/0042-console-forget-operations.md) 提供实际创建者授权、分批 fence、元数据/问题分页、取消与恢复阻塞。列表支持 kind/status/created_from/created_before，全部在当前密钥 Revision 与 Grant 指纹范围内；不暴露底层 job ID。下述其他 Operation 类型仍为目标。
+
 导入、导出、重建、批量 Forget、统计回填、Provider 激活全部返回 202 + Operation，共用一套资源，前端只需要实现一个进度组件：
 
 ```json
@@ -809,13 +815,13 @@ stateDiagram-v2
 | `storage/console.py`、`storage/console_reads.py` | 认证仓储与固定资源映射的有界只读查询 |
 | `web/console/` | React 前端、OpenAPI 生成类型、未发布设计适配器及显式 mock |
 
-未来命令、导入、Provider、Settings、Operation 模块随切片新增，不预列不存在的文件。导入边界由 `tools/check_import_boundaries.py` 检查；浏览器概念只属于 `api/console/`，领域授权位于应用层。
+其余命令、导入、Provider、Settings、Operation 模块随切片新增，不预列不存在的文件。导入边界由 `tools/check_import_boundaries.py` 检查；浏览器概念只属于 `api/console/`，领域授权位于应用层。
 
 ## 13. 前端接入约定
 
 ### 13.1 契约与发现
 
-生成类型只能来自 Console OpenAPI，命令见工程 README。当前 `src/api/generated.d.ts` 已落后于第 3 步契约；`src/api/design.ts` 的 `columns`、`sorts: string[]`、`create` 和 mock 的 `meta.descriptor` 都不是当前发布的读描述形状。需用正式的 `list_columns`、结构化 `sorts`、`create_schema/update_schema` 及 Fixture 替换后，再跑真实浏览器验证。
+生成类型来自 Console OpenAPI，命令见工程 README。Memory 页面已适配正式 `list_columns`、结构化 `sorts` 和 `create_schema/update_schema`；State/Note/Focus 与 Task 主资源及步骤写面使用后端发布的动作字段和授权 lookup。未发布模块的 `src/api/design.ts` 与 mock 仍仅代表设计模型，不能作为后端已实现的证据。
 
 导航使用 bootstrap 的模块与权限；资源动作使用 `available_actions`，`blocked_actions` 优先。KeyView 尚无动作描述，密钥按钮暂按已发布权限控制，Owner/委托/CAS 由服务器最终判断。未来统计和参数表单分别从 metric/settings 注册表发现，不手写第二份枚举。子资源及管理集合的 descriptor 位置、导出格式/原因发现、Provider 异步探测读取、Settings reset/rollback 的 validate intent 仍待正式契约定义。
 

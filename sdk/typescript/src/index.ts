@@ -2261,6 +2261,8 @@ export interface RecallScope {
 }
 
 export interface RecallRequest {
+  lease_id?: string;
+  lease_epoch?: number;
   schema_version: 1;
   request_id: string;
   scope: RecallScope;
@@ -2976,12 +2978,16 @@ export class AsyncIrisMemoryClient {
       reason: string;
       idempotencyKey: string;
       promotion_target_type?: string;
+      lease_id?: string;
+      lease_epoch?: number;
     },
   ): Promise<FocusView> {
     const body: Record<string, unknown> = {
       expected_revision: input.expected_revision,
       reason: input.reason,
     };
+    if (input.lease_id !== undefined) body.lease_id = input.lease_id;
+    if (input.lease_epoch !== undefined) body.lease_epoch = input.lease_epoch;
     if (input.promotion_target_type !== undefined) {
       body.promotion_target_type = input.promotion_target_type;
     }
@@ -3872,10 +3878,16 @@ export class AsyncIrisMemoryClient {
   }
 
   public async events(
-    options: { after?: string; signal?: AbortSignal } = {},
+    options: { after?: string; afterEventId?: string; signal?: AbortSignal } = {},
   ): Promise<readonly CoreEvent[]> {
     const headers: Record<string, string> = { Accept: "text/event-stream" };
     if (options.after !== undefined) headers["Last-Event-ID"] = options.after;
+    if (options.afterEventId !== undefined) {
+      if (options.after === undefined || !/^[1-9][0-9]{0,18}$/.test(options.after) ||
+          BigInt(options.after) > 9223372036854775807n || !/^[!-~]{1,512}$/.test(options.afterEventId))
+        throw new TypeError("event checkpoint requires a valid cursor and event identity");
+      headers["X-Iris-After-Event-ID"] = options.afterEventId;
+    }
     const response = await this.#request("/v1/events", { headers, signal: options.signal ?? null });
     if (!response.ok) {
       throw new ContractValidationError([`event stream failed with ${response.status}`]);

@@ -1,0 +1,16 @@
+{
+  "evidence": [
+    {
+      "source_id": "observation-a",
+      "source_revision": 1,
+      "source_type": "observation"
+    }
+  ],
+  "expected_revision": 1,
+  "fields": {
+    "source_entity_id": "entity-b",
+    "target_entity_id": "entity-a"
+  },
+  "origin": "forged",
+  "reason_code": "operator_request"
+}

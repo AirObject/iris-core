@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
-import subprocess
 from typing import Any
 
 import pytest
@@ -70,23 +68,27 @@ def test_every_declared_console_path_has_an_independent_implementation() -> None
     assert not any(path.startswith("/v1/") for path in app.openapi()["paths"])
 
 
-def test_host_contract_bytes_remain_frozen() -> None:
-    paths = [
-        "contracts/source/contracts.json",
-        "schemas/openapi/openapi.json",
-        "schemas/compatibility/baseline-v1.json",
-    ]
-    for path in paths:
-        committed = subprocess.run(
-            ["git", "show", f"HEAD:{path}"],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-        ).stdout
-        assert (
-            hashlib.sha256((ROOT / path).read_bytes()).digest()
-            == hashlib.sha256(committed).digest()
-        )
+def test_host_contract_has_an_independent_source() -> None:
+    from tools.generate_contracts import build_openapi
+    from tools.generate_contracts import load_source as load_host_source
+
+    source = load_host_source()
+    published = json.loads((ROOT / "schemas/openapi/openapi.json").read_text())
+    assert published == build_openapi(source)
+    assert published["info"]["version"] == source["contract_version"]
+    assert not any(path.startswith("/console/") for path in published["paths"])
+
+
+def test_runtime_version_sources_agree() -> None:
+    import tomllib
+
+    import iris_memory_core
+
+    source = json.loads((ROOT / "contracts/source/contracts.json").read_text())
+    package = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    assert source["package_version"] == SOURCE["runtime_versions"]["package_version"]
+    assert source["package_version"] == package == iris_memory_core.__version__
+    assert source["schema_version"] == SOURCE["runtime_versions"]["schema_version"]
 
 
 def validate_response(schema_name: str, document: Any) -> None:

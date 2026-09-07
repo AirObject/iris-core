@@ -1,0 +1,16 @@
+{
+  "expected_revision": -1,
+  "fields": {
+    "baseline": {
+      "energy": 0.2
+    },
+    "state": {
+      "energy": 0.7,
+      "focus": [
+        "release"
+      ]
+    },
+    "ttl_us": 1000
+  },
+  "reason_code": "operator_request"
+}

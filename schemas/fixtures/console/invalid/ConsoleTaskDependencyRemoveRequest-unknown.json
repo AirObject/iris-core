@@ -1,0 +1,8 @@
+{
+  "child_expected_revision": 1,
+  "expected_revision": 3,
+  "fields": {
+    "status": "removed"
+  },
+  "reason_code": "operator_request"
+}

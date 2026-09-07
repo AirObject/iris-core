@@ -1,0 +1,6 @@
+{
+  "expected_revision": 1,
+  "origin": "console",
+  "reason_code": "operator_request",
+  "target_status": "pinned"
+}

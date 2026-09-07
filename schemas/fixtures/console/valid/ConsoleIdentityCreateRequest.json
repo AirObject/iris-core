@@ -1,0 +1,8 @@
+{
+  "fields": {
+    "external_id": "external-person",
+    "provider": "manual",
+    "realm": "operator-reviewed"
+  },
+  "reason_code": "operator_request"
+}

@@ -112,7 +112,7 @@ class TestPublishedMigrationIntegrity:
             ).fetchall()
         finally:
             connection.close()
-        assert len(rows) == 14
+        assert len(rows) == 20
         on_disk = hashlib.sha256(
             (REPOSITORY_ROOT / "migrations" / "0003_phase2_reliability_spine.sql").read_bytes()
         ).hexdigest()
@@ -126,10 +126,29 @@ class TestSchemaUpgrade:
         _seed_phase1_data(database)
         assert current_schema_version(sqlite3.connect(database)) == 2
 
-        applied = MigrationRunner(database).migrate()
-        # The 0.12.0 runner walks a Schema 2 database through 0003-0014
+        applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
+        # The 0.13.0 runner walks a Schema 2 database through 0003-0015 offline
         # (staged multi-version upgrades migrate through intermediates).
-        assert [item.version for item in applied] == [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        assert [item.version for item in applied] == [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+        ]
 
         connection = sqlite3.connect(database)
         try:
@@ -160,22 +179,19 @@ class TestSchemaUpgrade:
         MigrationRunner(database).migrate()
         connection = sqlite3.connect(database)
         try:
-            assert current_schema_version(connection) == 14
+            assert current_schema_version(connection) == 20
         finally:
             connection.close()
 
     def test_schema_window_is_5_to_6(self) -> None:
         from iris_memory_core.domain.errors import SchemaIncompatibleError
 
-        # The 0.12.0 binary window (ADR-0016 §1, ADR-0019 §1): Schema 11 through 14.
-        # (Phase 9) databases upgrade forward online; Schema 9 needs a 0.10.0
-        # binary first (staged path).
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (11, 14)
-        verify_schema_compatible(11)
-        verify_schema_compatible(12)
-        verify_schema_compatible(13)
+        # Core 0.13.0 opens only Schema 20; existing data upgrades offline (ADR-0026).
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (20, 20)
+        verify_schema_compatible(20)
+
         with pytest.raises(SchemaIncompatibleError):
-            verify_schema_compatible(15)
+            verify_schema_compatible(21)
         with pytest.raises(SchemaIncompatibleError):
             verify_schema_compatible(10)
 
@@ -183,7 +199,7 @@ class TestSchemaUpgrade:
         database = tmp_path / "runtime.sqlite3"
         _migrate_to_phase1(database)
         _seed_phase1_data(database)
-        MigrationRunner(database).migrate()
+        MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
         runtime = SQLiteRuntime(database, allowed_versions=local_allowed_versions())
         connection = runtime.connect(verify_schema=True)
         connection.close()
@@ -317,7 +333,7 @@ class TestPhase2BackupRestore:
             source = self._phase2_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 14
+            assert report["schema_version"] == 20
             assert verify_backup(backup_dir).ok
 
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
@@ -362,4 +378,4 @@ class TestPhase2BackupRestore:
         service = BackupService(store)
         backup_dir = tmp_path / "catalog-backup"
         report = service.create_backup(backup_dir)
-        assert report.schema_version == 14
+        assert report.schema_version == 20

@@ -1,6 +1,6 @@
 # Iris Memory Core
 
-Iris Memory Core is a host-independent cognitive memory service built around a SQLite canonical store, versioned memory and Persona, explainable recall, and persistent background work. The HTTP service and worker are implemented. Bellis integration and the optional Web console are in progress; the AstrBot bridge is still planned. See the [roadmap](docs/development/README.md) for verified phase status and the [Phase 14 plan](docs/development/phase-14-hardening-release.md) for the remaining path to a stable release.
+Iris Memory Core is a host-independent cognitive memory service built around a SQLite canonical store, versioned memory and Persona, explainable recall, and persistent background work. The HTTP service and worker are implemented; the optional Web console is in progress. Bellis and AstrBot adapters are deferred and excluded from the current Core release. The planned pip distribution contains Core functionality and exposes only the declared public methods and service contracts; direct access to its storage, indexes, queues or private components is outside the public interface. See the [roadmap](docs/development/README.md) for verified phase status and the [Phase 14 plan](docs/development/phase-14-hardening-release.md) for packaging scope, access boundaries and the remaining release work.
 
 ## Requirements
 
@@ -16,14 +16,14 @@ make bootstrap
 make ci
 ```
 
-`make bootstrap` installs locked Python and TypeScript SDK dependencies. `make ci` checks formatting, lint, imports, documentation, types, contract drift/compatibility, Python tests/coverage, and the TypeScript SDK. Console checks are currently separate:
+`make bootstrap` installs locked Python, TypeScript SDK and Console dependencies. `make ci` checks formatting, lint, imports, documentation, types, contract drift/compatibility, public interface snapshots, Python tests/coverage, SDK/Console tests, production frontend builds, real browser tests and isolated package installation. Install a browser runtime before the first local run:
 
 ```bash
-npm ci --prefix web/console
-npm run check --prefix web/console
+cd web/console
+npx playwright install chromium
 ```
 
-These are verification commands, not a claim that the current workspace passes every gate. Current Console failures and the distinction between real and simulated browser coverage are recorded in the [Console report](docs/reports/phase-13-verification.md).
+These are verification commands, not a claim that the current workspace passes every gate. Current results and remaining release gates are recorded in the [Phase 14 report](docs/reports/phase-14-verification.md). The [installation guide](docs/operations/core-installation.md) describes the trusted CLI bootstrap and public SDK boundary.
 
 Useful focused commands: `make format`, `make lint`, `make typecheck`, `make contracts`, `make contracts-check`, `make test`, and `make sdk-test`.
 
@@ -50,6 +50,7 @@ The SDK offline test double is available with `uv run python -m tools.mock_serve
 - [Documentation index](docs/README.md): architecture, decisions, phase plans, evidence and integration guides.
 - [Contribution guide](CONTRIBUTING.md): change workflow and documentation rules.
 - [Python SDK](sdk/python/README.md) and [TypeScript SDK](sdk/typescript/README.md).
+- [Public method mapping and change gate](docs/development/public-api.md).
 - [Application integrations](application/README.md) and [Web Console](web/console/README.md).
 
 Edit `contracts/source/contracts.json` for `/v1` or `contracts/source/console.json` for `/console/v1`, run `make contracts`, and include generated artifacts and fixtures in the same change. Never edit an applied migration; add a new one.

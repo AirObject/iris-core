@@ -1,0 +1,15 @@
+{
+  "evidence": [],
+  "fields": {
+    "canonical_text": "喜欢园艺",
+    "predicate": "prefers",
+    "subject_is_self": true,
+    "value": {
+      "topic": "gardening"
+    }
+  },
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "01a07600-0000-7000-8000-000000000001"
+  }
+}

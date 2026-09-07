@@ -89,7 +89,10 @@ def gate_ctx(
         schedule_spec={"at_us": clocked_store.clock.now_us() - 1},
         idempotency_key="gate-trigger",
     )
+    with clocked_store.read() as tx:
+        task_revision = tx.tasks.get_task(task.task_id).current_revision
     return {
+        "task_revision": task_revision,
         "store": clocked_store,
         "tenant": clocked_tenant_id,
         "agent": phase2_agent,
@@ -199,7 +202,7 @@ def _operations(ctx: dict[str, Any]) -> dict[str, Callable[..., Any]]:
         "task_patch": lambda **p: tasks.patch(
             access,
             ctx["task"].task_id,
-            expected_revision=1,
+            expected_revision=ctx["task_revision"],
             title="op",
             idempotency_key=fresh_key(),
             **p,
@@ -208,7 +211,7 @@ def _operations(ctx: dict[str, Any]) -> dict[str, Callable[..., Any]]:
             access,
             ctx["task"].task_id,
             "wait",
-            expected_revision=1,
+            expected_revision=ctx["task_revision"],
             origin="explicit_tool",
             reason="r",
             idempotency_key=fresh_key(),

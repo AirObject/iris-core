@@ -1275,9 +1275,14 @@ def restore_backup(
         # no FTS tables; the startup migration leaves them in ``never_built``,
         # which equally requires a rebuild before the FTS route can serve.
         try:
+            from iris_memory_core.storage.console_operation_restore import (
+                reset_operations_for_restore,
+            )
+
             _reset_fts_projection_for_restore(staging / CANONICAL_NAME)
             _reset_vector_projection_for_restore(staging / CANONICAL_NAME)
             _reset_profile_graph_for_restore(staging / CANONICAL_NAME)
+            reset_operations_for_restore(staging / CANONICAL_NAME)
             _checkpoint_database_for_switch(staging / CANONICAL_NAME)
             phase6_problems = verify_database_invariants(staging / CANONICAL_NAME)
         except (sqlite3.Error, OSError, TypeError, ValueError) as error:
@@ -1419,6 +1424,16 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
             ).fetchone()
             if tombstone_dupes is not None and int(tombstone_dupes[0]) > 0:
                 problems.append("duplicate tombstones")
+        if _has("state_records") and _has("resource_tombstones"):
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(state_records)")}
+            if "deleted_us" in columns:
+                drift = connection.execute(
+                    "SELECT COUNT(*) FROM state_records r LEFT JOIN resource_tombstones t "
+                    "ON t.tenant_id=r.tenant_id AND t.resource_type='state_record' "
+                    "AND t.resource_id=r.id WHERE r.deleted_us IS NOT t.created_us"
+                ).fetchone()
+                if drift is not None and int(drift[0]) > 0:
+                    problems.append("state deletion flags do not match tombstones")
         # Phase 2 spine invariants (§21 restore step 3): skipped for older
         # snapshots whose schema predates these tables.
         if _has("schedule_ticks") and _has("outbox_jobs"):
@@ -1634,6 +1649,42 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
             ).fetchone()
             if mismatch is not None and int(mismatch[0]) > 0:
                 problems.append(f"{label} current pointer revision mismatch")
+        if _has("task_dependencies") and "status" in {
+            row[1] for row in connection.execute("PRAGMA table_info(task_dependencies)")
+        }:
+            dependency_mismatch = connection.execute(
+                "SELECT COUNT(*) FROM task_dependencies c JOIN task_dependency_revisions v "
+                "ON v.id=c.current_revision_id WHERE c.status<>v.status "
+                "OR c.condition<>v.condition OR c.task_id<>v.task_id "
+                "OR c.tenant_id<>v.tenant_id OR c.predecessor_step_id<>v.predecessor_step_id "
+                "OR c.successor_step_id<>v.successor_step_id"
+            ).fetchone()
+            if dependency_mismatch is not None and int(dependency_mismatch[0]) > 0:
+                problems.append("task dependency current lifecycle differs from its revision")
+        if all(
+            _has(table)
+            for table in ("task_triggers", "task_trigger_revisions", "tasks", "task_steps")
+        ):
+            # Only configuration is duplicated across these rows. Scheduler
+            # progress (next_fire_at/last_scan) legitimately differs and must
+            # remain independent of the immutable spec revision.
+            trigger_mismatch = connection.execute(
+                "SELECT COUNT(*) FROM task_triggers c "
+                "JOIN task_trigger_revisions v ON v.id=c.current_revision_id "
+                "LEFT JOIN tasks t ON t.id=c.task_id "
+                "LEFT JOIN task_steps s ON s.id=c.task_step_id "
+                "WHERE c.kind IS NOT v.kind OR c.task_step_id IS NOT v.task_step_id "
+                "OR c.timezone IS NOT v.timezone OR c.catch_up_policy IS NOT v.catch_up_policy "
+                "OR c.misfire_grace_us IS NOT v.misfire_grace_us "
+                "OR c.max_occurrences_per_run IS NOT v.max_occurrences_per_run "
+                "OR c.enabled IS NOT v.enabled OR c.task_id IS NOT v.task_id "
+                "OR c.tenant_id IS NOT v.tenant_id OR t.id IS NULL "
+                "OR c.tenant_id IS NOT t.tenant_id OR c.agent_id IS NOT t.agent_id "
+                "OR (c.task_step_id IS NOT NULL AND "
+                "(s.id IS NULL OR s.task_id IS NOT c.task_id OR s.tenant_id IS NOT c.tenant_id))"
+            ).fetchone()
+            if trigger_mismatch is not None and int(trigger_mismatch[0]) > 0:
+                problems.append("task trigger configuration differs from its revision or parent")
         if _has("task_trigger_occurrences") and _has("task_triggers"):
             orphan_occurrence = connection.execute(
                 "SELECT COUNT(*) FROM task_trigger_occurrences o WHERE o.trigger_id "

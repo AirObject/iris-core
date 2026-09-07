@@ -1,0 +1,27 @@
+{
+  "available_actions": [],
+  "blocked_actions": [
+    {
+      "action": "update",
+      "reason": "not_implemented"
+    }
+  ],
+  "created_at": "2023-11-14T22:13:20.000000Z",
+  "fields": {
+    "body": "内容",
+    "title": "人工便签"
+  },
+  "id": "reflection:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "privacy_labels": [],
+  "resource_type": "note",
+  "revision": 1,
+  "scope": {
+    "agent_id": null,
+    "session_id": null,
+    "space_group_id": null,
+    "space_id": null
+  },
+  "source_refs": [],
+  "status": "inbox",
+  "updated_at": "2023-11-14T22:13:20.000000Z"
+}

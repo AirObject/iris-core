@@ -1,0 +1,9 @@
+{
+  "expected_revision": 1,
+  "extractor_version": "forged",
+  "fields": {
+    "ended_at": null,
+    "summary": "Updated account"
+  },
+  "reason_code": "operator_request"
+}

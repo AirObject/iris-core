@@ -188,6 +188,34 @@ def tables_created_from_version(minimum_version: int) -> tuple[str, ...]:
     return tuple(reversed(names))
 
 
+def _rewind_state_generations(connection: sqlite3.Connection) -> None:
+    """Recreate the immutable Phase 3 tables, including their original UNIQUE key."""
+    connection.execute("DROP TRIGGER IF EXISTS state_tombstone_releases_live_key")
+    connection.execute("DROP TRIGGER IF EXISTS state_record_id_not_deleted")
+    source = next(default_migrations_path().glob("0004_*.sql")).read_text()
+    tables = ("state_records", "state_record_revisions")
+    for table in tables:
+        match = re.search(rf"CREATE TABLE {table} \(.*?\) STRICT;", source, re.DOTALL)
+        assert match is not None
+        ddl = match.group(0).replace(f"CREATE TABLE {table} (", f"CREATE TABLE {table}_legacy (")
+        ddl = ddl.replace("REFERENCES state_records (", "REFERENCES state_records_legacy (")
+        connection.execute(ddl)
+        columns = ",".join(
+            row[1] for row in connection.execute(f"PRAGMA table_info({table}_legacy)")
+        )
+        connection.execute(f"INSERT INTO {table}_legacy ({columns}) SELECT {columns} FROM {table}")
+    for table in reversed(tables):
+        connection.execute(f"DROP TABLE {table}")
+    for table in tables:
+        connection.execute(f"ALTER TABLE {table}_legacy RENAME TO {table}")
+    for ddl in re.findall(r"CREATE INDEX idx_state_[^;]+;", source):
+        connection.execute(ddl)
+    assert "deleted_us" not in {
+        row[1] for row in connection.execute("PRAGMA table_info(state_records)")
+    }
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
 def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
     """Turn a fresh backup into a FAITHFUL older-build backup: the snapshot's
     tables rebuilt with the older column set AND the manifest rewritten into
@@ -239,6 +267,13 @@ def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
                     connection.execute(f"DROP INDEX IF EXISTS {match.group('name')}")
         for table in (FTS_INDEX_TABLE, *tables_created_from_version(7)):
             connection.execute(f"DROP TABLE IF EXISTS {table}")
+        # Schema 18 rebuilds existing Phase 3 tables and installs triggers.
+        # Keeping that shape would falsely call a modern snapshot a Schema 6 backup.
+        _rewind_state_generations(connection)
+        # Schema 15 extends Phase 4 tables rather than creating new ones.
+        # A faithful pre-Phase-6 snapshot must remove these columns too.
+        for table in ("task_dependencies", "task_dependency_revisions"):
+            connection.execute(f"ALTER TABLE {table} DROP COLUMN status")
         connection.execute("DELETE FROM schema_migrations WHERE version >= 7")
         connection.commit()
     finally:
@@ -390,10 +425,13 @@ class TestR4_1RealLegacySchemaBackup:
             (default_migrations_path() / "0006_phase5_long_term_memory.sql").read_bytes()
         ).hexdigest()
         assert recorded_checksum == expected_checksum
-        # The restored Schema 6 snapshot upgrades through the ordinary
-        # startup migration (ADR-0014 §9: restore never forward-migrates).
+        # The restored Schema 6 snapshot upgrades offline with a verified
+        # backup (ADR-0026); restore itself never forward-migrates.
         assert [
-            item.version for item in MigrationRunner(target_dir / "canonical.sqlite3").migrate()
+            item.version
+            for item in MigrationRunner(target_dir / "canonical.sqlite3").migrate(
+                allow_offline=True, backup_performed=True
+            )
         ] == migration_versions_from(7)
 
         # "Can continue serving" includes the repository path that needs the

@@ -341,6 +341,8 @@ class AsyncIrisMemoryClient:
         reason: str,
         idempotency_key: str,
         promotion_target_type: str | None = None,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
@@ -350,6 +352,10 @@ class AsyncIrisMemoryClient:
             "expected_revision": expected_revision,
             "reason": reason,
         }
+        if lease_id is not None:
+            body["lease_id"] = lease_id
+        if lease_epoch is not None:
+            body["lease_epoch"] = lease_epoch
         if promotion_target_type is not None:
             body["promotion_target_type"] = promotion_target_type
         value = await asyncio.to_thread(

@@ -1,0 +1,10 @@
+{
+  "expected_revision": 1,
+  "fields": {
+    "value": {
+      "text": "corrected"
+    }
+  },
+  "origin": "system",
+  "reason_code": "operator_request"
+}

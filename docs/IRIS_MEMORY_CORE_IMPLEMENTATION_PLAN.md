@@ -80,7 +80,7 @@ Task 只描述、跟踪和提醒计划。宿主可以基于 Task 决定执行动
 
 ### 2.2 必须始终成立的不变量
 
-- 公共领域 ID 的规范目标是 UUIDv7；向量索引另用服务端生成的 `int64` surrogate ID。当前 Reflection/Candidate 的确定性标识存在非 UUID 形态，兼容语义尚待 [Phase 14.0-C](development/phase-14-hardening-release.md)裁决；不能把规范目标当作已全面实现。
+- 公共领域 ID 的规范目标是 UUIDv7；向量索引另用服务端生成的 `int64` surrogate ID。既有 Reflection/Candidate 的确定性非 UUID 标识按 [ADR-0023](adr/0023-release-resources-and-console-identifiers.md) 保留；Console 资源 ID 使用 1–128 字符的不透明字符串兼容，不重写 Canonical ID。请求 ID 和幂等键继续使用各自既定规则。
 - 所有写接口支持幂等；同一幂等键对应不同规范请求时返回冲突。
 - 所有时间字段在 API 中使用 UTC RFC 3339；数据库内部可额外保存整数微秒用于排序。
 - 任何 Recall 候选在返回前必须从 Canonical Store 重新读取并执行最终权限、状态、时效和 Tombstone 校验。
@@ -152,7 +152,7 @@ flowchart LR
 
 API 与一个或多个 Worker 进程共享同一节点的 SQLite 与本地持久卷。`api` 负责认证、校验与编码；`application` 管理用例、事务和 Recall 编排；`domain` 保存领域规则；`storage` 管理持久化、迁移、备份；`jobs` 管理 Outbox/Schedule/Lease；`indexing` 管理投影；`providers` 实现外部能力端口；`coordinator` 提供可选活动入口；`observability` 暴露低敏诊断。
 
-Core、公共 Schema 与 SDK 同处 Monorepo；宿主适配实现只能通过 SDK/HTTP 接入，不直接读取 Core 存储。Bellis 当前以独立插件包接入 `providers/memory-iris`，本仓库 `application/` 保存接入说明，交付与兼容状态见[Phase 11](development/phase-11-bellis-adapter.md)。AstrBot 的目标边界见[Phase 12](development/phase-12-astrbot-bridge.md)，不能由说明文档推断已有 Bridge 实现。
+Core、公共 Schema 与 SDK 同处 Monorepo；业务调用方及宿主适配实现只能经既定公共方法和 SDK/HTTP 契约接入，不直接访问 Core SQLite、FAISS、内部队列或私有组件。当前 pip 范围只包含 Core 功能及必要运行资源；SDK/前端单独交付，公共方法白名单和实际进程/文件权限隔离由 [Phase 14](development/phase-14-hardening-release.md#公共方法与内部访问边界) 验收。Bellis 在 `providers/memory-iris` 的已有插件及本仓库 AstrBot 预留目录均暂缓，状态分别见 [Phase 11](development/phase-11-bellis-adapter.md)、[Phase 12](development/phase-12-astrbot-bridge.md)，二者不进入当前 Core 发布物或前置门禁。
 
 Console 是同一 Core 的独立管理平面，默认关闭；`/console/v1` 认证、授权和浏览器会话遵循 [ADR-0022](adr/0022-management-console-plane.md)。读侧可新增有界投影；所有业务写复用应用服务与 UoW。
 
@@ -1327,7 +1327,7 @@ Required 模式下，下列应用平面在线操作要求 Lease：
 
 ## 26. Bellis Adapter
 
-Bellis Adapter 按 [ADR-0020](adr/0020-bellis-adapter-plugin-seam.md)以独立插件包接入，负责把 Bellis 插件契约映射为 Core 公共协议。它不实现第二套记忆、人格或身份事实源。
+Bellis Adapter 按 [ADR-0020](adr/0020-bellis-adapter-plugin-seam.md)以独立插件包接入，负责把 Bellis 插件契约映射为 Core 公共协议。它不实现第二套记忆、人格或身份事实源。Phase 11 已按项目负责人 2026-09-06 要求暂缓，不进入当前 Core pip 产物或发布门禁；以下约束保留供恢复执行使用，已有实现与历史证据不标为完成。
 
 ### 26.1 职责
 
@@ -1368,7 +1368,7 @@ Consumer Contract 覆盖映射、Privacy、Deadline/Partial、实际输出/Cance
 
 ## 27. AstrBot Bridge
 
-AstrBot Bridge 的目标是隔离平台事件、生命周期钩子与 Core 协议。以下是接入约束，实际实现和验证状态只见 [Phase 12](development/phase-12-astrbot-bridge.md)。
+AstrBot Bridge 的目标是隔离平台事件、生命周期钩子与 Core 协议。Phase 12 已按项目负责人 2026-09-06 要求暂缓，移出当前发布门禁；以下接入约束保留供恢复执行使用，实际状态只见 [Phase 12](development/phase-12-astrbot-bridge.md)。
 
 ### 27.1 职责
 
@@ -1443,6 +1443,8 @@ Monorepo 发布：
 - Schema Compatibility Checker。
 
 SDK 不隐藏 Scope、Partial、Degraded Route、Persona Revision 或 Usage Report。便捷方法不能把安全关键字段设为危险默认值。
+
+上述为 Monorepo 的独立产物，不表示全部装入 Core pip 包。当前 Core 发布只包含 Core 功能与必要运行资源，两个宿主适配器随 Phase 11/12 暂缓，Python/TS SDK 与 Console 前端独立交付。对调用方开放的方法、DTO/错误和运维命令须逐项列入公共接口白名单；不得导出或返回 Core SQLite/FAISS/队列/Repository/容器等私有组件，也不得增加原始 SQL、任意内部对象调用或队列读写入口。实际封装、兼容和访问隔离的执行要求见 [Phase 14](development/phase-14-hardening-release.md#公共方法与内部访问边界)。
 
 ### 28.2 发布关系
 
@@ -1619,7 +1621,7 @@ Clock 注入覆盖时区/DST、回拨/前跳/休眠/重启 Catch-up、Occurrence
 
 真实宿主闭环必须包含：用户 Observation → Recall/Persona → 最终模型可见集合与 Usage → 实际输出 Observation → Note/Task/Forget → Core/Adapter 重启与 Cursor 对账。发送失败、部分输出、版本不兼容、Provider/Route/Coordinator 故障分别证明明确降级。
 
-Bellis 与 AstrBot 各自独立验证；一个宿主通过不能代替另一个。现有覆盖和缺口分别见 Phase 11/12。
+宿主专属验证随 Phase 11/12 一同暂缓，当前 Core 发布不要求 Bellis/AstrBot E2E，也不声明两者已受支持。真实 Core 进程上的公共方法、Observation/Cursor/幂等、多客户端 Lease/Fencing、身份隔离与恢复测试继续执行；通用客户端不能证明平台实际发送效果。未来恢复时每个宿主独立验收，覆盖和缺口保留在 Phase 11/12。
 
 ### 32.9 性能与 Soak
 
@@ -1852,7 +1854,7 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 
 ## 38. 顶层验收标准
 
-项目进入首个稳定发布必须同时满足：
+项目进入首个稳定发布必须满足以下标准中当前 Core 范围的要求。2026-09-06 范围决定：Phase 11 Bellis Adapter 与 Phase 12 AstrBot Bridge 均暂缓，不纳入当前 pip 发布物及宿主 E2E 门禁；通用协议约束继续有效，当前发布不声明两个适配器支持。pip 仅交付 Core 功能，调用方只能使用既定公共方法，不得直接访问 Core SQLite、FAISS、内部队列或私有组件。范围、白名单、隔离验收与恢复条件见 [Phase 14](development/phase-14-hardening-release.md)。
 
 ### 38.1 正确性
 
@@ -1889,7 +1891,8 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 ### 38.5 接入与发布
 
 - Core/Schema/SDK Monorepo 契约一致。
-- Bellis Adapter 与 AstrBot Bridge 保持独立包/插件边界，声明与当前 Core Schema/Contract 的支持矩阵并通过 Consumer Contract/真实宿主 E2E。
+- Core wheel/sdist、extras、依赖闭包及入口点只含 Core，不含 Phase 11/12 适配器或宿主运行时；两个宿主的版本矩阵、插件分发与 E2E 记录为暂缓，恢复后单独验收。
+- 公共方法、DTO/异常及 CLI/HTTP 入口与冻结白名单一致；安装物不得通过公开对象或通用调用入口暴露 SQLite、FAISS、内部队列或私有组件。普通客户端与 Core 服务身份/文件权限隔离，直接读写 Core 运行资源的负例通过；不能以 Python 命名约定代替 OS 权限。
 - Active Surface Coordinator 在 Off/Advisory/Required 三种模式行为符合定义。
 - Console 文件导入经过 validate/review/commit、幂等续传、Tombstone 不复活与审计验证；灾难恢复独立通过删除账本和隔离恢复门禁。
 - Docker、Compose、SBOM、Soak、恢复手册在硬化阶段完整交付。
@@ -1903,4 +1906,3 @@ API 与 Worker 可以是同一镜像的不同命令。SQLite 单节点持久卷�
 ## 40. 完成定义
 
 只有真实外部效果、可追溯身份/Scope/Evidence、受控人格、预算内召回、实际 Usage，以及故障后的调度/投影/恢复持续构成闭环，才满足完成定义。实际是否达到该标准以[Phase 14 的发布证据](development/phase-14-hardening-release.md)判定，不能从本架构目标或历史 Completed 标签推断。
-

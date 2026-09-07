@@ -1,0 +1,11 @@
+{
+  "mode": "soft",
+  "reason_code": "operator_request",
+  "targets": [
+    {
+      "expected_revision": 1,
+      "id": "note-1",
+      "resource_type": "task_step"
+    }
+  ]
+}

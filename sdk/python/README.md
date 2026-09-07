@@ -1,7 +1,7 @@
 # Iris Memory Python SDK
 
 Dependency-free asynchronous client for the Core public `/v1` API. Version
-`0.11.0` covers observations and cursors, leases, jobs, explicit memory,
+`0.11.1` covers observations and cursors, leases, jobs, explicit memory,
 recall/search/usage, profiles, personas, identity and administrative resources.
 The separate Phase 13 console `/console/v1` API is not part of this SDK.
 
@@ -29,3 +29,7 @@ application; `tools/mock_server.py` is an offline test double. Supported
 release combinations and SDK distribution must be verified separately before
 host release; the current Core package/Schema version is recorded in
 [`version-manifest.json`](../../schemas/version-manifest.json).
+
+### Task 子资源与父修订
+
+步骤、依赖和触发器写入会在同一事务推进父 Task 修订。子资源返回自己的修订；后续更新或转换父 Task 前，先用公共 Task 列表接口读取当前父修订。不要复用创建子资源之前的父修订。幂等重放不额外推进父修订。

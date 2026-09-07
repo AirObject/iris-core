@@ -1,0 +1,9 @@
+{
+  "expected_revision": 3,
+  "fields": {
+    "predecessor_step_id": "step-a",
+    "status": "removed",
+    "successor_step_id": "step-b"
+  },
+  "reason_code": "operator_request"
+}

@@ -172,13 +172,31 @@ class TestUpgrade:
         try:
             from iris_memory_core.storage.migrations import current_app_version
 
-            assert current_app_version() == "0.12.0"
+            assert current_app_version() == "0.13.0"
         finally:
             connection.close()
-        applied = MigrationRunner(database, default_migrations_path()).migrate()
+        applied = MigrationRunner(database, default_migrations_path()).migrate(
+            allow_offline=True, backup_performed=True
+        )
         # Phase 6 ride-along: the 0.7.0 runner walks the Schema 5 source all
         # the way to the current released schema (ADR-0014 §10).
-        assert [item.version for item in applied] == [6, 7, 8, 9, 10, 11, 12, 13, 14]
+        assert [item.version for item in applied] == [
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+        ]
         connection = sqlite3.connect(database)
         try:
             tables = {
@@ -201,21 +219,20 @@ class TestUpgrade:
             version = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
         finally:
             connection.close()
-        assert version == 14
+        assert version == 20
         assert not verify_database_invariants(database)
 
     def test_window_is_7_to_8(self) -> None:
-        # The 0.12.0 binary window (ADR-0016 §1, ADR-0019 §1): Schema 11 through 14.
-        # databases upgrade online; Schema 9 needs a 0.10.0 binary first.
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (11, 14)
-        verify_schema_compatible(11)
-        verify_schema_compatible(12)
-        verify_schema_compatible(13)
+        # Core 0.13.0 opens only Schema 20; existing data upgrades offline (ADR-0026).
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (20, 20)
+        verify_schema_compatible(20)
 
     def test_upgraded_database_openable_by_runtime(self, tmp_path: Path) -> None:
         database = tmp_path / "canonical.sqlite3"
         _migrate_to_phase4(database)
-        MigrationRunner(database, default_migrations_path()).migrate()
+        MigrationRunner(database, default_migrations_path()).migrate(
+            allow_offline=True, backup_performed=True
+        )
         runtime = SQLiteRuntime(database, allowed_versions=local_allowed_versions())
         connection = runtime.connect(verify_schema=True)
         connection.close()

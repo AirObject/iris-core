@@ -3,9 +3,11 @@
 本目录临时存放独立于 Core 发布物的宿主接入；与 Core 内部应用层
 `src/iris_memory_core/application/` 无代码或依赖共享。
 
+Phase 11 Bellis Adapter 与 Phase 12 AstrBot Bridge 均已按项目负责人 2026-09-06 要求暂缓，移出当前 Core pip 产物及发布门禁；Bellis 的已有插件保留在 Bellis 仓库。本目录继续保留说明和隔离约束，不随本轮 Core 发布恢复适配器实施。
+
 | 目录 | 当前状态 | 计划与剩余裁决 |
 | --- | --- | --- |
-| [astrbot_plugin_iris_memory_api](./astrbot_plugin_iris_memory_api/) | 只有说明文件，尚无实现、依赖声明或测试 | [Phase 12](../docs/development/phase-12-astrbot-bridge.md) |
+| [astrbot_plugin_iris_memory_api](./astrbot_plugin_iris_memory_api/) | Deferred：暂时不再执行；只有说明文件，移出当前发布门禁 | [Phase 12](../docs/development/phase-12-astrbot-bridge.md) |
 
 ## 隔离不变量
 

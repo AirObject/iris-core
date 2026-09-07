@@ -549,6 +549,7 @@ def focus_create_request_schema() -> dict[str, Any]:
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": True,
         "properties": {
+            **_lease_proof_properties(),
             "agent_id": _id(),
             "kind": {"enum": _FOCUS_KINDS},
             "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
@@ -2038,6 +2039,7 @@ def recall_request_schema() -> dict[str, Any]:
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": False,
         "properties": {
+            **_lease_proof_properties(),
             "schema_version": {"const": 1},
             "request_id": _id(),
             "scope": {
@@ -2380,11 +2382,63 @@ def search_response_schema() -> dict[str, Any]:
 _PHASE6_COMPONENTS: dict[str, dict[str, Any]] = {}
 
 
+def recall_revalidation_request_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-revalidation-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "RecallRevalidationRequest",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["schema_version", "deadline_at", "requests"],
+        "properties": {
+            "schema_version": {"const": 1},
+            "deadline_at": {"type": "string", "format": "date-time"},
+            "requests": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "items": recall_request_schema(),
+            },
+        },
+    }
+
+
+def recall_revalidation_response_schema() -> dict[str, Any]:
+    return {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-revalidation-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "RecallRevalidationResponse",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["schema_version", "checked_at", "results"],
+        "properties": {
+            "schema_version": {"const": 1},
+            "checked_at": {"type": "string", "format": "date-time"},
+            "results": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["request_id", "status"],
+                    "properties": {
+                        "request_id": _id(),
+                        "status": {"enum": ["valid", "unavailable"]},
+                    },
+                },
+            },
+        },
+    }
+
+
 def phase6_components() -> dict[str, dict[str, Any]]:
     global _PHASE6_COMPONENTS
     if not _PHASE6_COMPONENTS:
         _PHASE6_COMPONENTS = {
             "RecallRequest": recall_request_schema(),
+            "RecallRevalidationRequest": recall_revalidation_request_schema(),
+            "RecallRevalidationResponse": recall_revalidation_response_schema(),
             "RecallCandidate": recall_candidate_schema(),
             "DegradedRoute": degraded_route_schema(),
             "RecallTrace": recall_trace_schema(),
@@ -2400,6 +2454,8 @@ def phase6_components() -> dict[str, dict[str, Any]]:
 def phase6_json_schema_files() -> dict[Path, dict[str, Any]]:
     names = {
         "recall-request": "RecallRequest",
+        "recall-revalidation-request": "RecallRevalidationRequest",
+        "recall-revalidation-response": "RecallRevalidationResponse",
         "recall-candidate": "RecallCandidate",
         "degraded-route": "DegradedRoute",
         "recall-trace": "RecallTrace",
@@ -2943,6 +2999,7 @@ def _focus_transition_op(
     operation: str, with_target: bool, error_response: dict[str, Any]
 ) -> dict[str, Any]:
     properties: dict[str, Any] = {
+        **_lease_proof_properties(),
         "expected_revision": {"type": "integer", "minimum": 1},
         "reason": {"type": "string", "minLength": 1},
     }
@@ -3426,7 +3483,24 @@ def _phase10_paths(error_response: dict[str, Any]) -> dict[str, Any]:
                         "name": "Last-Event-ID",
                         "required": False,
                         "schema": {"type": "string"},
-                    }
+                    },
+                    {
+                        "in": "header",
+                        "name": "X-Iris-After-Event-ID",
+                        "required": False,
+                        "description": (
+                            "With events.checkpoint.v1, verify the last accepted cursor still "
+                            "identifies this visible event before reading successors. Missing or "
+                            "changed history returns 410; numeric gaps alone are valid after "
+                            "authorization filtering."
+                        ),
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512,
+                            "pattern": "^[!-~]+$",
+                        },
+                    },
                 ],
                 "responses": {
                     "200": {
@@ -3434,6 +3508,7 @@ def _phase10_paths(error_response: dict[str, Any]) -> dict[str, Any]:
                         "content": {"text/event-stream": {"schema": {"type": "string"}}},
                     },
                     "403": error_response,
+                    "410": error_response,
                 },
             }
         },
@@ -4182,6 +4257,7 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
                             "schema": {
                                 "additionalProperties": True,
                                 "properties": {
+                                    **_lease_proof_properties(),
                                     "expected_revision": {
                                         "type": "integer",
                                         "minimum": 1,
@@ -5187,6 +5263,32 @@ def build_openapi(source: Mapping[str, Any]) -> dict[str, Any]:
                     "403": error_response,
                     "404": error_response,
                     "503": error_response,
+                },
+            },
+        },
+        "/v1/recall:revalidate": {
+            "post": {
+                "operationId": "revalidateRecall",
+                "description": (
+                    "Read-only original Recall request verdicts in one snapshot; "
+                    "requires recall.revalidate.v1. This is not a cross-batch snapshot "
+                    "or permission to release a history-gap barrier."
+                ),
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/RecallRevalidationRequest"}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": _json_response("#/components/schemas/RecallRevalidationResponse"),
+                    "400": error_response,
+                    "403": error_response,
+                    "404": error_response,
+                    "503": error_response,
+                    "504": error_response,
                 },
             },
         },

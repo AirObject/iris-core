@@ -2248,6 +2248,14 @@
               "pending_input"
             ]
           },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
           "privacy_labels": {
             "items": {
               "type": "string"
@@ -4884,6 +4892,14 @@
             },
             "type": "object"
           },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
           "minimum_watermark": {
             "anyOf": [
               {
@@ -5408,6 +5424,293 @@
           "next_wake_at"
         ],
         "title": "RecallResponse",
+        "type": "object"
+      },
+      "RecallRevalidationRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-revalidation-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "deadline_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "requests": {
+            "items": {
+              "$id": "https://schemas.iris-memory-core.local/v1/recall-request.schema.json",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "additionalProperties": false,
+              "properties": {
+                "actors": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "external_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "provider": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "realm": {
+                        "default": "default",
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "weight": {
+                        "default": 1.0,
+                        "maximum": 1.0,
+                        "minimum": 0.0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "external_id"
+                    ],
+                    "title": "ExternalActorRef",
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "allow_partial": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "as_of": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "candidate_limits": {
+                  "additionalProperties": {
+                    "maximum": 200,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "propertyNames": {
+                    "pattern": "^[a-z_]{1,64}$"
+                  },
+                  "type": "object"
+                },
+                "categories": {
+                  "items": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "deadline_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "include_trace": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "layer_budgets": {
+                  "additionalProperties": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "propertyNames": {
+                    "pattern": "^[a-z_]{1,64}$"
+                  },
+                  "type": "object"
+                },
+                "lease_epoch": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "lease_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minimum_watermark": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  ]
+                },
+                "purpose": {
+                  "enum": [
+                    "reply",
+                    "planning",
+                    "reflection",
+                    "tool"
+                  ]
+                },
+                "request_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "requested_privacy_labels": {
+                  "items": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "resource_types": {
+                  "items": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "schema_version": {
+                  "const": 1
+                },
+                "scope": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "agent_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "session_id": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "space_group_id": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "space_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "agent_id",
+                    "space_id"
+                  ],
+                  "type": "object"
+                },
+                "token_budget": {
+                  "maximum": 100000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "topic": {
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "schema_version",
+                "request_id",
+                "scope",
+                "actors",
+                "topic",
+                "purpose",
+                "token_budget",
+                "deadline_at"
+              ],
+              "title": "RecallRequest",
+              "type": "object"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 1
+          }
+        },
+        "required": [
+          "schema_version",
+          "deadline_at",
+          "requests"
+        ],
+        "title": "RecallRevalidationRequest",
+        "type": "object"
+      },
+      "RecallRevalidationResponse": {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-revalidation-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "request_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "valid",
+                    "unavailable"
+                  ]
+                }
+              },
+              "required": [
+                "request_id",
+                "status"
+              ],
+              "type": "object"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 1
+          }
+        },
+        "required": [
+          "schema_version",
+          "checked_at",
+          "results"
+        ],
+        "title": "RecallRevalidationResponse",
         "type": "object"
       },
       "RecallTrace": {
@@ -7595,7 +7898,7 @@
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.9.0"
+    "version": "1.10.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -9779,6 +10082,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "With events.checkpoint.v1, verify the last accepted cursor still identifies this visible event before reading successors. Missing or changed history returns 410; numeric gaps alone are valid after authorization filtering.",
+            "in": "header",
+            "name": "X-Iris-After-Event-ID",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "pattern": "^[!-~]+$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -9793,6 +10108,16 @@
             "description": "Resumable server-sent event stream"
           },
           "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "410": {
             "content": {
               "application/json": {
                 "schema": {
@@ -10034,6 +10359,14 @@
                     "minimum": 1,
                     "type": "integer"
                   },
+                  "lease_epoch": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "lease_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "reason": {
                     "minLength": 1,
                     "type": "string"
@@ -10106,6 +10439,14 @@
                   "expected_revision": {
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "lease_epoch": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "lease_id": {
+                    "minLength": 1,
+                    "type": "string"
                   },
                   "reason": {
                     "minLength": 1,
@@ -10180,6 +10521,14 @@
                     "minimum": 1,
                     "type": "integer"
                   },
+                  "lease_epoch": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "lease_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "reason": {
                     "minLength": 1,
                     "type": "string"
@@ -10253,6 +10602,14 @@
                     "minimum": 1,
                     "type": "integer"
                   },
+                  "lease_epoch": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "lease_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "reason": {
                     "minLength": 1,
                     "type": "string"
@@ -10325,6 +10682,14 @@
                   "expected_revision": {
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "lease_epoch": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "lease_id": {
+                    "minLength": 1,
+                    "type": "string"
                   },
                   "promotion_target_type": {
                     "enum": [
@@ -11984,6 +12349,84 @@
             "description": "Stable error envelope"
           },
           "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/recall:revalidate": {
+      "post": {
+        "description": "Read-only original Recall request verdicts in one snapshot; requires recall.revalidate.v1. This is not a cross-batch snapshot or permission to release a history-gap barrier.",
+        "operationId": "revalidateRecall",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallRevalidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallRevalidationResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "504": {
             "content": {
               "application/json": {
                 "schema": {

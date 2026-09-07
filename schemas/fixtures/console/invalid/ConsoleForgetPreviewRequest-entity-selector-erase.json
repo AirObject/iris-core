@@ -1,0 +1,11 @@
+{
+  "mode": "erase",
+  "reason_code": "operator_request",
+  "selector": {
+    "collection": "entities",
+    "filters": {
+      "q": "fixed match"
+    },
+    "sort": "created_at_desc"
+  }
+}

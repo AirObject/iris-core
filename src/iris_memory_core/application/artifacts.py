@@ -18,6 +18,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from iris_memory_core.application.console.resources import ResourceRef
 from iris_memory_core.application.ports import Clock, IdempotencyRunner, Transaction, UnitOfWork
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.application.write_support import (
@@ -29,6 +30,7 @@ from iris_memory_core.application.write_support import (
     require_surface_online_in_tx,
 )
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.console import CommandActor
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     ConflictError,
@@ -49,6 +51,8 @@ from iris_memory_core.domain.memory import (
 )
 from iris_memory_core.domain.privacy import evaluate_privacy
 from iris_memory_core.domain.scope import Scope
+
+MAX_CONSOLE_ARTIFACT_UPLOAD_BYTES = 8 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,32 +264,235 @@ class ArtifactService:
             replayed=result.replayed,
         )
 
+    @staticmethod
+    def command_fields(fields: dict[str, Any]) -> tuple[bytes, str]:
+        if not isinstance(fields, dict) or set(fields) - {"content", "media_type"}:
+            raise InvalidRequestError("unsupported artifact fields")
+        text = fields.get("content")
+        media_type = fields.get("media_type", "text/plain")
+        if not isinstance(text, str) or not text or "\0" in text:
+            raise InvalidRequestError("artifact text must be nonempty UTF-8")
+        if media_type not in {"text/plain", "text/markdown"}:
+            raise InvalidRequestError("manual inline artifacts accept plain text or Markdown")
+        try:
+            payload = text.encode("utf-8")
+        except UnicodeError:
+            raise InvalidRequestError("artifact text must be valid UTF-8") from None
+        validate_artifact_admission(
+            storage_kind="inline",
+            size_bytes=len(payload),
+            media_type=media_type,
+            content_hash=hashlib.sha256(payload).hexdigest(),
+        )
+        return payload, media_type
+
+    @staticmethod
+    def command_references(source_refs: list[dict[str, Any]]) -> tuple[ResourceRef, ...]:
+        if not isinstance(source_refs, list) or len(source_refs) > 1:
+            raise InvalidRequestError("an artifact accepts at most one source")
+        for ref in source_refs:
+            if not isinstance(ref, dict) or set(ref) - {"resource_type", "resource_id", "revision"}:
+                raise InvalidRequestError("unsupported artifact source fields")
+            revision = ref.get("revision")
+            if "revision" in ref and (
+                not isinstance(revision, int) or isinstance(revision, bool) or revision < 1
+            ):
+                raise InvalidRequestError("invalid artifact source revision")
+            if (
+                not isinstance(ref.get("resource_id"), str)
+                or not 1 <= len(ref["resource_id"]) <= 128
+            ):
+                raise InvalidRequestError("invalid artifact source identifier")
+        parse_source_refs(source_refs)
+        return tuple(
+            ResourceRef(
+                str(ref["resource_type"]),
+                str(ref["resource_id"]),
+                int(ref["revision"]) if "revision" in ref else None,
+            )
+            for ref in source_refs
+        )
+
+    def create_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        fields: dict[str, Any],
+        *,
+        privacy_labels: list[str],
+        source_refs: list[dict[str, Any]],
+    ) -> tuple[str, str, list[str]]:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+
+        if actor.operation != "artifact.create" or not actor.scope.agent_id:
+            raise InvalidRequestError("invalid artifact creation command")
+        payload, media_type = self.command_fields(fields)
+        refs = self.command_references(source_refs)
+        labels = parse_privacy_labels(privacy_labels)
+        access = command_access(
+            tx,
+            actor,
+            CommandTarget(
+                "artifact",
+                actor.scope,
+                privacy_labels=labels,
+                source_refs=refs,
+            ),
+            now_us=self._clock.now_us(),
+        )
+        return self._execute_ingest(
+            tx,
+            access,
+            {
+                "agent_id": actor.scope.agent_id,
+                "space_id": actor.scope.space_id,
+                "session_id": actor.scope.session_id,
+                "privacy_labels": list(labels),
+                "source_ref": source_refs[0] if source_refs else None,
+                "storage_kind": "inline",
+                "media_type": media_type,
+                "size_bytes": len(payload),
+                "content_hash": hashlib.sha256(payload).hexdigest(),
+            },
+            payload,
+            command_actor=actor,
+        )
+
+    def upload_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        payload: bytes,
+        *,
+        media_type: str,
+        privacy_labels: list[str],
+        source_refs: list[dict[str, Any]],
+        allocated_blobs: list[tuple[str, str]],
+    ) -> tuple[str, str, list[str]]:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+
+        if actor.operation != "artifact.upload" or not actor.scope.agent_id:
+            raise InvalidRequestError("invalid artifact upload command")
+        if (
+            not isinstance(payload, bytes)
+            or not 1 <= len(payload) <= MAX_CONSOLE_ARTIFACT_UPLOAD_BYTES
+        ):
+            raise InvalidRequestError("artifact upload must be 1 byte to 8 MiB")
+        validate_media_type(media_type, self._allowed_media_types)
+        content_hash = hashlib.sha256(payload).hexdigest()
+        validate_artifact_admission(
+            storage_kind="local_blob",
+            size_bytes=len(payload),
+            media_type=media_type,
+            content_hash=content_hash,
+        )
+        labels = parse_privacy_labels(privacy_labels)
+        access = command_access(
+            tx,
+            actor,
+            CommandTarget(
+                "artifact",
+                actor.scope,
+                privacy_labels=labels,
+                source_refs=self.command_references(source_refs),
+            ),
+            now_us=self._clock.now_us(),
+        )
+        return self._execute_ingest(
+            tx,
+            access,
+            {
+                "agent_id": actor.scope.agent_id,
+                "space_id": actor.scope.space_id,
+                "session_id": actor.scope.session_id,
+                "privacy_labels": list(labels),
+                "source_ref": source_refs[0] if source_refs else None,
+                "storage_kind": "local_blob",
+                "media_type": media_type,
+                "size_bytes": len(payload),
+                "content_hash": content_hash,
+            },
+            payload,
+            command_actor=actor,
+            allocated_blobs=allocated_blobs,
+        )
+
+    def cleanup_uncommitted_uploads(self, allocated_blobs: list[tuple[str, str]]) -> None:
+        # A failure after COMMIT (e.g. final reauthorization) must keep its bytes.
+        # Only locators actually allocated by this invocation are considered.
+        if not allocated_blobs:
+            return
+        with self._uow.write() as tx:
+            for identifier, locator in allocated_blobs:
+                try:
+                    tx.artifacts.get(identifier)
+                except NotFoundError:
+                    tx.artifacts.unlink_blob(locator)
+
+    def _require_command_target(
+        self, tx: Transaction, actor: CommandActor, identifier: str
+    ) -> None:
+        from iris_memory_core.application.console.reads import ResourceReader
+        from iris_memory_core.application.console.security import authorize
+        from iris_memory_core.domain.console import OperatorPrincipal
+
+        key, session = tx.console.key(actor.key_id), tx.console.session(actor.session_id)
+        if (
+            key is None
+            or session is None
+            or key.revision != actor.key_revision
+            or key.grant.fingerprint != actor.grant_fingerprint
+            or session.epoch != actor.session_epoch
+        ):
+            raise AccessDeniedError("artifact command authorization changed")
+        fresh = authorize(tx, OperatorPrincipal(key, session), self._clock.now_us(), "memory.write")
+        reader = ResourceReader(tx, fresh, self._clock.now_us())
+        record = reader.get(ResourceRef("artifact", identifier))
+        if record is None or not reader.authority.mutable(tx, record):
+            raise NotFoundError("artifact command target is not writable")
+        reader.sanitized(record, summary=False)
+        artifact = tx.artifacts.get(identifier)
+        if artifact.storage_kind == "local_blob":
+            tx.artifacts.read_blob(
+                artifact.locator,
+                expected_hash=artifact.content_hash,
+                expected_size=artifact.size_bytes,
+            )
+
     def _execute_ingest(
         self,
         tx: Transaction,
         access: AccessContext,
         body: dict[str, Any],
         payload: bytes,
+        *,
+        command_actor: CommandActor | None = None,
+        allocated_blobs: list[tuple[str, str]] | None = None,
     ) -> tuple[str, str, list[str]]:
         scope = authorize_scope(
             tx,
             access,
             agent_id=body["agent_id"],
+            space_group_id=command_actor.scope.space_group_id if command_actor else None,
             space_id=body["space_id"],
             session_id=body["session_id"],
         )
         labels = tuple(body["privacy_labels"])
-        if not evaluate_privacy(labels, scope, scope, access):
-            raise AccessDeniedError("artifact privacy labels are outside the access context")
-        require_surface_online_in_tx(
-            self._surface,
-            tx,
-            access.tenant_id,
-            body["agent_id"],
-            lease_id=body.get("lease_id"),
-            lease_epoch=body.get("lease_epoch"),
-            app_instance_id=access.app_instance_id,
+        checked_labels = (
+            tuple(label for label in labels if label != "restricted") if command_actor else labels
         )
+        if not evaluate_privacy(checked_labels, scope, scope, access):
+            raise AccessDeniedError("artifact privacy labels are outside the access context")
+        if command_actor is None:
+            require_surface_online_in_tx(
+                self._surface,
+                tx,
+                access.tenant_id,
+                body["agent_id"],
+                lease_id=body.get("lease_id"),
+                lease_epoch=body.get("lease_epoch"),
+                app_instance_id=access.app_instance_id,
+            )
         storage_kind = body["storage_kind"]
         scope_key = memory_scope_key(
             scope.tenant_id,
@@ -298,7 +505,16 @@ class ArtifactService:
             scope.tenant_id, scope_key, body["content_hash"], storage_kind, labels
         )
         if existing is not None:
-            _require_artifact_access(tx, access, existing)
+            if command_actor is not None:
+                self._require_command_target(tx, command_actor, existing.id)
+                if (
+                    existing.media_type != body["media_type"]
+                    or existing.source_ref != body["source_ref"]
+                ):
+                    raise ConflictError(
+                        "artifact content already exists with different immutable metadata"
+                    )
+            _require_artifact_access(tx, access, existing, managed=command_actor is not None)
             tx.artifacts.bump_refcount(existing.id, 1)
             return (
                 "artifact.deduped",
@@ -318,11 +534,16 @@ class ArtifactService:
             locator = body["external_url"]
             content = None
         if storage_kind == ArtifactStorageKind.LOCAL_BLOB.value:
-            # Blob write precedes the row insert; on any failure the temp
-            # file discipline in the repository keeps the tree clean, and an
-            # orphaned blob (row rolled back) is harmless: locators are
-            # id-addressed and never re-fetched.
+            # Blob write precedes the row insert. Managed uploads record their
+            # own allocations for cleanup if the outer transaction fails.
+            # Abrupt process death requires separate orphan reconciliation;
+            # neither the locator nor an uncommitted ID is exposed to callers.
             tx.artifacts.write_blob(locator, payload)
+            if allocated_blobs is not None:
+                allocated_blobs.append((artifact_id, locator))
+                tx.artifacts.read_blob(
+                    locator, expected_hash=body["content_hash"], expected_size=body["size_bytes"]
+                )
         try:
             tx.artifacts.insert(
                 tenant_id=scope.tenant_id,
@@ -417,7 +638,7 @@ def _artifact_scope(artifact: ArtifactRecord) -> Scope:
 
 
 def _require_artifact_access(
-    tx: Transaction, access: AccessContext, artifact: ArtifactRecord
+    tx: Transaction, access: AccessContext, artifact: ArtifactRecord, *, managed: bool = False
 ) -> None:
     """By-ID artifact gate: envelope, tombstone watermark, status, privacy."""
     require_same_tenant_agent(
@@ -431,7 +652,12 @@ def _require_artifact_access(
     ):
         raise NotFoundError("artifact not found")
     if not evaluate_privacy(
-        artifact.privacy_labels, _artifact_scope(artifact), _artifact_scope(artifact), access
+        tuple(label for label in artifact.privacy_labels if label != "restricted")
+        if managed
+        else artifact.privacy_labels,
+        _artifact_scope(artifact),
+        _artifact_scope(artifact),
+        access,
     ):
         raise AccessDeniedError("artifact's privacy labels are outside the access context")
 

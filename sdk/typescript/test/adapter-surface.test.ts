@@ -44,11 +44,29 @@ test("events sends Last-Event-ID and parses a finite SSE poll", async () => {
   });
   assert.deepEqual(await client.events({ after: "9" }), []);
   assert.equal(headers.get("last-event-id"), "9");
+  assert.equal(headers.get("x-iris-after-event-id"), null);
+  assert.deepEqual(await client.events({ after: "9", afterEventId: "saved-event-9" }), []);
+  assert.equal(headers.get("x-iris-after-event-id"), "saved-event-9");
+});
+
+test("events rejects invalid saved checkpoints before transport", async () => {
+  let calls = 0;
+  const client = new AsyncIrisMemoryClient("http://core.invalid", {
+    fetch: async () => { calls++; return new Response(": keep-alive\n\n"); },
+  });
+  for (const options of [
+    { afterEventId: "event" }, { after: "0", afterEventId: "event" },
+    { after: "01", afterEventId: "event" }, { after: "9223372036854775808", afterEventId: "event" },
+    { after: "9", afterEventId: "\n" }, { after: "9", afterEventId: "a".repeat(513) },
+  ]) await assert.rejects(() => client.events(options), /event checkpoint/);
+  assert.equal(calls, 0);
 });
 
 test("events rejects an HTTP error instead of treating it as an empty poll", async () => {
-  const client = new AsyncIrisMemoryClient("http://core.invalid", {
-    fetch: async () => new Response('{"error":"not ready"}', { status: 503 }),
-  });
-  await assert.rejects(() => client.events(), /event stream failed with 503/);
+  for (const status of [410, 503]) {
+    const client = new AsyncIrisMemoryClient("http://core.invalid", {
+      fetch: async () => new Response('{"error":"unavailable"}', { status }),
+    });
+    await assert.rejects(() => client.events(), new RegExp(`event stream failed with ${status}`));
+  }
 });

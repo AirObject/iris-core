@@ -1,0 +1,155 @@
+{
+  "data": {
+    "actions": [],
+    "agent_id": "018bcfe5-6800-7000-8000-000000000002",
+    "expected_policy_revision": 1,
+    "expected_revision": 1,
+    "request_schemas": {
+      "ConsolePersonaPublishRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_policy_revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "expected_revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "fields": {
+            "additionalProperties": false,
+            "properties": {
+              "core": {
+                "additionalProperties": false,
+                "properties": {
+                  "identity": {},
+                  "language": {},
+                  "name": {},
+                  "name_placeholder": {},
+                  "relationship_constraints": {},
+                  "safety_boundaries": {},
+                  "values": {}
+                },
+                "required": [],
+                "type": "object"
+              },
+              "narrative": {
+                "additionalProperties": false,
+                "properties": {
+                  "experiences": {},
+                  "goals": {},
+                  "relationships": {},
+                  "summary": {}
+                },
+                "required": [],
+                "type": "object"
+              },
+              "traits": {
+                "additionalProperties": false,
+                "properties": {
+                  "habits": {},
+                  "interests": {},
+                  "style": {},
+                  "tendencies": {},
+                  "weights": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "core",
+              "traits",
+              "narrative"
+            ],
+            "type": "object"
+          },
+          "reason_code": {
+            "const": "operator_request",
+            "type": "string"
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                  "type": "string"
+                },
+                "resource_type": {
+                  "enum": [
+                    "claim",
+                    "episode",
+                    "relation",
+                    "task",
+                    "persona_state"
+                  ],
+                  "type": "string"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "expected_policy_revision",
+          "reason_code",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "ConsolePersonaRollbackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_policy_revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "expected_revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "reason_code": {
+            "const": "operator_request",
+            "type": "string"
+          },
+          "target_revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "expected_policy_revision",
+          "reason_code",
+          "target_revision"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "meta": {
+    "as_of": "2023-11-14T22:13:20.000000Z",
+    "contract_version": "1.1.0",
+    "request_id": "018bcfe5-6800-7000-8000-000000000001"
+  }
+}

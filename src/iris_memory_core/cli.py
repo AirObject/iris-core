@@ -7,6 +7,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from iris_memory_core._resources import RuntimeResourceError
 from iris_memory_core.domain.errors import DomainError
 from iris_memory_core.storage.migrations import MigrationError, MigrationRunner
 
@@ -27,6 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
     from iris_memory_core.api.console.offline import configure
 
     configure(subparsers.add_parser("console", help="Offline Console operator commands"))
+
+    from iris_memory_core.bootstrap import configure as configure_bootstrap
+
+    configure_bootstrap(
+        subparsers.add_parser("init", help="Offline tenant and scoped client bootstrap")
+    )
 
     migrate = subparsers.add_parser("migrate", help="Apply pending migrations")
     migrate.add_argument("database", type=Path)
@@ -107,6 +114,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "init":
+            from iris_memory_core.bootstrap import run as run_bootstrap
+
+            try:
+                return run_bootstrap(args)
+            except (DomainError, ValueError, OSError) as error:
+                print(f"init failed: {error}", file=sys.stderr)
+                return 1
         if args.command == "console":
             from iris_memory_core.api.console.offline import run
 
@@ -185,7 +200,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             outcome = recover_pending_switch(args.target_dir)
             print(f"recover_switch={outcome}")
             return 0
-    except MigrationError as error:
+    except (MigrationError, RuntimeResourceError) as error:
         print(f"migration error: {error}", file=sys.stderr)
         return 1
     raise AssertionError(f"unsupported command: {args.command}")

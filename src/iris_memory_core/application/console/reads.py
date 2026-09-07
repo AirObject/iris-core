@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 from dataclasses import replace
 
@@ -19,7 +20,7 @@ from iris_memory_core.application.console.resources import (
 from iris_memory_core.application.console.security import OperatorSecurity, authorize, denied
 from iris_memory_core.application.ports import Transaction
 from iris_memory_core.domain.console import OperatorPrincipal
-from iris_memory_core.domain.errors import NotFoundError, NotReadyError
+from iris_memory_core.domain.errors import ConflictError, NotFoundError, NotReadyError
 
 MAX_SCANNED = 5000
 CHUNK = 200
@@ -82,7 +83,7 @@ class ResourceReader:
             raise NotReadyError("Console read budget exceeded")
 
     def normalized(self, record: ReadRecord) -> ReadRecord:
-        if record.resource_type == "state_record":
+        if record.resource_type in {"state_record", "persona_state"}:
             expiry = record.fields.get("expires_us")
             if expiry is not None and int(expiry) <= self.now_us:
                 return replace(record, status="expired")
@@ -91,6 +92,28 @@ class ResourceReader:
     def sanitized(self, record: ReadRecord, *, summary: bool) -> ReadRecord:
         refs = tuple(ref for ref in dict.fromkeys(record.source_refs) if self.get(ref) is not None)
         fields = dict(record.fields)
+        if (
+            record.resource_type == "artifact"
+            and fields.get("storage_kind") == "inline"
+            and str(fields.get("media_type", "")).startswith("text/")
+        ):
+            artifact = self.tx.artifacts.get(record.id)
+            content = self.tx.artifacts.inline_content(record.id)
+            if (
+                len(content) != artifact.size_bytes
+                or hashlib.sha256(content).hexdigest() != artifact.content_hash
+            ):
+                raise ConflictError("artifact content integrity check failed")
+            try:
+                fields["content"] = content.decode("utf-8")
+            except UnicodeError:
+                raise ConflictError("artifact text encoding is invalid") from None
+        if record.resource_type == "focus_item" and fields.get("promotion_target_id"):
+            target = ResourceRef(
+                str(fields["promotion_target_type"]), str(fields["promotion_target_id"])
+            )
+            if self.get(target) is None or any(self.get(ref) is None for ref in record.source_refs):
+                fields["promotion_target_id"] = fields["promotion_target_type"] = None
         for key, references in record.reference_fields.items():
             fields[key] = [ref.resource_id for ref in references if self.get(ref) is not None]
         if summary:
@@ -122,11 +145,24 @@ class ConsoleReadService:
             self._reader(tx, principal)
             return tuple(BY_COLLECTION)
 
-    def detail(self, principal: OperatorPrincipal, collection: str, identifier: str) -> ReadRecord:
+    def detail(
+        self,
+        principal: OperatorPrincipal,
+        collection: str,
+        identifier: str,
+        *,
+        parent_id: str | None = None,
+    ) -> ReadRecord:
         with self.security.uow.read() as tx, tx.console_reads.budget():
             reader = self._reader(tx, principal)
             record = reader.get(ResourceRef(ALL_SPECS[collection].resource_type, identifier))
-            if record is None:
+            if record is None or (
+                parent_id is not None
+                and (
+                    collection != "triggers"
+                    or tx.tasks.get_trigger(identifier).task_id != parent_id
+                )
+            ):
                 raise NotFoundError("resource not found")
             return reader.sanitized(record, summary=False)
 
@@ -160,8 +196,8 @@ class ConsoleReadService:
                 return False
         return True
 
+    @staticmethod
     def _collect(
-        self,
         reader: ResourceReader,
         collection: str,
         query: ReadQuery,
@@ -188,7 +224,7 @@ class ConsoleReadService:
                 )
             for record in records:
                 record = reader.normalized(record)
-                if reader.visible(record) and self._matches(record, query):
+                if reader.visible(record) and ConsoleReadService._matches(record, query):
                     selected.append(record)
                     if len(selected) >= target:
                         return selected, False

@@ -1,0 +1,9 @@
+{
+  "fields": {
+    "title": "Task fixture"
+  },
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "agent-1"
+  }
+}

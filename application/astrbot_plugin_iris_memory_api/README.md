@@ -1,6 +1,6 @@
 # astrbot_plugin_iris_memory_api
 
-> 状态：未开工（2026-09-06 复核）。本目录只有 README，无插件实现、依赖声明、配置元数据或测试。
+> 状态：Deferred（2026-09-06 按项目负责人要求暂时不再执行，移出当前发布门禁）。本目录只有 README，无插件实现、依赖声明、配置元数据或测试。
 
 这是 [Phase 12：AstrBot Bridge](../../docs/development/phase-12-astrbot-bridge.md)
 预留的临时交付目录。目标是经 Python SDK 接入身份映射、Recall/Persona、记忆工具和实际发送效果；这些能力尚未交付。

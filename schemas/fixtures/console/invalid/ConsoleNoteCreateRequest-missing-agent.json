@@ -1,0 +1,11 @@
+{
+  "fields": {
+    "body": "通过 Console 提交",
+    "kind": "idea",
+    "title": "人工便签"
+  },
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": null
+  }
+}

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from iris_memory_core.application.ports import (
@@ -23,6 +23,7 @@ from iris_memory_core.application.ports import (
     Transaction,
     UnitOfWork,
 )
+from iris_memory_core.application.promotion import PromotionSource
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.application.write_support import (
     authorize_scope,
@@ -34,6 +35,7 @@ from iris_memory_core.application.write_support import (
     require_surface_online_in_tx,
 )
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.console import CommandActor
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     ConflictError,
@@ -41,6 +43,7 @@ from iris_memory_core.domain.errors import (
     InvalidRequestError,
     InvalidTransitionError,
     NotFoundError,
+    RevisionMismatchError,
     TaskDependencyCycleError,
     require_reason,
 )
@@ -133,6 +136,7 @@ def _require_task_access(
     task: TaskCurrent,
     *,
     revision_id: str | None = None,
+    managed: bool = False,
 ) -> TaskRevision:
     require_same_tenant_agent(
         access, tenant_id=task.tenant_id, agent_id=task.agent_id, space_id=task.space_id
@@ -145,7 +149,10 @@ def _require_task_access(
         raise ConflictError("task revision does not belong to the requested task")
     task_scope = _task_scope(task)
     for candidate in (current, checked):
-        if not evaluate_privacy(candidate.privacy_labels, task_scope, task_scope, access):
+        labels = tuple(
+            label for label in candidate.privacy_labels if not managed or label != "restricted"
+        )
+        if not evaluate_privacy(labels, task_scope, task_scope, access):
             raise AccessDeniedError("task's privacy labels are outside the access context")
     return checked
 
@@ -156,6 +163,7 @@ def _require_step_access(
     step: TaskStepCurrent,
     *,
     revision_id: str | None = None,
+    managed: bool = False,
 ) -> TaskStepRevision:
     task = tx.tasks.get_task(step.task_id)
     require_same_tenant_agent(
@@ -171,7 +179,14 @@ def _require_step_access(
         raise ConflictError("step revision does not belong to the requested step")
     task_scope = _task_scope(task)
     for candidate in (current, checked):
-        if not evaluate_privacy(candidate.privacy_labels, task_scope, task_scope, access):
+        if not evaluate_privacy(
+            tuple(
+                label for label in candidate.privacy_labels if not managed or label != "restricted"
+            ),
+            task_scope,
+            task_scope,
+            access,
+        ):
             raise AccessDeniedError("step privacy labels are outside the access context")
     return checked
 
@@ -198,6 +213,171 @@ class TaskService:
         self._event_ttl_us = event_ttl_us
 
     # -- task create/list/patch/transition ---------------------------------
+
+    def create_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        fields: dict[str, Any],
+        *,
+        privacy_labels: list[str],
+        source_refs: list[dict[str, Any]],
+    ) -> tuple[str, str, list[str]]:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.console.resources import ResourceRef
+
+        if actor.operation != "task.create" or not actor.scope.agent_id:
+            raise InvalidRequestError("invalid managed task creation")
+        if "title" not in fields or fields.keys() - {
+            "title",
+            "goal",
+            "owner_kind",
+            "owner_entity_id",
+            "priority",
+            "due_at_us",
+            "next_action",
+        }:
+            raise InvalidRequestError("invalid managed task fields")
+        limits = {"title": (1, 500), "goal": (0, 8000), "next_action": (0, 2000)}
+        for key, (minimum, maximum) in limits.items():
+            if key in fields and (
+                not isinstance(fields[key], str) or not minimum <= len(fields[key]) <= maximum
+            ):
+                raise InvalidRequestError("invalid managed task text")
+        priority = fields.get("priority", 5)
+        if type(priority) is not int or not 0 <= priority <= 9:
+            raise InvalidRequestError("invalid managed task priority")
+        owner, entity = fields.get("owner_kind", "agent"), fields.get("owner_entity_id")
+        if (
+            owner not in {"agent", "joint", "entity", "space_group"}
+            or (owner == "entity" and not entity)
+            or (entity and owner not in {"entity", "joint"})
+        ):
+            raise InvalidRequestError("invalid managed task owner")
+        if owner == "space_group" and actor.scope.space_group_id is None:
+            raise InvalidRequestError("space group owner requires a group scope")
+        labels, refs = parse_privacy_labels(privacy_labels), parse_source_refs(source_refs)
+        sources = tuple(
+            ResourceRef(
+                str(ref["resource_type"]),
+                str(ref["resource_id"]),
+                cast(int | None, ref.get("revision")),
+            )
+            for ref in refs
+        )
+        if entity:
+            sources += (ResourceRef("entity", entity),)
+        access = command_access(
+            tx,
+            actor,
+            CommandTarget("task", actor.scope, privacy_labels=labels, source_refs=sources),
+            now_us=self._clock.now_us(),
+        )
+        payload = {
+            "agent_id": actor.scope.agent_id,
+            "space_id": actor.scope.space_id,
+            "session_id": actor.scope.session_id,
+            "goal": "",
+            "owner_kind": "agent",
+            "owner_entity_id": None,
+            "priority": 5,
+            "due_at_us": None,
+            "next_action": None,
+            **fields,
+            "origin": "explicit_tool",
+            "privacy_labels": list(labels),
+            "source_refs": [dict(ref) for ref in refs],
+        }
+        return self._execute_create(
+            tx, access, payload, lease_id=None, lease_epoch=None, command_actor=actor
+        )
+
+    def _command_task_access(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        task: TaskCurrent,
+        operation: str,
+        extra_refs: tuple[dict[str, object], ...] = (),
+    ) -> AccessContext:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.console.resources import ResourceRef
+
+        if actor.operation != operation or actor.scope != _task_scope(task):
+            raise AccessDeniedError("task command scope or operation mismatch")
+        current = tx.tasks.current_task_revision_row(task.id)
+        refs = current.source_refs + extra_refs
+        target = CommandTarget(
+            "task",
+            actor.scope,
+            resource_id=task.id,
+            privacy_labels=current.privacy_labels,
+            source_refs=tuple(
+                ResourceRef(
+                    str(ref["resource_type"]),
+                    str(ref["resource_id"]),
+                    cast(int | None, ref.get("revision")),
+                )
+                for ref in refs
+            ),
+        )
+        return command_access(tx, actor, target, now_us=self._clock.now_us())
+
+    def mutate_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        task_id: str,
+        *,
+        expected_revision: int,
+        fields: dict[str, Any],
+    ) -> tuple[str, str, list[str]]:
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise InvalidRequestError("expected revision must be positive")
+        if actor.operation == "task.update":
+            allowed = {"title", "goal", "priority", "next_action", "progress_note", "due_at_us"}
+            if (
+                not fields
+                or fields.keys() - allowed
+                or any(value is None for value in fields.values())
+            ):
+                raise InvalidRequestError("invalid managed task update")
+            for key, maximum in (("goal", 8000), ("next_action", 2000), ("progress_note", 8000)):
+                if key in fields and (
+                    not isinstance(fields[key], str) or len(fields[key]) > maximum
+                ):
+                    raise InvalidRequestError("invalid managed task text")
+            payload = {key: fields.get(key) for key in allowed}
+            payload.update(task_id=task_id, expected_revision=expected_revision)
+            return self._execute_patch(
+                tx, None, payload, lease_id=None, lease_epoch=None, command_actor=actor
+            )
+        if (
+            actor.operation != "task.transition"
+            or "target_status" not in fields
+            or fields.keys() - {"target_status", "completion_evidence_refs"}
+        ):
+            raise InvalidRequestError("invalid managed task transition")
+        refs = parse_source_refs(fields.get("completion_evidence_refs"))
+        if fields["target_status"] == "completed" and not refs:
+            raise InvalidRequestError("managed task completion requires evidence")
+        if fields["target_status"] != "completed" and refs:
+            raise InvalidRequestError("evidence is only valid for completion")
+        return self._execute_transition(
+            tx,
+            None,
+            {
+                "task_id": task_id,
+                "expected_revision": expected_revision,
+                "target": fields["target_status"],
+                "origin": "explicit_tool",
+                "completion_evidence_refs": [dict(ref) for ref in refs],
+                "reason": actor.reason_code,
+            },
+            lease_id=None,
+            lease_epoch=None,
+            command_actor=actor,
+        )
 
     def create(
         self,
@@ -305,6 +485,7 @@ class TaskService:
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         scope = authorize_scope(
             tx,
@@ -312,17 +493,29 @@ class TaskService:
             agent_id=payload["agent_id"],
             space_id=payload["space_id"],
             session_id=payload["session_id"],
+            space_group_id=command_actor.scope.space_group_id if command_actor else None,
         )
-        if not evaluate_privacy(tuple(payload["privacy_labels"]), scope, scope, access):
+        if command_actor is not None and scope != command_actor.scope:
+            raise AccessDeniedError("managed task scope mismatch")
+        labels = tuple(
+            label
+            for label in payload["privacy_labels"]
+            if command_actor is None or label != "restricted"
+        )
+        if not evaluate_privacy(labels, scope, scope, access):
             raise AccessDeniedError("task privacy labels are outside the access context")
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            access.tenant_id,
-            payload["agent_id"],
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                access.tenant_id,
+                payload["agent_id"],
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
         origin = payload["origin"]
         # §11.5: conversation/background extraction is pinned to proposed.
@@ -371,19 +564,27 @@ class TaskService:
             progress_note=None,
             due_at_us=payload["due_at_us"],
             completed_us=None,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
         )
         if tx.tasks.set_initial_task_pointer(task_id, revision_id) != 1:
             raise ConflictError("task creation raced inside the transaction")
         tx.advance_watermark(scope.tenant_id, scope.agent_id or "", [("task", task_id, 1)])
         tx.audit(
             tenant_id=scope.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
             action="task.created",
             resource_type="task",
             resource_id=task_id,
-            reason_code=f"origin:{origin}",
-            details={"origin": origin, "status": status, "lease_warning": lease_warning},
+            reason_code=command_actor.reason_code if command_actor else f"origin:{origin}",
+            details={
+                "origin": command_actor.origin if command_actor else origin,
+                "status": status,
+                "lease_warning": lease_warning,
+            },
             revision=1,
         )
         enqueue_change_job(
@@ -469,22 +670,32 @@ class TaskService:
     def _execute_patch(
         self,
         tx: Transaction,
-        access: AccessContext,
+        access: AccessContext | None,
         payload: dict[str, Any],
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         task = tx.tasks.get_task(payload["task_id"])
-        current = _require_task_access(tx, access, task)
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            task.tenant_id,
-            task.agent_id,
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        if command_actor is not None:
+            extra = parse_source_refs(payload.get("completion_evidence_refs"))
+            access = self._command_task_access(tx, command_actor, task, "task.update", extra)
+        if access is None:
+            raise AccessDeniedError("missing task authorization")
+        current = _require_task_access(tx, access, task, managed=command_actor is not None)
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                task.tenant_id,
+                task.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
         if task.status not in (
             TaskStatus.PROPOSED.value,
@@ -529,7 +740,9 @@ class TaskService:
             progress_note=new_progress,
             due_at_us=new_due,
             completed_us=current.completed_us,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
         )
         if (
             tx.tasks.advance_task_pointer(
@@ -549,11 +762,13 @@ class TaskService:
         tx.advance_watermark(task.tenant_id, task.agent_id, [("task", task.id, revision)])
         tx.audit(
             tenant_id=task.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
             action="task.patched",
             resource_type="task",
             resource_id=task.id,
-            reason_code="plan_edit",
+            reason_code=command_actor.reason_code if command_actor else "plan_edit",
             details={"revision": revision, "lease_warning": lease_warning},
             revision=revision,
         )
@@ -652,22 +867,32 @@ class TaskService:
     def _execute_transition(
         self,
         tx: Transaction,
-        access: AccessContext,
+        access: AccessContext | None,
         payload: dict[str, Any],
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         task = tx.tasks.get_task(payload["task_id"])
-        current = _require_task_access(tx, access, task)
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            task.tenant_id,
-            task.agent_id,
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        if command_actor is not None:
+            extra = parse_source_refs(payload.get("completion_evidence_refs"))
+            access = self._command_task_access(tx, command_actor, task, "task.transition", extra)
+        if access is None:
+            raise AccessDeniedError("missing task authorization")
+        current = _require_task_access(tx, access, task, managed=command_actor is not None)
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                task.tenant_id,
+                task.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
         target = payload["target"]
         try:
@@ -692,6 +917,7 @@ class TaskService:
             )
         now_us = self._clock.now_us()
         completed_us: int | None = None
+        evidence: tuple[dict[str, object], ...] = ()
         # Details carry only non-sensitive metadata; the caller's reason
         # lives in the audit reason_code column, never duplicated here.
         details: dict[str, object] = {}
@@ -714,8 +940,10 @@ class TaskService:
                 )
             refs = parse_source_refs(payload["completion_evidence_refs"])
             if refs:
-                _validate_evidence(tx, task, refs, access)
+                _validate_evidence(tx, task, refs, access, managed=command_actor is not None)
                 details["evidence_count"] = len(refs)
+                if command_actor is not None:
+                    evidence = refs
             completed_us = now_us
         revision = task.current_revision + 1
         revision_id = tx.tasks.insert_task_revision(
@@ -727,14 +955,17 @@ class TaskService:
             owner_kind=current.owner_kind,
             owner_entity_id=current.owner_entity_id,
             privacy_labels=current.privacy_labels,
-            source_refs=current.source_refs,
+            source_refs=current.source_refs
+            + tuple(ref for ref in evidence if ref not in current.source_refs),
             status=target,
             priority=current.priority,
             next_action=current.next_action,
             progress_note=current.progress_note,
             due_at_us=current.due_at_us,
             completed_us=completed_us,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
         )
         if (
             tx.tasks.advance_task_pointer(
@@ -752,7 +983,9 @@ class TaskService:
         tx.advance_watermark(task.tenant_id, task.agent_id, [("task", task.id, revision)])
         tx.audit(
             tenant_id=task.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
             action=f"task.{target}",
             resource_type="task",
             resource_id=task.id,
@@ -770,6 +1003,15 @@ class TaskService:
             source_revision=revision,
             payload={"task_id": task.id, "revision": revision},
         )
+        for ref in evidence:
+            tx.insert_resource_link(
+                tenant_id=task.tenant_id,
+                source_type="task",
+                source_id=task.id,
+                target_type=str(ref["resource_type"]),
+                target_id=str(ref["resource_id"]),
+                relation="completion_evidence",
+            )
         # Task transitions may arm task_transition triggers on the NEXT scan;
         # nothing here fires events inline (the scan is the only producer).
         return (
@@ -779,6 +1021,249 @@ class TaskService:
         )
 
     # -- steps ----------------------------------------------------------------
+
+    def _require_command_step(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        task: TaskCurrent,
+        step_id: str | None,
+        *,
+        privacy_labels: tuple[str, ...] = (),
+    ) -> AccessContext:
+        from iris_memory_core.application.console.reads import ResourceReader
+        from iris_memory_core.application.console.resources import ReadRecord, ResourceRef
+        from iris_memory_core.domain.console import OperatorPrincipal
+
+        access = self._command_task_access(tx, actor, task, actor.operation)
+        key, session = tx.console.key(actor.key_id), tx.console.session(actor.session_id)
+        if key is None or session is None:
+            raise AccessDeniedError("command session is unavailable")
+        reader = ResourceReader(tx, OperatorPrincipal(key, session), self._clock.now_us())
+        record: ReadRecord | None
+        if step_id is None:
+            record = ReadRecord(
+                id="__new_step__",
+                resource_type="task_step",
+                scope=_task_scope(task),
+                revision=0,
+                status="pending",
+                fields={},
+                privacy_labels=privacy_labels,
+                source_refs=(),
+                created_us=self._clock.now_us(),
+                updated_us=self._clock.now_us(),
+            )
+            if not reader.visible(record):
+                raise AccessDeniedError("step privacy is outside the command grant")
+        else:
+            step = tx.tasks.get_step(step_id)
+            if step.task_id != task.id:
+                raise NotFoundError("task step not found")
+            record = reader.get(ResourceRef("task_step", step_id))
+            if record is None:
+                raise NotFoundError("task step not found")
+        if not reader.authority.mutable(tx, record):
+            raise AccessDeniedError("step is outside the command grant")
+        return access
+
+    def step_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        task_id: str,
+        *,
+        expected_revision: int,
+        fields: dict[str, Any],
+        step_id: str | None = None,
+        child_expected_revision: int | None = None,
+    ) -> tuple[str, str, list[str]]:
+        task = tx.tasks.get_task(task_id)
+        self._command_task_access(tx, actor, task, actor.operation)
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise InvalidRequestError("expected task revision must be positive")
+        if task.current_revision != expected_revision:
+            tx.tasks.raise_task_pointer_mismatch(task.id, expected_revision)
+        if task.status not in {"proposed", "active", "waiting", "blocked"}:
+            raise InvalidTransitionError("terminal task cannot mutate steps")
+        if actor.operation == "task.step.create":
+            if step_id is not None or child_expected_revision is not None:
+                raise InvalidRequestError("new step cannot have a child revision")
+            allowed = {
+                "stable_key",
+                "title",
+                "description",
+                "ordinal",
+                "expected_effect",
+                "privacy_labels",
+            }
+            if fields.keys() - allowed or not {"stable_key", "title"} <= fields.keys():
+                raise InvalidRequestError("invalid managed step fields")
+            for name, minimum, maximum in (
+                ("stable_key", 1, 256),
+                ("title", 1, 500),
+                ("description", 0, 8000),
+                ("expected_effect", 1, 2000),
+            ):
+                if name in fields and (
+                    not isinstance(fields[name], str) or not minimum <= len(fields[name]) <= maximum
+                ):
+                    raise InvalidRequestError("invalid step text")
+            ordinal = fields.get("ordinal", 0)
+            if type(ordinal) is not int or not 0 <= ordinal <= 1_000_000:
+                raise InvalidRequestError("invalid step ordinal")
+            labels = parse_privacy_labels(fields.get("privacy_labels"))
+            access = self._require_command_step(tx, actor, task, None, privacy_labels=labels)
+            payload = {
+                "task_id": task_id,
+                "description": None,
+                "ordinal": ordinal,
+                "expected_effect": None,
+                **fields,
+                "privacy_labels": list(labels),
+            }
+            code, body, refs = self._execute_create_step(
+                tx, access, payload, lease_id=None, lease_epoch=None, command_actor=actor
+            )
+            step_id = str(json.loads(body)["step_id"])
+        elif actor.operation == "task.step.transition":
+            if (
+                not step_id
+                or type(child_expected_revision) is not int
+                or child_expected_revision < 1
+            ):
+                raise InvalidRequestError("expected step revision must be positive")
+            if (
+                fields.keys() - {"target_status", "completion_evidence_refs"}
+                or "target_status" not in fields
+            ):
+                raise InvalidRequestError("invalid step transition")
+            evidence = parse_source_refs(fields.get("completion_evidence_refs"))
+            self._command_task_access(tx, actor, task, actor.operation, evidence)
+            access = self._require_command_step(tx, actor, task, step_id)
+            if tx.tasks.get_step(step_id).current_revision != child_expected_revision:
+                tx.tasks.raise_step_pointer_mismatch(step_id, child_expected_revision)
+            code, _, refs = self._execute_transition_step(
+                tx,
+                access,
+                {
+                    "task_id": task_id,
+                    "step_id": step_id,
+                    "expected_revision": child_expected_revision,
+                    "target": fields["target_status"],
+                    "completion_evidence_refs": [dict(ref) for ref in evidence],
+                    "reason": actor.reason_code,
+                },
+                lease_id=None,
+                lease_epoch=None,
+                command_actor=actor,
+            )
+        else:
+            raise InvalidRequestError("unknown managed step operation")
+        self._advance_command_parent(tx, actor, task, expected_revision=expected_revision)
+        step = tx.tasks.get_step(step_id)
+        return (
+            code,
+            json.dumps(
+                {
+                    "task_id": task_id,
+                    "task_revision": expected_revision + 1,
+                    "resource_type": "task_step",
+                    "resource_id": step_id,
+                    "revision": step.current_revision,
+                }
+            ),
+            [f"task:{task_id}", *refs],
+        )
+
+    def _advance_command_parent(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        task: TaskCurrent,
+        *,
+        expected_revision: int,
+    ) -> None:
+        """Advance the aggregate exactly once for an atomic child command."""
+        self._command_task_access(tx, actor, task, actor.operation)
+        self._advance_child_parent(
+            tx,
+            task,
+            expected_revision=expected_revision,
+            audit_actor=actor.audit_actor,
+            reason_code=actor.reason_code,
+            operation=actor.operation,
+        )
+
+    def _advance_child_parent(
+        self,
+        tx: Transaction,
+        task: TaskCurrent,
+        *,
+        expected_revision: int,
+        audit_actor: str,
+        reason_code: str,
+        operation: str,
+    ) -> None:
+        """Every child write invalidates stale parent revisions across both planes."""
+        current = tx.tasks.current_task_revision_row(task.id)
+        revision = expected_revision + 1
+        fields = {
+            name: getattr(current, name)
+            for name in (
+                "title",
+                "goal",
+                "owner_kind",
+                "owner_entity_id",
+                "privacy_labels",
+                "source_refs",
+                "status",
+                "priority",
+                "next_action",
+                "progress_note",
+                "due_at_us",
+                "completed_us",
+            )
+        }
+        revision_id = tx.tasks.insert_task_revision(
+            task_id=task.id,
+            tenant_id=task.tenant_id,
+            revision=revision,
+            created_by=audit_actor,
+            **fields,
+        )
+        if (
+            tx.tasks.advance_task_pointer(
+                task.id,
+                expected_revision=expected_revision,
+                revision=revision,
+                revision_id=revision_id,
+                status=task.status,
+            )
+            != 1
+        ):
+            tx.tasks.raise_task_pointer_mismatch(task.id, expected_revision)
+        tx.advance_watermark(task.tenant_id, task.agent_id, [("task", task.id, revision)])
+        tx.audit(
+            tenant_id=task.tenant_id,
+            actor=audit_actor,
+            action="task.children_changed",
+            resource_type="task",
+            resource_id=task.id,
+            reason_code=reason_code,
+            details={"operation": operation},
+            revision=revision,
+        )
+        enqueue_change_job(
+            tx,
+            tenant_id=task.tenant_id,
+            agent_id=task.agent_id,
+            job_kind="task.changed",
+            aggregate_type="task",
+            aggregate_id=task.id,
+            source_revision=revision,
+            payload={"task_id": task.id, "revision": revision},
+        )
 
     def create_step(
         self,
@@ -862,17 +1347,22 @@ class TaskService:
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         task = tx.tasks.get_task(payload["task_id"])
-        _require_task_access(tx, access, task)
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            task.tenant_id,
-            task.agent_id,
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        _require_task_access(tx, access, task, managed=command_actor is not None)
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                task.tenant_id,
+                task.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
         if task.status not in (
             TaskStatus.PROPOSED.value,
@@ -912,18 +1402,22 @@ class TaskService:
             completion_evidence_refs=(),
             started_us=None,
             completed_us=None,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
         )
         if tx.tasks.set_initial_step_pointer(step_id, revision_id) != 1:
             raise ConflictError("task step creation raced inside the transaction")
         tx.advance_watermark(task.tenant_id, task.agent_id, [("task_step", step_id, 1)])
         tx.audit(
             tenant_id=task.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
             action="task.step_created",
             resource_type="task_step",
             resource_id=step_id,
-            reason_code="plan_edit",
+            reason_code=command_actor.reason_code if command_actor else "plan_edit",
             details={
                 "stable_key": payload["stable_key"],
                 "ordinal": payload["ordinal"],
@@ -943,8 +1437,25 @@ class TaskService:
         )
         # Dependencies added BEFORE this step may already release it: recompute
         # readiness deterministically from the stored graph.
-        self._recompute_step(tx, task, step_id, actor=f"access:{access.app_instance_id}")
+        self._recompute_step(
+            tx,
+            task,
+            step_id,
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
+            command_actor=command_actor,
+        )
         current_revision = tx.tasks.get_step(step_id).current_revision
+        if command_actor is None:
+            self._advance_child_parent(
+                tx,
+                task,
+                expected_revision=task.current_revision,
+                audit_actor=f"access:{access.app_instance_id}",
+                reason_code="plan_edit",
+                operation="task.step.create",
+            )
         return (
             "task.step_created",
             json.dumps({"step_id": step_id, "revision": current_revision}),
@@ -1038,20 +1549,25 @@ class TaskService:
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         step = tx.tasks.get_step(payload["step_id"])
         if step.task_id != payload["task_id"]:
             raise InvalidRequestError("step does not belong to the given task")
-        current = _require_step_access(tx, access, step)
+        current = _require_step_access(tx, access, step, managed=command_actor is not None)
         task = tx.tasks.get_task(step.task_id)
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            task.tenant_id,
-            task.agent_id,
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                task.tenant_id,
+                task.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
         target = payload["target"]
         try:
@@ -1087,7 +1603,7 @@ class TaskService:
                 raise InvalidRequestError(
                     "completing a step with expected_effect requires completion_evidence_refs"
                 )
-            _validate_evidence(tx, task, evidence, access)
+            _validate_evidence(tx, task, evidence, access, managed=command_actor is not None)
         elif payload["completion_evidence_refs"]:
             raise InvalidRequestError(
                 "completion_evidence_refs is only valid when completing a step"
@@ -1108,7 +1624,9 @@ class TaskService:
             completion_evidence_refs=evidence or current.completion_evidence_refs,
             started_us=started_us if started_us is not None else current.started_us,
             completed_us=completed_us,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
         )
         if (
             tx.tasks.advance_step_pointer(
@@ -1135,7 +1653,9 @@ class TaskService:
             details["lease_warning"] = lease_warning
         tx.audit(
             tenant_id=step.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
             action=f"task.step_{target}",
             resource_type="task_step",
             resource_id=step.id,
@@ -1154,13 +1674,28 @@ class TaskService:
             payload={"task_id": step.task_id, "step_id": step.id, "revision": revision},
         )
         # Completing/skipping a step may release successors deterministically.
-        self._recompute_successors(
-            tx, task, step_id=step.id, actor=f"access:{access.app_instance_id}"
+        affected = self._recompute_successors(
+            tx,
+            task,
+            step_id=step.id,
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
+            command_actor=command_actor,
         )
+        if command_actor is None:
+            self._advance_child_parent(
+                tx,
+                task,
+                expected_revision=task.current_revision,
+                audit_actor=f"access:{access.app_instance_id}",
+                reason_code="plan_edit",
+                operation="task.step.transition",
+            )
         return (
             f"task.step_{target}",
             json.dumps({"revision_id": revision_id}),
-            [f"task_step:{step.id}"],
+            [f"task_step:{step.id}", *(affected if command_actor else [])],
         )
 
     # -- dependencies -----------------------------------------------------------
@@ -1226,7 +1761,200 @@ class TaskService:
             edge = tx.tasks.get_dependency(body["dependency_id"])
             task = tx.tasks.get_task(edge.task_id)
             _require_task_access(tx, access, task)
-            return edge
+            if tx.is_tombstoned(task.tenant_id, "task_dependency", edge.dependency_id):
+                raise NotFoundError("dependency not found")
+            for step_id in (edge.predecessor_step_id, edge.successor_step_id):
+                _require_step_access(tx, access, tx.tasks.get_step(step_id))
+            return tx.tasks.dependency_at_revision(edge.dependency_id, int(body.get("revision", 1)))
+
+    def dependency_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        task_id: str,
+        *,
+        expected_revision: int,
+        fields: dict[str, Any],
+        dependency_id: str | None = None,
+        child_expected_revision: int | None = None,
+    ) -> tuple[str, str, list[str]]:
+        task = tx.tasks.get_task(task_id)
+        access = self._command_task_access(tx, actor, task, actor.operation)
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise InvalidRequestError("expected parent revision must be positive")
+        if task.current_revision != expected_revision:
+            tx.tasks.raise_task_pointer_mismatch(task.id, expected_revision)
+        if task.status not in {"proposed", "active", "waiting", "blocked"}:
+            raise InvalidTransitionError("terminal task cannot change dependencies")
+        if actor.operation == "task.dependency.create":
+            if dependency_id is not None or child_expected_revision is not None:
+                raise InvalidRequestError("new dependency cannot select a child revision")
+            if (
+                fields.keys() - {"predecessor_step_id", "successor_step_id", "condition"}
+                or not {"predecessor_step_id", "successor_step_id"} <= fields.keys()
+            ):
+                raise InvalidRequestError("invalid dependency fields")
+            for name in ("predecessor_step_id", "successor_step_id"):
+                if not isinstance(fields[name], str) or not 1 <= len(fields[name]) <= 128:
+                    raise InvalidRequestError("invalid dependency step ID")
+                self._require_command_step(tx, actor, task, fields[name])
+            payload = {"task_id": task_id, "condition": "completed", **fields}
+            if payload["condition"] not in {"completed", "completed_or_skipped"}:
+                raise InvalidRequestError("invalid dependency condition")
+            code, body, refs = self._execute_add_dependency(
+                tx, access, payload, lease_id=None, lease_epoch=None, command_actor=actor
+            )
+            dependency_id = str(json.loads(body)["dependency_id"])
+        elif actor.operation == "task.dependency.remove":
+            if (
+                fields
+                or not dependency_id
+                or type(child_expected_revision) is not int
+                or child_expected_revision < 1
+            ):
+                raise InvalidRequestError("invalid dependency removal")
+            edge = tx.tasks.get_dependency(dependency_id)
+            if edge.task_id != task_id:
+                raise NotFoundError("dependency not found")
+            for step_id in (edge.predecessor_step_id, edge.successor_step_id):
+                self._require_command_step(tx, actor, task, step_id)
+            if edge.current_revision != child_expected_revision:
+                raise RevisionMismatchError(
+                    "task_dependency",
+                    edge.dependency_id,
+                    child_expected_revision,
+                    edge.current_revision,
+                )
+            if edge.status != "active":
+                raise InvalidTransitionError("dependency is already removed")
+            self._persist_dependency(
+                tx,
+                task,
+                edge=edge,
+                predecessor_step_id=edge.predecessor_step_id,
+                successor_step_id=edge.successor_step_id,
+                condition=edge.condition,
+                status="removed",
+                audit_actor=actor.audit_actor,
+                reason_code=actor.reason_code,
+            )
+            changed = self._recompute_step(
+                tx, task, edge.successor_step_id, actor=actor.audit_actor, command_actor=actor
+            )
+            code, refs = "task.dependency_removed", [f"task_dependency:{dependency_id}"]
+            if changed:
+                refs.append(f"task_step:{edge.successor_step_id}")
+        else:
+            raise InvalidRequestError("unknown dependency command")
+        self._advance_command_parent(tx, actor, task, expected_revision=expected_revision)
+        edge = tx.tasks.get_dependency(dependency_id)
+        return (
+            code,
+            json.dumps(
+                {
+                    "task_id": task_id,
+                    "task_revision": expected_revision + 1,
+                    "resource_type": "task_dependency",
+                    "resource_id": dependency_id,
+                    "revision": edge.current_revision,
+                }
+            ),
+            [f"task:{task_id}", *refs],
+        )
+
+    def _persist_dependency(
+        self,
+        tx: Transaction,
+        task: TaskCurrent,
+        *,
+        edge: TaskDependencyEdge | None,
+        predecessor_step_id: str,
+        successor_step_id: str,
+        condition: str,
+        status: str,
+        audit_actor: str,
+        reason_code: str,
+        lease_warning: str | None = None,
+    ) -> TaskDependencyEdge:
+        identifier = (
+            edge.dependency_id
+            if edge
+            else tx.tasks.insert_dependency(
+                task_id=task.id,
+                tenant_id=task.tenant_id,
+                predecessor_step_id=predecessor_step_id,
+                successor_step_id=successor_step_id,
+                condition=condition,
+            )
+        )
+        revision = edge.current_revision + 1 if edge else 1
+        revision_id = tx.tasks.insert_dependency_revision(
+            dependency_id=identifier,
+            task_id=task.id,
+            tenant_id=task.tenant_id,
+            revision=revision,
+            predecessor_step_id=predecessor_step_id,
+            successor_step_id=successor_step_id,
+            condition=condition,
+            created_by=audit_actor,
+            status=status,
+        )
+        changed = (
+            tx.tasks.advance_dependency_pointer(
+                identifier,
+                expected_revision=edge.current_revision,
+                revision=revision,
+                revision_id=revision_id,
+                status=status,
+                condition=condition,
+            )
+            if edge
+            else tx.tasks.set_initial_dependency_pointer(identifier, revision_id)
+        )
+        if changed != 1:
+            current = tx.tasks.get_dependency(identifier)
+            raise RevisionMismatchError(
+                "task_dependency",
+                identifier,
+                edge.current_revision if edge else 0,
+                current.current_revision,
+            )
+        action = (
+            "task.dependency_added"
+            if edge is None
+            else "task.dependency_removed"
+            if status == "removed"
+            else "task.dependency_restored"
+        )
+        tx.advance_watermark(
+            task.tenant_id, task.agent_id, [("task_dependency", identifier, revision)]
+        )
+        tx.audit(
+            tenant_id=task.tenant_id,
+            actor=audit_actor,
+            action=action,
+            resource_type="task_dependency",
+            resource_id=identifier,
+            reason_code=reason_code,
+            details={
+                "predecessor_step_id": predecessor_step_id,
+                "successor_step_id": successor_step_id,
+                "condition": condition,
+                "lease_warning": lease_warning,
+            },
+            revision=revision,
+        )
+        enqueue_change_job(
+            tx,
+            tenant_id=task.tenant_id,
+            agent_id=task.agent_id,
+            job_kind="task.changed",
+            aggregate_type="task_dependency",
+            aggregate_id=identifier,
+            source_revision=revision,
+            payload={"task_id": task.id, "dependency_id": identifier, "revision": revision},
+        )
+        return tx.tasks.get_dependency(identifier)
 
     def _execute_add_dependency(
         self,
@@ -1236,88 +1964,82 @@ class TaskService:
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         task = tx.tasks.get_task(payload["task_id"])
-        _require_task_access(tx, access, task)
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            task.tenant_id,
-            task.agent_id,
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        _require_task_access(tx, access, task, managed=command_actor is not None)
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                task.tenant_id,
+                task.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
-        predecessor = tx.tasks.get_step(payload["predecessor_step_id"])
-        successor = tx.tasks.get_step(payload["successor_step_id"])
-        # v1 (§11.3): dependencies stay INSIDE one task.
+        if task.status not in {"proposed", "active", "waiting", "blocked"}:
+            raise InvalidTransitionError("terminal task cannot change dependencies")
+        predecessor, successor = (
+            tx.tasks.get_step(payload["predecessor_step_id"]),
+            tx.tasks.get_step(payload["successor_step_id"]),
+        )
         if predecessor.task_id != task.id or successor.task_id != task.id:
-            raise InvalidRequestError("v1 dependencies only connect steps of the same task (§11.3)")
+            raise InvalidRequestError("dependencies must connect steps of the same task")
+        for step in (predecessor, successor):
+            _require_step_access(tx, access, step, managed=command_actor is not None)
+        existing = tx.tasks.dependency_for_pair(task.id, predecessor.id, successor.id)
+        if existing is not None and tx.is_tombstoned(
+            task.tenant_id, "task_dependency", existing.dependency_id
+        ):
+            raise NotFoundError("dependency not found")
+        if existing is not None and existing.status == "active":
+            raise ConflictError("dependency is already active")
         edges = [
             (edge.predecessor_step_id, edge.successor_step_id)
             for edge in tx.tasks.dependencies_for_task(task.id)
         ]
         if would_create_cycle(
-            edges,
-            predecessor_step_id=payload["predecessor_step_id"],
-            successor_step_id=payload["successor_step_id"],
+            edges, predecessor_step_id=predecessor.id, successor_step_id=successor.id
         ):
-            raise TaskDependencyCycleError(
-                "adding this dependency would create a cycle in the task's step graph"
-            )
-        dependency_id = tx.tasks.insert_dependency(
-            task_id=task.id,
-            tenant_id=task.tenant_id,
-            predecessor_step_id=payload["predecessor_step_id"],
-            successor_step_id=payload["successor_step_id"],
-            condition=payload["condition"],
+            raise TaskDependencyCycleError("dependency would create a cycle")
+        audit_actor = (
+            command_actor.audit_actor if command_actor else f"access:{access.app_instance_id}"
         )
-        revision_id = tx.tasks.insert_dependency_revision(
-            dependency_id=dependency_id,
-            task_id=task.id,
-            tenant_id=task.tenant_id,
-            revision=1,
-            predecessor_step_id=payload["predecessor_step_id"],
-            successor_step_id=payload["successor_step_id"],
-            condition=payload["condition"],
-            created_by=f"access:{access.app_instance_id}",
-        )
-        if tx.tasks.set_initial_dependency_pointer(dependency_id, revision_id) != 1:
-            raise ConflictError("dependency creation raced inside the transaction")
-        tx.advance_watermark(task.tenant_id, task.agent_id, [("task_dependency", dependency_id, 1)])
-        tx.audit(
-            tenant_id=task.tenant_id,
-            actor=f"access:{access.app_instance_id}",
-            action="task.dependency_added",
-            resource_type="task_dependency",
-            resource_id=dependency_id,
-            reason_code="plan_edit",
-            details={
-                "predecessor_step_id": payload["predecessor_step_id"],
-                "successor_step_id": payload["successor_step_id"],
-                "condition": payload["condition"],
-                "lease_warning": lease_warning,
-            },
-            revision=1,
-        )
-        enqueue_change_job(
+        edge = self._persist_dependency(
             tx,
-            tenant_id=task.tenant_id,
-            agent_id=task.agent_id,
-            job_kind="task.changed",
-            aggregate_type="task_dependency",
-            aggregate_id=dependency_id,
-            source_revision=1,
-            payload={"task_id": task.id, "dependency_id": dependency_id, "revision": 1},
+            task,
+            edge=existing,
+            predecessor_step_id=predecessor.id,
+            successor_step_id=successor.id,
+            condition=payload["condition"],
+            status="active",
+            audit_actor=audit_actor,
+            reason_code=command_actor.reason_code if command_actor else "plan_edit",
+            lease_warning=lease_warning,
         )
-        # The new edge may retract readiness of the successor: recompute it.
-        self._recompute_step(
-            tx, task, payload["successor_step_id"], actor=f"access:{access.app_instance_id}"
+        changed = self._recompute_step(
+            tx, task, successor.id, actor=audit_actor, command_actor=command_actor
         )
+        if command_actor is None:
+            self._advance_child_parent(
+                tx,
+                task,
+                expected_revision=task.current_revision,
+                audit_actor=audit_actor,
+                reason_code="plan_edit",
+                operation="task.dependency.create",
+            )
+        refs = [f"task_dependency:{edge.dependency_id}"]
+        if command_actor is not None and changed:
+            refs.append(f"task_step:{successor.id}")
         return (
             "task.dependency_added",
-            json.dumps({"dependency_id": dependency_id}),
-            [f"task_dependency:{dependency_id}"],
+            json.dumps({"dependency_id": edge.dependency_id, "revision": edge.current_revision}),
+            refs,
         )
 
     # -- triggers ----------------------------------------------------------------
@@ -1400,6 +2122,15 @@ class TaskService:
             trigger = tx.tasks.get_trigger(body["trigger_id"])
             task = tx.tasks.get_task(trigger.task_id)
             _require_task_access(tx, access, task)
+            if tx.is_tombstoned(task.tenant_id, "task_trigger", trigger.id):
+                raise NotFoundError("trigger not found")
+            self._require_trigger_sources(tx, access, task, payload)
+            self._require_trigger_sources(
+                tx,
+                access,
+                task,
+                self._trigger_fields(tx.tasks.current_trigger_revision_row(trigger.id)),
+            )
         return TriggerWriteResult(
             trigger_id=body["trigger_id"], revision=int(body["revision"]), replayed=result.replayed
         )
@@ -1431,24 +2162,25 @@ class TaskService:
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         task = tx.tasks.get_task(payload["task_id"])
-        _require_task_access(tx, access, task)
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            task.tenant_id,
-            task.agent_id,
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        _require_task_access(tx, access, task, managed=command_actor is not None)
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                task.tenant_id,
+                task.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
-        kind = payload["kind"]
-        task_step_id = payload["task_step_id"]
-        if task_step_id is not None:
-            step = tx.tasks.get_step(task_step_id)
-            if step.task_id != task.id:
-                raise InvalidRequestError("trigger's task_step_id belongs to another task")
+        self._require_trigger_sources(tx, access, task, payload, command_actor=command_actor)
+        kind, task_step_id = payload["kind"], payload["task_step_id"]
         next_fire_at = self._initial_next_fire(payload, task)
         trigger_id = tx.tasks.insert_trigger(
             task_id=task.id,
@@ -1463,32 +2195,18 @@ class TaskService:
             enabled=payload["enabled"],
             next_fire_at_us=next_fire_at,
         )
-        revision_id = tx.tasks.insert_trigger_revision(
-            trigger_id=trigger_id,
-            task_id=task.id,
-            tenant_id=task.tenant_id,
-            revision=1,
-            kind=kind,
-            task_step_id=task_step_id,
-            schedule_spec=payload["schedule_spec"],
-            condition_spec=payload["condition_spec"],
-            timezone=payload["timezone"],
-            catch_up_policy=payload["catch_up_policy"],
-            misfire_grace_us=payload["misfire_grace_us"],
-            max_occurrences_per_run=payload["max_occurrences_per_run"],
-            enabled=payload["enabled"],
-            created_by=f"access:{access.app_instance_id}",
-        )
-        if tx.tasks.set_initial_trigger_pointer(trigger_id, revision_id) != 1:
-            raise ConflictError("trigger creation raced inside the transaction")
-        tx.advance_watermark(task.tenant_id, task.agent_id, [("task_trigger", trigger_id, 1)])
-        tx.audit(
-            tenant_id=task.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+        self._write_trigger_revision(
+            tx,
+            task,
+            trigger_id,
+            {k: v for k, v in payload.items() if k != "task_id"},
+            expected_revision=0,
+            audit_actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
+            reason_code=command_actor.reason_code if command_actor else "plan_edit",
             action="task.trigger_created",
-            resource_type="task_trigger",
-            resource_id=trigger_id,
-            reason_code="plan_edit",
+            reset_schedule=False,
             details={
                 "kind": kind,
                 "timezone": payload["timezone"],
@@ -1496,7 +2214,119 @@ class TaskService:
                 "enabled": payload["enabled"],
                 "lease_warning": lease_warning,
             },
-            revision=1,
+        )
+        return (
+            "task.trigger_created",
+            json.dumps({"trigger_id": trigger_id, "revision": 1}),
+            [f"task_trigger:{trigger_id}"],
+        )
+
+    @staticmethod
+    def _trigger_fields(current: TaskTriggerRevision) -> dict[str, Any]:
+        return {
+            name: getattr(current, name)
+            for name in (
+                "kind",
+                "task_step_id",
+                "schedule_spec",
+                "condition_spec",
+                "timezone",
+                "catch_up_policy",
+                "misfire_grace_us",
+                "max_occurrences_per_run",
+                "enabled",
+            )
+        }
+
+    def _require_trigger_sources(
+        self,
+        tx: Transaction,
+        access: AccessContext,
+        task: TaskCurrent,
+        payload: dict[str, Any],
+        *,
+        command_actor: CommandActor | None = None,
+    ) -> None:
+        step_id = payload.get("task_step_id")
+        if step_id is not None:
+            step = tx.tasks.get_step(step_id)
+            if step.task_id != task.id:
+                raise NotFoundError("trigger step not found")
+            if command_actor:
+                self._require_command_step(tx, command_actor, task, step.id)
+            else:
+                _require_step_access(tx, access, step)
+        condition = payload.get("condition_spec") or {}
+        # Online declarative programs retain their existing late-bound watched
+        # IDs; the Worker performs the final scope/lifecycle check. Console
+        # editing requires its explicit source references to be visible now.
+        if payload["kind"] != "task_transition" or command_actor is None:
+            return
+        refs: list[dict[str, object]] = []
+        watched = tx.tasks.get_task(str(condition.get("task_id") or task.id))
+        refs.append({"resource_type": "task", "resource_id": watched.id})
+        if condition.get("task_step_id"):
+            step = tx.tasks.get_step(str(condition["task_step_id"]))
+            if condition.get("task_id") and step.task_id != watched.id:
+                raise NotFoundError("watched step not found")
+            watched = tx.tasks.get_task(step.task_id)
+            refs.append({"resource_type": "task_step", "resource_id": step.id})
+            _require_step_access(tx, access, step, managed=command_actor is not None)
+        if not scope_allows(_task_scope(watched), _task_scope(task)):
+            raise NotFoundError("watched task not found")
+        _require_task_access(tx, access, watched, managed=command_actor is not None)
+        if command_actor:
+            self._command_task_access(tx, command_actor, task, command_actor.operation, tuple(refs))
+
+    def _write_trigger_revision(
+        self,
+        tx: Transaction,
+        task: TaskCurrent,
+        trigger_id: str,
+        payload: dict[str, Any],
+        *,
+        expected_revision: int,
+        audit_actor: str,
+        reason_code: str,
+        action: str,
+        reset_schedule: bool,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        revision = expected_revision + 1
+        revision_id = tx.tasks.insert_trigger_revision(
+            trigger_id=trigger_id,
+            task_id=task.id,
+            tenant_id=task.tenant_id,
+            revision=revision,
+            created_by=audit_actor,
+            **payload,
+        )
+        if expected_revision == 0:
+            changed = tx.tasks.set_initial_trigger_pointer(trigger_id, revision_id)
+        else:
+            changed = tx.tasks.advance_trigger_pointer(
+                trigger_id,
+                expected_revision=expected_revision,
+                revision=revision,
+                revision_id=revision_id,
+                enabled=payload["enabled"],
+                spec=tx.tasks.get_trigger_revision(revision_id) if reset_schedule else None,
+                next_fire_at_us=self._initial_next_fire(payload, task) if reset_schedule else None,
+            )
+        if changed != 1:
+            tx.tasks.raise_trigger_pointer_mismatch(trigger_id, expected_revision)
+        tx.advance_watermark(
+            task.tenant_id, task.agent_id, [("task_trigger", trigger_id, revision)]
+        )
+        tx.audit(
+            tenant_id=task.tenant_id,
+            actor=audit_actor,
+            action=action,
+            resource_type="task_trigger",
+            resource_id=trigger_id,
+            reason_code=reason_code,
+            details=details or {},
+            revision=revision,
         )
         enqueue_change_job(
             tx,
@@ -1505,13 +2335,16 @@ class TaskService:
             job_kind="task.changed",
             aggregate_type="task_trigger",
             aggregate_id=trigger_id,
-            source_revision=1,
-            payload={"task_id": task.id, "trigger_id": trigger_id, "revision": 1},
+            source_revision=revision,
+            payload={"task_id": task.id, "trigger_id": trigger_id, "revision": revision},
         )
-        return (
-            "task.trigger_created",
-            json.dumps({"trigger_id": trigger_id, "revision": 1}),
-            [f"task_trigger:{trigger_id}"],
+        self._advance_child_parent(
+            tx,
+            task,
+            expected_revision=task.current_revision,
+            audit_actor=audit_actor,
+            reason_code=reason_code,
+            operation=action,
         )
 
     def set_trigger_enabled(
@@ -1523,58 +2356,162 @@ class TaskService:
         actor: str,
         reason_code: str,
     ) -> None:
-        """Enable/disable inside an existing transaction (new spec revision)."""
-        current = tx.tasks.current_trigger_revision_row(trigger.id)
-        revision = trigger.current_revision + 1
-        revision_id = tx.tasks.insert_trigger_revision(
-            trigger_id=trigger.id,
-            task_id=trigger.task_id,
-            tenant_id=trigger.tenant_id,
-            revision=revision,
-            kind=current.kind,
-            task_step_id=current.task_step_id,
-            schedule_spec=current.schedule_spec,
-            condition_spec=current.condition_spec,
-            timezone=current.timezone,
-            catch_up_policy=current.catch_up_policy,
-            misfire_grace_us=current.misfire_grace_us,
-            max_occurrences_per_run=current.max_occurrences_per_run,
-            enabled=enabled,
-            created_by=actor,
-        )
-        if (
-            tx.tasks.advance_trigger_pointer(
-                trigger.id,
-                expected_revision=trigger.current_revision,
-                revision=revision,
-                revision_id=revision_id,
-                enabled=enabled,
-            )
-            != 1
-        ):
-            tx.tasks.raise_trigger_pointer_mismatch(trigger.id, trigger.current_revision)
-        tx.advance_watermark(
-            trigger.tenant_id, trigger.agent_id, [("task_trigger", trigger.id, revision)]
-        )
-        tx.audit(
-            tenant_id=trigger.tenant_id,
-            actor=actor,
-            action="task.trigger_enabled" if enabled else "task.trigger_disabled",
-            resource_type="task_trigger",
-            resource_id=trigger.id,
-            reason_code=reason_code,
-            details={},
-            revision=revision,
-        )
-        enqueue_change_job(
+        """A spec revision preserves the existing scheduler cursor on enable/disable."""
+        fields = self._trigger_fields(tx.tasks.current_trigger_revision_row(trigger.id))
+        fields["enabled"] = enabled
+        self._write_trigger_revision(
             tx,
-            tenant_id=trigger.tenant_id,
-            agent_id=trigger.agent_id,
-            job_kind="task.changed",
-            aggregate_type="task_trigger",
-            aggregate_id=trigger.id,
-            source_revision=revision,
-            payload={"task_id": trigger.task_id, "trigger_id": trigger.id, "revision": revision},
+            tx.tasks.get_task(trigger.task_id),
+            trigger.id,
+            fields,
+            expected_revision=trigger.current_revision,
+            audit_actor=actor,
+            reason_code=reason_code,
+            action="task.trigger_enabled" if enabled else "task.trigger_disabled",
+            reset_schedule=False,
+        )
+
+    def trigger_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        task_id: str,
+        *,
+        expected_revision: int,
+        fields: dict[str, Any],
+        trigger_id: str | None = None,
+        child_expected_revision: int | None = None,
+    ) -> tuple[str, str, list[str]]:
+        task = tx.tasks.get_task(task_id)
+        access = self._command_task_access(tx, actor, task, actor.operation)
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise InvalidRequestError("expected parent revision must be positive")
+        if task.current_revision != expected_revision:
+            tx.tasks.raise_task_pointer_mismatch(task.id, expected_revision)
+        if task.status not in {"proposed", "active", "waiting", "blocked"}:
+            raise InvalidTransitionError("terminal task cannot edit triggers")
+        defaults = {
+            "kind": None,
+            "task_step_id": None,
+            "schedule_spec": None,
+            "condition_spec": None,
+            "timezone": "UTC",
+            "catch_up_policy": "all",
+            "misfire_grace_us": 86400000000,
+            "max_occurrences_per_run": 100,
+            "enabled": True,
+        }
+        current = None
+        if actor.operation == "task.trigger.create":
+            if trigger_id is not None or child_expected_revision is not None:
+                raise InvalidRequestError("new trigger cannot select a child")
+        else:
+            if (
+                not trigger_id
+                or type(child_expected_revision) is not int
+                or child_expected_revision < 1
+            ):
+                raise InvalidRequestError("trigger revision required")
+            current = tx.tasks.get_trigger(trigger_id)
+            if current.task_id != task.id or tx.is_tombstoned(
+                task.tenant_id, "task_trigger", current.id
+            ):
+                raise NotFoundError("trigger not found")
+            if current.current_revision != child_expected_revision:
+                tx.tasks.raise_trigger_pointer_mismatch(current.id, child_expected_revision)
+            defaults = self._trigger_fields(tx.tasks.current_trigger_revision_row(current.id))
+            self._require_trigger_sources(tx, access, task, defaults, command_actor=actor)
+        if actor.operation == "task.trigger.enabled":
+            if fields.keys() != {"enabled"} or type(fields["enabled"]) is not bool:
+                raise InvalidRequestError("enabled must be boolean")
+            assert current is not None
+            if current.enabled == fields["enabled"]:
+                raise InvalidTransitionError("trigger already has this enabled state")
+            self.set_trigger_enabled(
+                tx,
+                current,
+                enabled=fields["enabled"],
+                actor=actor.audit_actor,
+                reason_code=actor.reason_code,
+            )
+        elif actor.operation in {"task.trigger.create", "task.trigger.update"}:
+            if not fields or fields.keys() - defaults.keys():
+                raise InvalidRequestError("invalid trigger fields")
+            payload = {**defaults, **fields}
+            for key in ("misfire_grace_us", "max_occurrences_per_run"):
+                if type(payload[key]) is not int or not 0 <= payload[key] <= 9007199254740991:
+                    raise InvalidRequestError("invalid trigger integer")
+            if not isinstance(payload["kind"], str) or not isinstance(payload["timezone"], str):
+                raise InvalidRequestError("trigger kind and timezone required")
+            if payload["task_step_id"] is not None and (
+                not isinstance(payload["task_step_id"], str)
+                or not 1 <= len(payload["task_step_id"]) <= 128
+            ):
+                raise InvalidRequestError("invalid trigger step")
+            try:
+                encoded = json.dumps(payload, allow_nan=False).encode()
+            except (ValueError, TypeError):
+                raise InvalidRequestError("trigger spec must contain finite JSON values") from None
+            if len(encoded) > 16000:
+                raise InvalidRequestError("trigger spec exceeds limit")
+            validate_trigger_common(
+                **{
+                    k: payload[k]
+                    for k in (
+                        "kind",
+                        "timezone",
+                        "catch_up_policy",
+                        "misfire_grace_us",
+                        "max_occurrences_per_run",
+                        "enabled",
+                    )
+                }
+            )
+            payload["condition_spec"] = validate_condition_spec(
+                payload["kind"], payload["condition_spec"]
+            )
+            payload["schedule_spec"] = self._canonical_schedule(
+                payload["kind"], payload["schedule_spec"]
+            )
+            self._require_trigger_sources(tx, access, task, payload, command_actor=actor)
+            if current is None:
+                _, body, _ = self._execute_create_trigger(
+                    tx,
+                    access,
+                    {"task_id": task.id, **payload},
+                    lease_id=None,
+                    lease_epoch=None,
+                    command_actor=actor,
+                )
+                trigger_id = str(json.loads(body)["trigger_id"])
+            else:
+                self._write_trigger_revision(
+                    tx,
+                    task,
+                    current.id,
+                    payload,
+                    expected_revision=current.current_revision,
+                    audit_actor=actor.audit_actor,
+                    reason_code=actor.reason_code,
+                    action="task.trigger_updated",
+                    reset_schedule=True,
+                )
+        else:
+            raise InvalidRequestError("unknown trigger command")
+        assert trigger_id is not None
+        trigger = tx.tasks.get_trigger(trigger_id)
+        return (
+            actor.operation,
+            json.dumps(
+                {
+                    "task_id": task.id,
+                    "task_revision": expected_revision + 1,
+                    "resource_type": "task_trigger",
+                    "resource_id": trigger.id,
+                    "revision": trigger.current_revision,
+                }
+            ),
+            [f"task:{task.id}", f"task_trigger:{trigger.id}"],
         )
 
     def _initial_next_fire(self, payload: dict[str, Any], task: TaskCurrent) -> int | None:
@@ -1594,15 +2531,31 @@ class TaskService:
     # -- readiness --------------------------------------------------------------
 
     def _recompute_successors(
-        self, tx: Transaction, task: TaskCurrent, *, step_id: str, actor: str
-    ) -> None:
+        self,
+        tx: Transaction,
+        task: TaskCurrent,
+        *,
+        step_id: str,
+        actor: str,
+        command_actor: CommandActor | None = None,
+    ) -> list[str]:
+        affected = []
         for edge in tx.tasks.dependencies_for_task(task.id):
-            if edge.predecessor_step_id == step_id:
-                self._recompute_step(tx, task, edge.successor_step_id, actor=actor)
+            if edge.predecessor_step_id == step_id and self._recompute_step(
+                tx, task, edge.successor_step_id, actor=actor, command_actor=command_actor
+            ):
+                affected.append(f"task_step:{edge.successor_step_id}")
+        return affected
 
     def _recompute_step(
-        self, tx: Transaction, task: TaskCurrent, step_id: str, *, actor: str
-    ) -> None:
+        self,
+        tx: Transaction,
+        task: TaskCurrent,
+        step_id: str,
+        *,
+        actor: str,
+        command_actor: CommandActor | None = None,
+    ) -> bool:
         """Derive pending↔ready from the stored dependency graph (§11.3)."""
         step = tx.tasks.get_step(step_id)
         pairs = [
@@ -1612,7 +2565,9 @@ class TaskService:
         ]
         derived = compute_step_status(current_status=step.status, predecessor_statuses=pairs)
         if derived == step.status:
-            return
+            return False
+        if command_actor is not None:
+            self._require_command_step(tx, command_actor, task, step_id)
         current = tx.tasks.current_step_revision_row(step_id)
         revision = step.current_revision + 1
         revision_id = tx.tasks.insert_step_revision(
@@ -1666,6 +2621,7 @@ class TaskService:
             source_revision=revision,
             payload={"task_id": step.task_id, "step_id": step_id, "revision": revision},
         )
+        return True
 
     # -- trigger scan (job handler body) --------------------------------------
 
@@ -1684,7 +2640,14 @@ class TaskService:
         now = now_us if now_us is not None else self._clock.now_us()
         created = absorbed = skipped = events = 0
         for trigger in tx.tasks.triggers_for_scan(tenant_id, agent_id, now_us=now):
-            if tx.is_tombstoned(trigger.tenant_id, "task", trigger.task_id):
+            if (
+                tx.is_tombstoned(trigger.tenant_id, "task", trigger.task_id)
+                or tx.is_tombstoned(trigger.tenant_id, "task_trigger", trigger.id)
+                or (
+                    trigger.task_step_id
+                    and tx.is_tombstoned(trigger.tenant_id, "task_step", trigger.task_step_id)
+                )
+            ):
                 continue
             spec_row = tx.tasks.current_trigger_revision_row(trigger.id)
             task = tx.tasks.get_task(trigger.task_id)
@@ -1921,13 +2884,8 @@ class TaskService:
                     except NotFoundError:
                         watched = None
                     if watched is not None:
-                        step_history_rows = tx.tasks.step_history(step_watched.id, limit=2)
-                        aggregate_revision = (
-                            step_history_rows[0].revision if step_history_rows else 0
-                        )
-                        status_now = step_history_rows[0].status if step_history_rows else ""
-                        previous_status = (
-                            step_history_rows[1].status if len(step_history_rows) > 1 else None
+                        aggregate_revision, status_now, previous_status = (
+                            tx.tasks.latest_step_transition(step_watched.id)
                         )
                 else:
                     watched_task_id = (
@@ -1938,13 +2896,8 @@ class TaskService:
                     except NotFoundError:
                         watched = None
                     if watched is not None:
-                        task_history_rows = tx.tasks.task_history(watched.id, limit=2)
-                        aggregate_revision = (
-                            task_history_rows[0].revision if task_history_rows else 0
-                        )
-                        status_now = task_history_rows[0].status if task_history_rows else ""
-                        previous_status = (
-                            task_history_rows[1].status if len(task_history_rows) > 1 else None
+                        aggregate_revision, status_now, previous_status = (
+                            tx.tasks.latest_task_transition(watched.id)
                         )
                 # Final scope/lifecycle re-check: the condition may name any
                 # task/step id, so the watched aggregate must still belong to
@@ -2165,79 +3118,88 @@ class TaskService:
         actor: str,
         now_us: int,
     ) -> str:
-        """Create the PROPOSED task a note promotion materializes (§10.3)."""
-        del now_us
+        """Retain the Note promotion interface and its canonical semantics."""
+        return TaskService._create_from_promotion(
+            tx,
+            source=PromotionSource.from_note(note, current),
+            actor=actor,
+            now_us=now_us,
+        )
+
+    @staticmethod
+    def _create_from_promotion(
+        tx: Transaction,
+        *,
+        source: PromotionSource,
+        actor: str,
+        now_us: int,
+    ) -> str:
+        """Materialize a typed source using this domain's canonical write spine."""
         scope_key = task_scope_key(
-            note.tenant_id,
-            note.agent_id,
-            note.space_group_id,
-            note.space_id,
-            note.session_id,
+            source.tenant_id,
+            source.agent_id,
+            source.space_group_id,
+            source.space_id,
+            source.session_id,
         )
         task_id = tx.tasks.insert_task(
-            tenant_id=note.tenant_id,
-            agent_id=note.agent_id,
-            space_group_id=note.space_group_id,
-            space_id=note.space_id,
-            session_id=note.session_id,
+            tenant_id=source.tenant_id,
+            agent_id=source.agent_id,
+            space_group_id=source.space_group_id,
+            space_id=source.space_id,
+            session_id=source.session_id,
             scope_key=scope_key,
             parent_task_id=None,
-            title=current.title[:500],
+            title=source.title[:500],
             owner_kind="agent",
             owner_entity_id=None,
             status=TaskStatus.PROPOSED.value,
             priority=5,
-            due_at_us=note.due_at_us,
+            due_at_us=source.due_at_us,
         )
         revision_id = tx.tasks.insert_task_revision(
             task_id=task_id,
-            tenant_id=note.tenant_id,
+            tenant_id=source.tenant_id,
             revision=1,
-            title=current.title[:500],
-            goal=current.body[:8_000],
+            title=source.title[:500],
+            goal=source.body[:8_000],
             owner_kind="agent",
             owner_entity_id=None,
-            privacy_labels=current.privacy_labels,
-            source_refs=(
-                {
-                    "resource_type": "note",
-                    "resource_id": note.id,
-                    "revision": note.current_revision,
-                },
-            ),
+            privacy_labels=source.privacy_labels,
+            source_refs=source.target_refs,
             status=TaskStatus.PROPOSED.value,
             priority=5,
             next_action=None,
             progress_note=None,
-            due_at_us=note.due_at_us,
+            due_at_us=source.due_at_us,
             completed_us=None,
             created_by=actor,
         )
         if tx.tasks.set_initial_task_pointer(task_id, revision_id) != 1:
             raise ConflictError("promoted task creation raced inside the transaction")
-        tx.advance_watermark(note.tenant_id, note.agent_id, [("task", task_id, 1)])
+        tx.advance_watermark(source.tenant_id, source.agent_id, [("task", task_id, 1)])
         tx.insert_resource_link(
-            tenant_id=note.tenant_id,
-            source_type="note",
-            source_id=note.id,
+            tenant_id=source.tenant_id,
+            source_type=source.resource_type,
+            source_id=source.id,
             target_type="task",
             target_id=task_id,
             relation="promoted_to",
         )
         tx.audit(
-            tenant_id=note.tenant_id,
+            tenant_id=source.tenant_id,
             actor=actor,
             action="task.created",
             resource_type="task",
             resource_id=task_id,
-            reason_code="note_promotion",
-            details={"source_note_id": note.id, "status": TaskStatus.PROPOSED.value},
+            reason_code=f"{source.name}_promotion",
+            details={f"source_{source.name}_id": source.id, "status": TaskStatus.PROPOSED.value},
             revision=1,
         )
         enqueue_change_job(
             tx,
-            tenant_id=note.tenant_id,
-            agent_id=note.agent_id,
+            tenant_id=source.tenant_id,
+            agent_id=source.agent_id,
             job_kind="task.changed",
             aggregate_type="task",
             aggregate_id=task_id,
@@ -2276,7 +3238,12 @@ def _observation_scope(observation: StoredObservation) -> Scope:
 
 
 def _validate_evidence(
-    tx: Transaction, task: TaskCurrent, refs: tuple[dict[str, object], ...], access: AccessContext
+    tx: Transaction,
+    task: TaskCurrent,
+    refs: tuple[dict[str, object], ...],
+    access: AccessContext,
+    *,
+    managed: bool = False,
 ) -> None:
     """Evidence must be REAL: committed observations or canonical artifacts
     inside the task's scope.
@@ -2315,7 +3282,11 @@ def _validate_evidence(
             if tx.is_tombstoned(observation.tenant_id, "observation", observation.id):
                 raise InvalidRequestError("observation evidence is tombstoned")
             if not evaluate_privacy(
-                observation.privacy_labels,
+                tuple(
+                    label
+                    for label in observation.privacy_labels
+                    if not managed or label != "restricted"
+                ),
                 _observation_scope(observation),
                 _task_scope(task),
                 access,
@@ -2346,7 +3317,14 @@ def _validate_evidence(
             ):
                 raise InvalidRequestError("artifact evidence is tombstoned")
             if not evaluate_privacy(
-                artifact.privacy_labels, artifact_scope, _task_scope(task), access
+                tuple(
+                    label
+                    for label in artifact.privacy_labels
+                    if not managed or label != "restricted"
+                ),
+                artifact_scope,
+                _task_scope(task),
+                access,
             ):
                 raise AccessDeniedError("artifact evidence privacy is outside the access context")
 

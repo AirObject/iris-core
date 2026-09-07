@@ -1,0 +1,8 @@
+{
+  "expected_revision": 1,
+  "fields": {
+    "goal": "Corrected goal"
+  },
+  "origin": "forged",
+  "reason_code": "operator_request"
+}

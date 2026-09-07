@@ -1,0 +1,7561 @@
+{
+  "$defs": {
+    "BootstrapEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/BootstrapView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "BootstrapView": {
+      "additionalProperties": true,
+      "properties": {
+        "contract_version": {
+          "const": "1.1.0"
+        },
+        "display_timezone": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "import_in_progress": {
+          "type": "boolean"
+        },
+        "maintenance": {
+          "type": "boolean"
+        },
+        "modules": {
+          "items": {
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "pending_restart": {
+          "type": "boolean"
+        },
+        "permissions": {
+          "items": {
+            "enum": [
+              "memory.read",
+              "memory.write",
+              "memory.forget",
+              "memory.history",
+              "persona.publish",
+              "keys.manage",
+              "service_keys.manage",
+              "stats.read",
+              "system.read",
+              "system.write",
+              "imports.write",
+              "exports.write",
+              "exports.read_all",
+              "providers.manage",
+              "settings.read",
+              "settings.write",
+              "indexes.rebuild",
+              "audit.read",
+              "retention.manage"
+            ]
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "upload_limits": {
+          "additionalProperties": true,
+          "properties": {
+            "file_bytes": {
+              "$ref": "#/$defs/DecimalCount"
+            },
+            "json_depth": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "record_bytes": {
+              "$ref": "#/$defs/DecimalCount"
+            },
+            "records": {
+              "$ref": "#/$defs/DecimalCount"
+            }
+          },
+          "required": [
+            "file_bytes",
+            "records",
+            "record_bytes",
+            "json_depth"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "contract_version",
+        "permissions",
+        "modules",
+        "read_only",
+        "maintenance",
+        "upload_limits",
+        "display_timezone",
+        "pending_restart",
+        "import_in_progress"
+      ],
+      "type": "object"
+    },
+    "ColumnSpec": {
+      "additionalProperties": true,
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "type"
+      ],
+      "type": "object"
+    },
+    "CommandActionSpec": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "method": {
+                "const": "POST"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "id": {
+                "const": "update"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "const": "PATCH"
+              }
+            }
+          }
+        },
+        {
+          "else": {
+            "properties": {
+              "permission": {
+                "const": "memory.write"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "id": {
+                "const": "forget"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "permission": {
+                "const": "memory.forget"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "description": {
+          "maxLength": 1024,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/CommandFieldSpec"
+          },
+          "type": "array"
+        },
+        "id": {
+          "enum": [
+            "create",
+            "update",
+            "transition",
+            "activate",
+            "expire",
+            "remove",
+            "enabled",
+            "annotate",
+            "correct",
+            "upload",
+            "confirm",
+            "revoke",
+            "redirect",
+            "attributes",
+            "forget"
+          ],
+          "type": "string"
+        },
+        "initial_revision": {
+          "const": 0,
+          "type": "integer"
+        },
+        "label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "POST",
+            "PATCH"
+          ],
+          "type": "string"
+        },
+        "permission": {
+          "enum": [
+            "memory.write",
+            "memory.forget"
+          ],
+          "type": "string"
+        },
+        "reason_codes": {
+          "items": {
+            "const": "operator_request",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "permission",
+        "method",
+        "fields",
+        "reason_codes"
+      ],
+      "type": "object"
+    },
+    "CommandFieldSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_empty": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        },
+        "description": {
+          "maxLength": 1024,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "lookup": {
+          "enum": [
+            "agents",
+            "space-groups",
+            "spaces",
+            "sessions",
+            "entities",
+            "task-steps",
+            "identities"
+          ],
+          "type": "string"
+        },
+        "lookup_parent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "lookup",
+            "string",
+            "text",
+            "number",
+            "enum",
+            "json",
+            "duration_us",
+            "boolean"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "type"
+      ],
+      "type": "object"
+    },
+    "ConsoleArtifactCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 262144,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "media_type": {
+          "enum": [
+            "text/plain",
+            "text/markdown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "type": "object"
+    },
+    "ConsoleArtifactCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleArtifactCreateFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleCommandSourceRef"
+          },
+          "maxItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleArtifactUploadBody": {
+      "format": "binary",
+      "maxLength": 8388608,
+      "minLength": 1,
+      "type": "string"
+    },
+    "ConsoleArtifactUploadFields": {
+      "additionalProperties": false,
+      "properties": {
+        "media_type": {
+          "enum": [
+            "text/plain",
+            "text/markdown",
+            "application/json",
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "audio/ogg",
+            "application/octet-stream"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "media_type"
+      ],
+      "type": "object"
+    },
+    "ConsoleArtifactUploadMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleArtifactUploadFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleCommandSourceRef"
+          },
+          "maxItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleBindingActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleBindingCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "external_identity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "external_identity_id",
+        "entity_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleBindingCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleBindingCreateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleClaimCorrectFields": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "value"
+                  ]
+                },
+                {
+                  "required": [
+                    "canonical_text"
+                  ]
+                }
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "supersede"
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "value"
+                ]
+              },
+              {
+                "required": [
+                  "canonical_text"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "canonical_text": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "supersede",
+            "dispute",
+            "retract"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "type": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "boolean"
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "type": "object"
+    },
+    "ConsoleClaimCorrectRequest": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "fields": {
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "supersede",
+                      "dispute"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "evidence"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ConsoleClaimEvidence"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleClaimCorrectFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleClaimCreateFields": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "subject_is_self": {
+              "const": false
+            }
+          },
+          "required": [
+            "subject_entity_id"
+          ]
+        },
+        {
+          "not": {
+            "required": [
+              "subject_entity_id"
+            ]
+          },
+          "properties": {
+            "subject_is_self": {
+              "const": true
+            }
+          },
+          "required": [
+            "subject_is_self"
+          ]
+        }
+      ],
+      "properties": {
+        "accessibility": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "canonical_text": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "community",
+            "fact",
+            "identity",
+            "preference",
+            "procedure",
+            "relationship",
+            "self_narrative"
+          ],
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "predicate": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "subject_entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "subject_is_self": {
+          "type": "boolean"
+        },
+        "valid_from_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "valid_until_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "value": {
+          "type": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "boolean"
+          ]
+        }
+      },
+      "required": [
+        "predicate",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ConsoleClaimCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ConsoleClaimEvidence"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "type": "array"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleClaimCreateFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "reason_code",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "ConsoleClaimEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_span": {
+          "maxLength": 4000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "relation": {
+          "enum": [
+            "contradicts",
+            "corrects",
+            "supports"
+          ],
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "source_type": {
+          "enum": [
+            "artifact",
+            "claim",
+            "episode",
+            "note",
+            "observation"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_type",
+        "source_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleCommandScope": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_group_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleCommandSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "resource_type": {
+          "enum": [
+            "observation",
+            "episode",
+            "claim",
+            "entity",
+            "external_identity",
+            "binding",
+            "relation",
+            "state_record",
+            "focus_item",
+            "note",
+            "task",
+            "task_step",
+            "task_trigger",
+            "cognitive_event",
+            "persona_revision",
+            "persona_proposal",
+            "reflection_record",
+            "artifact"
+          ],
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleEntityAttributeFields": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "confirmation",
+            "correction"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "value",
+        "mode"
+      ],
+      "type": "object"
+    },
+    "ConsoleEntityAttributeRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_attributes_version": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleEntityAttributeFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "fields",
+        "expected_attributes_version"
+      ],
+      "type": "object"
+    },
+    "ConsoleEntityCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "person",
+            "agent",
+            "organization",
+            "community",
+            "place",
+            "topic",
+            "object",
+            "system"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "display_name"
+      ],
+      "type": "object"
+    },
+    "ConsoleEntityCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleEntityCreateFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleEntityRedirectRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "target_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "target_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleEpisodeCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "arousal": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ended_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "observation_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleEpisodeObservationRef"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "participant_entity_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "maxLength": 20000,
+          "minLength": 0,
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        "valence": {
+          "maximum": 1,
+          "minimum": -1,
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "ConsoleEpisodeCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleEpisodeCreateFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleCommandSourceRef"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleEpisodeObservationRef": {
+      "additionalProperties": false,
+      "properties": {
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "resource_type": {
+          "const": "observation",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleEpisodeTransitionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "target_status": {
+          "enum": [
+            "open",
+            "sealed",
+            "archived",
+            "superseded"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "target_status",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleEpisodeUpdateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "arousal": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ended_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "observation_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleEpisodeObservationRef"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "participant_entity_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "maxLength": 20000,
+          "minLength": 0,
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        "valence": {
+          "maximum": 1,
+          "minimum": -1,
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "ConsoleEpisodeUpdateRequest": {
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "properties": {
+            "fields": {
+              "minProperties": 1
+            }
+          }
+        },
+        {
+          "required": [
+            "source_refs"
+          ]
+        }
+      ],
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleEpisodeUpdateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleCommandSourceRef"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleEventDismissRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleFocusActivateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleFocusCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "activation": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "kind": {
+          "enum": [
+            "goal",
+            "question",
+            "entity",
+            "clue",
+            "concern",
+            "affect",
+            "pending_input"
+          ],
+          "type": "string"
+        },
+        "salience": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "structured_payload": {
+          "maxProperties": 128,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "summary": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "ConsoleFocusCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleFocusCreateFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleCommandSourceRef"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleFocusTransitionRequest": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "promotion_target_type"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "target_status": {
+                "const": "promoted"
+              }
+            },
+            "required": [
+              "target_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "promotion_target_type"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "promotion_target_type": {
+          "enum": [
+            "note",
+            "task",
+            "episode",
+            "claim"
+          ]
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "target_status": {
+          "enum": [
+            "dormant",
+            "dismissed",
+            "expired",
+            "promoted"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "target_status"
+      ],
+      "type": "object"
+    },
+    "ConsoleFocusUpdateFields": {
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "salience": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "structured_payload": {
+          "maxProperties": 128,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "summary": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "ConsoleFocusUpdateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleFocusUpdateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleForgetCommitRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "preview_hash": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "preview_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "preview_id",
+        "preview_hash",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleForgetPreview": {
+      "additionalProperties": false,
+      "properties": {
+        "can_commit": {
+          "type": "boolean"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "impacts": {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "enum": [
+                "soft",
+                "erase"
+              ]
+            },
+            "notice": {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            "target_count": {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "target_count",
+            "mode",
+            "notice"
+          ],
+          "type": "object"
+        },
+        "preview_hash": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "preview_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "reason_codes": {
+          "items": {
+            "const": "operator_request",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "type": "array"
+        },
+        "targets": {
+          "items": {
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "else": {
+                  "required": [
+                    "id",
+                    "resource_type",
+                    "expected_revision"
+                  ]
+                },
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "not_visible"
+                    }
+                  }
+                },
+                "then": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "id"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "resource_type"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "expected_revision"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "properties": {
+              "expected_revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "input_index": {
+                "maximum": 499,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resource_type": {
+                "enum": [
+                  "note",
+                  "observation",
+                  "claim",
+                  "episode",
+                  "relation",
+                  "artifact",
+                  "entity",
+                  "focus_item",
+                  "state_record",
+                  "task"
+                ],
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "allowed",
+                  "protected",
+                  "held",
+                  "not_visible"
+                ]
+              }
+            },
+            "required": [
+              "input_index",
+              "status"
+            ],
+            "type": "object"
+          },
+          "maxItems": 500,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "preview_id",
+        "preview_hash",
+        "expires_at",
+        "targets",
+        "can_commit",
+        "reason_codes",
+        "impacts"
+      ],
+      "type": "object"
+    },
+    "ConsoleForgetPreviewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ConsoleForgetPreview"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ConsoleForgetPreviewRequest": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "targets": {
+                "contains": {
+                  "properties": {
+                    "resource_type": {
+                      "const": "entity"
+                    }
+                  }
+                }
+              }
+            },
+            "required": [
+              "targets"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mode": {
+                "const": "soft"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selector": {
+                "properties": {
+                  "collection": {
+                    "const": "entities"
+                  }
+                }
+              }
+            },
+            "required": [
+              "selector"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mode": {
+                "const": "soft"
+              }
+            }
+          }
+        }
+      ],
+      "oneOf": [
+        {
+          "not": {
+            "required": [
+              "selector"
+            ]
+          },
+          "required": [
+            "targets"
+          ]
+        },
+        {
+          "not": {
+            "required": [
+              "targets"
+            ]
+          },
+          "required": [
+            "selector"
+          ]
+        }
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "soft",
+            "erase"
+          ],
+          "type": "string"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "selector": {
+          "$ref": "#/$defs/ConsoleForgetSelector"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/ConsoleForgetTarget"
+          },
+          "maxItems": 500,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleForgetReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_status": {
+          "maxLength": 128,
+          "type": "string"
+        },
+        "cleanup_status": {
+          "const": "pending",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "soft",
+            "erase"
+          ]
+        },
+        "preview_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "target_count": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "tombstone_seq": {
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "preview_id",
+        "canonical_status",
+        "target_count",
+        "mode",
+        "cleanup_status",
+        "tombstone_seq"
+      ],
+      "type": "object"
+    },
+    "ConsoleForgetReceiptEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ConsoleForgetReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ConsoleForgetSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "enum": [
+            "states",
+            "tasks",
+            "entities",
+            "focus-items",
+            "notes",
+            "observations",
+            "claims",
+            "episodes",
+            "relations",
+            "artifacts"
+          ]
+        },
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "created_from": {
+              "format": "date-time",
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "created_to": {
+              "format": "date-time",
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "q": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "session_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "space_group_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "space_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "status": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "updated_from": {
+              "format": "date-time",
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "updated_to": {
+              "format": "date-time",
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "sort": {
+          "const": "created_at_desc"
+        }
+      },
+      "required": [
+        "collection",
+        "filters",
+        "sort"
+      ],
+      "type": "object"
+    },
+    "ConsoleForgetTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "resource_type": {
+          "enum": [
+            "note",
+            "observation",
+            "claim",
+            "episode",
+            "relation",
+            "artifact",
+            "entity",
+            "focus_item",
+            "state_record",
+            "task"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_type",
+        "id",
+        "expected_revision"
+      ],
+      "type": "object"
+    },
+    "ConsoleIdentityCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "external_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "realm": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "realm",
+        "external_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleIdentityCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleIdentityCreateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleNoteCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "maxLength": 20000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "due_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "kind": {
+          "enum": [
+            "important",
+            "idea",
+            "follow_up",
+            "promise",
+            "question",
+            "observation"
+          ],
+          "type": "string"
+        },
+        "review_after_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "title"
+      ],
+      "type": "object"
+    },
+    "ConsoleNoteCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleNoteCreateFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleCommandSourceRef"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleNoteTransitionRequest": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "snooze_until_at"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "target_status": {
+                "const": "snoozed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "snooze_until_at"
+            ]
+          }
+        },
+        {
+          "else": {
+            "not": {
+              "required": [
+                "promotion_target_type"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "target_status": {
+                "const": "promoted"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "promotion_target_type"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "promotion_target_type": {
+          "enum": [
+            "task",
+            "claim",
+            "episode"
+          ],
+          "type": "string"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "snooze_until_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "target_status": {
+          "enum": [
+            "inbox",
+            "pinned",
+            "snoozed",
+            "archived",
+            "promoted"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "target_status",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleNoteUpdateFields": {
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "body": {
+          "maxLength": 20000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "due_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "review_after_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "ConsoleNoteUpdateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleNoteUpdateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleObservationAnnotateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "maxLength": 20000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body"
+      ],
+      "type": "object"
+    },
+    "ConsoleObservationAnnotateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleObservationAnnotateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleObservationCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 200000,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "type": "object"
+    },
+    "ConsoleObservationCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleObservationCreateFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "available_actions": {
+          "items": {
+            "enum": [
+              "cancel"
+            ]
+          },
+          "maxItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "blocked_reason": {
+          "maxLength": 64,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cancellable": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "created_by": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "memory_forget"
+          ],
+          "type": "string"
+        },
+        "phase": {
+          "const": "canonical_forget"
+        },
+        "problems_count": {
+          "maximum": 500,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "progress": {
+          "additionalProperties": false,
+          "properties": {
+            "processed": {
+              "$ref": "#/$defs/DecimalCount"
+            },
+            "total": {
+              "$ref": "#/$defs/DecimalCount"
+            },
+            "unit": {
+              "const": "records"
+            }
+          },
+          "required": [
+            "processed",
+            "total",
+            "unit"
+          ],
+          "type": "object"
+        },
+        "reason_codes": {
+          "items": {
+            "const": "operator_request"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "type": "array"
+        },
+        "result_ref": {
+          "type": "null"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "paused",
+            "blocked",
+            "completed",
+            "completed_with_warnings",
+            "failed",
+            "cancelled",
+            "cancelled_partial"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "status",
+        "phase",
+        "progress",
+        "blocked_reason",
+        "created_by",
+        "created_at",
+        "started_at",
+        "finished_at",
+        "cancellable",
+        "result_ref",
+        "problems_count",
+        "available_actions",
+        "reason_codes"
+      ],
+      "type": "object"
+    },
+    "ConsoleOperationCancelRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_code": {
+          "const": "operator_request"
+        }
+      },
+      "required": [
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleOperationEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ConsoleOperation"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ConsoleOperationPage": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ConsoleOperation"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ConsoleOperationProblem": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "authority_changed",
+            "preview_changed",
+            "query_budget",
+            "execution_failed",
+            "restore_requires_review"
+          ],
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "input_index": {
+          "maximum": 499,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "input_index",
+        "code",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "ConsoleOperationProblemPage": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ConsoleOperationProblem"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaPolicyReplaceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/PersonaPolicyConfiguration"
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "config"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaProposalApproveRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_policy_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "base_revision",
+        "expected_policy_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaProposalCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "evidence_refs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "resource_type": {
+                "enum": [
+                  "claim",
+                  "episode",
+                  "relation",
+                  "task",
+                  "persona_state"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "expected_policy_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            "patch": {
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "narrative": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "experiences": {},
+                    "goals": {},
+                    "relationships": {},
+                    "summary": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "traits": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "habits": {},
+                    "interests": {},
+                    "style": {},
+                    "tendencies": {},
+                    "weights": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "ttl_us": {
+              "maximum": 2592000000000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "patch",
+            "confidence",
+            "ttl_us"
+          ],
+          "type": "object"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "base_revision",
+        "expected_policy_revision",
+        "reason_code",
+        "fields",
+        "evidence_refs"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaProposalRejectRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "base_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaPublishRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_policy_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "additionalProperties": false,
+          "properties": {
+            "core": {
+              "additionalProperties": false,
+              "properties": {
+                "identity": {},
+                "language": {},
+                "name": {},
+                "name_placeholder": {},
+                "relationship_constraints": {},
+                "safety_boundaries": {},
+                "values": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "narrative": {
+              "additionalProperties": false,
+              "properties": {
+                "experiences": {},
+                "goals": {},
+                "relationships": {},
+                "summary": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "traits": {
+              "additionalProperties": false,
+              "properties": {
+                "habits": {},
+                "interests": {},
+                "style": {},
+                "tendencies": {},
+                "weights": {}
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "core",
+            "traits",
+            "narrative"
+          ],
+          "type": "object"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "resource_type": {
+                "enum": [
+                  "claim",
+                  "episode",
+                  "relation",
+                  "task",
+                  "persona_state"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "expected_policy_revision",
+        "reason_code",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaRollbackRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_policy_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "target_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "expected_policy_revision",
+        "reason_code",
+        "target_revision"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaStateClearRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaStateUpdateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fields": {
+          "additionalProperties": false,
+          "properties": {
+            "baseline": {
+              "additionalProperties": false,
+              "properties": {
+                "energy": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "engagement": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "expression_tendency": {
+                  "enum": [
+                    "neutral",
+                    "warm",
+                    "concise",
+                    "reflective",
+                    "energetic"
+                  ],
+                  "type": "string"
+                },
+                "focus": {
+                  "items": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                    "type": "string"
+                  },
+                  "maxItems": 8,
+                  "type": "array"
+                },
+                "mood": {
+                  "maximum": 1,
+                  "minimum": -1,
+                  "type": "number"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "state": {
+              "additionalProperties": false,
+              "properties": {
+                "energy": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "engagement": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "expression_tendency": {
+                  "enum": [
+                    "neutral",
+                    "warm",
+                    "concise",
+                    "reflective",
+                    "energetic"
+                  ],
+                  "type": "string"
+                },
+                "focus": {
+                  "items": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                    "type": "string"
+                  },
+                  "maxItems": 8,
+                  "type": "array"
+                },
+                "mood": {
+                  "maximum": 1,
+                  "minimum": -1,
+                  "type": "number"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "ttl_us": {
+              "maximum": 604800000000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "ttl_us"
+          ],
+          "type": "object"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "resource_type": {
+                "enum": [
+                  "claim",
+                  "episode",
+                  "relation",
+                  "task",
+                  "persona_state"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ConsoleRelationCorrectFields": {
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "accessibility": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "relation_type": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "target_entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "valid_from_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "valid_until_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "ConsoleRelationCorrectRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ConsoleClaimEvidence"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "type": "array"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleRelationCorrectFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "evidence",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleRelationCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "accessibility": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "importance": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "relation_type": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "target_entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "valid_from_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "valid_until_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_entity_id",
+        "relation_type",
+        "target_entity_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleRelationCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/ConsoleClaimEvidence"
+              },
+              {
+                "properties": {
+                  "relation": {
+                    "const": "supports"
+                  }
+                }
+              }
+            ]
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "type": "array"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleRelationCreateFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "reason_code",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "ConsoleRelationTransitionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "target_status": {
+          "enum": [
+            "active",
+            "disputed",
+            "archived",
+            "superseded",
+            "retracted"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "target_status",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleStateCreateFields": {
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "ttl_us",
+          "expires_at"
+        ]
+      },
+      "properties": {
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "namespace": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "ttl_us": {
+          "maxLength": 16,
+          "pattern": "^(0|[1-9][0-9]{0,15})$",
+          "type": "string"
+        },
+        "value": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "namespace",
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ConsoleStateCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "const": 0,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleStateCreateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleStateExpireRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleStateUpdateFields": {
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "ttl_us",
+          "expires_at"
+        ]
+      },
+      "properties": {
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "ttl_us": {
+          "maxLength": 16,
+          "pattern": "^(0|[1-9][0-9]{0,15})$",
+          "type": "string"
+        },
+        "value": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
+    "ConsoleStateUpdateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleStateUpdateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskCreateFields": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "owner_kind": {
+                "const": "entity"
+              }
+            },
+            "required": [
+              "owner_kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "owner_entity_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "owner_entity_id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "owner_kind": {
+                "enum": [
+                  "entity",
+                  "joint"
+                ]
+              }
+            },
+            "required": [
+              "owner_kind"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "due_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "goal": {
+          "maxLength": 8000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "next_action": {
+          "maxLength": 2000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "owner_entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "owner_kind": {
+          "enum": [
+            "agent",
+            "joint",
+            "entity",
+            "space_group"
+          ],
+          "type": "string"
+        },
+        "priority": {
+          "maximum": 9,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ConsoleTaskCreateFields"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConsoleCommandScope"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleCommandSourceRef"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskDependencyCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "enum": [
+            "completed",
+            "completed_or_skipped"
+          ],
+          "type": "string"
+        },
+        "predecessor_step_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "successor_step_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "predecessor_step_id",
+        "successor_step_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskDependencyCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleTaskDependencyCreateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskDependencyRemoveRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "child_expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "child_expected_revision"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskEvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "resource_type": {
+          "enum": [
+            "observation",
+            "artifact"
+          ],
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskStepCreateFields": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 8000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "expected_effect": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "ordinal": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "privacy_labels": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "stable_key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stable_key",
+        "title"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskStepCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleTaskStepCreateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskStepTransitionRequest": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "target_status": {
+                "not": {
+                  "const": "completed"
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "completion_evidence_refs"
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "child_expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "completion_evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleTaskEvidenceRef"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "target_status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "waiting",
+            "blocked",
+            "completed",
+            "skipped",
+            "cancelled"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "target_status",
+        "child_expected_revision"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskTransitionRequest": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "completion_evidence_refs"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "target_status": {
+                "const": "completed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "completion_evidence_refs"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "completion_evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/ConsoleTaskEvidenceRef"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "target_status": {
+          "enum": [
+            "active",
+            "waiting",
+            "blocked",
+            "completed",
+            "cancelled",
+            "archived"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "target_status"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskTriggerCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleTaskTriggerFields",
+          "required": [
+            "kind"
+          ]
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskTriggerEnabledRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "child_expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "enabled",
+        "child_expected_revision"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskTriggerFields": {
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "catch_up_policy": {
+          "enum": [
+            "all",
+            "latest",
+            "coalesce",
+            "skip"
+          ]
+        },
+        "condition_spec": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "observation_kind": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "role": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "observation_kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "namespace": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "operator": {
+                  "enum": [
+                    "eq",
+                    "ne",
+                    "lt",
+                    "le",
+                    "gt",
+                    "ge",
+                    "exists",
+                    "absent",
+                    "contains"
+                  ]
+                },
+                "value": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "namespace",
+                "key",
+                "operator"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "from_status": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "task_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                  "type": "string"
+                },
+                "task_step_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                  "type": "string"
+                },
+                "to_status": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "to_status"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "at_time",
+            "recurrence",
+            "observation_kind",
+            "state_condition",
+            "task_transition"
+          ]
+        },
+        "max_occurrences_per_run": {
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "misfire_grace_us": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schedule_spec": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "at_us": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "at_us"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "every_seconds": {
+                  "maximum": 31536000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "kind": {
+                  "const": "interval"
+                }
+              },
+              "required": [
+                "every_seconds"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "at": {
+                  "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+                  "type": "string"
+                },
+                "dst_ambiguous": {
+                  "enum": [
+                    "first",
+                    "second"
+                  ]
+                },
+                "dst_missing": {
+                  "enum": [
+                    "skip",
+                    "postpone"
+                  ]
+                },
+                "kind": {
+                  "const": "daily"
+                }
+              },
+              "required": [
+                "at"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "task_step_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timezone": {
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "ConsoleTaskTriggerUpdateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "child_expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleTaskTriggerFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code",
+        "child_expected_revision"
+      ],
+      "type": "object"
+    },
+    "ConsoleTaskUpdateFields": {
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "due_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "goal": {
+          "maxLength": 8000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "next_action": {
+          "maxLength": 2000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "priority": {
+          "maximum": 9,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "progress_note": {
+          "maxLength": 8000,
+          "minLength": 0,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConsoleTaskUpdateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConsoleTaskUpdateFields"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "DecimalCount": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "EmptyRequest": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "ErrorDetails": {
+      "additionalProperties": false,
+      "properties": {
+        "current_revision": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "authentication_required",
+            "permission_denied",
+            "csrf_failed",
+            "reauth_required",
+            "rate_limited",
+            "validation_failed",
+            "cursor_invalid",
+            "revision_conflict",
+            "preview_stale",
+            "format_unsupported",
+            "upload_too_large",
+            "media_type_unsupported",
+            "config_changed",
+            "secret_unavailable",
+            "session_limit",
+            "protected_resource"
+          ]
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "ErrorEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "error": {
+          "additionalProperties": true,
+          "properties": {
+            "code": {
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            "details": {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            "message": {
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "retryable"
+          ],
+          "type": "object"
+        },
+        "request_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "error",
+        "request_id"
+      ],
+      "type": "object"
+    },
+    "EventCommandReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_status": {
+          "const": "committed",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "const": "cognitive_event",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "revision",
+        "canonical_status"
+      ],
+      "type": "object"
+    },
+    "EventCommandReceiptEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/EventCommandReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "FilterSpec": {
+      "additionalProperties": true,
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Grant": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_selector": {
+          "$ref": "#/$defs/Selector"
+        },
+        "allow_restricted": {
+          "type": "boolean"
+        },
+        "custom_privacy_labels": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "data_purposes": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "permissions": {
+          "items": {
+            "enum": [
+              "memory.read",
+              "memory.write",
+              "memory.forget",
+              "memory.history",
+              "persona.publish",
+              "keys.manage",
+              "service_keys.manage",
+              "stats.read",
+              "system.read",
+              "system.write",
+              "imports.write",
+              "exports.write",
+              "exports.read_all",
+              "providers.manage",
+              "settings.read",
+              "settings.write",
+              "indexes.rebuild",
+              "audit.read",
+              "retention.manage"
+            ],
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "session_selector": {
+          "$ref": "#/$defs/Selector"
+        },
+        "space_group_selector": {
+          "$ref": "#/$defs/Selector"
+        },
+        "space_selector": {
+          "$ref": "#/$defs/Selector"
+        },
+        "subject_entity_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "permissions",
+        "agent_selector",
+        "space_group_selector",
+        "space_selector",
+        "session_selector",
+        "subject_entity_ids",
+        "custom_privacy_labels",
+        "allow_restricted",
+        "data_purposes"
+      ],
+      "type": "object"
+    },
+    "KeyActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/ReasonCode"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "KeyIssueRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "can_delegate": {
+          "type": "boolean"
+        },
+        "delegable_subject_entity_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "description": {
+          "maxLength": 1024,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "grants": {
+          "$ref": "#/$defs/Grant"
+        },
+        "label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/ReasonCode"
+        },
+        "template": {
+          "enum": [
+            "owner",
+            "maintainer",
+            "viewer"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "expires_at",
+        "template",
+        "grants"
+      ],
+      "type": "object"
+    },
+    "KeyUpdateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 1024,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/ReasonCode"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "KeyView": {
+      "additionalProperties": true,
+      "properties": {
+        "can_delegate": {
+          "type": "boolean"
+        },
+        "confirmation_expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "created_by": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "delegable_subject_entity_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "description": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "grants": {
+          "$ref": "#/$defs/ReadGrant"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "label": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "revoke_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReasonCode"
+            },
+            {
+              "const": "confirmation_expired"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rotated_from_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "active",
+            "pending_confirmation",
+            "revoked",
+            "expired"
+          ]
+        },
+        "template": {
+          "enum": [
+            "owner",
+            "maintainer",
+            "viewer"
+          ]
+        },
+        "tenant_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "token_prefix": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tenant_id",
+        "token_prefix",
+        "label",
+        "description",
+        "template",
+        "grants",
+        "can_delegate",
+        "delegable_subject_entity_ids",
+        "status",
+        "revision",
+        "created_at",
+        "expires_at",
+        "created_by",
+        "rotated_from_id",
+        "confirmation_expires_at",
+        "revoked_at",
+        "revoke_reason"
+      ],
+      "type": "object"
+    },
+    "KeyViewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/KeyView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "KeyViewPage": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/KeyView"
+          },
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "LoginRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "type": "object"
+    },
+    "Meta": {
+      "additionalProperties": true,
+      "properties": {
+        "as_of": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "contract_version": {
+          "const": "1.1.0"
+        },
+        "descriptor": {
+          "$ref": "#/$defs/ResourceTypeDescriptor"
+        },
+        "page": {
+          "$ref": "#/$defs/Page"
+        },
+        "request_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "total": {
+          "$ref": "#/$defs/Total"
+        },
+        "warnings": {
+          "items": {
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "request_id",
+        "contract_version",
+        "as_of"
+      ],
+      "type": "object"
+    },
+    "Page": {
+      "additionalProperties": true,
+      "properties": {
+        "has_more": {
+          "type": "boolean"
+        },
+        "limit": {
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "next_cursor": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "next_cursor",
+        "has_more",
+        "limit"
+      ],
+      "type": "object"
+    },
+    "PersonaCommandReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "canonical_status": {
+          "const": "committed",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "const": "persona_revision",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "agent_id",
+        "revision",
+        "content_hash",
+        "canonical_status"
+      ],
+      "type": "object"
+    },
+    "PersonaCommandReceiptEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaCommandReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaCommandsView": {
+      "additionalProperties": true,
+      "properties": {
+        "actions": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {
+              "fields": {
+                "items": {
+                  "$ref": "#/$defs/CommandFieldSpec"
+                },
+                "type": "array"
+              },
+              "high_risk": {
+                "const": true,
+                "type": "boolean"
+              },
+              "id": {
+                "enum": [
+                  "publish",
+                  "rollback"
+                ],
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "method": {
+                "const": "POST",
+                "type": "string"
+              },
+              "permission": {
+                "const": "persona.publish",
+                "type": "string"
+              },
+              "reason_codes": {
+                "items": {
+                  "const": "operator_request",
+                  "type": "string"
+                },
+                "maxItems": 1,
+                "minItems": 1,
+                "type": "array"
+              },
+              "request_schema": {
+                "enum": [
+                  "ConsolePersonaPublishRequest",
+                  "ConsolePersonaRollbackRequest"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "permission",
+              "method",
+              "high_risk",
+              "reason_codes",
+              "request_schema",
+              "fields"
+            ],
+            "type": "object"
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "expected_policy_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "request_schemas": {
+          "additionalProperties": false,
+          "properties": {
+            "ConsolePersonaPublishRequest": {
+              "type": "object"
+            },
+            "ConsolePersonaRollbackRequest": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "ConsolePersonaPublishRequest",
+            "ConsolePersonaRollbackRequest"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "agent_id",
+        "expected_revision",
+        "expected_policy_revision",
+        "actions",
+        "request_schemas"
+      ],
+      "type": "object"
+    },
+    "PersonaCommandsViewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaCommandsView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaPolicyCommandReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "canonical_status": {
+          "const": "committed",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "const": "persona_policy",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "agent_id",
+        "revision",
+        "content_hash",
+        "canonical_status"
+      ],
+      "type": "object"
+    },
+    "PersonaPolicyCommandReceiptEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaPolicyCommandReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaPolicyConfiguration": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "locked"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowed_fields": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "allowed_fields": {
+          "items": {
+            "enum": [
+              "traits.style",
+              "traits.interests",
+              "traits.habits",
+              "traits.tendencies",
+              "traits.weights",
+              "narrative.summary",
+              "narrative.experiences",
+              "narrative.relationships",
+              "narrative.goals"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cooldown_us": {
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "type": "string"
+        },
+        "cumulative_window_us": {
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "type": "string"
+        },
+        "max_cumulative_delta": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "max_single_delta": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "min_confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "min_distinct_sources": {
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "type": "string"
+        },
+        "min_evidence": {
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "type": "string"
+        },
+        "min_evidence_span_us": {
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "locked",
+            "manual",
+            "bounded_auto"
+          ],
+          "type": "string"
+        },
+        "observation_us": {
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "type": "string"
+        },
+        "rollback_threshold": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "sensitive_fields": {
+          "items": {
+            "enum": [
+              "traits.style",
+              "traits.interests",
+              "traits.habits",
+              "traits.tendencies",
+              "traits.weights",
+              "narrative.summary",
+              "narrative.experiences",
+              "narrative.relationships",
+              "narrative.goals"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode",
+        "allowed_fields",
+        "sensitive_fields",
+        "cumulative_window_us",
+        "min_evidence",
+        "min_distinct_sources",
+        "min_evidence_span_us",
+        "cooldown_us",
+        "observation_us",
+        "max_single_delta",
+        "max_cumulative_delta",
+        "min_confidence",
+        "rollback_threshold"
+      ],
+      "type": "object"
+    },
+    "PersonaPolicyView": {
+      "additionalProperties": true,
+      "properties": {
+        "actions": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {
+              "fields": {
+                "items": {
+                  "$ref": "#/$defs/CommandFieldSpec"
+                },
+                "type": "array"
+              },
+              "high_risk": {
+                "const": true,
+                "type": "boolean"
+              },
+              "id": {
+                "const": "replace",
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "method": {
+                "const": "PUT",
+                "type": "string"
+              },
+              "permission": {
+                "const": "persona.publish",
+                "type": "string"
+              },
+              "reason_codes": {
+                "items": {
+                  "const": "operator_request",
+                  "type": "string"
+                },
+                "maxItems": 1,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "method",
+              "permission",
+              "high_risk",
+              "reason_codes",
+              "fields"
+            ],
+            "type": "object"
+          },
+          "maxItems": 1,
+          "type": "array"
+        },
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "available_actions": {
+          "items": {
+            "const": "replace",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "type": "array"
+        },
+        "config": {
+          "$ref": "#/$defs/PersonaPolicyConfiguration"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_id",
+        "agent_id",
+        "revision",
+        "content_hash",
+        "config",
+        "created_at",
+        "available_actions",
+        "actions"
+      ],
+      "type": "object"
+    },
+    "PersonaPolicyViewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaPolicyView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaProposalCommandReceipt": {
+      "additionalProperties": true,
+      "properties": {
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "canonical_status": {
+          "const": "committed",
+          "type": "string"
+        },
+        "published_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "const": "persona_proposal",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "published",
+            "rejected"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_id",
+        "agent_id",
+        "status",
+        "published_revision_id",
+        "resource_type",
+        "canonical_status"
+      ],
+      "type": "object"
+    },
+    "PersonaProposalCommandReceiptEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaProposalCommandReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaProposalContext": {
+      "additionalProperties": true,
+      "properties": {
+        "actions": {
+          "items": {
+            "additionalProperties": true,
+            "allOf": [
+              {
+                "else": {
+                  "properties": {
+                    "high_risk": {
+                      "const": true
+                    },
+                    "permission": {
+                      "const": "persona.publish"
+                    }
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "id": {
+                      "const": "create"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "high_risk": {
+                      "const": false
+                    },
+                    "permission": {
+                      "const": "memory.write"
+                    }
+                  }
+                }
+              }
+            ],
+            "properties": {
+              "fields": {
+                "items": {
+                  "$ref": "#/$defs/CommandFieldSpec"
+                },
+                "type": "array"
+              },
+              "high_risk": {
+                "type": "boolean"
+              },
+              "id": {
+                "enum": [
+                  "create",
+                  "approve",
+                  "reject"
+                ],
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "method": {
+                "const": "POST",
+                "type": "string"
+              },
+              "permission": {
+                "enum": [
+                  "memory.write",
+                  "persona.publish"
+                ],
+                "type": "string"
+              },
+              "reason_codes": {
+                "items": {
+                  "const": "operator_request",
+                  "type": "string"
+                },
+                "maxItems": 1,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "method",
+              "permission",
+              "high_risk",
+              "reason_codes",
+              "fields"
+            ],
+            "type": "object"
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "available_actions": {
+          "items": {
+            "enum": [
+              "create",
+              "approve",
+              "reject"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "base_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "current_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_policy_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy_mode": {
+          "enum": [
+            "locked",
+            "manual",
+            "bounded_auto",
+            null
+          ]
+        },
+        "proposal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "agent_id",
+        "proposal",
+        "base_revision",
+        "current_revision",
+        "expected_policy_revision",
+        "policy_mode",
+        "available_actions",
+        "actions"
+      ],
+      "type": "object"
+    },
+    "PersonaProposalContextEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaProposalContext"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaStateCommandReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "canonical_status": {
+          "const": "committed",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "const": "persona_state",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "agent_id",
+        "revision",
+        "canonical_status"
+      ],
+      "type": "object"
+    },
+    "PersonaStateCommandReceiptEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaStateCommandReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaStateView": {
+      "additionalProperties": true,
+      "properties": {
+        "actions": {
+          "items": {
+            "additionalProperties": true,
+            "allOf": [
+              {
+                "else": {
+                  "properties": {
+                    "method": {
+                      "const": "POST"
+                    }
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "id": {
+                      "const": "update"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "method": {
+                      "const": "PATCH"
+                    }
+                  }
+                }
+              }
+            ],
+            "properties": {
+              "fields": {
+                "items": {
+                  "$ref": "#/$defs/CommandFieldSpec"
+                },
+                "type": "array"
+              },
+              "high_risk": {
+                "const": false,
+                "type": "boolean"
+              },
+              "id": {
+                "enum": [
+                  "update",
+                  "clear"
+                ],
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "method": {
+                "enum": [
+                  "POST",
+                  "PATCH"
+                ],
+                "type": "string"
+              },
+              "permission": {
+                "const": "memory.write",
+                "type": "string"
+              },
+              "reason_codes": {
+                "items": {
+                  "const": "operator_request",
+                  "type": "string"
+                },
+                "maxItems": 1,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "permission",
+              "method",
+              "high_risk",
+              "reason_codes",
+              "fields"
+            ],
+            "type": "object"
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "available_actions": {
+          "items": {
+            "enum": [
+              "update",
+              "clear"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent_id",
+        "current",
+        "expected_revision",
+        "available_actions",
+        "actions"
+      ],
+      "type": "object"
+    },
+    "PersonaStateViewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaStateView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ReadGrant": {
+      "additionalProperties": true,
+      "properties": {
+        "agent_selector": {
+          "$ref": "#/$defs/ReadSelector"
+        },
+        "allow_restricted": {
+          "type": "boolean"
+        },
+        "custom_privacy_labels": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "data_purposes": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "permissions": {
+          "items": {
+            "enum": [
+              "memory.read",
+              "memory.write",
+              "memory.forget",
+              "memory.history",
+              "persona.publish",
+              "keys.manage",
+              "service_keys.manage",
+              "stats.read",
+              "system.read",
+              "system.write",
+              "imports.write",
+              "exports.write",
+              "exports.read_all",
+              "providers.manage",
+              "settings.read",
+              "settings.write",
+              "indexes.rebuild",
+              "audit.read",
+              "retention.manage"
+            ],
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "session_selector": {
+          "$ref": "#/$defs/ReadSelector"
+        },
+        "space_group_selector": {
+          "$ref": "#/$defs/ReadSelector"
+        },
+        "space_selector": {
+          "$ref": "#/$defs/ReadSelector"
+        },
+        "subject_entity_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "permissions",
+        "agent_selector",
+        "space_group_selector",
+        "space_selector",
+        "session_selector",
+        "subject_entity_ids",
+        "custom_privacy_labels",
+        "allow_restricted",
+        "data_purposes"
+      ],
+      "type": "object"
+    },
+    "ReadSelector": {
+      "oneOf": [
+        {
+          "additionalProperties": true,
+          "properties": {
+            "mode": {
+              "const": "all"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": true,
+          "properties": {
+            "ids": {
+              "items": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            "mode": {
+              "const": "ids"
+            }
+          },
+          "required": [
+            "mode",
+            "ids"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ReasonCode": {
+      "enum": [
+        "credential_issue",
+        "credential_rotation",
+        "credential_revocation",
+        "credential_update",
+        "session_revocation",
+        "security_incident",
+        "operator_request",
+        "offline_recovery"
+      ],
+      "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+      "type": "string"
+    },
+    "ReauthView": {
+      "additionalProperties": true,
+      "properties": {
+        "reauth_until": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reauth_until"
+      ],
+      "type": "object"
+    },
+    "ReauthViewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ReauthView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ReferencePage": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ReferenceView"
+          },
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ReferenceView": {
+      "additionalProperties": true,
+      "properties": {
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ]
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "relation": {
+          "type": "string"
+        },
+        "resource": {
+          "$ref": "#/$defs/ResourceRef"
+        }
+      },
+      "required": [
+        "id",
+        "direction",
+        "relation",
+        "resource"
+      ],
+      "type": "object"
+    },
+    "ResourcePage": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ResourceView"
+          },
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ResourceRef": {
+      "additionalProperties": true,
+      "properties": {
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id"
+      ],
+      "type": "object"
+    },
+    "ResourceScope": {
+      "additionalProperties": true,
+      "properties": {
+        "agent_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_group_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "agent_id",
+        "space_group_id",
+        "space_id",
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "ResourceTypeDescriptor": {
+      "additionalProperties": true,
+      "properties": {
+        "actions": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "collection": {
+          "type": "string"
+        },
+        "create": {
+          "$ref": "#/$defs/CommandActionSpec"
+        },
+        "create_schema": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "filters": {
+          "items": {
+            "$ref": "#/$defs/FilterSpec"
+          },
+          "type": "array"
+        },
+        "label": {
+          "type": "string"
+        },
+        "list_columns": {
+          "items": {
+            "$ref": "#/$defs/ColumnSpec"
+          },
+          "type": "array"
+        },
+        "resource_type": {
+          "type": "string"
+        },
+        "sorts": {
+          "items": {
+            "$ref": "#/$defs/SortSpec"
+          },
+          "type": "array"
+        },
+        "supports": {
+          "additionalProperties": true,
+          "properties": {
+            "forget": {
+              "type": "boolean"
+            },
+            "forget_max_targets": {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "forget_modes": {
+              "items": {
+                "enum": [
+                  "soft",
+                  "erase"
+                ],
+                "type": "string"
+              },
+              "maxItems": 2,
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "forget_selector": {
+              "type": "boolean"
+            },
+            "history": {
+              "type": "boolean"
+            },
+            "references": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "history",
+            "references",
+            "forget"
+          ],
+          "type": "object"
+        },
+        "update_schema": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "upload": {
+          "$ref": "#/$defs/CommandActionSpec"
+        },
+        "upload_schema": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "collection",
+        "resource_type",
+        "label",
+        "list_columns",
+        "filters",
+        "sorts",
+        "create_schema",
+        "update_schema",
+        "actions",
+        "supports"
+      ],
+      "type": "object"
+    },
+    "ResourceTypePage": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ResourceTypeDescriptor"
+          },
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ResourceView": {
+      "additionalProperties": true,
+      "properties": {
+        "available_actions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "blocked_actions": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "fields": {
+          "additionalProperties": true,
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "privacy_labels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "resource_type": {
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "scope": {
+          "$ref": "#/$defs/ResourceScope"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/ResourceRef"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "version_token": {
+          "maxLength": 256,
+          "minLength": 32,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "resource_type",
+        "revision",
+        "scope",
+        "status",
+        "fields",
+        "privacy_labels",
+        "source_refs",
+        "created_at",
+        "updated_at",
+        "available_actions",
+        "blocked_actions"
+      ],
+      "type": "object"
+    },
+    "ResourceViewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ResourceView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "SecretView": {
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "secret"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "secret_available": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "secret"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/KeyView"
+        },
+        "secret": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "secret_available": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "secret_available"
+      ],
+      "type": "object"
+    },
+    "SecretViewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/SecretView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "Selector": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "all"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ids": {
+              "items": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            "mode": {
+              "const": "ids"
+            }
+          },
+          "required": [
+            "mode",
+            "ids"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ServiceCredentialIssueRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "app_instance_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "capabilities": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "data_purposes": {
+          "items": {
+            "enum": [
+              "reply",
+              "planning",
+              "reflection",
+              "tool"
+            ],
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "description": {
+          "maxLength": 1024,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "entity_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "plane": {
+          "const": "application"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/ReasonCode"
+        },
+        "space_group_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "space_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "label",
+        "expires_at",
+        "app_instance_id",
+        "data_purposes"
+      ],
+      "type": "object"
+    },
+    "ServiceCredentialPage": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ServiceCredentialView"
+          },
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ServiceCredentialRotateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "overlap_seconds": {
+          "maximum": 3600,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/ReasonCode"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ServiceCredentialSecret": {
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "secret"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "secret_available": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "secret"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/ServiceCredentialView"
+        },
+        "secret": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "secret_available": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "secret_available"
+      ],
+      "type": "object"
+    },
+    "ServiceCredentialSecretEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ServiceCredentialSecret"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ServiceCredentialView": {
+      "additionalProperties": true,
+      "properties": {
+        "agent_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "app_instance_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "capabilities": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "created_by": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data_purposes": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "description": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entity_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "label": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plane": {
+          "const": "application"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "revoke_after": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revoke_reason": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rotated_from_id": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space_group_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "space_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "tenant_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "token_prefix": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "tenant_id",
+        "app_instance_id",
+        "plane",
+        "label",
+        "description",
+        "token_prefix",
+        "created_by",
+        "revision",
+        "created_at",
+        "expires_at",
+        "revoked_at",
+        "revoke_after",
+        "rotated_from_id",
+        "revoke_reason",
+        "agent_ids",
+        "space_group_ids",
+        "space_ids",
+        "entity_ids",
+        "capabilities",
+        "data_purposes"
+      ],
+      "type": "object"
+    },
+    "ServiceCredentialViewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ServiceCredentialView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "SessionRevokeRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_code": {
+          "$ref": "#/$defs/ReasonCode"
+        }
+      },
+      "required": [
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "SessionSummary": {
+      "additionalProperties": true,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "current": {
+          "type": "boolean"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "idle_expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "last_active_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "reauth_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "created_at",
+        "expires_at",
+        "idle_expires_at",
+        "last_active_at",
+        "reauth_until",
+        "current"
+      ],
+      "type": "object"
+    },
+    "SessionSummaryPage": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/SessionSummary"
+          },
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "SessionView": {
+      "additionalProperties": true,
+      "properties": {
+        "csrf_token": {
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "grants": {
+          "$ref": "#/$defs/ReadGrant"
+        },
+        "operator": {
+          "additionalProperties": true,
+          "properties": {
+            "key_id": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            "label": {
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            "template": {
+              "enum": [
+                "owner",
+                "maintainer",
+                "viewer"
+              ]
+            },
+            "tenant_id": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key_id",
+            "label",
+            "template",
+            "tenant_id"
+          ],
+          "type": "object"
+        },
+        "permissions": {
+          "items": {
+            "enum": [
+              "memory.read",
+              "memory.write",
+              "memory.forget",
+              "memory.history",
+              "persona.publish",
+              "keys.manage",
+              "service_keys.manage",
+              "stats.read",
+              "system.read",
+              "system.write",
+              "imports.write",
+              "exports.write",
+              "exports.read_all",
+              "providers.manage",
+              "settings.read",
+              "settings.write",
+              "indexes.rebuild",
+              "audit.read",
+              "retention.manage"
+            ],
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "session": {
+          "additionalProperties": true,
+          "properties": {
+            "expires_at": {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            "id": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            "idle_expires_at": {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+              "type": "string"
+            },
+            "reauth_until": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "expires_at",
+            "idle_expires_at",
+            "reauth_until"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "session",
+        "operator",
+        "permissions",
+        "grants",
+        "csrf_token"
+      ],
+      "type": "object"
+    },
+    "SessionViewEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/SessionView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "SortSpec": {
+      "additionalProperties": true,
+      "properties": {
+        "direction": {
+          "enum": [
+            "asc",
+            "desc"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "direction"
+      ],
+      "type": "object"
+    },
+    "StateCommandReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_status": {
+          "const": "committed",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "const": "state_record",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "revision",
+        "canonical_status"
+      ],
+      "type": "object"
+    },
+    "StateCommandReceiptEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/StateCommandReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "TaskChildCommandReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_status": {
+          "const": "committed",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "enum": [
+            "task_step",
+            "task_dependency",
+            "task_trigger"
+          ],
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "task_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "task_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "revision",
+        "canonical_status",
+        "task_id",
+        "task_revision"
+      ],
+      "type": "object"
+    },
+    "TaskChildCommandReceiptEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/TaskChildCommandReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "Total": {
+      "additionalProperties": true,
+      "properties": {
+        "duration_us": {
+          "$ref": "#/$defs/DecimalCount"
+        },
+        "exact": {
+          "type": "boolean"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecimalCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "exact",
+        "duration_us"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://schemas.iris-memory-core.local/console/1.1.0/PersonaStateView.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "actions": {
+      "items": {
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "method": {
+                  "const": "POST"
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "id": {
+                  "const": "update"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "method": {
+                  "const": "PATCH"
+                }
+              }
+            }
+          }
+        ],
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/$defs/CommandFieldSpec"
+            },
+            "type": "array"
+          },
+          "high_risk": {
+            "const": false,
+            "type": "boolean"
+          },
+          "id": {
+            "enum": [
+              "update",
+              "clear"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "POST",
+              "PATCH"
+            ],
+            "type": "string"
+          },
+          "permission": {
+            "const": "memory.write",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "const": "operator_request",
+              "type": "string"
+            },
+            "maxItems": 1,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "permission",
+          "method",
+          "high_risk",
+          "reason_codes",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "maxItems": 2,
+      "type": "array"
+    },
+    "agent_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "available_actions": {
+      "items": {
+        "enum": [
+          "update",
+          "clear"
+        ],
+        "type": "string"
+      },
+      "maxItems": 2,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "current": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResourceView"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "expected_revision": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "agent_id",
+    "current",
+    "expected_revision",
+    "available_actions",
+    "actions"
+  ],
+  "type": "object"
+}

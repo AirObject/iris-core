@@ -13,7 +13,7 @@ default; history stays available where the namespace policy retains it.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from iris_memory_core.application.backpressure import BackpressureGauge
@@ -25,12 +25,14 @@ from iris_memory_core.application.ports import (
     UnitOfWork,
 )
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.console import CommandActor
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     ConflictError,
     HistoryUnavailableError,
     IdempotencyUnavailableError,
     InvalidRequestError,
+    InvalidTransitionError,
     NotFoundError,
     RevisionMismatchError,
     require_reason,
@@ -162,6 +164,84 @@ class StateService:
                 },
             )
 
+    def put_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        *,
+        fields: dict[str, Any],
+        expected_revision: int,
+        record_id: str | None = None,
+    ) -> tuple[str, str, list[str]]:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+
+        create = actor.operation == "state.create"
+        if actor.operation not in {"state.create", "state.update", "state.expire"} or create != (
+            record_id is None
+        ):
+            raise InvalidRequestError("invalid state command")
+        if type(expected_revision) is not int or (
+            expected_revision != 0 if create else expected_revision < 1
+        ):
+            raise InvalidRequestError("invalid state expected revision")
+        if create:
+            if not {"namespace", "key", "value"} <= fields.keys() or fields.keys() - {
+                "namespace",
+                "key",
+                "value",
+                "ttl_us",
+                "expires_us",
+            }:
+                raise InvalidRequestError("invalid state creation fields")
+            namespace, key, value = fields["namespace"], fields["key"], fields["value"]
+        else:
+            record = tx.states.get(record_id or "")
+            if (
+                Scope(
+                    record.tenant_id,
+                    record.agent_id,
+                    record.space_group_id,
+                    record.space_id,
+                    record.session_id,
+                )
+                != actor.scope
+            ):
+                raise AccessDeniedError("state command scope mismatch")
+            current = tx.states.current_revision(record.current_revision_id)
+            namespace, key = record.namespace, record.key
+            if actor.operation == "state.expire":
+                if fields:
+                    raise InvalidRequestError("expiry takes no content fields")
+                if current.expires_us is not None and current.expires_us <= self._clock.now_us():
+                    raise InvalidTransitionError("state already expired")
+                value = json.loads(current.value_json)
+            else:
+                if "value" not in fields or fields.keys() - {"value", "ttl_us", "expires_us"}:
+                    raise InvalidRequestError("invalid state edit fields")
+                value = fields["value"]
+        target = CommandTarget(
+            "state_record", actor.scope, resource_id=record_id, namespace=namespace
+        )
+        access = command_access(tx, actor, target, now_us=self._clock.now_us())
+        if fields.get("ttl_us") is not None and fields.get("expires_us") is not None:
+            raise InvalidRequestError("choose TTL or explicit expiry")
+        payload = {
+            "namespace": namespace,
+            "key": key,
+            "agent_id": actor.scope.agent_id,
+            "space_id": actor.scope.space_id,
+            "session_id": actor.scope.session_id,
+            "value": value,
+            "source_authority": "user",
+            "observed_us": self._clock.now_us(),
+            "ttl_us": fields.get("ttl_us"),
+            "expires_us": fields.get("expires_us"),
+            "source_ref": None,
+            "coalesce_key": None,
+            "expected_revision": expected_revision,
+        }
+        return self._execute_put(tx, access, payload, command_actor=actor)
+
     # -- PUT ----------------------------------------------------------------------
 
     def put(
@@ -255,14 +335,22 @@ class StateService:
         )
 
     def _execute_put(
-        self, tx: Transaction, access: AccessContext, payload: dict[str, Any]
+        self,
+        tx: Transaction,
+        access: AccessContext,
+        payload: dict[str, Any],
+        *,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
-        scope = _authorize_scope(
+        from iris_memory_core.application.write_support import authorize_scope
+
+        scope = authorize_scope(
             tx,
             access,
             agent_id=payload["agent_id"],
             space_id=payload["space_id"],
             session_id=payload["session_id"],
+            space_group_id=command_actor.scope.space_group_id if command_actor else None,
         )
         policy = _resolve_policy(tx, access.tenant_id, payload["namespace"])
         try:
@@ -278,18 +366,29 @@ class StateService:
                 expires_us=payload["expires_us"],
                 source_ref=payload["source_ref"],
                 coalesce_key=payload["coalesce_key"],
-                expected_revision=payload["expected_revision"],
+                expected_revision=None
+                if command_actor and command_actor.operation == "state.create"
+                else payload["expected_revision"],
             )
         except InvalidStateWriteError as error:
             raise InvalidRequestError(str(error)) from error
+        if command_actor is not None and command_actor.operation == "state.expire":
+            # An explicit expiry revision has an empty validity interval. All
+            # content, namespace, authority and scope checks above still apply.
+            draft = replace(draft, expires_us=draft.observed_us)
         scope_key = state_scope_key(scope)
         existing = tx.states.find(scope_key, draft.namespace, draft.key)
+        if existing is not None and tx.is_tombstoned(
+            existing.tenant_id, "state_record", existing.id
+        ):
+            if command_actor is not None and command_actor.operation == "state.create":
+                existing = None
+            else:
+                raise NotFoundError(f"state record {draft.namespace}/{draft.key} not found")
         if existing is None:
             record_id, new_revision = self._create(tx, draft, scope_key)
             expected = None
         else:
-            if tx.is_tombstoned(existing.tenant_id, "state_record", existing.id):
-                raise NotFoundError(f"state record {draft.namespace}/{draft.key} not found")
             # Updating an existing value REQUIRES Expected Revision (§15.5)
             # and the CAS runs on the CALLER's value: only the writer whose
             # expectation matches the current pointer can win.
@@ -353,11 +452,15 @@ class StateService:
         )
         tx.audit(
             tenant_id=draft.scope.tenant_id,
-            actor=f"access:{access.app_instance_id}",
-            action="state.put",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
+            action="state.expired"
+            if command_actor and command_actor.operation == "state.expire"
+            else "state.put",
             resource_type="state_record",
             resource_id=record_id,
-            reason_code="current_state_write",
+            reason_code=command_actor.reason_code if command_actor else "current_state_write",
             details={
                 "namespace": draft.namespace,
                 "key_hash": _hash_id(draft.key),

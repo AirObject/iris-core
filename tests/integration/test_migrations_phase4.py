@@ -61,7 +61,28 @@ class TestPublishedMigrationIntegrity:
             ).fetchall()
         finally:
             connection.close()
-        assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        assert [row[0] for row in rows] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+        ]
         for _version, name, checksum in rows:
             on_disk = hashlib.sha256(
                 (REPOSITORY_ROOT / "migrations" / name).read_bytes()
@@ -82,7 +103,7 @@ class TestPublishedMigrationIntegrity:
     def test_empty_database_installs_all_six(self, tmp_path: Path) -> None:
         database = tmp_path / "empty.sqlite3"
         MigrationRunner(database).migrate()
-        assert current_schema_version(sqlite3.connect(database)) == 14
+        assert current_schema_version(sqlite3.connect(database)) == 20
 
 
 def _phase3_database(tmp_path: Path) -> Path:
@@ -219,8 +240,25 @@ def _phase3_database(tmp_path: Path) -> Path:
 class TestSchema4To5Upgrade:
     def test_phase3_data_upgrades_intact(self, tmp_path: Path) -> None:
         database = _phase3_database(tmp_path)
-        applied = MigrationRunner(database).migrate()
-        assert [item.version for item in applied] == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
+        assert [item.version for item in applied] == [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+        ]
         connection = sqlite3.connect(database)
         try:
             assert int(connection.execute("SELECT COUNT(*) FROM observations").fetchone()[0]) == 1
@@ -254,7 +292,7 @@ class TestSchema4To5Upgrade:
         from iris_memory_core.storage.uow import Store
 
         database = _phase3_database(tmp_path)
-        MigrationRunner(database).migrate()
+        MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
         store = Store(SQLiteRuntime(database, allowed_versions=local_allowed_versions()))
         with store.read() as tx:
             assert tx.notes is not None and tx.tasks is not None and tx.events is not None
@@ -355,7 +393,7 @@ class TestPhase4RestoreInvariants:
             source = self._phase4_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 14
+            assert report["schema_version"] == 20
             assert verify_backup(backup_dir).ok
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
             target.parent.mkdir(parents=True, exist_ok=True)

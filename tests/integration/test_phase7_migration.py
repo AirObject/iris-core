@@ -77,7 +77,28 @@ class TestEmptyAndUpgrade:
     def test_empty_database_installs_all_eight(self, tmp_path: Path) -> None:
         database = tmp_path / "fresh.sqlite3"
         applied = MigrationRunner(database).migrate()
-        assert [item.version for item in applied] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        assert [item.version for item in applied] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+        ]
         connection = sqlite3.connect(database)
         try:
             tables = {
@@ -93,7 +114,7 @@ class TestEmptyAndUpgrade:
         database = tmp_path / "twice.sqlite3"
         MigrationRunner(database).migrate()
         assert MigrationRunner(database).migrate() == ()
-        assert current_schema_version(sqlite3.connect(database)) == 14
+        assert current_schema_version(sqlite3.connect(database)) == 20
 
     def test_schema7_upgrades_to_8_with_fts_data_intact(self, tmp_path: Path) -> None:
         database = tmp_path / "upgrade.sqlite3"
@@ -120,7 +141,7 @@ class TestEmptyAndUpgrade:
         assert [item.version for item in applied] == [8]
         connection = sqlite3.connect(database)
         try:
-            assert current_schema_version(connection) == 14
+            assert current_schema_version(connection) == 20
             # The pre-existing FTS projection state survives the upgrade.
             assert (
                 connection.execute(
@@ -139,10 +160,8 @@ class TestEmptyAndUpgrade:
             connection.close()
 
     def test_window_is_7_to_8(self) -> None:
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (11, 14)
-        verify_schema_compatible(11)
-        verify_schema_compatible(12)
-        verify_schema_compatible(13)
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (20, 20)
+        verify_schema_compatible(20)
 
     def test_strict_shapes_and_constraints(self, tmp_path: Path) -> None:
         database = tmp_path / "strict.sqlite3"
@@ -210,7 +229,28 @@ class TestEmptyAndUpgrade:
             ).fetchall()
         finally:
             connection.close()
-        assert [row[0] for row in rows] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        assert [row[0] for row in rows] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+        ]
         for version, name, checksum in rows:
             disk = hashlib.sha256((default_migrations_path() / str(name)).read_bytes()).hexdigest()
             assert disk == checksum, f"migration {version} checksum drift"

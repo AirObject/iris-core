@@ -9,6 +9,8 @@ import {
 } from "react-router-dom";
 import { api, ApiError } from "./api/client";
 import type { Bootstrap } from "./api/design";
+import { OperationsPage } from "./pages/Operations";
+import { PersonasPage } from "./pages/Personas";
 import {
   Dialog,
   Empty,
@@ -38,7 +40,7 @@ const modules = [
   ["providers", "Embedding Provider", "providers.manage"],
   ["settings", "运行参数", "settings.write"],
   ["retention", "保留与 Hold", "retention.manage"],
-  ["operations", "Operations", "system.read"],
+  ["operations", "批量操作", "memory.forget"],
   ["system", "系统运维", "system.read"],
   ["audit", "只读审计", "audit.read"],
 ] as const;
@@ -297,6 +299,10 @@ function ConsoleShell({ epoch }: { epoch: number }) {
                             <ProvidersPage />
                           ) : id === "settings" ? (
                             <SettingsPage />
+                          ) : id === "operations" ? (
+                            <OperationsPage />
+                          ) : id === "personas" ? (
+                            <PersonasPage />
                           ) : (
                             <ManagementPage kind={id} />
                           )

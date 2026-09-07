@@ -1,0 +1,10 @@
+{
+  "actions": [],
+  "agent_id": "018bcfe5-6800-7000-8000-000000000002",
+  "available_actions": [],
+  "base_revision": 1,
+  "current_revision": 1,
+  "expected_policy_revision": 2,
+  "policy_mode": "manual",
+  "proposal": null
+}

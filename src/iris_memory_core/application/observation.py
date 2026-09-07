@@ -14,11 +14,13 @@ import hashlib
 import json
 from dataclasses import replace
 from typing import Any, Protocol
+from uuid import uuid4
 
 from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.ports import IdempotencyRunner, Transaction, UnitOfWork
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.console import CommandActor
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     ConflictError,
@@ -99,6 +101,63 @@ class ObservationService:
         self._surface = surface
         self._gauge = gauge
         self._metrics = metrics
+
+    def create_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        fields: dict[str, Any],
+        *,
+        privacy_labels: list[str],
+        now_us: int,
+    ) -> tuple[str, str, list[str]]:
+        """Record the authenticated operator's current submission, never history."""
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.write_support import parse_privacy_labels
+        from iris_memory_core.domain.privacy import evaluate_privacy
+
+        if actor.operation != "observation.create" or not actor.scope.agent_id:
+            raise InvalidRequestError("invalid observation creation command")
+        if (
+            fields.keys() != {"content"}
+            or not isinstance(fields["content"], str)
+            or not fields["content"].strip()
+        ):
+            raise InvalidRequestError("manual observation requires content only")
+        labels = parse_privacy_labels(privacy_labels)
+        access = command_access(
+            tx,
+            actor,
+            CommandTarget("observation", actor.scope, privacy_labels=labels),
+            now_us=now_us,
+        )
+        # Restricted was explicitly authorized by the operator Grant above.
+        if not evaluate_privacy(
+            tuple(label for label in labels if label != "restricted"),
+            actor.scope,
+            actor.scope,
+            access,
+        ):
+            raise AccessDeniedError("observation privacy labels are outside the command scope")
+        draft = self._draft(
+            access,
+            {
+                "agent_id": actor.scope.agent_id,
+                "space_group_id": actor.scope.space_group_id,
+                "space_id": actor.scope.space_id,
+                "session_id": actor.scope.session_id,
+                "content": fields["content"],
+                "privacy_labels": list(labels),
+                "role": "user",
+                "kind": "console.manual_submission",
+                "occurred_us": now_us,
+                "committed_us": now_us,
+                "idempotency_key": "console.manual:" + uuid4().hex,
+            },
+        )
+        return self._execute_batch(
+            tx, access, [draft], lease_id=None, lease_epoch=None, command_actor=actor
+        )
 
     # -- request-level validation -------------------------------------------
 
@@ -282,13 +341,14 @@ class ObservationService:
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         """The atomic spine: observations + cursors + audit + watermark + outbox."""
         # Authorization and structural checks first (zero writes on failure).
         agent_tenant = self._authorize_batch(tx, access, drafts)
         # Required-mode online gate per distinct agent (§25.3).
         lease_warning: str | None = None
-        if self._surface is not None:
+        if command_actor is None and self._surface is not None:
             for agent_id in agent_tenant:
                 check = self._surface.check_online_in_tx(
                     tx,
@@ -346,11 +406,13 @@ class ObservationService:
             agent_watermark = tx.advance_watermark(tenant_id, agent_id, entries)
         tx.audit(
             tenant_id=access.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
             action="observations.batch",
             resource_type="observation_batch",
             resource_id=accepted[0] if accepted else (duplicate[0] if duplicate else "empty"),
-            reason_code="confirmed_effect",
+            reason_code=command_actor.reason_code if command_actor else "confirmed_effect",
             details={
                 "accepted": len(accepted),
                 "duplicates": len(duplicate),

@@ -47,9 +47,15 @@ def request(world: Phase8World, request_id: str = "review") -> Any:
     )
 
 
-def empty_result(request_id: str, watermark: int) -> StructuredRecallResult:
+def empty_result(store: Store, request: Any, watermark: int) -> StructuredRecallResult:
+    with store.read() as tx:
+        agent = tx.get_agent(request.agent_id)
+        assert agent.persona_current_revision_id is not None
+        persona = tx.get_persona_revision(agent.persona_current_revision_id)
     return StructuredRecallResult(
-        request_id=request_id,
+        request_id=request.request_id,
+        persona_revision=persona.revision,
+        persona_content_hash=persona.content_hash,
         source_watermark=watermark,
         completed_routes=("claims",),
         degraded_routes=(),
@@ -162,7 +168,7 @@ def test_concurrent_recall_returns_persisted_winner(
             count += 1
             watermark = count * 101
         barrier.wait(timeout=5)
-        return empty_result(req.request_id, watermark)
+        return empty_result(world.store, req, watermark)
 
     monkeypatch.setattr(world.service._orchestrator, "recall", collect)
     req = request(world)
@@ -221,7 +227,9 @@ def test_request_ids_are_tenant_local(world: Phase8World, monkeypatch: pytest.Mo
         space = tx.insert_space("t2", "direct").id
     access = access_for("t2", agent_ids=frozenset({agent}), space_ids=frozenset({space}))
     monkeypatch.setattr(
-        world.service._orchestrator, "recall", lambda _access, req: empty_result(req.request_id, 1)
+        world.service._orchestrator,
+        "recall",
+        lambda _access, req: empty_result(world.store, req, 1),
     )
     req = request(world, "ordinary-client-id")
     world.service.recall(world.access, req)
@@ -459,7 +467,8 @@ def test_recall_identity_migration_preserves_rows_and_composite_fk(tmp_path: Pat
         )
         requests = db.execute("SELECT * FROM recall_requests").fetchall()
         usage = db.execute("SELECT * FROM recall_usage_reports").fetchall()
-    assert [item.version for item in MigrationRunner(database).migrate()] == [14]
+    applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
+    assert [item.version for item in applied] == [14, 15, 16, 17, 18, 19, 20]
     with sqlite3.connect(database) as db:
         assert db.execute("SELECT * FROM recall_requests").fetchall() == requests
         assert db.execute("SELECT * FROM recall_usage_reports").fetchall() == usage

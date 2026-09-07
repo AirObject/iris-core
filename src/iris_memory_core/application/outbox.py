@@ -411,6 +411,10 @@ class OutboxService:
                     tx.outbox.tick_completion(
                         job.aggregate_id, now_us=now_us, error_code=error_code
                     )
+                if updated == 1 and job.job_kind == "console.memory_forget":
+                    from iris_memory_core.application.console.operations import ConsoleOperations
+
+                    ConsoleOperations.record_dead_job(tx, job, now_us=now_us)
                 outcome = "dead"
             else:
                 jitter = self._jitter()

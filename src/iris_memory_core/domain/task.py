@@ -346,6 +346,7 @@ class TaskDependencyEdge:
     current_revision_id: str
     created_us: int
     updated_us: int
+    status: str = "active"
 
 
 def would_create_cycle(

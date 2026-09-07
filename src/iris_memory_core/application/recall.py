@@ -31,7 +31,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field, fields, replace
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from iris_memory_core.application.events import CognitiveEventService
 from iris_memory_core.application.focus import FocusService, _require_item_content_access
@@ -45,8 +45,12 @@ from iris_memory_core.application.ports import (
 )
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.state import StateService
+from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.application.tasks import TaskService
-from iris_memory_core.application.write_support import enqueue_change_job
+from iris_memory_core.application.write_support import (
+    enqueue_change_job,
+    require_surface_online_in_tx,
+)
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
@@ -2372,6 +2376,8 @@ class StructuredRecallOrchestrator:
         access: AccessContext,
         request: StructuredRecallRequest,
         candidate: RecallCandidate,
+        *,
+        now_us: int | None = None,
     ) -> str | None:
         """Re-read one candidate canonically; a reason string means DROP."""
         request_scope = Scope(
@@ -2381,7 +2387,7 @@ class StructuredRecallOrchestrator:
             space_id=request.space_id,
             session_id=request.session_id,
         )
-        now_us = self._clock.now_us()
+        now_us = self._clock.now_us() if now_us is None else now_us
         if candidate.resource_type == "task":
             return self._rehydrate_task(tx, access, request, request_scope, candidate, now_us)
         if candidate.resource_type == "observation":
@@ -2399,6 +2405,45 @@ class StructuredRecallOrchestrator:
         if candidate.resource_type == "relation":
             return self._rehydrate_relation(tx, access, request, request_scope, candidate, now_us)
         return "unknown_resource_type"
+
+    def require_result_current_in_tx(
+        self,
+        tx: Transaction,
+        access: AccessContext,
+        request: StructuredRecallRequest,
+        result: StructuredRecallResult,
+        *,
+        now_us: int | None = None,
+    ) -> None:
+        """Reject a saved/collected envelope whose authority changed.
+
+        The caller owns the transaction: publication uses its writer gate;
+        replay uses the same read snapshot as the stored response lookup.
+        Do not filter or regenerate the envelope under its original request
+        identity, because the original returned set is the Usage contract.
+        """
+        if _persona_metadata(tx, request.agent_id) != (
+            result.persona_revision,
+            result.persona_content_hash,
+        ) or any(
+            self._rehydrate(tx, access, request, candidate, now_us=now_us) is not None
+            for candidate in result.candidates
+        ):
+            # Do not reveal which resource disappeared or lost permission.
+            raise ConflictError("recall response is no longer valid in the current context")
+        if result.pending_event_ids and not CognitiveEventService.pending_ids_current_in_tx(
+            tx,
+            access,
+            result.pending_event_ids,
+            request_scope=Scope(
+                access.tenant_id,
+                request.agent_id,
+                space_id=request.space_id,
+                session_id=request.session_id,
+            ),
+            now_us=self._clock.now_us() if now_us is None else now_us,
+        ):
+            raise ConflictError("recall response is no longer valid in the current context")
 
     def _rehydrate_task(
         self,
@@ -3037,8 +3082,10 @@ class RecallService:
         clock: Clock,
         *,
         monotonic: MonotonicClock | None = None,
+        surface: SurfaceCoordinatorService | None = None,
     ) -> None:
         self._orchestrator = orchestrator
+        self._surface = surface
         self._uow = uow
         self._clock = clock
         self._monotonic = monotonic or SystemMonotonicClock()
@@ -3115,6 +3162,8 @@ class RecallService:
         request: StructuredRecallRequest,
         *,
         actors: tuple[ExternalActorRef, ...] | None = None,
+        lease_id: str | None = None,
+        lease_epoch: int | None = None,
     ) -> StructuredRecallResult:
         """Run the orchestrator, persist the served envelope, replay on retry.
 
@@ -3138,6 +3187,15 @@ class RecallService:
             # Authenticate BEFORE the replay short-circuit: an unauthorized
             # probe must never learn whether the request id already exists.
             StructuredRecallOrchestrator._authorize_request(tx, access, request)
+            require_surface_online_in_tx(
+                self._surface,
+                tx,
+                access.tenant_id,
+                request.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
             if actors is not None:
                 if not actors:
                     raise InvalidRequestError("actors must contain the current speaker")
@@ -3151,7 +3209,9 @@ class RecallService:
             fingerprint = _request_fingerprint(effective, access, actors)
             existing = tx.usage.get_request(access.tenant_id, request.request_id)
             if existing is not None:
-                return self._replay(existing, fingerprint, request.request_id)
+                replay = self._replay(existing, fingerprint, request.request_id)
+                self._orchestrator.require_result_current_in_tx(tx, access, effective, replay)
+                return replay
         result = self._orchestrator.recall(access, effective)
         returned_ids = [candidate.candidate_id for candidate in result.candidates]
         resource_ids = sorted({candidate.resource_id for candidate in result.candidates})
@@ -3159,14 +3219,21 @@ class RecallService:
             # The writer gate serializes publication with both another
             # first response and Forget's tombstone/scrub transaction.
             StructuredRecallOrchestrator._authorize_request(tx, access, effective)
+            require_surface_online_in_tx(
+                self._surface,
+                tx,
+                access.tenant_id,
+                effective.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
             existing = tx.usage.get_request(access.tenant_id, effective.request_id)
             if existing is not None:
-                return self._replay(existing, fingerprint, effective.request_id)
-            if any(
-                tx.is_tombstoned(access.tenant_id, candidate.resource_type, candidate.resource_id)
-                for candidate in result.candidates
-            ):
-                raise ConflictError("recall resources were erased before response publication")
+                replay = self._replay(existing, fingerprint, effective.request_id)
+                self._orchestrator.require_result_current_in_tx(tx, access, effective, replay)
+                return replay
+            self._orchestrator.require_result_current_in_tx(tx, access, effective, result)
             tx.usage.insert_request(
                 request_id=effective.request_id,
                 tenant_id=access.tenant_id,
@@ -3184,6 +3251,67 @@ class RecallService:
                 response_json=_result_to_json(result),
             )
         return result
+
+    def revalidate(
+        self,
+        access: AccessContext,
+        requests: tuple[tuple[StructuredRecallRequest, tuple[ExternalActorRef, ...]], ...],
+    ) -> tuple[int, tuple[tuple[str, bool], ...]]:
+        """Read-only original-request verdicts in one snapshot, never a release proof."""
+        if "recall.revalidate.v1" not in access.capabilities:
+            raise AccessDeniedError("recall revalidation capability required")
+        if not 1 <= len(requests) <= 16:
+            raise InvalidRequestError("revalidation requires 1..16 requests")
+        if len({request.request_id for request, _ in requests}) != len(requests):
+            raise InvalidRequestError("revalidation request ids must be unique")
+        verdicts: list[tuple[str, bool]] = []
+        body_bytes = 0
+        candidates = 0
+        deadline = min(
+            self._monotonic.monotonic_us() + 60_000_000,
+            *(request.deadline_monotonic_us for request, _ in requests),
+        )
+        with self._uow.read() as tx:
+            now_us = self._clock.now_us()
+            for request, actors in requests:
+                if self._monotonic.monotonic_us() >= deadline:
+                    raise DeadlineExceededError("recall revalidation deadline exceeded")
+                self._orchestrator._authorize_request(tx, access, request)
+                if not actors:
+                    raise InvalidRequestError("actors must contain the current speaker")
+                speaker = actors[0]
+                effective = replace(
+                    request,
+                    speaker_entity_id=_resolve_actor_entity(
+                        tx, access.tenant_id, speaker.provider, speaker.realm, speaker.external_id
+                    ),
+                )
+                fingerprint = _request_fingerprint(effective, access, actors)
+                existing = cast(Any, tx.usage.get_request(access.tenant_id, request.request_id))
+                valid = False
+                if existing is not None and existing["request_fingerprint"] == fingerprint:
+                    body = existing["response_json"]
+                    if body is not None:
+                        size = len(str(body).encode("utf-8"))
+                        body_bytes += size
+                        if size > 1024 * 1024 or body_bytes > 8 * 1024 * 1024:
+                            raise InvalidRequestError("revalidation stored responses exceed bounds")
+                        result = _result_from_json(str(body))
+                        candidates += len(result.candidates)
+                        if candidates > 512:
+                            raise InvalidRequestError("revalidation candidate count exceeds bounds")
+                        try:
+                            self._orchestrator.require_result_current_in_tx(
+                                tx, access, effective, result, now_us=now_us
+                            )
+                        except ConflictError:
+                            pass
+                        else:
+                            valid = True
+                verdicts.append((request.request_id, valid))
+                if self._monotonic.monotonic_us() >= deadline:
+                    raise DeadlineExceededError("recall revalidation deadline exceeded")
+        return now_us, tuple(verdicts)
 
     @staticmethod
     def _replay(existing: Any, fingerprint: str, request_id: str) -> StructuredRecallResult:

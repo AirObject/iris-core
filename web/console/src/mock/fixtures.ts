@@ -278,7 +278,10 @@ export const resourceTypes: ResourceType[] = specs.map(
     read_only,
     append_only,
     permission: "memory.read",
-    columns: ["title", "status"],
+    list_columns: ["title", "status"].map((key) => ({ key, label: key, type: "string" })),
+    create_schema: read_only ? null : {},
+    update_schema: read_only ? null : {},
+    supports: { history: true, references: true, forget: !read_only },
     filters: [
       {
         key: "status",
@@ -288,7 +291,10 @@ export const resourceTypes: ResourceType[] = specs.map(
       },
       { key: "agent_id", label: "Agent", type: "lookup", lookup: "agents" },
     ],
-    sorts: ["created_at_desc", "created_at_asc"],
+    sorts: [
+      { key: "created_at_desc", label: "创建时间", direction: "desc" },
+      { key: "created_at_asc", label: "创建时间", direction: "asc" },
+    ],
     ...(!read_only &&
     ![
       "cognitive-events",

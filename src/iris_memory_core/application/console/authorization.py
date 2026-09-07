@@ -160,3 +160,28 @@ class ConsoleAuthorization:
             ):
                 return False
         return True
+
+    def mutable(self, tx: Transaction, record: ReadRecord) -> bool:
+        """A downward-visible parent is not necessarily writable by its child.
+
+        A restricted selector cannot edit data applying to every value of that
+        dimension. Qualified privacy labels may narrow that effective scope.
+        """
+        if not self.visible(tx, record):
+            return False
+        dimensions = {key: getattr(record.scope, key) for key in OPTIONAL_DIMENSIONS}
+        for label in record.privacy_labels:
+            kind, qualifier = parse_label(label)
+            if kind in LABEL_DIMENSIONS:
+                dimensions[LABEL_DIMENSIONS[kind]] = qualifier
+        completed = self._complete(tx, Scope(self.tenant_id, **dimensions))
+        if completed is None:
+            return False
+        return all(
+            getattr(self.grant, selector_name).mode == "all"
+            or (
+                getattr(completed, dimension) is not None
+                and getattr(self.grant, selector_name).contains(getattr(completed, dimension))
+            )
+            for dimension, selector_name in zip(OPTIONAL_DIMENSIONS, SELECTOR_NAMES, strict=True)
+        )

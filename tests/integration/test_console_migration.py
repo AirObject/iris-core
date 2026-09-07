@@ -26,7 +26,12 @@ from tests.migration_support import migrate_through
 def test_0012_upgrades_schema11_preserving_rows_and_legacy_auth(tmp_path: Path) -> None:
     database = tmp_path / "database.sqlite3"
     migrate_through(database, 11)
-    store = Store(SQLiteRuntime(database, allowed_versions=local_allowed_versions()))
+    # Trusted legacy fixture exercises 0012 in isolation, before the current
+    # binary's Schema 20 gate permits normal service access.
+    store = Store(
+        SQLiteRuntime(database, allowed_versions=local_allowed_versions()),
+        verify_schema_window=False,
+    )
     with store.write() as tx:
         tx.insert_tenant("tenant", status="active")
     service = CredentialService(store, store.clock)
@@ -75,8 +80,13 @@ def test_0012_upgrades_schema11_preserving_rows_and_legacy_auth(tmp_path: Path) 
         loaded = tx.reflection.credential(record.id)
         assert loaded and loaded.console_revision == 1
     assert create_console_app(store=store).state.security is not None
-    assert [item.version for item in MigrationRunner(database).migrate()] == [13, 14]
+    assert [
+        item.version
+        for item in MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
+    ] == [13, 14, 15, 16, 17, 18, 19, 20]
     assert MigrationRunner(database).migrate() == ()
+    current = Store(SQLiteRuntime(database, allowed_versions=local_allowed_versions()))
+    assert CredentialService(current, current.clock).authenticate(token).tenant_id == "tenant"
 
 
 def test_published_migrations_unchanged_and_new_migration_online_safe() -> None:
@@ -96,6 +106,6 @@ def test_published_migrations_unchanged_and_new_migration_online_safe() -> None:
     assert migration.meta and migration.meta.online_safe and migration.meta.min_app == "0.12.0"
     source = json.loads((root / "contracts/source/console.json").read_text())
     manifest = json.loads((root / "schemas/version-manifest.json").read_text())
-    assert source["runtime_versions"] == {"package_version": "0.12.0", "schema_version": 14}
+    assert source["runtime_versions"] == {"package_version": "0.13.0", "schema_version": 20}
     for name, value in source["runtime_versions"].items():
         assert manifest[name] == value

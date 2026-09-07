@@ -103,7 +103,9 @@ export function OperationPanel({
       )}
       {op.status === "cancelled_partial" && (
         <p className="notice">
-          后续批次已停止，已提交内容仍保留。可按报告进行受控补偿。
+          {op.kind === "memory_forget"
+            ? "后续批次已停止。已提交的删除仍然生效，取消不会恢复这些内容。"
+            : "后续批次已停止，已提交内容仍保留。可按报告进行受控补偿。"}
         </p>
       )}
       <ErrorNotice error={error} />

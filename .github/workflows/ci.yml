@@ -27,12 +27,17 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           cache: npm
-          cache-dependency-path: sdk/typescript/package-lock.json
+          cache-dependency-path: |
+            sdk/typescript/package-lock.json
+            web/console/package-lock.json
           node-version: "24"
       - uses: astral-sh/setup-uv@v9
         with:
           version: "0.11.29"
       - name: Install locked dependencies
         run: make bootstrap
+      - name: Install browser runtime
+        working-directory: web/console
+        run: npx playwright install --with-deps chromium
       - name: Run quality gates
         run: make ci

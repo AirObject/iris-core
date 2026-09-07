@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from iris_memory_core.domain.errors import InvalidRequestError
+from iris_memory_core.domain.scope import Scope
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,3 +176,48 @@ class OperatorPrincipal:
     @property
     def permissions(self) -> tuple[str, ...]:
         return tuple(sorted(self.key.grant.permissions))
+
+
+@dataclass(frozen=True, slots=True)
+class CommandActor:
+    """Internal management identity, constructed from an authenticated session.
+
+    This is never an HTTP request DTO or an application-plane AccessContext.
+    Scope and grant revision are rechecked inside the command transaction.
+    """
+
+    tenant_id: str
+    key_id: str
+    key_revision: int
+    grant_fingerprint: str
+    session_id: str
+    session_epoch: int
+    scope: Scope
+    operation: str
+    reason_code: str
+    origin: Literal["console", "manual_import"] = "console"
+
+    @property
+    def audit_actor(self) -> str:
+        return f"{self.origin}:{self.key_id}"
+
+
+@dataclass(frozen=True, slots=True)
+class CommandPreview:
+    """Durable fixed-target metadata; payloads never contain Canonical bodies."""
+
+    id: str
+    tenant_id: str
+    key_id: str
+    key_revision: int
+    grant_fingerprint: str
+    kind: str
+    mode: str
+    reason_code: str
+    preview_hash: str
+    payload_json: str
+    created_us: int
+    expires_us: int
+    status: str = "ready"
+    consumed_us: int | None = None
+    receipt_json: str | None = None

@@ -1,4 +1,6 @@
 import type { Envelope, Meta, Result, Session } from "./design";
+import protocol from "./protocol.json" with { type: "json" };
+export const CONTRACT_VERSION = protocol.contract_version as Meta["contract_version"];
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -312,7 +314,7 @@ export class ConsoleClient {
               data: response as T,
               meta: {
                 request_id: response.headers.get("X-Request-ID") ?? "",
-                contract_version: "1.0.0",
+                contract_version: CONTRACT_VERSION,
                 as_of: "",
               },
               status: response.status,
@@ -322,7 +324,7 @@ export class ConsoleClient {
               data: undefined as T,
               meta: {
                 request_id: response.headers.get("X-Request-ID") ?? "",
-                contract_version: "1.0.0",
+                contract_version: CONTRACT_VERSION,
                 as_of: "",
               },
               status: 204,

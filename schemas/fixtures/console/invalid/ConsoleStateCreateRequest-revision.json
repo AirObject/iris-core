@@ -1,0 +1,14 @@
+{
+  "expected_revision": 1,
+  "fields": {
+    "key": "subject",
+    "namespace": "topic",
+    "value": {
+      "text": "topic"
+    }
+  },
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "agent-1"
+  }
+}

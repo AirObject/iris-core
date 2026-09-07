@@ -1,0 +1,16 @@
+{
+  "data": {
+    "agent_id": "018bcfe5-6800-7000-8000-000000000002",
+    "canonical_status": "committed",
+    "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "resource_id": "018bcfe5-6800-7000-8000-000000000003",
+    "resource_type": "persona_policy",
+    "revision": 2
+  },
+  "future_optional": true,
+  "meta": {
+    "as_of": "2023-11-14T22:13:20.000000Z",
+    "contract_version": "1.1.0",
+    "request_id": "018bcfe5-6800-7000-8000-000000000001"
+  }
+}

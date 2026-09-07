@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iris-memory-core"
-version = "0.12.0"
+version = "0.13.0"
 description = "Host-independent cognitive memory service"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -41,6 +41,23 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/iris_memory_core"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"migrations" = "iris_memory_core/_data/migrations"
+"schemas/openapi" = "iris_memory_core/_data/schemas/openapi"
+"contracts/source/contracts.json" = "iris_memory_core/_data/contracts/source/contracts.json"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src/iris_memory_core",
+  "/migrations/*.sql",
+  "/schemas/openapi/*.json",
+  "/contracts/source/contracts.json",
+  "/README.md",
+  "/LICENSE",
+  "/pyproject.toml",
+]
+exclude = ["__pycache__", "*.pyc", ".DS_Store"]
+
 [tool.uv]
 required-version = ">=0.11.29,<0.13"
 
@@ -64,6 +81,7 @@ mypy_path = ["src", "sdk/python/src"]
 files = ["src", "sdk/python/src", "tools", "tests"]
 
 [tool.pytest.ini_options]
+tmp_path_retention_policy = "failed"
 addopts = [
   "--strict-config",
   "--strict-markers",

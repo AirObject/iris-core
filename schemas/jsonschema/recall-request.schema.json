@@ -95,6 +95,14 @@
       },
       "type": "object"
     },
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
     "minimum_watermark": {
       "anyOf": [
         {

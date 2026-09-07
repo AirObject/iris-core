@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from iris_memory_core.application.ports import (
     Clock,
@@ -24,6 +24,7 @@ from iris_memory_core.application.ports import (
     Transaction,
     UnitOfWork,
 )
+from iris_memory_core.application.promotion import PromotionSource
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.application.write_support import (
     authorize_scope,
@@ -35,6 +36,7 @@ from iris_memory_core.application.write_support import (
     require_surface_online_in_tx,
 )
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.console import CommandActor
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     ConflictError,
@@ -71,6 +73,9 @@ from iris_memory_core.domain.memory import (
 from iris_memory_core.domain.observation import EffectState
 from iris_memory_core.domain.privacy import evaluate_privacy
 from iris_memory_core.domain.scope import Scope, scope_allows
+
+if TYPE_CHECKING:
+    from iris_memory_core.application.console.reads import ResourceReader
 
 #: Maximum evidence rows accepted by one Remember/Correct call.
 MAX_EVIDENCE_PER_REQUEST = 32
@@ -251,9 +256,20 @@ def resolve_self_subject(tx: Transaction, tenant_id: str, agent_id: str) -> str:
 
 
 def _source_privacy_visible(
-    labels: tuple[str, ...], scope: Scope, claim_scope: Scope, access: AccessContext
+    labels: tuple[str, ...],
+    scope: Scope,
+    claim_scope: Scope,
+    access: AccessContext,
+    *,
+    managed: bool = False,
 ) -> bool:
-    return evaluate_privacy(labels, scope, claim_scope, access)
+    # Managed callers must already have checked the explicit operator Grant.
+    return evaluate_privacy(
+        tuple(label for label in labels if not managed or label != "restricted"),
+        scope,
+        claim_scope,
+        access,
+    )
 
 
 def validate_evidence_sources(
@@ -264,6 +280,7 @@ def validate_evidence_sources(
     claim_scope: Scope,
     specs: tuple[EvidenceSpec, ...],
     access: AccessContext,
+    managed: bool = False,
 ) -> None:
     """Strict SourceRef admission (§13.2, ADR-0013 §3): existence, tenant,
     agent, scope envelope, privacy, status and tombstone are checked against
@@ -285,7 +302,11 @@ def validate_evidence_sources(
             if tx.is_tombstoned(tenant_id, "observation", observation.id):
                 raise InvalidRequestError("observation evidence is tombstoned")
             if not _source_privacy_visible(
-                observation.privacy_labels, _observation_scope_of(observation), claim_scope, access
+                observation.privacy_labels,
+                _observation_scope_of(observation),
+                claim_scope,
+                access,
+                managed=managed,
             ):
                 raise AccessDeniedError(
                     "observation evidence privacy is outside the access context"
@@ -314,7 +335,7 @@ def validate_evidence_sources(
             ):
                 raise InvalidRequestError("artifact evidence is tombstoned")
             if not _source_privacy_visible(
-                artifact.privacy_labels, artifact_scope, claim_scope, access
+                artifact.privacy_labels, artifact_scope, claim_scope, access, managed=managed
             ):
                 raise AccessDeniedError("artifact evidence privacy is outside the access context")
         elif spec.source_type == "episode":
@@ -343,7 +364,7 @@ def validate_evidence_sources(
                 )
             episode_current = tx.episodes.current_revision_row(episode.id)
             if not _source_privacy_visible(
-                episode_current.privacy_labels, episode_scope, claim_scope, access
+                episode_current.privacy_labels, episode_scope, claim_scope, access, managed=managed
             ):
                 raise AccessDeniedError("episode evidence privacy is outside the access context")
         elif spec.source_type == "claim":
@@ -373,7 +394,7 @@ def validate_evidence_sources(
                 )
             other_current = tx.claims.current_revision_row(other.id)
             if not _source_privacy_visible(
-                other_current.privacy_labels, other_scope, claim_scope, access
+                other_current.privacy_labels, other_scope, claim_scope, access, managed=managed
             ):
                 raise AccessDeniedError("claim evidence privacy is outside the access context")
         elif spec.source_type == "note":
@@ -395,7 +416,7 @@ def validate_evidence_sources(
                 raise InvalidRequestError("note evidence is tombstoned")
             note_current = tx.notes.current_revision_row(note.id)
             if not _source_privacy_visible(
-                note_current.privacy_labels, note_scope, claim_scope, access
+                note_current.privacy_labels, note_scope, claim_scope, access, managed=managed
             ):
                 raise AccessDeniedError("note evidence privacy is outside the access context")
             if spec.source_revision is not None and spec.source_revision != note.current_revision:
@@ -419,6 +440,183 @@ class ClaimService:
         self._clock = clock
         self._idempotency = idempotency
         self._surface = surface
+
+    @staticmethod
+    def command_evidence(raw: list[dict[str, Any]]) -> tuple[EvidenceSpec, ...]:
+        for item in raw:
+            if not isinstance(item, dict) or item.keys() - {
+                "source_type",
+                "source_id",
+                "source_revision",
+                "relation",
+                "evidence_span",
+            }:
+                raise InvalidRequestError("invalid managed evidence fields")
+            if isinstance(item.get("source_revision"), bool):
+                raise InvalidRequestError("evidence revision must be an integer")
+        return parse_evidence(raw)
+
+    def _command_reader(self, tx: Transaction, actor: CommandActor) -> ResourceReader:
+        from iris_memory_core.application.console.reads import ResourceReader
+        from iris_memory_core.application.console.security import authorize
+        from iris_memory_core.domain.console import OperatorPrincipal
+
+        key, session = tx.console.key(actor.key_id), tx.console.session(actor.session_id)
+        if (
+            actor.origin != "console"
+            or key is None
+            or session is None
+            or key.tenant_id != actor.tenant_id
+            or key.revision != actor.key_revision
+            or key.grant.fingerprint != actor.grant_fingerprint
+            or session.epoch != actor.session_epoch
+        ):
+            raise AccessDeniedError("claim command authorization changed")
+        fresh = authorize(tx, OperatorPrincipal(key, session), self._clock.now_us(), "memory.write")
+        return ResourceReader(tx, fresh, self._clock.now_us())
+
+    def create_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        fields: dict[str, Any],
+        *,
+        privacy_labels: list[str],
+        evidence: list[dict[str, Any]],
+    ) -> tuple[str, str, list[str]]:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.console.resources import ResourceRef
+
+        if actor.operation != "claim.create" or not actor.scope.agent_id:
+            raise InvalidRequestError("invalid claim creation command")
+        allowed = {
+            "predicate",
+            "value",
+            "canonical_text",
+            "subject_entity_id",
+            "subject_is_self",
+            "category",
+            "confidence",
+            "importance",
+            "accessibility",
+            "valid_from_us",
+            "valid_until_us",
+        }
+        if not {"predicate", "value"} <= fields.keys() or fields.keys() - allowed:
+            raise InvalidRequestError("invalid managed claim fields")
+        subject = fields.get("subject_entity_id")
+        self_subject = fields.get("subject_is_self", False)
+        if not isinstance(self_subject, bool) or bool(subject) == self_subject:
+            raise SubjectAmbiguousError("select exactly one entity or the explicit self subject")
+        value = fields["value"]
+        if value is None or not isinstance(value, (dict, list, str, int, float, bool)):
+            raise InvalidRequestError("claim value must be JSON")
+        category = fields.get("category", "fact")
+        if category == "procedure":
+            validate_procedure_value(value)
+        value_json = canonical_json(value)
+        text = fields.get("canonical_text") or (value if isinstance(value, str) else value_json)
+        labels = parse_privacy_labels(privacy_labels)
+        specs = self.command_evidence(evidence)
+        if not specs:
+            raise EvidenceRequiredError("remember requires at least one evidence row")
+        refs = tuple(
+            ResourceRef(spec.source_type, spec.source_id, spec.source_revision) for spec in specs
+        )
+        if subject:
+            refs += (ResourceRef("entity", subject),)
+        access = command_access(
+            tx,
+            actor,
+            CommandTarget("claim", actor.scope, privacy_labels=labels, source_refs=refs),
+            now_us=self._clock.now_us(),
+        )
+        validate_claim_value(
+            predicate=fields["predicate"],
+            value_json=value_json,
+            canonical_text=text,
+            category=category,
+            confidence=fields.get("confidence", 0.5),
+            importance=fields.get("importance", 0.5),
+            accessibility=fields.get("accessibility", 1.0),
+            valid_from_us=fields.get("valid_from_us"),
+            valid_until_us=fields.get("valid_until_us"),
+        )
+        payload = {
+            "agent_id": actor.scope.agent_id,
+            "space_id": actor.scope.space_id,
+            "session_id": actor.scope.session_id,
+            "predicate": fields["predicate"],
+            "value_json": value_json,
+            "canonical_text": text,
+            "subject_entity_id": subject,
+            "subject_is_self": self_subject,
+            "category": category,
+            "confidence": fields.get("confidence", 0.5),
+            "importance": fields.get("importance", 0.5),
+            "accessibility": fields.get("accessibility", 1.0),
+            "source_authority": SourceAuthority.USER_STATEMENT.value,
+            "privacy_labels": list(labels),
+            "source_refs": [],
+            "evidence": [spec.as_dict() for spec in specs],
+            "valid_from_us": fields.get("valid_from_us"),
+            "valid_until_us": fields.get("valid_until_us"),
+            "extractor_version": None,
+        }
+        return self._execute_remember(tx, access, payload, command_actor=actor)
+
+    def correct_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        claim_id: str,
+        *,
+        expected_revision: int,
+        fields: dict[str, Any],
+        evidence: list[dict[str, Any]],
+    ) -> tuple[str, str, list[str]]:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.console.resources import ResourceRef
+
+        if actor.operation != "claim.correct" or not actor.scope.agent_id:
+            raise InvalidRequestError("invalid claim correction command")
+        if "mode" not in fields or fields.keys() - {"mode", "value", "canonical_text"}:
+            raise InvalidRequestError("invalid managed correction fields")
+        mode = fields["mode"]
+        if mode not in {"supersede", "dispute", "retract"}:
+            raise InvalidRequestError("unknown correction mode")
+        if mode != "supersede" and fields.keys() & {"value", "canonical_text"}:
+            raise InvalidRequestError("only supersede changes claim content")
+        specs = self.command_evidence(evidence)
+        if mode != "retract" and not specs:
+            raise EvidenceRequiredError("correction requires evidence")
+        claim = tx.claims.get(claim_id)
+        current = tx.claims.current_revision_row(claim_id)
+        refs = tuple(
+            ResourceRef(spec.source_type, spec.source_id, spec.source_revision) for spec in specs
+        )
+        refs += (ResourceRef("entity", current.subject_entity_id),)
+        access = command_access(
+            tx,
+            actor,
+            CommandTarget("claim", _claim_scope(claim), resource_id=claim_id, source_refs=refs),
+            now_us=self._clock.now_us(),
+        )
+        return self._execute_correct(
+            tx,
+            access,
+            {
+                "claim_id": claim_id,
+                "expected_revision": expected_revision,
+                "mode": mode,
+                "value": fields.get("value"),
+                "canonical_text": fields.get("canonical_text"),
+                "source_authority": SourceAuthority.EXPLICIT_CORRECTION.value,
+                "reason": actor.reason_code,
+                "evidence": [spec.as_dict() for spec in specs],
+            },
+            command_actor=actor,
+        )
 
     # -- remember -----------------------------------------------------------
 
@@ -578,7 +776,12 @@ class ClaimService:
         )
 
     def _execute_remember(
-        self, tx: Transaction, access: AccessContext, payload: dict[str, Any]
+        self,
+        tx: Transaction,
+        access: AccessContext,
+        payload: dict[str, Any],
+        *,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         scope = authorize_scope(
             tx,
@@ -586,19 +789,26 @@ class ClaimService:
             agent_id=payload["agent_id"],
             space_id=payload["space_id"],
             session_id=payload["session_id"],
+            space_group_id=command_actor.scope.space_group_id if command_actor else None,
         )
         labels = tuple(payload["privacy_labels"])
-        if not evaluate_privacy(labels, scope, scope, access):
-            raise AccessDeniedError("claim privacy labels are outside the access context")
-        require_surface_online_in_tx(
-            self._surface,
-            tx,
-            access.tenant_id,
-            payload["agent_id"],
-            lease_id=payload.get("lease_id"),
-            lease_epoch=payload.get("lease_epoch"),
-            app_instance_id=access.app_instance_id,
+        if command_actor and scope != command_actor.scope:
+            raise AccessDeniedError("claim command scope changed")
+        checked_labels = tuple(
+            label for label in labels if command_actor is None or label != "restricted"
         )
+        if not evaluate_privacy(checked_labels, scope, scope, access):
+            raise AccessDeniedError("claim privacy labels are outside the access context")
+        if command_actor is None:
+            require_surface_online_in_tx(
+                self._surface,
+                tx,
+                access.tenant_id,
+                payload["agent_id"],
+                lease_id=payload.get("lease_id"),
+                lease_epoch=payload.get("lease_epoch"),
+                app_instance_id=access.app_instance_id,
+            )
         now_us = self._clock.now_us()
         # Subject resolution happens inside the transaction so the gate,
         # entity creation and the claim row are one serialized unit.
@@ -624,6 +834,7 @@ class ClaimService:
             claim_scope=scope,
             specs=specs,
             access=access,
+            managed=command_actor is not None,
         )
         value_hash = claim_value_hash(
             predicate=payload["predicate"],
@@ -638,12 +849,19 @@ class ClaimService:
             value_hash=value_hash,
             scope_key=scope_key,
         )
-        actor = f"access:{access.app_instance_id}"
+        actor = command_actor.audit_actor if command_actor else f"access:{access.app_instance_id}"
         existing = tx.claims.find_live_by_dedup_key(scope.tenant_id, dedup_key)
         if existing is not None:
             # Same logical fact: attach evidence to the existing claim —
             # never a second row, never an in-place content edit.
-            _require_claim_access(tx, access, existing)
+            if command_actor:
+                from iris_memory_core.application.console.resources import ResourceRef
+
+                reader = self._command_reader(tx, command_actor)
+                actual = reader.get(ResourceRef("claim", existing.id))
+                if actual is None or not reader.authority.mutable(tx, actual):
+                    raise NotFoundError("deduplicated claim is not writable")
+            _require_claim_access(tx, access, existing, managed=command_actor is not None)
             for spec in specs:
                 tx.claims.insert_evidence(
                     claim_id=existing.id,
@@ -669,7 +887,7 @@ class ClaimService:
                 action="claim.evidence_added",
                 resource_type="claim",
                 resource_id=existing.id,
-                reason_code="remember_dedup",
+                reason_code=command_actor.reason_code if command_actor else "remember_dedup",
                 details={"evidence_count": count, "added": len(specs)},
                 revision=existing.current_revision,
             )
@@ -769,7 +987,7 @@ class ClaimService:
             action="claim.remembered",
             resource_type="claim",
             resource_id=claim_id,
-            reason_code="explicit_remember",
+            reason_code=command_actor.reason_code if command_actor else "explicit_remember",
             details={
                 "category": payload["category"],
                 "predicate_hash": content_hash({"p": payload["predicate"]})[:16],
@@ -877,19 +1095,26 @@ class ClaimService:
         )
 
     def _execute_correct(
-        self, tx: Transaction, access: AccessContext, payload: dict[str, Any]
+        self,
+        tx: Transaction,
+        access: AccessContext,
+        payload: dict[str, Any],
+        *,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         claim = tx.claims.get(payload["claim_id"])
-        current = _require_claim_access(tx, access, claim)
-        require_surface_online_in_tx(
-            self._surface,
-            tx,
-            claim.tenant_id,
-            claim.agent_id,
-            lease_id=payload.get("lease_id"),
-            lease_epoch=payload.get("lease_epoch"),
-            app_instance_id=access.app_instance_id,
-        )
+        current = _require_claim_access(tx, access, claim, managed=command_actor is not None)
+        if command_actor is None:
+            require_surface_online_in_tx(
+                self._surface,
+                tx,
+                claim.tenant_id,
+                claim.agent_id,
+                lease_id=payload.get("lease_id"),
+                lease_epoch=payload.get("lease_epoch"),
+                app_instance_id=access.app_instance_id,
+            )
+        actor = command_actor.audit_actor if command_actor else f"access:{access.app_instance_id}"
         mode = payload["mode"]
         expected = payload["expected_revision"]
         # Supersede is a VALUE correction: the status stays whatever the
@@ -929,6 +1154,7 @@ class ClaimService:
                 claim_scope=claim_scope,
                 specs=specs,
                 access=access,
+                managed=command_actor is not None,
             )
         proposed_authority = (
             payload["source_authority"] or SourceAuthority.EXPLICIT_CORRECTION.value
@@ -963,6 +1189,18 @@ class ClaimService:
         if mode == "dispute":
             new_value_json = current.value_json
             new_text = current.canonical_text
+        if command_actor is not None:
+            validate_claim_value(
+                predicate=current.predicate,
+                value_json=new_value_json,
+                canonical_text=new_text,
+                category=current.category,
+                confidence=claim.confidence,
+                importance=claim.importance,
+                accessibility=claim.accessibility,
+                valid_from_us=claim.valid_from_us,
+                valid_until_us=claim.valid_until_us,
+            )
         digest = content_hash(
             {
                 "predicate": current.predicate,
@@ -996,7 +1234,7 @@ class ClaimService:
             recorded_at_us=now_us,
             extractor_version=current.extractor_version,
             content_hash=digest,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=actor,
         )
         # Stamp the predecessor's system-time end (write-once) and CAS the
         # pointer — one transaction installs the successor. The stamp stays
@@ -1037,15 +1275,37 @@ class ClaimService:
                 relation=evidence_relation if spec.relation == "supports" else spec.relation,
                 source_authority=spec.source_authority,
                 evidence_span=spec.evidence_span,
-                created_by=f"access:{access.app_instance_id}",
+                created_by=actor,
                 recorded_at_us=now_us,
             )
         if specs:
             tx.claims.recount_evidence(claim.id)
-        tx.advance_watermark(claim.tenant_id, claim.agent_id, [("claim", claim.id, revision)])
+        watermark = tx.advance_watermark(
+            claim.tenant_id, claim.agent_id, [("claim", claim.id, revision)]
+        )
+        # A correction invalidates the predecessor, not the newly installed
+        # revision. Publish in this canonical transaction so a stopped Worker
+        # cannot leave event consumers unaware of committed corrections.
+        tx.reflection.append_event(
+            tenant_id=claim.tenant_id,
+            agent_id=claim.agent_id,
+            space_group_id=claim.space_group_id,
+            space_id=claim.space_id,
+            event_type="revision.invalidated.v1",
+            resource_refs=(
+                {
+                    "resource_type": "claim",
+                    "resource_id": claim.id,
+                    "revision": expected,
+                },
+            ),
+            source_watermark=watermark,
+            occurred_us=now_us,
+            event_id=f"claim-revision:{revision_id}",
+        )
         tx.audit(
             tenant_id=claim.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=actor,
             action={
                 "supersede": "claim.corrected",
                 "dispute": "claim.disputed",
@@ -1090,7 +1350,7 @@ class ClaimService:
                 tx,
                 claim.tenant_id,
                 now_us=now_us,
-                actor=f"access:{access.app_instance_id}",
+                actor=actor,
                 watermark_entries=cascade_watermarks,
                 retracted_sources={claim.id},
                 relation_cascade_candidates=relation_candidates,
@@ -1099,12 +1359,35 @@ class ClaimService:
                 tx,
                 claim.tenant_id,
                 now_us=now_us,
-                actor=f"access:{access.app_instance_id}",
+                actor=actor,
                 watermark_entries=cascade_watermarks,
                 cascade_candidates=relation_candidates,
             )
             for (c_tenant, c_agent), entries in cascade_watermarks.items():
-                tx.advance_watermark(c_tenant, c_agent, entries)
+                cascade_watermark = tx.advance_watermark(c_tenant, c_agent, entries)
+                for resource_type, resource_id, new_revision in entries:
+                    affected = (
+                        tx.claims.get(resource_id)
+                        if resource_type == "claim"
+                        else tx.relations.get(resource_id)
+                    )
+                    tx.reflection.append_event(
+                        tenant_id=c_tenant,
+                        agent_id=c_agent,
+                        space_group_id=affected.space_group_id,
+                        space_id=affected.space_id,
+                        event_type="revision.invalidated.v1",
+                        resource_refs=(
+                            {
+                                "resource_type": resource_type,
+                                "resource_id": resource_id,
+                                "revision": new_revision - 1,
+                            },
+                        ),
+                        source_watermark=cascade_watermark,
+                        occurred_us=now_us,
+                        event_id=f"{resource_type}-revision:{affected.current_revision_id}",
+                    )
         return (
             f"claim.{mode}",
             json.dumps({"revision": revision, "previous_revision": expected}),
@@ -1256,96 +1539,122 @@ class ClaimService:
         actor: str,
         now_us: int,
     ) -> str:
-        """Materialize the claim a note promotion names — a REAL canonical
-        claim whose evidence is the note revision itself. Deterministic and
-        idempotent under the note transition CAS (promoted is terminal)."""
-        scope_key = memory_scope_key(
-            note.tenant_id, note.agent_id, note.space_group_id, note.space_id, note.session_id
+        """Retain the Note promotion interface and its canonical semantics."""
+        return ClaimService._create_from_promotion(
+            tx,
+            source=PromotionSource.from_note(note, current),
+            actor=actor,
+            now_us=now_us,
         )
-        subject = resolve_self_subject(tx, note.tenant_id, note.agent_id)
-        canonical_text = note.title or current.title
-        value = {"note_id": note.id, "kind": note.kind}
+
+    @staticmethod
+    def _create_from_promotion(
+        tx: Transaction,
+        *,
+        source: PromotionSource,
+        actor: str,
+        now_us: int,
+        evidence: tuple[EvidenceSpec, ...] | None = None,
+        authority: str = SourceAuthority.PLATFORM_VERIFIED.value,
+    ) -> str:
+        """Materialize a typed source using this domain's canonical write spine."""
+        scope_key = memory_scope_key(
+            source.tenant_id,
+            source.agent_id,
+            source.space_group_id,
+            source.space_id,
+            source.session_id,
+        )
+        subject = resolve_self_subject(tx, source.tenant_id, source.agent_id)
+        canonical_text = source.body if source.resource_type == "focus_item" else source.title
+        value = {f"{source.name}_id": source.id, "kind": source.kind}
         value_json = canonical_json(value)
         value_hash = claim_value_hash(
-            predicate="promoted_from_note",
+            predicate=f"promoted_from_{source.name}",
             value_json=value_json,
             canonical_text=canonical_text,
         )
         dedup_key = claim_dedup_key(
-            tenant_id=note.tenant_id,
-            agent_id=note.agent_id,
+            tenant_id=source.tenant_id,
+            agent_id=source.agent_id,
             subject_entity_id=subject,
-            predicate="promoted_from_note",
+            predicate=f"promoted_from_{source.name}",
             value_hash=value_hash,
             scope_key=scope_key,
         )
-        existing = tx.claims.find_live_by_dedup_key(note.tenant_id, dedup_key)
+        existing = tx.claims.find_live_by_dedup_key(source.tenant_id, dedup_key)
         if existing is not None:
             tx.insert_resource_link(
-                tenant_id=note.tenant_id,
-                source_type="note",
-                source_id=note.id,
+                tenant_id=source.tenant_id,
+                source_type=source.resource_type,
+                source_id=source.id,
                 target_type="claim",
                 target_id=existing.id,
                 relation="promoted_to",
             )
             return existing.id
-        evidence_spec = EvidenceSpec(
-            source_type="note",
-            source_id=note.id,
-            source_revision=current.revision,
-            relation="supports",
-            source_authority=SourceAuthority.PLATFORM_VERIFIED.value,
-            evidence_span=None,
+        evidence_specs = (
+            evidence
+            if evidence is not None
+            else (
+                EvidenceSpec(
+                    source_type=source.resource_type,
+                    source_id=source.id,
+                    source_revision=source.revision,
+                    relation="supports",
+                    source_authority=authority,
+                    evidence_span=None,
+                ),
+            )
         )
+        if not evidence_specs:
+            raise EvidenceRequiredError("promotion requires current original evidence")
         digest = content_hash(
             {
-                "predicate": "promoted_from_note",
+                "predicate": f"promoted_from_{source.name}",
                 "value_json": value_json,
                 "canonical_text": canonical_text,
-                "privacy_labels": list(current.privacy_labels),
+                "privacy_labels": list(source.privacy_labels),
             }
         )
         claim_id = tx.claims.insert(
-            tenant_id=note.tenant_id,
-            agent_id=note.agent_id,
-            space_group_id=note.space_group_id,
-            space_id=note.space_id,
-            session_id=note.session_id,
+            tenant_id=source.tenant_id,
+            agent_id=source.agent_id,
+            space_group_id=source.space_group_id,
+            space_id=source.space_id,
+            session_id=source.session_id,
             scope_key=scope_key,
             subject_entity_id=subject,
-            predicate="promoted_from_note",
+            predicate=f"promoted_from_{source.name}",
             category="fact",
             status="active",
             confidence=0.6,
-            importance=current.importance,
+            importance=source.importance,
             accessibility=1.0,
-            source_authority=SourceAuthority.PLATFORM_VERIFIED.value,
+            source_authority=authority,
             valid_from_us=None,
             valid_until_us=None,
-            evidence_count=1,
+            evidence_count=len(evidence_specs),
             dedup_key=dedup_key,
             recorded_at_us=now_us,
             extractor_version=None,
         )
         revision_id = tx.claims.insert_revision(
             claim_id=claim_id,
-            tenant_id=note.tenant_id,
+            tenant_id=source.tenant_id,
             revision=1,
             subject_entity_id=subject,
-            predicate="promoted_from_note",
+            predicate=f"promoted_from_{source.name}",
             value_json=value_json,
             canonical_text=canonical_text,
             category="fact",
-            privacy_labels=current.privacy_labels,
-            source_refs=(
-                {"resource_type": "note", "resource_id": note.id, "revision": current.revision},
-            ),
+            privacy_labels=source.privacy_labels,
+            source_refs=source.target_refs,
             status="active",
             confidence=0.6,
-            importance=current.importance,
+            importance=source.importance,
             accessibility=1.0,
-            source_authority=SourceAuthority.PLATFORM_VERIFIED.value,
+            source_authority=authority,
             valid_from_us=None,
             valid_until_us=None,
             recorded_at_us=now_us,
@@ -1355,41 +1664,42 @@ class ClaimService:
         )
         if tx.claims.set_initial_pointer(claim_id, revision_id) != 1:
             raise ConflictError("promoted claim creation raced inside the transaction")
-        tx.claims.insert_evidence(
-            claim_id=claim_id,
-            tenant_id=note.tenant_id,
-            source_type=evidence_spec.source_type,
-            source_id=evidence_spec.source_id,
-            source_revision=evidence_spec.source_revision,
-            relation=evidence_spec.relation,
-            source_authority=evidence_spec.source_authority,
-            evidence_span=None,
-            created_by=actor,
-            recorded_at_us=now_us,
-        )
+        for evidence_spec in evidence_specs:
+            tx.claims.insert_evidence(
+                claim_id=claim_id,
+                tenant_id=source.tenant_id,
+                source_type=evidence_spec.source_type,
+                source_id=evidence_spec.source_id,
+                source_revision=evidence_spec.source_revision,
+                relation=evidence_spec.relation,
+                source_authority=evidence_spec.source_authority,
+                evidence_span=None,
+                created_by=actor,
+                recorded_at_us=now_us,
+            )
         tx.insert_resource_link(
-            tenant_id=note.tenant_id,
-            source_type="note",
-            source_id=note.id,
+            tenant_id=source.tenant_id,
+            source_type=source.resource_type,
+            source_id=source.id,
             target_type="claim",
             target_id=claim_id,
             relation="promoted_to",
         )
-        tx.advance_watermark(note.tenant_id, note.agent_id, [("claim", claim_id, 1)])
+        tx.advance_watermark(source.tenant_id, source.agent_id, [("claim", claim_id, 1)])
         tx.audit(
-            tenant_id=note.tenant_id,
+            tenant_id=source.tenant_id,
             actor=actor,
             action="claim.remembered",
             resource_type="claim",
             resource_id=claim_id,
-            reason_code="note_promotion",
+            reason_code=f"{source.name}_promotion",
             details={"text_hash": digest[:16]},
             revision=1,
         )
         enqueue_change_job(
             tx,
-            tenant_id=note.tenant_id,
-            agent_id=note.agent_id,
+            tenant_id=source.tenant_id,
+            agent_id=source.agent_id,
             job_kind="claim.changed",
             aggregate_type="claim",
             aggregate_id=claim_id,
@@ -1400,7 +1710,7 @@ class ClaimService:
 
 
 def _require_claim_access(
-    tx: Transaction, access: AccessContext, claim: ClaimCurrent
+    tx: Transaction, access: AccessContext, claim: ClaimCurrent, *, managed: bool = False
 ) -> ClaimRevision:
     """By-ID gate + tombstone + privacy for one content-bearing claim read."""
     require_same_tenant_agent(
@@ -1413,7 +1723,10 @@ def _require_claim_access(
         raise NotFoundError("claim not found")
     current = tx.claims.current_revision_row(claim.id)
     data_scope = _claim_scope(claim)
-    if not evaluate_privacy(current.privacy_labels, data_scope, data_scope, access):
+    labels = tuple(
+        label for label in current.privacy_labels if not managed or label != "restricted"
+    )
+    if not evaluate_privacy(labels, data_scope, data_scope, access):
         raise AccessDeniedError("claim's privacy labels are outside the access context")
     return current
 

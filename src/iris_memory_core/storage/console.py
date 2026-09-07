@@ -7,8 +7,13 @@ import sqlite3
 from dataclasses import asdict
 from typing import Any
 
-from iris_memory_core.domain.console import OperatorGrant, OperatorKey, OperatorSession
-from iris_memory_core.domain.errors import RevisionMismatchError
+from iris_memory_core.domain.console import (
+    CommandPreview,
+    OperatorGrant,
+    OperatorKey,
+    OperatorSession,
+)
+from iris_memory_core.domain.errors import ConflictError, RevisionMismatchError
 
 
 def _key(row: sqlite3.Row) -> OperatorKey:
@@ -33,6 +38,58 @@ def _key_data(key: OperatorKey) -> dict[str, Any]:
 class ConsoleRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
+
+    def command_preview(
+        self, tenant_id: str, key_id: str, identifier: str
+    ) -> CommandPreview | None:
+        row = self._connection.execute(
+            "SELECT * FROM console_command_previews WHERE tenant_id=? AND key_id=? AND id=?",
+            (tenant_id, key_id, identifier),
+        ).fetchone()
+        return CommandPreview(**dict(row)) if row is not None else None
+
+    def insert_command_preview(self, preview: CommandPreview) -> None:
+        values = asdict(preview)
+        self._connection.execute(
+            f"INSERT INTO console_command_previews ({','.join(values)}) "
+            f"VALUES ({','.join('?' for _ in values)})",
+            tuple(values.values()),
+        )
+
+    def consume_command_preview(
+        self,
+        tenant_id: str,
+        key_id: str,
+        identifier: str,
+        preview_hash: str,
+        *,
+        now_us: int,
+        receipt_json: str,
+    ) -> None:
+        changed = self._connection.execute(
+            "UPDATE console_command_previews SET status='consumed',consumed_us=?,receipt_json=?,"
+            "payload_json='{}' WHERE tenant_id=? AND key_id=? AND id=? AND preview_hash=? "
+            "AND status='ready' AND expires_us>?",
+            (now_us, receipt_json, tenant_id, key_id, identifier, preview_hash, now_us),
+        )
+        if changed.rowcount != 1:
+            raise ConflictError("preview changed before committing")
+
+    def prune_expired_command_previews(self, *, now_us: int) -> None:
+        # Bound housekeeping work in the operator transaction. Consumed receipt
+        # retention is longer than the short preview validity window.
+        self._connection.execute(
+            "DELETE FROM console_command_previews WHERE id IN ("
+            "SELECT id FROM console_command_previews WHERE status='ready' AND expires_us<=? "
+            "ORDER BY expires_us,id LIMIT 200)",
+            (now_us,),
+        )
+        self._connection.execute(
+            "DELETE FROM console_command_previews WHERE id IN ("
+            "SELECT id FROM console_command_previews WHERE status='consumed' AND expires_us<=? "
+            "ORDER BY expires_us,id LIMIT 200)",
+            (now_us - 7 * 86_400_000_000,),
+        )
 
     def pending_successor(self, key_id: str) -> OperatorKey | None:
         row = self._connection.execute(

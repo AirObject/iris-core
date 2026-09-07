@@ -52,6 +52,13 @@ def generated_documents() -> dict[Path, Any]:
         }
         if operation["status"] == 204:
             responses["204"] = {"description": "Success"}
+        for status, schema in operation.get("additional_success_responses", {}).items():
+            responses[str(status)] = {
+                "description": "Accepted" if str(status) == "202" else "Success",
+                "content": {
+                    "application/json": {"schema": {"$ref": "#/components/schemas/" + schema}}
+                },
+            }
         endpoint = {
             "operationId": operation["operation_id"],
             "responses": responses,
@@ -60,7 +67,7 @@ def generated_documents() -> dict[Path, Any]:
             endpoint["requestBody"] = {
                 "required": True,
                 "content": {
-                    "application/json": {
+                    operation.get("request_media_type", "application/json"): {
                         "schema": {"$ref": "#/components/schemas/" + operation["request"]}
                     }
                 },
@@ -92,7 +99,10 @@ def generated_documents() -> dict[Path, Any]:
     for name, schema in schemas.items():
         documents[ROOT / f"schemas/jsonschema/console/{name}.schema.json"] = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": f"https://schemas.iris-memory-core.local/console/1.0.0/{name}.schema.json",
+            "$id": (
+                f"https://schemas.iris-memory-core.local/console/{source['contract_version']}/"
+                f"{name}.schema.json"
+            ),
             "$defs": schemas,
             **schema,
         }

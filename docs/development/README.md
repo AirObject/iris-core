@@ -3,7 +3,7 @@
 > 状态：In progress；按 2026-09-06 工作区、代码与验证记录核对。  
 > 架构：[架构基线](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)；决策：[ADR 索引](../adr/README.md)。
 
-本页是阶段状态与依赖的统一入口。项目编号为 Phase 0–14；本次核查覆盖 Phase 0–13，不能把“已经推进到 Phase 13”理解为所有前序门禁均已通过。Phase 0–10 有完整历史切片报告，Phase 11/13 仍在实施，Phase 12 尚未落地。
+本页是阶段状态与依赖的统一入口。项目编号为 Phase 0–14；本次核查覆盖 Phase 0–13，不能把“已经推进到 Phase 13”理解为所有前序门禁均已通过。Phase 0–10 有完整历史切片报告，Phase 13 仍在实施；Phase 11/12 均按项目负责人 2026-09-06 要求暂缓。Phase 14 的 pip 范围仅为 Core 功能与既定公共接口，不包含两个适配器，也不以其验收或分发为前置条件。
 
 ## 阶段状态与证据
 
@@ -20,10 +20,10 @@
 | [08 Profile 与 Graph](./phase-08-profile-graph.md) | Completed | 有来源画像与受限图召回；[报告](../reports/phase-08-verification.md) |
 | [09 Persona](./phase-09-persona.md) | Completed | State/Policy/Proposal、发布与回滚；[报告](../reports/phase-09-verification.md) |
 | [10 巩固、Reflection 与 HTTP](./phase-10-consolidation-reflection.md) | Completed | 后台提炼、真实 ASGI、serve/worker；[报告](../reports/phase-10-verification.md) |
-| [11 Bellis Adapter](./phase-11-bellis-adapter.md) | In progress | Provider 离线测试通过；当前 Schema 14 兼容、宿主可靠交付与真实 E2E 未闭环；[报告](../reports/phase-11-verification.md) |
-| [12 AstrBot Bridge](./phase-12-astrbot-bridge.md) | Planned | 仅接入文档；12.0 裁决、ADR-0021、SDK 补齐、Bridge 与验证均未交付 |
-| [13 Web 管理控制台](./phase-13-web-console.md) | In progress | 认证已有历史验证；读面有契约失败，前端类型/页面适配及剩余业务切片未完成；[合并报告](../reports/phase-13-verification.md) |
-| [14 前置闭环、生产硬化与稳定发布](./phase-14-hardening-release.md) | Planned | 已按现状重规划 14.0–14.6，尚无发布验收报告 |
+| [11 Bellis Adapter](./phase-11-bellis-adapter.md) | Deferred | 暂时不再执行，移出当前发布门禁；已有插件、历史验证及未完成项保留；[报告](../reports/phase-11-verification.md) |
+| [12 AstrBot Bridge](./phase-12-astrbot-bridge.md) | Deferred | 暂时不再执行，移出当前发布门禁；保留裁决、SDK、Bridge 与验证待办，恢复时重新确认依赖 |
+| [13 Web 管理控制台](./phase-13-web-console.md) | In progress | 认证已有历史验证；读面与 State/Note/Focus/Task 主资源及步骤管理写入已接通真实浏览器，其他业务切片未完成；[合并报告](../reports/phase-13-verification.md) |
+| [14 前置闭环、生产硬化与稳定发布](./phase-14-hardening-release.md) | In progress | 读面/Required Lease、Core 包资源与独立 SDK 安装门禁已实施；[实施报告](../reports/phase-14-verification.md)，尚未通过稳定发布验收 |
 
 `Completed` 表示该阶段当时的退出证据齐全，不表示当前工作区全量回归或生产发布通过。测试日期、环境、失败与未验证范围以报告为准。
 
@@ -41,27 +41,26 @@ flowchart LR
     P7 --> P8[8 Profile/Graph]
     P8 --> P9[9 Persona]
     P9 --> P10[10 巩固与HTTP]
-    P10 --> P11[11 Bellis]
-    P10 --> P12[12 AstrBot]
+    P10 -.-> P11[11 Bellis 暂缓]
+    P10 -.-> P12[12 AstrBot 暂缓]
     P10 --> P13[13 Console]
-    P11 --> G[14.0 前置闭环]
-    P12 --> G
+    P10 --> G[14.0 Core 前置闭环]
     P13 --> G
     G --> R[14.1–14.6 稳定发布]
 ```
 
-Phase 11 在 Bellis 仓库交付（ADR-0020）；Phase 12 当前在本仓库 `application/` 预留位置，最终交付裁决仍属 12.0；Phase 13 在本仓库维护独立 `/console/v1`。三条接入线可以并行。14.1 打包/CI 与 14.2 部署准备也可提前开展，最终候选冻结和发布验收依赖三条线的真实退出证据。
+Phase 11 保留 Bellis 仓库现有插件（ADR-0020），Phase 12 保留本仓库 `application/` 预留位置，二者均暂缓。Phase 13 继续维护 Core 独立 `/console/v1` 管理平面及配套前端，不因适配器暂缓而取消。14.1 打包/CI 与 14.2 部署准备可提前开展；当前稳定发布验收 Core 与 Phase 13，调用方只经既定公共方法访问 Core。pip 内容、独立 SDK/前端产物及验收边界见 [Phase 14 发布路径](./phase-14-hardening-release.md#pip-包发布路径)。
 
 ## 仍有效的规划决定
 
-- Phase 1 的最小 Published Persona/Current Pointer 与 Phase 9 完整 Persona 是分次交付；Phase 2 的持久 Lease/Epoch/Fencing 仍需两个宿主验证行为。
+- Phase 1 的最小 Published Persona/Current Pointer 与 Phase 9 完整 Persona 是分次交付；Phase 2 的持久 Lease/Epoch/Fencing 仍须通过真实 Core 服务上的多客户端竞争验证，Bellis/AstrBot 专属宿主验证随 Phase 11/12 暂缓。
 - Phase 6 冻结 Recall 协议，Phase 10 才交付真实 HTTP 与进程入口；历史 mock 不代表真实宿主验证。后续适配器消费契约，不为宿主改写 Canonical Domain。
 - [ADR-0022](../adr/0022-management-console-plane.md) 已接受：原 Phase 13 的自动旧库迁移改为控制台手动文件导入导出。旧库扫描、增量追平、双写切换已取消；来源、幂等、断点、Tombstone 优先、隔离候选和可审计性继续由导入门禁承担。数据库 Schema Migration 始终保留。
 - Phase 14 复用前期实现，重点补兼容闭环、可安装产物、生产部署、安全/凭据、24h Soak 和恢复证据。欠缺项与顺序只维护在 [Phase 14 工作包](./phase-14-hardening-release.md#工作包)。
 
 ## 统一阶段规则
 
-进入实施前确认依赖证据、冻结边界和契约 Fixture；变更持久化时同时定义迁移、兼容与回退。阶段状态使用 `Planned`、`In progress`、`Blocked`、`Completed`；阻塞原因必须具体，不能用阶段编号推断完成度。
+进入实施前确认依赖证据、冻结边界和契约 Fixture；变更持久化时同时定义迁移、兼容与回退。阶段状态使用 `Planned`、`In progress`、`Blocked`、`Deferred`、`Completed`；`Deferred` 表示经明确范围决定暂缓，须记录恢复条件与发布依赖影响；阻塞原因必须具体，不能用阶段编号推断完成度。
 
 完成时检查领域行为、接口、迁移、安全、可观测性和对应测试；交付证据包含变更/版本、ADR、环境、可复现命令、结果与限制。没有证据的门禁保持未完成；遗留项须有明确承接工作包。状态更新同时修改本页与原阶段，ADR 冲突说明随决定更新。
 

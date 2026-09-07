@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import stat
 from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ from iris_memory_core.application.ports import Clock, IdentifierGenerator
 from iris_memory_core.domain.errors import ConflictError, NotFoundError, RevisionMismatchError
 from iris_memory_core.domain.hashing import canonical_json
 from iris_memory_core.domain.memory import (
+    MAX_LOCAL_ARTIFACT_BYTES,
     ArtifactRecord,
     ClaimCurrent,
     ClaimRevision,
@@ -344,9 +346,16 @@ class EpisodeRepository:
             "updated_us = ?",
         ]
         params: list[object] = [revision, revision_id, status, self._clock.now_us()]
-        if importance is not None:
-            assignments.append("importance = ?")
-            params.append(importance)
+        for column in ("title", "started_at_us", "ended_at_us", "importance"):
+            if column == "importance" and importance is not None:
+                assignments.append("importance = ?")
+                params.append(importance)
+            else:
+                assignments.append(
+                    f"{column} = (SELECT {column} FROM episode_revisions "
+                    "WHERE id = ? AND episode_id = ?)"
+                )
+                params.extend([revision_id, episode_id])
         params.extend([episode_id, expected_revision])
         cursor = self._connection.execute(
             f"UPDATE episodes SET {', '.join(assignments)} WHERE id = ? AND current_revision = ?",
@@ -1447,6 +1456,9 @@ class RelationRepository:
         revision: int,
         revision_id: str,
         status: str,
+        source_entity_id: str | None = None,
+        relation_type: str | None = None,
+        target_entity_id: str | None = None,
         confidence: float | None = None,
         importance: float | None = None,
         accessibility: float | None = None,
@@ -1463,6 +1475,14 @@ class RelationRepository:
             "updated_us = ?",
         ]
         params: list[object] = [revision, revision_id, status, self._clock.now_us()]
+        for column, value in (
+            ("source_entity_id", source_entity_id),
+            ("relation_type", relation_type),
+            ("target_entity_id", target_entity_id),
+        ):
+            if value is not None:
+                assignments.append(f"{column} = ?")
+                params.append(value)
         if confidence is not None:
             assignments.append("confidence = ?")
             params.append(confidence)
@@ -1623,11 +1643,20 @@ class RelationRepository:
             ) from error
         return True
 
-    def evidence_for_relation(self, relation_id: str) -> tuple[EvidenceRecord, ...]:
-        rows = self._connection.execute(
-            "SELECT * FROM relation_evidence WHERE relation_id = ? ORDER BY recorded_at_us, id",
-            (relation_id,),
-        ).fetchall()
+    def evidence_for_relation(
+        self, relation_id: str, *, only_valid: bool = False, limit: int | None = None
+    ) -> tuple[EvidenceRecord, ...]:
+        if limit is not None and not 1 <= limit <= 501:
+            raise ValueError("relation evidence read limit must be within 1..501")
+        query = "SELECT * FROM relation_evidence WHERE relation_id = ?"
+        params: list[object] = [relation_id]
+        if only_valid:
+            query += " AND invalidated_us IS NULL"
+        query += " ORDER BY recorded_at_us, id"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+        rows = self._connection.execute(query, tuple(params)).fetchall()
         return tuple(
             EvidenceRecord(
                 id=row["id"],
@@ -1908,15 +1937,27 @@ class ArtifactRepository:
         return target
 
     def read_blob(self, locator: str, *, expected_hash: str, expected_size: int) -> bytes:
-        """Read and verify one local blob; never touches the network."""
+        """Bounded read from a regular file, then verify size and hash; never fetch URLs."""
+        if not 0 <= expected_size <= MAX_LOCAL_ARTIFACT_BYTES:
+            raise ConflictError("artifact blob size is outside the storage limit")
         target = self._resolve_blob_path(locator)
-        if not target.is_file():
-            raise NotFoundError("artifact blob file is missing")
-        payload = target.read_bytes()
+        try:
+            descriptor = os.open(target, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            raise NotFoundError("artifact blob file is missing") from None
+        except OSError:
+            raise ConflictError("artifact blob cannot be opened safely") from None
+        try:
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != expected_size:
+                raise ConflictError("artifact blob size or file kind is invalid")
+            with os.fdopen(descriptor, "rb", closefd=False) as handle:
+                payload = handle.read(expected_size + 1)
+        finally:
+            os.close(descriptor)
         if len(payload) != expected_size:
             raise ConflictError("artifact blob size does not match the recorded size")
-        digest = hashlib.sha256(payload).hexdigest()
-        if digest != expected_hash:
+        if hashlib.sha256(payload).hexdigest() != expected_hash:
             raise ConflictError("artifact blob hash does not match the recorded hash")
         return payload
 
@@ -2212,10 +2253,11 @@ class RetentionRepository:
         )
         return _hold_from_row(row)
 
-    def active_holds(self, tenant_id: str) -> tuple[LegalHold, ...]:
+    def active_holds(self, tenant_id: str, *, limit: int | None = None) -> tuple[LegalHold, ...]:
         rows = self._connection.execute(
-            "SELECT * FROM legal_holds WHERE tenant_id = ? AND released_us IS NULL",
-            (tenant_id,),
+            "SELECT * FROM legal_holds WHERE tenant_id = ? AND released_us IS NULL"
+            + (" LIMIT ?" if limit is not None else ""),
+            (tenant_id, limit) if limit is not None else (tenant_id,),
         ).fetchall()
         return tuple(_hold_from_row(row) for row in rows)
 

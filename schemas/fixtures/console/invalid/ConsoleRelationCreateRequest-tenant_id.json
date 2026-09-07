@@ -1,0 +1,19 @@
+{
+  "evidence": [
+    {
+      "source_id": "observation-a",
+      "source_revision": 1,
+      "source_type": "observation"
+    }
+  ],
+  "fields": {
+    "relation_type": "knows",
+    "source_entity_id": "entity-a",
+    "target_entity_id": "entity-b"
+  },
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "01a07600-0000-7000-8000-000000000001"
+  },
+  "tenant_id": "forged"
+}

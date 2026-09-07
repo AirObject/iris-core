@@ -1,6 +1,6 @@
 # Phase 11 验证报告：Bellis Adapter
 
-> 状态：In progress  
+> 当前阶段状态：Deferred（2026-09-06 按项目负责人要求暂缓；以下执行记录与未关闭项保留，不再作为当前 Core 发布门禁）  
 > 当前复核：2026-09-06；历史实现批次：2026-09-05  
 > 当前 Core 工作树：0.12.0 / API v1 / Schema 14 / Contract 1.9.0；以下历史验证执行于 Schema 13，后续 0014 见[联合修复报告](phase-05-06-07-08-review-fixes.md)。  
 > Provider：Bellis `providers/memory-iris/`，`@iris-memory/bellis-provider` 0.1.0  
@@ -48,7 +48,7 @@ Provider 的 `pnpm build`、仓库全量 CI、安装后的重新解析/打包、
 7. **审计与来源 Hash 尚未闭环。** ADR 要求的 scores/final_score/scope/subject_entity_id 未单独进入当前返回 audit；现有 audit 只有丢弃/过滤/未知类别信息与可选 trace。Candidate contentHash 仅透传，宿主 Context Builder 的来源校验没有接线证据。
 8. **Persona 撤销与刷新失败恢复待补。** `#loadInitialPersona()` 对 refresh 错误统一回退旧缓存，未区分网络不可达、revoked 和 Hash 不符。事件轮询先推进 cursor，再失效缓存并刷新；刷新失败后没有可靠完成该次刷新的证据。这些是源码检查发现的未闭合路径，本轮未新增故障测试，不能宣称撤销失败关闭和断线追平已验收。
 
-这些项目进入 [Phase 14](../development/phase-14-hardening-release.md) 的前置闭环；关闭前 Phase 11 保持 In progress。
+这些项目随 Phase 11 暂缓，状态为 Deferred；[Phase 14](../development/phase-14-hardening-release.md) 已限定为 Core 发布，不再承接本报告的宿主待办。恢复 Phase 11 后再按届时 Core 版本验收，历史结果不改写为完成。
 
 ## 历史证据与已替代结论
 

@@ -1,0 +1,17 @@
+{
+  "evidence": [
+    {
+      "source_id": "observation-1",
+      "source_revision": 1,
+      "source_type": "observation"
+    }
+  ],
+  "expected_revision": 1,
+  "fields": {
+    "mode": "supersede",
+    "value": {
+      "topic": "reading"
+    }
+  },
+  "reason_code": "operator_request"
+}

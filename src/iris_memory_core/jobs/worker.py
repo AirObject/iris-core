@@ -21,7 +21,7 @@ from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, OutboxService
-from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.ports import Clock, IdentifierGenerator, Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.reflection import ReflectionPipeline
 from iris_memory_core.application.retention import RetentionService
@@ -231,6 +231,14 @@ def phase10_handlers(*, pipeline: ReflectionPipeline) -> dict[str, JobWork]:
         "memory.reconciliation": pipeline.reconciliation_work,
         "persona.evaluation": pipeline.persona_evaluation_work,
     }
+
+
+def phase14_handlers(uow: UnitOfWork, clock: Clock, ids: IdentifierGenerator) -> dict[str, JobWork]:
+    from iris_memory_core.application.console.execution_context import WorkerExecutionContext
+    from iris_memory_core.application.console.operations import ConsoleOperations
+
+    operations = ConsoleOperations(WorkerExecutionContext(uow, clock, ids))
+    return {"console.memory_forget": operations.batch_work}
 
 
 class OutboxWorker:

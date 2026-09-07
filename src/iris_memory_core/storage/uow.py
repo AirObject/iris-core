@@ -52,6 +52,7 @@ from iris_memory_core.storage.cognitive import (
     StateRepository,
 )
 from iris_memory_core.storage.console import ConsoleRepository
+from iris_memory_core.storage.console_operations import ConsoleOperationRepository
 from iris_memory_core.storage.console_reads import ConsoleReadRepository
 from iris_memory_core.storage.fts import FtsRepository, RecallUsageRepository
 from iris_memory_core.storage.memory import (
@@ -135,7 +136,8 @@ class Transaction:
         self.personas = PersonaRepository(connection, clock, ids)
         self.reflection = ReflectionRepository(connection, clock, ids)
         self.console = ConsoleRepository(connection)
-        self.console_reads = ConsoleReadRepository(connection)
+        self.console_operations = ConsoleOperationRepository(connection)
+        self.console_reads = ConsoleReadRepository(connection, writable=writable)
         self._connection = connection
         self._writable = writable
         self._pending_watermarks: dict[tuple[str, str], dict[tuple[str, str], int]] = {}
@@ -398,6 +400,12 @@ class Transaction:
             tenant_id, from_entity_id, to_entity_id, actor=actor, reason_code=reason_code
         )
 
+    def entity_has_self_link(self, tenant_id: str, entity_id: str) -> bool:
+        return self.identities.entity_has_self_link(tenant_id, entity_id)
+
+    def redirect_ancestor_depth(self, tenant_id: str, entity_id: str) -> int:
+        return self.identities.redirect_ancestor_depth(tenant_id, entity_id)
+
     def redirect_map(self, tenant_id: str) -> dict[str, str]:
         return self.identities.redirect_map(tenant_id)
 
@@ -429,6 +437,13 @@ class Transaction:
             actor=actor,
             effective_us=effective_us,
         )
+
+    def console_identity_attributes(
+        self,
+        tenant_id: str,
+        entity_id: str,
+    ) -> tuple[IdentityAttribute, ...]:
+        return self.identities.console_identity_attributes(tenant_id, entity_id)
 
     def current_identity_attribute(
         self, tenant_id: str, entity_id: str, field: str

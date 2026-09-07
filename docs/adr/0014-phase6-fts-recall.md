@@ -113,7 +113,7 @@ CI 全绿后的一轮发布阻断级复审确认了 9 项缺陷，全部修复�
 4. **单路由/单线程同样有界**：`executors <= 1` 的同步快速路径删除——单路由或 `max_route_concurrency=1` 也经线程池提交并以剩余预算限时 `future.result()` 等待，超时路由弃置线程（§13.1 同法）。
 5. **as_of 的 Valid Time 判定点**：claim 路由 `search_page(valid_at_us=as_of_us)` 下推；最终 Rehydrate 与 relation 路由/Rehydrate 同以 `as_of`（未指定则 now）评估 `valid_from/valid_until`——"当时有效、现已过期"保持可历史召回，"当时尚未生效"不进历史结果。
 6. **Tombstoned Note 不进新代**：`list_notes` 增加与 claims/episodes 枚举同法的 SQL 级 `resource_tombstones` 排除（`include_tombstoned=True` 显式要求才包含）——已删除 Note 的正文不再随影子重建回流索引、破坏异步物理清理语义。
-7. **Recall 请求级幂等 = 响应重放**：`recall_requests` 增加 `request_fingerprint`（排除 deadline 的逻辑内容摘要——transport 重试天然携带新 deadline）、`response_json`（完整服务响应）与 `resource_ids_json`。同 id 重放先校验指纹（不一致 ⇒ `invalid_request` 冲突重放），一致则**逐字回放首次响应**——状态变化与新 deadline 都不改变答复，宿主对任一次执行的 usage 回显都落在同一 returned 集。Forget 失效在**同一写事务**内擦除引用了被失效资源的存储响应（`scrub_request_responses`，异步 `memory.invalidated` handler 幂等兜底）；被擦除的请求重放以 `conflict` fail-closed，删除内容不可能经重放路径复活。
+7. **Recall 请求级幂等 = 经核验的响应重放**：`recall_requests` 增加 `request_fingerprint`（排除 deadline 的逻辑内容摘要——transport 重试天然携带新 deadline）、`response_json`（完整服务响应）与 `resource_ids_json`。同 id 重放先校验指纹（不一致 ⇒ `invalid_request` 冲突重放），一致且候选/Persona 仍有效则**逐字回放首次响应**——无关状态变化与新 deadline 都不改变答复，宿主对任一次执行的 usage 回显都落在同一 returned 集。2026-09-07 补充：普通重放、首次发布及并发首响应胜出后的重放，在各自读/写事务中重新执行 Canonical 候选过滤并比较当前 Persona revision/hash；失效以 `conflict` 拒绝，不重新排序、删减或覆盖原返回集合。显式 `as_of` 仍按原评估时刻核验。Forget 失效在**同一写事务**内擦除引用了被失效资源的存储响应（`scrub_request_responses`，异步 `memory.invalidated` handler 幂等兜底）；被擦除的请求重放以 `conflict` fail-closed，删除内容不可能经重放路径复活。该检查是单响应事务边界，不构成跨请求历史重验或恢复授权。
 
 ## 否决的替代方案
 
@@ -138,3 +138,10 @@ CI 全绿后的一轮发布阻断级复审确认了 9 项缺陷，全部修复�
 - `migrations/0007_phase6_fts_recall.sql`（online_safe=true, lock_ms=200, min_app=0.7.0, recovery=none）；0001–0006 与 HEAD `b7bbad5` 逐字节一致（测试锁定）。
 - 兼容窗口 [6, 7]：0.7.0 在线升级 Schema 6 库；Schema ≤5 需先经 0.6.0 二进制（Runner 可多步走完，窗口只约束 Ready）。
 - 无 Down Migration；FTS Generation/文档与 usage 行不经降级脚本删除或回拨。回退顺序：停用 fts.* handler 与 `/v1/recall` 流量 → 兼容二进制运行 Schema 7 → 必要时按 ADR-0013 §10 恢复流程回退备份（FTS 重建由 0.7.0 重新触发）。
+
+
+## 2026-09-07：公开原请求批量核验
+
+`POST /v1/recall:revalidate` 需要显式 `recall.revalidate.v1`。请求包含本次 deadline 和 1–16 个完整原 Recall 请求；嵌套旧 deadline 不参与身份匹配。服务在同一只读事务和固定评估时刻验证当前请求授权/actor、原指纹、存档集合的 Canonical 有效性及 Persona，返回每项 requestId 的 valid/unavailable；不重放正文、不创建 Recall/Usage/事件，不把未知、错误指纹、擦除或失效细分为可探测的存在性信息。
+
+请求体上限 1 MiB；存档正文反序列化前检查单项 1 MiB、累计 8 MiB，展开候选总数上限 512；超限整体拒绝。执行截止时间不超过 60 秒。各批次不是同一个快照，结论不赋予 Surface/输出权限，也不允许解除宿主历史缺口屏障；调用者仍需持久保存真正原请求并完成全量范围及跨请求一致性验证。

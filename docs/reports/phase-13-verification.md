@@ -3,8 +3,12 @@
 - 核查日期：2026-09-06；阶段状态：**In progress**。
 - 本文合并后端第 1、2、3 步及前端验证记录，替代相互覆盖的状态说明。历史数字保留其原执行范围，不表示当前工作区完整通过。
 - 历史后端基线：`80468a41ec569a3be99e36e160f3a0d231613b45`；当前后端与召回修复提交 `2e4d4be`，前端提交 `5583697`。提交保存开发成果，不代表阶段验收完成。
-- 当前版本：Schema 14 / Python 0.12.0 / `/v1` Contract 1.9.0 / Console Contract 1.0.0；当前 OpenAPI 为 88 个路径、90 个 HTTP 操作。后续 0014 的历史与验证见[联合修复报告](phase-05-06-07-08-review-fixes.md)。
+- 该历史基线版本：Schema 14 / Python 0.12.0 / `/v1` Contract 1.9.0 / Console Contract 1.0.0；当时 OpenAPI 为 88 个路径、90 个 HTTP 操作。后续 0014 的历史与验证见[联合修复报告](phase-05-06-07-08-review-fixes.md)。
 - 阶段：[Phase 13](../development/phase-13-web-console.md)；语义：[Console 设计与接入边界](../design/console-backend.md)；前后端差距：[对接矩阵](../../web/console/INTEGRATION_MATRIX.md)。
+
+## Phase 14 后续修复（2026-09-06）
+
+原 Reflection UUID 冲突、生成类型漂移与 Memory descriptor 已修复，真实浏览器覆盖 Note 列表、详情、历史与相同筛选刷新；见 [Phase 14 当前实施记录](phase-14-verification.md)。当前已推进至 Core 0.13.0 / Schema 15、业务 Contract 1.10.0 / Console 1.1.0，State/Note/Focus 与 Task 主资源、步骤及依赖管理已接通；完整组合和真实浏览器证据统一记录于上述 Phase 14 报告。以下为修复前历史复验，保留失败证据，不能误认为这些失败仍未处置。剩余管理写入等模块仍未交付。
 
 ## 工作区提交复验（2026-09-06）
 
@@ -123,3 +127,7 @@
 阶段 14 先收口资源 ID、前端类型/正式读 descriptor 与当前完整 CI，再实施 Phase 13 剩余业务工作包。必须验证真实授权/计数隔离、Forget/Hold/清理、JSONL 往返、备份 blocked、导入审核/同事务断点、Provider 出站/Generation 切换、实例参数水位、任务/DLQ/备份等服务器效果。
 
 生产 Cookie/多标签刷新时序、TLS/代理、application 凭据真实交叠轮换及派生任务失权、最大下载文件下 Blob 回退内存仍待验证。每条新增正式业务链须同时检查前端与后端；当前 `make ci` 没有覆盖独立 `web/console` 门禁，发布阶段需要显式补入。
+
+## Phase 14 Note 管理命令切片
+
+2026-09-06，按 [ADR-0025](../adr/0025-console-command-authorization.md) 实施 Console Note 创建、编辑和状态转换。Console 契约升至 1.1.0；复用原领域 Revision/CAS、提升、Audit 与 Outbox，管理授权不借用宿主 Lease。详细测试与剩余项见 [Phase 14 实施记录](./phase-14-verification.md)。其他资源命令、Forget 和第 5–10 步仍未完成。

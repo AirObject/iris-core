@@ -247,11 +247,44 @@
     "/console/v1/personas/{agent_id}": [
       "get"
     ],
+    "/console/v1/personas/{agent_id}/commands": [
+      "get"
+    ],
     "/console/v1/personas/{agent_id}/history": [
       "get"
     ],
+    "/console/v1/personas/{agent_id}/policy": [
+      "get",
+      "put"
+    ],
     "/console/v1/personas/{agent_id}/proposals": [
+      "get",
+      "post"
+    ],
+    "/console/v1/personas/{agent_id}/proposals/commands": [
       "get"
+    ],
+    "/console/v1/personas/{agent_id}/proposals/{proposal_id}": [
+      "get"
+    ],
+    "/console/v1/personas/{agent_id}/proposals/{proposal_id}:approve": [
+      "post"
+    ],
+    "/console/v1/personas/{agent_id}/proposals/{proposal_id}:reject": [
+      "post"
+    ],
+    "/console/v1/personas/{agent_id}/revisions": [
+      "post"
+    ],
+    "/console/v1/personas/{agent_id}/state": [
+      "get",
+      "patch"
+    ],
+    "/console/v1/personas/{agent_id}/state:clear": [
+      "post"
+    ],
+    "/console/v1/personas/{agent_id}:rollback": [
+      "post"
     ],
     "/console/v1/service-credentials": [
       "get",

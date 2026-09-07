@@ -15,9 +15,9 @@
 | 8 | [Profile 与 Graph](./phase-08-verification.md) |
 | 9 | [Persona](./phase-09-verification.md) |
 | 10 | [巩固、Reflection 与 HTTP](./phase-10-verification.md) |
-| 11 | [Bellis Adapter](./phase-11-verification.md)：历史实现记录与本轮定向复测，宿主 E2E 尚未闭环 |
-| 12 | 无实施验证报告；参见 [Phase 12 前置条件](../development/phase-12-astrbot-bridge.md) |
+| 11 | Deferred，暂不执行且不阻塞当前发布；[Bellis Adapter](./phase-11-verification.md) 保留历史实现与复测，宿主 E2E 尚未闭环 |
+| 12 | Deferred，暂不执行且不阻塞当前发布；无实施验证报告，保留 [Phase 12 清单](../development/phase-12-astrbot-bridge.md) |
 | 13 | [Console 合并报告](./phase-13-verification.md)：认证历史 CI、读面失败和前端真实/模拟验证边界 |
-| 14 | 无发布验证报告；参见 [重规划与交付证据要求](../development/phase-14-hardening-release.md#交付证据) |
+| 14 | [实施与验证记录](./phase-14-verification.md)：读面、Required Lease、安装物与 CI；尚非稳定发布验收 |
 
 [登录计时原始数据](./phase-13-step-02-login-timing.json) 由 Phase 13 报告解释，不能脱离当时环境用作新的性能承诺。本目录不为未执行工作建立空的“通过报告”。

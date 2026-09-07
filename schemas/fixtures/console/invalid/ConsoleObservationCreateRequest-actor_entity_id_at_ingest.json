@@ -1,0 +1,10 @@
+{
+  "actor_entity_id_at_ingest": "person",
+  "fields": {
+    "content": "当前人工提交"
+  },
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "01a07600-0000-7000-8000-000000000001"
+  }
+}

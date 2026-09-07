@@ -20,9 +20,17 @@ from iris_memory_core.api.console.config import ConsoleConfig, is_loopback
 from iris_memory_core.api.console.contracts import load_contract
 from iris_memory_core.api.console.crypto import ConsoleCrypto
 from iris_memory_core.api.console.errors import ConsoleError, error_response
+from iris_memory_core.api.console.routes_artifacts import router as artifacts_router
 from iris_memory_core.api.console.routes_auth import router as authentication_router
 from iris_memory_core.api.console.routes_credentials import router as credentials_router
+from iris_memory_core.api.console.routes_forget import router as forget_router
+from iris_memory_core.api.console.routes_identity import router as identity_router
 from iris_memory_core.api.console.routes_memory import router as memory_router
+from iris_memory_core.api.console.routes_operations import router as operations_router
+from iris_memory_core.api.console.routes_persona_policy import router as persona_policy_router
+from iris_memory_core.api.console.routes_persona_proposals import router as persona_proposals_router
+from iris_memory_core.api.console.routes_persona_states import router as persona_states_router
+from iris_memory_core.api.console.routes_personas import router as personas_router
 from iris_memory_core.api.console.views import envelope
 from iris_memory_core.application.ports import Clock, SystemClock, Uuid7Generator
 from iris_memory_core.domain.errors import DomainError
@@ -153,7 +161,7 @@ def create_console_app(
         return envelope(
             request,
             {
-                "contract_version": "1.0.0",
+                "contract_version": load_contract()["info"]["version"],
                 "permissions": list(principal.permissions),
                 "modules": [
                     module
@@ -164,7 +172,8 @@ def create_console_app(
                     if permission in principal.permissions
                 ]
                 + (
-                    ["memory"]
+                    ["memory", "personas"]
+                    + (["operations"] if "memory.forget" in principal.permissions else [])
                     if "memory.read" in principal.permissions
                     and hasattr(principal, "key")
                     and "console.manage" in principal.key.grant.data_purposes
@@ -188,6 +197,14 @@ def create_console_app(
     app.include_router(authentication_router)
     app.include_router(credentials_router)
     app.include_router(memory_router)
+    app.include_router(forget_router)
+    app.include_router(operations_router)
+    app.include_router(personas_router)
+    app.include_router(persona_states_router)
+    app.include_router(persona_proposals_router)
+    app.include_router(persona_policy_router)
+    app.include_router(identity_router)
+    app.include_router(artifacts_router)
 
     @app.get("/{path:path}", include_in_schema=False)
     def static(path: str) -> FileResponse:

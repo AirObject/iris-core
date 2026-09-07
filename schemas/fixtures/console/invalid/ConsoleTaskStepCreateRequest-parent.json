@@ -1,0 +1,7 @@
+{
+  "fields": {
+    "stable_key": "step-1",
+    "title": "Deliver result"
+  },
+  "reason_code": "operator_request"
+}

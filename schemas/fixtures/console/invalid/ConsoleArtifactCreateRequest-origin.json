@@ -1,0 +1,11 @@
+{
+  "fields": {
+    "content": "Original manual text",
+    "media_type": "text/plain"
+  },
+  "origin": "forged",
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "01a07600-0000-7000-8000-000000000001"
+  }
+}

@@ -64,6 +64,8 @@ TABLES = {
             "kind",
             "summary",
             "structured_payload",
+            "promotion_target_type",
+            "promotion_target_id",
             "salience",
             "importance",
             "activation",
@@ -119,7 +121,18 @@ TABLES = {
     ),
     "episodes": TableSpec(
         "episodes",
-        ("title", "summary", "importance", "valence", "arousal", "started_at_us", "ended_at_us"),
+        (
+            "title",
+            "summary",
+            "importance",
+            "valence",
+            "arousal",
+            "started_at_us",
+            "ended_at_us",
+            "participant_entity_ids",
+            "observation_refs",
+            "source_refs",
+        ),
         "episode_revisions",
         "episode_id",
     ),
@@ -177,6 +190,7 @@ TABLES = {
             "deliver_after_us",
             "expires_us",
             "last_delivery_us",
+            "delivery_attempts",
             "acknowledged_us",
         ),
         "cognitive_event_revisions",
@@ -226,13 +240,15 @@ TABLES = {
         ("predecessor_step_id", "successor_step_id", "condition"),
         "task_dependency_revisions",
         "dependency_id",
-        status="",
         scope_columns=(),
     ),
     "triggers": TableSpec(
         "task_triggers",
         (
             "kind",
+            "task_step_id",
+            "misfire_grace_us",
+            "max_occurrences_per_run",
             "enabled",
             "schedule_spec",
             "condition_spec",
@@ -247,7 +263,7 @@ TABLES = {
     ),
     "persona": TableSpec(
         "persona_revisions",
-        ("core", "traits", "narrative", "source"),
+        ("core", "traits", "narrative", "source", "content_hash"),
         updated="created_us",
         scope_columns=("agent_id",),
     ),
@@ -266,7 +282,28 @@ TABLES = {
     ),
 }
 
+# Reference-only lookup by immutable primary key; no public collection scan.
+REFERENCE_TABLES = {
+    "persona-states": TableSpec(
+        "persona_states",
+        ("state_json", "baseline_json", "started_us", "expires_us"),
+        updated="created_us",
+        status="",
+        scope_columns=("agent_id",),
+    ),
+}
+
+
+def _read_spec(collection: str) -> TableSpec:
+    return REFERENCE_TABLES[collection] if collection in REFERENCE_TABLES else TABLES[collection]
+
+
 JSON_FIELDS = {
+    "state_json": "state",
+    "baseline_json": "baseline",
+    "participant_entity_ids": "participant_entity_ids",
+    "observation_refs": "observation_refs",
+    "source_refs": "source_refs",
     "value_json": "value",
     "structured_payload": "structured_payload",
     "payload_json": "payload",
@@ -351,8 +388,9 @@ def _refs(value: Any) -> tuple[ResourceRef, ...]:
 
 
 class ConsoleReadRepository:
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(self, connection: sqlite3.Connection, *, writable: bool = False) -> None:
         self.connection = connection
+        self._restore_writes = writable
 
     @contextmanager
     def budget(self, milliseconds: int = 150, *, steps: int = 2_000_000) -> Iterator[None]:
@@ -364,6 +402,7 @@ class ConsoleReadRepository:
             remaining -= 1000
             return int(remaining < 0 or time.monotonic() > deadline)
 
+        was_query_only = bool(self.connection.execute("PRAGMA query_only").fetchone()[0])
         self.connection.execute("PRAGMA query_only=ON")
         self.connection.set_progress_handler(interrupted, 1000)
         try:
@@ -374,9 +413,13 @@ class ConsoleReadRepository:
             raise
         finally:
             self.connection.set_progress_handler(None, 0)
+            if self._restore_writes and not was_query_only:
+                # Preview selection shares the authorized write transaction;
+                # restore its mode only after the read-only scan has ended.
+                self.connection.execute("PRAGMA query_only=OFF")
 
     def _current(self, collection: str, tenant_id: str, identifier: str) -> dict[str, Any] | None:
-        spec = TABLES[collection]
+        spec = _read_spec(collection)
         row = self.connection.execute(
             f"SELECT * FROM {spec.table} WHERE tenant_id=? AND id=?", (tenant_id, identifier)
         ).fetchone()
@@ -388,7 +431,7 @@ class ConsoleReadRepository:
         current = self._current(collection, tenant_id, identifier)
         if current is None:
             return None
-        spec = TABLES[collection]
+        spec = _read_spec(collection)
         version = None
         if spec.history:
             if revision is None and "current_revision_id" in current:
@@ -675,7 +718,7 @@ class ConsoleReadRepository:
         *,
         historical: bool = False,
     ) -> ReadRecord:
-        spec = TABLES[collection]
+        spec = _read_spec(collection)
         row = {**current, **(version or {})}
         scope_values = {dimension: current.get(dimension) for dimension in OPTIONAL_DIMENSIONS}
         if collection in {"agents", "space-groups", "spaces", "sessions"}:
@@ -737,8 +780,26 @@ class ConsoleReadRepository:
             for key, kind in REFERENCE_FIELDS.items()
             if row.get(key) and key in spec.fields
         ]
+        if collection == "episodes":
+            requires.extend(
+                ResourceRef("entity", identifier)
+                for identifier in fields["participant_entity_ids"] or []
+            )
         if collection in {"steps", "dependencies", "triggers"}:
             requires.append(ResourceRef("task", current["task_id"]))
+        if collection == "triggers":
+            if row.get("task_step_id"):
+                requires.append(ResourceRef("task_step", str(row["task_step_id"])))
+            condition = _json(row.get("condition_spec"), {}) or {}
+            if row.get("kind") == "task_transition" and isinstance(condition, dict):
+                requires.extend(
+                    ResourceRef(kind, str(condition[key]))
+                    for key, kind in (
+                        ("task_id", "task"),
+                        ("task_step_id", "task_step"),
+                    )
+                    if condition.get(key)
+                )
         if collection == "cognitive-events":
             requires.append(ResourceRef(str(row["object_type"]), str(row["object_id"])))
         if collection == "candidates":
@@ -758,6 +819,19 @@ class ConsoleReadRepository:
             "artifact_refs",
         ):
             refs += _refs(_json(row.get(key), []))
+        if collection == "entities":
+            redirect = self.connection.execute(
+                "SELECT to_entity_id FROM entity_redirects WHERE tenant_id=? AND from_entity_id=?",
+                (current["tenant_id"], current["id"]),
+            ).fetchone()
+            # Today's redirect closure authorizes all historical versions too.
+            if redirect is not None:
+                requires.append(ResourceRef("entity", str(redirect[0])))
+            fields["redirect_entity_id"] = (
+                str(redirect[0])
+                if redirect is not None and row.get("state") == "redirected"
+                else None
+            )
         if collection == "artifacts":
             refs += _refs([_json(row.get("source_ref"), None)])
         if collection in {"claims", "relations"}:
@@ -785,14 +859,16 @@ class ConsoleReadRepository:
                 ResourceRef("observation", str(item[0]), int(item[1])) for item in evidence
             )
             requires.extend(refs)
-        if collection in {"persona", "persona-proposals"}:
+        if collection in {"persona", "persona-proposals", "persona-states"}:
             if collection == "persona":
                 meta = self.connection.execute(
-                    "SELECT source_refs_json FROM persona_revision_metadata WHERE revision_id=?",
+                    "SELECT source_refs_json,lifecycle_status FROM persona_revision_metadata "
+                    "WHERE revision_id=?",
                     (current["id"],),
                 ).fetchone()
                 if meta:
                     refs += _refs(_json(meta[0], []))
+                    row["status"] = str(meta[1])
             requires.extend(refs)
         if collection == "candidates":
             # Candidate payloads are not executable configuration. Only their

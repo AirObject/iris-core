@@ -23,7 +23,7 @@ import {
 } from "../components/core";
 import { OperationPanel } from "../components/Operation";
 import { Related } from "./Memory";
-import protocol from "../api/protocol.json";
+import protocol from "../api/protocol.json" with { type: "json" };
 type KeyView = components["schemas"]["KeyView"];
 const reasons = protocol.reason_codes;
 export function KeysPage() {

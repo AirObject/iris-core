@@ -1,0 +1,9 @@
+{
+  "child_expected_revision": 1,
+  "expected_revision": 1,
+  "fields": {
+    "stable_key": "step-1",
+    "title": "Deliver result"
+  },
+  "reason_code": "operator_request"
+}

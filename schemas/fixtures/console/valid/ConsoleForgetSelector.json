@@ -1,0 +1,7 @@
+{
+  "collection": "notes",
+  "filters": {
+    "q": "fixed match"
+  },
+  "sort": "created_at_desc"
+}

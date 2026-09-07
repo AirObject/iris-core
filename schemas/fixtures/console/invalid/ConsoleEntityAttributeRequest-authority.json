@@ -1,0 +1,11 @@
+{
+  "expected_attributes_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expected_revision": 1,
+  "fields": {
+    "authority": "forged",
+    "field": "display_name",
+    "mode": "confirmation",
+    "value": "Explicitly reviewed name"
+  },
+  "reason_code": "operator_request"
+}

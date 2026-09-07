@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import Request
 
+from iris_memory_core.api.console.contracts import contract_version
 from iris_memory_core.api.console.errors import request_id
 
 
@@ -24,7 +25,7 @@ def envelope(request: Request, data: object, *, now_us: int) -> dict[str, Any]:
         "data": data,
         "meta": {
             "request_id": request_id(request),
-            "contract_version": "1.0.0",
+            "contract_version": contract_version(),
             "as_of": timestamp(now_us),
         },
     }

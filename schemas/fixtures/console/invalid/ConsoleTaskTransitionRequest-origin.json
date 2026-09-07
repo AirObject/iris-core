@@ -1,0 +1,12 @@
+{
+  "completion_evidence_refs": [
+    {
+      "resource_id": "observation-1",
+      "resource_type": "observation"
+    }
+  ],
+  "expected_revision": 2,
+  "origin": "forged",
+  "reason_code": "operator_request",
+  "target_status": "completed"
+}

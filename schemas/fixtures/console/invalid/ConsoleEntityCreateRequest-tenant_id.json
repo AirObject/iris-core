@@ -1,0 +1,8 @@
+{
+  "fields": {
+    "display_name": "Reviewed person",
+    "kind": "person"
+  },
+  "reason_code": "operator_request",
+  "tenant_id": "forged"
+}

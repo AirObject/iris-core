@@ -69,8 +69,8 @@ def test_schema9_upgrade_preserves_bootstrap_bytes_pointer_and_hash(tmp_path: Pa
         .fetchone()
     )
 
-    applied = MigrationRunner(database).migrate()
-    assert [item.version for item in applied] == [10, 11, 12, 13, 14]
+    applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
+    assert [item.version for item in applied] == [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     connection = sqlite3.connect(database)
     try:
         after = connection.execute(
@@ -101,7 +101,7 @@ def test_schema9_upgrade_preserves_bootstrap_bytes_pointer_and_hash(tmp_path: Pa
 
 def test_backup_integrity_rejects_missing_current_persona_metadata(tmp_path: Path) -> None:
     database = _schema9_database(tmp_path)
-    MigrationRunner(database).migrate()
+    MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
     connection = sqlite3.connect(database)
     try:
         connection.execute("PRAGMA foreign_keys = OFF")

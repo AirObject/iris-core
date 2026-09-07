@@ -231,6 +231,7 @@ class TestFailClosed:
             phase8_handlers,
             phase9_handlers,
             phase10_handlers,
+            phase14_handlers,
         )
         from iris_memory_core.providers.cognitive import (
             DeterministicCognitiveProvider,
@@ -283,6 +284,7 @@ class TestFailClosed:
                     summarization=DeterministicCognitiveProvider(),
                 )
             ),
+            **phase14_handlers(jobs_ctx["store"], jobs_ctx["store"].clock, jobs_ctx["store"].ids),
         }
         assert frozenset(handlers) >= ENABLED_JOB_KINDS
         for kind in (
@@ -447,7 +449,11 @@ class TestRecallIntegration:
             ).read_text(encoding="utf-8")
         )
         recall_paths = sorted(path for path in openapi["paths"] if "recall" in path)
-        assert recall_paths == ["/v1/recall", "/v1/recall/{request_id}/usage"]
+        assert recall_paths == [
+            "/v1/recall",
+            "/v1/recall/{request_id}/usage",
+            "/v1/recall:revalidate",
+        ]
         search_paths = [path for path in openapi["paths"] if "search" in path]
         assert search_paths == ["/v1/search"]
         vector_paths = [path for path in openapi["paths"] if "vector" in path]

@@ -5,6 +5,7 @@ const schemas = JSON.parse(
 const body =
   JSON.stringify(
     {
+      contract_version: schemas.Meta.properties.contract_version.const,
       reason_codes: schemas.ReasonCode.enum,
       templates: schemas.KeyIssueRequest.properties.template.enum,
     },

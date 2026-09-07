@@ -1,0 +1,8 @@
+{
+  "expected_revision": 1,
+  "fields": {
+    "summary": "updated"
+  },
+  "origin": "forbidden",
+  "reason_code": "operator_request"
+}

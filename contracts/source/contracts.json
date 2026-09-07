@@ -11,12 +11,13 @@
     "bindings.v1",
     "claims.v1",
     "cognitive-events.v1",
-    "contract.negotiation",
     "consolidation.v1",
+    "contract.negotiation",
     "embedding.v1",
     "episodes.v1",
-    "events.sse.v1",
     "error-envelope.v1",
+    "events.checkpoint.v1",
+    "events.sse.v1",
     "focus-items.v1",
     "health.readiness.v2",
     "health.v1",
@@ -36,12 +37,13 @@
     "profile.v1",
     "provider-governance.v1",
     "recall.graph.v1",
+    "recall.revalidate.v1",
     "recall.usage.v1",
     "recall.v1",
     "recall.vector.v1",
     "recent-context.v1",
-    "relations.v1",
     "reflection.v1",
+    "relations.v1",
     "retention.v1",
     "schedules.v1",
     "search.fts.v1",
@@ -50,7 +52,7 @@
     "state.v1",
     "tasks.v1"
   ],
-  "contract_version": "1.9.0",
+  "contract_version": "1.10.0",
   "error_codes": [
     "access_denied",
     "artifact_invalid",
@@ -94,6 +96,6 @@
     "unsafe_procedure_claim",
     "unsupported_version"
   ],
-  "package_version": "0.11.0",
-  "schema_version": 11
+  "package_version": "0.13.0",
+  "schema_version": 20
 }

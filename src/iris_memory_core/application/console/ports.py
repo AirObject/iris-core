@@ -6,10 +6,58 @@ from contextlib import AbstractContextManager
 from typing import Protocol
 
 from iris_memory_core.application.console.resources import ReadLink, ReadQuery, ReadRecord
-from iris_memory_core.domain.console import OperatorGrant, OperatorKey, OperatorSession
+from iris_memory_core.domain.console import (
+    CommandPreview,
+    OperatorGrant,
+    OperatorKey,
+    OperatorSession,
+)
+from iris_memory_core.domain.console_operations import (
+    ConsoleOperation,
+    OperationProblem,
+    OperationSummary,
+)
+
+
+class ConsoleOperationRepository(Protocol):
+    def get(self, tenant_id: str, identifier: str) -> ConsoleOperation | None: ...
+    def insert(self, operation: ConsoleOperation) -> None: ...
+    def advance(self, operation: ConsoleOperation, *, expected_revision: int) -> None: ...
+    def list_owned(
+        self,
+        tenant_id: str,
+        key_id: str,
+        grant_fingerprint: str,
+        *,
+        key_revision: int,
+        status: str | None = None,
+        created_from: int | None = None,
+        created_before: int | None = None,
+        after: tuple[int, str] | None = None,
+        limit: int = 51,
+    ) -> tuple[OperationSummary, ...]: ...
+    def add_problem(self, problem: OperationProblem) -> None: ...
+    def problems(
+        self, operation_id: str, *, after: int = -2, limit: int = 51
+    ) -> tuple[OperationProblem, ...]: ...
 
 
 class ConsoleRepository(Protocol):
+    def command_preview(
+        self, tenant_id: str, key_id: str, identifier: str
+    ) -> CommandPreview | None: ...
+    def insert_command_preview(self, preview: CommandPreview) -> None: ...
+    def consume_command_preview(
+        self,
+        tenant_id: str,
+        key_id: str,
+        identifier: str,
+        preview_hash: str,
+        *,
+        now_us: int,
+        receipt_json: str,
+    ) -> None: ...
+    def prune_expired_command_previews(self, *, now_us: int) -> None: ...
     def pending_successor(self, key_id: str) -> OperatorKey | None: ...
     def expire_result(
         self, tenant_id: str, actor: str, operation: str, request_key: str, *, now_us: int

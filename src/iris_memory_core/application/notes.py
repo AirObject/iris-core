@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from iris_memory_core.application.ports import (
     Clock,
@@ -25,6 +25,7 @@ from iris_memory_core.application.ports import (
     Transaction,
     UnitOfWork,
 )
+from iris_memory_core.application.promotion import PromotionSource
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.application.write_support import (
     authorize_scope,
@@ -36,6 +37,7 @@ from iris_memory_core.application.write_support import (
     require_surface_online_in_tx,
 )
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.console import CommandActor
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     ConflictError,
@@ -114,6 +116,72 @@ class NoteService:
         self._surface = surface
 
     # -- create -----------------------------------------------------------
+
+    def create_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        fields: dict[str, Any],
+        *,
+        privacy_labels: list[str] | None = None,
+        source_refs: list[dict[str, Any]] | None = None,
+    ) -> tuple[str, str, list[str]]:
+        """Management seam called only inside ConsoleCommandExecutor's UoW."""
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.console.resources import ResourceRef
+
+        if actor.operation != "note.create" or not actor.scope.agent_id:
+            raise InvalidRequestError("invalid note creation command")
+        if not {"kind", "title"} <= fields.keys() or fields.keys() - {
+            "kind",
+            "title",
+            "body",
+            "importance",
+            "review_after_us",
+            "due_at_us",
+        }:
+            raise InvalidRequestError("invalid managed note fields")
+        kind, title = fields["kind"], fields["title"]
+        body, importance = fields.get("body", ""), fields.get("importance", 0.5)
+        if kind not in ALL_NOTE_KINDS:
+            raise InvalidRequestError("unknown note kind")
+        validate_note_content(title=title, body=body, importance=importance)
+        labels, refs = parse_privacy_labels(privacy_labels), parse_source_refs(source_refs)
+        target = CommandTarget(
+            "note",
+            actor.scope,
+            privacy_labels=labels,
+            source_refs=tuple(
+                ResourceRef(
+                    str(ref["resource_type"]),
+                    str(ref["resource_id"]),
+                    cast(int, ref["revision"]) if "revision" in ref else None,
+                )
+                for ref in refs
+            ),
+        )
+        access = command_access(tx, actor, target, now_us=self._clock.now_us())
+        payload = {
+            "agent_id": actor.scope.agent_id,
+            "space_id": actor.scope.space_id,
+            "session_id": actor.scope.session_id,
+            "kind": kind,
+            "title": title,
+            "body": body,
+            "importance": importance,
+            "review_after_us": fields.get("review_after_us"),
+            "due_at_us": fields.get("due_at_us"),
+            "privacy_labels": list(labels),
+            "source_refs": [dict(ref) for ref in refs],
+        }
+        return self._execute_create(
+            tx,
+            access,
+            payload,
+            lease_id=None,
+            lease_epoch=None,
+            command_actor=actor,
+        )
 
     def create(
         self,
@@ -220,6 +288,7 @@ class NoteService:
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         scope = authorize_scope(
             tx,
@@ -227,17 +296,32 @@ class NoteService:
             agent_id=payload["agent_id"],
             space_id=payload["space_id"],
             session_id=payload["session_id"],
+            space_group_id=command_actor.scope.space_group_id if command_actor else None,
         )
-        if not evaluate_privacy(tuple(payload["privacy_labels"]), scope, scope, access):
+        if command_actor is not None and scope != command_actor.scope:
+            raise AccessDeniedError("command scope changed")
+        # Console's explicit allow_restricted grant replaces only the host's
+        # admin-bit test for that label. All other domain privacy rules remain
+        # in force, including a qualified label matching the stored scope.
+        checked_labels = tuple(
+            label
+            for label in payload["privacy_labels"]
+            if command_actor is None or label != "restricted"
+        )
+        if not evaluate_privacy(checked_labels, scope, scope, access):
             raise AccessDeniedError("note privacy labels are outside the access context")
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            access.tenant_id,
-            payload["agent_id"],
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                access.tenant_id,
+                payload["agent_id"],
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
         now_us = self._clock.now_us()
         review_after = payload["review_after_us"]
@@ -248,6 +332,34 @@ class NoteService:
                 if payload["kind"] in PROMISE_KINDS
                 else now_us + 7 * 86_400_000_000
             )
+        note_id = self._write_new_note(
+            tx,
+            scope,
+            payload,
+            review_after=review_after,
+            audit_actor=command_actor.audit_actor
+            if command_actor
+            else f"access:{access.app_instance_id}",
+            reason_code=command_actor.reason_code if command_actor else "capture",
+            lease_warning=lease_warning,
+        )
+        return (
+            "note.created",
+            json.dumps({"note_id": note_id, "revision": 1}),
+            [f"note:{note_id}"],
+        )
+
+    @staticmethod
+    def _write_new_note(
+        tx: Transaction,
+        scope: Scope,
+        payload: dict[str, Any],
+        *,
+        review_after: int,
+        audit_actor: str,
+        reason_code: str,
+        lease_warning: str | None,
+    ) -> str:
         scope_key = note_scope_key(
             scope.tenant_id,
             scope.agent_id or "",
@@ -292,18 +404,18 @@ class NoteService:
             promotion_target_id=None,
             archived_us=None,
             content_hash=digest,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=audit_actor,
         )
         if tx.notes.set_initial_pointer(note_id, revision_id) != 1:
             raise ConflictError("note creation raced inside the transaction")
         tx.advance_watermark(scope.tenant_id, scope.agent_id or "", [("note", note_id, 1)])
         tx.audit(
             tenant_id=scope.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=audit_actor,
             action="note.created",
             resource_type="note",
             resource_id=note_id,
-            reason_code="capture",
+            reason_code=reason_code,
             details={
                 "kind": payload["kind"],
                 "title_hash": _hash_id(payload["title"]),
@@ -321,13 +433,204 @@ class NoteService:
             source_revision=1,
             payload={"note_id": note_id, "revision": 1},
         )
+        return note_id
+
+    @staticmethod
+    def _create_from_promotion(
+        tx: Transaction,
+        *,
+        source: PromotionSource,
+        actor: str,
+        now_us: int,
+    ) -> str:
+        kind = "question" if source.kind == "question" else "important"
+        payload = {
+            "kind": kind,
+            "title": source.title,
+            "body": source.body,
+            "importance": source.importance,
+            "privacy_labels": source.privacy_labels,
+            "source_refs": source.target_refs,
+            "due_at_us": source.due_at_us,
+        }
+        validate_note_content(title=source.title, body=source.body, importance=source.importance)
+        identifier = NoteService._write_new_note(
+            tx,
+            source.scope,
+            payload,
+            review_after=now_us + 7 * 86_400_000_000,
+            audit_actor=actor,
+            reason_code=f"{source.name}_promotion",
+            lease_warning=None,
+        )
+        tx.insert_resource_link(
+            tenant_id=source.tenant_id,
+            source_type=source.resource_type,
+            source_id=source.id,
+            target_type="note",
+            target_id=identifier,
+            relation="promoted_to",
+        )
+        return identifier
+
+    def annotate_observation_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        observation_id: str,
+        *,
+        expected_revision: int,
+        fields: dict[str, Any],
+    ) -> tuple[str, str, list[str]]:
+        """Append an operator Note without editing the original Observation."""
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.console.resources import ResourceRef
+        from iris_memory_core.domain.errors import RevisionMismatchError
+
+        if actor.operation != "observation.annotate" or not actor.scope.agent_id:
+            raise InvalidRequestError("invalid observation annotation command")
+        if not {"title", "body"} <= fields.keys() or fields.keys() - {
+            "title",
+            "body",
+            "importance",
+        }:
+            raise InvalidRequestError("invalid annotation fields")
+        validate_note_content(
+            title=fields["title"], body=fields["body"], importance=fields.get("importance", 0.5)
+        )
+        if (
+            not isinstance(expected_revision, int)
+            or isinstance(expected_revision, bool)
+            or expected_revision < 1
+        ):
+            raise InvalidRequestError("invalid expected revision")
+        now_us = self._clock.now_us()
+        command_access(
+            tx,
+            actor,
+            CommandTarget(
+                "observation",
+                actor.scope,
+                resource_id=observation_id,
+                source_refs=(ResourceRef("observation", observation_id),),
+            ),
+            now_us=now_us,
+        )
+        source = tx.console_reads.get("observations", actor.tenant_id, observation_id)
+        if source is None or source.scope != actor.scope:
+            raise NotFoundError("annotation source not found")
+        if source.revision != expected_revision:
+            raise RevisionMismatchError(
+                "observation", observation_id, expected_revision, source.revision
+            )
+        identifier = self._write_new_note(
+            tx,
+            source.scope,
+            {
+                "kind": "important",
+                "title": fields["title"],
+                "body": fields["body"],
+                "importance": fields.get("importance", 0.5),
+                "privacy_labels": source.privacy_labels,
+                "source_refs": (
+                    {
+                        "resource_type": "observation",
+                        "resource_id": observation_id,
+                        "revision": source.revision,
+                    },
+                ),
+                "due_at_us": None,
+            },
+            review_after=now_us + 7 * 86_400_000_000,
+            audit_actor=actor.audit_actor,
+            reason_code=actor.reason_code,
+            lease_warning=None,
+        )
+        tx.insert_resource_link(
+            tenant_id=actor.tenant_id,
+            source_type="observation",
+            source_id=observation_id,
+            target_type="note",
+            target_id=identifier,
+            relation="annotated_by",
+        )
         return (
-            "note.created",
-            json.dumps({"note_id": note_id, "revision": 1}),
-            [f"note:{note_id}"],
+            "observation.annotated",
+            json.dumps({"resource_type": "note", "resource_id": identifier, "revision": 1}),
+            [f"note:{identifier}"],
         )
 
     # -- update / transitions ----------------------------------------------
+
+    def mutate_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        note_id: str,
+        *,
+        expected_revision: int,
+        fields: dict[str, Any],
+    ) -> tuple[str, str, list[str]]:
+        """Validated management edits reuse the online transaction implementation."""
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise InvalidRequestError("expected revision must be positive")
+        if actor.operation == "note.update":
+            allowed = {"title", "body", "importance", "review_after_us", "due_at_us"}
+            if not fields or fields.keys() - allowed or any(v is None for v in fields.values()):
+                raise InvalidRequestError("invalid managed note update fields")
+            payload = {key: fields.get(key) for key in allowed}
+            payload.update(note_id=note_id, expected_revision=expected_revision)
+            return self._execute_update(
+                tx, None, payload, lease_id=None, lease_epoch=None, command_actor=actor
+            )
+        if (
+            actor.operation != "note.transition"
+            or "target_status" not in fields
+            or fields.keys() - {"target_status", "snooze_until_us", "promotion_target_type"}
+        ):
+            raise InvalidRequestError("invalid managed note transition")
+        if fields["target_status"] not in {"inbox", "pinned", "snoozed", "archived", "promoted"}:
+            raise InvalidRequestError("invalid managed note target")
+        return self._execute_transition(
+            tx,
+            None,
+            {
+                "note_id": note_id,
+                "expected_revision": expected_revision,
+                "target": fields["target_status"],
+                "reason": actor.reason_code,
+                "snooze_until_us": fields.get("snooze_until_us"),
+                "promotion_target_type": fields.get("promotion_target_type"),
+            },
+            lease_id=None,
+            lease_epoch=None,
+            command_actor=actor,
+        )
+
+    def _command_note_access(
+        self, tx: Transaction, actor: CommandActor, note: NoteCurrent, operation: str
+    ) -> AccessContext:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+        from iris_memory_core.application.console.resources import ResourceRef
+
+        if actor.operation != operation or actor.scope != _note_scope(note):
+            raise AccessDeniedError("command scope or operation mismatch")
+        current = tx.notes.current_revision_row(note.id)
+        target = CommandTarget(
+            "note",
+            _note_scope(note),
+            privacy_labels=current.privacy_labels,
+            source_refs=tuple(
+                ResourceRef(
+                    str(ref["resource_type"]),
+                    str(ref["resource_id"]),
+                    cast(int, ref.get("revision")),
+                )
+                for ref in current.source_refs
+            ),
+            resource_id=note.id,
+        )
+        return command_access(tx, actor, target, now_us=self._clock.now_us())
 
     def update(
         self,
@@ -395,22 +698,34 @@ class NoteService:
     def _execute_update(
         self,
         tx: Transaction,
-        access: AccessContext,
+        access: AccessContext | None,
         payload: dict[str, Any],
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         note = tx.notes.get(payload["note_id"])
-        current = _require_note_access(tx, access, note)
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            note.tenant_id,
-            note.agent_id,
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        if command_actor is not None:
+            access = self._command_note_access(tx, command_actor, note, "note.update")
+        if access is None:
+            raise AccessDeniedError("missing note authorization")
+        current = _require_note_access(tx, access, note, managed=command_actor is not None)
+        audit_actor = (
+            command_actor.audit_actor if command_actor else f"access:{access.app_instance_id}"
+        )
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                note.tenant_id,
+                note.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
         if note.status not in (NoteStatus.INBOX.value, NoteStatus.PINNED.value):
             raise InvalidTransitionError(
@@ -452,7 +767,7 @@ class NoteService:
             promotion_target_id=current.promotion_target_id,
             archived_us=current.archived_us,
             content_hash=digest,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=audit_actor,
         )
         if (
             tx.notes.advance_pointer(
@@ -476,11 +791,11 @@ class NoteService:
         )
         tx.audit(
             tenant_id=note.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=audit_actor,
             action="note.updated",
             resource_type="note",
             resource_id=note.id,
-            reason_code="capture_edit",
+            reason_code=command_actor.reason_code if command_actor else "capture_edit",
             details={"fields": changed, "lease_warning": lease_warning},
             revision=revision,
         )
@@ -576,22 +891,34 @@ class NoteService:
     def _execute_transition(
         self,
         tx: Transaction,
-        access: AccessContext,
+        access: AccessContext | None,
         payload: dict[str, Any],
         *,
         lease_id: str | None,
         lease_epoch: int | None,
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
         note = tx.notes.get(payload["note_id"])
-        current = _require_note_access(tx, access, note)
-        lease_warning = require_surface_online_in_tx(
-            self._surface,
-            tx,
-            note.tenant_id,
-            note.agent_id,
-            lease_id=lease_id,
-            lease_epoch=lease_epoch,
-            app_instance_id=access.app_instance_id,
+        if command_actor is not None:
+            access = self._command_note_access(tx, command_actor, note, "note.transition")
+        if access is None:
+            raise AccessDeniedError("missing note authorization")
+        current = _require_note_access(tx, access, note, managed=command_actor is not None)
+        audit_actor = (
+            command_actor.audit_actor if command_actor else f"access:{access.app_instance_id}"
+        )
+        lease_warning = (
+            None
+            if command_actor
+            else require_surface_online_in_tx(
+                self._surface,
+                tx,
+                note.tenant_id,
+                note.agent_id,
+                lease_id=lease_id,
+                lease_epoch=lease_epoch,
+                app_instance_id=access.app_instance_id,
+            )
         )
         target = payload["target"]
         snooze_until = payload["snooze_until_us"]
@@ -634,7 +961,7 @@ class NoteService:
                 tx,
                 note=note,
                 current=current,
-                actor=f"access:{access.app_instance_id}",
+                actor=audit_actor,
                 now_us=now_us,
             )
             promotion_target_id = task_id
@@ -650,7 +977,7 @@ class NoteService:
                 tx,
                 note=note,
                 current=current,
-                actor=f"access:{access.app_instance_id}",
+                actor=audit_actor,
                 now_us=now_us,
             )
             promotion_target_id = claim_id
@@ -662,7 +989,7 @@ class NoteService:
                 tx,
                 note=note,
                 current=current,
-                actor=f"access:{access.app_instance_id}",
+                actor=audit_actor,
                 now_us=now_us,
             )
             promotion_target_id = episode_id
@@ -685,7 +1012,7 @@ class NoteService:
             promotion_target_id=promotion_target_id,
             archived_us=now_us if target == NoteStatus.ARCHIVED.value else current.archived_us,
             content_hash=current.content_hash,
-            created_by=f"access:{access.app_instance_id}",
+            created_by=audit_actor,
         )
         if (
             tx.notes.advance_pointer(
@@ -711,7 +1038,7 @@ class NoteService:
             details["promotion_target_id"] = promotion_target_id
         tx.audit(
             tenant_id=note.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=audit_actor,
             action=action,
             resource_type="note",
             resource_id=note.id,
@@ -1105,6 +1432,7 @@ def _require_note_access(
     note: NoteCurrent,
     *,
     revision_id: str | None = None,
+    managed: bool = False,
 ) -> NoteRevision:
     """Authorize one content-bearing note read/mutation at call time."""
     require_same_tenant_agent(
@@ -1118,7 +1446,10 @@ def _require_note_access(
         raise ConflictError("note revision does not belong to the requested note")
     note_scope = _note_scope(note)
     for candidate in (current, checked):
-        if not evaluate_privacy(candidate.privacy_labels, note_scope, note_scope, access):
+        labels = tuple(
+            label for label in candidate.privacy_labels if not managed or label != "restricted"
+        )
+        if not evaluate_privacy(labels, note_scope, note_scope, access):
             raise AccessDeniedError("note's privacy labels are outside the access context")
     return checked
 

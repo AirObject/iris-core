@@ -1,10 +1,11 @@
 UV := UV_CACHE_DIR=.uv-cache uv
 
-.PHONY: bootstrap format format-check lint typecheck contracts contracts-check test sdk-test ci clean
+.PHONY: bootstrap format format-check lint typecheck contracts contracts-check public-api-check test sdk-test console-check console-browser package-check ci clean
 
 bootstrap:
 	$(UV) sync --group dev --frozen
 	npm ci --prefix sdk/typescript
+	npm ci --prefix web/console
 
 format:
 	$(UV) run ruff format .
@@ -29,13 +30,25 @@ contracts-check:
 	$(UV) run python -m tools.generate_contracts --check
 	$(UV) run python -m tools.check_compatibility
 
+public-api-check:
+	$(UV) run python -m tools.check_public_api
+
 test:
 	$(UV) run pytest
 
 sdk-test:
 	npm test --prefix sdk/typescript
 
-ci: format-check lint typecheck contracts-check test sdk-test
+console-check:
+	npm run check --prefix web/console
+
+console-browser: console-check
+	npm run test:browser --prefix web/console
+
+package-check:
+	$(UV) run python -m tools.check_packages
+
+ci: format-check lint typecheck contracts-check public-api-check test sdk-test console-browser package-check
 
 clean:
 	$(UV) cache clean

@@ -1,3 +1,4 @@
+import { CONTRACT_VERSION } from "../api/client";
 /** Stateful in-memory transport; imported only by explicit Vite dev mock mode or tests. */
 import type { Transport } from "../api/client";
 import type {
@@ -124,7 +125,7 @@ export function createMockTransport(options: MockOptions = {}): Transport {
                 ? { descriptor: { ...data, items: undefined } }
                 : {}),
               request_id: `mock-request-${++sequence}`,
-              contract_version: "1.0.0",
+              contract_version: CONTRACT_VERSION,
               as_of: now(),
               page: { has_more: false, next_cursor: null, limit: 50 },
               warnings: ["mock_data"],
@@ -270,7 +271,7 @@ export function createMockTransport(options: MockOptions = {}): Transport {
     };
     if (path === "/bootstrap")
       return reply({
-        contract_version: "1.0.0",
+        contract_version: CONTRACT_VERSION,
         permissions,
         modules: [
           "memory",

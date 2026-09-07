@@ -198,6 +198,7 @@ class TestJobKindRegistry:
                     "memory.reconciliation",
                     "reflection.generate",
                     "persona.evaluation",
+                    "console.memory_forget",
                 }
             )
             == ENABLED_JOB_KINDS

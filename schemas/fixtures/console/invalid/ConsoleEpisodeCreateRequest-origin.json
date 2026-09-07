@@ -1,0 +1,18 @@
+{
+  "fields": {
+    "observation_refs": [
+      {
+        "resource_id": "observation-1",
+        "resource_type": "observation",
+        "revision": 1
+      }
+    ],
+    "summary": "A bounded episode",
+    "title": "Current experience"
+  },
+  "origin": "forged",
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "01a07600-0000-7000-8000-000000000001"
+  }
+}

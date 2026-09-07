@@ -29,6 +29,7 @@ from iris_memory_core.application.write_support import (
     require_surface_online_in_tx,
 )
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.console import CommandActor
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     ConflictError,
@@ -55,6 +56,7 @@ from iris_memory_core.domain.event import (
     validate_event_transition,
 )
 from iris_memory_core.domain.hashing import request_fingerprint
+from iris_memory_core.domain.scope import Scope, scope_allows
 from iris_memory_core.domain.surface import SurfaceMode
 
 
@@ -919,14 +921,92 @@ class CognitiveEventService:
             [f"cognitive_event:{event.id}"],
         )
 
-    def _transition_status(
+    def dismiss_for_command(
         self,
+        tx: Transaction,
+        actor: CommandActor,
+        event_id: str,
+        *,
+        expected_revision: int,
+    ) -> tuple[str, str, list[str]]:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+
+        if (
+            actor.operation != "cognitive_event.dismiss"
+            or type(expected_revision) is not int
+            or expected_revision < 1
+        ):
+            raise InvalidRequestError("invalid event dismissal command")
+        event = tx.events.get(event_id)
+        now = self._clock.now_us()
+        access = command_access(
+            tx,
+            actor,
+            CommandTarget(
+                "cognitive_event",
+                Scope(
+                    event.tenant_id,
+                    event.agent_id,
+                    event.space_group_id,
+                    event.space_id,
+                    event.session_id,
+                ),
+                resource_id=event_id,
+            ),
+            now_us=now,
+        )
+        _require_event_access(tx, access, event)
+        if event.current_revision != expected_revision:
+            raise ConflictError("cognitive event changed before dismissal")
+        # The existing transition validates pending/delivered only. It keeps
+        # delivery history and never acknowledges or completes the object.
+        changed = self._transition_status(
+            tx,
+            event,
+            EventStatus.CANCELLED.value,
+            reason_code=actor.reason_code,
+            now_us=now,
+            actor=actor.audit_actor,
+        )
+        if changed is None:
+            raise ConflictError("cognitive event dismissal lost the CAS race")
+        return (
+            "cognitive_event.cancelled",
+            json.dumps({"event_id": event_id, "revision": expected_revision + 1}),
+            [f"cognitive_event:{event_id}"],
+        )
+
+    @staticmethod
+    def cancel_for_forget(
+        tx: Transaction,
+        event: CognitiveEventCurrent,
+        *,
+        now_us: int,
+        actor: str,
+        reason_code: str,
+    ) -> None:
+        if event.status not in {"pending", "delivered"}:
+            return
+        changed = CognitiveEventService._transition_status(
+            tx,
+            event,
+            EventStatus.CANCELLED.value,
+            reason_code=reason_code,
+            now_us=now_us,
+            actor=actor,
+        )
+        if changed is None:
+            raise ConflictError("Task event cancellation lost the CAS race")
+
+    @staticmethod
+    def _transition_status(
         tx: Transaction,
         event: CognitiveEventCurrent,
         target: str,
         *,
         reason_code: str,
         now_us: int,
+        actor: str = "core:expiry_sweep",
     ) -> str | None:
         validate_event_transition(event.status, target)
         revision = event.current_revision + 1
@@ -942,7 +1022,7 @@ class CognitiveEventService:
             ack_id=event.ack_id,
             acknowledged_us=event.acknowledged_us,
             reason_code=reason_code,
-            created_by="core:expiry_sweep",
+            created_by=actor,
         )
         if (
             tx.events.advance_pointer(
@@ -963,7 +1043,7 @@ class CognitiveEventService:
         )
         tx.audit(
             tenant_id=event.tenant_id,
-            actor="core:expiry_sweep",
+            actor=actor,
             action=f"cognitive_event.{target}",
             resource_type="cognitive_event",
             resource_id=event.id,
@@ -1128,6 +1208,39 @@ class CognitiveEventService:
                 continue
             visible.append((event, tx.events.current_revision_row(event.id)))
         return visible
+
+    @staticmethod
+    def pending_ids_current_in_tx(
+        tx: Transaction,
+        access: AccessContext,
+        identifiers: tuple[str, ...],
+        *,
+        request_scope: Scope,
+        now_us: int,
+    ) -> bool:
+        """Revalidate the original bounded ID set without selecting new events."""
+        if len(identifiers) > 50:
+            return False
+        for identifier in identifiers:
+            try:
+                event = tx.events.get(identifier)
+                _require_event_access(tx, access, event)
+            except (NotFoundError, AccessDeniedError):
+                return False
+            scope = Scope(
+                event.tenant_id,
+                event.agent_id,
+                event.space_group_id,
+                event.space_id,
+                event.session_id,
+            )
+            if (
+                event.status != "pending"
+                or not scope_allows(scope, request_scope)
+                or (event.expires_us is not None and event.expires_us <= now_us)
+            ):
+                return False
+        return True
 
     def pending_event_ids_for_request_scope(
         self,

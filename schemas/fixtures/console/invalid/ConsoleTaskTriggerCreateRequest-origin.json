@@ -1,0 +1,11 @@
+{
+  "expected_revision": 1,
+  "fields": {
+    "kind": "at_time",
+    "schedule_spec": {
+      "at_us": 1700000000000000
+    }
+  },
+  "origin": "console",
+  "reason_code": "operator_request"
+}

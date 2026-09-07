@@ -1,3 +1,4 @@
+import { CONTRACT_VERSION } from "../src/api/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConsoleClient, ApiError, type Transport } from "../src/api/client";
 import { createMockTransport } from "../src/mock/server";
@@ -8,7 +9,7 @@ const response = (data: unknown, status = 200) =>
       data,
       meta: {
         request_id: "req",
-        contract_version: "1.0.0",
+        contract_version: CONTRACT_VERSION,
         as_of: "2026-09-06T00:00:00.123456Z",
         warnings: ["test-warning"],
       },

@@ -39,12 +39,14 @@ from iris_memory_core.application.write_support import (
     require_surface_online_in_tx,
 )
 from iris_memory_core.domain.access import AccessContext
+from iris_memory_core.domain.console import CommandActor
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     ConflictError,
     IdempotencyUnavailableError,
     InvalidRequestError,
     NotFoundError,
+    NotReadyError,
     require_reason,
 )
 from iris_memory_core.domain.jobs import JOB_PAYLOAD_VERSION, NewOutboxJob
@@ -82,6 +84,13 @@ FORGETTABLE_RESOURCE_TYPES = frozenset(
     {"claim", "episode", "relation", "note", "observation", "artifact"}
 )
 
+MANAGED_FORGETTABLE_RESOURCE_TYPES = FORGETTABLE_RESOURCE_TYPES | {
+    "focus_item",
+    "state_record",
+    "task",
+}
+
+
 #: Maximum resources one forget selector may resolve in a single transaction.
 MAX_FORGET_TARGETS = 5_000
 
@@ -111,6 +120,7 @@ class _ForgetTarget:
     session_id: str | None
     subject_entity_id: str | None
     protected_reason: str | None
+    exists: bool = True
 
 
 def _hold_blocks(
@@ -417,6 +427,101 @@ class ForgetService:
 
     # -- public entry -----------------------------------------------------------
 
+    def _authorize_forget_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        resource_type: str,
+        resource_id: str,
+    ) -> tuple[AccessContext, ForgetSelector, _ForgetTarget]:
+        from iris_memory_core.application.console.commands import CommandTarget, command_access
+
+        if (
+            resource_type not in MANAGED_FORGETTABLE_RESOURCE_TYPES
+            or actor.operation != resource_type + ".forget"
+        ):
+            raise InvalidRequestError("invalid managed forget target")
+        access = command_access(
+            tx,
+            actor,
+            CommandTarget(
+                resource_type,
+                actor.scope,
+                resource_id=resource_id,
+                namespace=tx.states.get(resource_id).namespace
+                if resource_type == "state_record"
+                else None,
+            ),
+            now_us=self._clock.now_us(),
+        )
+        selector = ForgetSelector(
+            kind=ForgetSelectorKind.RESOURCE.value,
+            resource_type=resource_type,
+            resource_id=resource_id,
+        )
+        targets = self._resolve_targets(tx, actor.tenant_id, selector)
+        if (
+            len(targets) != 1
+            or targets[0].resource_id != resource_id
+            or targets[0].resource_type != resource_type
+        ):
+            raise NotFoundError("forget target not found")
+        return access, selector, targets[0]
+
+    def preview_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        resource_type: str,
+        resource_id: str,
+    ) -> str:
+        _, _, target = self._authorize_forget_command(tx, actor, resource_type, resource_id)
+        if target.protected_reason is not None:
+            return "protected"
+        holds = tx.retention.active_holds(actor.tenant_id, limit=501)
+        if len(holds) > 500:
+            raise NotReadyError("Console legal hold query exceeds its budget")
+        return (
+            "held"
+            if _hold_blocks(
+                holds,
+                space_id=target.space_id,
+                session_id=target.session_id,
+                subject_entity_id=target.subject_entity_id,
+            )
+            else "allowed"
+        )
+
+    def forget_for_command(
+        self,
+        tx: Transaction,
+        actor: CommandActor,
+        resource_type: str,
+        resource_id: str,
+        *,
+        erase_content: bool,
+        request_key: str,
+    ) -> ForgetResult:
+        access, selector, _ = self._authorize_forget_command(tx, actor, resource_type, resource_id)
+        _, body, _ = self._execute_forget(
+            tx,
+            access,
+            selector,
+            reason_code=actor.reason_code,
+            erase_content=erase_content,
+            lease_id=None,
+            lease_epoch=None,
+            gate_agent_id=actor.scope.agent_id or "",
+            idempotency_key=request_key,
+            command_actor=actor,
+        )
+        return self._result_from_body(json.loads(body), replayed=False)
+
+    def cleanup_for_command(
+        self, tenant_id: str, result: ForgetResult, *, erase_content: bool
+    ) -> None:
+        self._cleanup_local_blob_tombstones(tenant_id, result, erase_content=erase_content)
+
     def forget(
         self,
         access: AccessContext,
@@ -597,9 +702,25 @@ class ForgetService:
         lease_epoch: int | None,
         gate_agent_id: str,
         idempotency_key: str = "",
+        command_actor: CommandActor | None = None,
     ) -> tuple[str, str, list[str]]:
-        self._authorize_selector(tx, access, selector)
-        if selector.kind in APP_PLANE_SELECTOR_KINDS:
+        if command_actor is None:
+            self._authorize_selector(tx, access, selector)
+        else:
+            if selector.kind != ForgetSelectorKind.RESOURCE.value:
+                raise InvalidRequestError("managed forget requires one fixed resource")
+            access, _, _ = self._authorize_forget_command(
+                tx,
+                command_actor,
+                selector.resource_type or "",
+                selector.resource_id or "",
+            )
+        audit_actor = (
+            command_actor.audit_actor
+            if command_actor is not None
+            else f"access:{access.app_instance_id}"
+        )
+        if selector.kind in APP_PLANE_SELECTOR_KINDS and command_actor is None:
             require_surface_online_in_tx(
                 self._surface,
                 tx,
@@ -650,7 +771,7 @@ class ForgetService:
             if tx.is_tombstoned(access.tenant_id, selector.resource_type, selector.resource_id):
                 raise NotFoundError("resource already forgotten")
         targets = self._resolve_targets(tx, access.tenant_id, selector)
-        if not access.admin:
+        if not access.admin and command_actor is None:
             # App-plane authorization final check, per target: subject+predicate
             # selectors resolve by agent only, so the caller's SPACE envelope
             # is enforced here — fail-closed, never a silent skip (§19.3).
@@ -666,7 +787,13 @@ class ForgetService:
                 f"forget selector resolved more than {MAX_FORGET_TARGETS} targets; "
                 "narrow the selector or use the management plane"
             )
-        holds = tx.retention.active_holds(access.tenant_id)
+        holds = (
+            tx.retention.active_holds(access.tenant_id)
+            if command_actor is None
+            else tx.retention.active_holds(access.tenant_id, limit=501)
+        )
+        if command_actor is not None and len(holds) > 500:
+            raise NotReadyError("Console legal hold query exceeds its budget")
         seq_before = tx.tombstone_watermark()
         erased = 0
         protected_skipped = 0
@@ -722,7 +849,7 @@ class ForgetService:
                 now_us=now_us,
                 erase_content=erase_content,
                 reason_code=reason_code,
-                actor=f"access:{access.app_instance_id}",
+                actor=audit_actor,
                 watermark_entries=watermark_entries,
                 invalidated=invalidated,
                 cascade_candidates=cascade_candidates,
@@ -736,7 +863,7 @@ class ForgetService:
             tx,
             access.tenant_id,
             now_us=now_us,
-            actor=f"access:{access.app_instance_id}",
+            actor=audit_actor,
             watermark_entries=watermark_entries,
             cascade_candidates=cascade_candidates,
             relation_cascade_candidates=relation_cascade_candidates,
@@ -745,7 +872,7 @@ class ForgetService:
             tx,
             access.tenant_id,
             now_us=now_us,
-            actor=f"access:{access.app_instance_id}",
+            actor=audit_actor,
             watermark_entries=watermark_entries,
             cascade_candidates=relation_cascade_candidates,
         )
@@ -759,7 +886,7 @@ class ForgetService:
             selector_key=selector.selector_key(),
             selector_json=json.dumps(selector.as_audit_details(), sort_keys=True),
             reason_code=reason_code,
-            requested_by=f"access:{access.app_instance_id}",
+            requested_by=audit_actor,
             created_us=now_us,
             tombstone_seq_lo=seq_lo,
             tombstone_seq_hi=seq_after,
@@ -775,7 +902,7 @@ class ForgetService:
             tx.advance_watermark(tenant_id, agent_id, entries)
         tx.audit(
             tenant_id=access.tenant_id,
-            actor=f"access:{access.app_instance_id}",
+            actor=audit_actor,
             action="memory.forgotten",
             resource_type="forget_request",
             resource_id=ledger.id,
@@ -819,7 +946,12 @@ class ForgetService:
         )
 
     def _resolve_targets(
-        self, tx: Transaction, tenant_id: str, selector: ForgetSelector
+        self,
+        tx: Transaction,
+        tenant_id: str,
+        selector: ForgetSelector,
+        *,
+        allow_missing_working_set: bool = False,
     ) -> list[_ForgetTarget]:
         targets: list[_ForgetTarget] = []
         seen: set[tuple[str, str]] = set()
@@ -833,6 +965,7 @@ class ForgetService:
             session_id: str | None,
             subject_entity_id: str | None = None,
             protected_reason: str | None = None,
+            exists: bool = True,
         ) -> None:
             if (resource_type, resource_id) in seen:
                 return
@@ -846,6 +979,7 @@ class ForgetService:
                     session_id=session_id,
                     subject_entity_id=subject_entity_id,
                     protected_reason=protected_reason,
+                    exists=exists,
                 )
             )
 
@@ -936,6 +1070,92 @@ class ForgetService:
                 relation_target(selector.resource_id)
             elif selector.resource_type == "observation":
                 observation_target(tx.observations.get(selector.resource_id))
+            elif selector.resource_type == "focus_item":
+                try:
+                    focus = tx.focus.get(selector.resource_id)
+                except NotFoundError:
+                    if not allow_missing_working_set:
+                        raise
+                    add(
+                        "focus_item",
+                        selector.resource_id,
+                        agent_id="",
+                        space_id=None,
+                        session_id=None,
+                        exists=False,
+                    )
+                else:
+                    if focus.tenant_id != tenant_id:
+                        raise AccessDeniedError("cross-tenant focus deletion")
+                    add(
+                        "focus_item",
+                        focus.id,
+                        agent_id=focus.agent_id,
+                        space_id=focus.space_id,
+                        session_id=focus.session_id,
+                    )
+            elif selector.resource_type == "task":
+                from iris_memory_core.application.task_deletion import protected_reason
+
+                try:
+                    task = tx.tasks.get_task(selector.resource_id)
+                except NotFoundError:
+                    if not allow_missing_working_set:
+                        raise
+                    add(
+                        "task",
+                        selector.resource_id,
+                        agent_id="",
+                        space_id=None,
+                        session_id=None,
+                        exists=False,
+                    )
+                else:
+                    if task.tenant_id != tenant_id:
+                        raise AccessDeniedError("cross-tenant Task deletion")
+                    add(
+                        "task",
+                        task.id,
+                        agent_id=task.agent_id,
+                        space_id=task.space_id,
+                        session_id=task.session_id,
+                        subject_entity_id=task.owner_entity_id,
+                        protected_reason=protected_reason(tx, task)
+                        if not allow_missing_working_set
+                        else None,
+                    )
+            elif selector.resource_type == "state_record":
+                from iris_memory_core.domain.state import resolve_namespace_policy
+
+                try:
+                    state = tx.states.get(selector.resource_id)
+                except NotFoundError:
+                    if not allow_missing_working_set:
+                        raise
+                    add(
+                        "state_record",
+                        selector.resource_id,
+                        agent_id="",
+                        space_id=None,
+                        session_id=None,
+                        exists=False,
+                    )
+                else:
+                    if state.tenant_id != tenant_id:
+                        raise AccessDeniedError("cross-tenant State deletion")
+                    policy = resolve_namespace_policy(
+                        state.namespace, tx.states.policy(tenant_id, state.namespace)
+                    )
+                    add(
+                        "state_record",
+                        state.id,
+                        agent_id=state.agent_id or "",
+                        space_id=state.space_id,
+                        session_id=state.session_id,
+                        protected_reason=None
+                        if "user" in policy.allowed_source_authorities
+                        else "state_namespace_protected",
+                    )
             else:
                 artifact_target(selector.resource_id)
         elif selector.kind == ForgetSelectorKind.SUBJECT_PREDICATE.value:
@@ -1071,6 +1291,46 @@ class ForgetService:
             revision = observation.revision
             if erase_content:
                 tx.observations.scrub_content(resource_id)
+        elif resource_type == "focus_item":
+            try:
+                focus = tx.focus.get(resource_id)
+            except NotFoundError:
+                if target.exists:
+                    raise
+            else:
+                revision = focus.current_revision
+                if erase_content:
+                    tx.focus.erase_content(resource_id, now_us=now_us)
+        elif resource_type == "task":
+            from iris_memory_core.application.task_deletion import cascade
+
+            try:
+                task = tx.tasks.get_task(resource_id)
+            except NotFoundError:
+                if target.exists:
+                    raise
+            else:
+                revision = task.current_revision
+                children = cascade(
+                    tx,
+                    task,
+                    erase_content=erase_content,
+                    now_us=now_us,
+                    actor=actor,
+                    reason_code=reason_code,
+                )
+                watermark_entries.setdefault((tenant_id, task.agent_id), []).extend(children)
+                invalidated.extend((kind, identifier) for kind, identifier, _ in children)
+        elif resource_type == "state_record":
+            try:
+                state = tx.states.get(resource_id)
+            except NotFoundError:
+                if target.exists:
+                    raise
+            else:
+                revision = state.current_revision
+                if erase_content:
+                    tx.states.erase_content(resource_id, now_us=now_us)
         elif resource_type == "artifact":
             if erase_content:
                 tx.artifacts.tombstone_row(resource_id, now_us=now_us)
@@ -1093,9 +1353,10 @@ class ForgetService:
         tx.relations.invalidate_evidence_for_source(
             tenant_id, resource_type, resource_id, now_us=now_us
         )
-        watermark_entries.setdefault((tenant_id, target.agent_id), []).append(
-            (resource_type, resource_id, revision)
-        )
+        if target.exists:
+            watermark_entries.setdefault((tenant_id, target.agent_id), []).append(
+                (resource_type, resource_id, revision)
+            )
         invalidated.append((resource_type, resource_id))
         tx.audit(
             tenant_id=tenant_id,
@@ -1248,7 +1509,14 @@ class ForgetService:
                         reason_code=request.reason_code,
                         details={"created_us": request.created_us},
                     )
-                    completed = self._replay_one(tx, request.tenant_id, selector, request)
+                    if selector.kind == "resource" and selector.resource_type == "entity":
+                        from iris_memory_core.application.entity_deletion import (
+                            replay_entity_tombstone,
+                        )
+
+                        completed = replay_entity_tombstone(tx, request, selector_dict)
+                    else:
+                        completed = self._replay_one(tx, request.tenant_id, selector, request)
                     replayed += 1
             self._cleanup_local_blob_tombstones(
                 request.tenant_id,
@@ -1262,13 +1530,29 @@ class ForgetService:
         self, tx: Transaction, tenant_id: str, selector: ForgetSelector, request: ForgetRequest
     ) -> ForgetRequest:
         """Single ledger row replay inside one transaction (fail-closed)."""
+        if selector.resource_type in {"focus_item", "state_record", "task"} and (
+            selector.kind != ForgetSelectorKind.RESOURCE.value
+            or request.selector_key != selector.selector_key()
+            or any(
+                getattr(selector, field) is not None
+                for field in (
+                    "agent_id",
+                    "space_id",
+                    "session_id",
+                    "subject_entity_id",
+                    "predicate",
+                )
+            )
+        ):
+            raise InvalidRequestError("invalid working-set deletion ledger selector")
         now_us = request.created_us
-        targets = self._resolve_targets(tx, tenant_id, selector)
+        targets = self._resolve_targets(tx, tenant_id, selector, allow_missing_working_set=True)
         watermark_entries: dict[tuple[str, str], list[tuple[str, str, int]]] = {}
         invalidated: list[tuple[str, str]] = []
         cascade_candidates: set[str] = set()
         relation_cascade_candidates: set[str] = set()
         erased = 0
+        seq_before = tx.tombstone_watermark()
         for target in targets:
             if tx.is_tombstoned(tenant_id, target.resource_type, target.resource_id):
                 continue
@@ -1314,7 +1598,7 @@ class ForgetService:
             reason_code=request.reason_code,
             requested_by="restore:deletion_ledger",
             created_us=now_us,
-            tombstone_seq_lo=seq_after - erased + 1 if erased else seq_after,
+            tombstone_seq_lo=seq_before + 1 if seq_after > seq_before else seq_after,
             tombstone_seq_hi=seq_after,
             target_count=len(targets),
             erased_count=erased,

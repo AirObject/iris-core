@@ -1,0 +1,20 @@
+{
+  "base_revision": -1,
+  "evidence_refs": [
+    {
+      "resource_id": "018bcfe5-6800-7000-8000-000000000003",
+      "resource_type": "persona_state"
+    }
+  ],
+  "expected_policy_revision": 2,
+  "fields": {
+    "confidence": 0.9,
+    "patch": {
+      "traits": {
+        "style": "warm"
+      }
+    },
+    "ttl_us": 1000000
+  },
+  "reason_code": "operator_request"
+}

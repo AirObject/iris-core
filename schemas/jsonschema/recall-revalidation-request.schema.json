@@ -1,0 +1,241 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/recall-revalidation-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "deadline_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "requests": {
+      "items": {
+        "$id": "https://schemas.iris-memory-core.local/v1/recall-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "actors": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "external_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "provider": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "realm": {
+                  "default": "default",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "weight": {
+                  "default": 1.0,
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "provider",
+                "external_id"
+              ],
+              "title": "ExternalActorRef",
+              "type": "object"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "type": "array"
+          },
+          "allow_partial": {
+            "default": true,
+            "type": "boolean"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "format": "date-time",
+                "type": "string"
+              }
+            ]
+          },
+          "candidate_limits": {
+            "additionalProperties": {
+              "maximum": 200,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "pattern": "^[a-z_]{1,64}$"
+            },
+            "type": "object"
+          },
+          "categories": {
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "deadline_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "include_trace": {
+            "default": false,
+            "type": "boolean"
+          },
+          "layer_budgets": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "pattern": "^[a-z_]{1,64}$"
+            },
+            "type": "object"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minimum_watermark": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "purpose": {
+            "enum": [
+              "reply",
+              "planning",
+              "reflection",
+              "tool"
+            ]
+          },
+          "request_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "requested_privacy_labels": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "resource_types": {
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "scope": {
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "session_id": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
+              },
+              "space_group_id": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
+              },
+              "space_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "agent_id",
+              "space_id"
+            ],
+            "type": "object"
+          },
+          "token_budget": {
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "topic": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "request_id",
+          "scope",
+          "actors",
+          "topic",
+          "purpose",
+          "token_budget",
+          "deadline_at"
+        ],
+        "title": "RecallRequest",
+        "type": "object"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "deadline_at",
+    "requests"
+  ],
+  "title": "RecallRevalidationRequest",
+  "type": "object"
+}

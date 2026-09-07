@@ -1,0 +1,10 @@
+{
+  "expected_revision": 1,
+  "fields": {
+    "value": {
+      "text": "corrected"
+    }
+  },
+  "reason_code": "operator_request",
+  "source_authority": "host"
+}

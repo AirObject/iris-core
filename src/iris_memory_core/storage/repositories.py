@@ -16,6 +16,7 @@ from iris_memory_core.application.ports import Clock, IdentifierGenerator
 from iris_memory_core.domain.errors import (
     ConflictError,
     NotFoundError,
+    NotReadyError,
     RevisionMismatchError,
 )
 from iris_memory_core.domain.hashing import content_hash
@@ -1097,6 +1098,71 @@ class IdentityRepository:
             created_us=int(row["created_us"]),
         )
 
+    def entity_has_self_link(self, tenant_id: str, entity_id: str) -> bool:
+        import time
+
+        from iris_memory_core.domain.errors import NotReadyError
+
+        deadline = time.monotonic() + 0.150
+        steps = 0
+
+        def stop() -> int:
+            nonlocal steps
+            steps += 1000
+            return int(steps > 2_000_000 or time.monotonic() > deadline)
+
+        self._connection.set_progress_handler(stop, 1000)
+        try:
+            return (
+                self._connection.execute(
+                    "SELECT 1 FROM resource_links WHERE tenant_id=? AND target_type='entity' "
+                    "AND target_id=? AND source_type='agent' AND relation='self_entity' LIMIT 1",
+                    (tenant_id, entity_id),
+                ).fetchone()
+                is not None
+            )
+        except sqlite3.OperationalError as error:
+            if "interrupt" in str(error).lower():
+                raise NotReadyError("entity protection query exceeds its budget") from None
+            raise
+        finally:
+            self._connection.set_progress_handler(None, 0)
+
+    def redirect_ancestor_depth(self, tenant_id: str, entity_id: str) -> int:
+        """Bound both recursive depth and fan-in before extending a redirect chain."""
+        import time
+
+        deadline = time.monotonic() + 0.150
+        remaining = 2_000_000
+
+        def interrupted() -> int:
+            nonlocal remaining
+            remaining -= 1000
+            return int(remaining < 0 or time.monotonic() > deadline)
+
+        self._connection.set_progress_handler(interrupted, 1000)
+        try:
+            rows = self._connection.execute(
+                "WITH RECURSIVE ancestors(id,depth) AS ("
+                "SELECT ?,0 UNION ALL "
+                "SELECT entity_redirects.from_entity_id,ancestors.depth+1 "
+                "FROM entity_redirects JOIN ancestors "
+                "ON entity_redirects.to_entity_id=ancestors.id "
+                "WHERE entity_redirects.tenant_id=? AND ancestors.depth<17 "
+                f"AND {_NOT_TOMBSTONED_REDIRECT} LIMIT 5001) "
+                "SELECT id,depth FROM ancestors",
+                (entity_id, tenant_id),
+            ).fetchall()
+        except sqlite3.OperationalError as error:
+            if getattr(error, "sqlite_errorcode", None) == sqlite3.SQLITE_INTERRUPT:
+                raise NotReadyError("Console redirect traversal budget exceeded") from None
+            raise
+        finally:
+            self._connection.set_progress_handler(None, 0)
+        if len(rows) > 5000:
+            raise NotReadyError("Console redirect traversal budget exceeded")
+        return max(int(row["depth"]) for row in rows)
+
     def redirect_map(self, tenant_id: str) -> dict[str, str]:
         rows = self._connection.execute(
             "SELECT from_entity_id, to_entity_id FROM entity_redirects "
@@ -1204,6 +1270,45 @@ class IdentityRepository:
             ),
             changed=True,
         )
+
+    def console_identity_attributes(
+        self,
+        tenant_id: str,
+        entity_id: str,
+    ) -> tuple[IdentityAttribute, ...]:
+        """Read a complete bounded current/conflict snapshot before exposing any values."""
+        import time
+
+        deadline = time.monotonic() + 0.150
+        remaining = 2_000_000
+
+        def interrupted() -> int:
+            nonlocal remaining
+            remaining -= 1000
+            return int(remaining < 0 or time.monotonic() > deadline)
+
+        self._connection.set_progress_handler(interrupted, 1000)
+        try:
+            sizes = self._connection.execute(
+                "SELECT length(CAST(field AS BLOB))+length(CAST(value AS BLOB))+"
+                "length(CAST(source_ref AS BLOB)) AS size FROM identity_attributes "
+                "WHERE tenant_id=? AND entity_id=? AND status IN ('current','conflict') LIMIT 251",
+                (tenant_id, entity_id),
+            ).fetchall()
+            if len(sizes) > 250 or sum(int(row["size"]) for row in sizes) > 256 * 1024:
+                raise NotReadyError("Console identity attribute snapshot exceeds its budget")
+            rows = self._connection.execute(
+                "SELECT * FROM identity_attributes WHERE tenant_id=? AND entity_id=? "
+                "AND status IN ('current','conflict') ORDER BY field,recorded_us,id LIMIT 251",
+                (tenant_id, entity_id),
+            ).fetchall()
+            return tuple(self._attribute_row(row) for row in rows)
+        except sqlite3.OperationalError as error:
+            if getattr(error, "sqlite_errorcode", None) == sqlite3.SQLITE_INTERRUPT:
+                raise NotReadyError("Console identity attribute query budget exceeded") from None
+            raise
+        finally:
+            self._connection.set_progress_handler(None, 0)
 
     def current_identity_attribute(
         self, tenant_id: str, entity_id: str, field: str

@@ -1,9 +1,9 @@
 # 阶段 13：Web 管理控制台与手动数据导入导出
 
-> 状态：In progress（第 1、2 步历史验收通过；第 3 步已接线但测试失败；第 4–10 步未实施）  
+> 状态：In progress（第 1、2 步历史验收通过；第 3 步已修复契约/前端并通过真实浏览器读面验证；第 4 步 State/Note/Focus 与 Task 主资源、步骤及依赖写面已接通，其余命令和第 5–10 步继续实施）  
 > 核查日期：2026-09-06；开始日期：2026-09-05  
-> 前置阶段：[阶段 10](./phase-10-consolidation-reflection.md)；与 [阶段 11](./phase-11-bellis-adapter.md)、[阶段 12](./phase-12-astrbot-bridge.md) 可并行  
-> 当前版本：Schema 14 / Python 0.12.0 / Console Contract 1.0.0；宿主 `/v1` Contract 1.9.0  
+> 前置阶段：[阶段 10](./phase-10-consolidation-reflection.md)；本阶段继续执行，不依赖已暂缓的 Phase 11/12 适配器  
+> 当前版本：Schema 20 / Python 0.13.0 / Console Contract 1.1.0；业务契约以生成真源为准  
 > 决策：[ADR-0022](../adr/0022-management-console-plane.md)（Accepted，保留其原有状态）；原自动旧数据迁移的取代与保留要求见其迁移影响表  
 > 设计：[Console 设计与接入边界](../design/console-backend.md)；证据：[合并验证记录](../reports/phase-13-verification.md)
 > 架构依据：[§19 Remember/Correct/Forget 与保留](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#19-remembercorrectforget-与保留)、[§21 备份恢复与导出](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#21-备份恢复与导出)、[§23 HTTP API 与能力协商](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#23-http-api-与能力协商)、[§24 Provider 边界](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#24-provider-边界)、[§29 安全与隐私](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#29-安全与隐私)、[§31 可观测性](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#31-可观测性)、[§34 配置与运行模式](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#34-配置与运行模式)、[§37 旧 Iris 数据迁移](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#37-旧-iris-数据迁移)
@@ -12,7 +12,7 @@
 
 交付默认关闭、同源且独立的 `/console/v1` 管理平面。运营者通过离线签发的密钥查看和管理授权范围内的数据、手动导入导出、查看统计、配置 Embedding Provider 与调整参数。业务写入复用现有应用服务；上传只接收用户主动提供的数据文件。
 
-当前只有认证和两类密钥具备历史完整 CI 证据，读面与前端仍有明确缺口。未发布业务功能不能作为阶段 14 的现成依赖。
+认证和两类密钥具备历史完整 CI 证据；读面与类型修复的当前证据见 [Phase 14 记录](../reports/phase-14-verification.md)。未发布业务功能不能作为阶段 14 的现成依赖。
 
 ## 架构约束
 
@@ -29,14 +29,14 @@
 | --- | --- | --- |
 | P13-PLANE-01 | 13.1 | 已有历史通过：独立契约、默认关闭、`/v1` 兼容、真实路由覆盖 |
 | P13-AUTH-01/02 | 13.2 | 已有历史通过：离线 Owner、会话/CSRF/reauth/锁定、密钥隔离和轮换 |
-| P13-AUTHZ-01 | 13.3 | 未验收：三组 Grant、计数/历史/引用授权、cursor、深页索引；资源 ID 契约仍失败 |
-| P13-CRUD-01 / P13-FORGET-01 | 13.4–13.5 | 未实施：类型专属命令、Revision/Audit/证据与删除全链 |
+| P13-AUTHZ-01 | 13.3 | 读面与不透明 ID 契约回归通过；完整生产权限/容量验收仍待执行 |
+| P13-CRUD-01 / P13-FORGET-01 | 13.4–13.5 | State 创建/更正/过期、Note 创建/编辑/状态转换及 Focus 创建/编辑/激活/状态转换已接通；其他类型专属命令与 Forget 全链待实施 |
 | P13-STATS-01 | 13.6 | 未实施：八个统计面、超时降级、rollup lag 与口径 |
 | P13-EXPORT-01 | 13.7 | 未实施：一致快照、字段白名单、下载重授权/失效、CSV 转义 |
 | P13-IMPORT-01/02 / P13-MIGRATION-01 | 13.8 | 未实施：拒绝类型全覆盖、备份 blocked、报告失效、去重/断点/补偿；ADR-0022 保留的迁移安全要求逐条映射 |
 | P13-PROVIDER-01/02 | 13.9 | 未实施：三处接线、探测安全、密钥隔离、Generation 切换/回滚 |
 | P13-SETTINGS-01/02 | 13.10 | 未实施：注册表、原子多键修订、每键行为测试、实例生效与 pending_restart |
-| P13-OPS-01 | 13.11 | 未实施：Operation、任务/DLQ、重建/备份、只读审计、真实就绪维度 |
+| P13-OPS-01 | 13.11 | Phase 14 的 memory_forget Operation 已通过当前完整组合验收；任务/DLQ、重建/备份、只读审计、真实就绪维度仍未实施 |
 
 ## 工作包
 
@@ -47,7 +47,7 @@
 | 13.1 契约与骨架 | Console 生成链、子应用、启用/独立监听、静态隔离与请求安全头；已实现 |
 | 13.2 密钥与会话 | 离线签发、认证、刷新/reauth、运营密钥/会话与 application 凭据管理；已实现 |
 | 13.3 授权与读面 | 资源描述、有界列表/详情/历史/引用、lookup/Task 子资源/Persona、签名 cursor；先解决资源 ID 契约并适配前端正式 descriptor |
-| 13.4 管理命令 | CommandActor/公共事务执行器；补齐 State/Focus、Task 子对象、Episode/Relation 更正和事件 dismiss；再发布动作 |
+| 13.4 管理命令 | 已实现 CommandActor/共享事务执行器及 State/Note/Focus 与 Task 主资源、步骤及依赖写入；Event dismiss 与待投递 Recall 重验已按 ADR-0043 通过当前完整组合验收；Persona 发布回滚按 ADR-0044 已通过当前完整组合验收；PersonaState 管理按 ADR-0045 已通过完整组合验收；Proposal 按 ADR-0046 已通过完整组合验收；Policy 按 ADR-0047 已通过完整组合验收；继续补齐其他未实施资源 |
 | 13.5 Forget | 固定集合预览/提交、50 条事务/500 条预览上限、批量 Operation；补齐 State/Focus/Task 擦除与关联失效 |
 | 13.6 统计 | 指标注册表、八个统计面、rollup/回填、SQLite 有界查询、Recall 耗时采集 |
 | 13.7 导出 | 快照、imc-data/v1 JSONL、CSV 报表、产物保留与下载授权 |
@@ -60,7 +60,7 @@
 
 ## 数据、契约与回退策略
 
-Console 新增 `0012_console_authentication.sql`（3 张认证表、宿主凭据 7 个可空列）及 `0013_console_read_indexes.sql`（附加读索引）；后续 Recall 租户隔离修复新增 `0014_recall_tenant_identity.sql`，当前 Schema 14。Console 两项迁移声明 online_safe；旧 SQL 不改写，实际锁时及升级兼容仍需阶段 14 演练。
+Console 新增 `0012_console_authentication.sql`（3 张认证表、宿主凭据 7 个可空列）及 `0013_console_read_indexes.sql`（附加读索引）；后续 Recall 租户隔离修复新增 `0014_recall_tenant_identity.sql`，此前为 Schema 14；当前依赖生命周期新增 0015，运行时为 Schema 15，离线升级规则见 [ADR-0026](../adr/0026-task-dependency-lifecycle.md)。Console 两项迁移声明 online_safe；旧 SQL 不改写，实际锁时及升级兼容仍需阶段 14 演练。
 
 Console 契约独立生成与冻结；宿主契约兼容另行校验。第 3 步已扩充的契约不代表已通过完整验收。未来 Provider、Settings、导入/导出等表尚未创建，不能引用目标设计声称存在。
 
@@ -89,7 +89,7 @@ Console 契约独立生成与冻结；宿主契约兼容另行校验。第 3 步
 
 唯一证据入口为 [Phase 13 合并验证记录](../reports/phase-13-verification.md)，其中区分历史切片、有限真实前端联调、mock/Fixture 与本轮复测。
 
-2026-09-06 本轮读面专项为 **53 passed / 1 failed**（Reflection ID 不符合 UUIDv7 Schema）；前端 `npm run types:check` 为 **失败，Console types drift**。当前工作区存在大量未提交实现，不为它虚构提交或新的完整 CI 通过。历史认证切片的 10,481 passed/83.90% coverage 不能覆盖新增读面。
+2026-09-06 修复前的历史读面专项为 **53 passed / 1 failed**（Reflection ID 不符合 UUIDv7 Schema）；前端 `npm run types:check` 为 **失败，Console types drift**。当前工作区存在大量未提交实现，不为它虚构提交或新的完整 CI 通过。上述失败已在 Phase 14 修复，当前读面与 Note 写入证据见 [Phase 14 记录](../reports/phase-14-verification.md)。历史认证切片的 10,481 passed/83.90% coverage 不能覆盖新增能力。
 
 ## 明确不做
 
@@ -101,6 +101,6 @@ Console 契约独立生成与冻结；宿主契约兼容另行校验。第 3 步
 
 ## 交接条件
 
-[阶段 14](./phase-14-hardening-release.md) 首先收口第 3 步和 13.4–13.11，再进入完整发布硬化；当前可复用认证/托管/读面代码及历史证据，不能稳定依赖尚不存在的 Operation、导入报告、Provider/Settings 表或探针维度。导入测试数据集只能在真实导入链交付后用于发布验收，之前使用应用服务构造的明确测试夹具。
+[阶段 14](./phase-14-hardening-release.md) 首先收口第 3 步和 13.4–13.11，再进入完整发布硬化；当前可复用认证/托管/读面代码及历史证据，不能稳定依赖尚不存在的其他 Operation 类型、导入报告、Provider/Settings 表或探针维度。导入测试数据集只能在真实导入链交付后用于发布验收，之前使用应用服务构造的明确测试夹具。
 
 手动迁入需要运营者自行导出源数据并分批操作，不再提供跨系统一致性切换工具；大体量历史数据迁入成本这一代价仍需在运行手册中说明。

@@ -1,0 +1,9 @@
+{
+  "direction": "outgoing",
+  "id": "",
+  "relation": "source",
+  "resource": {
+    "resource_id": "018bcfe5-6800-7000-8000-000000000002",
+    "resource_type": "note"
+  }
+}

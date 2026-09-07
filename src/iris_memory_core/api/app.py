@@ -52,6 +52,7 @@ from iris_memory_core.application.recall import (
     RecallUsageService,
     SearchService,
     StructuredRecallOrchestrator,
+    StructuredRecallRequest,
 )
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.retention import RetentionService
@@ -64,6 +65,7 @@ from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (
     AccessDeniedError,
     DomainError,
+    HistoryUnavailableError,
     InvalidRequestError,
     NotFoundError,
     NotReadyError,
@@ -106,7 +108,9 @@ _STRICT_OBJECT = TypeAdapter(dict[str, Any], config=ConfigDict(strict=True))
 
 
 def _default_contract_path() -> Path:
-    return Path(__file__).resolve().parents[3] / "schemas" / "openapi" / "openapi.json"
+    from iris_memory_core._resources import runtime_resource
+
+    return runtime_resource("schemas/openapi/openapi.json")
 
 
 def _load_contract(path: Path | None = None) -> dict[str, Any]:
@@ -173,8 +177,17 @@ async def _body(
     if schema is None:
         return {}
     try:
-        value = _STRICT_OBJECT.validate_python(await request.json(), strict=True)
-    except (json.JSONDecodeError, ValidationError):
+        if operation.get("operationId") == "revalidateRecall":
+            chunks = bytearray()
+            async for chunk in request.stream():
+                if len(chunks) + len(chunk) > 1024 * 1024:
+                    raise InvalidRequestError("revalidation body exceeds 1 MiB")
+                chunks.extend(chunk)
+            raw = json.loads(chunks)
+        else:
+            raw = await request.json()
+        value = _STRICT_OBJECT.validate_python(raw, strict=True)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValidationError):
         raise InvalidRequestError("request body must be a strict JSON object") from None
     resolved = cast(Mapping[str, Any], _dereference_schema(contract, schema))
     errors = sorted(
@@ -474,7 +487,9 @@ class TransportRuntime:
         self.observations = ObservationService(uow, self.idempotency, surface=self.surface)
         self.recent = RecentContextService(uow, self.clock)
         self.states = StateService(uow, self.clock, idempotency=self.idempotency)
-        self.focus = FocusService(uow, self.clock, idempotency=self.idempotency)
+        self.focus = FocusService(
+            uow, self.clock, idempotency=self.idempotency, surface=self.surface
+        )
         self.notes = NoteService(
             uow, self.clock, idempotency=self.idempotency, surface=self.surface
         )
@@ -518,13 +533,60 @@ class TransportRuntime:
             fts=self.fts,
             profile=self.profiles,
         )
-        self.recall = RecallService(orchestrator, uow, self.clock)
+        self.recall = RecallService(orchestrator, uow, self.clock, surface=self.surface)
         self.recall_usage = RecallUsageService(uow, self.clock)
         self.search = SearchService(uow, self.clock, self.fts)
         self.provisioning = ProvisioningService(uow, self.idempotency)
         self.outbox = OutboxService(uow, self.clock)
         self.archives = archives
         self.sse_enabled = sse_enabled
+
+    def _recall_input(
+        self, body: dict[str, Any]
+    ) -> tuple[StructuredRecallRequest, tuple[ExternalActorRef, ...]]:
+        scope = cast(dict[str, Any], body["scope"])
+        actors = tuple(
+            ExternalActorRef(
+                provider=str(item["provider"]),
+                external_id=str(item["external_id"]),
+                realm=str(item.get("realm", "default")),
+                weight=float(item.get("weight", 1.0)),
+            )
+            for item in cast(list[dict[str, Any]], body["actors"])
+        )
+        recall_request = self.recall.build_request(
+            request_id=str(body["request_id"]),
+            agent_id=str(scope["agent_id"]),
+            space_id=str(scope["space_id"]),
+            session_id=cast(str | None, scope.get("session_id")),
+            space_group_id=cast(str | None, scope.get("space_group_id")),
+            topic=str(body["topic"]),
+            purpose=str(body["purpose"]),
+            token_budget=int(body["token_budget"]),
+            deadline_at_us=_timestamp_us(str(body["deadline_at"])),
+            layer_budgets=cast(dict[str, int] | None, body.get("layer_budgets")),
+            candidate_limits=cast(dict[str, int] | None, body.get("candidate_limits")),
+            categories=(
+                frozenset(map(str, cast(list[object], body["categories"])))
+                if "categories" in body
+                else None
+            ),
+            resource_types=(
+                frozenset(map(str, cast(list[object], body["resource_types"])))
+                if "resource_types" in body
+                else None
+            ),
+            requested_privacy_labels=(
+                frozenset(map(str, cast(list[object], body["requested_privacy_labels"])))
+                if "requested_privacy_labels" in body
+                else None
+            ),
+            as_of_us=(_timestamp_us(str(body["as_of"])) if body.get("as_of") is not None else None),
+            minimum_watermark=_watermark(body.get("minimum_watermark")),
+            include_trace=bool(body.get("include_trace", False)),
+            allow_partial=bool(body.get("allow_partial", True)),
+        )
+        return recall_request, actors
 
     def dispatch(
         self,
@@ -730,6 +792,8 @@ class TransportRuntime:
                     expected_revision=int(body["expected_revision"]),
                     reason=str(body["reason"]),
                     idempotency_key=idem,
+                    lease_id=cast(str | None, body.get("lease_id")),
+                    lease_epoch=cast(int | None, body.get("lease_epoch")),
                 )
             else:
                 target = {
@@ -746,6 +810,8 @@ class TransportRuntime:
                     reason=str(body["reason"]),
                     promotion_target_type=cast(str | None, body.get("promotion_target_type")),
                     idempotency_key=idem,
+                    lease_id=cast(str | None, body.get("lease_id")),
+                    lease_epoch=cast(int | None, body.get("lease_epoch")),
                 )
             # The working-set read deliberately hides terminal items, so the
             # response is built from the revision the transition just wrote:
@@ -1182,52 +1248,31 @@ class TransportRuntime:
                     details={"reason_code": degraded.reason_code},
                 ) from None
             return 200, {"results": [views.search_result_view(item) for item in hits]}
+        if operation_id == "revalidateRecall":
+            items = tuple(
+                self._recall_input({**item, "deadline_at": body["deadline_at"]})
+                for item in body["requests"]
+            )
+            checked_us, verdicts = self.recall.revalidate(access, items)
+            return 200, {
+                "schema_version": 1,
+                "checked_at": datetime.fromtimestamp(checked_us / 1_000_000, tz=UTC)
+                .isoformat()
+                .replace("+00:00", "Z"),
+                "results": [
+                    {"request_id": request_id, "status": "valid" if valid else "unavailable"}
+                    for request_id, valid in verdicts
+                ],
+            }
         if operation_id == "recall":
-            scope = cast(dict[str, Any], body["scope"])
-            actors = tuple(
-                ExternalActorRef(
-                    provider=str(item["provider"]),
-                    external_id=str(item["external_id"]),
-                    realm=str(item.get("realm", "default")),
-                    weight=float(item.get("weight", 1.0)),
-                )
-                for item in cast(list[dict[str, Any]], body["actors"])
+            recall_request, actors = self._recall_input(body)
+            result = self.recall.recall(
+                access,
+                recall_request,
+                actors=actors,
+                lease_id=cast(str | None, body.get("lease_id")),
+                lease_epoch=cast(int | None, body.get("lease_epoch")),
             )
-            recall_request = self.recall.build_request(
-                request_id=str(body["request_id"]),
-                agent_id=str(scope["agent_id"]),
-                space_id=str(scope["space_id"]),
-                session_id=cast(str | None, scope.get("session_id")),
-                space_group_id=cast(str | None, scope.get("space_group_id")),
-                topic=str(body["topic"]),
-                purpose=str(body["purpose"]),
-                token_budget=int(body["token_budget"]),
-                deadline_at_us=_timestamp_us(str(body["deadline_at"])),
-                layer_budgets=cast(dict[str, int] | None, body.get("layer_budgets")),
-                candidate_limits=cast(dict[str, int] | None, body.get("candidate_limits")),
-                categories=(
-                    frozenset(map(str, cast(list[object], body["categories"])))
-                    if "categories" in body
-                    else None
-                ),
-                resource_types=(
-                    frozenset(map(str, cast(list[object], body["resource_types"])))
-                    if "resource_types" in body
-                    else None
-                ),
-                requested_privacy_labels=(
-                    frozenset(map(str, cast(list[object], body["requested_privacy_labels"])))
-                    if "requested_privacy_labels" in body
-                    else None
-                ),
-                as_of_us=(
-                    _timestamp_us(str(body["as_of"])) if body.get("as_of") is not None else None
-                ),
-                minimum_watermark=_watermark(body.get("minimum_watermark")),
-                include_trace=bool(body.get("include_trace", False)),
-                allow_partial=bool(body.get("allow_partial", True)),
-            )
-            result = self.recall.recall(access, recall_request, actors=actors)
             return 200, views.recall_response_view(
                 result,
                 schema_version=int(body["schema_version"]),
@@ -1589,11 +1634,14 @@ class TransportRuntime:
         return 202, json.loads(completed.response_body or "{}")
 
     def capabilities(self, access: AccessContext) -> dict[str, object]:
-        path = Path(__file__).resolve().parents[3] / "contracts" / "source" / "contracts.json"
+        from iris_memory_core._resources import runtime_resource
+
+        path = runtime_resource("contracts/source/contracts.json")
         source = json.loads(path.read_text(encoding="utf-8"))
         advertised = set(source["capabilities"])
         if not self.sse_enabled:
             advertised.discard("events.sse.v1")
+            advertised.discard("events.checkpoint.v1")
         if access.capabilities:
             advertised &= set(access.capabilities) | {
                 "contract.negotiation",
@@ -1648,7 +1696,7 @@ def create_app(
 
     app = FastAPI(
         title="Iris Memory Core",
-        version="0.11.0",
+        version=str(contract["info"]["version"]),
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
@@ -1700,17 +1748,41 @@ def create_app(
             cursor = int(raw_cursor)
         except ValueError:
             raise InvalidRequestError("SSE cursor must be an integer") from None
+        if cursor < 0 or cursor > 2**63 - 1:
+            raise InvalidRequestError("SSE cursor is outside the supported range")
+        expected_event_id = request.headers.get("x-iris-after-event-id")
+        if expected_event_id is not None and (
+            cursor == 0
+            or not 1 <= len(expected_event_id) <= 512
+            or any(ord(char) < 33 or ord(char) > 126 for char in expected_event_id)
+        ):
+            raise InvalidRequestError("SSE checkpoint requires a cursor and valid event identity")
 
-        async def generate() -> AsyncIterator[str]:
-            with uow.read() as tx:
-                events = tx.reflection.events_after(
+        # Validate the saved identity and read its successors in one snapshot,
+        # before sending a 200 response. Filtering may legitimately skip numeric
+        # cursors; a missing, changed or no-longer-visible anchor needs revalidation.
+        with uow.read() as tx:
+            if expected_event_id is not None:
+                anchor = tx.reflection.events_after(
                     tenant_id=access.tenant_id,
-                    after_cursor=cursor,
                     agent_ids=sorted(access.agent_ids),
                     space_group_ids=sorted(access.allowed_space_group_ids),
                     space_ids=sorted(access.allowed_space_ids),
-                    limit=100,
+                    after_cursor=cursor - 1,
+                    limit=1,
                 )
+                if not anchor or anchor[0].cursor != cursor or anchor[0].id != expected_event_id:
+                    raise HistoryUnavailableError("SSE checkpoint cannot be verified")
+            events = tx.reflection.events_after(
+                tenant_id=access.tenant_id,
+                agent_ids=sorted(access.agent_ids),
+                space_group_ids=sorted(access.allowed_space_group_ids),
+                space_ids=sorted(access.allowed_space_ids),
+                after_cursor=cursor,
+                limit=100,
+            )
+
+        async def generate() -> AsyncIterator[str]:
             if not events:
                 yield ": keep-alive\n\n"
                 return

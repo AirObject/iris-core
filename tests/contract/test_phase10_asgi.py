@@ -235,9 +235,105 @@ def test_disabled_sse_is_removed_from_capabilities_and_fails_closed(
         capabilities = client.get("/v1/capabilities", headers=headers)
         assert capabilities.status_code == 200
         assert "events.sse.v1" not in capabilities.json()["capabilities"]
+        assert "events.checkpoint.v1" not in capabilities.json()["capabilities"]
         stream = client.get("/v1/events", headers=headers)
         assert stream.status_code == 503
         assert stream.json()["error"]["code"] == "not_ready"
+
+
+def test_sse_checkpoint_validates_visible_identity_before_response_and_allows_filtered_gaps(
+    asgi_world: dict[str, Any],
+) -> None:
+    store = asgi_world["store"]
+    with store.write() as tx:
+        tx.insert_tenant("checkpoint-other-tenant", status="active")
+        events = [
+            tx.reflection.append_event(
+                tenant_id=tenant,
+                event_type="revision.invalidated.v1",
+                resource_refs=[{"resource_type": "claim", "resource_id": f"resource-{index}"}],
+                source_watermark=index,
+                occurred_us=store.clock.now_us(),
+            )
+            for index, tenant in enumerate(
+                [asgi_world["tenant"], "checkpoint-other-tenant", asgi_world["tenant"]], start=1
+            )
+        ]
+    anchor, hidden, successor = events
+    headers = {"Authorization": f"Bearer {asgi_world['app_token']}"}
+    with TestClient(asgi_world["app"], raise_server_exceptions=False) as client:
+        capabilities = client.get("/v1/capabilities", headers=headers).json()["capabilities"]
+        assert "events.checkpoint.v1" in capabilities
+        checked = client.get(
+            "/v1/events",
+            headers={
+                **headers,
+                "Last-Event-ID": str(anchor.cursor),
+                "X-Iris-After-Event-ID": anchor.id,
+            },
+        )
+        assert checked.status_code == 200
+        assert f"id: {successor.cursor}\n" in checked.text
+        assert hidden.id not in checked.text and anchor.id not in checked.text
+        # An accepted head has no successors; this is a verified empty stream.
+        empty = client.get(
+            "/v1/events",
+            headers={
+                **headers,
+                "Last-Event-ID": str(successor.cursor),
+                "X-Iris-After-Event-ID": successor.id,
+            },
+        )
+        assert empty.status_code == 200 and empty.text == ": keep-alive\n\n"
+        for cursor, identity in [
+            (anchor.cursor, "same-cursor-from-different-history"),
+            (successor.cursor + 1000, "missing-from-old-snapshot"),
+            (hidden.cursor, hidden.id),
+        ]:
+            lost = client.get(
+                "/v1/events",
+                headers={
+                    **headers,
+                    "Last-Event-ID": str(cursor),
+                    "X-Iris-After-Event-ID": identity,
+                },
+            )
+            assert lost.status_code == 410
+            assert lost.headers["content-type"].startswith("application/json")
+            assert lost.json()["error"]["code"] == "history_unavailable"
+            assert lost.json()["error"]["retryable"] is False
+            assert all(event.id not in lost.text for event in events)
+        legacy = client.get("/v1/events", headers={**headers, "Last-Event-ID": str(anchor.cursor)})
+        assert legacy.status_code == 200 and legacy.text == checked.text
+
+
+@pytest.mark.parametrize("cursor", ["-1", str(2**63)])
+def test_sse_rejects_out_of_range_cursor_before_streaming(
+    asgi_world: dict[str, Any], cursor: str
+) -> None:
+    with TestClient(asgi_world["app"], raise_server_exceptions=False) as client:
+        response = client.get(
+            "/v1/events",
+            headers={
+                "Authorization": f"Bearer {asgi_world['app_token']}",
+                "Last-Event-ID": cursor,
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "invalid_request"
+
+
+def test_sse_checkpoint_requires_positive_cursor(asgi_world: dict[str, Any]) -> None:
+    with TestClient(asgi_world["app"], raise_server_exceptions=False) as client:
+        response = client.get(
+            "/v1/events",
+            headers={
+                "Authorization": f"Bearer {asgi_world['app_token']}",
+                "X-Iris-After-Event-ID": "saved-event",
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "invalid_request"
 
 
 def test_every_stable_error_code_has_a_transport_mapping() -> None:

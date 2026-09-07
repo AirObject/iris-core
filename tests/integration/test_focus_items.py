@@ -480,7 +480,7 @@ class TestDecayAndTtlProperties:
 
 
 class TestPromotionSeam:
-    def test_promote_records_target_and_audit_without_objects(self, phase3: dict[str, Any]) -> None:
+    def test_promote_materializes_target_and_audit(self, phase3: dict[str, Any]) -> None:
         ctx = phase3
         item = _create(ctx, key="promo", summary="promote me", promotion_policy="when_confirmed")
         revision = ctx["focus"].transition(
@@ -494,7 +494,7 @@ class TestPromotionSeam:
         )
         assert revision.status == "promoted"
         assert revision.promotion_target_type == "task"
-        assert revision.promotion_target_id is None  # Phase 4 owns the id
+        assert revision.promotion_target_id is not None
         with ctx["store"].read() as tx:
             audits = (
                 tx.raw()
@@ -506,13 +506,11 @@ class TestPromotionSeam:
                 .fetchall()
             )
         assert any(row["action"] == "focus.promoted" for row in audits)
-        # Phase 4 added the task/note tables, but the FOCUS seam still must
-        # not fabricate objects: nothing was created and the target id stays
-        # NULL until the owning service backfills it.
+        # The target is a real proposed Task created in the same transaction.
         with ctx["store"].read() as tx:
             tasks_count = tx.raw().execute("SELECT COUNT(*) FROM tasks").fetchone()
             notes_count = tx.raw().execute("SELECT COUNT(*) FROM notes").fetchone()
-        assert int(tasks_count[0]) == 0
+        assert int(tasks_count[0]) == 1
         assert int(notes_count[0]) == 0
 
     def test_promote_requires_valid_target_type(self, phase3: dict[str, Any]) -> None:

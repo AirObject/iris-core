@@ -413,6 +413,8 @@ def test_read_connection_is_query_only_and_real_statement_interrupts(world: Any)
                 "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n "
                 "WHERE x<1000000) SELECT sum(x) FROM n"
             ).fetchone()
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            tx.raw().execute("UPDATE notes SET title='still forbidden after budget'")
 
 
 def test_created_keyset_queries_use_indexes_for_every_table(world: Any) -> None:

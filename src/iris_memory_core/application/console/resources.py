@@ -52,11 +52,22 @@ LOOKUPS = {
     "spaces": ResourceSpec("spaces", "space", "空间", ("kind",), False),
     "sessions": ResourceSpec("sessions", "session", "会话", (), False),
     "entities": BY_COLLECTION["entities"],
+    "identities": BY_COLLECTION["identities"],
 }
 SUBRESOURCES = {
     "steps": ResourceSpec("steps", "task_step", "步骤", ("title", "description")),
     "dependencies": ResourceSpec("dependencies", "task_dependency", "依赖", ("condition",)),
     "triggers": ResourceSpec("triggers", "task_trigger", "触发器", ("kind", "enabled")),
+}
+REFERENCE_RESOURCES = {
+    "persona-states": ResourceSpec(
+        "persona-states",
+        "persona_state",
+        "人格状态",
+        ("state", "baseline", "expires_us"),
+        False,
+        True,
+    ),
 }
 PERSONAS = {
     "persona": ResourceSpec("persona", "persona_revision", "人格", ("core", "traits", "narrative")),
@@ -64,7 +75,7 @@ PERSONAS = {
         "persona-proposals", "persona_proposal", "人格提案", ("patch", "confidence"), False, True
     ),
 }
-ALL_SPECS = {**BY_COLLECTION, **LOOKUPS, **SUBRESOURCES, **PERSONAS}
+ALL_SPECS = {**BY_COLLECTION, **LOOKUPS, **SUBRESOURCES, **PERSONAS, **REFERENCE_RESOURCES}
 TYPE_TO_COLLECTION = {spec.resource_type: key for key, spec in ALL_SPECS.items()}
 
 

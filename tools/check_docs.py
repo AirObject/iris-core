@@ -13,9 +13,10 @@ PHASE_ROOT = DOCS_ROOT / "development"
 # latest phase and its verification report.  Scanning only docs/ let the root
 # README point at a report file that did not exist and still pass the gate.
 EXTRA_DOCUMENT_ROOTS = (
-    REPOSITORY_ROOT / "README.md",
-    REPOSITORY_ROOT / "sdk" / "python" / "README.md",
-    REPOSITORY_ROOT / "sdk" / "typescript" / "README.md",
+    *REPOSITORY_ROOT.glob("*.md"),
+    REPOSITORY_ROOT / "sdk",
+    REPOSITORY_ROOT / "application",
+    REPOSITORY_ROOT / "web" / "console",
     REPOSITORY_ROOT / "contracts",
     REPOSITORY_ROOT / "schemas",
 )
@@ -57,7 +58,8 @@ def scanned_documents() -> tuple[Path, ...]:
             documents.update(root.rglob("*.md"))
         elif root.is_file():
             documents.add(root)
-    return tuple(sorted(documents))
+    excluded = {"node_modules", "dist", ".venv", "__pycache__", "test-results", "playwright-report"}
+    return tuple(sorted(path for path in documents if not excluded.intersection(path.parts)))
 
 
 def find_broken_local_links() -> tuple[str, ...]:

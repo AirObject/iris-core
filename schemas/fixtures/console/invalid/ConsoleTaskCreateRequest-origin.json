@@ -1,0 +1,10 @@
+{
+  "fields": {
+    "title": "Task fixture"
+  },
+  "origin": "forged",
+  "reason_code": "operator_request",
+  "scope": {
+    "agent_id": "agent-1"
+  }
+}

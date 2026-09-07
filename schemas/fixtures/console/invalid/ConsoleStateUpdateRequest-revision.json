@@ -1,0 +1,9 @@
+{
+  "expected_revision": 0,
+  "fields": {
+    "value": {
+      "text": "corrected"
+    }
+  },
+  "reason_code": "operator_request"
+}

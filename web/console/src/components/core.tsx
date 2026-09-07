@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, ApiError, metadataText } from "../api/client";
+import { api, ApiError, CONTRACT_VERSION, metadataText } from "../api/client";
 import {
   cas,
   uniqueById,
@@ -25,7 +25,7 @@ export const Environment = createContext<{
   epoch: number;
 }>({
   bootstrap: {
-    contract_version: "1.0.0",
+    contract_version: CONTRACT_VERSION,
     permissions: [],
     modules: [],
     read_only: true,
@@ -179,10 +179,15 @@ function Lookup({
   onChange: (value: Value) => void;
 }) {
   const [cursor, setCursor] = useState("");
-  const [items, setItems] = useState<{ id: string; label: string }[]>([]);
-  const query = useQuery<{ id: string; label: string }[]>(
-    `/lookups/${field.lookup}?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+  const { epoch } = useEnvironment();
+  const [items, setItems] = useState<{ id: string; label?: string; fields?: Fields }[]>([]);
+  const query = useQuery<{ id: string; label?: string; fields?: Fields }[]>(
+    `${field.lookup === "task-steps" ? `/memory/tasks/${encodeURIComponent(field.lookup_parent_id ?? "")}/steps` : `/lookups/${field.lookup}`}?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
   );
+  useEffect(() => {
+    setCursor("");
+    setItems([]);
+  }, [epoch, field.lookup, field.lookup_parent_id]);
   useEffect(() => {
     if (query.data) setItems((old) => uniqueById([...old, ...query.data!]));
   }, [query.data]);
@@ -196,7 +201,9 @@ function Lookup({
         <option value="">选择已授权对象</option>
         {items.map((item) => (
           <option key={item.id} value={item.id}>
-            {item.label}
+            {field.lookup === "identities" && item.fields
+              ? [item.fields.provider, item.fields.realm, item.fields.external_id].map(String).join(" / ")
+              : String(item.label ?? item.fields?.display_name ?? item.fields?.name ?? item.fields?.title ?? item.fields?.kind ?? item.id)}
           </option>
         ))}
       </select>
@@ -324,7 +331,7 @@ export function encodeFields(fields: Field[], value: Fields): Fields {
   const out: Fields = {};
   for (const f of fields) {
     const v = value[f.key];
-    if (v === undefined || v === "") {
+    if (v === undefined || (v === null && f.type !== "json") || (v === "" && !f.allow_empty)) {
       if (f.required) throw new Error(`请填写 ${f.label}`);
       continue;
     }
@@ -447,6 +454,7 @@ export function ActionDialog({
   onClose,
   onSuccess,
   bodyBuilder,
+  loadLatest,
 }: {
   action: Action;
   path: string;
@@ -454,17 +462,24 @@ export function ActionDialog({
   onClose: () => void;
   onSuccess: (r: Result<Accepted>) => void;
   bodyBuilder?: (fields: Fields, reason: string) => unknown;
+  loadLatest?: () => Promise<{ revision?: number; fields: Record<string, unknown>; label?: string }>;
 }) {
-  const [draft, setDraft] = useState<Fields>(resource?.fields ?? {});
+  const [draft, setDraft] = useState<Fields>(() => ({
+    ...Object.fromEntries(action.fields.filter((f) => f.default !== undefined).map((f) => [f.key, f.default!])),
+    ...resource?.fields,
+  }));
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
   const [localError, setLocalError] = useState("");
-  const [latest, setLatest] = useState<Resource>();
+  const [latest, setLatest] = useState<{ revision?: number; fields: Record<string, unknown>; label?: string }>();
   const [confirmation, setConfirmation] = useState(false);
   const key = useRef(crypto.randomUUID());
   const lock = useRef(false);
   const { bootstrap } = useEnvironment();
+  const visibleFields = action.id === "correct" && resource?.resource_type === "claim" && draft.mode !== "supersede"
+    ? action.fields.filter((field) => field.key !== "value" && field.key !== "canonical_text")
+    : action.fields;
   const submit = async () => {
     if (lock.current || !allowed(bootstrap, action, resource)) return;
     lock.current = true;
@@ -472,11 +487,11 @@ export function ActionDialog({
     setError(undefined);
     setLocalError("");
     try {
-      const fields = encodeFields(action.fields, draft);
+      const fields = encodeFields(visibleFields, draft);
       const body = bodyBuilder
         ? bodyBuilder(fields, reason)
         : {
-            ...cas(resource ?? {}),
+            ...(action.initial_revision !== undefined ? { expected_revision: action.initial_revision } : cas(resource ?? {})),
             ...commandFields(action, fields),
             ...(action.reason_codes.length ? { reason_code: reason } : {}),
           };
@@ -500,11 +515,14 @@ export function ActionDialog({
     } catch (e) {
       if (e instanceof ApiError) {
         setError(e);
-        if (e.code === "revision_mismatch" && resource) {
-          const q = await api
-            .request<Resource>(path.replace(/:[^/]+$/, ""))
-            .catch(() => null);
-          if (q) setLatest(q.data);
+        const changed = e.code === "revision_mismatch" || (loadLatest &&
+          ["persona_base_revision_stale", "invalid_state_transition"].includes(e.code));
+        if (changed && (resource || loadLatest)) {
+          const value = await (loadLatest
+            ? loadLatest()
+            : api.request<Resource>(path.replace(/:[^/]+$/, "")).then((result) => result.data)
+          ).catch(() => null);
+          if (value) setLatest(value);
         }
       } else setLocalError(e instanceof Error ? e.message : "字段无效");
     } finally {
@@ -527,7 +545,7 @@ export function ActionDialog({
       >
         <p>{action.description}</p>
         <FieldsForm
-          fields={action.fields}
+          fields={visibleFields}
           value={draft}
           disabled={busy}
           onChange={(v) => {
@@ -564,7 +582,7 @@ export function ActionDialog({
               <TextData value={draft} />
             </section>
             <section>
-              <h3>服务器最新 Revision {latest.revision}</h3>
+              <h3>{latest.label ?? `服务器最新 Revision ${latest.revision}`}</h3>
               <TextData value={latest.fields} />
             </section>
             <p>请关闭后重新读取目标，再按差异重新编辑；不会自动覆盖。</p>
@@ -603,13 +621,20 @@ export function commandFields(action: Action, fields: Fields): Fields {
       outer[key] = remaining[key]!;
       delete remaining[key];
     }
-  if ("agent_id" in remaining) {
-    outer.scope = { agent_id: remaining.agent_id! };
-    delete remaining.agent_id;
+  const dimensions = ["agent_id", "space_group_id", "space_id", "session_id"]
+    .filter((key) => key in remaining);
+  if (dimensions.length) {
+    outer.scope = Object.fromEntries(dimensions.map((key) => [key, remaining[key]!])) as Fields;
+    for (const key of dimensions) delete remaining[key];
   }
   if (
     [
       "transition",
+      "activate",
+      "expire",
+      "dismiss",
+      "confirm",
+      "revoke",
       "approve",
       "reject",
       "rollback",

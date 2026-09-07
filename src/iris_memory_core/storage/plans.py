@@ -13,11 +13,17 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from collections.abc import Collection, Sequence
 from typing import Any
 
 from iris_memory_core.application.ports import Clock, IdentifierGenerator
-from iris_memory_core.domain.errors import ConflictError, NotFoundError, RevisionMismatchError
+from iris_memory_core.domain.errors import (
+    ConflictError,
+    NotFoundError,
+    NotReadyError,
+    RevisionMismatchError,
+)
 from iris_memory_core.domain.event import (
     DEFAULT_MAX_DELIVERY_ATTEMPTS,
     CognitiveEventCurrent,
@@ -591,6 +597,7 @@ def _dependency_from_row(row: sqlite3.Row) -> TaskDependencyEdge:
         current_revision_id=row["current_revision_id"],
         created_us=row["created_us"],
         updated_us=row["updated_us"],
+        status=row["status"],
     )
 
 
@@ -662,6 +669,126 @@ class TaskRepository:
         self._ids = ids
 
     # -- tasks ------------------------------------------------------------
+
+    def deletion_children(
+        self, tenant_id: str, task_id: str, *, limit: int = 501
+    ) -> tuple[tuple[str, str], ...]:
+        """Fixed child kinds and pending delivery facts; callers enforce the cap."""
+        sql = (
+            "SELECT 'task_step' AS kind,id FROM task_steps WHERE tenant_id=? AND task_id=? "
+            "UNION ALL SELECT 'task_dependency',id FROM task_dependencies WHERE tenant_id=? "
+            "AND task_id=? "
+            "UNION ALL SELECT 'task_trigger',id FROM task_triggers WHERE tenant_id=? AND task_id=? "
+            "UNION ALL SELECT 'cognitive_event',id FROM cognitive_events "
+            "WHERE tenant_id=? AND object_type='task' AND object_id=? "
+            "AND status IN ('pending','delivered') "
+            "UNION ALL SELECT 'cognitive_event',e.id FROM task_steps s JOIN cognitive_events e "
+            "ON e.tenant_id=s.tenant_id AND e.object_type='task_step' AND e.object_id=s.id "
+            "WHERE s.tenant_id=? AND s.task_id=? AND e.status IN ('pending','delivered') "
+        )
+        sql = (
+            "SELECT kind,id FROM (" + sql + ") child WHERE NOT EXISTS "
+            "(SELECT 1 FROM resource_tombstones rt WHERE rt.tenant_id=? "
+            "AND rt.resource_type=child.kind AND rt.resource_id=child.id) LIMIT ?"
+        )
+        deadline = time.monotonic() + 0.150
+        steps = 0
+
+        def stop() -> int:
+            nonlocal steps
+            steps += 1_000
+            return int(steps > 2_000_000 or time.monotonic() > deadline)
+
+        self._connection.set_progress_handler(stop, 1_000)
+        try:
+            rows = self._connection.execute(
+                sql,
+                (tenant_id, task_id) * 5
+                + (
+                    tenant_id,
+                    limit,
+                ),
+            ).fetchall()
+        except sqlite3.OperationalError as error:
+            if "interrupt" in str(error).lower():
+                raise NotReadyError("Task deletion inventory exceeds its query budget") from None
+            raise
+        finally:
+            self._connection.set_progress_handler(None, 0)
+        return tuple((str(row[0]), str(row[1])) for row in rows)
+
+    def has_live_child_task(self, tenant_id: str, task_id: str) -> bool:
+        deadline = time.monotonic() + 0.150
+        steps = 0
+
+        def stop() -> int:
+            nonlocal steps
+            steps += 1_000
+            return int(steps > 2_000_000 or time.monotonic() > deadline)
+
+        self._connection.set_progress_handler(stop, 1_000)
+        try:
+            return (
+                self._connection.execute(
+                    "SELECT 1 FROM tasks t WHERE t.tenant_id=? AND t.parent_task_id=? "
+                    "AND NOT EXISTS "
+                    "(SELECT 1 FROM resource_tombstones r WHERE r.tenant_id=t.tenant_id "
+                    "AND r.resource_type='task' AND r.resource_id=t.id) LIMIT 1",
+                    (tenant_id, task_id),
+                ).fetchone()
+                is not None
+            )
+
+        except sqlite3.OperationalError as error:
+            if "interrupt" in str(error).lower():
+                raise NotReadyError("Task child-plan verification exceeds its budget") from None
+            raise
+        finally:
+            self._connection.set_progress_handler(None, 0)
+
+    def erase_task_content(self, task_id: str, *, now_us: int) -> None:
+        """Keep identities and lifecycle while erasing every retained body."""
+        deadline = time.monotonic() + 0.150
+        steps = 0
+
+        def stop() -> int:
+            nonlocal steps
+            steps += 1_000
+            return int(steps > 2_000_000 or time.monotonic() > deadline)
+
+        self._connection.set_progress_handler(stop, 1_000)
+        try:
+            self._connection.execute(
+                "UPDATE tasks SET title='<erased>',next_action=NULL,updated_us=? WHERE id=?",
+                (now_us, task_id),
+            )
+            self._connection.execute(
+                "UPDATE task_revisions SET title='<erased>',goal='',next_action=NULL,"
+                "progress_note=NULL,"
+                "source_refs='[]',privacy_labels='[]' WHERE task_id=?",
+                (task_id,),
+            )
+            self._connection.execute(
+                "UPDATE task_steps SET title='<erased>',updated_us=? WHERE task_id=?",
+                (now_us, task_id),
+            )
+            self._connection.execute(
+                "UPDATE task_step_revisions SET title='<erased>',description=NULL,"
+                "expected_effect=NULL,"
+                "completion_evidence_refs='[]',privacy_labels='[]' WHERE task_id=?",
+                (task_id,),
+            )
+            self._connection.execute(
+                "UPDATE task_trigger_revisions SET schedule_spec=NULL,condition_spec=NULL "
+                "WHERE task_id=?",
+                (task_id,),
+            )
+        except sqlite3.OperationalError as error:
+            if "interrupt" in str(error).lower():
+                raise NotReadyError("Task erasure exceeds its transaction budget") from None
+            raise
+        finally:
+            self._connection.set_progress_handler(None, 0)
 
     def get_task(self, task_id: str) -> TaskCurrent:
         row = _require(self._connection, "SELECT * FROM tasks WHERE id = ?", (task_id,), "task")
@@ -842,7 +969,13 @@ class TaskRepository:
         statuses: tuple[str, ...] = ("proposed", "active", "waiting", "blocked"),
         limit: int = 100,
     ) -> list[TaskCurrent]:
-        clauses = ["tenant_id = ?", "agent_id = ?"]
+        clauses = [
+            "tenant_id = ?",
+            "agent_id = ?",
+            "NOT EXISTS (SELECT 1 FROM resource_tombstones rt "
+            "WHERE rt.tenant_id=tasks.tenant_id AND rt.resource_type='task' "
+            "AND rt.resource_id=tasks.id)",
+        ]
         params: list[Any] = [tenant_id, agent_id]
         if statuses:
             placeholders = ",".join("?" for _ in statuses)
@@ -862,11 +995,30 @@ class TaskRepository:
         """Non-terminal tasks whose due time has arrived (Recall route input)."""
         rows = self._connection.execute(
             "SELECT * FROM tasks WHERE tenant_id = ? AND agent_id = ? "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones rt "
+            "WHERE rt.tenant_id=tasks.tenant_id "
+            "AND rt.resource_type='task' AND rt.resource_id=tasks.id) "
             "AND status IN ('active', 'waiting') AND due_at_us IS NOT NULL AND due_at_us <= ? "
             "ORDER BY due_at_us, priority, id LIMIT ?",
             (tenant_id, agent_id, now_us, limit),
         ).fetchall()
         return [_task_current_from_row(row) for row in rows]
+
+    def latest_task_transition(self, task_id: str) -> tuple[int, str, str | None]:
+        """Anchor triggers to a status change, ignoring later metadata/child revisions."""
+        row = _require(
+            self._connection,
+            "SELECT r.revision, r.status, previous.status AS previous_status "
+            "FROM task_revisions r JOIN tasks current ON current.id = r.task_id "
+            "LEFT JOIN task_revisions previous ON previous.task_id = r.task_id "
+            "AND previous.revision = r.revision - 1 "
+            "WHERE r.task_id = ? AND r.revision <= current.current_revision "
+            "AND (r.revision = 1 OR r.status != previous.status) "
+            "ORDER BY r.revision DESC LIMIT 1",
+            (task_id,),
+            "task status transition",
+        )
+        return int(row["revision"]), str(row["status"]), row["previous_status"]
 
     def task_history(self, task_id: str, *, limit: int = 100) -> list[TaskRevision]:
         rows = self._connection.execute(
@@ -1032,6 +1184,22 @@ class TaskRepository:
         ).fetchall()
         return [_step_current_from_row(row) for row in rows]
 
+    def latest_step_transition(self, step_id: str) -> tuple[int, str, str | None]:
+        """Anchor triggers to a status change, ignoring later metadata/child revisions."""
+        row = _require(
+            self._connection,
+            "SELECT r.revision, r.status, previous.status AS previous_status "
+            "FROM task_step_revisions r JOIN task_steps current ON current.id = r.step_id "
+            "LEFT JOIN task_step_revisions previous ON previous.step_id = r.step_id "
+            "AND previous.revision = r.revision - 1 "
+            "WHERE r.step_id = ? AND r.revision <= current.current_revision "
+            "AND (r.revision = 1 OR r.status != previous.status) "
+            "ORDER BY r.revision DESC LIMIT 1",
+            (step_id,),
+            "step status transition",
+        )
+        return int(row["revision"]), str(row["status"]), row["previous_status"]
+
     def step_history(self, step_id: str, *, limit: int = 100) -> list[TaskStepRevision]:
         rows = self._connection.execute(
             "SELECT * FROM task_step_revisions WHERE step_id = ? ORDER BY revision DESC LIMIT ?",
@@ -1043,10 +1211,24 @@ class TaskRepository:
 
     def dependencies_for_task(self, task_id: str) -> list[TaskDependencyEdge]:
         rows = self._connection.execute(
-            "SELECT * FROM task_dependencies WHERE task_id = ? ORDER BY created_us, id",
+            "SELECT * FROM task_dependencies WHERE task_id = ? AND status = 'active' "
+            "ORDER BY created_us, id",
             (task_id,),
         ).fetchall()
         return [_dependency_from_row(row) for row in rows]
+
+    def dependency_at_revision(self, dependency_id: str, revision: int) -> TaskDependencyEdge:
+        row = _require(
+            self._connection,
+            "SELECT d.id, d.task_id, r.predecessor_step_id, r.successor_step_id, r.condition, "
+            "r.revision AS current_revision, r.id AS current_revision_id, d.created_us, "
+            "r.created_us AS updated_us, r.status FROM task_dependencies d "
+            "JOIN task_dependency_revisions r ON r.dependency_id = d.id "
+            "WHERE d.id = ? AND r.revision = ?",
+            (dependency_id, revision),
+            "dependency revision",
+        )
+        return _dependency_from_row(row)
 
     def get_dependency(self, dependency_id: str) -> TaskDependencyEdge:
         row = _require(
@@ -1099,12 +1281,14 @@ class TaskRepository:
         successor_step_id: str,
         condition: str,
         created_by: str,
+        status: str = "active",
     ) -> str:
         revision_id = str(self._ids.new())
         self._connection.execute(
             "INSERT INTO task_dependency_revisions (id, dependency_id, task_id, tenant_id, "
-            "revision, predecessor_step_id, successor_step_id, condition, created_us, created_by) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "revision, predecessor_step_id, successor_step_id, condition, "
+            "created_us, created_by, status) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (
                 revision_id,
                 dependency_id,
@@ -1116,6 +1300,7 @@ class TaskRepository:
                 condition,
                 self._clock.now_us(),
                 created_by,
+                status,
             ),
         )
         return revision_id
@@ -1127,6 +1312,41 @@ class TaskRepository:
             (revision_id, self._clock.now_us(), dependency_id),
         )
         return cursor.rowcount
+
+    def advance_dependency_pointer(
+        self,
+        dependency_id: str,
+        *,
+        expected_revision: int,
+        revision: int,
+        revision_id: str,
+        status: str,
+        condition: str,
+    ) -> int:
+        cursor = self._connection.execute(
+            "UPDATE task_dependencies SET current_revision = ?, current_revision_id = ?, "
+            "status = ?, condition = ?, updated_us = ? WHERE id = ? AND current_revision = ?",
+            (
+                revision,
+                revision_id,
+                status,
+                condition,
+                self._clock.now_us(),
+                dependency_id,
+                expected_revision,
+            ),
+        )
+        return cursor.rowcount
+
+    def dependency_for_pair(
+        self, task_id: str, predecessor_step_id: str, successor_step_id: str
+    ) -> TaskDependencyEdge | None:
+        row = self._connection.execute(
+            "SELECT * FROM task_dependencies WHERE task_id = ? "
+            "AND predecessor_step_id = ? AND successor_step_id = ?",
+            (task_id, predecessor_step_id, successor_step_id),
+        ).fetchone()
+        return _dependency_from_row(row) if row is not None else None
 
     def dependency_revision_number(self, revision_id: str) -> int:
         row = _one(
@@ -1271,6 +1491,8 @@ class TaskRepository:
         revision: int,
         revision_id: str,
         enabled: bool | None = None,
+        spec: TaskTriggerRevision | None = None,
+        next_fire_at_us: int | None = None,
     ) -> int:
         """CAS the SPEC revision pointer (spec changes only, §11.4)."""
         assignments = [
@@ -1282,6 +1504,19 @@ class TaskRepository:
         if enabled is not None:
             assignments.append("enabled = ?")
             params.append(1 if enabled else 0)
+        if spec is not None:
+            for field in (
+                "kind",
+                "task_step_id",
+                "timezone",
+                "catch_up_policy",
+                "misfire_grace_us",
+                "max_occurrences_per_run",
+            ):
+                assignments.append(f"{field} = ?")
+                params.append(getattr(spec, field))
+            assignments.extend(["next_fire_at_us = ?", "last_scan_us = NULL"])
+            params.append(next_fire_at_us)
         cursor = self._connection.execute(
             f"UPDATE task_triggers SET {', '.join(assignments)} WHERE id = ? "
             "AND current_revision = ?",
@@ -1336,6 +1571,15 @@ class TaskRepository:
         """
         due_rows = self._connection.execute(
             "SELECT * FROM task_triggers WHERE tenant_id = ? AND agent_id = ? AND enabled = 1 "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones rt "
+            "WHERE rt.tenant_id=task_triggers.tenant_id AND rt.resource_type='task' "
+            "AND rt.resource_id=task_triggers.task_id) "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones rt "
+            "WHERE rt.tenant_id=task_triggers.tenant_id AND rt.resource_type='task_trigger' "
+            "AND rt.resource_id=task_triggers.id) "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones rt "
+            "WHERE rt.tenant_id=task_triggers.tenant_id AND rt.resource_type='task_step' "
+            "AND rt.resource_id=task_triggers.task_step_id) "
             "AND kind IN ('at_time', 'recurrence') "
             "AND next_fire_at_us IS NOT NULL AND next_fire_at_us <= ? "
             "ORDER BY next_fire_at_us, id LIMIT ?",
@@ -1343,6 +1587,15 @@ class TaskRepository:
         ).fetchall()
         condition_rows = self._connection.execute(
             "SELECT * FROM task_triggers WHERE tenant_id = ? AND agent_id = ? AND enabled = 1 "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones rt "
+            "WHERE rt.tenant_id=task_triggers.tenant_id AND rt.resource_type='task' "
+            "AND rt.resource_id=task_triggers.task_id) "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones rt "
+            "WHERE rt.tenant_id=task_triggers.tenant_id AND rt.resource_type='task_trigger' "
+            "AND rt.resource_id=task_triggers.id) "
+            "AND NOT EXISTS (SELECT 1 FROM resource_tombstones rt "
+            "WHERE rt.tenant_id=task_triggers.tenant_id AND rt.resource_type='task_step' "
+            "AND rt.resource_id=task_triggers.task_step_id) "
             "AND kind IN ('observation_kind', 'state_condition', 'task_transition') "
             "ORDER BY (last_scan_us IS NOT NULL), last_scan_us, id LIMIT ?",
             (tenant_id, agent_id, limit),

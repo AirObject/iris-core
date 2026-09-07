@@ -390,6 +390,13 @@ _KINDS: dict[str, JobKindSpec] = dict(
             enabled=True,
             notes="Phase 2 seed handler: read-only spine consistency check.",
         ),
+        _spec(
+            "console.memory_forget",
+            priority=1,
+            lane=JobLane.SAFETY,
+            enabled=True,
+            notes="Fixed operator intent; bounded fenced batches, never coalesced.",
+        ),
     ]
 )
 
