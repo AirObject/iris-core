@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
-from iris_memory_core.application.ports import (
-    Clock,
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import (
     IdempotencyRunner,
     Transaction,
     UnitOfWork,

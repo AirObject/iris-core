@@ -7,7 +7,7 @@ import json
 import sqlite3
 from collections.abc import Mapping, Sequence
 
-from iris_memory_core.application.ports import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
 from iris_memory_core.domain.errors import RevisionMismatchError
 from iris_memory_core.domain.hashing import canonical_json
 from iris_memory_core.domain.observation import (

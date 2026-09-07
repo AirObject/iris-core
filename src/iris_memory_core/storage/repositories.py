@@ -12,7 +12,7 @@ from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from iris_memory_core.application.ports import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
 from iris_memory_core.domain.errors import (
     ConflictError,
     NotFoundError,

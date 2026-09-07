@@ -1640,7 +1640,9 @@ Clock 注入覆盖时区/DST、回拨/前跳/休眠/重启 Catch-up、Occurrence
 | `hosts/` | Bellis/AstrBot 接入说明；不证明适配代码已交付 |
 | `web/console/` | Console 前端 |
 
-`domain/` 与 `application/` 的聚合模块使用平铺结构，Console 增设专用子包。容器、Compose、运维手册的新增路径由 Phase 14 落实，尚未存在的目录不列作已交付代码。
+`domain/` 与 `application/` 的聚合模块使用平铺结构，Console 增设专用子包；共享端口按上下文放在 `application/ports/`，包根保留兼容重导出，应用与适配器优先导入具体端口模块。容器、Compose、运维手册的新增路径由 Phase 14 落实，尚未存在的目录不列作已交付代码。
+
+`security/` 是预留的架构边界标记，目前不包含独立安全实现；实际授权与凭据控制位于 `domain/access.py`、`application/security.py` 和 `application/console/`。`coordinator/` 是 `application/surface.py` 的兼容导出边界，没有另一套协调实现。两者均不是客户端公共 API。模块长度是可维护性指标，不作为逐行拆分或判断功能缺陷的门槛。
 
 ### 33.2 Adapter 仓库
 

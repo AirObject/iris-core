@@ -43,7 +43,7 @@ from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.observation import ObservationService
 from iris_memory_core.application.outbox import OutboxService
 from iris_memory_core.application.persona import PersonaService
-from iris_memory_core.application.ports import UnitOfWork
+from iris_memory_core.application.ports.transaction import UnitOfWork
 from iris_memory_core.application.provisioning import ProvisioningService
 from iris_memory_core.application.recall import (
     ExternalActorRef,

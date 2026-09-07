@@ -30,7 +30,12 @@ from typing import Any
 
 from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.outbox import enqueue_with_pressure
-from iris_memory_core.application.ports import Clock, IdempotencyRunner, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import (
+    IdempotencyRunner,
+    Transaction,
+    UnitOfWork,
+)
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.application.write_support import (
     enqueue_change_job,

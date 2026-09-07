@@ -18,7 +18,7 @@ from iris_memory_core.application.console.resources import (
     ResourceRef,
 )
 from iris_memory_core.application.console.security import OperatorSecurity, authorize, denied
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.domain.console import OperatorPrincipal
 from iris_memory_core.domain.errors import ConflictError, NotFoundError, NotReadyError
 

@@ -19,7 +19,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from iris_memory_core.application.forget import ForgetService, _hold_blocks
-from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import AccessDeniedError, require_reason
 from iris_memory_core.domain.memory import ClaimCurrent, RelationCurrent

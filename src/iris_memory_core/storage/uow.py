@@ -12,7 +12,7 @@ from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager, suppress
 from pathlib import Path
 
-from iris_memory_core.application.ports import (
+from iris_memory_core.application.ports.clock import (
     Clock,
     IdentifierGenerator,
     SystemClock,

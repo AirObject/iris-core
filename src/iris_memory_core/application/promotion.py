@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 
 if TYPE_CHECKING:
     from iris_memory_core.application.memory import EvidenceSpec

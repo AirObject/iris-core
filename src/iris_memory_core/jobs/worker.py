@@ -21,7 +21,8 @@ from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, OutboxService
-from iris_memory_core.application.ports import Clock, IdentifierGenerator, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.reflection import ReflectionPipeline
 from iris_memory_core.application.retention import RetentionService

@@ -10,10 +10,9 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
-from iris_memory_core.application.ports import (
-    Clock,
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.transaction import (
     IdempotencyRunner,
-    IdentifierGenerator,
     Transaction,
     UnitOfWork,
 )

@@ -25,6 +25,8 @@ npx playwright install chromium
 
 These are verification commands, not a claim that the current workspace passes every gate. Current results and remaining release gates are recorded in the [Phase 14 report](docs/reports/phase-14-verification.md). The [installation guide](docs/operations/core-installation.md) describes the trusted CLI bootstrap and public SDK boundary.
 
+`make test` measures functional coverage; `make test-performance` runs latency budgets without coverage instrumentation. `make ci` requires both. See [test navigation](tests/README.md) for focused paths.
+
 Useful focused commands: `make format`, `make lint`, `make typecheck`, `make contracts`, `make contracts-check`, `make test`, and `make sdk-test`.
 
 ## Run from the checkout
@@ -53,7 +55,7 @@ The SDK offline test double is available with `uv run python -m tools.mock_serve
 - [Public method mapping and change gate](docs/development/public-api.md).
 - [Host integrations](hosts/README.md) and [Web Console](web/console/README.md).
 
-Edit `contracts/source/contracts.json` for `/v1` or `contracts/source/console.json` for `/console/v1`, run `make contracts`, and include generated artifacts and fixtures in the same change. Never edit an applied migration; add a new one.
+See the [contract authoring guide](contracts/README.md). Edit `contracts/source/contracts.json` for `/v1` or `contracts/source/console.json` for `/console/v1`, run `make contracts`, and include generated artifacts and fixtures in the same change. Never edit an applied migration; add a new one.
 
 ## License
 

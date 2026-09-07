@@ -18,8 +18,8 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from iris_memory_core.application.ports import (
-    Clock,
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import (
     IdempotencyRunner,
     Transaction,
     UnitOfWork,

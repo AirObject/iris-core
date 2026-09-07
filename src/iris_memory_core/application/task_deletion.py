@@ -1,7 +1,7 @@
 """Bounded internal Task cascade; public admission remains at managed Forget."""
 
 from iris_memory_core.application.events import CognitiveEventService
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.domain.errors import AccessDeniedError, NotReadyError
 from iris_memory_core.domain.note import PROMISE_KINDS
 from iris_memory_core.domain.task import TaskCurrent

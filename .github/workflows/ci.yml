@@ -12,11 +12,11 @@ permissions:
 jobs:
   # Full quality gate: format, lint, import + docs boundaries, mypy, tsc,
   # contract drift/compatibility, pytest with coverage, TypeScript SDK tests.
-  # The timeout tracks the suite: Phase 8 measured ~436 s for pytest alone,
-  # so 15 minutes no longer left room for bootstrap, mypy and tsc.
+  # September 2026: pytest alone took 19 minutes locally. Allow headroom
+  # for dependency/browser installation and fresh isolated package builds.
   quality-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:

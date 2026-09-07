@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from iris_memory_core.application.entity_deletion import entity_selector_key
-from iris_memory_core.application.ports import SystemClock, Uuid7Generator
+from iris_memory_core.application.ports.clock import SystemClock, Uuid7Generator
 from iris_memory_core.domain.console_operations import ConsoleOperation, OperationProblem
 from iris_memory_core.domain.retention import ForgetSelector
 from iris_memory_core.storage.console_operations import ConsoleOperationRepository

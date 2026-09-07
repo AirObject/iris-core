@@ -4,6 +4,8 @@
 
 基于 `692de12b4b9a9d8d47ebfdd938ba9622d152f0d9` 的未提交工作区实施，保留开始时已有的范围规划修改。初始切片当时为 Core 0.13.0 / Schema 15；业务 Contract 1.10.0、Console Contract 1.1.0；独立 Python SDK 0.11.1、TS SDK 0.11.2。环境为 macOS ARM64、Python 3.12.13、SQLite 3.50.4、Node 26.8.1、Chrome。没有创建 RC、签名、上传或发布产物。
 
+当前生成契约计数（由 `make lint` 核对）：业务 <!-- contract-count:openapi:paths -->86<!-- /contract-count --> 个路径、<!-- contract-count:openapi:operations -->92<!-- /contract-count --> 个操作；Console <!-- contract-count:console:paths -->125<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->152<!-- /contract-count --> 个操作。下文逐切片的接口与测试数字保留当时的历史口径。
+
 ## 已落地切片
 
 - **14.0-C 读面闭环**：按 [ADR-0023](../adr/0023-release-resources-and-console-identifiers.md) 保留 Canonical 不透明 ID，补非 UUID、空 ID、超长 ID Fixture；重新生成类型并适配 `list_columns`、结构化 `sorts`、空写 Schema 和 history/references 能力。真实浏览器发现并修复相同筛选清空列表的问题，补表头和排序选择器的可访问语义。此处只证明读面，不包含未发布写动作。
@@ -586,3 +588,64 @@ Console **29 tests**、生成类型、Lint、类型检查和生产构建通过�
 并发反馈修正的首轮主目录完整 CI 自然退出 **2**：Python **11680 passed / 1 failed（962.73s）**，失败为 Hybrid Recall 第 32 个测量请求 `bench-31` 的所有路由超出 250ms deadline，抛出 deadline_exceeded，尚未生成该轮 p95 汇总；不能将其简写为已测得 p95 超标。SDK、Console 浏览器和安装后续门禁未执行。**1319 个输入文件前后摘要完全一致**，本轮修改只有前述八个 UI/浏览器文件，尚无证据确定延迟异常原因。
 
 随后保持实现与性能测试阈值不变，单独运行同一 Hybrid 测试并保留 coverage instrumentation，**2 passed（5.88s）**。该诊断只关闭局部 coverage 总量阈值（全仓 CI 继续为 80%），不替代完整组合验收；40 个样本实测 p50 33.5ms、p95 39.3ms、最大 43.8ms，Embedding p50 0.09ms、FAISS p50 1.92ms。没有修改 Recall 热路径、250ms deadline 或 p95 门槛。原定完整 CI 重跑尚未启动；按项目负责人本次停止指令取消重跑，保留未验收状态。
+
+## 2026-09-07 Recall 性能采样预热 ID 碰撞修复
+
+候选：基于 `49d871cbe3f1d22245c77566fc6763f86090bb36` 的未提交工作区修改；Core 0.13.0 / Schema 20。范围为 `tests/performance/test_recall_latency.py` 与本报告，无生产热路径、契约、迁移或预算变更。环境：Mac16,12 / Apple M4（10 核、16 GiB RAM）、macOS 26.6.2 ARM64、Python 3.12.13、SQLite 3.50.4，本机开发 SQLite Allowlist；测量前系统 1/5/15 分钟 load average 为 2.47/2.27/2.33，未启动其他验证任务并行竞争，但未控制整机后台负载。
+
+**问题确认**：原 `_measure()` 每次从 0 编号，两项门禁各自的三次预热与正式样本共用 `perf-req-<topic>-0/1/2`。`RecallService.recall()` 查询到同 ID 的存档后经权限与有效性检查返回重放，跳过 orchestrator 和新请求持久化。因此原 40 个样本混入三次较快重放，污染分布及 p50/p95 统计；不能把此前通过记录视为 40 次真实 Recall 的证据。现预热使用 `perf-warmup-<topic>-0..2`，正式测量保持 `perf-req-<topic>-0..39`，两项测试均已修复。
+
+测量口径：每项测试独立临时 SQLite 数据库，FTS 已构建，先三次预热再测 40 次顺序请求；内部路由并发上限 4，无外部 Provider 调用。实际数据为 60 条 identity/fact Claim（文本 40–120 字符范围内）、20 条对话 Observation 加 60 条 Evidence Observation，FTS 为 60 条 Claim 文档；没有 State/Focus/Relation 记录。每结构化路由默认 Candidate 上限 20，Token budget 100,000；请求 deadline 沿用 60 秒。计时仅包围 `RecallService.recall()`，包含授权、路由、新鲜 Rehydrate 与 Usage 持久化，不含请求构造、建库、索引构建及预热；p50/p95 沿用排序后零基下标 `round(fraction * (n - 1))`（40 项的 p95 为下标 37），不插值。文件 docstring 已纠正预热、实际数据集及统计方法，deadline 注释由错误的 60 ms 更正为 60 s。
+
+修复后的独立无覆盖率测量命令：
+
+```bash
+.venv/bin/python -m pytest tests/performance/test_recall_latency.py --no-cov -q -s
+```
+
+| 项目 | 真实正式样本 | p50 | p95 | max | 原有门槛/结果 |
+| --- | --- | --- | --- | --- | --- |
+| Structured Recall | 40 | 22.92 ms | **24.31 ms** | 29.23 ms | ≤ 50.0 ms，通过 |
+| FTS Recall | 40 | 25.17 ms | **26.16 ms** | 27.36 ms | ≤ 100.0 ms，通过 |
+
+结果 **2 passed（3.61s）**。这些是修复后本次本机实测值；不沿用问题描述中的约 24 ms 数字作为本次证据。
+
+同类审计（其余六个文件无需修改）：
+
+| 文件 | 排除同类碰撞的依据 |
+| --- | --- |
+| `test_hybrid_recall_latency.py` | 预热 `bench-warm-{i}`，正式 `bench-{i}`；阶段分解用独立 Fixture 和 `bench-stages` |
+| `test_graph_profile_recall_latency.py` | 一个 `range(WARMUP + SAMPLES)` 连续生成 `perf-{round_index}`，只在统计时切掉前三项 |
+| `test_forget_latency.py` | 预热 `perf-warm`，正式 `perf-{sample}`；时钟推进且每轮新建目标；单资源测试无预热，使用 `perf-single-{sample}` |
+| `test_observe_latency.py` | 预热 `warm-`，正式单条 `s-` / 批量 `b-`，cursor 持续递增 |
+| `test_persona_latency.py` | `current()` 为读调用，没有 request ID / 幂等重放键 |
+| `test_state_latency.py` | 同一 `itertools.count()` 覆盖预热、正式及竞争阶段，`w-{ticket}` 不重复；种子另用 `corpus-` / `hot-seed` |
+
+**独立待决项：负载敏感性（14.4 / P14-PERF-01 承接）**。问题提交者提供的此前本机证据：同一结构化门禁在完整 make ci-style 运行中带 coverage 的 p95 为 **59.19 ms**，紧接着无 coverage 为 **53.47 ms**，均超过 50 ms；空闲机器上约 **24 ms**，余量明显。这两次失败保留为提交者提供的历史观察，未提供可核对的完整命令/日志/候选摘要，本次不冒充重新复现，也不归因为 coverage 单一因素。预热 ID 修复解决样本真实性，未解决整机负载导致的门禁不稳定；需另行决定固定测量主机及负载条件，或引入不依赖墙钟负载的工作量指标，并明确其与 §30 延迟基线的关系。现有 50/100 ms 门槛保持不变，不以单机低负载通过关闭该项，也不据此宣布 14.4、Soak 或稳定发布验收通过。
+
+另做一次真实服务诊断，将重放入口临时替换为失败断言，两项原性能测试仍 **2 passed（3.59s），replay_calls=0**；该诊断不作为上表的无插桩延迟数据，也没有修改生产服务。可复现命令：
+
+```bash
+.venv/bin/python - <<'PY'
+import pytest
+from unittest.mock import patch
+from iris_memory_core.application.recall import RecallService
+
+with patch.object(RecallService, "_replay", side_effect=AssertionError("performance sample replayed")) as replay:
+    result = pytest.main(["tests/performance/test_recall_latency.py", "--no-cov", "-q"])
+    print(f"replay_calls={replay.call_count}")
+    assert replay.call_count == 0
+    raise SystemExit(result)
+PY
+```
+
+收尾命令：`UV_CACHE_DIR=.uv-cache CONSOLE_BROWSER_EXECUTABLE='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' make ci`。首轮沙箱运行通过格式、Lint、导入边界、文档、mypy、TS 类型、契约/兼容与公共接口检查；进入 Python 回归后，Mock HTTP server 在 `socket.bind()` 遇到 `PermissionError: [Errno 1] Operation not permitted`。用 `.venv/bin/python -m pytest tests/contract/test_mock_server.py --no-cov -q -x` 确认同一环境错误（1 error，0.07s）后主动中断无效全量运行（中断时 530 passed / 54 errors，65.07s），未将中断记录为完整测试结果。原始本地诊断日志保留于 `/tmp/recall-warmup-ci-20260907.log`；随后申请允许本地监听的执行环境，复验结果在下文补记。
+
+
+同一修复候选在允许本地监听的执行环境中运行上述完整 `make ci`，自然退出 **0**（原始本地日志 `/tmp/recall-warmup-ci-20260907-local.log`）：
+
+- Python **11,681 passed、2 warnings（894.29s）**，覆盖率 **85.23%**，保持原有 80% 覆盖率门槛；七个被审计性能文件均通过，包括修复后的 Structured/FTS 两项带覆盖率门禁。
+- TS SDK **19 passed**；Console **29 passed**，类型生成、Lint、类型检查和生产构建通过；真实 Chrome 浏览器 **20 passed（1.3m）**。
+- 格式、导入边界、文档、mypy、契约生成/兼容、公共接口快照均通过；全新 sdist/wheel、归档边界、隔离安装、Required 模式 SDK/Worker 与四个私有接口拒绝检查通过。安装服务退出 -15，关闭约 **0.256s**，仍显式使用开发 SQLite Override。
+
+本轮完整组合通过不否定此前负载条件下的失败，也不证明门禁已稳定；14.4 的固定测量环境/指标决策仍待完成。没有修改门槛、提交代码、创建 RC 或发布产物。

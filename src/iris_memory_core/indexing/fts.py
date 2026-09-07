@@ -14,7 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.domain.errors import ConflictError, NotFoundError
 from iris_memory_core.domain.fts import (
     FTS_BUILDER_VERSION,

@@ -11,7 +11,7 @@ import json
 import sqlite3
 from typing import Any
 
-from iris_memory_core.application.ports import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
 from iris_memory_core.domain.errors import (
     ConflictError,
     IdempotencyKeyReusedError,

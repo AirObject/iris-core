@@ -1,6 +1,6 @@
 UV := UV_CACHE_DIR=.uv-cache uv
 
-.PHONY: bootstrap format format-check lint typecheck contracts contracts-check public-api-check test test-affected sdk-test console-check console-browser package-check ci clean
+.PHONY: bootstrap format format-check lint typecheck contracts contracts-check public-api-check test test-performance test-affected sdk-test console-check console-browser package-check ci clean
 
 bootstrap:
 	$(UV) sync --group dev --frozen
@@ -18,6 +18,7 @@ lint:
 	$(UV) run ruff check .
 	$(UV) run python -m tools.check_import_boundaries
 	$(UV) run python -m tools.check_docs
+	$(UV) run python -m tools.check_contract_counts
 
 typecheck:
 	$(UV) run mypy
@@ -34,7 +35,10 @@ public-api-check:
 	$(UV) run python -m tools.check_public_api
 
 test:
-	$(UV) run pytest
+	$(UV) run pytest --ignore=tests/performance
+
+test-performance:
+	$(UV) run pytest tests/performance --no-cov -s
 
 test-affected:
 	@test -n "$(strip $(TESTS))" || { echo 'Set TESTS to explicit affected test paths or node IDs.'; exit 2; }
@@ -52,7 +56,7 @@ console-browser: console-check
 package-check:
 	$(UV) run python -m tools.check_packages
 
-ci: format-check lint typecheck contracts-check public-api-check test sdk-test console-browser package-check
+ci: format-check lint typecheck contracts-check public-api-check test-performance test sdk-test console-browser package-check
 
 clean:
 	$(UV) cache clean

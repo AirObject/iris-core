@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from iris_memory_core.application.backpressure import BackpressureGauge, queue_snapshot
-from iris_memory_core.application.ports import Clock, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import UnitOfWork
 
 READY = "ready"
 DEGRADED = "degraded"

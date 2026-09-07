@@ -19,7 +19,8 @@ from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, cast
 
-from iris_memory_core.application.ports import Clock, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import UnitOfWork
 from iris_memory_core.domain.errors import ProviderUnavailableError
 from iris_memory_core.domain.reflection import ProviderKind, ProviderOutcome
 

@@ -17,7 +17,11 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from iris_memory_core.application.backpressure import BackpressureGauge
-from iris_memory_core.application.ports import IdempotencyRunner, Transaction, UnitOfWork
+from iris_memory_core.application.ports.transaction import (
+    IdempotencyRunner,
+    Transaction,
+    UnitOfWork,
+)
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.console import CommandActor

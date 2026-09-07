@@ -11,8 +11,8 @@ from fastapi.testclient import TestClient
 
 from iris_memory_core.api.app import create_app
 from iris_memory_core.application.security import CredentialService
-from tests.integration.test_phase6_recall import World
-from tests.integration.test_phase6_review_round2 import _remember
+from tests.integration.recall.test_fts_recall_recall import World
+from tests.integration.recall.test_recall_deadline_scope_and_rebuild import _remember
 
 
 @pytest.fixture

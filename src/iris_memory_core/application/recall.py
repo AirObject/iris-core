@@ -36,13 +36,8 @@ from typing import Any, Protocol, cast
 from iris_memory_core.application.events import CognitiveEventService
 from iris_memory_core.application.focus import FocusService, _require_item_content_access
 from iris_memory_core.application.memory import _require_claim_access, resolve_current_entity
-from iris_memory_core.application.ports import (
-    Clock,
-    MonotonicClock,
-    SystemMonotonicClock,
-    Transaction,
-    UnitOfWork,
-)
+from iris_memory_core.application.ports.clock import Clock, MonotonicClock, SystemMonotonicClock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.state import StateService
 from iris_memory_core.application.surface import SurfaceCoordinatorService

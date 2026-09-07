@@ -5,7 +5,7 @@ from typing import Any
 
 from iris_memory_core.application.console.reads import ConsoleReadService, ResourceReader
 from iris_memory_core.application.console.resources import BY_COLLECTION, ReadQuery
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.domain.console import OperatorPrincipal
 from iris_memory_core.domain.errors import InvalidRequestError
 

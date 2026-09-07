@@ -19,7 +19,7 @@ from iris_memory_core.application.memory import ClaimService
 from iris_memory_core.domain.retention import ForgetSelector, ForgetSelectorKind
 from iris_memory_core.storage.uow import Store
 from tests.conftest import MutableClock
-from tests.integration.test_phase5_claims import _Ctx
+from tests.integration.memory.test_memory_claims import _Ctx
 
 P95_BUDGET_MS = 100.0
 SAMPLES = 40

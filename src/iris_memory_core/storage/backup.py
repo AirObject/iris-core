@@ -758,7 +758,7 @@ def create_standalone_backup(
     database: Path, destination: Path, *, signing_key: bytes | None = None
 ) -> dict[str, Any]:
     """Backup without a live Store (pre-migration CLI path)."""
-    from iris_memory_core.application.ports import Uuid7Generator
+    from iris_memory_core.application.ports.clock import Uuid7Generator
 
     return write_backup_files(
         database, destination, str(Uuid7Generator().new()), signing_key=signing_key

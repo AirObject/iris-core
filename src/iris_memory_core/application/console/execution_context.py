@@ -3,12 +3,8 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from iris_memory_core.application.ports import (
-    Clock,
-    IdempotencyRunner,
-    IdentifierGenerator,
-    UnitOfWork,
-)
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.transaction import IdempotencyRunner, UnitOfWork
 
 
 class ExecutionContext(Protocol):

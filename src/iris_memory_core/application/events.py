@@ -14,8 +14,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from iris_memory_core.application.ports import (
-    Clock,
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import (
     IdempotencyRunner,
     Transaction,
     UnitOfWork,
@@ -149,7 +149,7 @@ class CognitiveEventService:
         TTL are only a fallback for callers with no injected clock.
         """
         scope_key = event_scope_key(tenant_id, agent_id, space_group_id, space_id, session_id)
-        from iris_memory_core.application.ports import SystemClock
+        from iris_memory_core.application.ports.clock import SystemClock
 
         created_us = now_us if now_us is not None else SystemClock().now_us()
         event_id = tx.events.insert(

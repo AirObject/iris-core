@@ -12,7 +12,7 @@ from iris_memory_core.application.console.resources import ReadRecord, ResourceR
 from iris_memory_core.application.console.security import OperatorSecurity, authorize
 from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.observation import ObservationService
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.domain.console import CommandActor, OperatorPrincipal
 from iris_memory_core.domain.errors import NotFoundError

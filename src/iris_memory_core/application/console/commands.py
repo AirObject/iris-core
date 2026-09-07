@@ -14,7 +14,7 @@ from typing import Any
 from iris_memory_core.application.console.reads import ResourceReader
 from iris_memory_core.application.console.resources import ReadRecord, ResourceRef
 from iris_memory_core.application.console.security import OperatorSecurity, authorize, denied
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.console import CommandActor, OperatorPrincipal
 from iris_memory_core.domain.errors import (

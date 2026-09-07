@@ -50,7 +50,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.domain.errors import ConflictError
 from iris_memory_core.domain.hashing import canonical_json
 from iris_memory_core.domain.memory import CLAIM_CURRENT_VISIBLE_STATUSES

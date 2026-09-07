@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.application.write_support import schedule_projection_apply
 from iris_memory_core.domain.errors import AccessDeniedError, InvalidRequestError, NotFoundError
 from iris_memory_core.domain.identity import EntityState

@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.domain.errors import ConflictError
 from iris_memory_core.domain.hashing import request_fingerprint
 

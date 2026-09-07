@@ -19,7 +19,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from iris_memory_core.application.console.resources import ResourceRef
-from iris_memory_core.application.ports import Clock, IdempotencyRunner, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import (
+    IdempotencyRunner,
+    Transaction,
+    UnitOfWork,
+)
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.application.write_support import (
     authorize_scope,

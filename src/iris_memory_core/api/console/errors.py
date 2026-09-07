@@ -11,7 +11,7 @@ from jsonschema import Draft202012Validator
 
 from iris_memory_core.api.console.contracts import load_contract
 from iris_memory_core.api.errors import ERROR_STATUS_BY_CODE
-from iris_memory_core.application.ports import Uuid7Generator
+from iris_memory_core.application.ports.clock import Uuid7Generator
 from iris_memory_core.domain.errors import DomainError
 
 # Values as well as field names are checked against the explicit contract.

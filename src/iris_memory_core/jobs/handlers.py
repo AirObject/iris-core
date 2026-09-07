@@ -32,7 +32,8 @@ from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, enqueue_with_pressure
-from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService

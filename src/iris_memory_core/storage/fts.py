@@ -16,7 +16,7 @@ import sqlite3
 from collections.abc import Sequence
 from typing import Any, cast
 
-from iris_memory_core.application.ports import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
 from iris_memory_core.domain.errors import ConflictError, NotFoundError
 from iris_memory_core.domain.fts import (
     FtsCurrentPointer,

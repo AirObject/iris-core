@@ -25,7 +25,7 @@ from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Any
 
-from iris_memory_core.application.ports import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
 from iris_memory_core.domain.errors import ConflictError, NotFoundError, RevisionMismatchError
 from iris_memory_core.domain.hashing import canonical_json
 from iris_memory_core.domain.memory import (

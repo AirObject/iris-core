@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from iris_memory_core.application.memory import resolve_current_entity
-from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import AccessDeniedError, NotFoundError
 from iris_memory_core.domain.identity import EntityState

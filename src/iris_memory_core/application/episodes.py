@@ -15,7 +15,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from iris_memory_core.application.memory import parse_evidence
-from iris_memory_core.application.ports import Clock, IdempotencyRunner, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import (
+    IdempotencyRunner,
+    Transaction,
+    UnitOfWork,
+)
 from iris_memory_core.application.promotion import PromotionSource
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.application.write_support import (

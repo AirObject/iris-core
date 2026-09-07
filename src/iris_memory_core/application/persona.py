@@ -13,7 +13,12 @@ from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar, cast
 
 from iris_memory_core.application.outbox import enqueue_with_pressure
-from iris_memory_core.application.ports import Clock, IdempotencyRunner, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import (
+    IdempotencyRunner,
+    Transaction,
+    UnitOfWork,
+)
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.console import CommandActor, OperatorPrincipal
 from iris_memory_core.domain.errors import (

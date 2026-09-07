@@ -22,7 +22,8 @@ from iris_memory_core.application.backpressure import (
     BackpressureGauge,
     backoff_delay_us,
 )
-from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (
     AccessDeniedError,

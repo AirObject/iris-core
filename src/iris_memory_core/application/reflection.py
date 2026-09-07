@@ -18,14 +18,13 @@ from iris_memory_core.application.memory import ClaimService
 from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, enqueue_with_pressure
 from iris_memory_core.application.persona import PersonaService
-from iris_memory_core.application.ports import (
-    Clock,
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.providers import (
     CognitiveProviderRunner,
     ExtractionProvider,
     SummarizationProvider,
-    Transaction,
-    UnitOfWork,
 )
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.application.tasks import TaskService
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (

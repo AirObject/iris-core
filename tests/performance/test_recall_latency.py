@@ -3,18 +3,21 @@ p95 <= 100 ms (§30, ADR-0014).
 
 Measurement method (recorded in the verification report):
 - hardware: the CI host running this test (see the report section);
-- dataset: 60 claims (mixed categories/labels), 20 observations in the hot
-  window, 8 state records, 6 focus items, 5 relations, 1 FTS generation of
-  60 documents (claim/episode/note mix is claim-heavy here);
+- dataset: 60 claims (mixed identity/fact categories), 20 conversation
+  observations plus 60 evidence observations, no state/focus/relation
+  records, and 1 FTS generation of 60 claim documents;
 - text length: 40..120 characters per claim, one-topic queries;
 - concurrency: sequential calls; routes execute bounded-parallel internally
   (max 4) exactly as in production;
 - candidate/token caps: defaults (20 per structured route, 2000 token
   budget default is raised to 100_000 so trimming never truncates);
-- index state: HOT — the FTS generation is built before measurement and the
-  first (uncached) call is discarded as warm-up;
+- index state: HOT — the FTS generation is built before three warm-up calls;
+  warm-up request IDs use a separate prefix from the 40 measured requests,
+  so every measured call executes recall rather than an idempotency replay;
 - metric: wall time of RecallService.recall() from call to return, including
-  the fresh rehydrate transaction and the usage persistence write.
+  the fresh rehydrate transaction and the usage persistence write; request
+  construction and warm-up are excluded. p50/p95 use sorted samples at
+  round(fraction * (n - 1)), without interpolation.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ import time
 from iris_memory_core.application.observation import ObservationService
 from iris_memory_core.storage.uow import Store
 from tests.conftest import MutableClock
-from tests.integration.test_phase6_recall import World, build_world
+from tests.integration.recall.test_fts_recall_recall import World, build_world
 
 STRUCTURED_P95_BUDGET_MS = 50.0
 FTS_P95_BUDGET_MS = 100.0
@@ -98,17 +101,19 @@ def _seed(world: World) -> None:
     world.fts.rebuild("t1")
 
 
-def _measure(world: World, topic: str, samples: int) -> list[float]:
+def _measure(
+    world: World, topic: str, samples: int, *, request_prefix: str = "perf-req"
+) -> list[float]:
     durations: list[float] = []
     for sample in range(samples):
         request = world.service.build_request(
-            # Request ids are per-topic: the same id under a different body
-            # is now a rejected replay conflict, not a silent re-run.
-            request_id=f"perf-req-{topic.replace(' ', '-')}-{sample}",
+            # Separate warm-up and measured IDs to avoid idempotency replay;
+            # include the topic to avoid conflicts between different bodies.
+            request_id=f"{request_prefix}-{topic.replace(' ', '-')}-{sample}",
             agent_id=world.agent,
             space_id=world.space,
             session_id=world.session,
-            deadline_at_us=world.clock.now_us() + 60_000_000,  # 60 ms budget
+            deadline_at_us=world.clock.now_us() + 60_000_000,  # 60 s deadline
             topic=topic,
             token_budget=100_000,
         )
@@ -126,9 +131,13 @@ def test_structured_recall_p95_under_50ms(
     _seed(world)
     # Structured-only: the FTS route runs but the topic does not match the
     # index content beyond noise; the structured routes dominate.
-    _measure(world, "turn discussion", samples=3)  # warm-up
+    _measure(world, "turn discussion", samples=3, request_prefix="perf-warmup")
     durations = _measure(world, "turn discussion", samples=SAMPLES)
     p95 = _percentile(durations, 0.95)
+    print(
+        f"\nstructured recall: p50={_percentile(durations, 0.50):.2f}ms "
+        f"p95={p95:.2f}ms max={max(durations):.2f}ms samples={len(durations)}"
+    )
     assert p95 <= STRUCTURED_P95_BUDGET_MS, durations
 
 
@@ -136,7 +145,11 @@ def test_fts_recall_p95_under_100ms(clocked_store: Store, mutable_clock: Mutable
     mutable_clock.set(1_700_000_000_000_000)
     world = build_world(clocked_store, mutable_clock)
     _seed(world)
-    _measure(world, "quantum physics gravitational", samples=3)  # warm-up
+    _measure(world, "quantum physics gravitational", samples=3, request_prefix="perf-warmup")
     durations = _measure(world, "quantum physics gravitational", samples=SAMPLES)
     p95 = _percentile(durations, 0.95)
+    print(
+        f"\nfts recall: p50={_percentile(durations, 0.50):.2f}ms "
+        f"p95={p95:.2f}ms max={max(durations):.2f}ms samples={len(durations)}"
+    )
     assert p95 <= FTS_P95_BUDGET_MS, durations

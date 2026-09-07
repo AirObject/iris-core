@@ -11,7 +11,8 @@ transaction, so a failure anywhere leaves the previous verified generation
 
 from __future__ import annotations
 
-from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (
     AccessDeniedError,

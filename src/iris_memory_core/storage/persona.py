@@ -7,7 +7,7 @@ import sqlite3
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
-from iris_memory_core.application.ports import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
 from iris_memory_core.domain.errors import (
     ConflictError,
     NotFoundError,

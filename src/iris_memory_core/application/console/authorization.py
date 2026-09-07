@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from iris_memory_core.application.console.resources import ReadRecord
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.domain.console import OperatorGrant
 from iris_memory_core.domain.errors import NotFoundError
 from iris_memory_core.domain.privacy import InvalidPrivacyLabelError, parse_label

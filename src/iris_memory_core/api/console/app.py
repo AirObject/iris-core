@@ -32,7 +32,7 @@ from iris_memory_core.api.console.routes_persona_proposals import router as pers
 from iris_memory_core.api.console.routes_persona_states import router as persona_states_router
 from iris_memory_core.api.console.routes_personas import router as personas_router
 from iris_memory_core.api.console.views import envelope
-from iris_memory_core.application.ports import Clock, SystemClock, Uuid7Generator
+from iris_memory_core.application.ports.clock import Clock, SystemClock, Uuid7Generator
 from iris_memory_core.domain.errors import DomainError
 from iris_memory_core.observability.logging import LowSensitivityLogger
 from iris_memory_core.storage.uow import Store

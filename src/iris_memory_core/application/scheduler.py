@@ -19,13 +19,8 @@ from zoneinfo import ZoneInfo
 
 from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.outbox import enqueue_with_pressure
-from iris_memory_core.application.ports import (
-    Clock,
-    MonotonicClock,
-    SystemMonotonicClock,
-    Transaction,
-    UnitOfWork,
-)
+from iris_memory_core.application.ports.clock import Clock, MonotonicClock, SystemMonotonicClock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import (
     AccessDeniedError,

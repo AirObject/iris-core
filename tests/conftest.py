@@ -214,8 +214,8 @@ def health(
 
 @pytest.fixture
 def phase6_world(clocked_store, mutable_clock):  # type: ignore[no-untyped-def]
-    """Shared Phase 6 recall world (see tests/integration/test_phase6_recall.py)."""
-    from tests.integration.test_phase6_recall import build_world
+    """Shared Phase 6 recall world (see tests/integration/recall/test_fts_recall_recall.py)."""
+    from tests.integration.recall.test_fts_recall_recall import build_world
 
     mutable_clock.set(1_700_000_000_000_000)
     return build_world(clocked_store, mutable_clock)

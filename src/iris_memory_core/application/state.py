@@ -18,8 +18,8 @@ from typing import Any
 
 from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.outbox import enqueue_with_pressure
-from iris_memory_core.application.ports import (
-    Clock,
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import (
     IdempotencyRunner,
     Transaction,
     UnitOfWork,

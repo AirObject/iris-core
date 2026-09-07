@@ -9,7 +9,7 @@ from iris_memory_core.application.console.reads import ResourceReader
 from iris_memory_core.application.console.resources import ReadRecord, ResourceRef
 from iris_memory_core.application.console.security import OperatorSecurity, authorize, denied
 from iris_memory_core.application.persona import PersonaService
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.domain.console import CommandActor, OperatorPrincipal
 from iris_memory_core.domain.errors import NotFoundError
 from iris_memory_core.domain.scope import Scope

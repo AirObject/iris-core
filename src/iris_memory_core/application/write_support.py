@@ -12,7 +12,7 @@ from typing import Any
 
 from iris_memory_core.application.backpressure import BackpressureGauge
 from iris_memory_core.application.outbox import enqueue_with_pressure
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.application.surface import SurfaceCoordinatorService
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.errors import AccessDeniedError, InvalidRequestError

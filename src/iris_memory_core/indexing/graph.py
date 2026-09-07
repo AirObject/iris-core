@@ -15,7 +15,8 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
-from iris_memory_core.application.ports import Clock, Transaction, UnitOfWork
+from iris_memory_core.application.ports.clock import Clock
+from iris_memory_core.application.ports.transaction import Transaction, UnitOfWork
 from iris_memory_core.domain.errors import NotFoundError
 from iris_memory_core.domain.graph import (
     GRAPH_APPLY_PAYLOAD_VERSION,

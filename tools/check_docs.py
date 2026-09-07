@@ -15,6 +15,7 @@ PHASE_ROOT = DOCS_ROOT / "development"
 EXTRA_DOCUMENT_ROOTS = (
     *REPOSITORY_ROOT.glob("*.md"),
     REPOSITORY_ROOT / "sdk",
+    REPOSITORY_ROOT / "tests",
     REPOSITORY_ROOT / "hosts",
     REPOSITORY_ROOT / "web" / "console",
     REPOSITORY_ROOT / "contracts",

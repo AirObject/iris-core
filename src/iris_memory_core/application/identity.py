@@ -14,7 +14,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from iris_memory_core.application.console.resources import ResourceRef
-from iris_memory_core.application.ports import IdempotencyRunner, Transaction, UnitOfWork
+from iris_memory_core.application.ports.transaction import (
+    IdempotencyRunner,
+    Transaction,
+    UnitOfWork,
+)
 from iris_memory_core.application.write_support import schedule_projection_apply
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.domain.console import CommandActor

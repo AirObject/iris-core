@@ -14,7 +14,7 @@ from iris_memory_core.application.console.security import (
     denied,
     digest,
 )
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.application.recall import RECALL_PURPOSES
 from iris_memory_core.application.security import CredentialService
 from iris_memory_core.domain.console import OperatorPrincipal

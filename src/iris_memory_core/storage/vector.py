@@ -14,7 +14,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Sequence
 
-from iris_memory_core.application.ports import Clock, IdentifierGenerator
+from iris_memory_core.application.ports.clock import Clock, IdentifierGenerator
 from iris_memory_core.domain.errors import ConflictError, NotFoundError
 from iris_memory_core.domain.hashing import canonical_json
 from iris_memory_core.domain.vector import (

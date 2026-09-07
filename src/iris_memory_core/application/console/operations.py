@@ -10,7 +10,7 @@ from iris_memory_core.application.console.execution_context import ExecutionCont
 from iris_memory_core.application.console.forget import ConsoleForgetCommands
 from iris_memory_core.application.forget import ForgetResult
 from iris_memory_core.application.outbox import JobCommit
-from iris_memory_core.application.ports import Transaction
+from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.domain.console import CommandPreview, OperatorPrincipal
 from iris_memory_core.domain.console_operations import (
     ConsoleOperation,
