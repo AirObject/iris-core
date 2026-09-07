@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import subprocess
 import sys
 import tempfile
@@ -23,6 +25,23 @@ def main() -> int:
             raise RuntimeError("expected exactly one Core wheel and one sdist")
         for archive in archives:
             inspect_archive(archive)
+        print(
+            json.dumps(
+                {
+                    "artifact_digests": [
+                        {
+                            "name": artifact.name,
+                            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                            "bytes": artifact.stat().st_size,
+                        }
+                        for artifact in sorted(
+                            (*archives, *sdk.glob("*.whl"), *sdk.glob("*.tar.gz"))
+                        )
+                    ]
+                }
+            ),
+            flush=True,
+        )
         (core_wheel,) = core.glob("*.whl")
         (sdk_wheel,) = sdk.glob("*.whl")
         subprocess.run(

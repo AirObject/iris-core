@@ -1,0 +1,146 @@
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_packages
+warning: The cache directory `.uv-cache` is inside the build source directory `.` and may be included in distributions
+Building source distribution...
+Building wheel from source distribution...
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-n0twt41d/core/iris_memory_core-0.13.0.tar.gz
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-n0twt41d/core/iris_memory_core-0.13.0-py3-none-any.whl
+Building source distribution...
+Building wheel from source distribution...
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-n0twt41d/sdk/iris_memory_sdk-0.11.1.tar.gz
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-n0twt41d/sdk/iris_memory_sdk-0.11.1-py3-none-any.whl
+Using CPython 3.12.13
+Creating virtual environment at: /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-lkvhnstd/venv
+Activate with: source /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-lkvhnstd/venv/bin/activate
+Using Python 3.12.13 environment at: /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-lkvhnstd/venv
+Resolved 26 packages in 1.86s
+Prepared 2 packages in 27ms
+Installed 26 packages in 41ms
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anyio==4.15.1
+ + attrs==26.1.0
+ + cffi==2.1.1
+ + click==8.5.0
+ + cryptography==50.0.1
+ + faiss-cpu==1.15.0
+ + fastapi==0.141.1
+ + h11==0.16.0
+ + idna==3.19
+ + iris-memory-core==0.13.0 (from file:///private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-n0twt41d/core/iris_memory_core-0.13.0-py3-none-any.whl)
+ + iris-memory-sdk==0.11.1 (from file:///private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-n0twt41d/sdk/iris_memory_sdk-0.11.1-py3-none-any.whl)
+ + jsonschema==4.26.0
+ + jsonschema-specifications==2025.9.1
+ + numpy==2.5.3
+ + packaging==26.3
+ + pycparser==3.0
+ + pydantic==2.13.5
+ + pydantic-core==2.46.5
+ + referencing==0.37.0
+ + rpds-py==2026.6.3
+ + starlette==1.6.0
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + uvicorn==0.52.4
+public API exports, signatures, DTOs, CLI and HTTP snapshot: passed
+{
+  "core_version": "0.13.0",
+  "development_sqlite_override": true,
+  "private_endpoint_rejections": 4,
+  "public_sdk_smoke": "passed",
+  "schema_version": 20,
+  "sdk_version": "0.11.1",
+  "serve_exit_code": -15,
+  "shutdown_seconds": 0.23743737500080897,
+  "surface_mode": "required",
+  "worker_once": "passed"
+}
+INFO:     Started server process [70237]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:56421 (Press CTRL+C to quit)
+INFO:     127.0.0.1:56426 - "GET /health/live HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56427 - "GET /v1/capabilities HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56428 - "POST /v1/active-surfaces%3Aacquire HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56429 - "POST /v1/notes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56430 - "POST /v1/observations%3Abatch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56431 - "POST /v1/relations HTTP/1.1" 400 Bad Request
+
+Traceback (most recent call last):
+  File "/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-lkvhnstd/venv/lib/python3.12/site-packages/iris_memory_sdk/client.py", line 1461, in _request_json
+    with urlopen(request, timeout=self._timeout_seconds) as response:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/urllib/request.py", line 215, in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/urllib/request.py", line 521, in open
+    response = meth(req, response)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/urllib/request.py", line 630, in http_response
+    response = self.parent.error(
+               ^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/urllib/request.py", line 559, in error
+    return self._call_chain(*args)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/urllib/request.py", line 492, in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/urllib/request.py", line 639, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 400: Bad Request
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/smoke_installed_recall.py", line 294, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/smoke_installed_recall.py", line 274, in main
+    result = asyncio.run(consume(base, fixture))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/smoke_installed_recall.py", line 128, in consume
+    relation = await client.create_relation(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-lkvhnstd/venv/lib/python3.12/site-packages/iris_memory_sdk/client.py", line 869, in create_relation
+    value = await asyncio.to_thread(
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-lkvhnstd/venv/lib/python3.12/site-packages/iris_memory_sdk/client.py", line 1465, in _request_json
+    raise IrisMemoryApiError(ErrorEnvelope.from_value(value)) from error
+iris_memory_sdk.client.IrisMemoryApiError: invalid_request: request body failed the frozen schema
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/check_installation.py", line 70, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/check_installation.py", line 55, in main
+    subprocess.run(
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-lkvhnstd/venv/bin/python', '-I', '/Users/cassia/Local/Code/iris_memory_core/tools/smoke_installed_recall.py', '--allow-local-sqlite']' returned non-zero exit status 1.
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/check_packages.py", line 45, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/check_packages.py", line 28, in main
+    subprocess.run(
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/Users/cassia/Local/Code/iris_memory_core/.venv/bin/python3', '-m', 'tools.check_installation', '/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-n0twt41d/core/iris_memory_core-0.13.0-py3-none-any.whl', '/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-n0twt41d/sdk/iris_memory_sdk-0.11.1-py3-none-any.whl', '--allow-local-sqlite']' returned non-zero exit status 1.
+make: *** [package-check] Error 1

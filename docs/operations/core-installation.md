@@ -41,7 +41,9 @@ iris-memory-core serve --database /var/lib/iris-core/data/core.sqlite3 --host 12
 iris-memory-core worker --database /var/lib/iris-core/data/core.sqlite3
 ```
 
-默认 Console 关闭。启用时单独安装 console extra，部署独立构建的静态文件并设置 HTTPS Origin/Host/可信代理，见 [Console README](../../web/console/README.md)。生产不使用 `--allow-local-sqlite` 或 `--console-dev-http`。当前默认 Provider 的生产限制见 [根 README](../../README.md#requirements)。
+默认 Console 关闭。启用时单独安装 console extra，部署独立构建的静态文件并设置 HTTPS Origin/Host/可信代理，见 [Console README](../../web/console/README.md)。生产不使用 `--allow-local-sqlite` 或 `--console-dev-http`。
+
+Graph 默认接入 Recall；Vector 需要 API/Worker 使用一致的显式 Embedding 配置。未配置时不声明 Vector 能力，Worker 保留向量任务为 pending。[根 README](../../README.md#run-from-the-checkout)提供开发 deterministic Embedding、私有向量根和必需就绪探针的设置方式；这些开发设置不构成生产 Provider 验收。
 
 Required 模式下，SDK 先使用 `acquire_surface_lease` 获得属于自身 app_instance 的 Proof，再把 `lease_id`、`lease_epoch` 传入支持的在线请求。Recall 请求字典和 Focus create 字典携带这两个字段；`focus_transition` 使用同名可选关键字。相同业务幂等键可在重新取得有效租约后重试；没有有效租约的旧成功响应也不会被重放。
 

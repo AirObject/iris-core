@@ -37,3 +37,5 @@
 Task 步骤的 `meta.descriptor` 已正式接线；其余 `src/api/design.ts` 与 mock 描述仍仅为开发模型，不能要求后端迁就其形状。正式切片发布时同时替换类型/适配器和测试 Fixture，再补真实浏览器联调；生成类型通过本身不证明页面兼容。模拟器不得在请求失败后自动启用。
 
 Observation 当前人工提交与注释接入真实 Console 后端：服务端记录当前时间与操作者，注释创建关联 Note，原事件保持不可变；覆盖权限、Scope/Restricted、CAS、重放删除拒绝与事务回滚。真实浏览器已验证当前提交→注释→关联便签→刷新保留原事件，结果见 Phase 14 报告。
+
+W01 Core 接线候选：API/Worker 共用 Recall 装配，Graph 默认接入，Vector 显式配置后可用；真实 ASGI/独立安装 Core 与 Worker/公共 SDK 的 Note 向量命中和两跳 Graph 已验证，2026-09-08 收尾 `ci-002` 已完整通过。Console Provider 页面仍未发布，由 W05 交付配置存储、探测/激活/回滚和真实浏览器闭环；本包没有把该页面标作已交付。证据见 [W01 报告](../../docs/reports/w01-http-recall-assembly.md)。

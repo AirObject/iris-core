@@ -1,0 +1,15 @@
+UV_CACHE_DIR=.uv-cache uv run ruff check .
+All checks passed!
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_import_boundaries
+domain import boundary: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_docs
+documentation structure and local links: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_contract_counts
+current documentation contract counts: ok
+UV_CACHE_DIR=.uv-cache uv run mypy
+tools/background_validation.py:44: error: Incompatible types in assignment
+(expression has type "None", target has type "str")  [assignment]
+                files[name] = None
+                              ^~~~
+Found 1 error in 1 file (checked 367 source files)
+make: *** [typecheck] Error 1

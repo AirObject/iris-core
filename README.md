@@ -7,7 +7,7 @@ Iris Memory Core is a host-independent cognitive memory service built around a S
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/) in the range declared by `pyproject.toml`.
 - Node.js 22.12+ and npm for the TypeScript SDK and Console; CI uses Node.js 24.
 
-FAISS and NumPy are runtime dependencies with lazy imports and explicit Vector degradation. The default runtime wires deterministic providers; passing local tests does not establish production retrieval or cognitive quality. Production provider configuration and deployment validation remain release work.
+FAISS and NumPy are runtime dependencies with lazy imports and explicit Vector degradation. The runtime includes Graph recall. Vector recall requires an explicitly configured embedding provider; its deterministic development provider is opt-in. The cognitive worker still uses a deterministic provider. Production embedding/cognitive configuration and deployment validation remain release work; see the [W01 candidate report](docs/reports/w01-http-recall-assembly.md) for current acceptance status.
 
 ## Development setup
 
@@ -44,6 +44,17 @@ uv run iris-memory-core worker --database /tmp/iris-dev/core.sqlite3 --allow-loc
 ```
 
 `--allow-local-sqlite` accepts the local SQLite build for development. Production must satisfy the runtime allowlist. API access requires provisioned credentials; startup alone does not create a tenant or grant access. The Console is disabled by default; follow its [setup and credential instructions](web/console/README.md) to enable it. An installed package using the Console requires the `console` extra.
+
+For local Vector development, use these environment settings in **both** service and worker terminals before starting them:
+
+```sh
+export IRIS_MEMORY_DEVELOPMENT_EMBEDDING=true
+export IRIS_MEMORY_VECTOR_ROOT=/tmp/iris-dev/vector
+```
+
+The development provider uses the `deterministic-local` 32-dimensional space. These settings also map to `development_embedding` and `vector_root` in the `[service]` TOML section supplied with `--config`. API and worker must share the database, vector root and provider settings. An omitted vector root defaults to the database's sibling `vector` directory. Keep it private and outside Console static assets.
+
+Without an embedding provider, capability negotiation omits `embedding.v1` and `recall.vector.v1`, and the worker leaves vector jobs pending. With a configured provider but no usable generation, Recall reports Vector degradation until indexing succeeds. `IRIS_MEMORY_VECTOR_REQUIRED=true` makes readiness fail when embedding capability is unavailable; readiness alone does not prove a usable generation exists. Removing the development setting disables Vector support without deleting stored data or generations. Production Provider activation and rebuilding remain W05 work.
 
 The SDK offline test double is available with `uv run python -m tools.mock_server --port 8765`; it does not provide real persistence or replace integration tests.
 

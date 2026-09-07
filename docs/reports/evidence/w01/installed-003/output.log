@@ -1,0 +1,164 @@
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_packages
+warning: The cache directory `.uv-cache` is inside the build source directory `.` and may be included in distributions
+Building source distribution...
+Building wheel from source distribution...
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-qgjatzzt/core/iris_memory_core-0.13.0.tar.gz
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-qgjatzzt/core/iris_memory_core-0.13.0-py3-none-any.whl
+Building source distribution...
+Building wheel from source distribution...
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-qgjatzzt/sdk/iris_memory_sdk-0.11.1.tar.gz
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-qgjatzzt/sdk/iris_memory_sdk-0.11.1-py3-none-any.whl
+Using CPython 3.12.13
+Creating virtual environment at: /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-_nzrrlf6/venv
+Activate with: source /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-_nzrrlf6/venv/bin/activate
+Using Python 3.12.13 environment at: /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-_nzrrlf6/venv
+Resolved 26 packages in 10ms
+Prepared 2 packages in 18ms
+Installed 26 packages in 22ms
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anyio==4.15.1
+ + attrs==26.1.0
+ + cffi==2.1.1
+ + click==8.5.0
+ + cryptography==50.0.1
+ + faiss-cpu==1.15.0
+ + fastapi==0.141.1
+ + h11==0.16.0
+ + idna==3.19
+ + iris-memory-core==0.13.0 (from file:///private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-qgjatzzt/core/iris_memory_core-0.13.0-py3-none-any.whl)
+ + iris-memory-sdk==0.11.1 (from file:///private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-qgjatzzt/sdk/iris_memory_sdk-0.11.1-py3-none-any.whl)
+ + jsonschema==4.26.0
+ + jsonschema-specifications==2025.9.1
+ + numpy==2.5.3
+ + packaging==26.3
+ + pycparser==3.0
+ + pydantic==2.13.5
+ + pydantic-core==2.46.5
+ + referencing==0.37.0
+ + rpds-py==2026.6.3
+ + starlette==1.6.0
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + uvicorn==0.52.4
+public API exports, signatures, DTOs, CLI and HTTP snapshot: passed
+{
+  "core_version": "0.13.0",
+  "development_sqlite_override": true,
+  "private_endpoint_rejections": 4,
+  "public_sdk_smoke": "passed",
+  "schema_version": 20,
+  "sdk_version": "0.11.1",
+  "serve_exit_code": -15,
+  "shutdown_seconds": 0.26188025000010384,
+  "surface_mode": "required",
+  "worker_once": "passed"
+}
+{"rebuild": "vector", "state": [["pending", 0, null]]}
+{"rebuild": "vector", "state": [["leased", 1, null]]}
+{"rebuild": "vector", "state": [["retryable", 1, "internal_error"]]}
+{"rebuild": "vector", "state": [["retryable", 2, "internal_error"]]}
+{"rebuild": "vector", "state": [["retryable", 3, "internal_error"]]}
+{"rebuild": "vector", "state": [["retryable", 4, "internal_error"]]}
+{"rebuild": "vector", "state": [["retryable", 5, "internal_error"]]}
+{"rebuild": "vector", "state": [["retryable", 6, "internal_error"]]}
+INFO:     Started server process [71419]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:56885 (Press CTRL+C to quit)
+INFO:     127.0.0.1:56887 - "GET /health/live HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56888 - "GET /v1/capabilities HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56889 - "POST /v1/active-surfaces%3Aacquire HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "POST /v1/notes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56891 - "POST /v1/observations%3Abatch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56892 - "POST /v1/relations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56893 - "POST /v1/relations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56894 - "POST /v1/admin/indexes/vector%3Arebuild HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:56895 - "POST /v1/admin/indexes/graph%3Arebuild HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:56896 - "POST /v1/admin/indexes/fts%3Arebuild HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:56897 - "POST /v1/admin/indexes/profile%3Arebuild HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:56898 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56899 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56901 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56905 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56907 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56909 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56910 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56912 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56913 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56915 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56916 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56921 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56925 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56927 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56936 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56941 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56949 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56960 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56964 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56967 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56975 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56986 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56989 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56993 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57010 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57017 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57020 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57021 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57023 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57025 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57026 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57028 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57031 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57034 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57035 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57039 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57040 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57046 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57049 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57057 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57058 - "GET /v1/admin/jobs?job_kind=vector.rebuild HTTP/1.1" 200 OK
+
+Failed synthetic fixture saved at /Users/cassia/Local/Code/iris_memory_core/.work-package-runs/W01/installed-003/failed-installed-recall-fixture
+Traceback (most recent call last):
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/smoke_installed_recall.py", line 296, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/smoke_installed_recall.py", line 272, in main
+    result = asyncio.run(consume(base, fixture))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/smoke_installed_recall.py", line 169, in consume
+    raise AssertionError(f"installed worker rebuild deadline exceeded: {state}")
+AssertionError: installed worker rebuild deadline exceeded: [('retryable', 6, 'internal_error')]
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/check_installation.py", line 70, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/check_installation.py", line 55, in main
+    subprocess.run(
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-_nzrrlf6/venv/bin/python', '-I', '/Users/cassia/Local/Code/iris_memory_core/tools/smoke_installed_recall.py', '--allow-local-sqlite']' returned non-zero exit status 1.
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/check_packages.py", line 45, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/cassia/Local/Code/iris_memory_core/tools/check_packages.py", line 28, in main
+    subprocess.run(
+  File "/Users/cassia/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/Users/cassia/Local/Code/iris_memory_core/.venv/bin/python3', '-m', 'tools.check_installation', '/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-qgjatzzt/core/iris_memory_core-0.13.0-py3-none-any.whl', '/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-qgjatzzt/sdk/iris_memory_sdk-0.11.1-py3-none-any.whl', '--allow-local-sqlite']' returned non-zero exit status 1.
+make: *** [package-check] Error 1

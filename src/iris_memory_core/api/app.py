@@ -76,8 +76,8 @@ from iris_memory_core.domain.identity import BindingMethod
 from iris_memory_core.domain.jobs import NewOutboxJob
 from iris_memory_core.domain.profile import ProfileSubjectKey
 from iris_memory_core.domain.scope import Scope
-from iris_memory_core.indexing.fts import FtsDegradedError, FtsProjectionService
-from iris_memory_core.indexing.profile import ProfileProjectionService
+from iris_memory_core.indexing.fts import FtsDegradedError
+from iris_memory_core.recall_runtime import RecallAssemblyConfig, assemble_recall
 from iris_memory_core.storage.admin_archives import AdminArchiveService
 from iris_memory_core.storage.idempotency import IdempotencyManager
 from iris_memory_core.storage.uow import Store
@@ -478,6 +478,7 @@ class TransportRuntime:
         archives: AdminArchiveService | None = None,
         *,
         sse_enabled: bool = True,
+        recall_config: RecallAssemblyConfig | None = None,
     ) -> None:
         self.uow = uow
         self.credentials = credentials
@@ -518,8 +519,9 @@ class TransportRuntime:
         self.retention = RetentionService(uow, self.clock, forget=self.forget)
         self.personas = PersonaService(uow, self.clock, self.idempotency)
         self.scheduler = SchedulerService(uow, self.clock)
-        self.fts = FtsProjectionService(uow, self.clock)
-        self.profiles = ProfileProjectionService(uow, self.clock)
+        self.projections = assemble_recall(uow, self.clock, recall_config)
+        self.fts = self.projections.fts
+        self.profiles = self.projections.profile
         orchestrator = StructuredRecallOrchestrator(
             uow,
             self.recent,
@@ -532,6 +534,8 @@ class TransportRuntime:
             claims_enabled=True,
             fts=self.fts,
             profile=self.profiles,
+            graph=self.projections.graph,
+            vector=self.projections.vector,
         )
         self.recall = RecallService(orchestrator, uow, self.clock, surface=self.surface)
         self.recall_usage = RecallUsageService(uow, self.clock)
@@ -611,7 +615,11 @@ class TransportRuntime:
         if operation_id == "negotiateCapabilities":
             if "v1" not in body.get("api_versions", []):
                 raise UnsupportedVersionError("no mutually supported API version")
-            return 200, self.capabilities(access)
+            available = self.capabilities(access)
+            required = set(body.get("required_capabilities", []))
+            if required - set(cast(list[str], available["capabilities"])):
+                raise UnsupportedVersionError("required runtime capability is unavailable")
+            return 200, available
         if operation_id == "getCurrentSurfaceLease":
             lease = self.surface.current(access, str(request.query_params["agent_id"]))
             if lease is None:
@@ -1639,15 +1647,16 @@ class TransportRuntime:
         path = runtime_resource("contracts/source/contracts.json")
         source = json.loads(path.read_text(encoding="utf-8"))
         advertised = set(source["capabilities"])
+        if self.projections.vector is None:
+            advertised.difference_update({"recall.vector.v1", "embedding.v1"})
         if not self.sse_enabled:
             advertised.discard("events.sse.v1")
             advertised.discard("events.checkpoint.v1")
-        if access.capabilities:
-            advertised &= set(access.capabilities) | {
-                "contract.negotiation",
-                "error-envelope.v1",
-                "health.v1",
-            }
+        advertised &= set(access.capabilities) | {
+            "contract.negotiation",
+            "error-envelope.v1",
+            "health.v1",
+        }
         return {
             "api_version": source["api_version"],
             "schema_version": source["schema_version"],
@@ -1672,6 +1681,7 @@ def create_app(
     backup_signing_key: bytes | None = None,
     enable_console: bool = False,
     console_config: ConsoleConfig | None = None,
+    recall_config: RecallAssemblyConfig | None = None,
 ) -> FastAPI:
     contract = _load_contract(contract_path)
     credential_service = credentials or CredentialService(uow, cast(Any, uow).clock)
@@ -1684,7 +1694,9 @@ def create_app(
             export_root=export_root or data_root / "exports",
             backup_signing_key=backup_signing_key,
         )
-    runtime = TransportRuntime(uow, credential_service, archives, sse_enabled=sse_enabled)
+    runtime = TransportRuntime(
+        uow, credential_service, archives, sse_enabled=sse_enabled, recall_config=recall_config
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -1858,10 +1870,15 @@ def create_app(
 
 def _readiness(app: FastAPI, uow: UnitOfWork, access: AccessContext) -> JSONResponse:
     database_path = uow.runtime.database if isinstance(uow, Store) else None
+    projections = app.state.runtime.projections
     report = HealthService(
         uow,
         cast(Any, uow).clock,
         gauge=BackpressureGauge(BackpressureConfig(), database_path=database_path),
+        vector_required=projections.vector_required,
+        vector_capability=(
+            projections.vector.capability_available if projections.vector else lambda: False
+        ),
     ).readiness()
     try:
         with uow.read() as tx:

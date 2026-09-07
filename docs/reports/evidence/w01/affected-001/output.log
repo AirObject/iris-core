@@ -1,0 +1,79 @@
+UV_CACHE_DIR=.uv-cache uv run pytest tests/integration/runtime/test_http_recall_assembly.py tests/contract/test_http_operation_matrix.py tests/integration/runtime/test_release_surface.py --no-cov
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 55 items
+
+tests/integration/runtime/test_http_recall_assembly.py .FFF.             [  9%]
+tests/contract/test_http_operation_matrix.py ..                          [ 12%]
+tests/integration/runtime/test_release_surface.py ...................... [ 52%]
+..........................                                               [100%]
+
+=================================== FAILURES ===================================
+____________ test_unbuilt_configured_routes_are_traced_and_degraded ____________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10b3baf30>
+
+    def test_unbuilt_configured_routes_are_traced_and_degraded(world: Phase8World) -> None:
+        with client_for(world, development=True) as client:
+            caps = client.get("/v1/capabilities").json()["capabilities"]
+            assert {"recall.vector.v1", "recall.graph.v1"} <= set(caps)
+            response = client.post("/v1/recall", json=request_for(world, "vector"))
+>           assert response.status_code == 200, response.text
+E           AssertionError: {"error":{"code":"invalid_request","message":"request body failed the frozen schema","retryable":false},"request_id":"63e4bae4-4f4b-4066-a7f9-2df76e6da37e"}
+E           assert 400 == 200
+E            +  where 400 = <Response [400 Bad Request]>.status_code
+
+tests/integration/runtime/test_http_recall_assembly.py:72: AssertionError
+_______________________ test_http_returns_vector_source ________________________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10b829280>
+
+    def test_http_returns_vector_source(world: Phase8World) -> None:
+        claim = world.remember("vector-only", "photovoltaic orchard observations", world.speaker_entity)
+        with client_for(world, development=True) as client:
+            projection = client.app.state.runtime.projections.vector
+            assert projection is not None
+            projection.rebuild(TENANT)
+            response = client.post("/v1/recall", json=request_for(world, "vector"))
+>           assert response.status_code == 200, response.text
+E           AssertionError: {"error":{"code":"invalid_request","message":"request body failed the frozen schema","retryable":false},"request_id":"90017708-33ad-43b9-a9bc-e6aafc32a2e6"}
+E           assert 400 == 200
+E            +  where 400 = <Response [400 Bad Request]>.status_code
+
+tests/integration/runtime/test_http_recall_assembly.py:86: AssertionError
+______________________ test_http_graph_reaches_second_hop ______________________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10b9b86b0>
+
+    def test_http_graph_reaches_second_hop(world: Phase8World) -> None:
+        middle, end = world.entity("Middle"), world.entity("End")
+        world.relate("hop-one", world.speaker_entity, middle)
+        second = world.relate("hop-two", middle, end)
+        world.rebuild()
+        with client_for(world) as client:
+            response = client.post("/v1/recall", json=request_for(world, "graph"))
+>           assert response.status_code == 200, response.text
+E           AssertionError: {"error":{"code":"invalid_request","message":"request body failed the frozen schema","retryable":false},"request_id":"3d174a05-0c11-4bf9-a400-2376ed64f57f"}
+E           assert 400 == 200
+E            +  where 400 = <Response [400 Bad Request]>.status_code
+
+tests/integration/runtime/test_http_recall_assembly.py:99: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/runtime/test_http_recall_assembly.py::test_unbuilt_configured_routes_are_traced_and_degraded
+FAILED tests/integration/runtime/test_http_recall_assembly.py::test_http_returns_vector_source
+FAILED tests/integration/runtime/test_http_recall_assembly.py::test_http_graph_reaches_second_hop
+=================== 3 failed, 52 passed, 2 warnings in 8.16s ===================
+make: *** [test-affected] Error 1

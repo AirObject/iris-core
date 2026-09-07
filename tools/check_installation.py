@@ -52,6 +52,17 @@ def main() -> int:
             cwd=root,
             check=True,
         )
+        subprocess.run(
+            [
+                str(python),
+                "-I",
+                str(ROOT / "tools/smoke_installed_recall.py"),
+                *(["--allow-local-sqlite"] if args.allow_local_sqlite else []),
+            ],
+            cwd=root,
+            check=True,
+            timeout=180,
+        )
     return 0
 
 

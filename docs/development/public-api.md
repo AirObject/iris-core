@@ -1,6 +1,6 @@
 # 公开客户端方法与接口变更门禁
 
-当前清单适用于 Core 0.13.0、Schema 15、业务契约 1.10.0、Console 契约 1.1.0、Python SDK 0.11.1、TS SDK 0.11.2。稳定级别为开发候选；尚未构成 Phase 14 的逐方法生产验收。Core 和 SDK 分别分发。
+当前清单适用于 Core 0.13.0、Schema 20、业务契约 1.11.0、Console 契约 1.1.0、Python SDK 0.11.1、TS SDK 0.11.2。稳定级别为开发候选；尚未构成 Phase 14 的逐方法生产验收。Core 和 SDK 分别分发。
 
 ## 导入和错误
 
@@ -17,6 +17,8 @@ Python 根导出 `AsyncIrisMemoryClient`、`CapabilitiesEnvelope`、`ErrorEnvelo
 具体请求、响应、错误、Idempotency-Key 必选性及 expected_revision 字段由下表 operationId 对应的 [业务 OpenAPI](../../schemas/openapi/openapi.json) 定义。每个 operation 的 Schema 引用和内容摘要受快照约束。Required Surface 下在线写入和 Recall 必须携带有效 Lease Proof；重试保留业务幂等键，可以更新 Proof，旧 Proof 不获得成功重放。
 
 `rebuild_recent_context` 已弃用，替代为 `rebuild_index("recent_context", ...)`。现有 /v1 窗口继续保留旧入口，不承诺在 1.0 时删除；移除按 [ADR-0006](../adr/0006-api-version-and-compatibility.md) 另开版本和迁移窗口。其余方法不设隐式删除期限。
+
+业务协商 `/v1/negotiation` 在 Contract 1.11.0 增加可选 `required_capabilities`；未配置、未授权或未知的必需能力返回既有 `unsupported_version`，旧客户端无此字段时仍兼容。配置后暂不可用的 Vector 保留支持声明，通过 Recall 降级与运行就绪探针表达当前故障。SDK `negotiate()` 的既有签名保持兼容；需要显式必需能力集合的调用方使用公开 HTTP 请求并核查响应。
 
 ## Python 方法映射
 

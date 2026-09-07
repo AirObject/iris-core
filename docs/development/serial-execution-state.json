@@ -1,0 +1,195 @@
+{
+  "version": 1,
+  "updated_at": "2026-09-07T16:08:22.421844+00:00",
+  "automation_id": null,
+  "sequence": [
+    "W01",
+    "W02",
+    "W03",
+    "W04",
+    "W05",
+    "W06",
+    "W07",
+    "W08",
+    "W09",
+    "W10",
+    "W11",
+    "W12",
+    "W13",
+    "W14",
+    "W15",
+    "W16",
+    "W17",
+    "W18",
+    "W19",
+    "W20"
+  ],
+  "current_package": "W01",
+  "status": "ready_to_commit",
+  "start_commit": "e2a6bbd7793f7bd4b73a51d32149eb8e3015ed33",
+  "completed_packages": [],
+  "report": "docs/reports/w01-http-recall-assembly.md",
+  "next_actions": [
+    "Commit W01 completion and evidence alone; then record actual commit and immediately initialize W02."
+  ],
+  "constraints": [
+    "No synchronous long validation, dense polling, idle wait or starting later packages before current acceptance.",
+    "Phase 11/12 Deferred.",
+    "Preserve pre-existing docs edits; they define user-authorized guide.",
+    "Do not mark complete on partial evidence."
+  ],
+  "blockers": [],
+  "background_tasks": [],
+  "verification": {
+    "affected-001": "52 passed / 3 failed (missing schema_version; fixed)",
+    "affected-002": "5 passed",
+    "affected-003": "173 passed / 3 failed (test field reason vs reason_code; fixed)",
+    "affected-004": "53 passed",
+    "static-001": "mypy test typing failures; fixed, static-002 pending",
+    "static-002": "mypy: snapshot digest map missing Optional value annotation; fixed, static-003 pending",
+    "static-003": {
+      "started_at": "2026-09-07T15:19:43.711509+00:00",
+      "supervisor_pid": 68052,
+      "child_pid": 68055,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:19:47.575458+00:00"
+    },
+    "recall-regression-001": {
+      "started_at": "2026-09-07T15:18:55.142835+00:00",
+      "supervisor_pid": 67822,
+      "child_pid": 67825,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:23:24.738236+00:00"
+    },
+    "tcp-faults-001": {
+      "started_at": "2026-09-07T15:22:15.403006+00:00",
+      "supervisor_pid": 69007,
+      "child_pid": 69011,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:22:19.209812+00:00"
+    },
+    "static-004": {
+      "started_at": "2026-09-07T15:24:21.298630+00:00",
+      "supervisor_pid": 70079,
+      "child_pid": 70080,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:24:24.505483+00:00"
+    },
+    "installed-001": {
+      "started_at": "2026-09-07T15:24:25.728588+00:00",
+      "supervisor_pid": 70139,
+      "child_pid": 70140,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T15:24:38.419311+00:00"
+    },
+    "installed-002": {
+      "started_at": "2026-09-07T15:25:58.033130+00:00",
+      "supervisor_pid": 70623,
+      "child_pid": 70627,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T15:26:46.235476+00:00"
+    },
+    "installed-003": {
+      "started_at": "2026-09-07T15:28:22.303117+00:00",
+      "supervisor_pid": 71357,
+      "child_pid": 71358,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T15:29:10.989705+00:00"
+    },
+    "affected-005": {
+      "started_at": "2026-09-07T15:28:49.453125+00:00",
+      "supervisor_pid": 71552,
+      "child_pid": 71553,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T15:28:52.185834+00:00"
+    },
+    "affected-006": {
+      "started_at": "2026-09-07T15:29:41.056554+00:00",
+      "supervisor_pid": 71835,
+      "child_pid": 71838,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:30:11.187109+00:00"
+    },
+    "installed-004": {
+      "started_at": "2026-09-07T15:30:10.994214+00:00",
+      "supervisor_pid": 72055,
+      "child_pid": 72058,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:30:22.585487+00:00"
+    },
+    "affected-007": {
+      "started_at": "2026-09-07T15:30:54.242441+00:00",
+      "supervisor_pid": 72344,
+      "child_pid": 72347,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:31:08.118622+00:00"
+    },
+    "static-005": {
+      "started_at": "2026-09-07T15:32:33.645880+00:00",
+      "supervisor_pid": 72861,
+      "child_pid": 72864,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:32:37.719628+00:00"
+    },
+    "affected-008": {
+      "started_at": "2026-09-07T15:32:36.786957+00:00",
+      "supervisor_pid": 72925,
+      "child_pid": 72926,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:32:46.691491+00:00"
+    },
+    "ci-001": {
+      "started_at": "2026-09-07T15:35:19.292035+00:00",
+      "supervisor_pid": 73783,
+      "child_pid": 73785,
+      "exit_code": 2,
+      "status": "failed",
+      "finished_at": "2026-09-07T15:51:05.341830+00:00"
+    },
+    "browser-001": {
+      "started_at": "2026-09-07T15:55:13.983447+00:00",
+      "supervisor_pid": 81778,
+      "child_pid": 81782,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T15:56:36.645681+00:00"
+    },
+    "ci-002": {
+      "started_at": "2026-09-07T15:57:51.385346+00:00",
+      "supervisor_pid": 83209,
+      "child_pid": 83213,
+      "exit_code": 0,
+      "status": "passed",
+      "finished_at": "2026-09-07T16:14:52.250405+00:00"
+    }
+  },
+  "contract_version": "1.11.0",
+  "last_goal_turn_classification": "progress: ci-002 passed all gates; final source and package input hashes verified; preparing W01 completion commit.",
+  "last_observation_at": "2026-09-07T16:08:22.421844+00:00",
+  "ci_candidate_drift": [
+    "CHANGELOG.md",
+    "README.md",
+    "docs/development/README.md",
+    "docs/development/phase-10-consolidation-reflection.md",
+    "docs/development/serial-execution-state.json",
+    "docs/development/work-packages.md",
+    "docs/operations/core-installation.en.md",
+    "docs/operations/core-installation.md",
+    "docs/reports/w01-http-recall-assembly.md"
+  ],
+  "continuation_policy": "User cancelled scheduled automation. Continue active goal from actual background process/session completion events, with no clock sleeps or scheduled-time phase barriers.",
+  "automation_status": "deleted by user request on 2026-09-08 Asia/Shanghai"
+}

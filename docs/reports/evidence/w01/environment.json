@@ -1,0 +1,45 @@
+{
+  "recorded_at": "2026-09-07T15:46:45.557354+00:00",
+  "scope": "W01 local development CI environment; not W16 production runtime or W18 benchmark hardware acceptance",
+  "os": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "mac_version": "26.6.2"
+  },
+  "python": "3.12.13 (main, Mar  3 2026, 15:35:03) [Clang 21.1.4 ]",
+  "sqlite": "3.50.4",
+  "node": "v26.8.1",
+  "npm": "11.19.0",
+  "uv": "uv 0.12.9 (Homebrew 2026-09-01 aarch64-apple-darwin)",
+  "packages": {
+    "pytest": "8.4.2",
+    "pytest-cov": "7.1.0",
+    "coverage": "7.16.0",
+    "fastapi": "0.141.1",
+    "uvicorn": "0.52.4",
+    "numpy": "2.5.2",
+    "faiss-cpu": "1.15.0",
+    "httpx": "0.28.1",
+    "mypy": "1.20.2",
+    "ruff": "0.14.14"
+  },
+  "input_files": {
+    "pyproject.toml": "c9dfb0b5da9e07a5ac6ff75602097ce9cb7cd49a12329d996f029bc822fe6af0",
+    "uv.lock": "4dba07b140e68aae8ab98398eaa8226400ccb2ba486b679b418089305e1f6227",
+    "sdk/python/pyproject.toml": "5c43153dcb12694e804640fded12eb718707cb2905ccb50e9f280caa9564f48f",
+    "sdk/typescript/package-lock.json": "7e144f2de2026fef5b58076d24a46faa59a80a7b05721d6cc5514c7c8515d891",
+    "web/console/package-lock.json": "a7a812fc8a8004c77ce2c307127b5bd1c927ebf03dd60e2d8bb3b2d00be3af57"
+  },
+  "measurement": "make ci runs tests/performance separately with --no-cov -s before functional coverage; all functional tests retain repository 80% threshold",
+  "provider_scope": "Explicit deterministic development configuration for installed smoke; real loopback TCP HttpEmbeddingProvider for fault/recovery; production provider acceptance belongs to W05",
+  "sqlite_scope": "Local SQLite override is explicit in installed smoke; official production allowlist remains unchanged",
+  "browser_repair": {
+    "reason": "ci-001 expected Playwright chromium_headless_shell-1187 which is not installed",
+    "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "version": "152.0.7977.82",
+    "playwright": "1.55.0",
+    "configuration": "Existing CONSOLE_BROWSER_EXECUTABLE override, CI=1; permitted local browser in next-build-guide section 7",
+    "acceptance": "browser-001 passed: 20 real browser tests (1.3m); complete console-browser gate passed"
+  }
+}

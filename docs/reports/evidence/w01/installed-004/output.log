@@ -1,0 +1,78 @@
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_packages
+warning: The cache directory `.uv-cache` is inside the build source directory `.` and may be included in distributions
+Building source distribution...
+Building wheel from source distribution...
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-8g_wcnky/core/iris_memory_core-0.13.0.tar.gz
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-8g_wcnky/core/iris_memory_core-0.13.0-py3-none-any.whl
+Building source distribution...
+Building wheel from source distribution...
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-8g_wcnky/sdk/iris_memory_sdk-0.11.1.tar.gz
+Successfully built /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-8g_wcnky/sdk/iris_memory_sdk-0.11.1-py3-none-any.whl
+Using CPython 3.12.13
+Creating virtual environment at: /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-68mxlrom/venv
+Activate with: source /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-68mxlrom/venv/bin/activate
+Using Python 3.12.13 environment at: /var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-installation-68mxlrom/venv
+Resolved 26 packages in 7ms
+Prepared 2 packages in 14ms
+Installed 26 packages in 44ms
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anyio==4.15.1
+ + attrs==26.1.0
+ + cffi==2.1.1
+ + click==8.5.0
+ + cryptography==50.0.1
+ + faiss-cpu==1.15.0
+ + fastapi==0.141.1
+ + h11==0.16.0
+ + idna==3.19
+ + iris-memory-core==0.13.0 (from file:///private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-8g_wcnky/core/iris_memory_core-0.13.0-py3-none-any.whl)
+ + iris-memory-sdk==0.11.1 (from file:///private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-package-check-8g_wcnky/sdk/iris_memory_sdk-0.11.1-py3-none-any.whl)
+ + jsonschema==4.26.0
+ + jsonschema-specifications==2025.9.1
+ + numpy==2.5.3
+ + packaging==26.3
+ + pycparser==3.0
+ + pydantic==2.13.5
+ + pydantic-core==2.46.5
+ + referencing==0.37.0
+ + rpds-py==2026.6.3
+ + starlette==1.6.0
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + uvicorn==0.52.4
+public API exports, signatures, DTOs, CLI and HTTP snapshot: passed
+{
+  "core_version": "0.13.0",
+  "development_sqlite_override": true,
+  "private_endpoint_rejections": 4,
+  "public_sdk_smoke": "passed",
+  "schema_version": 20,
+  "sdk_version": "0.11.1",
+  "serve_exit_code": -15,
+  "shutdown_seconds": 0.2071683749982185,
+  "surface_mode": "required",
+  "worker_once": "passed"
+}
+{"rebuild": "vector", "state": [["pending", 0, null]]}
+{"rebuild": "vector", "state": [["leased", 1, null]]}
+{"rebuild": "vector", "state": [["completed", 1, null]]}
+{"rebuild": "graph", "state": [["completed", 1, null]]}
+{"rebuild": "fts", "state": [["completed", 1, null]]}
+{"rebuild": "profile", "state": [["completed", 1, null]]}
+{
+  "development_embedding": true,
+  "installed_recall": {
+    "graph": {
+      "expected_resource_found": true,
+      "trace_candidates": 2
+    },
+    "vector": {
+      "expected_resource_found": true,
+      "trace_candidates": 1
+    }
+  },
+  "required_lease": true,
+  "worker_rebuilds": 4
+}
+fresh package build, archive boundaries and isolated installation: passed

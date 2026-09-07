@@ -1,0 +1,12 @@
+{
+  "command": [
+    "make",
+    "test-affected",
+    "TESTS=tests/integration/runtime/test_http_recall_provider_faults.py"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 300,
+  "created_at": "2026-09-07T15:22:14.551862+00:00",
+  "head": "e2a6bbd7793f7bd4b73a51d32149eb8e3015ed33",
+  "supervisor_pid": 69007
+}

@@ -1,0 +1,162 @@
+UV_CACHE_DIR=.uv-cache uv run pytest tests/integration/runtime/test_http_recall_assembly.py tests/contract/test_asgi_authorization.py tests/contract/test_http_operation_matrix.py tests/integration/runtime/test_release_surface.py tests/integration/recall/test_vector_recall.py tests/integration/recall/test_graph_profile_recall.py --no-cov
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 176 items
+
+tests/integration/runtime/test_http_recall_assembly.py .............FFF. [  9%]
+.                                                                        [ 10%]
+tests/contract/test_asgi_authorization.py .............................. [ 27%]
+.....................                                                    [ 39%]
+tests/contract/test_http_operation_matrix.py ..                          [ 40%]
+tests/integration/runtime/test_release_surface.py ...................... [ 52%]
+..........................                                               [ 67%]
+tests/integration/recall/test_vector_recall.py ...........               [ 73%]
+tests/integration/recall/test_graph_profile_recall.py .................. [ 84%]
+............................                                             [100%]
+
+=================================== FAILURES ===================================
+____________ test_provider_failure_degrades_the_http_route[timeout] ____________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10addbbf0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b33ea80>
+reason = 'timeout'
+
+    @pytest.mark.parametrize("reason", ["timeout", "transport_error"])
+    def test_provider_failure_degrades_the_http_route(
+        world: Phase8World,
+        monkeypatch: pytest.MonkeyPatch,
+        reason: str,
+    ) -> None:
+        with client_for(world, development=True) as client:
+            projection = client.app.state.runtime.projections.vector
+            projection.rebuild(TENANT)
+    
+            def fail(*args: Any, **kwargs: Any) -> Any:
+                raise EmbeddingProviderError(reason, retryable=True)
+    
+            monkeypatch.setattr(projection._provider, "embed_batch", fail)
+            response = client.post("/v1/recall", json=request_for(world, "vector"))
+            assert response.status_code == 200, response.text
+            body = response.json()
+            assert body["partial"] is True
+            assert "vector" not in body["completed_routes"]
+>           assert any(
+                r["route"] == "vector" and r["reason"] == "vector_unavailable"
+                for r in body["degraded_routes"]
+            )
+
+tests/integration/runtime/test_http_recall_assembly.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x10bfec5e0>
+
+    assert any(
+>       r["route"] == "vector" and r["reason"] == "vector_unavailable"
+                                   ^^^^^^^^^^^
+        for r in body["degraded_routes"]
+    )
+E   KeyError: 'reason'
+
+tests/integration/runtime/test_http_recall_assembly.py:207: KeyError
+________ test_provider_failure_degrades_the_http_route[transport_error] ________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10aefdeb0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bfed400>
+reason = 'transport_error'
+
+    @pytest.mark.parametrize("reason", ["timeout", "transport_error"])
+    def test_provider_failure_degrades_the_http_route(
+        world: Phase8World,
+        monkeypatch: pytest.MonkeyPatch,
+        reason: str,
+    ) -> None:
+        with client_for(world, development=True) as client:
+            projection = client.app.state.runtime.projections.vector
+            projection.rebuild(TENANT)
+    
+            def fail(*args: Any, **kwargs: Any) -> Any:
+                raise EmbeddingProviderError(reason, retryable=True)
+    
+            monkeypatch.setattr(projection._provider, "embed_batch", fail)
+            response = client.post("/v1/recall", json=request_for(world, "vector"))
+            assert response.status_code == 200, response.text
+            body = response.json()
+            assert body["partial"] is True
+            assert "vector" not in body["completed_routes"]
+>           assert any(
+                r["route"] == "vector" and r["reason"] == "vector_unavailable"
+                for r in body["degraded_routes"]
+            )
+
+tests/integration/runtime/test_http_recall_assembly.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x10c180610>
+
+    assert any(
+>       r["route"] == "vector" and r["reason"] == "vector_unavailable"
+                                   ^^^^^^^^^^^
+        for r in body["degraded_routes"]
+    )
+E   KeyError: 'reason'
+
+tests/integration/runtime/test_http_recall_assembly.py:207: KeyError
+____________ test_mismatched_space_does_not_serve_an_old_generation ____________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10c1737a0>
+
+    def test_mismatched_space_does_not_serve_an_old_generation(world: Phase8World) -> None:
+        with client_for(world, development=True) as client:
+            client.app.state.runtime.projections.vector.rebuild(TENANT)
+            binding = RecallAssemblyConfig(
+                development_embedding=True,
+                embedding=DeterministicEmbeddingProvider(
+                    VectorSpaceConfig(model="different", dimension=32)
+                ),
+            )
+            other = create_app(
+                world.store, credentials=client.app.state.runtime.credentials, recall_config=binding
+            )
+            with TestClient(other, headers=client.headers) as changed:
+                response = changed.post("/v1/recall", json=request_for(world, "vector"))
+                assert response.status_code == 200, response.text
+                body = response.json()
+                assert body["partial"] is True
+                assert "vector" not in body["completed_routes"]
+>               assert any(
+                    r["route"] == "vector" and r["reason"] == "vector_space_mismatch"
+                    for r in body["degraded_routes"]
+                )
+
+tests/integration/runtime/test_http_recall_assembly.py:231: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x10c45ec20>
+
+    assert any(
+>       r["route"] == "vector" and r["reason"] == "vector_space_mismatch"
+                                   ^^^^^^^^^^^
+        for r in body["degraded_routes"]
+    )
+E   KeyError: 'reason'
+
+tests/integration/runtime/test_http_recall_assembly.py:232: KeyError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/runtime/test_http_recall_assembly.py::test_provider_failure_degrades_the_http_route[timeout]
+FAILED tests/integration/runtime/test_http_recall_assembly.py::test_provider_failure_degrades_the_http_route[transport_error]
+FAILED tests/integration/runtime/test_http_recall_assembly.py::test_mismatched_space_does_not_serve_an_old_generation
+================== 3 failed, 173 passed, 2 warnings in 23.99s ==================
+make: *** [test-affected] Error 1

@@ -7898,7 +7898,7 @@
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.10.0"
+    "version": "1.11.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11037,6 +11037,17 @@
                     },
                     "minItems": 1,
                     "type": "array"
+                  },
+                  "required_capabilities": {
+                    "description": "Capabilities required by this client; unknown, unauthorized or unconfigured capabilities fail negotiation. Configured routes remain supported during transient degradation.",
+                    "items": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 128,
+                    "type": "array",
+                    "uniqueItems": true
                   }
                 },
                 "required": [

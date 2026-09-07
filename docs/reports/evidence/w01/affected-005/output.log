@@ -1,0 +1,84 @@
+UV_CACHE_DIR=.uv-cache uv run pytest tests/integration/runtime/test_http_recall_assembly.py --no-cov
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 18 items
+
+tests/integration/runtime/test_http_recall_assembly.py ..F.............. [ 94%]
+.                                                                        [100%]
+
+=================================== FAILURES ===================================
+_______________________ test_http_returns_vector_source ________________________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x10aef2f30>
+
+    def test_http_returns_vector_source(world: Phase8World) -> None:
+        with client_for(world, development=True) as client:
+            response = client.post(
+                "/v1/notes",
+                json={
+                    "agent_id": world.agent,
+                    "space_id": world.space,
+                    "kind": "idea",
+                    "title": "Orchard",
+                    "body": "photovoltaic orchard observations",
+                },
+                headers={"Idempotency-Key": "w01-vector-note"},
+            )
+            assert response.status_code == 200, response.text
+            note = response.json()
+            runtime = cast(FastAPI, client.app).state.runtime
+            projection = runtime.projections.vector
+            assert projection is not None
+>           projection.rebuild(TENANT)
+
+tests/integration/runtime/test_http_recall_assembly.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/iris_memory_core/indexing/vector.py:925: in rebuild
+    prepared = self.prepare_generation(tenant_id)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/iris_memory_core/indexing/vector.py:955: in prepare_generation
+    entries, _collect_watermarks = collect_vector_entries(tx, tenant_id)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/iris_memory_core/indexing/vector.py:229: in collect_vector_entries
+    entries.append(_note_entry(note, note_revision))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+note = NoteCurrent(id='01a07c7c-848d-7894-b04a-578e28bc5e44', tenant_id='t1', agent_id='01a07c7c-846d-79d0-b7cf-a6c457257224'...b91d7eb630607b92853da5ca54bf76a422382e1f6', archived_us=None, created_us=1700000000000000, updated_us=1700000000000000)
+revision = NoteRevision(id='01a07c7c-848d-7d2c-9c7d-cbfd76a07bef', note_id='01a07c7c-848d-7894-b04a-578e28bc5e44', tenant_id='t1'...99df926d8a1307bb91d7eb630607b92853da5ca54bf76a422382e1f6', created_us=1700000000000000, created_by='access:w01-client')
+
+    def _note_entry(note: Any, revision: Any) -> VectorEntryInput:
+        return VectorEntryInput(
+            tenant_id=note.tenant_id,
+            resource_type="note",
+            resource_id=note.id,
+>           resource_revision=note.revision,
+                              ^^^^^^^^^^^^^
+            agent_id=note.agent_id,
+            space_group_id=note.space_group_id,
+            space_id=note.space_id,
+            session_id=note.session_id,
+            content_hash=revision.content_hash,
+            occurred_us=revision.created_us,
+            embedding_input=render_embedding_input("note", title=revision.title, body=revision.body),
+        )
+E       AttributeError: 'NoteCurrent' object has no attribute 'revision'
+
+src/iris_memory_core/indexing/vector.py:283: AttributeError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/runtime/test_http_recall_assembly.py::test_http_returns_vector_source
+=================== 1 failed, 17 passed, 2 warnings in 2.09s ===================
+make: *** [test-affected] Error 1

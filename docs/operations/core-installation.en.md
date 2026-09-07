@@ -77,7 +77,11 @@ The Console is disabled by default. To enable it, install Core with the `console
 extra, deploy its separately built static assets, and configure HTTPS origins,
 hosts and trusted proxies as described in the [Console guide](../../web/console/README.md).
 Production must not use `--allow-local-sqlite` or `--console-dev-http`.
-The [README](../../README.md#requirements) explains the deterministic provider limitations.
+Graph recall is assembled by default. Vector support requires an explicit embedding
+configuration shared by API and worker; without one, vector jobs remain pending and
+Vector capabilities are omitted. The [development setup](../../README.md#run-from-the-checkout)
+documents the opt-in deterministic embedding and required-readiness settings.
+These development settings do not establish production Provider acceptance.
 
 In Required mode, call `acquire_surface_lease` through the SDK to obtain proof for
 the client's own app instance. Pass `lease_id` and `lease_epoch` in Recall and Focus

@@ -1,0 +1,51 @@
+UV_CACHE_DIR=.uv-cache uv run ruff check .
+All checks passed!
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_import_boundaries
+domain import boundary: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_docs
+documentation structure and local links: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_contract_counts
+current documentation contract counts: ok
+UV_CACHE_DIR=.uv-cache uv run mypy
+tests/integration/runtime/test_http_recall_assembly.py:94: error: Argument 3 to
+"remember" of "Phase8World" has incompatible type "str | None"; expected "str" 
+[arg-type]
+    ...ctor-only", "photovoltaic orchard observations", world.speaker_entity)
+                                                        ^~~~~~~~~~~~~~~~~~~~
+tests/integration/runtime/test_http_recall_assembly.py:96: error:
+"Callable[[MutableMapping[str, Any], Callable[[], Awaitable[MutableMapping[str, Any]]], Callable[[MutableMapping[str, Any]], Awaitable[None]]], Awaitable[None]]"
+has no attribute "state"  [attr-defined]
+            projection = client.app.state.runtime.projections.vector
+                         ^~~~~~~~~~~~~~~~
+tests/integration/runtime/test_http_recall_assembly.py:111: error: Argument 2
+to "relate" of "Phase8World" has incompatible type "str | None"; expected "str" 
+[arg-type]
+        world.relate("hop-one", world.speaker_entity, middle)
+                                ^~~~~~~~~~~~~~~~~~~~
+tests/integration/runtime/test_http_recall_assembly.py:194: error:
+"Callable[[MutableMapping[str, Any], Callable[[], Awaitable[MutableMapping[str, Any]]], Callable[[MutableMapping[str, Any]], Awaitable[None]]], Awaitable[None]]"
+has no attribute "state"  [attr-defined]
+            projection = client.app.state.runtime.projections.vector
+                         ^~~~~~~~~~~~~~~~
+tests/integration/runtime/test_http_recall_assembly.py:215: error:
+"Callable[[MutableMapping[str, Any], Callable[[], Awaitable[MutableMapping[str, Any]]], Callable[[MutableMapping[str, Any]], Awaitable[None]]], Awaitable[None]]"
+has no attribute "state"  [attr-defined]
+            client.app.state.runtime.projections.vector.rebuild(TENANT)
+            ^~~~~~~~~~~~~~~~
+tests/integration/runtime/test_http_recall_assembly.py:223: error:
+"Callable[[MutableMapping[str, Any], Callable[[], Awaitable[MutableMapping[str, Any]]], Callable[[MutableMapping[str, Any]], Awaitable[None]]], Awaitable[None]]"
+has no attribute "state"  [attr-defined]
+                world.store, credentials=client.app.state.runtime.credenti...
+                                         ^~~~~~~~~~~~~~~~
+tests/integration/runtime/test_http_recall_assembly.py:249: error: Argument 3
+to "remember" of "Phase8World" has incompatible type "str | None"; expected
+"str"  [arg-type]
+    ...= world.remember("deleted", "DELETE-CANARY W01", world.speaker_entity)
+                                                        ^~~~~~~~~~~~~~~~~~~~
+tests/integration/runtime/test_http_recall_assembly.py:251: error:
+"Callable[[MutableMapping[str, Any], Callable[[], Awaitable[MutableMapping[str, Any]]], Callable[[MutableMapping[str, Any]], Awaitable[None]]], Awaitable[None]]"
+has no attribute "state"  [attr-defined]
+            client.app.state.runtime.projections.vector.rebuild(TENANT)
+            ^~~~~~~~~~~~~~~~
+Found 8 errors in 1 file (checked 367 source files)
+make: *** [typecheck] Error 1

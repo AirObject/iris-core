@@ -9,6 +9,8 @@
 
 本页归档交付范围；测试实测、复审过程与限制集中在[验证报告](../reports/phase-10-verification.md)。后续状态与未关闭工作以[阶段索引](README.md)及[Phase 14](phase-14-hardening-release.md)为准。
 
+2026-09-07 W01 候选补齐 HTTP/Worker 共用的 Graph/Vector 装配、真实能力协商及 Vector Note 修订读取；真实 ASGI 与安装后的独立 Core/Worker/公共 SDK 专属门禁通过，2026-09-08 完整 `ci-002` 已通过。证据见[W01 报告](../reports/w01-http-recall-assembly.md)。认知 Provider 生产运行配置仍由 W06 承接，Phase 11/12 保持 Deferred。
+
 ## 阶段目标
 
 交付固定 Watermark 的 Episode/Extraction/Reconciliation/Reflection/Persona Evaluation 流水线、Provider 治理与重放，以及真实 ASGI 传输层、Bearer 认证、能力协商、管理端点和 serve/worker 入口。此前仅有应用层及 mock 的传输缺口在本阶段关闭。

@@ -1,0 +1,611 @@
+{
+  "scope": "W01 ended diagnostic, affected and final CI batches; ci-002 is the final complete CI acceptance",
+  "batches": [
+    {
+      "batch": "affected-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/runtime/test_http_recall_assembly.py tests/contract/test_http_operation_matrix.py tests/integration/runtime/test_release_surface.py"
+      ],
+      "timeout_seconds": 600,
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-09-07T15:11:46.924411+00:00",
+      "finished_at": "2026-09-07T15:11:56.417912+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "b89c3c5a66b0897d6c98efcd66ec375e5ab9bfd8b056d80ce40e8576d3a250ae",
+          "bytes": 431
+        },
+        "result.json": {
+          "sha256": "acbfbeeae3c1f37c161c2fd44caf4fd13d8dfe5d9a6aba25c2fd5bdd32612383",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "d4333109423f0f51f2e7b846ffb1849d4dc9cad25784ac860f215e0188cc2a74",
+          "bytes": 5289
+        }
+      }
+    },
+    {
+      "batch": "affected-002",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/runtime/test_http_recall_assembly.py"
+      ],
+      "timeout_seconds": 600,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:13:42.355485+00:00",
+      "finished_at": "2026-09-07T15:13:43.725227+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "a5bdbef2b700bd5fd7b219e410f95e6089250a3d93cc224ae20b83ef35cc6d5b",
+          "bytes": 336
+        },
+        "result.json": {
+          "sha256": "7aff9e02078dedb4d3a46d5f924097f7b1bfd353bc18989e289e99fa3dd1bf3f",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "000853b34064748e2a691338a4378b1605e7c651bd34b8a4586b99cf693f49bc",
+          "bytes": 1409
+        }
+      }
+    },
+    {
+      "batch": "affected-003",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/runtime/test_http_recall_assembly.py tests/contract/test_asgi_authorization.py tests/contract/test_http_operation_matrix.py tests/integration/runtime/test_release_surface.py tests/integration/recall/test_vector_recall.py tests/integration/recall/test_graph_profile_recall.py"
+      ],
+      "timeout_seconds": 900,
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-09-07T15:15:34.463524+00:00",
+      "finished_at": "2026-09-07T15:15:59.705284+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "51f23f88af28ff202ad4c40c35435ede30ee90ea07ac6b5fadcd2ad1627df1a2",
+          "bytes": 574
+        },
+        "result.json": {
+          "sha256": "9340e3886189d790cc320e50da53a428de0d9c829c7bc9d1dd296b17f16c0155",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "9b6840f2544bcd36fdf7328cc80c46b60567854986f4d848ec2533f1215bd61e",
+          "bytes": 8324
+        }
+      }
+    },
+    {
+      "batch": "affected-004",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/runtime/test_http_recall_assembly.py tests/integration/recall/test_vector_concurrency.py tests/integration/recall/test_vector_crash_freshness_and_isolation.py tests/integration/recall/test_provider_deadline_and_circuit_probe.py"
+      ],
+      "timeout_seconds": 900,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:16:25.758246+00:00",
+      "finished_at": "2026-09-07T15:16:39.540546+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "6fcdb903de00375e785f76428cbfc192ee99ec24633e4b3cd27bd6eb9aecbf16",
+          "bytes": 527
+        },
+        "result.json": {
+          "sha256": "e880154b827d9f6dcf769bb9d4569964ffbfe649ad62aff2b1093c976a0db0df",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "e5feac981aa7aeb3a48b854f97ab8a91d31c796bcca714e7ef7490810e7cd4b2",
+          "bytes": 2081
+        }
+      }
+    },
+    {
+      "batch": "affected-005",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/runtime/test_http_recall_assembly.py"
+      ],
+      "timeout_seconds": 600,
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-09-07T15:28:49.453125+00:00",
+      "finished_at": "2026-09-07T15:28:52.185834+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "214e123d17bc3934c0a8f8e0514b8ace30d12f05f195deeefa2ff04f39be0855",
+          "bytes": 336
+        },
+        "result.json": {
+          "sha256": "4e71fa894e8ad161714eceba5cf8f09c60c65a498ea31ca1f654d812fc6b13aa",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "b17aec7171208650b72af98ff2c39feb4bbd5973a5a005fcf72864d52f20a946",
+          "bytes": 4856
+        }
+      }
+    },
+    {
+      "batch": "affected-006",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/runtime/test_http_recall_assembly.py tests/integration/recall/test_vector.py tests/integration/recall/test_vector_idmap.py"
+      ],
+      "timeout_seconds": 600,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:29:41.056554+00:00",
+      "finished_at": "2026-09-07T15:30:11.187109+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "fd5de4d71329cbe59d5c0d1d91a2b87789d2e87cf85d484d9d07040f15df1bc8",
+          "bytes": 422
+        },
+        "result.json": {
+          "sha256": "32733805385cf5b86d76de993a9c58d03dc70f5fb0052c8b89fb838b6fd7ee23",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "3bfae51c509eb17ec102b2af8f043c4035d11e6b295fe333fcf56e5064b4d26b",
+          "bytes": 1736
+        }
+      }
+    },
+    {
+      "batch": "affected-007",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/runtime/test_http_recall_assembly.py tests/contract/test_asgi_authorization.py tests/contract/test_http_operation_matrix.py tests/integration/runtime/test_release_surface.py"
+      ],
+      "timeout_seconds": 600,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:30:54.242441+00:00",
+      "finished_at": "2026-09-07T15:31:08.118622+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "489f4040ac03d9f714fc42abc1eacde8fd69a17bcdd4585b9a7d5e8b1dcbc806",
+          "bytes": 473
+        },
+        "result.json": {
+          "sha256": "871d21f43d4d705bcf3efcb47ae465572fda27ad134adb0d85a15d13759a8a6e",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "23dfde8ed827ce4fb729e83b7f9a4b016aed08f968faa1fa071be9f8f300cf58",
+          "bytes": 2028
+        }
+      }
+    },
+    {
+      "batch": "affected-008",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/runtime/test_http_recall_assembly.py tests/integration/runtime/test_http_recall_provider_faults.py tests/integration/runtime/test_runtime_authorization_fencing_and_health.py tests/integration/recall/test_vector_crash_freshness_and_isolation.py"
+      ],
+      "timeout_seconds": 600,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:32:36.786957+00:00",
+      "finished_at": "2026-09-07T15:32:46.691491+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "c178469f3a8773be8c42db701e732de70ce1bd4c90fe45af25d93ad3321497cc",
+          "bytes": 543
+        },
+        "result.json": {
+          "sha256": "27cc361fdba4ea750c3f4f2ebcfd782e6d65f67ef0fd7fc9005979b59a4504fb",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "e0aa877a5d9bf97103bd45e73f2df89856bce8d519bab70a09a0c2cee9c56738",
+          "bytes": 2102
+        }
+      }
+    },
+    {
+      "batch": "installed-001",
+      "command": [
+        "make",
+        "package-check"
+      ],
+      "timeout_seconds": 900,
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-09-07T15:24:25.728588+00:00",
+      "finished_at": "2026-09-07T15:24:38.419311+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "a1603d2a009d3ccec7eae37c23775d0d5e30d8aecb194d51d1d4a443a19b3d2b",
+          "bytes": 268
+        },
+        "result.json": {
+          "sha256": "b7ba1873b4ed472341c74e986c718ac7f2ae12dc9b6216965df72e4e5809d4ac",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "c2e332dbbc6d984d0ee94fd3e837f1972b50e00bb35503f0bbc3af95e40d4451",
+          "bytes": 9112
+        }
+      }
+    },
+    {
+      "batch": "installed-002",
+      "command": [
+        "make",
+        "package-check"
+      ],
+      "timeout_seconds": 900,
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-09-07T15:25:58.033130+00:00",
+      "finished_at": "2026-09-07T15:26:46.235476+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "f4bfec248d38b764d0f8edb148695f5f50731a4a8d54bb3229981b351f4d6e33",
+          "bytes": 268
+        },
+        "result.json": {
+          "sha256": "0be8a66c1b8ed73c4838ded1fd8ce069fe77abcbc49b98dbbb5801ddce7fc4a1",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "e66b7df6911918d8db85967115327174fa77d74272c31fbdbf4e613f7e103566",
+          "bytes": 10450
+        }
+      }
+    },
+    {
+      "batch": "installed-003",
+      "command": [
+        "make",
+        "package-check"
+      ],
+      "timeout_seconds": 900,
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-09-07T15:28:22.303117+00:00",
+      "finished_at": "2026-09-07T15:29:10.989705+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "269b9f9a5de7a14870fa22434ec17a82d9237d26995e8f448d177de0d009c6fe",
+          "bytes": 268
+        },
+        "result.json": {
+          "sha256": "f512e4e186d2cca1c0d4b3731f7322b2946149943fcd0a104ba432ea85138902",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "cf0fd6b61b298e5a04ac062500f36f8ffa5e11a5a4fb05151f5229aa17acd288",
+          "bytes": 11167
+        }
+      }
+    },
+    {
+      "batch": "installed-004",
+      "command": [
+        "make",
+        "package-check"
+      ],
+      "timeout_seconds": 900,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:30:10.994214+00:00",
+      "finished_at": "2026-09-07T15:30:22.585487+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "264fa5de29c8443dd59b61b115b60ca9bb41147438bc61ac4a0437ee9a06768f",
+          "bytes": 268
+        },
+        "result.json": {
+          "sha256": "851acf90c3dc02fe9428d39dfc157d020abe0e7dfe0a6d9386e9bcd342023870",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "931813175ceeca97a7c9f54ea38be5e41f71bf8427467aaaf4a43a62f7e5296e",
+          "bytes": 3264
+        }
+      }
+    },
+    {
+      "batch": "recall-regression-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/recall tests/integration/runtime/test_http_recall_assembly.py tests/integration/runtime/test_release_surface.py tests/contract/test_http_operation_matrix.py"
+      ],
+      "timeout_seconds": 1800,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:18:55.142835+00:00",
+      "finished_at": "2026-09-07T15:23:24.738236+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "516ed42cb0335f0a20ac523a2d99496d3ca60af294d91202c7f373c5149eb1a9",
+          "bytes": 457
+        },
+        "result.json": {
+          "sha256": "8edc9ff9293ef1744457ca7e6a4aa42038883ebdd3385fd6ddca4debc4194e72",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "c1f070fe26ac481cc935a9d886337f747272bf3d8323676d46047f612d86ed7e",
+          "bytes": 4571
+        }
+      }
+    },
+    {
+      "batch": "static-001",
+      "command": [
+        "make",
+        "lint",
+        "typecheck",
+        "contracts-check",
+        "public-api-check"
+      ],
+      "timeout_seconds": 900,
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-09-07T15:16:25.871946+00:00",
+      "finished_at": "2026-09-07T15:16:27.219412+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "b529ba9d5da69d5be7164da40689484fde9c7c42c191d5ed50f40d3239ce7cd9",
+          "bytes": 323
+        },
+        "result.json": {
+          "sha256": "061590d56618b5803ae2574977fb3ee0218ae83cbe11c478e57438dbc3737d2e",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "c6b906b89ab35bcd584f015957d3f2092c4ed17e494fa90cde328db34c0751c0",
+          "bytes": 3334
+        }
+      }
+    },
+    {
+      "batch": "static-002",
+      "command": [
+        "make",
+        "lint",
+        "typecheck",
+        "contracts-check",
+        "public-api-check"
+      ],
+      "timeout_seconds": 900,
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-09-07T15:18:54.977169+00:00",
+      "finished_at": "2026-09-07T15:18:56.265298+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "a714e45a63c5d9431f86e0a6cbbecbce4c4722a1db553daa6574254d8d5b3b1d",
+          "bytes": 323
+        },
+        "result.json": {
+          "sha256": "a076bfa0146eb306263a1abefa6ffdbdf8712c2dcc87ffaa1b9d70df7a804731",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "c469a2b8b6c8bb218d64f97dca7e278599623609b3c288d23029281dbe9fafde",
+          "bytes": 697
+        }
+      }
+    },
+    {
+      "batch": "static-003",
+      "command": [
+        "make",
+        "lint",
+        "typecheck",
+        "contracts-check",
+        "public-api-check"
+      ],
+      "timeout_seconds": 900,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:19:43.711509+00:00",
+      "finished_at": "2026-09-07T15:19:47.575458+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "764ef8359b88767ed0c0bff5baf6e83eb003b14b781df646c72ee0ecfaa72972",
+          "bytes": 323
+        },
+        "result.json": {
+          "sha256": "8b07c605c1bc9a7c22158a5c03e3354c657f44828d5f0df1136a227d2eea4cf4",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "359384584fe7e08c9b2b73711e3f11475d253da05305362fa5466ea222c9ac57",
+          "bytes": 890
+        }
+      }
+    },
+    {
+      "batch": "static-004",
+      "command": [
+        "make",
+        "typecheck",
+        "contracts-check",
+        "public-api-check"
+      ],
+      "timeout_seconds": 900,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:24:21.298630+00:00",
+      "finished_at": "2026-09-07T15:24:24.505483+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "f27ef017cca8043a8e43d0c477bd76c25c56c5b35d042cf5596b310bf9e36837",
+          "bytes": 311
+        },
+        "result.json": {
+          "sha256": "d48c82c32b26cc13e0e05a55469965f2a101a77b7f80c6b445cbbcce04dfc43f",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "05f7ea46882a67eff52b6080b63efc797a0522c50cf12358e5aad136bc69f107",
+          "bytes": 520
+        }
+      }
+    },
+    {
+      "batch": "static-005",
+      "command": [
+        "make",
+        "lint",
+        "typecheck",
+        "contracts-check",
+        "public-api-check"
+      ],
+      "timeout_seconds": 900,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:32:33.645880+00:00",
+      "finished_at": "2026-09-07T15:32:37.719628+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "9d0b70112019dfda4f2766459fa50acc4d76b373731965ba0f8e8f92d0f30166",
+          "bytes": 323
+        },
+        "result.json": {
+          "sha256": "925364f25d1eb57c6c204f35cc10fbb9983e467bc961b7c61da7d408c231c5f3",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "109afffb02f65f9a195dcb784f7613c52fbf03389d448449a1cd53f793d9b7fe",
+          "bytes": 890
+        }
+      }
+    },
+    {
+      "batch": "tcp-faults-001",
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/runtime/test_http_recall_provider_faults.py"
+      ],
+      "timeout_seconds": 300,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:22:15.403006+00:00",
+      "finished_at": "2026-09-07T15:22:19.209812+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "9d1392310cf57c32a1a775fadcad0f282bb59694383127734c51fb051607a4d1",
+          "bytes": 343
+        },
+        "result.json": {
+          "sha256": "e556d448ff0847a0a119a759b88a0bc9e99791867c989e8fdcdb9bb5d40a251d",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "3368d54e5267e491efe4bcf4851f8b71e6d7bd33e4f18c5b38ab32fd6ba92a2b",
+          "bytes": 1416
+        }
+      }
+    },
+    {
+      "batch": "ci-001",
+      "command": [
+        "make",
+        "ci"
+      ],
+      "timeout_seconds": 3600,
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-09-07T15:35:19.292035+00:00",
+      "finished_at": "2026-09-07T15:51:05.341830+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "15ac67454d021e7403457b4d40fe757c82979c3a5f0a8446893e2758c98404f2",
+          "bytes": 258
+        },
+        "result.json": {
+          "sha256": "536d580d3de9b5b9000ad18b09ea626a0e4d9767c078b0e1776f8f895d30a999",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "c73cbffeb73fb4a026208c4b89bcf5018897b082b4b14eb8b4d8ec55b401624f",
+          "bytes": 104668
+        }
+      }
+    },
+    {
+      "batch": "browser-001",
+      "command": [
+        "env",
+        "CI=1",
+        "CONSOLE_BROWSER_EXECUTABLE=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "make",
+        "console-browser"
+      ],
+      "timeout_seconds": 600,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:55:13.983447+00:00",
+      "finished_at": "2026-09-07T15:56:36.645681+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "7974e9de570b21a78300130a3b0016e7ed5462c2d8c763d14450c546d270eb95",
+          "bytes": 388
+        },
+        "result.json": {
+          "sha256": "0c5905462f02c18ffde75f8dc29c8f1ae0a0b9c9fd1263781ce1823cc820c899",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "1d57121fae7a4ed972947a807e7a641db16ff8a40a3cd35318c83ceef966745b",
+          "bytes": 161560
+        }
+      }
+    },
+    {
+      "batch": "ci-002",
+      "command": [
+        "env",
+        "CI=1",
+        "CONSOLE_BROWSER_EXECUTABLE=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "make",
+        "ci"
+      ],
+      "timeout_seconds": 3600,
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-09-07T15:57:51.385346+00:00",
+      "finished_at": "2026-09-07T16:14:52.250405+00:00",
+      "files": {
+        "task.json": {
+          "sha256": "7a042ea817bc0d9608c107c6b39af450d48da1bc0c9245062199c9f35388ac47",
+          "bytes": 376
+        },
+        "result.json": {
+          "sha256": "12c2b9cec70643f68d575402f1cfb46a448641c1efe61afef8c85a14a65ed474",
+          "bytes": 197
+        },
+        "output.log": {
+          "sha256": "7b52a0e36674f8368845e905720c0183b1a6542626bc257d6ac77686bb35533b",
+          "bytes": 228568
+        },
+        "candidate-files.json": {
+          "sha256": "c4efc7911da442de25b9655589e65cbef23a8bae2da5b3538a5637980ebe1a3e",
+          "bytes": 182409
+        }
+      }
+    }
+  ]
+}

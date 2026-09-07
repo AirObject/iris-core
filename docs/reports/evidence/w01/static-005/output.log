@@ -1,0 +1,21 @@
+UV_CACHE_DIR=.uv-cache uv run ruff check .
+All checks passed!
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_import_boundaries
+domain import boundary: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_docs
+documentation structure and local links: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_contract_counts
+current documentation contract counts: ok
+UV_CACHE_DIR=.uv-cache uv run mypy
+Success: no issues found in 369 source files
+npm run typecheck --prefix sdk/typescript
+
+> @iris-memory/sdk@0.11.2 typecheck
+> tsc --project tsconfig.json --noEmit
+
+UV_CACHE_DIR=.uv-cache uv run python -m tools.generate_contracts --check
+generated contracts: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_compatibility
+contract compatibility: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_public_api
+public API exports, signatures, DTOs, CLI and HTTP snapshot: passed

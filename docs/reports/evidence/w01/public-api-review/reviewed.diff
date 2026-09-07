@@ -1,0 +1,20 @@
+--- baseline-public-api.json
++++ W01-public-api.json
+@@ -3523,7 +3523,7 @@
+             ]
+           },
+           "negotiateCapabilities": {
+-            "contract_sha256": "328711ba4b040db016f79070b16610fbebff9c226e64d41ffb7f21ef80511c19",
++            "contract_sha256": "7e7f3ff5a1403ecc8f4fbdea98496f1536300eb89389984d14171c8aa2713f7c",
+             "deprecated": false,
+             "method": "POST",
+             "path": "/v1/negotiation",
+@@ -3951,7 +3951,7 @@
+           "TriggerView": "b850ebcd024eff9db6ce55913dbaf3cc58f9e715e3969702f9428bc9aab3b083",
+           "VersionManifest": "bb6cde0e09f0f6653c4625bb8d2a83fd6b17338f37cf69ea314d18d636c9ac3f"
+         },
+-        "version": "1.10.0"
++        "version": "1.11.0"
+       }
+     },
+     "python": {

@@ -52,7 +52,7 @@
     "state.v1",
     "tasks.v1"
   ],
-  "contract_version": "1.10.0",
+  "contract_version": "1.11.0",
   "error_codes": [
     "access_denied",
     "artifact_invalid",
@@ -3258,6 +3258,17 @@
                     },
                     "minItems": 1,
                     "type": "array"
+                  },
+                  "required_capabilities": {
+                    "description": "Capabilities required by this client; unknown, unauthorized or unconfigured capabilities fail negotiation. Configured routes remain supported during transient degradation.",
+                    "items": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 128,
+                    "type": "array",
+                    "uniqueItems": true
                   }
                 },
                 "required": [

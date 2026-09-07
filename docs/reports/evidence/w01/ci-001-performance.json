@@ -1,0 +1,83 @@
+{
+  "source_log": "ci-001/output.log",
+  "source_log_sha256": "c73cbffeb73fb4a026208c4b89bcf5018897b082b4b14eb8b4d8ec55b401624f",
+  "scope": "ci-001 local performance stage only; complete ci-001 failed at browser setup. Direct application-service baselines do not prove W18 installed-client production latency.",
+  "command": "make ci -> pytest tests/performance --no-cov -s",
+  "metrics": [
+    {
+      "name": "graph_profile_hybrid",
+      "samples": 40,
+      "p95_ms": 29.5,
+      "budget_ms": 250,
+      "result": "passed"
+    },
+    {
+      "name": "vector_hybrid",
+      "samples": 40,
+      "p95_ms": 30.2,
+      "budget_ms": 250,
+      "result": "passed"
+    },
+    {
+      "name": "single_observe",
+      "samples": 60,
+      "p95_ms": 3.28,
+      "budget_ms": 30,
+      "result": "passed"
+    },
+    {
+      "name": "batch_100_observe",
+      "samples": 60,
+      "p95_ms": 11.99,
+      "budget_ms": 150,
+      "result": "passed"
+    },
+    {
+      "name": "persona_current",
+      "samples": 200,
+      "p95_ms": 1.41,
+      "budget_ms": 20,
+      "result": "passed"
+    },
+    {
+      "name": "structured_recall",
+      "samples": 40,
+      "p95_ms": 24.28,
+      "budget_ms": 50,
+      "result": "passed"
+    },
+    {
+      "name": "fts_recall",
+      "samples": 40,
+      "p95_ms": 26.41,
+      "budget_ms": 100,
+      "result": "passed"
+    },
+    {
+      "name": "state_coalesced_write",
+      "samples": 120,
+      "p95_ms": 8.78,
+      "budget_ms": 25,
+      "result": "passed"
+    }
+  ],
+  "reported_contention": {
+    "name": "state_coalesced_burst",
+    "samples": 24,
+    "concurrency": 8,
+    "p95_ms": 145.11,
+    "busy_events": 0,
+    "scope": "Reported queueing under single writer; not compared with the sequential 25ms gate"
+  },
+  "forget": {
+    "tests": 2,
+    "samples_per_test": 40,
+    "budget_ms": 100,
+    "multi_target_count_per_sample": 20,
+    "result": "passed",
+    "p95_ms": null,
+    "note": "Successful assertions do not print exact latency; do not invent measurements."
+  },
+  "test_total": 11,
+  "duration_seconds": 39.69
+}

@@ -9,6 +9,8 @@
 
 本页归档交付范围；测试实测、复审过程与限制集中在[验证报告](../reports/phase-07-verification.md)。后续状态与未关闭工作以[阶段索引](README.md)及[Phase 14](phase-14-hardening-release.md)为准。
 
+2026-09-07 W01 当前接线候选已通过真实 ASGI 与安装后的 Core/Worker/公共 SDK 路由命中；2026-09-08 收尾 `ci-002` 已完整通过，见[W01 报告](../reports/w01-http-recall-assembly.md)。此更新不覆盖历史量化限制：Graph 原量化门禁仍归 W02，生产 Embedding 管理与真实出站仍归 W05。
+
 ## 阶段目标
 
 交付 Embedding Port、独立 int64 ID Map、不可变 FAISS Generation/信任门、COW Handle Swap、故障回退与 Hybrid Recall。

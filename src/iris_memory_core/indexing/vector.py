@@ -55,7 +55,7 @@ from iris_memory_core.application.ports.transaction import Transaction, UnitOfWo
 from iris_memory_core.domain.errors import ConflictError
 from iris_memory_core.domain.hashing import canonical_json
 from iris_memory_core.domain.memory import CLAIM_CURRENT_VISIBLE_STATUSES
-from iris_memory_core.domain.note import NoteStatus
+from iris_memory_core.domain.note import NoteCurrent, NoteRevision, NoteStatus
 from iris_memory_core.domain.vector import (
     GENERATION_FILES,
     MANIFEST_FIELDS,
@@ -275,12 +275,12 @@ def _episode_entry(episode: Any, revision: Any) -> VectorEntryInput:
     )
 
 
-def _note_entry(note: Any, revision: Any) -> VectorEntryInput:
+def _note_entry(note: NoteCurrent, revision: NoteRevision) -> VectorEntryInput:
     return VectorEntryInput(
         tenant_id=note.tenant_id,
         resource_type="note",
         resource_id=note.id,
-        resource_revision=note.revision,
+        resource_revision=revision.revision,
         agent_id=note.agent_id,
         space_group_id=note.space_group_id,
         space_id=note.space_id,

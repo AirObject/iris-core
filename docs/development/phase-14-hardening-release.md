@@ -1,12 +1,14 @@
 # 阶段 14：前置闭环、生产硬化与稳定发布
 
-> 状态：Paused（整体 goal 已于 2026-09-07 停止；2026-09-07 已实施读面、State/Note/Focus/Observation/Claim/Episode/Relation 与 Task 管理写入、Artifact 文本创建与附件上传、Recall/Focus Lease 与安装门禁；Identity 注册/绑定、实体重定向与属性已验收；六类内容删除、Entity 软删除与恢复账本及 Focus/State/Task 固定集合删除已验收；固定筛选与 Operation 批量删除、Event dismiss 及待投递 Recall 重验已通过 Schema 20 当前完整组合验收，Persona 发布回滚已按 ADR-0044 通过当前完整组合验收，PersonaState 管理按 ADR-0045 已通过完整组合验收，Proposal 按 ADR-0046 已通过完整组合验收，Policy 按 ADR-0047 已通过完整组合验收；尚未进入发布验收）  
+> 状态：In progress（2026-09-07 新授权启动 W01→W20 串行构建，当前 W01；此前整体 goal 已停止；2026-09-07 已实施读面、State/Note/Focus/Observation/Claim/Episode/Relation 与 Task 管理写入、Artifact 文本创建与附件上传、Recall/Focus Lease 与安装门禁；Identity 注册/绑定、实体重定向与属性已验收；六类内容删除、Entity 软删除与恢复账本及 Focus/State/Task 固定集合删除已验收；固定筛选与 Operation 批量删除、Event dismiss 及待投递 Recall 重验已通过 Schema 20 当前完整组合验收，Persona 发布回滚已按 ADR-0044 通过当前完整组合验收，PersonaState 管理按 ADR-0045 已通过完整组合验收，Proposal 按 ADR-0046 已通过完整组合验收，Policy 按 ADR-0047 已通过完整组合验收；尚未进入发布验收）  
 > 前置阶段：[Phase 0–10](./README.md) 的 Core 基线与 [Phase 13](./phase-13-web-console.md) 的管理平面；Phase 11/12 均已暂缓，移出当前发布依赖  
 > pip 范围：仅 Core 功能及其必要运行资源；不包含 Bellis/AstrBot 适配器；业务调用只经冻结的公共方法与契约  
 > 目标版本：1.0.0（发布目标，非当前版本；RC 编号在 14.0 冻结）  
 > 架构依据：[§29 安全](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#29-安全与隐私)、[§30 性能](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#30-性能与容量目标)、[§35 运维](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#35-部署与运维)、[§38 验收](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md#38-顶层验收标准)
 
-2026-09-07 执行方式调整：停止整体 Phase 14 goal，保留未完成状态。后续按[单一工作包队列](./work-packages.md)逐个下达；过程中运行受影响子集，每工作包收尾一次全量 CI。14.4/14.5 独立排期为有明确输入、时限和产物的后台批次，当前未启动。
+2026-09-07 执行方式调整：停止整体 Phase 14 goal，保留未完成状态。后续按[构建指导](./next-build-guide.md)与[单一工作包队列](./work-packages.md)逐个下达；新发现的 Recall 接线与原量化验收欠项一并承接。本页继续定义发布范围与硬门槛。过程中运行受影响子集，每实施工作包收尾一次全量 CI。14.4/14.5 独立排期为有明确输入、时限和产物的后台批次，当前未启动。
+
+当前执行覆盖：用户已授权按 W01→W20 严格串行自动续作，完成一包的全部验收与单独提交后进入下一包。W01 开发与后台定向验证中，尚未进入发布验收；详见[W01 报告](../reports/w01-http-recall-assembly.md)。原逐包另行下达的描述由最新授权覆盖。
 
 ## 阶段目标
 

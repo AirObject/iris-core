@@ -1,0 +1,59 @@
+UV_CACHE_DIR=.uv-cache uv run pytest tests/integration/recall tests/integration/runtime/test_http_recall_assembly.py tests/integration/runtime/test_release_surface.py tests/contract/test_http_operation_matrix.py --no-cov
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/cassia/Local/Code/iris_memory_core
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.15.0
+collected 555 items
+
+tests/integration/recall/test_fts_recall_fts.py ...............          [  2%]
+tests/integration/recall/test_fts_recall_recall.py ..................... [  6%]
+........                                                                 [  7%]
+tests/integration/recall/test_fts_recall_usage.py ...........            [  9%]
+tests/integration/recall/test_graph_profile_concurrency.py .......       [ 11%]
+tests/integration/recall/test_graph_profile_graph.py ................... [ 14%]
+........................................................................ [ 27%]
+......................................                                   [ 34%]
+tests/integration/recall/test_graph_profile_jobs.py .........            [ 36%]
+tests/integration/recall/test_graph_profile_privacy_and_consistency.py . [ 36%]
+..........                                                               [ 38%]
+tests/integration/recall/test_graph_profile_profile.py ................. [ 41%]
+....                                                                     [ 41%]
+tests/integration/recall/test_graph_profile_recall.py .................. [ 45%]
+............................                                             [ 50%]
+tests/integration/recall/test_projection_deletion_publication.py ....... [ 51%]
+....................                                                     [ 54%]
+tests/integration/recall/test_provider_deadline_and_circuit_probe.py ... [ 55%]
+.                                                                        [ 55%]
+tests/integration/recall/test_recall.py ...........................      [ 60%]
+tests/integration/recall/test_recall_backlog_identity_and_replay.py .... [ 61%]
+...........                                                              [ 63%]
+tests/integration/recall/test_recall_deadline_scope_and_rebuild.py ..... [ 64%]
+...............                                                          [ 66%]
+tests/integration/recall/test_recall_publication_revalidation.py ....... [ 68%]
+......                                                                   [ 69%]
+tests/integration/recall/test_vector.py ............................     [ 74%]
+tests/integration/recall/test_vector_concurrency.py .......              [ 75%]
+tests/integration/recall/test_vector_crash_freshness_and_isolation.py .. [ 75%]
+......................                                                   [ 79%]
+tests/integration/recall/test_vector_idmap.py ........                   [ 81%]
+tests/integration/recall/test_vector_provider.py ....................... [ 85%]
+..                                                                       [ 85%]
+tests/integration/recall/test_vector_recall.py ...........               [ 87%]
+tests/integration/runtime/test_http_recall_assembly.py ................. [ 90%]
+.                                                                        [ 90%]
+tests/integration/runtime/test_release_surface.py ...................... [ 94%]
+..........................                                               [ 99%]
+tests/contract/test_http_operation_matrix.py ..                          [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================= 555 passed, 2 warnings in 268.46s (0:04:28) ==================

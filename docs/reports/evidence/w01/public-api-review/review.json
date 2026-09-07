@@ -1,0 +1,14 @@
+{
+  "baseline_commit": "e2a6bbd7793f7bd4b73a51d32149eb8e3015ed33",
+  "reviewed_sha256": "dcad5c43d30e7b0e2f01931d6dc123335b970d0a343877b14c88feccdd189f96",
+  "accepted_changes": [
+    "negotiateCapabilities request contract hash: optional required_capabilities array",
+    "business Contract version 1.10.0 -> 1.11.0"
+  ],
+  "unchanged": [
+    "Python exports, signatures and DTOs",
+    "TypeScript exports",
+    "CLI surface",
+    "remaining HTTP operations and schemas"
+  ]
+}

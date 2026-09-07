@@ -1,0 +1,12 @@
+{
+  "command": [
+    "make",
+    "test-affected",
+    "TESTS=tests/integration/runtime/test_http_recall_assembly.py tests/integration/recall/test_vector.py tests/integration/recall/test_vector_idmap.py"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 600,
+  "created_at": "2026-09-07T15:29:40.782911+00:00",
+  "head": "e2a6bbd7793f7bd4b73a51d32149eb8e3015ed33",
+  "supervisor_pid": 71835
+}

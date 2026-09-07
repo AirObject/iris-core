@@ -1,6 +1,6 @@
 # Iris Memory Core 文档索引
 
-先看 [阶段路线图](./development/README.md) 了解实际进度，再阅读 [重规划后的 Phase 14](./development/phase-14-hardening-release.md)。阶段编号、实现存在、测试通过与稳定发布是不同证据，当前状态以路线图和对应报告为准。
+先看 [阶段路线图](./development/README.md) 了解进度；准备继续构建时阅读[后续构建指导](./development/next-build-guide.md)，并从[工作队列](./development/work-packages.md)选择一个工作包。[Phase 14](./development/phase-14-hardening-release.md)保留稳定发布要求。阶段编号、实现存在、测试通过与稳定发布是不同证据。
 
 ## 文档分工
 
@@ -10,6 +10,8 @@
 | [架构基线](./IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md) | 系统边界、领域模型、不变量和顶层验收；保留稳定章节锚点 |
 | [ADR 索引](./adr/README.md) | 设计决定、接受状态、取代关系及尚未裁决的边界 |
 | [阶段路线图](./development/README.md) | 阶段状态与依赖；各阶段维护交付摘要、剩余工作和退出门禁 |
+| [后续构建指导](./development/next-build-guide.md) | 未完成工作的实现边界、依赖、代码接缝、专属验收和交接方式 |
+| [单一工作包队列](./development/work-packages.md) | 后续工作的建议顺序、状态及交接；不重复定义业务语义 |
 | [验证报告索引](./reports/README.md) | 历史实测、当前复测、失败与限制；不把旧测试数字当当前结果 |
 | [Console 设计与实现边界](./design/console-backend.md) | 合并后的后端/前端对接规范，区分已发布切片与后续设计 |
 | [Console 对接矩阵](../web/console/INTEGRATION_MATRIX.md) | 各功能的契约、后端、前端和真实联调差距 |

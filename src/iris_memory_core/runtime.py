@@ -24,11 +24,6 @@ from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.reflection import ReflectionPipeline
 from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService
-from iris_memory_core.domain.vector import VectorSpaceConfig
-from iris_memory_core.indexing.fts import FtsProjectionService
-from iris_memory_core.indexing.graph import GraphProjectionService
-from iris_memory_core.indexing.profile import ProfileProjectionService
-from iris_memory_core.indexing.vector import VectorProjectionService
 from iris_memory_core.jobs.worker import (
     OutboxWorker,
     phase3_handlers,
@@ -46,7 +41,7 @@ from iris_memory_core.providers.cognitive import (
     DurableProviderState,
     ProviderGovernance,
 )
-from iris_memory_core.providers.embedding import DeterministicEmbeddingProvider
+from iris_memory_core.recall_runtime import RecallAssemblyConfig, assemble_recall
 from iris_memory_core.storage.migrations import MigrationRunner
 from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_version
 from iris_memory_core.storage.uow import Store
@@ -71,6 +66,16 @@ class ServiceConfig:
     console_allowed_hosts: tuple[str, ...] = ("localhost",)
     console_trusted_proxy_ips: tuple[str, ...] = ()
     console_dev_http: bool = False
+    development_embedding: bool = False
+    vector_root: Path | None = None
+    vector_required: bool = False
+
+    def recall_config(self) -> RecallAssemblyConfig:
+        return RecallAssemblyConfig(
+            development_embedding=self.development_embedding,
+            vector_root=self.vector_root,
+            vector_required=self.vector_required,
+        )
 
     def console_config(self) -> ConsoleConfig:
         host = parse_bind(self.console_bind)[0] if self.console_bind else self.host
@@ -90,7 +95,7 @@ class ServiceConfig:
                 raise ValueError("console bind must differ from the application bind")
             if self.console_assets is not None:
                 assets = self.console_assets.resolve()
-                roots = (self.database.parent, self.backup_root, self.export_root)
+                roots = (self.database.parent, self.backup_root, self.export_root, self.vector_root)
                 if any(
                     root is not None
                     and (
@@ -119,7 +124,11 @@ class ServiceConfig:
         data_directory.mkdir(parents=True, exist_ok=True)
         if not os.access(data_directory, os.R_OK | os.W_OK | os.X_OK):
             raise ValueError("database directory is not readable and writable")
-        for label, root in (("backup", self.backup_root), ("export", self.export_root)):
+        for label, root in (
+            ("backup", self.backup_root),
+            ("export", self.export_root),
+            ("vector", self.vector_root),
+        ):
             if root is not None and root.expanduser().resolve() in unsafe_directories:
                 raise ValueError(f"{label} root must use a dedicated directory")
         if (
@@ -151,7 +160,7 @@ def load_config(
         if key in env:
             values[name] = env[key]
     values.update({key: value for key, value in (cli_values or {}).items() if value is not None})
-    for name in ("database", "backup_root", "export_root", "console_assets"):
+    for name in ("database", "backup_root", "export_root", "console_assets", "vector_root"):
         if name in values and values[name] is not None:
             values[name] = Path(str(values[name]))
     for name in ("port",):
@@ -175,6 +184,8 @@ def load_config(
         "allow_local_sqlite",
         "enable_console",
         "console_dev_http",
+        "development_embedding",
+        "vector_required",
     ):
         if name in values and isinstance(values[name], str):
             raw = values[name].strip().lower()
@@ -215,6 +226,7 @@ def serve(config: ServiceConfig) -> int:
         export_root=config.export_root,
         enable_console=config.enable_console and config.console_bind is None,
         console_config=config.console_config() if config.enable_console else None,
+        recall_config=config.recall_config(),
     )
     if config.enable_console and config.console_bind:
         from iris_memory_core.api.console.listening import serve_separate
@@ -252,24 +264,16 @@ def worker(config: ServiceConfig, *, once: bool = False) -> int:
     notes = NoteService(store, store.clock)
     tasks = TaskService(store, store.clock)
     retention = RetentionService(store, store.clock, forget=ForgetService(store, store.clock))
-    fts = FtsProjectionService(store, store.clock)
-    vector_space = VectorSpaceConfig(model="deterministic-local", dimension=32)
-    vector = VectorProjectionService(
-        store,
-        store.clock,
-        provider=DeterministicEmbeddingProvider(vector_space),
-        vector_root=config.database.parent / "vector",
-        space=vector_space,
-    )
+    projections = assemble_recall(store, store.clock, config.recall_config())
     handlers = {
         **phase3_handlers(store, store.clock, recent=recent, focus=focus),
         **phase4_handlers(store.clock, notes=notes, tasks=tasks),
         **phase5_handlers(store.clock, retention=retention),
-        **phase6_handlers(store.clock, projection=fts),
-        **phase7_handlers(projection=vector),
+        **phase6_handlers(store.clock, projection=projections.fts),
+        **(phase7_handlers(projection=projections.vector) if projections.vector else {}),
         **phase8_handlers(
-            graph=GraphProjectionService(store, store.clock),
-            profile=ProfileProjectionService(store, store.clock),
+            graph=projections.graph,
+            profile=projections.profile,
         ),
         **phase9_handlers(store.clock),
         **phase10_handlers(pipeline=pipeline),

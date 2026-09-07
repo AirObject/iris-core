@@ -6,6 +6,8 @@ Detailed historical evidence lives in the [verification reports](docs/reports/RE
 
 ## Unreleased
 
+- Assemble Graph and explicitly configured Vector recall in the HTTP runtime using shared API/worker configuration; require opt-in for deterministic development embeddings.
+- Advance business Contract to 1.11.0 with optional required-capability negotiation, and fix Note vector indexing to use its immutable revision.
 - Move business HTTP paths and schemas into the declarative contract source.
 - Split application ports by context, retaining compatibility imports.
 - Check current documentation counts against generated OpenAPI.

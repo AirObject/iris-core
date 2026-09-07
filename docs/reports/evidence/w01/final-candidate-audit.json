@@ -1,0 +1,31 @@
+{
+  "verified_at": "2026-09-07T16:16:19.861743+00:00",
+  "batch": "ci-002",
+  "material_drift": [],
+  "report_evidence_checkpoint_drift": [
+    "docs/development/serial-execution-state.json",
+    "docs/development/work-packages.md",
+    "docs/reports/evidence/w01/README.md",
+    "docs/reports/evidence/w01/artifact-digests.json",
+    "docs/reports/evidence/w01/ci-001-performance.json",
+    "docs/reports/evidence/w01/ci-002/candidate-files.json",
+    "docs/reports/evidence/w01/ci-002/output.log",
+    "docs/reports/evidence/w01/ci-002/result.json",
+    "docs/reports/evidence/w01/ci-002/task.json",
+    "docs/reports/w01-http-recall-assembly.md"
+  ],
+  "package_input_hashes_match": true,
+  "ci_result": {
+    "started_at": "2026-09-07T15:57:51.385346+00:00",
+    "supervisor_pid": 83209,
+    "child_pid": 83213,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T16:14:52.250405+00:00"
+  },
+  "core_version": "0.13.0",
+  "schema_version": 20,
+  "business_contract_version": "1.11.0",
+  "python_sdk_version": "0.11.1",
+  "typescript_sdk_version": "0.11.2"
+}

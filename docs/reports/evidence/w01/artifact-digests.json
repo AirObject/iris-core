@@ -1,0 +1,26 @@
+{
+  "batch": "ci-002",
+  "artifacts": [
+    {
+      "name": "iris_memory_core-0.13.0-py3-none-any.whl",
+      "sha256": "53541e146bb42209351f77be3a65ac01ccb72df32c4f87e88973ebca57553a1e",
+      "bytes": 841190
+    },
+    {
+      "name": "iris_memory_core-0.13.0.tar.gz",
+      "sha256": "32ddb621230f1a37a3d141e7de75d9563fade857e2150ba4392579740df78912",
+      "bytes": 698521
+    },
+    {
+      "name": "iris_memory_sdk-0.11.1-py3-none-any.whl",
+      "sha256": "19f3cd76e9dc5adcd68417d6ae638a7aff2206b62d39f2b3975df2f273c5cbeb",
+      "bytes": 33574
+    },
+    {
+      "name": "iris_memory_sdk-0.11.1.tar.gz",
+      "sha256": "6d96c57f839c28d2614d4314bb1c2b1e30391fab9ada9586093d54e87060d3f9",
+      "bytes": 32705
+    }
+  ],
+  "scope": "Fresh build and isolated installed consumption; not published release artifacts"
+}
