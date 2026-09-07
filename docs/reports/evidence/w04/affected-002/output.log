@@ -1,0 +1,3046 @@
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 11%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 22%]
+........................................................................ [ 26%]
+........................................................................ [ 30%]
+........................................................................ [ 33%]
+............................................FF.......................... [ 37%]
+......................................................F................. [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 48%]
+........................................................................ [ 52%]
+.................FFFF.FFFF.............................................. [ 56%]
+................................................F....................... [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 67%]
+........................................................................ [ 71%]
+........................................................................ [ 75%]
+........................................................................ [ 79%]
+........................................................................ [ 82%]
+........................................................................ [ 86%]
+........................................................................ [ 90%]
+....................................................................F... [ 94%]
+...............................................EEEEEEEEEEEEEEEEEEEEEEEEE [ 97%]
+EEEEEEEEEEEEEEEEEEEEEEEEEEEEE............                                [100%]
+==================================== ERRORS ====================================
+_____ ERROR at setup of test_python_async_sdk_negotiates_with_mock_server ______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x10f9dfd10>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______ ERROR at setup of test_python_async_sdk_maps_stable_error_envelope ______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116a4ac90>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______ ERROR at setup of test_observe_batch_round_trip_against_contract _______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116a49fd0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+__________ ERROR at setup of test_observe_batch_rejects_unknown_role ___________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116a4a2d0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______ ERROR at setup of test_observe_batch_rejects_session_without_space ______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116d994c0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______________ ERROR at setup of test_source_cursor_round_trip ________________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116a49e80>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______________ ERROR at setup of test_surface_lease_round_trip ________________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116a4b8c0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+________ ERROR at setup of test_lease_acquire_rejects_out_of_range_ttl _________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116d9a270>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+__________ ERROR at setup of test_current_surface_lease_and_readiness __________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116a4bf80>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+________________ ERROR at setup of test_metrics_endpoint_shape _________________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116d9a330>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_____________ ERROR at setup of test_admin_job_listing_round_trip ______________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x116d9a9f0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______________ ERROR at setup of test_admin_job_retry_round_trip _______________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x1167a45c0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______ ERROR at setup of test_admin_schedule_create_and_run_round_trip ________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11718be00>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+____________ ERROR at setup of test_admin_schedule_requires_reason _____________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x114fc5970>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______________ ERROR at setup of test_recent_context_round_trip _______________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111754f80>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+________ ERROR at setup of test_recent_context_requires_agent_and_space ________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111281400>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_____________ ERROR at setup of test_state_put_and_get_round_trip ______________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11162a810>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+____________ ERROR at setup of test_state_put_rejects_bad_authority ____________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x117008e60>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_________ ERROR at setup of test_state_put_requires_idempotency_header _________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x1116292b0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+________ ERROR at setup of test_focus_create_and_transitions_round_trip ________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11162bb60>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+___________ ERROR at setup of test_focus_create_rejects_unknown_kind ___________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11162aae0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+__________ ERROR at setup of test_focus_promote_requires_target_type ___________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11186ea50>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_____ ERROR at setup of test_focus_transition_requires_idempotency_header ______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11186d6d0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______ ERROR at setup of test_state_list_and_history_accept_scope_params _______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11162b7d0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______ ERROR at setup of test_focus_list_rejects_session_without_space ________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11186c500>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+________ ERROR at setup of test_admin_recent_context_rebuild_round_trip ________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11186c4a0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+__________ ERROR at setup of test_note_create_list_update_round_trip ___________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x117008e60>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+__________ ERROR at setup of test_note_archive_and_promote_round_trip __________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111dd85f0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+________ ERROR at setup of test_task_create_list_transition_round_trip _________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111dd9c40>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______ ERROR at setup of test_task_create_accepts_the_contract_minimum ________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11186d790>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_ ERROR at setup of test_task_conversation_origin_stays_proposed_and_cannot_activate _
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111ddacf0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+__________ ERROR at setup of test_task_step_and_dependency_round_trip __________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111ddb7a0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+________________ ERROR at setup of test_task_trigger_round_trip ________________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11186c0b0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_____ ERROR at setup of test_cognitive_event_list_pull_and_ack_round_trip ______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111dd86e0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______ ERROR at setup of test_phase10_python_sdk_surface_and_bearer_wire _______
+
+    @pytest.fixture
+    def recorded_mock_server() -> Iterator[Any]:
+        """A mock server that keeps the parsed request bodies it received, so
+        contract tests can assert what the SDK ACTUALLY put on the wire."""
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:682: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb7590>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_ ERROR at setup of test_ack_cognitive_event_carries_the_lease_proof_on_the_wire _
+
+    @pytest.fixture
+    def recorded_mock_server() -> Iterator[Any]:
+        """A mock server that keeps the parsed request bodies it received, so
+        contract tests can assert what the SDK ACTUALLY put on the wire."""
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:682: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11186cbf0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______ ERROR at setup of test_phase4_writes_require_idempotency_header ________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb5a30>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______ ERROR at setup of test_phase4_lists_reject_session_without_space _______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb6ba0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_____ ERROR at setup of test_claim_remember_search_and_history_round_trip ______
+
+    @pytest.fixture
+    def recorded_mock_server() -> Iterator[Any]:
+        """A mock server that keeps the parsed request bodies it received, so
+        contract tests can assert what the SDK ACTUALLY put on the wire."""
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:682: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x112d5c830>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+________ ERROR at setup of test_claim_remember_rejects_unknown_category ________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb6090>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______________ ERROR at setup of test_claim_correct_round_trip ________________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb4800>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______ ERROR at setup of test_claim_history_before_retained_window_fails _______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb7c80>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_____ ERROR at setup of test_memory_forget_and_deletion_ledger_round_trip ______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111ec16d0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+___ ERROR at setup of test_memory_forget_without_idempotency_key_is_rejected ___
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111ec0ce0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______ ERROR at setup of test_episode_relation_and_artifact_round_trip ________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb7b60>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______ ERROR at setup of test_retention_policy_and_legal_hold_round_trip _______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb6510>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______ ERROR at setup of test_episode_transition_rejects_unknown_target _______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb5b80>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+__________ ERROR at setup of test_recall_round_trip_against_contract ___________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111dd8f80>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______________ ERROR at setup of test_recall_rejects_empty_actors ______________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111ddaa50>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+____________ ERROR at setup of test_recall_usage_report_round_trip _____________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb6ff0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______ ERROR at setup of test_recall_usage_report_rejects_broken_subset _______
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11186da60>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+__________ ERROR at setup of test_search_round_trip_against_contract ___________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x111dda180>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_______________ ERROR at setup of test_search_rejects_zero_limit _______________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x110eb4c50>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+____________ ERROR at setup of test_persona_sdk_surface_round_trip _____________
+
+    @pytest.fixture
+    def mock_base_url() -> Iterator[str]:
+>       server = create_server()
+                 ^^^^^^^^^^^^^^^
+
+tests/contract/test_mock_server.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tools/mock_server.py:2512: in create_server
+    server = ThreadingHTTPServer((host, port), ContractRequestHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11162bd70>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+=================================== FAILURES ===================================
+______________ test_terminal_task_cascade_and_restore[True-soft] _______________
+
+world = {'access': AccessContext(tenant_id='tenant-a', app_instance_id='app-1', agent_ids=frozenset({'01a07d1d-7347-7d5d-94f4-...ect at 0x10e046f30>, 'entities': ['01a07d1d-7349-7c5a-852b-5e6561071a62', '01a07d1d-7349-7543-9fff-03763d0cd73f'], ...}
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-43/test_terminal_task_cascade_and0')
+mode = 'soft', schema18 = True
+
+    @pytest.mark.parametrize("mode", ["soft", "erase"])
+    @pytest.mark.parametrize("schema18", [False, True])
+    def test_terminal_task_cascade_and_restore(
+        world: dict[str, Any], tmp_path: Path, mode: str, schema18: bool
+    ) -> None:
+        task, step, trigger, event = seed(world)
+        store = world["store"]
+        backups = BackupService(store)
+        backup = tmp_path / "before-terminal"
+        backups.create_backup(backup)
+        if schema18:
+            import json
+            import re
+            import sqlite3
+    
+            from iris_memory_core.storage.migrations import default_migrations_path
+            from tests.integration.recovery.test_memory_legacy_restore_and_ledger_identity import (
+                _refresh_backup_checksums,
+            )
+    
+            # Schema 19 adds only indexes; retain the exact Schema 18 domain rows.
+            with sqlite3.connect(backup / "canonical.sqlite3") as connection:
+                migration = (default_migrations_path() / "0019_task_deletion_lookups.sql").read_text()
+                for name in re.findall(r"CREATE INDEX (\w+)", migration):
+                    connection.execute(f"DROP INDEX {name}")
+                connection.execute("DROP TABLE console_operation_problems")
+                connection.execute("DROP TABLE console_operations")
+                connection.execute("DELETE FROM schema_migrations WHERE version>=19")
+                connection.execute("DELETE FROM migration_runs WHERE version>=19")
+            connection.close()  # Checkpoint the fixture before hashing its immutable snapshot.
+            manifest_path = backup / "manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["schema_version"] = 18
+            manifest_path.write_text(json.dumps(manifest))
+            _refresh_backup_checksums(backup)
+        client, csrf = signed_in(world["app"], world["token"])
+        with client:
+            current = target(client, task, "tasks")
+            blocked = preview(client, csrf, [current], mode="soft")
+            assert blocked["targets"][0]["status"] == "protected"
+            assert not blocked["can_commit"]
+            result = client.post(
+                "/v1/memory/tasks/" + task + ":transition",
+                headers=headers(csrf),
+                json={
+                    "expected_revision": current["expected_revision"],
+                    "target_status": "cancelled",
+                    "reason_code": "operator_request",
+                },
+            )
+            assert result.status_code == 200, result.text
+            if mode == "erase":
+                assert (
+                    client.post(
+                        "/v1/auth/reauth", headers=headers(csrf), json={"key": world["token"]}
+                    ).status_code
+                    == 200
+                )
+            saved = preview(client, csrf, [target(client, task, "tasks")], mode=mode)
+            assert "步骤 1" in saved["impacts"]["notice"]
+            assert saved["can_commit"]
+            result = commit(client, csrf, saved)
+            assert result.status_code == 200, result.text
+            assert result.json()["data"]["target_count"] == 1
+            for suffix in ("", "/history", "/steps", "/triggers"):
+                assert client.get("/v1/memory/tasks/" + task + suffix).status_code == 404
+        with store.read() as tx:
+            for kind, identifier in (("task", task), ("task_step", step), ("task_trigger", trigger)):
+                assert tx.is_tombstoned(world["tenant"], kind, identifier)
+            assert tx.events.get(event).status == "cancelled"
+            assert tx.events.current_revision_row(event).created_by == "console:" + world["owner"].id
+            assert tx.tasks.get_task(task).title == ("<erased>" if mode == "erase" else "Managed task")
+            assert tx.tasks.get_task(task).status == "cancelled"
+        forget = ForgetService(store, store.clock)
+        ledger = forget.export_deletion_ledger(world["access"])
+        destination = tmp_path / "restored"
+        result = backups.restore_backup(
+            backup, destination, deletion_ledger=ledger, forget_service=forget
+        )
+        assert result.check.ok, result.check.problems
+        if schema18:
+            from iris_memory_core.storage.migrations import MigrationRunner
+    
+            assert [
+>               m.version for m in MigrationRunner(destination / "canonical.sqlite3").migrate()
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            ] == [19, 20]
+
+tests/integration/console/test_console_task_forget.py:106: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/iris_memory_core/storage/migrations.py:470: in migrate
+    self._check_preconditions(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+migration = Migration(version=21, name='0021_typed_console_operations.sql', path=PosixPath('/Users/cassia/Local/Code/iris_memory_c...ta=MigrationMeta(online_safe=False, lock_ms=100, min_app='0.14.0', max_app='', recovery='backup', bootstrap_safe=True))
+
+    @staticmethod
+    def _check_preconditions(
+        migration: Migration,
+        *,
+        allow_offline: bool,
+        backup_performed: bool,
+        running_version: tuple[int, ...],
+        running_raw: str,
+        bootstrap: bool = False,
+    ) -> None:
+        meta = migration.meta
+        if meta is None:
+            return
+        if (not meta.online_safe or meta.recovery != "none") and not (
+            bootstrap and meta.bootstrap_safe
+        ):
+            if not allow_offline:
+>               raise MigrationNotOnlineSafe(
+                    f"migration {migration.name} is not online-safe"
+                    f" (online_safe={meta.online_safe}, recovery={meta.recovery}); requires"
+                    " downtime and an explicit operator acknowledgement (allow_offline)"
+                )
+E               iris_memory_core.storage.migrations.MigrationNotOnlineSafe: migration 0021_typed_console_operations.sql is not online-safe (online_safe=False, recovery=backup); requires downtime and an explicit operator acknowledgement (allow_offline)
+
+src/iris_memory_core/storage/migrations.py:529: MigrationNotOnlineSafe
+----------------------------- Captured stderr call -----------------------------
+{"duration_ms": 103.47820800234331, "event": "console.request", "id_hash": "h_eda93526e1b4", "status": "200"}
+{"duration_ms": 118.48216599901207, "event": "console.request", "id_hash": "h_884fcd24ebca", "status": "201"}
+{"duration_ms": 17.397125000570668, "event": "console.request", "id_hash": "h_ff66b80c1033", "status": "201"}
+{"duration_ms": 16.99133300280664, "event": "console.request", "id_hash": "h_80d453ad5211", "status": "201"}
+{"duration_ms": 102.37508300269837, "event": "console.request", "id_hash": "h_b6be0be7e32c", "status": "200"}
+{"duration_ms": 10.415917000500485, "event": "console.request", "id_hash": "h_dd67f397a61d", "status": "200"}
+{"duration_ms": 20.16645800176775, "event": "console.request", "id_hash": "h_c63a63b7e3f9", "status": "200"}
+{"duration_ms": 18.430542000714922, "event": "console.request", "id_hash": "h_a18f6a5f2233", "status": "200"}
+{"duration_ms": 6.439541997679044, "event": "console.request", "id_hash": "h_69bb8e0cb144", "status": "200"}
+{"duration_ms": 16.1267500006943, "event": "console.request", "id_hash": "h_4be724c690c8", "status": "200"}
+{"duration_ms": 17.163458000140963, "event": "console.request", "id_hash": "h_8a29b022ceba", "status": "200"}
+{"duration_ms": 3.702750000229571, "event": "console.request", "id_hash": "h_03b700cffef1", "status": "404"}
+{"duration_ms": 3.5445419998723082, "event": "console.request", "id_hash": "h_c232a3f41d9f", "status": "404"}
+{"duration_ms": 3.439583000726998, "event": "console.request", "id_hash": "h_bc24de18695b", "status": "404"}
+{"duration_ms": 3.537583997967886, "event": "console.request", "id_hash": "h_482a50e09ae8", "status": "404"}
+______________ test_terminal_task_cascade_and_restore[True-erase] ______________
+
+world = {'access': AccessContext(tenant_id='tenant-a', app_instance_id='app-1', agent_ids=frozenset({'01a07d1d-75eb-7002-8449-...ect at 0x10dfa8260>, 'entities': ['01a07d1d-75ee-7c36-962b-5f6f7e76ffb1', '01a07d1d-75ee-7861-b55e-570d0cb3b9f1'], ...}
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-43/test_terminal_task_cascade_and1')
+mode = 'erase', schema18 = True
+
+    @pytest.mark.parametrize("mode", ["soft", "erase"])
+    @pytest.mark.parametrize("schema18", [False, True])
+    def test_terminal_task_cascade_and_restore(
+        world: dict[str, Any], tmp_path: Path, mode: str, schema18: bool
+    ) -> None:
+        task, step, trigger, event = seed(world)
+        store = world["store"]
+        backups = BackupService(store)
+        backup = tmp_path / "before-terminal"
+        backups.create_backup(backup)
+        if schema18:
+            import json
+            import re
+            import sqlite3
+    
+            from iris_memory_core.storage.migrations import default_migrations_path
+            from tests.integration.recovery.test_memory_legacy_restore_and_ledger_identity import (
+                _refresh_backup_checksums,
+            )
+    
+            # Schema 19 adds only indexes; retain the exact Schema 18 domain rows.
+            with sqlite3.connect(backup / "canonical.sqlite3") as connection:
+                migration = (default_migrations_path() / "0019_task_deletion_lookups.sql").read_text()
+                for name in re.findall(r"CREATE INDEX (\w+)", migration):
+                    connection.execute(f"DROP INDEX {name}")
+                connection.execute("DROP TABLE console_operation_problems")
+                connection.execute("DROP TABLE console_operations")
+                connection.execute("DELETE FROM schema_migrations WHERE version>=19")
+                connection.execute("DELETE FROM migration_runs WHERE version>=19")
+            connection.close()  # Checkpoint the fixture before hashing its immutable snapshot.
+            manifest_path = backup / "manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["schema_version"] = 18
+            manifest_path.write_text(json.dumps(manifest))
+            _refresh_backup_checksums(backup)
+        client, csrf = signed_in(world["app"], world["token"])
+        with client:
+            current = target(client, task, "tasks")
+            blocked = preview(client, csrf, [current], mode="soft")
+            assert blocked["targets"][0]["status"] == "protected"
+            assert not blocked["can_commit"]
+            result = client.post(
+                "/v1/memory/tasks/" + task + ":transition",
+                headers=headers(csrf),
+                json={
+                    "expected_revision": current["expected_revision"],
+                    "target_status": "cancelled",
+                    "reason_code": "operator_request",
+                },
+            )
+            assert result.status_code == 200, result.text
+            if mode == "erase":
+                assert (
+                    client.post(
+                        "/v1/auth/reauth", headers=headers(csrf), json={"key": world["token"]}
+                    ).status_code
+                    == 200
+                )
+            saved = preview(client, csrf, [target(client, task, "tasks")], mode=mode)
+            assert "步骤 1" in saved["impacts"]["notice"]
+            assert saved["can_commit"]
+            result = commit(client, csrf, saved)
+            assert result.status_code == 200, result.text
+            assert result.json()["data"]["target_count"] == 1
+            for suffix in ("", "/history", "/steps", "/triggers"):
+                assert client.get("/v1/memory/tasks/" + task + suffix).status_code == 404
+        with store.read() as tx:
+            for kind, identifier in (("task", task), ("task_step", step), ("task_trigger", trigger)):
+                assert tx.is_tombstoned(world["tenant"], kind, identifier)
+            assert tx.events.get(event).status == "cancelled"
+            assert tx.events.current_revision_row(event).created_by == "console:" + world["owner"].id
+            assert tx.tasks.get_task(task).title == ("<erased>" if mode == "erase" else "Managed task")
+            assert tx.tasks.get_task(task).status == "cancelled"
+        forget = ForgetService(store, store.clock)
+        ledger = forget.export_deletion_ledger(world["access"])
+        destination = tmp_path / "restored"
+        result = backups.restore_backup(
+            backup, destination, deletion_ledger=ledger, forget_service=forget
+        )
+        assert result.check.ok, result.check.problems
+        if schema18:
+            from iris_memory_core.storage.migrations import MigrationRunner
+    
+            assert [
+>               m.version for m in MigrationRunner(destination / "canonical.sqlite3").migrate()
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            ] == [19, 20]
+
+tests/integration/console/test_console_task_forget.py:106: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/iris_memory_core/storage/migrations.py:470: in migrate
+    self._check_preconditions(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+migration = Migration(version=21, name='0021_typed_console_operations.sql', path=PosixPath('/Users/cassia/Local/Code/iris_memory_c...ta=MigrationMeta(online_safe=False, lock_ms=100, min_app='0.14.0', max_app='', recovery='backup', bootstrap_safe=True))
+
+    @staticmethod
+    def _check_preconditions(
+        migration: Migration,
+        *,
+        allow_offline: bool,
+        backup_performed: bool,
+        running_version: tuple[int, ...],
+        running_raw: str,
+        bootstrap: bool = False,
+    ) -> None:
+        meta = migration.meta
+        if meta is None:
+            return
+        if (not meta.online_safe or meta.recovery != "none") and not (
+            bootstrap and meta.bootstrap_safe
+        ):
+            if not allow_offline:
+>               raise MigrationNotOnlineSafe(
+                    f"migration {migration.name} is not online-safe"
+                    f" (online_safe={meta.online_safe}, recovery={meta.recovery}); requires"
+                    " downtime and an explicit operator acknowledgement (allow_offline)"
+                )
+E               iris_memory_core.storage.migrations.MigrationNotOnlineSafe: migration 0021_typed_console_operations.sql is not online-safe (online_safe=False, recovery=backup); requires downtime and an explicit operator acknowledgement (allow_offline)
+
+src/iris_memory_core/storage/migrations.py:529: MigrationNotOnlineSafe
+----------------------------- Captured stderr call -----------------------------
+{"duration_ms": 103.50179200031562, "event": "console.request", "id_hash": "h_dfa8b5166dc5", "status": "200"}
+{"duration_ms": 49.722166997526074, "event": "console.request", "id_hash": "h_09f98e2db2a0", "status": "201"}
+{"duration_ms": 17.98045900068246, "event": "console.request", "id_hash": "h_94eb413a47ad", "status": "201"}
+{"duration_ms": 17.731915999320336, "event": "console.request", "id_hash": "h_2f0e701af282", "status": "201"}
+{"duration_ms": 102.35974999886821, "event": "console.request", "id_hash": "h_a1db3d300428", "status": "200"}
+{"duration_ms": 10.41224999789847, "event": "console.request", "id_hash": "h_00debbfced41", "status": "200"}
+{"duration_ms": 20.1928329988732, "event": "console.request", "id_hash": "h_9c6b5e4e92a9", "status": "200"}
+{"duration_ms": 18.50995900167618, "event": "console.request", "id_hash": "h_5a770139613c", "status": "200"}
+{"duration_ms": 6.02137500027311, "event": "console.request", "id_hash": "h_95acab93ba48", "status": "200"}
+{"duration_ms": 6.526834000396775, "event": "console.request", "id_hash": "h_d006fd5b0c54", "status": "200"}
+{"duration_ms": 16.393958001572173, "event": "console.request", "id_hash": "h_653e8a47009f", "status": "200"}
+{"duration_ms": 19.25975000267499, "event": "console.request", "id_hash": "h_d64306b70bfb", "status": "200"}
+{"duration_ms": 3.4447500001988374, "event": "console.request", "id_hash": "h_a1b3043d9311", "status": "404"}
+{"duration_ms": 3.5079590015811846, "event": "console.request", "id_hash": "h_8b37a2d55267", "status": "404"}
+{"duration_ms": 3.4130830026697367, "event": "console.request", "id_hash": "h_1b88a1e77ceb", "status": "404"}
+{"duration_ms": 3.3251659988309257, "event": "console.request", "id_hash": "h_a1978573a839", "status": "404"}
+______________ test_restore_cleans_pending_state_before_switching ______________
+
+store = <iris_memory_core.storage.uow.Store object at 0x111a52ae0>
+provisioning = <iris_memory_core.application.provisioning.ProvisioningService object at 0x111a530e0>
+identities = <iris_memory_core.application.identity.IdentityService object at 0x111a51310>
+admin_access = AccessContext(tenant_id='tenant-a', app_instance_id='app-1', agent_ids=frozenset(), allowed_space_group_ids=frozenset(...e'}), data_purposes=frozenset(), consent_subject_entity_ids=frozenset(), granted_custom_labels=frozenset(), admin=True)
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-43/test_restore_cleans_pending_st0')
+
+    def test_restore_cleans_pending_state_before_switching(
+        store: Store,
+        provisioning: ProvisioningService,
+        identities: IdentityService,
+        admin_access: AccessContext,
+        tmp_path: Path,
+    ) -> None:
+        """A leftover pending switch is resolved before a fresh restore starts."""
+        from iris_memory_core.storage.backup import JOURNAL_SUFFIX, _write_file_durable
+    
+        seed_world(store, provisioning, identities, admin_access)
+        backups = BackupService(store)
+        backup_dir = tmp_path / "backup"
+        backups.create_backup(backup_dir)
+        parent = tmp_path / "srv"
+        parent.mkdir()
+        target = parent / "data"
+        target.mkdir()
+        (target / "canonical.sqlite3").write_bytes(b"")
+        _write_file_durable(
+            parent / f"data{JOURNAL_SUFFIX}", json.dumps({"staging": "data.restoring", "aside": None})
+        )
+        report = backups.restore_backup(backup_dir, target)
+        assert report.check.ok, report.check.problems
+        assert not (parent / f"data{JOURNAL_SUFFIX}").exists()
+        # The empty previous target was replaced by the verified backup payload,
+        # forward-migrated to the current schema with the FTS projection marked
+        # pending rebuild (ADR-0014 §9) — never a byte-identical projection.
+        import sqlite3 as _sqlite3
+    
+        connection = _sqlite3.connect(target / "canonical.sqlite3")
+        try:
+            schema = connection.execute(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
+            ).fetchone()[0]
+            fts_state = connection.execute(
+                "SELECT state FROM fts_projection_state WHERE id = 1"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+>       assert schema == 20
+E       assert 21 == 20
+
+tests/integration/recovery/test_backup.py:497: AssertionError
+______ test_real_embedding_transport_degrades_and_recovers[True-timeout] _______
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x112c21430>
+mode = 'timeout', allow_partial = True
+
+    @pytest.mark.parametrize("mode", ["timeout", "disconnect"])
+    @pytest.mark.parametrize("allow_partial", [True, False])
+    def test_real_embedding_transport_degrades_and_recovers(
+        world: Phase8World,
+        mode: str,
+        allow_partial: bool,
+    ) -> None:
+        assert world.speaker_entity is not None
+        claim = world.remember("tcp-vector", "Photovoltaic orchard record", world.speaker_entity)
+>       with provider_server() as (endpoint, state), client_for(world) as base:
+             ^^^^^^^^^^^^^^^^^
+
+tests/integration/runtime/test_http_recall_provider_faults.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/integration/runtime/test_http_recall_provider_faults.py:55: in provider_server
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x112eda690>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_____ test_real_embedding_transport_degrades_and_recovers[True-disconnect] _____
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x112ec2390>
+mode = 'disconnect', allow_partial = True
+
+    @pytest.mark.parametrize("mode", ["timeout", "disconnect"])
+    @pytest.mark.parametrize("allow_partial", [True, False])
+    def test_real_embedding_transport_degrades_and_recovers(
+        world: Phase8World,
+        mode: str,
+        allow_partial: bool,
+    ) -> None:
+        assert world.speaker_entity is not None
+        claim = world.remember("tcp-vector", "Photovoltaic orchard record", world.speaker_entity)
+>       with provider_server() as (endpoint, state), client_for(world) as base:
+             ^^^^^^^^^^^^^^^^^
+
+tests/integration/runtime/test_http_recall_provider_faults.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/integration/runtime/test_http_recall_provider_faults.py:55: in provider_server
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x112efb380>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______ test_real_embedding_transport_degrades_and_recovers[False-timeout] ______
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x1125384a0>
+mode = 'timeout', allow_partial = False
+
+    @pytest.mark.parametrize("mode", ["timeout", "disconnect"])
+    @pytest.mark.parametrize("allow_partial", [True, False])
+    def test_real_embedding_transport_degrades_and_recovers(
+        world: Phase8World,
+        mode: str,
+        allow_partial: bool,
+    ) -> None:
+        assert world.speaker_entity is not None
+        claim = world.remember("tcp-vector", "Photovoltaic orchard record", world.speaker_entity)
+>       with provider_server() as (endpoint, state), client_for(world) as base:
+             ^^^^^^^^^^^^^^^^^
+
+tests/integration/runtime/test_http_recall_provider_faults.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/integration/runtime/test_http_recall_provider_faults.py:55: in provider_server
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x112c30710>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+____ test_real_embedding_transport_degrades_and_recovers[False-disconnect] _____
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x112efa450>
+mode = 'disconnect', allow_partial = False
+
+    @pytest.mark.parametrize("mode", ["timeout", "disconnect"])
+    @pytest.mark.parametrize("allow_partial", [True, False])
+    def test_real_embedding_transport_degrades_and_recovers(
+        world: Phase8World,
+        mode: str,
+        allow_partial: bool,
+    ) -> None:
+        assert world.speaker_entity is not None
+        claim = world.remember("tcp-vector", "Photovoltaic orchard record", world.speaker_entity)
+>       with provider_server() as (endpoint, state), client_for(world) as base:
+             ^^^^^^^^^^^^^^^^^
+
+tests/integration/runtime/test_http_recall_provider_faults.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/integration/runtime/test_http_recall_provider_faults.py:55: in provider_server
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x112efaf60>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_________ test_readiness_uses_the_runtime_embedding_probe[False-False] _________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x112f156d0>
+required = False, configured = False
+
+    @pytest.mark.parametrize("required", [False, True])
+    @pytest.mark.parametrize("configured", [False, True])
+    def test_readiness_uses_the_runtime_embedding_probe(
+        world: Phase8World,
+        required: bool,
+        configured: bool,
+    ) -> None:
+>       with provider_server() as (endpoint, state), client_for(world) as base:
+             ^^^^^^^^^^^^^^^^^
+
+tests/integration/runtime/test_http_recall_provider_faults.py:157: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/integration/runtime/test_http_recall_provider_faults.py:55: in provider_server
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x112f174a0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_________ test_readiness_uses_the_runtime_embedding_probe[False-True] __________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x11306b230>
+required = True, configured = False
+
+    @pytest.mark.parametrize("required", [False, True])
+    @pytest.mark.parametrize("configured", [False, True])
+    def test_readiness_uses_the_runtime_embedding_probe(
+        world: Phase8World,
+        required: bool,
+        configured: bool,
+    ) -> None:
+>       with provider_server() as (endpoint, state), client_for(world) as base:
+             ^^^^^^^^^^^^^^^^^
+
+tests/integration/runtime/test_http_recall_provider_faults.py:157: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/integration/runtime/test_http_recall_provider_faults.py:55: in provider_server
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x113068860>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+_________ test_readiness_uses_the_runtime_embedding_probe[True-False] __________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x11306bb00>
+required = False, configured = True
+
+    @pytest.mark.parametrize("required", [False, True])
+    @pytest.mark.parametrize("configured", [False, True])
+    def test_readiness_uses_the_runtime_embedding_probe(
+        world: Phase8World,
+        required: bool,
+        configured: bool,
+    ) -> None:
+>       with provider_server() as (endpoint, state), client_for(world) as base:
+             ^^^^^^^^^^^^^^^^^
+
+tests/integration/runtime/test_http_recall_provider_faults.py:157: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/integration/runtime/test_http_recall_provider_faults.py:55: in provider_server
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11306b920>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+__________ test_readiness_uses_the_runtime_embedding_probe[True-True] __________
+
+world = <tests.integration.recall.graph_profile_helpers.Phase8World object at 0x11306bbf0>
+required = True, configured = True
+
+    @pytest.mark.parametrize("required", [False, True])
+    @pytest.mark.parametrize("configured", [False, True])
+    def test_readiness_uses_the_runtime_embedding_probe(
+        world: Phase8World,
+        required: bool,
+        configured: bool,
+    ) -> None:
+>       with provider_server() as (endpoint, state), client_for(world) as base:
+             ^^^^^^^^^^^^^^^^^
+
+tests/integration/runtime/test_http_recall_provider_faults.py:157: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/integration/runtime/test_http_recall_provider_faults.py:55: in provider_server
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/http/server.py:140: in server_bind
+    socketserver.TCPServer.server_bind(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.server.ThreadingHTTPServer object at 0x11306abd0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       PermissionError: [Errno 1] Operation not permitted
+
+../../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/socketserver.py:478: PermissionError
+______________________ test_enabled_kinds_only_safe_seed _______________________
+
+    def test_enabled_kinds_only_safe_seed() -> None:
+        # Phase 3: rebuild, decay sweep, pointer check, observation→rebuild
+        # scheduling, spine selfcheck. Phase 4 adds note review, trigger scan and
+        # the three pointer-invariant checks. Phase 2's revocation notice is
+        # enabled too — its producer enqueues unconditionally, so leaving it
+        # unclaimable would pile up pending jobs (ADR-0010 §2, ADR-0017 §3).
+        # Phase 10 enables the four cognitive kinds once their real, idempotent,
+        # fenced handlers exist (ADR-0019 §2). Everything else stays disabled and
+        # unclaimable (fail closed).
+>       assert (
+            frozenset(
+                {
+                    "maintenance.selfcheck",
+                    "surface.lease_revoked",
+                    "observation.recorded",
+                    "recent_context.maintenance",
+                    "focus.maintenance",
+                    "state.projection",
+                    "note.review",
+                    "task.trigger_scan",
+                    "note.changed",
+                    "task.changed",
+                    "cognitive_event.changed",
+                    "claim.changed",
+                    "episode.changed",
+                    "relation.changed",
+                    "memory.invalidated",
+                    "retention.compaction",
+                    "persona.revised",
+                    "persona.revision_invalidated",
+                    "persona.state_expire",
+                    "fts.apply",
+                    "fts.rebuild",
+                    "fts.cleanup",
+                    "vector.apply",
+                    "vector.rebuild",
+                    "vector.cleanup",
+                    "graph.apply",
+                    "graph.rebuild",
+                    "graph.cleanup",
+                    "profile.apply",
+                    "profile.rebuild",
+                    "profile.cleanup",
+                    "episode.consolidation",
+                    "memory.reconciliation",
+                    "reflection.generate",
+                    "persona.evaluation",
+                    "console.memory_forget",
+                }
+            )
+            == ENABLED_JOB_KINDS
+        )
+E       AssertionError: assert frozenset({'c...enance', ...}) == frozenset({'c...dation', ...})
+E         
+E         Extra items in the right set:
+E         'console.trusted_backup'
+E         Use -v to get more diff
+
+tests/integration/runtime/test_outbox.py:646: AssertionError
+______________________ test_runtime_version_sources_agree ______________________
+
+    def test_runtime_version_sources_agree() -> None:
+        import tomllib
+    
+        import iris_memory_core
+    
+        source = json.loads((ROOT / "contracts/source/contracts.json").read_text())
+        package = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+>       assert source["package_version"] == SOURCE["runtime_versions"]["package_version"]
+E       AssertionError: assert '0.13.0' == '0.14.0'
+E         
+E         - 0.14.0
+E         ?    ^
+E         + 0.13.0
+E         ?    ^
+
+tests/contract/test_console_contract.py:89: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/console/test_console_task_forget.py::test_terminal_task_cascade_and_restore[True-soft]
+FAILED tests/integration/console/test_console_task_forget.py::test_terminal_task_cascade_and_restore[True-erase]
+FAILED tests/integration/recovery/test_backup.py::test_restore_cleans_pending_state_before_switching
+FAILED tests/integration/runtime/test_http_recall_provider_faults.py::test_real_embedding_transport_degrades_and_recovers[True-timeout]
+FAILED tests/integration/runtime/test_http_recall_provider_faults.py::test_real_embedding_transport_degrades_and_recovers[True-disconnect]
+FAILED tests/integration/runtime/test_http_recall_provider_faults.py::test_real_embedding_transport_degrades_and_recovers[False-timeout]
+FAILED tests/integration/runtime/test_http_recall_provider_faults.py::test_real_embedding_transport_degrades_and_recovers[False-disconnect]
+FAILED tests/integration/runtime/test_http_recall_provider_faults.py::test_readiness_uses_the_runtime_embedding_probe[False-False]
+FAILED tests/integration/runtime/test_http_recall_provider_faults.py::test_readiness_uses_the_runtime_embedding_probe[False-True]
+FAILED tests/integration/runtime/test_http_recall_provider_faults.py::test_readiness_uses_the_runtime_embedding_probe[True-False]
+FAILED tests/integration/runtime/test_http_recall_provider_faults.py::test_readiness_uses_the_runtime_embedding_probe[True-True]
+FAILED tests/integration/runtime/test_outbox.py::test_enabled_kinds_only_safe_seed
+FAILED tests/contract/test_console_contract.py::test_runtime_version_sources_agree
+ERROR tests/contract/test_mock_server.py::test_python_async_sdk_negotiates_with_mock_server
+ERROR tests/contract/test_mock_server.py::test_python_async_sdk_maps_stable_error_envelope
+ERROR tests/contract/test_mock_server.py::test_observe_batch_round_trip_against_contract
+ERROR tests/contract/test_mock_server.py::test_observe_batch_rejects_unknown_role
+ERROR tests/contract/test_mock_server.py::test_observe_batch_rejects_session_without_space
+ERROR tests/contract/test_mock_server.py::test_source_cursor_round_trip - Per...
+ERROR tests/contract/test_mock_server.py::test_surface_lease_round_trip - Per...
+ERROR tests/contract/test_mock_server.py::test_lease_acquire_rejects_out_of_range_ttl
+ERROR tests/contract/test_mock_server.py::test_current_surface_lease_and_readiness
+ERROR tests/contract/test_mock_server.py::test_metrics_endpoint_shape - Permi...
+ERROR tests/contract/test_mock_server.py::test_admin_job_listing_round_trip
+ERROR tests/contract/test_mock_server.py::test_admin_job_retry_round_trip - P...
+ERROR tests/contract/test_mock_server.py::test_admin_schedule_create_and_run_round_trip
+ERROR tests/contract/test_mock_server.py::test_admin_schedule_requires_reason
+ERROR tests/contract/test_mock_server.py::test_recent_context_round_trip - Pe...
+ERROR tests/contract/test_mock_server.py::test_recent_context_requires_agent_and_space
+ERROR tests/contract/test_mock_server.py::test_state_put_and_get_round_trip
+ERROR tests/contract/test_mock_server.py::test_state_put_rejects_bad_authority
+ERROR tests/contract/test_mock_server.py::test_state_put_requires_idempotency_header
+ERROR tests/contract/test_mock_server.py::test_focus_create_and_transitions_round_trip
+ERROR tests/contract/test_mock_server.py::test_focus_create_rejects_unknown_kind
+ERROR tests/contract/test_mock_server.py::test_focus_promote_requires_target_type
+ERROR tests/contract/test_mock_server.py::test_focus_transition_requires_idempotency_header
+ERROR tests/contract/test_mock_server.py::test_state_list_and_history_accept_scope_params
+ERROR tests/contract/test_mock_server.py::test_focus_list_rejects_session_without_space
+ERROR tests/contract/test_mock_server.py::test_admin_recent_context_rebuild_round_trip
+ERROR tests/contract/test_mock_server.py::test_note_create_list_update_round_trip
+ERROR tests/contract/test_mock_server.py::test_note_archive_and_promote_round_trip
+ERROR tests/contract/test_mock_server.py::test_task_create_list_transition_round_trip
+ERROR tests/contract/test_mock_server.py::test_task_create_accepts_the_contract_minimum
+ERROR tests/contract/test_mock_server.py::test_task_conversation_origin_stays_proposed_and_cannot_activate
+ERROR tests/contract/test_mock_server.py::test_task_step_and_dependency_round_trip
+ERROR tests/contract/test_mock_server.py::test_task_trigger_round_trip - Perm...
+ERROR tests/contract/test_mock_server.py::test_cognitive_event_list_pull_and_ack_round_trip
+ERROR tests/contract/test_mock_server.py::test_phase10_python_sdk_surface_and_bearer_wire
+ERROR tests/contract/test_mock_server.py::test_ack_cognitive_event_carries_the_lease_proof_on_the_wire
+ERROR tests/contract/test_mock_server.py::test_phase4_writes_require_idempotency_header
+ERROR tests/contract/test_mock_server.py::test_phase4_lists_reject_session_without_space
+ERROR tests/contract/test_mock_server.py::test_claim_remember_search_and_history_round_trip
+ERROR tests/contract/test_mock_server.py::test_claim_remember_rejects_unknown_category
+ERROR tests/contract/test_mock_server.py::test_claim_correct_round_trip - Per...
+ERROR tests/contract/test_mock_server.py::test_claim_history_before_retained_window_fails
+ERROR tests/contract/test_mock_server.py::test_memory_forget_and_deletion_ledger_round_trip
+ERROR tests/contract/test_mock_server.py::test_memory_forget_without_idempotency_key_is_rejected
+ERROR tests/contract/test_mock_server.py::test_episode_relation_and_artifact_round_trip
+ERROR tests/contract/test_mock_server.py::test_retention_policy_and_legal_hold_round_trip
+ERROR tests/contract/test_mock_server.py::test_episode_transition_rejects_unknown_target
+ERROR tests/contract/test_mock_server.py::test_recall_round_trip_against_contract
+ERROR tests/contract/test_mock_server.py::test_recall_rejects_empty_actors - ...
+ERROR tests/contract/test_mock_server.py::test_recall_usage_report_round_trip
+ERROR tests/contract/test_mock_server.py::test_recall_usage_report_rejects_broken_subset
+ERROR tests/contract/test_mock_server.py::test_search_round_trip_against_contract
+ERROR tests/contract/test_mock_server.py::test_search_rejects_zero_limit - Pe...
+ERROR tests/contract/test_mock_server.py::test_persona_sdk_surface_round_trip
+13 failed, 1846 passed, 2 warnings, 54 errors in 316.42s (0:05:16)

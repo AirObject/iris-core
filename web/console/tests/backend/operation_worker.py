@@ -9,6 +9,7 @@ from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import OutboxService
 from iris_memory_core.domain.access import AccessContext
 from iris_memory_core.jobs.worker import OutboxWorker, phase14_handlers
+from iris_memory_core.storage.admin_archives import AdminArchiveService
 from iris_memory_core.storage.idempotency import IdempotencyManager
 from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_version
 from iris_memory_core.storage.uow import Store
@@ -38,12 +39,30 @@ if sys.argv[1:] == ["seed"]:
             idempotency_key=f"operation-browser-{index}",
         )
     print(json.dumps({"seeded": 51}))
-elif sys.argv[1:] == ["batch"]:
+elif sys.argv[1:] in (["batch"], ["backup"]):
     print(
         json.dumps(
             OutboxWorker(
                 OutboxService(store, store.clock),
-                phase14_handlers(store, store.clock, store.ids),
+                {
+                    kind: handler
+                    for kind, handler in phase14_handlers(
+                        store,
+                        store.clock,
+                        store.ids,
+                        archives=AdminArchiveService(
+                            store,
+                            backup_root=database.parent / "backups",
+                            export_root=database.parent / "exports",
+                        ),
+                    ).items()
+                    if kind
+                    == (
+                        "console.trusted_backup"
+                        if sys.argv[1] == "backup"
+                        else "console.memory_forget"
+                    )
+                },
                 concurrency=1,
             ).run_once()
         )

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { test, expect } from "@playwright/test";
+import { loginWithCooldown } from "./login";
 import { createMockTransport } from "../../src/mock/server";
 test("real memory registry, canonical list, detail and history", async ({ page }) => {
   const errors: string[] = [];
@@ -926,9 +927,9 @@ test("real dependency creation removal and reactivation preserve its ID", async 
 });
 
 test("real trigger lifecycle and Task forget preserve revisions and delete the plan", async ({ page }) => {
+  test.setTimeout(150000);
   await page.goto("/console/");
-  await page.getByLabel("运营密钥", { exact: true }).fill(readFileSync("/tmp/imc-console-test-state-credential", "utf8"));
-  await page.getByRole("button", { name: "登录控制台" }).click();
+  await loginWithCooldown(page, readFileSync("/tmp/imc-console-test-state-credential", "utf8"));
   await page.getByRole("link", { name: "记忆管理", exact: true }).click();
   await page.getByRole("link", { name: "任务", exact: true }).click();
   await page.getByRole("button", { name: "新增任务", exact: true }).click();

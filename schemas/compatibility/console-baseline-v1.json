@@ -21,6 +21,9 @@
     "/console/v1/auth/sessions/{id}:revoke": [
       "post"
     ],
+    "/console/v1/backups": [
+      "post"
+    ],
     "/console/v1/bootstrap": [
       "get"
     ],

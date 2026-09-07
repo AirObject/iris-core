@@ -42,6 +42,7 @@ from iris_memory_core.providers.cognitive import (
     ProviderGovernance,
 )
 from iris_memory_core.recall_runtime import RecallAssemblyConfig, assemble_recall
+from iris_memory_core.storage.admin_archives import AdminArchiveService
 from iris_memory_core.storage.migrations import MigrationRunner
 from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_version
 from iris_memory_core.storage.uow import Store
@@ -277,7 +278,16 @@ def worker(config: ServiceConfig, *, once: bool = False) -> int:
         ),
         **phase9_handlers(store.clock),
         **phase10_handlers(pipeline=pipeline),
-        **phase14_handlers(store, store.clock, store.ids),
+        **phase14_handlers(
+            store,
+            store.clock,
+            store.ids,
+            archives=AdminArchiveService(
+                store,
+                backup_root=config.backup_root or config.database.parent / "backups",
+                export_root=config.export_root or config.database.parent / "exports",
+            ),
+        ),
     }
     runtime = OutboxWorker(service, handlers)
     stopping = threading.Event()

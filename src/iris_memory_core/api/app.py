@@ -1725,7 +1725,11 @@ def create_app(
 
         if not isinstance(uow, Store):
             raise ValueError("Console requires a configured SQLite Store")
-        app.mount("/console", create_console_app(store=uow, config=console_config), name="console")
+        app.mount(
+            "/console",
+            create_console_app(store=uow, config=console_config, archives=archives),
+            name="console",
+        )
     app.add_exception_handler(DomainError, domain_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(StarletteHTTPException, http_error_handler)  # type: ignore[arg-type]

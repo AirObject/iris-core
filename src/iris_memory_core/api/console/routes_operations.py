@@ -10,7 +10,8 @@ from iris_memory_core.api.console.errors import ConsoleError
 from iris_memory_core.api.console.key_views import decode_page, page_meta, time_us
 from iris_memory_core.api.console.routes_auth import Principal
 from iris_memory_core.api.console.views import envelope, timestamp
-from iris_memory_core.application.console.operations import ConsoleOperations
+from iris_memory_core.application.console.backup_operations import BackupOperations
+from iris_memory_core.application.console.operations import OPERATION_KINDS, ConsoleOperations
 from iris_memory_core.domain.console_operations import ConsoleOperation, OperationSummary
 
 router = APIRouter(prefix="/v1")
@@ -46,7 +47,7 @@ def operations(request: Request, principal: Principal) -> dict[str, Any]:
     )
     query = request.query_params
     try:
-        if query.get("kind", "memory_forget") != "memory_forget":
+        if query.get("kind") is not None and query["kind"] not in OPERATION_KINDS:
             raise ValueError
         lower = time_us(query["created_from"]) if "created_from" in query else None
         upper = time_us(query["created_before"]) if "created_before" in query else None
@@ -58,6 +59,7 @@ def operations(request: Request, principal: Principal) -> dict[str, Any]:
         raise ConsoleError("invalid_request", kind="validation_failed", status=400) from None
     rows = ConsoleOperations(service).list_owned(
         principal,
+        kind=query.get("kind"),
         status=query.get("status"),
         created_from=lower,
         created_before=upper,
@@ -130,6 +132,22 @@ async def cancel(request: Request, principal: Principal, id: str) -> dict[str, A
         ConsoleOperations(service).cancel,
         principal,
         id,
+        reason=value["reason_code"],
+        idempotency_key=idempotency_key(request),
+    )
+    return envelope(
+        request, operation_view(operation, key_id=principal.key.id), now_us=service.clock.now_us()
+    )
+
+
+@router.post("/backups", operation_id="consoleCreateBackup", status_code=202)
+async def create_backup(request: Request, principal: Principal) -> dict[str, Any]:
+    _no_query(request)
+    value = await body(request, "ConsoleBackupCreateRequest")
+    service = security(request)
+    operation = await run_in_threadpool(
+        BackupOperations(service, request.app.state.archives).create,
+        principal,
         reason=value["reason_code"],
         idempotency_key=idempotency_key(request),
     )

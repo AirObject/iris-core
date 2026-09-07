@@ -21,14 +21,14 @@
 
 ## 交互式工作包队列
 
-W01/W02 已完成并独立提交；W03 已完成全部验收并准备独立提交，W04 仅在该提交完成后启动。新的建议顺序先处理核查确认的 Recall 能力声明与接线问题；原“13.6 统计下一项”调整为 W07。独立准备可并行，但不得跳过[指导中的必需依赖](next-build-guide.md#3-建议顺序与依赖)。
+W01/W02/W03 已完成全部验收并各自独立提交，W04 全部门禁通过并进入独立提交收尾；其余保持 Planned。新的建议顺序先处理核查确认的 Recall 能力声明与接线问题；原“13.6 统计下一项”调整为 W07。独立准备可并行，但不得跳过[指导中的必需依赖](next-build-guide.md#3-建议顺序与依赖)。
 
 | 工作包 | 原范围 | 状态/交接 |
 | --- | --- | --- |
 | [W01 HTTP Recall 接线与能力声明](next-build-guide.md#w01-http-recall-接线与能力声明) | Phase 7/8/10，14.0-D/F | Completed；[W01 报告](../reports/w01-http-recall-assembly.md)，完整 `ci-002` 通过：11705 项功能测试、85.50% 覆盖率、20 项真实浏览器与独立安装 Recall；Commit `0959259` |
 | [W02 Graph 原量化门禁](next-build-guide.md#w02-graph-原量化门禁) | Phase 8，14.0-D | Completed；[W02 报告](../reports/w02-graph-quantitative-gates.md)，456 项定向回归、11966 项功能/85.52% 覆盖率、完整 CI/浏览器/安装通过；Commit `4c6277b` |
-| [W03 Persona 原量化门禁](next-build-guide.md#w03-persona-原量化门禁) | Phase 9，14.0-D | Completed；[W03 报告](../reports/w03-persona-quantitative-gates.md)，2800 Policy 案例、50 客户端与三次时钟轨迹、14768 项功能/85.55% 覆盖率、完整 CI 通过；随本包独立提交交接 |
-| [W04 Operation 扩展与可信备份流程](next-build-guide.md#w04-operation-扩展与可信备份流程) | 13.11 最小前置 | Planned |
+| [W03 Persona 原量化门禁](next-build-guide.md#w03-persona-原量化门禁) | Phase 9，14.0-D | Completed；[W03 报告](../reports/w03-persona-quantitative-gates.md)，2800 Policy 案例、50 客户端与三次时钟轨迹、14768 项功能/85.55% 覆盖率、完整 CI 通过；Commit `460f7dd` |
+| [W04 Operation 扩展与可信备份流程](next-build-guide.md#w04-operation-扩展与可信备份流程) | 13.11 最小前置 | Completed；[W04 报告](../reports/w04-operations-trusted-backup.md)，14795 项功能/85.58% 覆盖率、21 项真实浏览器及完整 CI/安装通过；随本包独立提交交付 |
 | [W05 Embedding Provider 全链路](next-build-guide.md#w05-embedding-provider-全链路) | 13.9，14.2 | Planned |
 | [W06 认知 Provider 运行接线](next-build-guide.md#w06-认知-provider-运行接线) | Phase 10，14.0-D/14.2 | Planned |
 | [W07 统计与运行观测](next-build-guide.md#w07-统计与运行观测) | 13.6 | Planned |

@@ -45,6 +45,8 @@ def test_terminal_task_cascade_and_restore(
             for name in re.findall(r"CREATE INDEX (\w+)", migration):
                 connection.execute(f"DROP INDEX {name}")
             connection.execute("DROP TABLE console_operation_problems")
+            connection.execute("DROP TABLE console_operation_forget")
+            connection.execute("DROP TABLE console_operation_backups")
             connection.execute("DROP TABLE console_operations")
             connection.execute("DELETE FROM schema_migrations WHERE version>=19")
             connection.execute("DELETE FROM migration_runs WHERE version>=19")
@@ -103,8 +105,11 @@ def test_terminal_task_cascade_and_restore(
         from iris_memory_core.storage.migrations import MigrationRunner
 
         assert [
-            m.version for m in MigrationRunner(destination / "canonical.sqlite3").migrate()
-        ] == [19, 20]
+            m.version
+            for m in MigrationRunner(destination / "canonical.sqlite3").migrate(
+                allow_offline=True, backup_performed=True
+            )
+        ] == [19, 20, 21]
     restored = Store(
         SQLiteRuntime(
             destination / "canonical.sqlite3", allowed_versions=(sqlite_runtime_version(),)

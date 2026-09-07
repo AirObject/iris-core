@@ -1,0 +1,245 @@
+[
+  {
+    "batch": "affected-001",
+    "started_at": "2026-09-07T18:19:03.816214+00:00",
+    "supervisor_pid": 33535,
+    "child_pid": 33545,
+    "exit_code": 4,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:19:04.179864+00:00"
+  },
+  {
+    "batch": "affected-002",
+    "started_at": "2026-09-07T18:20:52.003113+00:00",
+    "supervisor_pid": 34204,
+    "child_pid": 34210,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:26:09.761899+00:00"
+  },
+  {
+    "batch": "backup-001",
+    "started_at": "2026-09-07T18:10:07.267047+00:00",
+    "supervisor_pid": 30634,
+    "child_pid": 30641,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:10:08.371582+00:00"
+  },
+  {
+    "batch": "backup-002",
+    "started_at": "2026-09-07T18:11:02.342452+00:00",
+    "supervisor_pid": 30886,
+    "child_pid": 30893,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:11:03.343529+00:00"
+  },
+  {
+    "batch": "backup-003",
+    "started_at": "2026-09-07T18:12:26.446716+00:00",
+    "supervisor_pid": 31338,
+    "child_pid": 31352,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:12:29.883409+00:00"
+  },
+  {
+    "batch": "browser-001",
+    "started_at": "2026-09-07T18:21:53.592449+00:00",
+    "supervisor_pid": 34601,
+    "child_pid": 34607,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:21:58.144058+00:00"
+  },
+  {
+    "batch": "browser-002",
+    "started_at": "2026-09-07T19:22:27.826835+00:00",
+    "supervisor_pid": 55131,
+    "child_pid": 55136,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T19:23:52.599200+00:00"
+  },
+  {
+    "batch": "browser-003",
+    "started_at": "2026-09-07T19:25:37.413814+00:00",
+    "supervisor_pid": 56552,
+    "child_pid": 56557,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T19:27:00.765747+00:00"
+  },
+  {
+    "batch": "browser-004",
+    "started_at": "2026-09-07T19:27:59.201617+00:00",
+    "supervisor_pid": 57777,
+    "child_pid": 57782,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T19:29:44.295627+00:00"
+  },
+  {
+    "batch": "ci-001",
+    "started_at": "2026-09-07T18:34:12.808103+00:00",
+    "supervisor_pid": 38354,
+    "child_pid": 38360,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:54:41.156283+00:00"
+  },
+  {
+    "batch": "ci-002",
+    "started_at": "2026-09-07T18:58:31.877051+00:00",
+    "supervisor_pid": 46599,
+    "child_pid": 46604,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T19:20:26.267395+00:00"
+  },
+  {
+    "batch": "ci-003",
+    "started_at": "2026-09-07T19:30:07.482294+00:00",
+    "supervisor_pid": 58721,
+    "child_pid": 58727,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T19:52:37.482895+00:00"
+  },
+  {
+    "batch": "ci-fixes-001",
+    "started_at": "2026-09-07T18:55:48.954605+00:00",
+    "supervisor_pid": 45759,
+    "child_pid": 45766,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:55:52.387623+00:00"
+  },
+  {
+    "batch": "ci-fixes-002",
+    "started_at": "2026-09-07T18:57:22.531920+00:00",
+    "supervisor_pid": 46307,
+    "child_pid": 46312,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:57:26.213857+00:00"
+  },
+  {
+    "batch": "console-check-001",
+    "started_at": "2026-09-07T18:19:03.818026+00:00",
+    "supervisor_pid": 33536,
+    "child_pid": 33547,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:19:09.345450+00:00"
+  },
+  {
+    "batch": "final-gates-001",
+    "started_at": "2026-09-07T18:23:15.747159+00:00",
+    "supervisor_pid": 35068,
+    "child_pid": 35077,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:23:27.387395+00:00"
+  },
+  {
+    "batch": "final-gates-002",
+    "started_at": "2026-09-07T18:26:19.593367+00:00",
+    "supervisor_pid": 36088,
+    "child_pid": 36095,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:26:31.131183+00:00"
+  },
+  {
+    "batch": "fixes-001",
+    "started_at": "2026-09-07T18:29:03.333400+00:00",
+    "supervisor_pid": 36893,
+    "child_pid": 36899,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:29:55.204232+00:00"
+  },
+  {
+    "batch": "forget-regression-001",
+    "started_at": "2026-09-07T18:06:54.665327+00:00",
+    "supervisor_pid": 29654,
+    "child_pid": 29664,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:07:19.049219+00:00"
+  },
+  {
+    "batch": "lease-final-001",
+    "started_at": "2026-09-07T18:32:00.293202+00:00",
+    "supervisor_pid": 37754,
+    "child_pid": 37764,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:32:07.977138+00:00"
+  },
+  {
+    "batch": "limited-grant-001",
+    "started_at": "2026-09-07T18:25:14.652378+00:00",
+    "supervisor_pid": 35655,
+    "child_pid": 35664,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:25:15.688534+00:00"
+  },
+  {
+    "batch": "migrations-001",
+    "started_at": "2026-09-07T18:14:33.969989+00:00",
+    "supervisor_pid": 31979,
+    "child_pid": 31986,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:14:42.440014+00:00"
+  },
+  {
+    "batch": "migrations-002",
+    "started_at": "2026-09-07T18:15:37.355228+00:00",
+    "supervisor_pid": 32386,
+    "child_pid": 32399,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:15:45.281596+00:00"
+  },
+  {
+    "batch": "package-001",
+    "started_at": "2026-09-07T19:24:04.152810+00:00",
+    "supervisor_pid": 56013,
+    "child_pid": 56019,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T19:24:20.706742+00:00"
+  },
+  {
+    "batch": "problems-green-001",
+    "started_at": "2026-09-07T18:43:49.950483+00:00",
+    "supervisor_pid": 41948,
+    "child_pid": 41955,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T18:43:58.127404+00:00"
+  },
+  {
+    "batch": "problems-red-001",
+    "started_at": "2026-09-07T18:42:20.785265+00:00",
+    "supervisor_pid": 41457,
+    "child_pid": 41463,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:42:22.234709+00:00"
+  },
+  {
+    "batch": "types-001",
+    "started_at": "2026-09-07T18:06:54.665327+00:00",
+    "supervisor_pid": 29655,
+    "child_pid": 29665,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T18:06:57.169250+00:00"
+  }
+]

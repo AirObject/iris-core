@@ -1,0 +1,32 @@
+import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
+import { test, expect } from "@playwright/test";
+import { loginWithCooldown } from "./login";
+
+test("real backup acceptance, reauthentication and independent fenced worker", async ({ page }) => {
+  test.setTimeout(150000);
+  const token = readFileSync("/tmp/imc-console-test-operation-credential", "utf8");
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/console/");
+  await loginWithCooldown(page, token);
+  await page.getByRole("link", { name: "批量操作", exact: true }).click();
+  await page.getByRole("button", { name: "创建并校验备份", exact: true }).click();
+  const reauth = page.getByRole("dialog", { name: "敏感操作 · 重新认证" });
+  await reauth.getByLabel("运营密钥", { exact: true }).fill(token);
+  await reauth.getByRole("button", { name: "重新认证并继续原动作" }).click();
+  const operation = page.locator(".operation");
+  await expect(operation).toContainText("trusted_backup");
+  await expect(operation).toContainText("queued");
+  const root = resolve(process.cwd(), "../..");
+  const outcome = JSON.parse(execFileSync(resolve(root, ".venv/bin/python"), ["web/console/tests/backend/operation_worker.py", "backup"], { cwd: root, env: { ...process.env, PYTHONPATH: `${root}/src:${root}` }, encoding: "utf8" }));
+  expect(outcome.completed).toBe(1);
+  await expect(operation).toContainText("completed");
+  await expect(operation).toContainText("2 / 2 steps");
+  await expect(operation.getByRole("button", { name: /取消/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /下载备份/ })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("table")).toContainText("completed");
+  expect(errors).toEqual([]);
+});

@@ -199,6 +199,7 @@ class TestJobKindRegistry:
                     "reflection.generate",
                     "persona.evaluation",
                     "console.memory_forget",
+                    "console.trusted_backup",
                 }
             )
             == ENABLED_JOB_KINDS

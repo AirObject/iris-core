@@ -8,12 +8,14 @@ from typing import Any
 
 from iris_memory_core.application.console.execution_context import ExecutionContext
 from iris_memory_core.application.console.forget import ConsoleForgetCommands
+from iris_memory_core.application.console.security import authorize, denied
 from iris_memory_core.application.forget import ForgetResult
 from iris_memory_core.application.outbox import JobCommit
 from iris_memory_core.application.ports.transaction import Transaction
 from iris_memory_core.domain.console import CommandPreview, OperatorPrincipal
 from iris_memory_core.domain.console_operations import (
     ConsoleOperation,
+    ForgetOperationPayload,
     OperationProblem,
     OperationSummary,
 )
@@ -39,6 +41,7 @@ TERMINAL_STATUSES = frozenset(
     }
 )
 OPERATION_STATUSES = TERMINAL_STATUSES | {"queued", "running", "paused", "blocked"}
+OPERATION_KINDS = frozenset({"memory_forget", "trusted_backup"})
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,20 @@ class ConsoleOperations:
     def __init__(self, context: ExecutionContext) -> None:
         self.context = context
         self.forget = ConsoleForgetCommands(context)
+
+    def authorize_type(
+        self, tx: Transaction, principal: OperatorPrincipal, kind: str, *, recent: bool = False
+    ) -> OperatorPrincipal:
+        if kind == "memory_forget":
+            return self.forget._principal(tx, principal, recent=recent)
+        if kind != "trusted_backup":
+            raise InvalidRequestError("unknown operation kind")
+        fresh = authorize(
+            tx, principal, self.context.clock.now_us(), "backups.write", recent=recent
+        )
+        if "console.manage" not in fresh.key.grant.data_purposes:
+            raise denied("permission_denied")
+        return fresh
 
     @staticmethod
     def _enqueue(
@@ -103,18 +120,20 @@ class ConsoleOperations:
             grant_fingerprint=fresh.key.grant.fingerprint,
             session_id=fresh.session.id,
             session_epoch=fresh.session.epoch,
-            preview_id=preview.id,
-            preview_hash=preview.preview_hash,
             kind="memory_forget",
-            mode=preview.mode,
             reason_code=preview.reason_code,
             status="queued",
             revision=1,
             processed=0,
             total=len(states),
-            payload_json=saved_payload,
-            expected_deletion_seq=payload["deletion_watermark"],
-            holds_version=payload["holds_version"],
+            forget=ForgetOperationPayload(
+                preview.id,
+                preview.preview_hash,
+                preview.mode,
+                saved_payload,
+                payload["deletion_watermark"],
+                payload["holds_version"],
+            ),
             current_job_id=job_id,
             blocked_reason=None,
             created_us=now,
@@ -163,8 +182,11 @@ class ConsoleOperations:
             )
         ):
             raise AccessDeniedError("operation authority changed")
-        return self.forget._principal(
-            tx, OperatorPrincipal(key, session), recent=operation.mode == "erase"
+        return self.authorize_type(
+            tx,
+            OperatorPrincipal(key, session),
+            operation.kind,
+            recent=operation.kind == "trusted_backup" or operation.mode == "erase",
         )
 
     def batch_work(self, job: OutboxJob) -> JobCommit:
@@ -283,8 +305,11 @@ class ConsoleOperations:
                 processed=processed,
                 status="completed" if completed else "running",
                 current_job_id=next_job,
-                payload_json="{}" if completed else operation.payload_json,
-                expected_deletion_seq=tx.tombstone_watermark(),
+                forget=replace(
+                    operation.forget_payload,
+                    payload_json="{}" if completed else operation.payload_json,
+                    expected_deletion_seq=tx.tombstone_watermark(),
+                ),
                 started_us=operation.started_us or now,
                 finished_us=now if completed else None,
                 updated_us=max(now, operation.updated_us),
@@ -322,7 +347,9 @@ class ConsoleOperations:
                 operation,
                 revision=operation.revision + 1,
                 status="failed",
-                payload_json="{}",
+                forget=replace(operation.forget_payload, payload_json="{}")
+                if operation.forget
+                else None,
                 finished_us=now_us,
                 updated_us=max(now_us, operation.updated_us),
             ),
@@ -347,7 +374,7 @@ class ConsoleOperations:
         principal: OperatorPrincipal,
         identifier: str,
     ) -> tuple[OperatorPrincipal, ConsoleOperation]:
-        fresh = self.forget._principal(tx, principal)
+        fresh = authorize(tx, principal, self.context.clock.now_us())
         operation = tx.console_operations.get(fresh.key.tenant_id, identifier)
         if operation is None or (
             operation.key_id,
@@ -355,7 +382,7 @@ class ConsoleOperations:
             operation.grant_fingerprint,
         ) != (fresh.key.id, fresh.key.revision, fresh.key.grant.fingerprint):
             raise NotFoundError("operation not found")
-        return fresh, operation
+        return self.authorize_type(tx, fresh, operation.kind), operation
 
     def detail(self, principal: OperatorPrincipal, identifier: str) -> ConsoleOperation:
         with self.context.uow.read() as tx:
@@ -365,6 +392,7 @@ class ConsoleOperations:
         self,
         principal: OperatorPrincipal,
         *,
+        kind: str | None = None,
         status: str | None = None,
         created_from: int | None = None,
         created_before: int | None = None,
@@ -373,13 +401,20 @@ class ConsoleOperations:
     ) -> tuple[OperationSummary, ...]:
         if status is not None and status not in OPERATION_STATUSES:
             raise InvalidRequestError("unknown operation status")
+        if kind is not None and kind not in OPERATION_KINDS:
+            raise InvalidRequestError("unknown operation kind")
         with self.context.uow.read() as tx:
-            fresh = self.forget._principal(tx, principal)
+            fresh = authorize(tx, principal, self.context.clock.now_us())
+            if kind is not None:
+                fresh = self.authorize_type(tx, fresh, kind)
+            elif "console.manage" not in fresh.key.grant.data_purposes:
+                raise denied("permission_denied")
             return tx.console_operations.list_owned(
                 fresh.key.tenant_id,
                 fresh.key.id,
                 fresh.key.grant.fingerprint,
                 key_revision=fresh.key.revision,
+                kind=kind,
                 status=status,
                 created_from=created_from,
                 created_before=created_before,
@@ -421,7 +456,9 @@ class ConsoleOperations:
                     operation,
                     revision=operation.revision + 1,
                     status=status,
-                    payload_json="{}",
+                    forget=replace(operation.forget_payload, payload_json="{}")
+                    if operation.forget
+                    else None,
                     blocked_reason=None,
                     updated_us=max(now, operation.updated_us),
                     finished_us=now,
@@ -459,11 +496,11 @@ class ConsoleOperations:
             "id": operation.id,
             "kind": operation.kind,
             "status": operation.status,
-            "phase": "canonical_forget",
+            "phase": "canonical_forget" if operation.kind == "memory_forget" else "backup_verify",
             "progress": {
                 "processed": str(operation.processed),
                 "total": str(operation.total),
-                "unit": "records",
+                "unit": "records" if operation.kind == "memory_forget" else "steps",
             },
             "blocked_reason": operation.blocked_reason,
             "created_by": key_id,

@@ -64,7 +64,8 @@
               "settings.write",
               "indexes.rebuild",
               "audit.read",
-              "retention.manage"
+              "retention.manage",
+              "backups.write"
             ]
           },
           "type": "array",
@@ -236,7 +237,8 @@
         "permission": {
           "enum": [
             "memory.write",
-            "memory.forget"
+            "memory.forget",
+            "backups.write"
           ],
           "type": "string"
         },
@@ -467,6 +469,18 @@
       "required": [
         "scope",
         "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleBackupCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_code": {
+          "const": "operator_request"
+        }
+      },
+      "required": [
         "reason_code"
       ],
       "type": "object"
@@ -2508,6 +2522,48 @@
     },
     "ConsoleOperation": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "phase": {
+                "const": "backup_verify"
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "steps"
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "memory_forget"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase": {
+                "const": "canonical_forget"
+              },
+              "problems_count": {
+                "maximum": 500
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "records"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "available_actions": {
           "items": {
@@ -2554,15 +2610,18 @@
         },
         "kind": {
           "enum": [
-            "memory_forget"
+            "memory_forget",
+            "trusted_backup"
           ],
           "type": "string"
         },
         "phase": {
-          "const": "canonical_forget"
+          "enum": [
+            "canonical_forget",
+            "backup_verify"
+          ]
         },
         "problems_count": {
-          "maximum": 500,
           "minimum": 0,
           "type": "integer"
         },
@@ -2576,7 +2635,10 @@
               "$ref": "#/$defs/DecimalCount"
             },
             "unit": {
-              "const": "records"
+              "enum": [
+                "records",
+                "steps"
+              ]
             }
           },
           "required": [
@@ -2699,7 +2761,8 @@
             "preview_changed",
             "query_budget",
             "execution_failed",
-            "restore_requires_review"
+            "restore_requires_review",
+            "backup_unavailable"
           ],
           "type": "string"
         },
@@ -2708,7 +2771,6 @@
           "type": "string"
         },
         "input_index": {
-          "maximum": 499,
           "minimum": 0,
           "type": [
             "integer",
@@ -4639,7 +4701,8 @@
               "settings.write",
               "indexes.rebuild",
               "audit.read",
-              "retention.manage"
+              "retention.manage",
+              "backups.write"
             ],
             "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
             "type": "string"
@@ -6034,7 +6097,8 @@
               "settings.write",
               "indexes.rebuild",
               "audit.read",
-              "retention.manage"
+              "retention.manage",
+              "backups.write"
             ],
             "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
             "type": "string"
@@ -7196,7 +7260,8 @@
               "settings.write",
               "indexes.rebuild",
               "audit.read",
-              "retention.manage"
+              "retention.manage",
+              "backups.write"
             ],
             "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
             "type": "string"
@@ -7496,7 +7561,8 @@
           "settings.write",
           "indexes.rebuild",
           "audit.read",
-          "retention.manage"
+          "retention.manage",
+          "backups.write"
         ],
         "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
         "type": "string"

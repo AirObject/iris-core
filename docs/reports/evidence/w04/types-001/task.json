@@ -1,0 +1,12 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "mypy"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 120,
+  "created_at": "2026-09-07T18:06:54.223069+00:00",
+  "head": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
+  "supervisor_pid": 29655
+}

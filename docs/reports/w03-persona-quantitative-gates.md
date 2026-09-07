@@ -74,6 +74,6 @@ ADR-0018 新增的验证澄清记录既有 UTC 壁钟语义：回拨会推迟尚
 - [量化结果](evidence/w03/quantitative-results.json)从成功日志逐项核对 14×200 个唯一案例 ID、全字段增强 2×200 个案例、三次 11 步轨迹和 50 客户端结果。
 - [最终候选审计](evidence/w03/final-candidate-audit.json)确认 CI 之后的差异仅为报告/证据/检查点；[打包输入](evidence/w03/package-inputs.json)全部与 CI 启动快照一致。
 - [产物摘要](evidence/w03/artifact-digests.json)记录四个新构建安装物，其字节摘要全部与 W02 一致；本包没有生产行为、Schema 或公共契约变更。
-- 开始 Commit `4c6277b`；结束 Commit 是携带本报告与 W03 变更的独立提交，完整哈希由提交后的串行检查点记录，避免提交自引用。
+- 开始 Commit `4c6277b`；结束 Commit `460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8`。
 
 本轮开发集成验证不替代 W16/W18 的网络、生产部署与 Soak，也不改变 Phase 11/12 Deferred。

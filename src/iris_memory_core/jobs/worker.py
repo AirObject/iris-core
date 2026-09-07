@@ -16,8 +16,13 @@ external system. Database fencing cannot un-send an HTTP request.
 from __future__ import annotations
 
 import uuid
+from threading import Event, Thread
 
 from iris_memory_core.application.backpressure import BackpressureGauge
+from iris_memory_core.application.console.backup_operations import (
+    BackupOperations,
+    TrustedBackupArchive,
+)
 from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.notes import NoteService
 from iris_memory_core.application.outbox import JobCommit, JobWork, OutboxService
@@ -234,12 +239,21 @@ def phase10_handlers(*, pipeline: ReflectionPipeline) -> dict[str, JobWork]:
     }
 
 
-def phase14_handlers(uow: UnitOfWork, clock: Clock, ids: IdentifierGenerator) -> dict[str, JobWork]:
+def phase14_handlers(
+    uow: UnitOfWork,
+    clock: Clock,
+    ids: IdentifierGenerator,
+    *,
+    archives: TrustedBackupArchive | None = None,
+) -> dict[str, JobWork]:
     from iris_memory_core.application.console.execution_context import WorkerExecutionContext
     from iris_memory_core.application.console.operations import ConsoleOperations
 
     operations = ConsoleOperations(WorkerExecutionContext(uow, clock, ids))
-    return {"console.memory_forget": operations.batch_work}
+    return {
+        "console.memory_forget": operations.batch_work,
+        "console.trusted_backup": BackupOperations(operations.context, archives).work,
+    }
 
 
 class OutboxWorker:
@@ -289,13 +303,34 @@ class OutboxWorker:
         )
         batch = self._service.claim(self._owner, kinds=effective, batch_size=limit)
         outcomes["claimed"] = len(batch.jobs)
-        for job in batch.jobs:
-            handler = self._handlers[job.job_kind]
-            try:
-                result = self._service.execute(job, handler, owner=self._owner)
-            except LeaseFencedError:
-                outcomes["fenced"] += 1
-                continue
-            if result in outcomes:
-                outcomes[result] += 1
+        stop = Event()
+
+        def renew() -> None:
+            while not stop.wait(self._service.worker_heartbeat_seconds):
+                for leased in batch.jobs:
+                    try:
+                        self._service.heartbeat(leased, owner=self._owner)
+                    except Exception:
+                        # No lease bypass: if renewal is unavailable, the existing expiry
+                        # and fenced completion still decide whether work may commit.
+                        return
+
+        renewal = None
+        if any(job.job_kind == "console.trusted_backup" for job in batch.jobs):
+            renewal = Thread(target=renew, name="outbox-backup-lease", daemon=True)
+            renewal.start()
+        try:
+            for job in batch.jobs:
+                handler = self._handlers[job.job_kind]
+                try:
+                    result = self._service.execute(job, handler, owner=self._owner)
+                except LeaseFencedError:
+                    outcomes["fenced"] += 1
+                    continue
+                if result in outcomes:
+                    outcomes[result] += 1
+        finally:
+            stop.set()
+            if renewal is not None:
+                renewal.join()
         return outcomes

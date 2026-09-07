@@ -1,0 +1,20 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "tests/integration/console",
+    "tests/integration/recovery",
+    "tests/integration/migrations",
+    "tests/integration/runtime",
+    "tests/integration/outbox",
+    "tests/contract",
+    "--no-cov",
+    "-q"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 900,
+  "created_at": "2026-09-07T18:19:03.386295+00:00",
+  "head": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
+  "supervisor_pid": 33535
+}

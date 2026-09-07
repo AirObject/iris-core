@@ -1,0 +1,732 @@
+...........F..........F...F..FF.FF....F.F..........F..................FF [ 51%]
+.........F...F..F.........F..F...............F....F....FF...........     [100%]
+=================================== FAILURES ===================================
+_______ test_existing_database_requires_offline_ack_and_verified_backup ________
+
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_existing_database_require0')
+
+    def test_existing_database_requires_offline_ack_and_verified_backup(tmp_path: Path) -> None:
+        database, edge = legacy_store(tmp_path)
+        runner = MigrationRunner(database)
+        with pytest.raises(MigrationNotOnlineSafe):
+            runner.migrate()
+        with pytest.raises(MigrationNotOnlineSafe):
+            runner.migrate(allow_offline=True)
+        assert runner.current_version() == 14
+        with sqlite3.connect(database) as connection:
+            assert "status" not in {
+                row[1] for row in connection.execute("PRAGMA table_info(task_dependencies)")
+            }
+        assert [m.version for m in runner.migrate(allow_offline=True, backup_performed=True)] == [
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_dependency_lifecycle_migration.py:128: NameError
+__________ TestEmptyAndUpgrade.test_empty_database_installs_all_seven __________
+
+self = <test_fts_recall_migration.TestEmptyAndUpgrade object at 0x109405190>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_empty_database_installs_a0')
+
+    def test_empty_database_installs_all_seven(self, tmp_path: Path) -> None:
+        database = tmp_path / "empty.sqlite3"
+        applied = MigrationRunner(database).migrate()
+        assert [item.version for item in applied] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_fts_recall_migration.py:101: NameError
+________ TestEmptyAndUpgrade.test_checksum_recorded_in_db_matches_disk _________
+
+self = <test_fts_recall_migration.TestEmptyAndUpgrade object at 0x109406990>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_checksum_recorded_in_db_m0')
+
+    def test_checksum_recorded_in_db_matches_disk(self, tmp_path: Path) -> None:
+        database = tmp_path / "db.sqlite3"
+        MigrationRunner(database).migrate()
+        connection = sqlite3.connect(database)
+        try:
+            rows = connection.execute(
+                "SELECT version, name, checksum FROM schema_migrations ORDER BY version"
+            ).fetchall()
+        finally:
+            connection.close()
+        assert [row[0] for row in rows] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_fts_recall_migration.py:187: NameError
+_________________________ test_migration_0009_metadata _________________________
+
+    def test_migration_0009_metadata() -> None:
+        (migration,) = [
+            item for item in discover_migrations(default_migrations_path()) if item.version == 9
+        ]
+        assert migration.name == "0009_phase8_profile_graph.sql"
+        assert migration.meta is not None
+        assert migration.meta.online_safe is True
+>       assert migration.meta.lock_ms == 200
+E       AssertionError: assert 200 == 210
+E        +  where 200 = MigrationMeta(online_safe=True, lock_ms=200, min_app='0.9.0', max_app='', recovery='none', bootstrap_safe=False).lock_ms
+E        +    where MigrationMeta(online_safe=True, lock_ms=200, min_app='0.9.0', max_app='', recovery='none', bootstrap_safe=False) = Migration(version=9, name='0009_phase8_profile_graph.sql', path=PosixPath('/Users/cassia/Local/Code/iris_memory_core/m... meta=MigrationMeta(online_safe=True, lock_ms=200, min_app='0.9.0', max_app='', recovery='none', bootstrap_safe=False)).meta
+
+tests/integration/migrations/test_graph_profile_migration.py:75: AssertionError
+____________________ test_empty_database_installs_all_nine _____________________
+
+database = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_empty_database_installs_a1/canonical.sqlite3')
+
+    def test_empty_database_installs_all_nine(database: Path) -> None:
+        applied = MigrationRunner(database).migrate()
+        assert [item.version for item in applied] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_graph_profile_migration.py:103: NameError
+____________________________ test_window_is_8_to_9 _____________________________
+
+    def test_window_is_8_to_9() -> None:
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (21, 21)
+        verify_schema_compatible(21)
+    
+        from iris_memory_core.domain.errors import SchemaIncompatibleError
+    
+        with pytest.raises(SchemaIncompatibleError):
+            verify_schema_compatible(10)
+>       with pytest.raises(SchemaIncompatibleError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'iris_memory_core.domain.errors.SchemaIncompatibleError'>
+
+tests/integration/migrations/test_graph_profile_migration.py:122: Failed
+__________________ test_checksum_recorded_in_db_matches_disk ___________________
+
+database = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_checksum_recorded_in_db_m1/canonical.sqlite3')
+
+    def test_checksum_recorded_in_db_matches_disk(database: Path) -> None:
+        MigrationRunner(database).migrate()
+        connection = sqlite3.connect(database)
+        try:
+            rows = connection.execute(
+                "SELECT version, checksum FROM schema_migrations ORDER BY version"
+            ).fetchall()
+        finally:
+            connection.close()
+        assert [row[0] for row in rows] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_graph_profile_migration.py:155: NameError
+_______ TestSchemaUpgrade.test_phase1_database_upgrades_with_data_intact _______
+
+self = <test_ingestion_migration.TestSchemaUpgrade object at 0x109407260>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_phase1_database_upgrades_0')
+
+    def test_phase1_database_upgrades_with_data_intact(self, tmp_path: Path) -> None:
+        database = tmp_path / "upgrade.sqlite3"
+        _migrate_to_phase1(database)
+        _seed_phase1_data(database)
+        assert current_schema_version(sqlite3.connect(database)) == 2
+    
+        applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
+        # The 0.14.0 runner walks a Schema 2 database through 0003-0015 offline
+        # (staged multi-version upgrades migrate through intermediates).
+        assert [item.version for item in applied] == [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_ingestion_migration.py:150: NameError
+________________ TestSchemaUpgrade.test_schema_window_is_5_to_6 ________________
+
+self = <test_ingestion_migration.TestSchemaUpgrade object at 0x109420350>
+
+    def test_schema_window_is_5_to_6(self) -> None:
+        from iris_memory_core.domain.errors import SchemaIncompatibleError
+    
+        # Core 0.14.0 opens only Schema 21; existing data upgrades offline (ADR-0026).
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (21, 21)
+        verify_schema_compatible(21)
+    
+>       with pytest.raises(SchemaIncompatibleError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'iris_memory_core.domain.errors.SchemaIncompatibleError'>
+
+tests/integration/migrations/test_ingestion_migration.py:194: Failed
+___________ TestUpgrade.test_phase4_data_upgrades_to_schema6_intact ____________
+
+self = <test_memory_migration.TestUpgrade object at 0x109421f40>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_phase4_data_upgrades_to_s0')
+
+    def test_phase4_data_upgrades_to_schema6_intact(self, tmp_path: Path) -> None:
+        database = tmp_path / "canonical.sqlite3"
+        _migrate_to_phase4(database)
+        connection = sqlite3.connect(database)
+        try:
+            from iris_memory_core.storage.migrations import current_app_version
+    
+            assert current_app_version() == "0.14.0"
+        finally:
+            connection.close()
+        applied = MigrationRunner(database, default_migrations_path()).migrate(
+            allow_offline=True, backup_performed=True
+        )
+        # Phase 6 ride-along: the 0.7.0 runner walks the Schema 5 source all
+        # the way to the current released schema (ADR-0014 §10).
+        assert [item.version for item in applied] == [
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_memory_migration.py:198: NameError
+______________ test_repository_migrations_apply_on_empty_database ______________
+
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_repository_migrations_app0')
+
+    def test_repository_migrations_apply_on_empty_database(tmp_path: Path) -> None:
+        from iris_memory_core.storage.migrations import default_migrations_path
+    
+        runner = MigrationRunner(tmp_path / "db.sqlite3", default_migrations_path())
+        applied = runner.migrate()
+        assert [item.version for item in applied] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_migrations.py:189: NameError
+___________________ test_phase0_database_upgrades_to_phase1 ____________________
+
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_phase0_database_upgrades_0')
+
+    def test_phase0_database_upgrades_to_phase1(tmp_path: Path) -> None:
+        """A database created with the published Phase 0 file must upgrade cleanly.
+    
+        Regression: the 0001 file must stay byte-identical to its released form —
+        its checksum is recorded in every existing Phase 0 database.
+        """
+        import hashlib
+        import subprocess
+    
+        original = subprocess.run(
+            ["git", "show", "HEAD:migrations/0001_phase0_metadata.sql"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        working_tree = (
+            Path(__file__)
+            .resolve()
+            .parents[3]
+            .joinpath("migrations", "0001_phase0_metadata.sql")
+            .read_text(encoding="utf-8")
+        )
+        assert working_tree == original, "published migration 0001 must never change"
+        assert (
+            hashlib.sha256(original.encode()).hexdigest()
+            == "ec236f7e3f5691119fed78f5ef4d0ffe9983bb117936e68d733cfee63342a861"
+        )
+    
+        from iris_memory_core.storage.migrations import default_migrations_path
+    
+        legacy_dir = tmp_path / "legacy-migrations"
+        legacy_dir.mkdir()
+        (legacy_dir / "0001_phase0_metadata.sql").write_text(original, encoding="utf-8")
+        database = tmp_path / "phase0.sqlite3"
+        MigrationRunner(database, legacy_dir).migrate()
+        assert MigrationRunner(database, legacy_dir).current_version() == 1
+    
+        upgraded = MigrationRunner(database, default_migrations_path()).migrate(
+            allow_offline=True, backup_performed=True
+        )
+        assert [item.version for item in upgraded] == [
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_migrations.py:254: NameError
+________________ test_phase9_metadata_declares_online_expansion ________________
+
+    def test_phase9_metadata_declares_online_expansion() -> None:
+        migration = {item.version: item for item in discover_migrations(default_migrations_path())}[10]
+        assert migration.meta is not None
+        assert migration.meta.online_safe is True
+>       assert migration.meta.lock_ms == 200
+E       AssertionError: assert 200 == 210
+E        +  where 200 = MigrationMeta(online_safe=True, lock_ms=200, min_app='0.10.0', max_app='', recovery='none', bootstrap_safe=False).lock_ms
+E        +    where MigrationMeta(online_safe=True, lock_ms=200, min_app='0.10.0', max_app='', recovery='none', bootstrap_safe=False) = Migration(version=10, name='0010_phase9_persona.sql', path=PosixPath('/Users/cassia/Local/Code/iris_memory_core/migrat...meta=MigrationMeta(online_safe=True, lock_ms=200, min_app='0.10.0', max_app='', recovery='none', bootstrap_safe=False)).meta
+
+tests/integration/migrations/test_persona_migration.py:55: AssertionError
+________ test_schema_compatibility_requires_dependency_lifecycle_schema ________
+
+    def test_schema_compatibility_requires_dependency_lifecycle_schema() -> None:
+        verify_schema_compatible(21)
+        for schema in (10, 11, 12, 13, 14, 15, 16, 17):
+            with pytest.raises(SchemaIncompatibleError):
+                verify_schema_compatible(schema)
+>       with pytest.raises(SchemaIncompatibleError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'iris_memory_core.domain.errors.SchemaIncompatibleError'>
+
+tests/integration/migrations/test_reflection_migration.py:83: Failed
+_______ test_migration_preserves_bytes_fks_and_releases_only_deleted_key _______
+
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_migration_preserves_bytes0')
+
+    def test_migration_preserves_bytes_fks_and_releases_only_deleted_key(tmp_path: Path) -> None:
+        store = legacy(tmp_path)
+        with store.write() as tx:
+            identifier = seed(tx)
+            seed(tx, "other-key")
+            marker = tx.record_tombstone(
+                tenant_id="tenant",
+                resource_type="state_record",
+                resource_id=identifier,
+                reason_code="legacy",
+                deleted_by="admin",
+            )
+            records = [tuple(r) for r in tx.raw().execute("SELECT * FROM state_records ORDER BY id")]
+            revisions = [
+                tuple(r) for r in tx.raw().execute("SELECT * FROM state_record_revisions ORDER BY id")
+            ]
+        runner = MigrationRunner(store.runtime.database)
+        with pytest.raises(MigrationNotOnlineSafe):
+            runner.migrate()
+        with pytest.raises(MigrationNotOnlineSafe):
+            runner.migrate(allow_offline=True)
+        assert [m.version for m in runner.migrate(allow_offline=True, backup_performed=True)] == [
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_state_deletion_migration.py:103: NameError
+______ TestPublishedMigrationIntegrity.test_recorded_checksums_match_disk ______
+
+self = <test_task_event_migration.TestPublishedMigrationIntegrity object at 0x10943c230>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_recorded_checksums_match_0')
+
+    def test_recorded_checksums_match_disk(self, tmp_path: Path) -> None:
+        database = tmp_path / "db.sqlite3"
+        MigrationRunner(database).migrate()
+        connection = sqlite3.connect(database)
+        try:
+            rows = connection.execute(
+                "SELECT version, name, checksum FROM schema_migrations ORDER BY version"
+            ).fetchall()
+        finally:
+            connection.close()
+        assert [row[0] for row in rows] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_task_event_migration.py:84: NameError
+____________ TestSchema4To5Upgrade.test_phase3_data_upgrades_intact ____________
+
+self = <test_task_event_migration.TestSchema4To5Upgrade object at 0x10943c860>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_phase3_data_upgrades_inta0')
+
+    def test_phase3_data_upgrades_intact(self, tmp_path: Path) -> None:
+        database = _phase3_database(tmp_path)
+        applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
+        assert [item.version for item in applied] == [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_task_event_migration.py:261: NameError
+__________ TestEmptyAndUpgrade.test_empty_database_installs_all_eight __________
+
+self = <test_vector_migration.TestEmptyAndUpgrade object at 0x10943f9e0>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_empty_database_installs_a2')
+
+    def test_empty_database_installs_all_eight(self, tmp_path: Path) -> None:
+        database = tmp_path / "fresh.sqlite3"
+        applied = MigrationRunner(database).migrate()
+        assert [item.version for item in applied] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_vector_migration.py:100: NameError
+________ TestEmptyAndUpgrade.test_checksum_recorded_in_db_matches_disk _________
+
+self = <test_vector_migration.TestEmptyAndUpgrade object at 0x1095087d0>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_checksum_recorded_in_db_m2')
+
+    def test_checksum_recorded_in_db_matches_disk(self, tmp_path: Path) -> None:
+        database = tmp_path / "checksums.sqlite3"
+        MigrationRunner(database).migrate()
+        connection = sqlite3.connect(database)
+        try:
+            rows = connection.execute(
+                "SELECT version, name, checksum FROM schema_migrations ORDER BY version"
+            ).fetchall()
+        finally:
+            connection.close()
+        assert [row[0] for row in rows] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_vector_migration.py:253: NameError
+_ TestPublishedMigrationIntegrity.test_recorded_checksums_still_match_after_0004 _
+
+self = <test_working_memory_migration.TestPublishedMigrationIntegrity object at 0x1095098b0>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_recorded_checksums_still_0')
+
+    def test_recorded_checksums_still_match_after_0004(self, tmp_path: Path) -> None:
+        database = tmp_path / "db.sqlite3"
+        MigrationRunner(database).migrate()
+        connection = sqlite3.connect(database)
+        try:
+            rows = connection.execute(
+                "SELECT version, name, checksum FROM schema_migrations ORDER BY version"
+            ).fetchall()
+        finally:
+            connection.close()
+        assert [row[0] for row in rows] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_working_memory_migration.py:86: NameError
+____________ TestSchema3To4Upgrade.test_phase2_data_upgrades_intact ____________
+
+self = <test_working_memory_migration.TestSchema3To4Upgrade object at 0x109509bb0>
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-42/test_phase2_data_upgrades_inta0')
+
+    def test_phase2_data_upgrades_intact(self, tmp_path: Path) -> None:
+        database = _phase2_database(tmp_path)
+        applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
+        # 0.5.0 walks the Schema 3 database through 0004 AND 0005.
+        assert [item.version for item in applied] == [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+>           P,
+            ^
+            Q,
+        ]
+E       NameError: name 'P' is not defined
+
+tests/integration/migrations/test_working_memory_migration.py:253: NameError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/migrations/test_dependency_lifecycle_migration.py::test_existing_database_requires_offline_ack_and_verified_backup
+FAILED tests/integration/migrations/test_fts_recall_migration.py::TestEmptyAndUpgrade::test_empty_database_installs_all_seven
+FAILED tests/integration/migrations/test_fts_recall_migration.py::TestEmptyAndUpgrade::test_checksum_recorded_in_db_matches_disk
+FAILED tests/integration/migrations/test_graph_profile_migration.py::test_migration_0009_metadata
+FAILED tests/integration/migrations/test_graph_profile_migration.py::test_empty_database_installs_all_nine
+FAILED tests/integration/migrations/test_graph_profile_migration.py::test_window_is_8_to_9
+FAILED tests/integration/migrations/test_graph_profile_migration.py::test_checksum_recorded_in_db_matches_disk
+FAILED tests/integration/migrations/test_ingestion_migration.py::TestSchemaUpgrade::test_phase1_database_upgrades_with_data_intact
+FAILED tests/integration/migrations/test_ingestion_migration.py::TestSchemaUpgrade::test_schema_window_is_5_to_6
+FAILED tests/integration/migrations/test_memory_migration.py::TestUpgrade::test_phase4_data_upgrades_to_schema6_intact
+FAILED tests/integration/migrations/test_migrations.py::test_repository_migrations_apply_on_empty_database
+FAILED tests/integration/migrations/test_migrations.py::test_phase0_database_upgrades_to_phase1
+FAILED tests/integration/migrations/test_persona_migration.py::test_phase9_metadata_declares_online_expansion
+FAILED tests/integration/migrations/test_reflection_migration.py::test_schema_compatibility_requires_dependency_lifecycle_schema
+FAILED tests/integration/migrations/test_state_deletion_migration.py::test_migration_preserves_bytes_fks_and_releases_only_deleted_key
+FAILED tests/integration/migrations/test_task_event_migration.py::TestPublishedMigrationIntegrity::test_recorded_checksums_match_disk
+FAILED tests/integration/migrations/test_task_event_migration.py::TestSchema4To5Upgrade::test_phase3_data_upgrades_intact
+FAILED tests/integration/migrations/test_vector_migration.py::TestEmptyAndUpgrade::test_empty_database_installs_all_eight
+FAILED tests/integration/migrations/test_vector_migration.py::TestEmptyAndUpgrade::test_checksum_recorded_in_db_matches_disk
+FAILED tests/integration/migrations/test_working_memory_migration.py::TestPublishedMigrationIntegrity::test_recorded_checksums_still_match_after_0004
+FAILED tests/integration/migrations/test_working_memory_migration.py::TestSchema3To4Upgrade::test_phase2_data_upgrades_intact
+21 failed, 119 passed, 2 warnings in 8.08s

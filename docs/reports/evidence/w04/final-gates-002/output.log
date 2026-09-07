@@ -1,0 +1,40 @@
+...F...........................                                          [100%]
+=================================== FAILURES ===================================
+___ test_backup_verification_rejects_forged_completed_state_without_receipt ____
+
+backup = {'access': AccessContext(tenant_id='tenant-a', app_instance_id='app-1', agent_ids=frozenset({'01a07d1f-087b-721c-b541-... at 0x10d3d8a70>, 'archives': <iris_memory_core.storage.admin_archives.AdminArchiveService object at 0x10d3da8a0>, ...}
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-44/test_backup_verification_rejec0')
+
+    def test_backup_verification_rejects_forged_completed_state_without_receipt(
+        backup: dict[str, Any], tmp_path: Path
+    ) -> None:
+        operation = accept(backup)
+        with backup["store"].write() as tx:
+            # Simulate an externally corrupted database, bypassing the normal completion guard.
+            tx.raw().execute("DROP TRIGGER console_backup_completion")
+            tx.raw().execute(
+                "UPDATE console_operations SET status='completed',processed=total WHERE id=?",
+                (operation.id,),
+            )
+        service = BackupService(backup["store"])
+        snapshot = tmp_path / "invalid-receipt"
+        service.create_backup(snapshot)
+        check = service.verify_backup(snapshot)
+>       assert not check.ok
+E       assert not True
+E        +  where True = RestoreCheck(ok=True, problems=()).ok
+
+tests/integration/console/test_console_backup_operations.py:195: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/console/test_console_backup_operations.py::test_backup_verification_rejects_forged_completed_state_without_receipt
+1 failed, 30 passed, 2 warnings in 11.18s

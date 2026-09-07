@@ -1369,6 +1369,17 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
                 is not None
             )
 
+        if _has("console_operation_backups"):
+            invalid_receipt = connection.execute(
+                "SELECT 1 FROM console_operations o JOIN console_operation_backups b "
+                "ON b.operation_id=o.id WHERE "
+                "(o.status IN ('completed','completed_with_warnings')) != "
+                "(b.result_ref IS NOT NULL AND b.manifest_hash IS NOT NULL "
+                "AND b.verified_us IS NOT NULL) LIMIT 1"
+            ).fetchone()
+            if invalid_receipt is not None:
+                problems.append("backup operation status and verified receipt disagree")
+
         if _has("agents") and _has("persona_revisions"):
             dangling = connection.execute(
                 "SELECT COUNT(*) FROM agents a WHERE a.persona_current_revision_id IS NULL "

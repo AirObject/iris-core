@@ -30,6 +30,7 @@ class ConsoleOperationRepository(Protocol):
         grant_fingerprint: str,
         *,
         key_revision: int,
+        kind: str | None = None,
         status: str | None = None,
         created_from: int | None = None,
         created_before: int | None = None,

@@ -1,0 +1,48 @@
+
+> @iris-memory/console@0.1.0 check
+> npm run types:check && npm run lint && npm run typecheck && npm test && npm run build
+
+
+> @iris-memory/console@0.1.0 types:check
+> node scripts/check-types.mjs && node scripts/generate-protocol.mjs --check
+
+Published Console type generation is deterministic.
+
+> @iris-memory/console@0.1.0 lint
+> eslint . --max-warnings 0
+
+
+> @iris-memory/console@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @iris-memory/console@0.1.0 test
+> vitest run
+
+
+ RUN  v3.2.4 /Users/cassia/Local/Code/iris_memory_core/web/console
+
+ ✓ tests/client.test.ts (16 tests) 14ms
+ ✓ tests/workflows.test.tsx (13 tests) 198ms
+
+ Test Files  2 passed (2)
+      Tests  29 passed (29)
+   Start at  02:19:06
+   Duration  745ms (transform 110ms, setup 0ms, collect 238ms, tests 211ms, environment 453ms, prepare 64ms)
+
+
+> @iris-memory/console@0.1.0 build
+> tsc --noEmit && vite build && node scripts/check-build.mjs
+
+vite v7.1.4 building for production...
+transforming...
+node_modules/react-router/dist/development/index.mjs (11:0): Module level directives cause errors when bundled, "use client" in "node_modules/react-router/dist/development/index.mjs" was ignored.
+node_modules/react-router/dist/development/dom-export.mjs (1:0): Module level directives cause errors when bundled, "use client" in "node_modules/react-router/dist/development/dom-export.mjs" was ignored.
+✓ 56 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.44 kB │ gzip:  0.32 kB
+dist/assets/index-DsQ9LCF9.css    6.82 kB │ gzip:  2.27 kB
+dist/assets/index-seQyvNg8.js   309.72 kB │ gzip: 97.74 kB
+✓ built in 411ms
+Production assets: same-origin, no mock, no inline entry, no eval, allowed suffixes.

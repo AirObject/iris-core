@@ -25,7 +25,10 @@ def test_cancellation_preserves_prior_facts_and_replays_once(
     original = replace(
         operation(world, "cancel-me"),
         processed=processed,
-        payload_json='{"private_target":"never_return_this"}',
+        forget=replace(
+            operation(world, "cancel-me").forget_payload,
+            payload_json='{"private_target":"never_return_this"}',
+        ),
     )
     store = world["store"]
     with store.write() as tx:

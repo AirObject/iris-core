@@ -5,8 +5,10 @@ from dataclasses import asdict, fields
 
 from iris_memory_core.domain.console_operations import (
     ConsoleOperation,
+    ForgetOperationPayload,
     OperationProblem,
     OperationSummary,
+    TrustedBackupPayload,
 )
 from iris_memory_core.domain.errors import ConflictError
 
@@ -14,37 +16,125 @@ from iris_memory_core.domain.errors import ConflictError
 class ConsoleOperationRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
+        self._typed = (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='console_operation_forget'"
+            ).fetchone()
+            is not None
+        )
+
+    def _operation(self, row: sqlite3.Row) -> ConsoleOperation:
+        value = dict(row)
+        if not self._typed:
+            value["forget"] = ForgetOperationPayload(
+                **{field.name: value.pop(field.name) for field in fields(ForgetOperationPayload)}
+            )
+        else:
+            value.pop("forget_id")
+            value.pop("backup_id")
+            kind = value["kind"]
+            payload_type = (
+                ForgetOperationPayload if kind == "memory_forget" else TrustedBackupPayload
+            )
+            table = (
+                "console_operation_forget"
+                if kind == "memory_forget"
+                else "console_operation_backups"
+            )
+            saved = self._connection.execute(
+                f"SELECT {','.join(field.name for field in fields(payload_type))} FROM {table} "
+                "WHERE operation_id=?",
+                (value["id"],),
+            ).fetchone()
+            if saved is None:
+                raise ValueError("operation typed payload is missing")
+            value["forget" if kind == "memory_forget" else "backup"] = payload_type(**dict(saved))
+        return ConsoleOperation(**value)
 
     def get(self, tenant_id: str, identifier: str) -> ConsoleOperation | None:
         row = self._connection.execute(
             "SELECT * FROM console_operations WHERE tenant_id=? AND id=?",
             (tenant_id, identifier),
         ).fetchone()
-        return ConsoleOperation(**dict(row)) if row is not None else None
+        return self._operation(row) if row is not None else None
 
     def insert(self, operation: ConsoleOperation) -> None:
         row = asdict(operation)
+        forget, backup = row.pop("forget"), row.pop("backup")
+        if operation.kind == "memory_forget" and forget is not None and backup is None:
+            payload, table, reference = forget, "console_operation_forget", "forget_id"
+        elif operation.kind == "trusted_backup" and backup is not None and forget is None:
+            payload, table, reference = backup, "console_operation_backups", "backup_id"
+            if (
+                operation.status != "queued"
+                or operation.processed
+                or backup["result_ref"] is not None
+            ):
+                raise ValueError("new backup must be unexecuted")
+        else:
+            raise ValueError("operation kind and payload differ")
+        row[reference] = operation.id
         self._connection.execute(
             f"INSERT INTO console_operations ({','.join(row)}) "
             f"VALUES ({','.join('?' for _ in row)})",
             tuple(row.values()),
         )
+        detail = {
+            "operation_id": operation.id,
+            "tenant_id": operation.tenant_id,
+            "key_id": operation.key_id,
+            **payload,
+        }
+        self._connection.execute(
+            f"INSERT INTO {table} ({','.join(detail)}) VALUES ({','.join('?' for _ in detail)})",
+            tuple(detail.values()),
+        )
 
     def advance(self, operation: ConsoleOperation, *, expected_revision: int) -> None:
+        # Payload and common CAS remain atomic even if a caller catches a conflict.
+        self._connection.execute("SAVEPOINT console_operation_advance")
+        try:
+            self._advance(operation, expected_revision=expected_revision)
+        except BaseException:
+            self._connection.execute("ROLLBACK TO console_operation_advance")
+            self._connection.execute("RELEASE console_operation_advance")
+            raise
+        self._connection.execute("RELEASE console_operation_advance")
+
+    def _advance(self, operation: ConsoleOperation, *, expected_revision: int) -> None:
         if operation.revision != expected_revision + 1:
             raise ConflictError("operation revision must advance exactly once")
-        names = (
+        names: tuple[str, ...] = (
             "status",
             "revision",
             "processed",
-            "payload_json",
-            "expected_deletion_seq",
             "current_job_id",
             "blocked_reason",
             "updated_us",
             "started_us",
             "finished_us",
         )
+        if operation.kind == "memory_forget":
+            payload = operation.forget_payload
+            if self._typed:
+                self._connection.execute(
+                    "UPDATE console_operation_forget SET payload_json=?,expected_deletion_seq=? "
+                    "WHERE operation_id=?",
+                    (payload.payload_json, payload.expected_deletion_seq, operation.id),
+                )
+            else:
+                names += ("payload_json", "expected_deletion_seq")
+        elif operation.backup is not None:
+            self._connection.execute(
+                "UPDATE console_operation_backups SET result_ref=?,manifest_hash=?,verified_us=? "
+                "WHERE operation_id=?",
+                (
+                    operation.backup.result_ref,
+                    operation.backup.manifest_hash,
+                    operation.backup.verified_us,
+                    operation.id,
+                ),
+            )
         changed = self._connection.execute(
             f"UPDATE console_operations SET {','.join(name + '=?' for name in names)} "
             "WHERE tenant_id=? AND id=? AND revision=? AND processed<=? "
@@ -68,6 +158,7 @@ class ConsoleOperationRepository:
         grant_fingerprint: str,
         *,
         key_revision: int,
+        kind: str | None = None,
         status: str | None = None,
         created_from: int | None = None,
         created_before: int | None = None,
@@ -78,6 +169,9 @@ class ConsoleOperationRepository:
             raise ValueError("operation page exceeds its bound")
         clauses = ["tenant_id=?", "key_id=?", "grant_fingerprint=?", "key_revision=?"]
         values: list[str | int] = [tenant_id, key_id, grant_fingerprint, key_revision]
+        if kind is not None:
+            clauses.append("kind=?")
+            values.append(kind)
         if status is not None:
             clauses.append("status=?")
             values.append(status)

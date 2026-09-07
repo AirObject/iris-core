@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T17:49:26.412007+00:00",
+  "updated_at": "2026-09-07T19:55:14.717353+00:00",
   "automation_id": null,
   "sequence": [
     "W01",
@@ -24,9 +24,9 @@
     "W19",
     "W20"
   ],
-  "current_package": "W03",
-  "status": "completed_pending_commit",
-  "start_commit": "4c6277b296cbf5bce46ca5e099532de753350991",
+  "current_package": "W04",
+  "status": "acceptance_passed_pending_commit",
+  "start_commit": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
   "completed_packages": [
     {
       "package": "W01",
@@ -39,12 +39,18 @@
       "commit": "4c6277b296cbf5bce46ca5e099532de753350991",
       "report": "docs/reports/w02-graph-quantitative-gates.md",
       "final_ci": ".work-package-runs/W02/ci-001/result.json"
+    },
+    {
+      "package": "W03",
+      "commit": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
+      "report": "docs/reports/w03-persona-quantitative-gates.md",
+      "final_ci": ".work-package-runs/W03/ci-001/result.json"
     }
   ],
-  "report": "docs/reports/w03-persona-quantitative-gates.md",
+  "report": "docs/reports/w04-operations-trusted-backup.md",
   "next_actions": [
-    "Commit W03 alone after final report/queue/doc diff checks.",
-    "Immediately create W04 report and checkpoint from W03 commit; review current Operation and trusted backup design/ADR/migration requirements."
+    "Commit completed W04 report, evidence, queue and implementation independently.",
+    "Record actual W04 commit then immediately create W05 report/queue/checkpoint and begin original full scope."
   ],
   "constraints": [
     "No synchronous long validation, dense polling, idle wait or starting later packages before current acceptance.",
@@ -55,28 +61,49 @@
   "blockers": [],
   "background_tasks": [],
   "verification": {
-    "policy-smoke-001": "Timed out at 120s: -k 0 or 1 selected 1792 cases, more than intended; no reported failures before timeout. Complete 2800-case batch uses measured 600s bound.",
-    "clock-001": "Passed: three identical UTC day-boundary/forward/backward/pause/restart/late-job trajectories.",
-    "http-001": "Passed: 50 distinct credential+HTTP clients, 1 published, 49 revision_mismatch, 50/50 Current+Recall Revision/Hash matches.",
-    "static-001": "format/lint/docs/types/contracts/public API all passed; subsequent allowlist/sensitive-field broadening will be checked in final CI.",
-    "policy-001": "2800 passed in 232.54s; all 14 properties x200. Broadened allowlist/sensitive paths revalidated separately before final CI.",
-    "field-paths-001": "400 passed in 33.57s; allowlist and sensitive fields cover legal Trait/Narrative paths.",
-    "regression-001": "142 passed in 33.72s; existing Persona service/Console authorization/CAS/transactions/recovery/migration/domain tests.",
-    "ci-001": "PASSED: 14768 functional / 85.55%, 11 performance, 19 SDK, 29 Console unit, 20 real browser, fresh packages and isolated installation/API/Worker/SDK. No material candidate drift; 211 package inputs match; four artifact hashes identical to W02.",
-    "ci-001-performance": "11 passed in 42.49s; Persona Current 200 warm-cache reads, concurrency 1, p95 1.89ms / median 1.35ms; full CI still pending."
+    "forget-regression-001": "passed:27",
+    "backup-003": "passed:16",
+    "migrations-002": "passed:140",
+    "make_ci": {
+      "status": "passed",
+      "run": "ci-003",
+      "result": ".work-package-runs/W04/ci-003/result.json",
+      "log": ".work-package-runs/W04/ci-003/output.log"
+    },
+    "browser-001": "passed:1 actual Chrome + independent worker",
+    "fixes-001": "passed:570 targeted failures and real HTTP/SDK",
+    "console-check-001": "passed:29 units + lint/types/build",
+    "affected-002": "failed:1846 passed, 13 failures, 54 setup errors; fixes-001 addresses all failures; full CI still required",
+    "lease-final-001": "passed:60, including actual lease renewal, two-worker fencing, backup verification and Outbox",
+    "problems-red-001": "2 expected failures reproduce actual HTTP schema mismatch",
+    "problems-green-001": "passed:431 actual HTTP and contract regressions",
+    "ci-001": "failed:14789 passed,4 stale migration/handler inventory expectations failed;85.59% coverage;nonfinal pre-contract-fix candidate",
+    "ci-fixes-002": "passed:83; all migration inventory and enabled-handler assertions corrected",
+    "ci-002": "failed:14795 functional tests passed;11 performance passed;20 browser passed,1 real login rate-limit not handled;package stages not reached",
+    "package-001": "passed: fresh Core/SDK wheel+sdist, archive boundaries, isolated Schema21 HTTP/Worker/SDK and installed Recall",
+    "browser-002": "failed:20 passed,1 test helper incorrectly assumed cleared-key disabled UI represented Retry-After cooldown; helper corrected to bounded one-shot server-directed delay",
+    "browser-003": "failed:20 passed,1 test expected successful retry while independent key window still blocked; two retries maximum now handle staggered address/key windows",
+    "browser-004": "passed:21 real browser tests;29 Console units, lint/types/build; real address/key Retry-After honored with bounded retries",
+    "ci-003": "passed:14795 functional/85.58%coverage,11 performance,19 TS SDK,29 Console units,21 actual browsers, fresh packages and isolated installation"
   },
   "contract_version": "1.11.0",
   "continuation_policy": "User cancelled scheduled automation. Continue active goal from actual background process/session completion events, with no clock sleeps or scheduled-time phase barriers.",
   "automation_status": "deleted by user request on 2026-09-08 Asia/Shanghai",
   "goal_runtime_status": "active (get_goal confirmed after user resumed)",
-  "previous_goal_turn_classification": "verified wait: cell 209 live; W03 CI remained nonterminal while performance evidence was recorded.",
-  "current_goal_turn_classification": "progress: ci-001 completed exit 0; final evidence archived and candidate/package hashes verified, preparing W03 commit.",
-  "completion_watch": {
-    "exec_cell_id": "209",
-    "session_id": 38934,
-    "store_key": "w03_ci_completion_watch",
-    "mode": "Await existing native process handle; completion emits result. No scheduled automation.",
-    "status": "completed successfully; exec cell consumed"
+  "previous_goal_turn_classification": "progress: actual problem-page contract failures reproduced and repaired; 431 targeted regressions passed.",
+  "current_goal_turn_classification": "progress: ci-003 passed; no material drift, final evidence archived; W04 acceptance completed pending independent commit.",
+  "runtime_versions": {
+    "core": "0.14.0",
+    "schema": 21,
+    "contract": "1.11.0",
+    "console_contract": "1.1.0",
+    "python_sdk": "0.11.1",
+    "typescript_sdk": "0.11.2"
   },
-  "ci_candidate_material_drift": []
+  "completion_watch": {
+    "cell_id": "365",
+    "session_id": 93121,
+    "mode": "native session completion watcher; do not separately poll session",
+    "status": "completed_and_consumed"
+  }
 }

@@ -92,7 +92,8 @@ def test_inconsistent_operation_aborts_restore_before_replacing_destination(
     with sqlite3.connect(snapshot / "canonical.sqlite3") as connection:
         if corruption == "payload":
             connection.execute(
-                "UPDATE console_operations SET payload_json='[]' WHERE id=?", (operation_id,)
+                "UPDATE console_operation_forget SET payload_json='[]' WHERE operation_id=?",
+                (operation_id,),
             )
         else:
             connection.execute(

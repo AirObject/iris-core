@@ -121,7 +121,7 @@
       }
     ]
   },
-  "package_version": "0.13.0",
+  "package_version": "0.14.0",
   "paths": {
     "/health/live": {
       "get": {
@@ -1533,7 +1533,7 @@
             }
           },
           {
-            "description": "Bi-temporal read point (§19.4)",
+            "description": "Bi-temporal read point (\u00a719.4)",
             "in": "query",
             "name": "as_of_us",
             "required": false,
@@ -2005,7 +2005,7 @@
     },
     "/v1/entities/{entity_id}/profile": {
       "get": {
-        "description": "Structured profile read surface (Phase 8, ADR-0016 §2): field-level sourced summary of an entity's canonical claims. The response reports whether the trusted projection served the fields or the canonical fallback derived them (identical semantics).",
+        "description": "Structured profile read surface (Phase 8, ADR-0016 \u00a72): field-level sourced summary of an entity's canonical claims. The response reports whether the trusted projection served the fields or the canonical fallback derived them (identical semantics).",
         "operationId": "getEntityProfile",
         "parameters": [
           {
@@ -5482,7 +5482,7 @@
             }
           },
           {
-            "description": "Space-scoped record address (§5.2)",
+            "description": "Space-scoped record address (\u00a75.2)",
             "in": "query",
             "name": "space_id",
             "required": false,
@@ -6164,7 +6164,7 @@
     "trigger-view.schema.json": "TriggerView",
     "version-manifest.schema.json": "VersionManifest"
   },
-  "schema_version": 20,
+  "schema_version": 21,
   "schemas": {
     "AdminJob": {
       "$id": "https://schemas.iris-memory-core.local/v1/admin-job.schema.json",
@@ -9482,7 +9482,7 @@
             },
             "properties": {
               "actor_entity_id_at_ingest": {
-                "description": "Server-resolved actor snapshot. Only accepted together with actor_external_identity_id and must match that identity's confirmed binding (ADR-0009 §1); supplying it alone is invalid_request.",
+                "description": "Server-resolved actor snapshot. Only accepted together with actor_external_identity_id and must match that identity's confirmed binding (ADR-0009 \u00a71); supplying it alone is invalid_request.",
                 "minLength": 1,
                 "type": "string"
               },

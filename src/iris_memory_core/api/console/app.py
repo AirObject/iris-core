@@ -32,6 +32,7 @@ from iris_memory_core.api.console.routes_persona_proposals import router as pers
 from iris_memory_core.api.console.routes_persona_states import router as persona_states_router
 from iris_memory_core.api.console.routes_personas import router as personas_router
 from iris_memory_core.api.console.views import envelope
+from iris_memory_core.application.console.backup_operations import TrustedBackupArchive
 from iris_memory_core.application.ports.clock import Clock, SystemClock, Uuid7Generator
 from iris_memory_core.domain.errors import DomainError
 from iris_memory_core.observability.logging import LowSensitivityLogger
@@ -90,6 +91,7 @@ def create_console_app(
     config: ConsoleConfig | None = None,
     clock: Clock | None = None,
     logger: LowSensitivityLogger | None = None,
+    archives: TrustedBackupArchive | None = None,
 ) -> FastAPI:
     deployment = config or ConsoleConfig()
     deployment.validate()
@@ -97,6 +99,7 @@ def create_console_app(
     contract = load_contract()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
     app.state.console_config = deployment
+    app.state.archives = archives
     if store is not None:
         app.state.security, app.state.crypto = assemble(store)
     else:
@@ -177,6 +180,14 @@ def create_console_app(
                     if "memory.read" in principal.permissions
                     and hasattr(principal, "key")
                     and "console.manage" in principal.key.grant.data_purposes
+                    else []
+                )
+                + (
+                    ["operations"]
+                    if "backups.write" in principal.permissions
+                    and hasattr(principal, "key")
+                    and "console.manage" in principal.key.grant.data_purposes
+                    and not {"memory.read", "memory.forget"} <= set(principal.permissions)
                     else []
                 ),
                 "read_only": False,

@@ -5,12 +5,20 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
+from iris_memory_core.domain.console_operations import TrustedBackupPayload
 from iris_memory_core.domain.hashing import canonical_json
-from iris_memory_core.storage.backup import create_standalone_backup, verify_backup
+from iris_memory_core.storage.backup import (
+    create_standalone_backup,
+    verify_backup,
+    verify_database_invariants,
+    write_backup_files,
+)
 from iris_memory_core.storage.uow import Store
 
 EXPORT_TABLES = (
@@ -52,6 +60,65 @@ class AdminArchiveService:
         self._backup_root = backup_root
         self._export_root = export_root
         self._signing_key = backup_signing_key
+
+    def _trusted_path(self, reference: str) -> Path:
+        if str(UUID(reference)) != reference:
+            raise ValueError("invalid internal backup reference")
+        return self._backup_root / "trusted" / reference
+
+    def create_verified(self, reference: str) -> TrustedBackupPayload:
+        """Each attempt has its own private, atomically published directory."""
+        import shutil
+
+        destination = self._trusted_path(reference)
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if not destination.exists():
+            staging = Path(tempfile.mkdtemp(prefix=".pending-", dir=destination.parent))
+            snapshot = staging / "snapshot"
+            try:
+                write_backup_files(
+                    self._store.runtime.database,
+                    snapshot,
+                    reference,
+                    signing_key=self._signing_key,
+                    artifact_root=self._store.artifact_root,
+                )
+                if not verify_backup(snapshot, signing_key=self._signing_key).ok:
+                    raise RuntimeError("backup verification failed")
+                snapshot.chmod(0o700)
+                snapshot.rename(destination)
+                descriptor = os.open(destination.parent, os.O_RDONLY)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+            finally:
+                if staging.exists():
+                    shutil.rmtree(staging)
+        manifest = (destination / "manifest.json").read_bytes()
+        result = TrustedBackupPayload(
+            reference, hashlib.sha256(manifest).hexdigest(), self._store.clock.now_us()
+        )
+        if not self.verify_result(result):
+            raise RuntimeError("backup verification failed")
+        return result
+
+    def verify_result(self, result: TrustedBackupPayload) -> bool:
+        if result.result_ref is None or result.manifest_hash is None or result.verified_us is None:
+            return False
+        try:
+            destination = self._trusted_path(result.result_ref)
+            return (
+                not destination.is_symlink()
+                and verify_backup(destination, signing_key=self._signing_key).ok
+                and hashlib.sha256((destination / "manifest.json").read_bytes()).hexdigest()
+                == result.manifest_hash
+                and json.loads((destination / "manifest.json").read_bytes())["backup_id"]
+                == result.result_ref
+                and not verify_database_invariants(destination / "canonical.sqlite3")
+            )
+        except (OSError, ValueError, KeyError, sqlite3.Error):
+            return False
 
     def create_backup(self, operation_id: str) -> dict[str, object]:
         self._backup_root.mkdir(parents=True, exist_ok=True)

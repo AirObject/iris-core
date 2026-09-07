@@ -1,0 +1,22 @@
+{
+  "run": "ci-001",
+  "scope": "Completed performance stage only; not W04 final acceptance.",
+  "source_log": ".work-package-runs/W04/ci-001/output.log",
+  "log_prefix_sha256": "b609affb48abfdb41f916bf5c9ad9c673ef016eb204c9b6f5ac7190bff857def",
+  "results": [
+    "graph+profile hybrid recall: p50=28.8ms p95=30.8ms max=31.6ms samples=40 budget=250ms",
+    "hybrid recall: p50=29.8ms p95=30.9ms max=31.1ms samples=40 embed_p50=0.03ms faiss_p50=1.71ms",
+    "single-observation p95=3.52ms median=3.30ms",
+    "environment: python=3.12.13; sqlite=3.50.4; platform=arm64/Darwin; concurrency=1; payload=512B content per record",
+    "batch-100 p95=11.93ms median=11.56ms",
+    "environment: sqlite=(3, 50, 4); observations=7000; outbox_jobs=7000 (unsettled and completed)",
+    "persona-current p95=1.50ms median=1.38ms",
+    "structured recall: p50=24.01ms p95=24.77ms max=25.45ms samples=40",
+    "fts recall: p50=27.00ms p95=31.68ms max=33.59ms samples=40",
+    "environment: python=3.12.13 sqlite=3.50.4 machine=arm64 os=Darwin",
+    "state coalesced write (sequential stream, coalescing active): samples=120 payload_bytes=121 corpus=2000 rows | p50=8.92ms p95=9.34ms",
+    "contention burst (reported, single-writer gate queueing): samples=24 concurrency=8 p95=150.03ms | busy_events=0 | projection_jobs=2009 pending=2009 hot_key_revisions=155 queue_lag_us=18713200",
+    "============================= 11 passed in 41.32s =============================="
+  ],
+  "final_candidate_ci_required": true
+}

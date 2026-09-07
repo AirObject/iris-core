@@ -14,11 +14,12 @@ Console 在 `/console/v1` 提供独立管理平面，最终范围包括密钥、
 | 授权与读面 | 资源、lookup、Task 子资源和 Persona 读面；路径以生成契约为准；ADR-0023 已修复非 UUID 冲突，专项回归通过 | 生产规模与完整权限/容量门禁 |
 | React 前端 | 生成类型与正式 descriptor 已对齐；真实 Note 列表/详情/历史、认证及密钥流程通过浏览器验证 | 其余业务页仍仅有模拟验证 |
 | 管理写入 | ADR-0025 执行器、State 创建/更正/过期、Note 与 Focus 创建/编辑/状态转换、Focus 激活及 Task 主资源/步骤/依赖/触发器管理已接通，复用领域事务与严格契约 | 其他资源写入和 Forget 尚待实施 |
-| 固定筛选与批量 Forget Operation | ADR-0042、Schema 20 已整合：1–500 固定根、每批 50、实际授权/fence、进度/问题分页/取消及恢复阻塞；当前组合验收中 | 完整 CI 与安装证据待补；其他 Operation 类型未实现 |
+| 固定筛选与批量 Forget Operation | ADR-0042 已验收：1–500 固定根、每批 50、实际授权/fence、进度/问题分页/取消及恢复阻塞；W04 已验收以 Schema 21 分离类型载荷并保留历史约束 | Schema21 完整 CI 与安装复验通过；后续类型按各包注册 |
+| 可信备份 Operation | W04 已验收按 ADR-0048 接入既有 Outbox/Worker/Lease；实际创建并校验内部备份，具备权限复核、取消、接管和恢复阻塞；服务与真实浏览器定向验收通过 | 完整 CI 已通过；其余运维动作仍待各包实现 |
 | 统计、导入导出、Provider、Settings、其他运维 | 本文保留目标语义，前端只有设计适配与模拟验证 | 真实领域接线与发布门禁 |
-| 版本与迁移 | Schema 20 / Python 0.13.0 / `/v1` Contract 1.10.0 / Console Contract 1.1.0 | 已有库须按 ADR-0026 离线备份升级；完整发布门禁不能引用旧 Schema 的结果替代 |
+| 版本与迁移 | W04 已验收 Schema 21 / Python 0.14.0 / `/v1` Contract 1.11.0 / Console Contract 1.1.0 | 已有库须按 ADR-0048 离线备份升级；完整发布门禁不能引用旧 Schema 的结果替代 |
 
-§2–4 说明公共边界及已实现认证；§5 的 memory/lookup、Task 子资源与 Persona GET 已接线并通过读面专项验证，保留/Hold 及写动作仍为目标；§6–10 与 §11 的其他运维动作仍是目标规格；批量 Forget Operation 的当前实现以 ADR-0042 为准。文中的未来接口、表和设计上限不能作为部署现状。实施次序与退出门禁只在阶段文档维护。
+§2–4 说明公共边界及已实现认证；§5 的 memory/lookup、Task 子资源与 Persona GET 已接线并通过读面专项验证，保留/Hold 及其余写动作仍为目标；§6–10 与 §11 的其他运维动作仍是目标规格；批量 Forget Operation 以 ADR-0042 为准，W04 类型化 Operation 与内部可信备份以 ADR-0048 及 W04 报告为准。文中的未来接口、表和设计上限不能作为部署现状。实施次序与退出门禁只在阶段文档维护。
 
 bootstrap 当前根据权限发布 `keys`、`service_credentials`，并在 `memory.read` 与 `console.manage` Purpose 同时满足时发布 `memory`。其中 `pending_restart=false`、`import_in_progress=false` 是当前固定返回值，不能据此认为 Settings/导入已经接线。
 

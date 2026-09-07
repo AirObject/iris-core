@@ -33,3 +33,5 @@
 - [W02 Graph 原量化门禁](w02-graph-quantitative-gates.md)：Completed，真实路由预算、五类各 50 次竞态及完整 CI 已通过。
 
 - [W03 Persona 原量化门禁](w03-persona-quantitative-gates.md)：Completed，Policy 每项 200 案例、50 客户端发布、三次时钟轨迹及完整 CI 通过。
+
+- [W04 Operation 扩展与可信备份](w04-operations-trusted-backup.md)：Completed，Schema21 类型化 Operation 与内部校验备份；14795 项功能、21 项真实浏览器及完整 CI/安装通过。

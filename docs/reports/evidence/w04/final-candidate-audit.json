@@ -1,0 +1,58 @@
+{
+  "verified_at": "2026-09-07T19:54:00.022599+00:00",
+  "batch": "ci-003",
+  "material_files_checked": 1283,
+  "material_drift": [],
+  "package_input_hashes_match": true,
+  "package_input_count": 216,
+  "ci_result": {
+    "started_at": "2026-09-07T19:30:07.482294+00:00",
+    "supervisor_pid": 58721,
+    "child_pid": 58727,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T19:52:37.482895+00:00"
+  },
+  "core_version": "0.14.0",
+  "schema_version": 21,
+  "business_contract_version": "1.11.0",
+  "console_contract_version": "1.1.0",
+  "python_sdk_version": "0.11.1",
+  "typescript_sdk_version": "0.11.2",
+  "environment": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "python": "3.12.13",
+    "sqlite": [
+      3,
+      50,
+      4
+    ],
+    "node": "v26.8.1",
+    "browser_executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "development_sqlite_override": true
+  },
+  "closing_document_changes": [
+    "docs/design/console-backend.md",
+    "docs/development/phase-14-hardening-release.md",
+    "docs/development/serial-execution-state.json",
+    "docs/development/work-packages.md",
+    "docs/reports/README.md",
+    "docs/reports/evidence/w04/artifact-digests.json",
+    "docs/reports/evidence/w04/browser-004/candidate-files.json",
+    "docs/reports/evidence/w04/browser-004/output.log",
+    "docs/reports/evidence/w04/browser-004/result.json",
+    "docs/reports/evidence/w04/browser-004/task.json",
+    "docs/reports/evidence/w04/ci-003/candidate-files.json",
+    "docs/reports/evidence/w04/ci-003/output.log",
+    "docs/reports/evidence/w04/ci-003/result.json",
+    "docs/reports/evidence/w04/ci-003/task.json",
+    "docs/reports/evidence/w04/completed-batches.json",
+    "docs/reports/evidence/w04/final-candidate-audit.json",
+    "docs/reports/evidence/w04/package-inputs.json",
+    "docs/reports/phase-14-verification.md",
+    "docs/reports/w04-operations-trusted-backup.md",
+    "web/console/INTEGRATION_MATRIX.md"
+  ],
+  "closing_non_document_drift": []
+}

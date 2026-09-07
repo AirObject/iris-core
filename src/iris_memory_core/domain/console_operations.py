@@ -4,6 +4,23 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
+class ForgetOperationPayload:
+    preview_id: str
+    preview_hash: str
+    mode: str
+    payload_json: str
+    expected_deletion_seq: int
+    holds_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class TrustedBackupPayload:
+    result_ref: str | None = None
+    manifest_hash: str | None = None
+    verified_us: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ConsoleOperation:
     id: str
     tenant_id: str
@@ -12,18 +29,12 @@ class ConsoleOperation:
     grant_fingerprint: str
     session_id: str
     session_epoch: int
-    preview_id: str
-    preview_hash: str
     kind: str
-    mode: str
     reason_code: str
     status: str
     revision: int
     processed: int
     total: int
-    payload_json: str
-    expected_deletion_seq: int
-    holds_version: str
     current_job_id: str | None
     blocked_reason: str | None
     created_us: int
@@ -31,6 +42,34 @@ class ConsoleOperation:
     started_us: int | None
     finished_us: int | None
     problems_count: int = 0
+    forget: ForgetOperationPayload | None = None
+    backup: TrustedBackupPayload | None = None
+
+    @property
+    def forget_payload(self) -> ForgetOperationPayload:
+        if self.kind != "memory_forget" or self.forget is None:
+            raise ValueError("operation is not a Forget operation")
+        return self.forget
+
+    @property
+    def preview_id(self) -> str:
+        return self.forget_payload.preview_id
+
+    @property
+    def mode(self) -> str:
+        return self.forget_payload.mode
+
+    @property
+    def payload_json(self) -> str:
+        return self.forget_payload.payload_json
+
+    @property
+    def expected_deletion_seq(self) -> int:
+        return self.forget_payload.expected_deletion_seq
+
+    @property
+    def holds_version(self) -> str:
+        return self.forget_payload.holds_version
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +86,6 @@ class OperationSummary:
 
     id: str
     kind: str
-    mode: str
     status: str
     revision: int
     processed: int

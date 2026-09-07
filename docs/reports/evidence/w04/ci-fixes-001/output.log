@@ -1,0 +1,133 @@
+...FF................................................................... [ 86%]
+...........                                                              [100%]
+=================================== FAILURES ===================================
+___________ test_backfill_historic_tombstone_without_duplicate[True] ___________
+
+clocked_store = <iris_memory_core.storage.uow.Store object at 0x10be04e30>
+clocked_tenant_id = 'tenant-a'
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-47/test_backfill_historic_tombsto0')
+before_creation = True
+
+    @pytest.mark.parametrize("before_creation", [True, False])
+    def test_backfill_historic_tombstone_without_duplicate(
+        clocked_store: Any, clocked_tenant_id: str, tmp_path: Path, before_creation: bool
+    ) -> None:
+        old = tmp_path / "old"
+        old.mkdir()
+        for migration in default_migrations_path().glob("*.sql"):
+            if int(migration.name[:4]) <= 16:
+                shutil.copyfile(migration, old / migration.name)
+        database = tmp_path / "legacy.sqlite3"
+        MigrationRunner(database, old).migrate()
+        store = Store(
+            SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)),
+            clock=clocked_store.clock,
+            verify_schema_window=False,
+        )
+        with store.write() as tx:
+            tx.insert_tenant(clocked_tenant_id, status="active")
+        access = access_for(clocked_tenant_id, admin=True)
+        identities = IdentityService(store)
+        backups = BackupService(store)
+        backup = tmp_path / "before-historic-deletion"
+        if before_creation:
+            backups.create_backup(backup)
+        historic = identities.create_entity(access, EntityKind.PERSON)
+        newer = identities.create_entity(access, EntityKind.PERSON)
+        if not before_creation:
+            backups.create_backup(backup)
+        with store.write() as tx:
+            marker = tx.record_tombstone(
+                tenant_id=clocked_tenant_id,
+                resource_type="entity",
+                resource_id=historic.id,
+                reason_code="historic",
+                deleted_by="admin",
+            )
+        identities.tombstone_entity(access, newer.id, expected_revision=1, reason="new")
+        migrations = tmp_path / "migrations"
+        shutil.copytree(default_migrations_path(), migrations)
+        runner = MigrationRunner(store.runtime.database, migrations)
+        with pytest.raises(MigrationNotOnlineSafe):
+            runner.migrate()
+        with pytest.raises(MigrationNotOnlineSafe):
+            runner.migrate(allow_offline=True)
+>       assert [m.version for m in runner.migrate(allow_offline=True, backup_performed=True)] == [
+            17,
+            18,
+            19,
+            20,
+        ]
+E       assert [17, 18, 19, 20, 21] == [17, 18, 19, 20]
+E         
+E         Left contains one more item: 21
+E         Use -v to get more diff
+
+tests/integration/memory/test_entity_tombstone_ledger.py:139: AssertionError
+__________ test_backfill_historic_tombstone_without_duplicate[False] ___________
+
+clocked_store = <iris_memory_core.storage.uow.Store object at 0x10b7d6cf0>
+clocked_tenant_id = 'tenant-a'
+tmp_path = PosixPath('/private/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/pytest-of-cassia/pytest-47/test_backfill_historic_tombsto1')
+before_creation = False
+
+    @pytest.mark.parametrize("before_creation", [True, False])
+    def test_backfill_historic_tombstone_without_duplicate(
+        clocked_store: Any, clocked_tenant_id: str, tmp_path: Path, before_creation: bool
+    ) -> None:
+        old = tmp_path / "old"
+        old.mkdir()
+        for migration in default_migrations_path().glob("*.sql"):
+            if int(migration.name[:4]) <= 16:
+                shutil.copyfile(migration, old / migration.name)
+        database = tmp_path / "legacy.sqlite3"
+        MigrationRunner(database, old).migrate()
+        store = Store(
+            SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)),
+            clock=clocked_store.clock,
+            verify_schema_window=False,
+        )
+        with store.write() as tx:
+            tx.insert_tenant(clocked_tenant_id, status="active")
+        access = access_for(clocked_tenant_id, admin=True)
+        identities = IdentityService(store)
+        backups = BackupService(store)
+        backup = tmp_path / "before-historic-deletion"
+        if before_creation:
+            backups.create_backup(backup)
+        historic = identities.create_entity(access, EntityKind.PERSON)
+        newer = identities.create_entity(access, EntityKind.PERSON)
+        if not before_creation:
+            backups.create_backup(backup)
+        with store.write() as tx:
+            marker = tx.record_tombstone(
+                tenant_id=clocked_tenant_id,
+                resource_type="entity",
+                resource_id=historic.id,
+                reason_code="historic",
+                deleted_by="admin",
+            )
+        identities.tombstone_entity(access, newer.id, expected_revision=1, reason="new")
+        migrations = tmp_path / "migrations"
+        shutil.copytree(default_migrations_path(), migrations)
+        runner = MigrationRunner(store.runtime.database, migrations)
+        with pytest.raises(MigrationNotOnlineSafe):
+            runner.migrate()
+        with pytest.raises(MigrationNotOnlineSafe):
+            runner.migrate(allow_offline=True)
+>       assert [m.version for m in runner.migrate(allow_offline=True, backup_performed=True)] == [
+            17,
+            18,
+            19,
+            20,
+        ]
+E       assert [17, 18, 19, 20, 21] == [17, 18, 19, 20]
+E         
+E         Left contains one more item: 21
+E         Use -v to get more diff
+
+tests/integration/memory/test_entity_tombstone_ledger.py:139: AssertionError
+=========================== short test summary info ============================
+FAILED tests/integration/memory/test_entity_tombstone_ledger.py::test_backfill_historic_tombstone_without_duplicate[True]
+FAILED tests/integration/memory/test_entity_tombstone_ledger.py::test_backfill_historic_tombstone_without_duplicate[False]
+2 failed, 81 passed in 3.12s

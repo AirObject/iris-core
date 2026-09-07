@@ -391,6 +391,12 @@ _KINDS: dict[str, JobKindSpec] = dict(
             notes="Phase 2 seed handler: read-only spine consistency check.",
         ),
         _spec(
+            "console.trusted_backup",
+            priority=5,
+            enabled=True,
+            notes="Verified internal backup Operation.",
+        ),
+        _spec(
             "console.memory_forget",
             priority=1,
             lane=JobLane.SAFETY,

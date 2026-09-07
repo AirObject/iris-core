@@ -1,0 +1,21 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "tests/integration/console/test_console_backup_operations.py",
+    "tests/integration/console/test_console_task_forget.py",
+    "tests/integration/recovery/test_backup.py",
+    "tests/integration/runtime/test_outbox.py",
+    "tests/contract/test_console_contract.py",
+    "tests/integration/runtime/test_http_recall_provider_faults.py",
+    "tests/contract/test_mock_server.py",
+    "--no-cov",
+    "-q"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 600,
+  "created_at": "2026-09-07T18:29:02.899470+00:00",
+  "head": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
+  "supervisor_pid": 36893
+}

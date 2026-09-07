@@ -265,6 +265,12 @@ class OutboxService:
         cfg = self._gauge.config if self._gauge is not None else None
         return cfg.worker_max_concurrency if cfg is not None else 4
 
+    @property
+    def worker_heartbeat_seconds(self) -> float:
+        cfg = self._gauge.config if self._gauge is not None else None
+        lease_us = cfg.worker_lease_us if cfg is not None else 30_000_000
+        return lease_us / 3_000_000
+
     def claim(
         self,
         owner: str,
@@ -412,7 +418,10 @@ class OutboxService:
                     tx.outbox.tick_completion(
                         job.aggregate_id, now_us=now_us, error_code=error_code
                     )
-                if updated == 1 and job.job_kind == "console.memory_forget":
+                if updated == 1 and job.job_kind in {
+                    "console.memory_forget",
+                    "console.trusted_backup",
+                }:
                     from iris_memory_core.application.console.operations import ConsoleOperations
 
                     ConsoleOperations.record_dead_job(tx, job, now_us=now_us)

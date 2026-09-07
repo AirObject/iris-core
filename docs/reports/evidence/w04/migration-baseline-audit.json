@@ -1,0 +1,105 @@
+{
+  "baseline_commit": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
+  "migrations": [
+    {
+      "path": "migrations/0001_phase0_metadata.sql",
+      "sha256": "ec236f7e3f5691119fed78f5ef4d0ffe9983bb117936e68d733cfee63342a861",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0002_phase1_kernel.sql",
+      "sha256": "7fcd08837bd3758aa0bc1b1511d09b264abbc2b05cb55d98e4a8213ae652267c",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0003_phase2_reliability_spine.sql",
+      "sha256": "a64c8f17637bff3375aba0fe05f3ac7227ef6ebc22f73c325dba8fd81a1ccf1f",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0004_phase3_recent_state_focus.sql",
+      "sha256": "c6174cbefd745d371d72f75a4e6adaeeb856dad780370e8c133ae4806a23ee9a",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0005_phase4_notes_tasks_events.sql",
+      "sha256": "32ecc6f37f32b27443d03eb33c5365c4a0a9895b42c7df24fad6aa4a5a46f9e2",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0006_phase5_long_term_memory.sql",
+      "sha256": "3d790483994a32bea9f37c6c23a9bc556d322b34214d2b2ab8fea5321dcc689c",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0007_phase6_fts_recall.sql",
+      "sha256": "92e37560eb215e3093a068cf68f6b40002d9e575fc22407689efe5a357236ce4",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0008_phase7_vector_recall.sql",
+      "sha256": "bc4b9050be8b2a4991a4f1a0b1973780cde35132e7e98b83fa401d2ed6ed4512",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0009_phase8_profile_graph.sql",
+      "sha256": "0bd35ddf9fc1966c1d5956d405bcd7ad59aa416022e6030efda961b8f3903ca6",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0010_phase9_persona.sql",
+      "sha256": "42be7963091cd8e369a8ca2bee5ceaa0bf499169bb80d19e4b1a159e8484bdf3",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0011_phase10_consolidation_transport.sql",
+      "sha256": "bb5bdbe6b4e40e2ad14a8d3664708dd125f31731496ab252cca298e9d8db79ad",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0012_console_authentication.sql",
+      "sha256": "02b973e5401541365445f480ec01fe1974cd8c6c31290a815bc2b6170464f95d",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0013_console_read_indexes.sql",
+      "sha256": "e711b36cf202c73cc4b5105147d62f3faef78f075703f5b417292db7df80f276",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0014_recall_tenant_identity.sql",
+      "sha256": "e24a826d99acf02735a95b2880a6d8cd177bb696b270bf42a9691bde9da5a0c1",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0015_task_dependency_lifecycle.sql",
+      "sha256": "e0c81b2a765b99d154d3c95d3684f270ab8409d9aab1a0b23dfbed542cfd93df",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0016_console_command_previews.sql",
+      "sha256": "ee30cbc8ad1adbd01624f52c8b1fbaee1d3da459dd847b7408cefbec8d10093c",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0017_entity_tombstone_ledger.sql",
+      "sha256": "5e47593f6102005bec47364429e6af3dfaafb0e4325d5483cad9eea0c7bb44df",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0018_state_deletion_generation.sql",
+      "sha256": "48715e0c1ac5c40a30d394ffcc8687e1fc4ca9a49bb091783803890511ec29bc",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0019_task_deletion_lookups.sql",
+      "sha256": "e9e04e08e473ade7f837e96afee511cbcb798bba4aa26bd241820e0414156919",
+      "unchanged": true
+    },
+    {
+      "path": "migrations/0020_console_operations.sql",
+      "sha256": "015b469d5f33e956e9412284c6deb1957dbd56218b5db4b82f6ec2df23025190",
+      "unchanged": true
+    }
+  ]
+}

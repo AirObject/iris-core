@@ -1,0 +1,120 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+__________ test_unverified_unavailable_and_cross_tenant_results_block __________
+
+backup = {'access': AccessContext(tenant_id='tenant-a', app_instance_id='app-1', agent_ids=frozenset({'01a07d2d-b080-7349-bf07-... at 0x10910c9e0>, 'archives': <iris_memory_core.storage.admin_archives.AdminArchiveService object at 0x108fdbd10>, ...}
+
+    def test_unverified_unavailable_and_cross_tenant_results_block(backup: dict[str, Any]) -> None:
+        operation = accept(backup)
+        assert backup["service"].prerequisite(backup["tenant"], operation.id) == (
+            None,
+            "backup_not_verified",
+        )
+        unavailable = BackupOperations(backup["security"], None)
+        job = claim(backup)
+        assert backup["outbox"].execute(job, unavailable.work, owner="first") == "completed"
+        current = ConsoleOperations(backup["security"]).detail(backup["principal"], operation.id)
+        assert current.status == "blocked" and current.blocked_reason == "backup_unavailable"
+        assert current.backup == TrustedBackupPayload()
+        client, _ = signed_in(backup["app"], backup["token"])
+        with client:
+            problems = client.get(f"/v1/operations/{operation.id}/problems")
+            assert problems.status_code == 200
+>           validate_response("ConsoleOperationProblemPage", problems.json())
+
+tests/integration/console/test_console_backup_operations.py:138: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/contract/test_console_contract.py:98: in validate_response
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(document)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Draft202012Validator(schema={'$defs': {'BootstrapEnvelope': {'additionalProperties': True, 'properties': {'data': {'$r...ecker=<FormatChecker checkers=['date', 'email', 'idn-email', 'idn-hostname', 'ipv4', 'ipv6', 'regex', 'time', 'uuid']>)
+args = ({'data': [{'code': 'backup_unavailable', 'created_at': '2023-11-14T22:13:20.006000Z', 'input_index': None}], 'meta': ...'page': {'has_more': False, 'limit': 50, 'next_cursor': None}, 'request_id': '01a07d2d-b148-75e7-bb2d-af6c8758ee83'}},)
+kwargs = {}
+error = <ValidationError: "'backup_unavailable' is not one of ['authority_changed', 'preview_changed', 'query_budget', 'execution_failed', 'restore_requires_review']">
+
+    def validate(self, *args, **kwargs):
+        for error in self.iter_errors(*args, **kwargs):
+>           raise error
+E           jsonschema.exceptions.ValidationError: 'backup_unavailable' is not one of ['authority_changed', 'preview_changed', 'query_budget', 'execution_failed', 'restore_requires_review']
+E           
+E           Failed validating 'enum' in schema['properties']['data']['items']['properties']['code']:
+E               {'enum': ['authority_changed',
+E                         'preview_changed',
+E                         'query_budget',
+E                         'execution_failed',
+E                         'restore_requires_review'],
+E                'type': 'string'}
+E           
+E           On instance['data'][0]['code']:
+E               'backup_unavailable'
+
+.venv/lib/python3.12/site-packages/jsonschema/validators.py:450: ValidationError
+----------------------------- Captured stderr call -----------------------------
+{"duration_ms": 103.73258300023736, "event": "console.request", "id_hash": "h_7d302c721731", "status": "200"}
+{"duration_ms": 30.603041999711422, "event": "console.request", "id_hash": "h_7f0781621a0f", "status": "200"}
+________________ test_backup_does_not_inherit_forget_500_bound _________________
+
+backup = {'access': AccessContext(tenant_id='tenant-a', app_instance_id='app-1', agent_ids=frozenset({'01a07d2d-b1c4-7274-aa01-... at 0x1097ff7a0>, 'archives': <iris_memory_core.storage.admin_archives.AdminArchiveService object at 0x1098c5610>, ...}
+
+    def test_backup_does_not_inherit_forget_500_bound(backup: dict[str, Any]) -> None:
+        operation = accept(backup)
+        with backup["store"].write() as tx:
+            tx.raw().execute("UPDATE console_operations SET total=1000000 WHERE id=?", (operation.id,))
+            tx.console_operations.add_problem(
+                OperationProblem(operation.id, 9000, "execution_failed", operation.created_us)
+            )
+        assert (
+            backup["outbox"].execute(claim(backup), backup["service"].work, owner="first")
+            == "completed"
+        )
+        assert (
+            ConsoleOperations(backup["security"]).detail(backup["principal"], operation.id).processed
+            == 1000000
+        )
+        client, _ = signed_in(backup["app"], backup["token"])
+        with client:
+            problems = client.get(f"/v1/operations/{operation.id}/problems")
+            assert problems.status_code == 200
+>           validate_response("ConsoleOperationProblemPage", problems.json())
+
+tests/integration/console/test_console_backup_operations.py:425: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/contract/test_console_contract.py:98: in validate_response
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(document)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Draft202012Validator(schema={'$defs': {'BootstrapEnvelope': {'additionalProperties': True, 'properties': {'data': {'$r...ecker=<FormatChecker checkers=['date', 'email', 'idn-email', 'idn-hostname', 'ipv4', 'ipv6', 'regex', 'time', 'uuid']>)
+args = ({'data': [{'code': 'execution_failed', 'created_at': '2023-11-14T22:13:20.006000Z', 'input_index': 9000}], 'meta': {'...'page': {'has_more': False, 'limit': 50, 'next_cursor': None}, 'request_id': '01a07d2d-b2a0-7350-9367-9143030b7461'}},)
+kwargs = {}
+error = <ValidationError: '9000 is greater than the maximum of 499'>
+
+    def validate(self, *args, **kwargs):
+        for error in self.iter_errors(*args, **kwargs):
+>           raise error
+E           jsonschema.exceptions.ValidationError: 9000 is greater than the maximum of 499
+E           
+E           Failed validating 'maximum' in schema['properties']['data']['items']['properties']['input_index']:
+E               {'maximum': 499, 'minimum': 0, 'type': ['integer', 'null']}
+E           
+E           On instance['data'][0]['input_index']:
+E               9000
+
+.venv/lib/python3.12/site-packages/jsonschema/validators.py:450: ValidationError
+----------------------------- Captured stderr call -----------------------------
+{"duration_ms": 103.4468329999072, "event": "console.request", "id_hash": "h_0f08586bf4e0", "status": "200"}
+{"duration_ms": 29.999417001818074, "event": "console.request", "id_hash": "h_55ca7c653805", "status": "200"}
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/console/test_console_backup_operations.py::test_unverified_unavailable_and_cross_tenant_results_block
+FAILED tests/integration/console/test_console_backup_operations.py::test_backup_does_not_inherit_forget_500_bound
+2 failed, 2 warnings in 0.99s

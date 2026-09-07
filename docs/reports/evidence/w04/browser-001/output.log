@@ -1,0 +1,40 @@
+
+> @iris-memory/console@0.1.0 test:browser
+> playwright test backup.spec.ts
+
+(node:34625) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[WebServer] INFO:     Started server process [34628]
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:8766 (Press CTRL+C to quit)
+[WebServer] {"duration_ms": 59.75775000115391, "event": "console.request", "id_hash": "h_899053889de6", "status": "200"}
+
+Running 1 test using 1 worker
+
+(node:34663) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:34663) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(node:34663) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] {"duration_ms": 1.4948339994589332, "event": "console.request", "id_hash": "h_4007c4f568b5", "status": "200"}
+[WebServer] {"duration_ms": 1.6892080020625144, "event": "console.request", "id_hash": "h_3759d28ab92b", "status": "200"}
+[WebServer] {"duration_ms": 1.1645840022538323, "event": "console.request", "id_hash": "h_bfa2c42c5310", "status": "200"}
+[WebServer] {"duration_ms": 3.980041998147499, "event": "console.request", "id_hash": "h_b274fea71373", "status": "401"}
+[WebServer] {"duration_ms": 102.63200000190409, "event": "console.request", "id_hash": "h_bceb4695daa0", "status": "200"}
+[WebServer] {"duration_ms": 4.823084000236122, "event": "console.request", "id_hash": "h_e3cf9086e3fa", "status": "200"}
+[WebServer] {"duration_ms": 5.028833998949267, "event": "console.request", "id_hash": "h_ea8629916814", "status": "200"}
+[WebServer] {"duration_ms": 7.068167000397807, "event": "console.request", "id_hash": "h_ee53aca54625", "status": "403"}
+[WebServer] {"duration_ms": 7.743791997199878, "event": "console.request", "id_hash": "h_8a129b159995", "status": "200"}
+[WebServer] {"duration_ms": 14.434542001254158, "event": "console.request", "id_hash": "h_03fbf2f94656", "status": "202"}
+[WebServer] {"duration_ms": 3.8589159994444344, "event": "console.request", "id_hash": "h_9d620a319db9", "status": "200"}
+[WebServer] {"duration_ms": 4.261292000592221, "event": "console.request", "id_hash": "h_97d31ec6d567", "status": "200"}
+[WebServer] {"duration_ms": 1.2862080002378207, "event": "console.request", "id_hash": "h_2b7d030cf59f", "status": "200"}
+[WebServer] {"duration_ms": 2.147582999896258, "event": "console.request", "id_hash": "h_87a1f1de756d", "status": "200"}
+[WebServer] {"duration_ms": 1.3898750003136229, "event": "console.request", "id_hash": "h_5b05687ceb2a", "status": "200"}
+[WebServer] {"duration_ms": 2.544709001085721, "event": "console.request", "id_hash": "h_1b0a62e9443e", "status": "200"}
+[WebServer] {"duration_ms": 6.368457998178201, "event": "console.request", "id_hash": "h_41157b371899", "status": "200"}
+[WebServer] {"duration_ms": 4.261375001078704, "event": "console.request", "id_hash": "h_ea341e796dbb", "status": "200"}
+  ✓  1 tests/browser/backup.spec.ts:5:1 › real backup acceptance, reauthentication and independent fenced worker (2.0s)
+
+  1 passed (4.0s)

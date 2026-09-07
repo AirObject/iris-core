@@ -8,6 +8,7 @@ import json
 import os
 import tempfile
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 import uvicorn
@@ -254,7 +255,7 @@ _, operation_token = service.issue_offline(
     label="Operation browser writer",
     description="Disposable Operation flow",
     template="maintainer",
-    grant=state_key.grant,
+    grant=replace(state_key.grant, permissions=state_key.grant.permissions | {"backups.write"}),
     expires_us=state_key.expires_us,
 )
 operation_credential = Path("/tmp/imc-console-test-operation-credential")
@@ -324,7 +325,7 @@ _, event_token = service.issue_offline(
     label="Event browser writer",
     description="Disposable event dismissal flow",
     template="maintainer",
-    grant=state_key.grant,
+    grant=replace(state_key.grant, permissions=state_key.grant.permissions | {"backups.write"}),
     expires_us=state_key.expires_us,
 )
 event_credential = Path("/tmp/imc-console-test-event-credential")

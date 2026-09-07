@@ -22,6 +22,9 @@
       "/console/v1/auth/sessions/{id}:revoke": [
         "post"
       ],
+      "/console/v1/backups": [
+        "post"
+      ],
       "/console/v1/bootstrap": [
         "get"
       ],
@@ -1528,6 +1531,13 @@
           "agent_id": "01a07600-0000-7000-8000-000000000001"
         },
         "url": "forged"
+      }
+    },
+    "invalid/ConsoleBackupCreateRequest": {
+      "schema": "ConsoleBackupCreateRequest",
+      "value": {
+        "reason_code": "operator_request",
+        "unexpected_private_field": "forbidden"
       }
     },
     "invalid/ConsoleBindingCreateRequest-confidence": {
@@ -4699,6 +4709,12 @@
         }
       }
     },
+    "valid/ConsoleBackupCreateRequest": {
+      "schema": "ConsoleBackupCreateRequest",
+      "value": {
+        "reason_code": "operator_request"
+      }
+    },
     "valid/ConsoleBindingActionRequest": {
       "schema": "ConsoleBindingActionRequest",
       "value": {
@@ -5071,6 +5087,34 @@
         "status": "queued"
       }
     },
+    "valid/ConsoleOperation-backup": {
+      "schema": "ConsoleOperation",
+      "value": {
+        "available_actions": [
+          "cancel"
+        ],
+        "blocked_reason": null,
+        "cancellable": true,
+        "created_at": "2026-09-07T00:00:00.000000Z",
+        "created_by": "00000000-0000-4000-8000-000000000002",
+        "finished_at": null,
+        "id": "00000000-0000-4000-8000-000000000001",
+        "kind": "trusted_backup",
+        "phase": "backup_verify",
+        "problems_count": 0,
+        "progress": {
+          "processed": "0",
+          "total": "2",
+          "unit": "steps"
+        },
+        "reason_codes": [
+          "operator_request"
+        ],
+        "result_ref": null,
+        "started_at": null,
+        "status": "queued"
+      }
+    },
     "valid/ConsoleOperationCancelRequest": {
       "schema": "ConsoleOperationCancelRequest",
       "value": {
@@ -5155,6 +5199,22 @@
         "code": "restore_requires_review",
         "created_at": "2026-09-07T00:00:00.000000Z",
         "input_index": null
+      }
+    },
+    "valid/ConsoleOperationProblem-backup-unavailable": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "backup_unavailable",
+        "created_at": "2026-09-07T00:00:00.000000Z",
+        "input_index": null
+      }
+    },
+    "valid/ConsoleOperationProblem-generic-index": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "restore_requires_review",
+        "created_at": "2026-09-07T00:00:00.000000Z",
+        "input_index": 9000
       }
     },
     "valid/ConsoleOperationProblemPage": {
@@ -16968,7 +17028,8 @@
           "required": false,
           "schema": {
             "enum": [
-              "memory_forget"
+              "memory_forget",
+              "trusted_backup"
             ]
           }
         },
@@ -17802,6 +17863,26 @@
       "request": "ConsolePersonaPolicyReplaceRequest",
       "response": "PersonaPolicyCommandReceiptEnvelope",
       "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "method": "post",
+      "operation_id": "consoleCreateBackup",
+      "parameters": [],
+      "path": "/console/v1/backups",
+      "request": "ConsoleBackupCreateRequest",
+      "response": "ConsoleOperationEnvelope",
+      "status": 202
     }
   ],
   "permissions": [
@@ -17823,11 +17904,12 @@
     "settings.write",
     "indexes.rebuild",
     "audit.read",
-    "retention.manage"
+    "retention.manage",
+    "backups.write"
   ],
   "runtime_versions": {
-    "package_version": "0.13.0",
-    "schema_version": 20
+    "package_version": "0.14.0",
+    "schema_version": 21
   },
   "schemas": {
     "BootstrapEnvelope": {
@@ -17894,7 +17976,8 @@
               "settings.write",
               "indexes.rebuild",
               "audit.read",
-              "retention.manage"
+              "retention.manage",
+              "backups.write"
             ]
           },
           "type": "array",
@@ -18066,7 +18149,8 @@
         "permission": {
           "enum": [
             "memory.write",
-            "memory.forget"
+            "memory.forget",
+            "backups.write"
           ],
           "type": "string"
         },
@@ -18297,6 +18381,18 @@
       "required": [
         "scope",
         "fields",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleBackupCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_code": {
+          "const": "operator_request"
+        }
+      },
+      "required": [
         "reason_code"
       ],
       "type": "object"
@@ -20338,6 +20434,48 @@
     },
     "ConsoleOperation": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "phase": {
+                "const": "backup_verify"
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "steps"
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "memory_forget"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase": {
+                "const": "canonical_forget"
+              },
+              "problems_count": {
+                "maximum": 500
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "records"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "available_actions": {
           "items": {
@@ -20384,15 +20522,18 @@
         },
         "kind": {
           "enum": [
-            "memory_forget"
+            "memory_forget",
+            "trusted_backup"
           ],
           "type": "string"
         },
         "phase": {
-          "const": "canonical_forget"
+          "enum": [
+            "canonical_forget",
+            "backup_verify"
+          ]
         },
         "problems_count": {
-          "maximum": 500,
           "minimum": 0,
           "type": "integer"
         },
@@ -20406,7 +20547,10 @@
               "$ref": "#/$defs/DecimalCount"
             },
             "unit": {
-              "const": "records"
+              "enum": [
+                "records",
+                "steps"
+              ]
             }
           },
           "required": [
@@ -20529,7 +20673,8 @@
             "preview_changed",
             "query_budget",
             "execution_failed",
-            "restore_requires_review"
+            "restore_requires_review",
+            "backup_unavailable"
           ],
           "type": "string"
         },
@@ -20538,7 +20683,6 @@
           "type": "string"
         },
         "input_index": {
-          "maximum": 499,
           "minimum": 0,
           "type": [
             "integer",
@@ -22469,7 +22613,8 @@
               "settings.write",
               "indexes.rebuild",
               "audit.read",
-              "retention.manage"
+              "retention.manage",
+              "backups.write"
             ],
             "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
             "type": "string"
@@ -23864,7 +24009,8 @@
               "settings.write",
               "indexes.rebuild",
               "audit.read",
-              "retention.manage"
+              "retention.manage",
+              "backups.write"
             ],
             "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
             "type": "string"
@@ -25026,7 +25172,8 @@
               "settings.write",
               "indexes.rebuild",
               "audit.read",
-              "retention.manage"
+              "retention.manage",
+              "backups.write"
             ],
             "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
             "type": "string"

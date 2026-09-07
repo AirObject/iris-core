@@ -1,0 +1,17 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "tests/integration/memory/test_entity_tombstone_ledger.py",
+    "tests/integration/recall/test_projection_deletion_publication.py",
+    "tests/unit/test_ingestion_domain.py",
+    "--no-cov",
+    "-q"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 180,
+  "created_at": "2026-09-07T18:57:22.218305+00:00",
+  "head": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
+  "supervisor_pid": 46307
+}

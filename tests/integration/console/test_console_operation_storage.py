@@ -5,7 +5,11 @@ from typing import Any
 
 import pytest
 
-from iris_memory_core.domain.console_operations import ConsoleOperation, OperationProblem
+from iris_memory_core.domain.console_operations import (
+    ConsoleOperation,
+    ForgetOperationPayload,
+    OperationProblem,
+)
 from iris_memory_core.domain.errors import ConflictError
 from tests.integration.console.test_console_authentication import auth as auth_fixture
 from tests.integration.console.test_console_reads import world as world_fixture
@@ -24,18 +28,15 @@ def operation(world: dict[str, Any], identifier: str) -> ConsoleOperation:
         grant_fingerprint=world["owner"].grant.fingerprint,
         session_id="real-session-bound-at-http-admission",
         session_epoch=1,
-        preview_id="preview-" + identifier,
-        preview_hash="a" * 64,
         kind="memory_forget",
-        mode="soft",
         reason_code="operator_request",
         status="queued",
         revision=1,
         processed=0,
         total=51,
-        payload_json='{"states":[]}',
-        expected_deletion_seq=0,
-        holds_version="b" * 64,
+        forget=ForgetOperationPayload(
+            "preview-" + identifier, "a" * 64, "soft", '{"states":[]}', 0, "b" * 64
+        ),
         current_job_id=None,
         blocked_reason=None,
         created_us=now,
@@ -57,6 +58,13 @@ def test_progress_cas_and_transaction_failure_preserve_committed_batch(
         tx.console_operations.advance(running, expected_revision=1)
     with pytest.raises(ConflictError), store.write() as tx:
         tx.console_operations.advance(running, expected_revision=1)
+    with store.write() as tx:
+        with pytest.raises(ConflictError):
+            tx.console_operations.advance(
+                replace(running, forget=replace(running.forget_payload, payload_json="{}")),
+                expected_revision=1,
+            )
+        assert tx.console_operations.get(world["tenant"], original.id) == running
     completed = replace(running, processed=51, status="completed", revision=3)
     with pytest.raises(RuntimeError), store.write() as tx:
         tx.console_operations.advance(completed, expected_revision=2)
@@ -77,7 +85,13 @@ def test_owner_grant_pagination_and_problem_retry_are_bounded(world: dict[str, A
     with store.write() as tx:
         repository = tx.console_operations
         for index in range(3):
-            repository.insert(replace(original, id=f"op-{index}", preview_id=f"preview-{index}"))
+            repository.insert(
+                replace(
+                    original,
+                    id=f"op-{index}",
+                    forget=replace(original.forget_payload, preview_id=f"preview-{index}"),
+                )
+            )
         repository.insert(replace(original, id="other-grant", grant_fingerprint="c" * 64))
         problem = OperationProblem("op-0", 50, "preview_stale", original.created_us)
         repository.add_problem(problem)

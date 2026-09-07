@@ -4,7 +4,7 @@
 
 基于 `692de12b4b9a9d8d47ebfdd938ba9622d152f0d9` 的未提交工作区实施，保留开始时已有的范围规划修改。初始切片当时为 Core 0.13.0 / Schema 15；业务 Contract 1.10.0、Console Contract 1.1.0；独立 Python SDK 0.11.1、TS SDK 0.11.2。环境为 macOS ARM64、Python 3.12.13、SQLite 3.50.4、Node 26.8.1、Chrome。没有创建 RC、签名、上传或发布产物。
 
-当前生成契约计数（由 `make lint` 核对）：业务 <!-- contract-count:openapi:paths -->86<!-- /contract-count --> 个路径、<!-- contract-count:openapi:operations -->92<!-- /contract-count --> 个操作；Console <!-- contract-count:console:paths -->125<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->152<!-- /contract-count --> 个操作。下文逐切片的接口与测试数字保留当时的历史口径。
+当前生成契约计数（由 `make lint` 核对）：业务 <!-- contract-count:openapi:paths -->86<!-- /contract-count --> 个路径、<!-- contract-count:openapi:operations -->92<!-- /contract-count --> 个操作；Console <!-- contract-count:console:paths -->126<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->153<!-- /contract-count --> 个操作。下文逐切片的接口与测试数字保留当时的历史口径。
 
 ## 已落地切片
 
@@ -649,3 +649,7 @@ PY
 - 格式、导入边界、文档、mypy、契约生成/兼容、公共接口快照均通过；全新 sdist/wheel、归档边界、隔离安装、Required 模式 SDK/Worker 与四个私有接口拒绝检查通过。安装服务退出 -15，关闭约 **0.256s**，仍显式使用开发 SQLite Override。
 
 本轮完整组合通过不否定此前负载条件下的失败，也不证明门禁已稳定；14.4 的固定测量环境/指标决策仍待完成。没有修改门槛、提交代码、创建 RC 或发布产物。
+
+## W04 类型化 Operation 与可信备份（2026-09-08）
+
+[W04 独立报告](w04-operations-trusted-backup.md)记录 ADR-0048、Core 0.14.0 / Schema21 增量迁移、旧 Forget 历史保持及内部可信备份真实流程。最终 ci-003 全部通过：14795 项功能 / 85.58% 覆盖率、11 项性能、19 项 TS SDK、29 项 Console 单元、21 项真实浏览器和独立安装消费。报告附逐项证据、全部失败/复验日志与最终产物摘要。本切片只完成 13.11 最小前置；Phase 14 整体保持 In progress，Phase 11/12 Deferred。

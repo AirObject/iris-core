@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/v1/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consoleCreateBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/console/v1/bootstrap": {
         parameters: {
             query?: never;
@@ -2022,7 +2038,7 @@ export interface components {
             maintenance: boolean;
             modules: string[];
             pending_restart: boolean;
-            permissions: ("memory.read" | "memory.write" | "memory.forget" | "memory.history" | "persona.publish" | "keys.manage" | "service_keys.manage" | "stats.read" | "system.read" | "system.write" | "imports.write" | "exports.write" | "exports.read_all" | "providers.manage" | "settings.read" | "settings.write" | "indexes.rebuild" | "audit.read" | "retention.manage")[];
+            permissions: ("memory.read" | "memory.write" | "memory.forget" | "memory.history" | "persona.publish" | "keys.manage" | "service_keys.manage" | "stats.read" | "system.read" | "system.write" | "imports.write" | "exports.write" | "exports.read_all" | "providers.manage" | "settings.read" | "settings.write" | "indexes.rebuild" | "audit.read" | "retention.manage" | "backups.write")[];
             read_only: boolean;
             upload_limits: {
                 file_bytes: components["schemas"]["DecimalCount"];
@@ -2053,7 +2069,7 @@ export interface components {
             /** @enum {string} */
             method: "POST" | "PATCH";
             /** @enum {string} */
-            permission: "memory.write" | "memory.forget";
+            permission: "memory.write" | "memory.forget" | "backups.write";
             reason_codes: "operator_request"[];
         } & (unknown & unknown);
         CommandFieldSpec: {
@@ -2096,6 +2112,10 @@ export interface components {
             reason_code: "operator_request";
             scope: components["schemas"]["ConsoleCommandScope"];
             source_refs?: components["schemas"]["ConsoleCommandSourceRef"][];
+        };
+        ConsoleBackupCreateRequest: {
+            /** @constant */
+            reason_code: "operator_request";
         };
         ConsoleBindingActionRequest: {
             expected_revision: number;
@@ -2483,22 +2503,22 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            kind: "memory_forget";
-            /** @constant */
-            phase: "canonical_forget";
+            kind: "memory_forget" | "trusted_backup";
+            /** @enum {unknown} */
+            phase: "canonical_forget" | "backup_verify";
             problems_count: number;
             progress: {
                 processed: components["schemas"]["DecimalCount"];
                 total: components["schemas"]["DecimalCount"];
-                /** @constant */
-                unit: "records";
+                /** @enum {unknown} */
+                unit: "records" | "steps";
             };
             reason_codes: "operator_request"[];
             result_ref: null;
             started_at: string | null;
             /** @enum {string} */
             status: "queued" | "running" | "paused" | "blocked" | "completed" | "completed_with_warnings" | "failed" | "cancelled" | "cancelled_partial";
-        };
+        } & unknown;
         ConsoleOperationCancelRequest: {
             /** @constant */
             reason_code: "operator_request";
@@ -2513,7 +2533,7 @@ export interface components {
         };
         ConsoleOperationProblem: {
             /** @enum {string} */
-            code: "authority_changed" | "preview_changed" | "query_budget" | "execution_failed" | "restore_requires_review";
+            code: "authority_changed" | "preview_changed" | "query_budget" | "execution_failed" | "restore_requires_review" | "backup_unavailable";
             /** Format: date-time */
             created_at: string;
             input_index: number | null;
@@ -2922,7 +2942,7 @@ export interface components {
             allow_restricted: boolean;
             custom_privacy_labels: string[];
             data_purposes: string[];
-            permissions: ("memory.read" | "memory.write" | "memory.forget" | "memory.history" | "persona.publish" | "keys.manage" | "service_keys.manage" | "stats.read" | "system.read" | "system.write" | "imports.write" | "exports.write" | "exports.read_all" | "providers.manage" | "settings.read" | "settings.write" | "indexes.rebuild" | "audit.read" | "retention.manage")[];
+            permissions: ("memory.read" | "memory.write" | "memory.forget" | "memory.history" | "persona.publish" | "keys.manage" | "service_keys.manage" | "stats.read" | "system.read" | "system.write" | "imports.write" | "exports.write" | "exports.read_all" | "providers.manage" | "settings.read" | "settings.write" | "indexes.rebuild" | "audit.read" | "retention.manage" | "backups.write")[];
             session_selector: components["schemas"]["Selector"];
             space_group_selector: components["schemas"]["Selector"];
             space_selector: components["schemas"]["Selector"];
@@ -3229,7 +3249,7 @@ export interface components {
             allow_restricted: boolean;
             custom_privacy_labels: string[];
             data_purposes: string[];
-            permissions: ("memory.read" | "memory.write" | "memory.forget" | "memory.history" | "persona.publish" | "keys.manage" | "service_keys.manage" | "stats.read" | "system.read" | "system.write" | "imports.write" | "exports.write" | "exports.read_all" | "providers.manage" | "settings.read" | "settings.write" | "indexes.rebuild" | "audit.read" | "retention.manage")[];
+            permissions: ("memory.read" | "memory.write" | "memory.forget" | "memory.history" | "persona.publish" | "keys.manage" | "service_keys.manage" | "stats.read" | "system.read" | "system.write" | "imports.write" | "exports.write" | "exports.read_all" | "providers.manage" | "settings.read" | "settings.write" | "indexes.rebuild" | "audit.read" | "retention.manage" | "backups.write")[];
             session_selector: components["schemas"]["ReadSelector"];
             space_group_selector: components["schemas"]["ReadSelector"];
             space_selector: components["schemas"]["ReadSelector"];
@@ -3496,7 +3516,7 @@ export interface components {
             } & {
                 [key: string]: unknown;
             };
-            permissions: ("memory.read" | "memory.write" | "memory.forget" | "memory.history" | "persona.publish" | "keys.manage" | "service_keys.manage" | "stats.read" | "system.read" | "system.write" | "imports.write" | "exports.write" | "exports.read_all" | "providers.manage" | "settings.read" | "settings.write" | "indexes.rebuild" | "audit.read" | "retention.manage")[];
+            permissions: ("memory.read" | "memory.write" | "memory.forget" | "memory.history" | "persona.publish" | "keys.manage" | "service_keys.manage" | "stats.read" | "system.read" | "system.write" | "imports.write" | "exports.write" | "exports.read_all" | "providers.manage" | "settings.read" | "settings.write" | "indexes.rebuild" | "audit.read" | "retention.manage" | "backups.write")[];
             session: {
                 /** Format: date-time */
                 expires_at: string;
@@ -4189,6 +4209,111 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleCreateBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleBackupCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleOperationEnvelope"];
+                };
             };
             /** @description Console error */
             400: {
@@ -14924,7 +15049,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 cursor?: string;
-                kind?: "memory_forget";
+                kind?: "memory_forget" | "trusted_backup";
                 status?: "queued" | "running" | "paused" | "blocked" | "completed" | "completed_with_warnings" | "failed" | "cancelled" | "cancelled_partial";
                 created_from?: string;
                 created_before?: string;

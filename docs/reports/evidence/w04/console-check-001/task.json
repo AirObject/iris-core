@@ -1,0 +1,14 @@
+{
+  "command": [
+    "npm",
+    "run",
+    "check",
+    "--prefix",
+    "web/console"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 300,
+  "created_at": "2026-09-07T18:19:03.386299+00:00",
+  "head": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
+  "supervisor_pid": 33536
+}

@@ -89,18 +89,57 @@ def reset_operations_for_restore(database: Path) -> None:
         repository = ConsoleOperationRepository(connection)
         clock = SystemClock()
         ledger = LedgerRepository(connection, clock, Uuid7Generator())
+        typed = (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='console_operation_backups' "
+                "AND type='table'"
+            ).fetchone()
+            is not None
+        )
         after = ""
         while True:
             # Load at most one private snapshot; no unbounded payload materialization.
             row = connection.execute(
                 "SELECT * FROM console_operations WHERE id>? "
-                "AND status IN ('queued','running','paused','blocked') ORDER BY id LIMIT 1",
+                "AND (status IN ('queued','running','paused','blocked') OR kind='trusted_backup') "
+                "ORDER BY id LIMIT 1",
                 (after,),
             ).fetchone()
             if row is None:
                 break
-            operation = ConsoleOperation(**dict(row))
+            operation = repository.get(row["tenant_id"], row["id"])
+            assert operation is not None
             after = operation.id
+            if typed and operation.kind == "trusted_backup":
+                if operation.blocked_reason == "restore_requires_review":
+                    continue
+                now = max(clock.now_us(), operation.updated_us)
+                connection.execute(
+                    "UPDATE console_operation_backups SET result_ref=NULL,manifest_hash=NULL,"
+                    "verified_us=NULL WHERE operation_id=?",
+                    (operation.id,),
+                )
+                connection.execute(
+                    "UPDATE console_operations SET status='blocked',revision=revision+1,"
+                    "processed=0,"
+                    "current_job_id=NULL,blocked_reason='restore_requires_review',"
+                    "finished_us=NULL,updated_us=? WHERE id=?",
+                    (now, operation.id),
+                )
+                repository.add_problem(
+                    OperationProblem(operation.id, -1, "restore_requires_review", now)
+                )
+                ledger.audit(
+                    tenant_id=operation.tenant_id,
+                    actor="restore:console_operations",
+                    action="console.operation.restored",
+                    resource_type="console_operation",
+                    resource_id=operation.id,
+                    revision=operation.revision + 1,
+                    reason_code="restore_requires_review",
+                    details={"kind": "trusted_backup"},
+                )
+                continue
             if (
                 operation.blocked_reason == "restore_requires_review"
                 and operation.payload_json == "{}"
@@ -116,7 +155,7 @@ def reset_operations_for_restore(database: Path) -> None:
                     status="completed" if complete else "blocked",
                     revision=operation.revision + 1,
                     processed=processed,
-                    payload_json="{}",
+                    forget=replace(operation.forget_payload, payload_json="{}"),
                     current_job_id=None,
                     blocked_reason=None if complete else "restore_requires_review",
                     updated_us=now,

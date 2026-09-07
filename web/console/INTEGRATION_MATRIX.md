@@ -2,7 +2,7 @@
 
 核查日期：2026-09-07。当前行为以 [Console OpenAPI](../../schemas/openapi/console.json) 和实际服务为准；目标语义见 [Console 设计与接入边界](../../docs/design/console-backend.md)，测试范围见 [合并验证记录](../../docs/reports/phase-13-verification.md)。本表只维护接入差距，不另存 API 规格或历史执行流水。
 
-当前契约已有 <!-- contract-count:console:paths -->125<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->152<!-- /contract-count --> 个 HTTP 操作；前端类型已同步；Reflection/Candidate 不透明 ID 已通过契约回归。读面真实浏览器证据见 [Phase 14 报告](../../docs/reports/phase-14-verification.md)，表中其余“已接线”不等于完整验收。
+当前契约已有 <!-- contract-count:console:paths -->126<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->153<!-- /contract-count --> 个 HTTP 操作；前端类型已同步；Reflection/Candidate 不透明 ID 已通过契约回归。读面真实浏览器证据见 [Phase 14 报告](../../docs/reports/phase-14-verification.md)，表中其余“已接线”不等于完整验收。
 
 | 功能 | 当前契约/后端 | 当前前端与证据 | 下一项真实验证 |
 | --- | --- | --- | --- |
@@ -32,7 +32,7 @@
 | 导入 | 未发布 | 字节上传→映射→报告/review→commit，resume/cancel/补偿模拟 | records/映射 Schema、报告绑定、备份 blocked、事务断点、去重/删除优先 |
 | Provider | 未发布 | 草稿/探测/激活/rebuild_ack/history/rollback 模拟 | 异步探测结果路径、SSRF、配置/Worker/API 三处接线与 Generation 服务切换 |
 | Settings | 未发布 | registry/validate/原子保存/历史/reset/rollback/待重启模拟 | reset/rollback validate intent、每键行为与实例修订传播 |
-| Operation/运维/审计 | memory_forget Operation 已整合，其余未发布 | 批量删除真实进度、问题页与取消；其他运维仍为模拟 | 其他操作和审计；现有批量删除组合已通过，备份无 Web 恢复入口 |
+| Operation/运维/审计 | Schema21 类型化 memory_forget/trusted_backup Operation 已整合 | 真实批量删除及可信备份创建/重新认证/独立 Worker/进度/刷新通过；完整 CI 通过 | 其余运维与审计由 W14 承接；内部备份不提供内容下载或 Web 恢复入口 |
 
 Task 步骤的 `meta.descriptor` 已正式接线；其余 `src/api/design.ts` 与 mock 描述仍仅为开发模型，不能要求后端迁就其形状。正式切片发布时同时替换类型/适配器和测试 Fixture，再补真实浏览器联调；生成类型通过本身不证明页面兼容。模拟器不得在请求失败后自动启用。
 

@@ -682,6 +682,7 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "reflection.generate",
                 "persona.evaluation",
                 "console.memory_forget",
+                "console.trusted_backup",
             }
         )
         == ENABLED_JOB_KINDS

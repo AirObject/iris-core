@@ -1260,6 +1260,17 @@
               "#/components/schemas/ResourceViewEnvelope"
             ]
           },
+          "consoleCreateBackup": {
+            "contract_sha256": "864e3aeb828d462383d408b1f0eedc49cdf7deddb393c8b09abda8452e9f0270",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/backups",
+            "schemas": [
+              "#/components/schemas/ConsoleBackupCreateRequest",
+              "#/components/schemas/ConsoleOperationEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
           "consoleCreateBinding": {
             "contract_sha256": "f2d8d3697d0e64231c7b7de24ae78bd922bb65faa820502913c98bf421dfb146",
             "deprecated": false,
@@ -2084,7 +2095,7 @@
             ]
           },
           "consoleOperations": {
-            "contract_sha256": "74c234e70a173f6ae00663834e9305501d2ba8a7c4d5b4be1fe6c5d6065c7f87",
+            "contract_sha256": "056b6dd3cb1ec06bd8f888faaa4424c6842b8695e3c4a2d553577f149b3d5872",
             "deprecated": false,
             "method": "GET",
             "path": "/console/v1/operations",
@@ -2738,15 +2749,16 @@
         },
         "schemas": {
           "BootstrapEnvelope": "701d6e5fa305d2d7d99f9520095d3b6eed0d8158c4a12380f5a7785fe15fd1e4",
-          "BootstrapView": "f5296cf6afeb2f5deca10c7a0e6a31b498d73eb20a40be3b22f1b85e40bf0253",
+          "BootstrapView": "6d5b29c3266274e2d5b0eb9076d6ea39c0d1ca2219cf259dd2551193d4be1f76",
           "ColumnSpec": "cf6785af16a92525097819517fec2d80e27caaa90ec39535ec1e8f3bd47d049f",
-          "CommandActionSpec": "dd668ca0dc3affcfe8df1521e333b656e9ba6fe68b7781212a7a0d423f1f2192",
+          "CommandActionSpec": "ca7a2884f6f6ca712ccbf6a8c5be80a583f835ce67562cf39c4f9cfb6a17f769",
           "CommandFieldSpec": "3f2b54077f2f48c73d085915a01d5df08c26127571bccd001df4080531ee91c0",
           "ConsoleArtifactCreateFields": "b9ee50a6d1aa6b342c6f6076d4ced0e34a086ea1c26b88903f3a22bef0226600",
           "ConsoleArtifactCreateRequest": "e21bbd6ea15ac371733a399ee702c656c833b8fd905a7038fdd799f0ffb2f530",
           "ConsoleArtifactUploadBody": "e8e7888e7f574939b9856dfb1432d1ba7e3163aa64ecc201a4c8a4c5595389f4",
           "ConsoleArtifactUploadFields": "bcc3073509b4e815d8089c4d6e182e2402ab330e4081b053b1dab1ac33018c5d",
           "ConsoleArtifactUploadMetadata": "0939884485ca15d14a29bb739a9c212148d7751038e3dc086aaf73e4f810ad83",
+          "ConsoleBackupCreateRequest": "63e5bc40443e21aff39f0e2fff1d7cc9bfac4ff5d3d3f7a05909609373837ce3",
           "ConsoleBindingActionRequest": "cabcf6d1fc53063ac02b9dadb91792c86524f0898682ac1cb1062c96fb779352",
           "ConsoleBindingCreateFields": "b8568df3b174828f91eb2c4b2bdc7f3397a89e222d78f372dd9ac7c277cbe27d",
           "ConsoleBindingCreateRequest": "ef9f06d7974c7b36a33c9d45198a884e0a04091bd02c486194f3398e9728fc0c",
@@ -2794,11 +2806,11 @@
           "ConsoleObservationAnnotateRequest": "93c4591d47d06201b933f2db57a21170c2651549fca93a7f0df9d832cc7012c5",
           "ConsoleObservationCreateFields": "cd8bee0185b6be82b9242ca010d1596e9a28f114bca99858adf57911cfb165bb",
           "ConsoleObservationCreateRequest": "bd7f599179cad937a5583c61337b61167b54466f4c60f596afb32fb935962c93",
-          "ConsoleOperation": "9b59fb99897d77096289fa3f4c102e52eb69a6a2b010d01b8fa1acc70ffbc6ac",
+          "ConsoleOperation": "7b20a568ff9083110c276bb06ce4887bd734374522ce38722ad70362b32b3fb0",
           "ConsoleOperationCancelRequest": "63e5bc40443e21aff39f0e2fff1d7cc9bfac4ff5d3d3f7a05909609373837ce3",
           "ConsoleOperationEnvelope": "d56df2d3e35e760803e5d6e9adafc71775b7e824622279b6fe0d4f55c6c75219",
           "ConsoleOperationPage": "d3ef5a70350f99c102bba607ba76ae925ea10071792f289b8c108b672a45003c",
-          "ConsoleOperationProblem": "c047d9fdc7b06c632b1af96fc432a2204815987d1e8c574e4d194976010f1d92",
+          "ConsoleOperationProblem": "d38aba9720b831c9a34ca0fa60d575fccd6f2c8713b3d04fe483c8cf8dca5057",
           "ConsoleOperationProblemPage": "44fa7e649504c800a3fc7e746eafc8bf5e46a4845c1296cc0d1b014d41307875",
           "ConsolePersonaPolicyReplaceRequest": "ec4fec30f762520567437dc18086962eb50d494ff9ce15fb33cb91b8893662c4",
           "ConsolePersonaProposalApproveRequest": "bea3db02fe74c4c2f078039d6a8250b1ef0ec77cd4661cd84462dc282b7836ae",
@@ -2841,7 +2853,7 @@
           "EventCommandReceipt": "f49108aa176c17edecefdb342b7494e4eabbb72aaf2ad096736169766c2b15df",
           "EventCommandReceiptEnvelope": "5dcef6ec1d66abeb12dc0a335846a91c768f643fda8bbd28a2fdf606106ce438",
           "FilterSpec": "cf6785af16a92525097819517fec2d80e27caaa90ec39535ec1e8f3bd47d049f",
-          "Grant": "c46c7bb1de69206aab1bae72f55ad1ec0dbb000044d2e54b75ebadae9326546e",
+          "Grant": "6d4a510ec324f39552446249c59fed50a8bb62699fb99c11ba01d85464640049",
           "KeyActionRequest": "644b0162a7ca991db242a5bb23246d5aec5ec2ba8426f9fe2e020d074e36868f",
           "KeyIssueRequest": "3dc7a5b33b02be05fd8a2ba3b9dd3c33cd8d583c7a1b96b03db885b90a4767fc",
           "KeyUpdateRequest": "c9f0b638b3d335709a5a450c52aeeccbd2d230ee25f515a7637bbcd3d699f030",
@@ -2868,7 +2880,7 @@
           "PersonaStateCommandReceiptEnvelope": "992840c0d8b965517d900a01e0a1275e2e2279df92901fe79b4e3ebbda316c11",
           "PersonaStateView": "24e5caa323fbe9a73d6ecfb4a06ff6ddc7b1ddaa8160a7379fbcab649740fa23",
           "PersonaStateViewEnvelope": "9954f4b4704d1167d2e11a0506d1c3c765e5a4b98f7108d76f116e178988ee5f",
-          "ReadGrant": "90e06c39f5f9ed97e140043d96f2ce0173c689f5ec4393662ff47855c82ac09d",
+          "ReadGrant": "430ee2a74a850f5d8398c6593dda5f9590266d36b82d9fd9cd967e3004d972a5",
           "ReadSelector": "81548ae10afbac1a4bccfd30c8748eda83ec13a80cacb46e544f61543f57f515",
           "ReasonCode": "e763a304272a0f2f39a7045bb327bf9e6f61d7d067801ac4ee999ad5a2f85458",
           "ReauthView": "a209c0ce3142ce19be11f9ff51d4c0939bfb96618df16f37e5ef539f7ea3179d",
@@ -2895,7 +2907,7 @@
           "SessionRevokeRequest": "79d532bf20ac6f77008a422d28b966d97277ac01a0c9173f1bf0a4956acba0db",
           "SessionSummary": "322d580a640b1c4ff375c6ccf752a1317b8f97716fc423f2b7e818346447b565",
           "SessionSummaryPage": "7a7e02465524867dc516c6020bb48589c985a0769bcd38ff821e2cfcb8d0ba00",
-          "SessionView": "29ad102be37606dc28ffcd754ab9994e3283df1eddf959117ce8a2655488641f",
+          "SessionView": "dae4144a174c1e40eed0b530b8bd2b4f060e44d7a1d71533ae49e8d210e78932",
           "SessionViewEnvelope": "a519f0e3c0b86c549a17a69a15d009b59f9e6a3993bab496abd6ce30ad615126",
           "SortSpec": "14471e11780e080fadf0790e06cab32086ffe8530dd06d9cb001246c365eb4f4",
           "StateCommandReceipt": "b906dfa11fa9e9758d4c1c548e9abd330d779293a029007163713da045273952",
@@ -3958,7 +3970,7 @@
       "core_exports": [
         "__version__"
       ],
-      "core_version": "0.13.0",
+      "core_version": "0.14.0",
       "instance_fields": {
         "CapabilitiesEnvelope": {
           "api_version": "str",

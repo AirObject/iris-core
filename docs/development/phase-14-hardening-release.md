@@ -1,6 +1,6 @@
 # 阶段 14：前置闭环、生产硬化与稳定发布
 
-> 状态：In progress（2026-09-07 新授权启动 W01→W20 串行构建，当前 W01；此前整体 goal 已停止；2026-09-07 已实施读面、State/Note/Focus/Observation/Claim/Episode/Relation 与 Task 管理写入、Artifact 文本创建与附件上传、Recall/Focus Lease 与安装门禁；Identity 注册/绑定、实体重定向与属性已验收；六类内容删除、Entity 软删除与恢复账本及 Focus/State/Task 固定集合删除已验收；固定筛选与 Operation 批量删除、Event dismiss 及待投递 Recall 重验已通过 Schema 20 当前完整组合验收，Persona 发布回滚已按 ADR-0044 通过当前完整组合验收，PersonaState 管理按 ADR-0045 已通过完整组合验收，Proposal 按 ADR-0046 已通过完整组合验收，Policy 按 ADR-0047 已通过完整组合验收；尚未进入发布验收）  
+> 状态：In progress（2026-09-07 新授权启动 W01→W20 串行构建，W01–W03 已完成并各自提交，W04 完整 CI 已通过，当前独立提交收尾；此前整体 goal 已停止；2026-09-07 已实施读面、State/Note/Focus/Observation/Claim/Episode/Relation 与 Task 管理写入、Artifact 文本创建与附件上传、Recall/Focus Lease 与安装门禁；Identity 注册/绑定、实体重定向与属性已验收；六类内容删除、Entity 软删除与恢复账本及 Focus/State/Task 固定集合删除已验收；固定筛选与 Operation 批量删除、Event dismiss 及待投递 Recall 重验已通过 Schema 20 当前完整组合验收，Persona 发布回滚已按 ADR-0044 通过当前完整组合验收，PersonaState 管理按 ADR-0045 已通过完整组合验收，Proposal 按 ADR-0046 已通过完整组合验收，Policy 按 ADR-0047 已通过完整组合验收；尚未进入发布验收）  
 > 前置阶段：[Phase 0–10](./README.md) 的 Core 基线与 [Phase 13](./phase-13-web-console.md) 的管理平面；Phase 11/12 均已暂缓，移出当前发布依赖  
 > pip 范围：仅 Core 功能及其必要运行资源；不包含 Bellis/AstrBot 适配器；业务调用只经冻结的公共方法与契约  
 > 目标版本：1.0.0（发布目标，非当前版本；RC 编号在 14.0 冻结）  

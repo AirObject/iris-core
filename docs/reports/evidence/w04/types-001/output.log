@@ -1,0 +1,7 @@
+src/iris_memory_core/storage/console_operations.py:115: error: Incompatible
+types in assignment (expression has type
+"tuple[str, str, str, str, str, str, str, str, str, str]", variable has type
+"tuple[str, str, str, str, str, str, str, str]")  [assignment]
+                    names += ("payload_json", "expected_deletion_seq")
+                    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 1 error in 1 file (checked 377 source files)

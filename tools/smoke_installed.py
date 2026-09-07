@@ -42,7 +42,7 @@ async def consume(base: str, credential: dict[str, str]) -> None:
     client = AsyncIrisMemoryClient(base, bearer_token=credential["token"])
     capabilities = await client.capabilities()
     assert "recall.v1" in capabilities.capabilities
-    assert capabilities.schema_version == 20
+    assert capabilities.schema_version == 21
     negotiated = await client.negotiate()
     assert negotiated.schema_version == capabilities.schema_version
     focus = {"agent_id": credential["agent_id"], "kind": "goal", "summary": "Installed goal"}
@@ -114,8 +114,8 @@ def run(root: Path, *, local_sqlite: bool) -> dict[str, object]:
     credential_file = root / "client.json"
     flags = ["--allow-local-sqlite"] if local_sqlite else []
     migration = command(root, "migrate", str(database))
-    assert "schema_version=20" in migration and "applied=20" in migration
-    assert command(root, "schema-version", str(database)).strip() == "20"
+    assert "schema_version=21" in migration and "applied=21" in migration
+    assert command(root, "schema-version", str(database)).strip() == "21"
     command(
         root,
         "init",
@@ -209,7 +209,7 @@ def run(root: Path, *, local_sqlite: bool) -> dict[str, object]:
     return {
         "core_version": version("iris-memory-core"),
         "sdk_version": version("iris-memory-sdk"),
-        "schema_version": 20,
+        "schema_version": 21,
         "development_sqlite_override": local_sqlite,
         "shutdown_seconds": shutdown,
         "serve_exit_code": process.returncode,

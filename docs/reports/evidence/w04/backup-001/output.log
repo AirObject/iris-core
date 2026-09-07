@@ -1,0 +1,53 @@
+F
+=================================== FAILURES ===================================
+_ test_http_accepts_then_real_worker_verifies_without_exposing_instance_files __
+
+backup = {'access': AccessContext(tenant_id='tenant-a', app_instance_id='app-1', agent_ids=frozenset({'01a07d10-2fa1-7f0f-a6dc-... at 0x109958c80>, 'archives': <iris_memory_core.storage.admin_archives.AdminArchiveService object at 0x109811130>, ...}
+
+    def test_http_accepts_then_real_worker_verifies_without_exposing_instance_files(
+        backup: dict[str, Any],
+    ) -> None:
+        client, csrf = signed_in(backup["app"], backup["token"])
+        with client:
+            assert (
+                client.post(
+                    "/v1/backups", json={"reason_code": "operator_request"}, headers=headers(csrf)
+                ).status_code
+                == 403
+            )
+            assert (
+                client.post(
+                    "/v1/auth/reauth", json={"key": backup["token"]}, headers=headers(csrf)
+                ).status_code
+                == 200
+            )
+            response = client.post(
+                "/v1/backups",
+                json={"reason_code": "operator_request"},
+                headers=headers(csrf, key="http-backup"),
+            )
+>           assert response.status_code == 202, response.text
+E           AssertionError: {"error":{"code":"invalid_request","message":"request failed validation","retryable":false,"details":{"kind":"validation_failed"}},"request_id":"01a07d10-307b-7d42-ab4d-d416e58a217f"}
+E           assert 400 == 202
+E            +  where 400 = <Response [400 Bad Request]>.status_code
+
+tests/integration/console/test_console_backup_operations.py:78: AssertionError
+----------------------------- Captured stderr call -----------------------------
+{"duration_ms": 102.68354100116994, "event": "console.request", "id_hash": "h_e47e0caddc8b", "status": "200"}
+{"duration_ms": 36.26724999776343, "event": "console.request", "id_hash": "h_7a81ad0af8d9", "status": "403"}
+{"duration_ms": 6.879958000354236, "event": "console.request", "id_hash": "h_e575a2a4ce8e", "status": "200"}
+{"duration_ms": 4.242125000018859, "event": "console.request", "id_hash": "h_c359a37acb15", "status": "400"}
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/cassia/Local/Code/iris_memory_core/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/console/test_console_backup_operations.py::test_http_accepts_then_real_worker_verifies_without_exposing_instance_files
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 2 warnings in 0.66s
