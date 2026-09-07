@@ -421,6 +421,8 @@ class OutboxService:
                 if updated == 1 and job.job_kind in {
                     "console.memory_forget",
                     "console.trusted_backup",
+                    "console.embedding_probe",
+                    "console.embedding_activate",
                 }:
                     from iris_memory_core.application.console.operations import ConsoleOperations
 

@@ -683,6 +683,8 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "persona.evaluation",
                 "console.memory_forget",
                 "console.trusted_backup",
+                "console.embedding_probe",
+                "console.embedding_activate",
             }
         )
         == ENABLED_JOB_KINDS

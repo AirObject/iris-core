@@ -200,6 +200,8 @@ class TestJobKindRegistry:
                     "persona.evaluation",
                     "console.memory_forget",
                     "console.trusted_backup",
+                    "console.embedding_probe",
+                    "console.embedding_activate",
                 }
             )
             == ENABLED_JOB_KINDS

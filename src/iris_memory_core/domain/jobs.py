@@ -391,6 +391,18 @@ _KINDS: dict[str, JobKindSpec] = dict(
             notes="Phase 2 seed handler: read-only spine consistency check.",
         ),
         _spec(
+            "console.embedding_activate",
+            priority=5,
+            enabled=True,
+            notes="Provider configuration COW build and fenced activation.",
+        ),
+        _spec(
+            "console.embedding_probe",
+            priority=5,
+            enabled=True,
+            notes="Fixed bounded Provider probe with durable tenant budget and fenced publication.",
+        ),
+        _spec(
             "console.trusted_backup",
             priority=5,
             enabled=True,

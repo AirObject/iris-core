@@ -41,7 +41,7 @@ TERMINAL_STATUSES = frozenset(
     }
 )
 OPERATION_STATUSES = TERMINAL_STATUSES | {"queued", "running", "paused", "blocked"}
-OPERATION_KINDS = frozenset({"memory_forget", "trusted_backup"})
+OPERATION_KINDS = frozenset({"memory_forget", "trusted_backup", "embedding_provider"})
 
 
 @dataclass(frozen=True)
@@ -63,10 +63,14 @@ class ConsoleOperations:
     ) -> OperatorPrincipal:
         if kind == "memory_forget":
             return self.forget._principal(tx, principal, recent=recent)
-        if kind != "trusted_backup":
+        if kind not in {"trusted_backup", "embedding_provider"}:
             raise InvalidRequestError("unknown operation kind")
         fresh = authorize(
-            tx, principal, self.context.clock.now_us(), "backups.write", recent=recent
+            tx,
+            principal,
+            self.context.clock.now_us(),
+            "providers.manage" if kind == "embedding_provider" else "backups.write",
+            recent=recent,
         )
         if "console.manage" not in fresh.key.grant.data_purposes:
             raise denied("permission_denied")
@@ -186,7 +190,8 @@ class ConsoleOperations:
             tx,
             OperatorPrincipal(key, session),
             operation.kind,
-            recent=operation.kind == "trusted_backup" or operation.mode == "erase",
+            recent=operation.kind in {"trusted_backup", "embedding_provider"}
+            or operation.mode == "erase",
         )
 
     def batch_work(self, job: OutboxJob) -> JobCommit:
@@ -335,6 +340,46 @@ class ConsoleOperations:
         return _BatchCommit(commit, after_commit)
 
     @staticmethod
+    def provider_return_status(operation: ConsoleOperation) -> str:
+        payload = operation.provider
+        if payload is None:
+            return "draft"
+        if payload.action == "rollback":
+            return "retired"
+        if payload.action == "probe" and payload.plan_json is not None:
+            try:
+                if json.loads(payload.plan_json) == {"return_status": "retired"}:
+                    return "retired"
+            except (ValueError, TypeError):
+                pass
+        return "draft"
+
+    @staticmethod
+    def release_provider_intent(
+        tx: Transaction, operation: ConsoleOperation, *, now_us: int
+    ) -> None:
+        if operation.provider is None:
+            return
+        config = tx.providers.get(operation.tenant_id, operation.provider.config_id)
+        if (
+            config is not None
+            and config.current_operation_id == operation.id
+            and config.content_revision == operation.provider.content_revision
+            and config.status in {"probing", "activating"}
+        ):
+            tx.providers.advance(
+                replace(
+                    config,
+                    status=ConsoleOperations.provider_return_status(operation),
+                    revision=config.revision + 1,
+                    current_operation_id=None,
+                    latest_probe_id=None,
+                    updated_us=max(now_us, config.updated_us),
+                ),
+                expected_revision=config.revision,
+            )
+
+    @staticmethod
     def record_dead_job(tx: Transaction, job: OutboxJob, *, now_us: int) -> None:
         """Called in the same transaction as a successful fenced dead-job CAS."""
         operation = tx.console_operations.get(job.tenant_id, job.aggregate_id)
@@ -355,6 +400,7 @@ class ConsoleOperations:
             ),
             expected_revision=operation.revision,
         )
+        ConsoleOperations.release_provider_intent(tx, operation, now_us=now_us)
         tx.console_operations.add_problem(
             OperationProblem(operation.id, -1, "execution_failed", now_us)
         )
@@ -464,6 +510,7 @@ class ConsoleOperations:
                     finished_us=now,
                 )
                 tx.console_operations.advance(updated, expected_revision=operation.revision)
+                self.release_provider_intent(tx, operation, now_us=now)
                 tx.audit(
                     tenant_id=fresh.key.tenant_id,
                     actor="console:" + fresh.key.id,
@@ -496,7 +543,11 @@ class ConsoleOperations:
             "id": operation.id,
             "kind": operation.kind,
             "status": operation.status,
-            "phase": "canonical_forget" if operation.kind == "memory_forget" else "backup_verify",
+            "phase": {
+                "memory_forget": "canonical_forget",
+                "trusted_backup": "backup_verify",
+                "embedding_provider": "provider_configuration",
+            }[operation.kind],
             "progress": {
                 "processed": str(operation.processed),
                 "total": str(operation.total),
