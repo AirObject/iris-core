@@ -27,6 +27,7 @@ from iris_memory_core.api.console.routes_forget import router as forget_router
 from iris_memory_core.api.console.routes_identity import router as identity_router
 from iris_memory_core.api.console.routes_memory import router as memory_router
 from iris_memory_core.api.console.routes_operations import router as operations_router
+from iris_memory_core.api.console.routes_persona_drafts import router as persona_drafts_router
 from iris_memory_core.api.console.routes_persona_policy import router as persona_policy_router
 from iris_memory_core.api.console.routes_persona_proposals import router as persona_proposals_router
 from iris_memory_core.api.console.routes_persona_states import router as persona_states_router
@@ -229,6 +230,7 @@ def create_console_app(
     app.include_router(persona_states_router)
     app.include_router(persona_proposals_router)
     app.include_router(persona_policy_router)
+    app.include_router(persona_drafts_router)
     app.include_router(identity_router)
     app.include_router(artifacts_router)
 

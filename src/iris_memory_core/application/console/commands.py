@@ -29,6 +29,10 @@ from iris_memory_core.domain.scope import Scope
 # Each new domain command has to enter this policy explicitly. No generic
 # service lookup, method dispatch, arbitrary SQL or online effect operations.
 COMMAND_PERMISSIONS = {
+    "persona.draft.create": "persona.publish",
+    "persona.draft.update": "persona.publish",
+    "persona.draft.publish": "persona.publish",
+    "persona.draft.discard": "persona.publish",
     "persona.policy.replace": "persona.publish",
     "persona.proposal.create": "memory.write",
     "persona.proposal.approve": "persona.publish",
@@ -165,6 +169,8 @@ def authorize_command(
             "persona.proposal.approve",
             "persona.proposal.reject",
             "persona.policy.replace",
+            "persona.draft.publish",
+            "persona.draft.discard",
         },
     )
     if (
