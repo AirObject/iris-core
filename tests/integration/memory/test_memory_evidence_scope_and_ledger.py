@@ -103,7 +103,7 @@ class TestP0_1LedgerIdentityReplay:
         service = BackupService(store)
         backup_dir = tmp_path / "backup"
         report = service.create_backup(backup_dir)
-        assert report.schema_version == 22
+        assert report.schema_version == 24
         assert verify_backup(backup_dir).ok
         # No clock advance: the post-backup forget lands on the exact same
         # created_us microsecond as the pre-backup one.
