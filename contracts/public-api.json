@@ -1035,6 +1035,30 @@
               "choices": null,
               "default": null,
               "flags": [
+                "--cognitive-config-file"
+              ],
+              "name": "cognitive_config_file",
+              "nargs": null,
+              "required": false,
+              "type": "Path"
+            },
+            {
+              "action": "_StoreTrueAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--development-cognitive"
+              ],
+              "name": "development_cognitive",
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "action": "_StoreAction",
+              "choices": null,
+              "default": null,
+              "flags": [
                 "--secret-key-file"
               ],
               "name": "secret_key_file",
@@ -1311,6 +1335,30 @@
               "nargs": null,
               "required": false,
               "type": "Path"
+            },
+            {
+              "action": "_StoreAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--cognitive-config-file"
+              ],
+              "name": "cognitive_config_file",
+              "nargs": null,
+              "required": false,
+              "type": "Path"
+            },
+            {
+              "action": "_StoreTrueAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--development-cognitive"
+              ],
+              "name": "development_cognitive",
+              "nargs": 0,
+              "required": false,
+              "type": null
             },
             {
               "action": "_StoreAction",

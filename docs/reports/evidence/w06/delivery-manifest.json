@@ -1,0 +1,198 @@
+{
+  "repo": "/private/tmp/imc-w06-work",
+  "baseline": "c5fba6de056ab0f4a9052440b07abd3d3fb4b9e6",
+  "commits": [
+    "3f661bd6b53705a9db7cd8be25572acc6cab7f19 feat(providers): add authorized cognitive deployment adapter",
+    "e7a0d227e5d837d7c9f4a7676065aad9d8f0c70e feat(cognition): bind production workers and retain retry costs",
+    "67925b65bbc6ac97cc277b00b9a89449f19f13ef test(cognition): verify HTTP worker and persisted cost boundaries"
+  ],
+  "patches": [
+    {
+      "name": "0001-feat-providers-add-authorized-cognitive-deployment-a.patch",
+      "sha256": "a3d8fcf0868814c8682588b34175f9641ea218d083ddb02edd26d23f37cbd5d4",
+      "bytes": 29311
+    },
+    {
+      "name": "0002-feat-cognition-bind-production-workers-and-retain-re.patch",
+      "sha256": "36593492f7a6eb3c6978b4d09dbd670def01ac35235610ff7a22003c31536b93",
+      "bytes": 16570
+    },
+    {
+      "name": "0003-test-cognition-verify-HTTP-worker-and-persisted-cost.patch",
+      "sha256": "63e0c417493e683de53cac501b8791319cebe2ecfc1876669d06bc987e4a5b71",
+      "bytes": 28234
+    }
+  ],
+  "batches": [
+    {
+      "batch": "cognitive-regression-001",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/cognitive-regression-001",
+      "result": {
+        "started_at": "2026-09-07T23:56:33.789716+00:00",
+        "supervisor_pid": 48785,
+        "child_pid": 48859,
+        "exit_code": -15,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:58:43.024102+00:00"
+      },
+      "output_sha256": "4c80f63da23ff5487d4b4a6ea7e40930f63c6a5873b204e7455841075dc30269",
+      "stop_reason": {
+        "reason": "Superseded by targeted affected-scope batch; whole cognition directory unintentionally included thousands of unrelated W03 quantitative tests. Batch 001 also predates the master_key_file forwarding fix."
+      }
+    },
+    {
+      "batch": "cognitive-regression-002",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/cognitive-regression-002",
+      "result": {
+        "started_at": "2026-09-07T23:58:09.588846+00:00",
+        "supervisor_pid": 51305,
+        "child_pid": 51336,
+        "exit_code": -15,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:58:43.018613+00:00"
+      },
+      "output_sha256": "a529c48c38bf19d21d2f08eddef8ea2d1644ae33236117bac56af2ffac3204ba",
+      "stop_reason": {
+        "reason": "Superseded by targeted affected-scope batch; whole cognition directory unintentionally included thousands of unrelated W03 quantitative tests. Batch 001 also predates the master_key_file forwarding fix."
+      }
+    },
+    {
+      "batch": "cognitive-regression-003",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/cognitive-regression-003",
+      "result": {
+        "started_at": "2026-09-07T23:58:31.765095+00:00",
+        "supervisor_pid": 51559,
+        "child_pid": 51576,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-07T23:59:31.854388+00:00"
+      },
+      "output_sha256": "6a22f5058f2359a20fddaf246012ac2e86eccde47fc9af399b3af2107bf12493"
+    },
+    {
+      "batch": "cost-and-http-001",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/cost-and-http-001",
+      "result": {
+        "started_at": "2026-09-08T04:12:50.215254+00:00",
+        "supervisor_pid": 27617,
+        "child_pid": 27630,
+        "exit_code": 1,
+        "status": "failed",
+        "finished_at": "2026-09-08T04:13:33.973461+00:00"
+      },
+      "output_sha256": "01966c4d8bf0ce844ee9a51f0b3ea5cd9e680e8ab5672e55691d810c72c7c94b"
+    },
+    {
+      "batch": "cost-and-http-002",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/cost-and-http-002",
+      "result": {
+        "started_at": "2026-09-08T04:13:54.858598+00:00",
+        "supervisor_pid": 28354,
+        "child_pid": 28368,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-08T04:14:07.896901+00:00"
+      },
+      "output_sha256": "3d06e1b2e7bf3a24de935484f9f111b9466e91f8180ef5d9dfed01637d3cc9d1"
+    },
+    {
+      "batch": "local-http-001",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/local-http-001",
+      "result": {
+        "started_at": "2026-09-07T23:53:58.186522+00:00",
+        "supervisor_pid": 45724,
+        "child_pid": 45738,
+        "exit_code": 1,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:53:59.802987+00:00"
+      },
+      "output_sha256": "8aafad19c142a99534bacd9123b4880ccfde4e3531c0e5cfd9a1cc461338a4c0"
+    },
+    {
+      "batch": "local-http-002",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/local-http-002",
+      "result": {
+        "started_at": "2026-09-07T23:54:42.455980+00:00",
+        "supervisor_pid": 46065,
+        "child_pid": 46077,
+        "exit_code": 1,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:54:50.976738+00:00"
+      },
+      "output_sha256": "dc14fab27dd3c4150e7194604ca798e5e2d8566428fb7efb126ca67a30e11053"
+    },
+    {
+      "batch": "local-http-003",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/local-http-003",
+      "result": {
+        "started_at": "2026-09-07T23:55:12.435203+00:00",
+        "supervisor_pid": 46717,
+        "child_pid": 46730,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-07T23:55:21.035696+00:00"
+      },
+      "output_sha256": "1c2e9c1bb2da90b90143c9f0a86cf4287c7eef86ea1ecb06942e6688aa8e6f64"
+    },
+    {
+      "batch": "structural-001",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/structural-001",
+      "result": {
+        "started_at": "2026-09-07T23:53:59.184039+00:00",
+        "supervisor_pid": 45745,
+        "child_pid": 45757,
+        "exit_code": 1,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:54:02.403752+00:00"
+      },
+      "output_sha256": "c79ea57d8769e029729a0dda5b936ce7e38a31c8faabe1cc1f6eb9ae5d31859a"
+    },
+    {
+      "batch": "structural-002",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/structural-002",
+      "result": {
+        "started_at": "2026-09-07T23:54:43.624433+00:00",
+        "supervisor_pid": 46085,
+        "child_pid": 46098,
+        "exit_code": 1,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:54:44.238946+00:00"
+      },
+      "output_sha256": "c8e9454e4f426c237b59a25814eb92b450433312b601b534ccdae066c6afda06"
+    },
+    {
+      "batch": "structural-003",
+      "directory": "/private/tmp/imc-w06-work/.work-package-runs/W06/structural-003",
+      "result": {
+        "started_at": "2026-09-07T23:56:34.518603+00:00",
+        "supervisor_pid": 48965,
+        "child_pid": 48980,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:56:43.116795+00:00"
+      },
+      "output_sha256": "74d8a5a1a47c8174cd0b82db6eab088fa4e00d2b6cc290590d502e784bdb93e1"
+    }
+  ],
+  "final_file_hashes": {
+    "docs/adr/0050-cognitive-provider-deployment.md": "9c545abf0ee7f6932b16cc9e288cae98272f54125f358835b80dd29ac5fc038c",
+    "docs/development/cognitive-provider.md": "29c3cef1f176677f215f607543b558a92107065ea2d301f5a4eaed22df6dbff2",
+    "docs/reports/w06-cognitive-provider.md": "f6e4fac37116a75227fbb0717ee79e7361a23a6d7c2a8481b5d680baeb6b477a",
+    "src/iris_memory_core/api/app.py": "ed798191a716ced283089a48c067544b9f6cc795a1658d77b03a6e8fa3e1f931",
+    "src/iris_memory_core/application/reflection.py": "bd6fd32e5d724158083548334c9160507bb0902326a1020e33dc381fbad0f68c",
+    "src/iris_memory_core/cli.py": "b8277cc5841cd20b7a3727ba01458548e0f7e5bf03349ccb6d428fd686fca726",
+    "src/iris_memory_core/domain/errors.py": "21d64e357d7daf8a908f5fea7c249f5fb1441658fc5aed84bcec20023eaaaeb7",
+    "src/iris_memory_core/providers/cognitive.py": "a7bb5d92c9be9e3622e75cc693d399918ead5d3c16492993355a8efe4d3c0e44",
+    "src/iris_memory_core/providers/cognitive_deployment.py": "69432b96f547f3f42b6aa850ca5823ab423bd281fe5d4ed6de6792cb0aebf826",
+    "src/iris_memory_core/providers/cognitive_http.py": "49d8142abb28554900693f3bad263c822283cf74c98beb37131a52e2afc22a1e",
+    "src/iris_memory_core/providers/transport.py": "871faca8f265738a7aca0e9edd0cdb3b8e2ed0e4cf80dc7cc3003393920df837",
+    "src/iris_memory_core/runtime.py": "1cd10b34d44f2c9abb61ca55e62baf95d4233b8db6c24662597f70873a29a91b",
+    "tests/fixtures/cognitive/w06-evaluation.json": "1af7ae3a9de1612981454c82cd49a6b3723e339733b6c99459f9567638148756",
+    "tests/integration/cognition/test_cognitive_deployment.py": "06b77629c68a9f3947bcc3649ab2c13b78c5524de669ed0782e36fb4412cd0c2"
+  },
+  "pending": [
+    "Authorized external model quality gate",
+    "Integration make ci on root combined candidate"
+  ],
+  "status": "W06 In progress; local bounded implementation and directed verification delivered"
+}
