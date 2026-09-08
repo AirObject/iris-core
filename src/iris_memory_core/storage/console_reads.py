@@ -267,6 +267,17 @@ TABLES = {
         updated="created_us",
         scope_columns=("agent_id",),
     ),
+    "persona-drafts": TableSpec(
+        "persona_drafts",
+        (
+            "fields_json",
+            "base_revision",
+            "policy_revision",
+            "content_hash",
+            "published_revision_id",
+        ),
+        scope_columns=("agent_id",),
+    ),
     "persona-proposals": TableSpec(
         "persona_proposals",
         (
@@ -299,6 +310,7 @@ def _read_spec(collection: str) -> TableSpec:
 
 
 JSON_FIELDS = {
+    "fields_json": "content",
     "state_json": "state",
     "baseline_json": "baseline",
     "participant_entity_ids": "participant_entity_ids",
@@ -312,6 +324,7 @@ JSON_FIELDS = {
     "condition_spec": "condition_spec",
 }
 REFERENCE_FIELDS = {
+    "published_revision_id": "persona_revision",
     "subject_entity_id": "entity",
     "source_entity_id": "entity",
     "target_entity_id": "entity",
@@ -326,6 +339,7 @@ REFERENCE_FIELDS = {
 # Only declared Canonical reference columns participate. This is a read
 # adapter over existing storage, not a generic client-selected JSON query.
 REFERENCE_ARRAYS = {
+    "persona-drafts": ("source_refs_json",),
     "observations": ("artifact_refs",),
     "focus-items": ("source_refs",),
     "notes": ("source_refs",),
@@ -859,7 +873,7 @@ class ConsoleReadRepository:
                 ResourceRef("observation", str(item[0]), int(item[1])) for item in evidence
             )
             requires.extend(refs)
-        if collection in {"persona", "persona-proposals", "persona-states"}:
+        if collection in {"persona", "persona-proposals", "persona-states", "persona-drafts"}:
             if collection == "persona":
                 meta = self.connection.execute(
                     "SELECT source_refs_json,lifecycle_status FROM persona_revision_metadata "

@@ -70,6 +70,9 @@ REFERENCE_RESOURCES = {
     ),
 }
 PERSONAS = {
+    "persona-drafts": ResourceSpec(
+        "persona-drafts", "persona_draft", "人格草稿", ("content", "base_revision"), False
+    ),
     "persona": ResourceSpec("persona", "persona_revision", "人格", ("core", "traits", "narrative")),
     "persona-proposals": ResourceSpec(
         "persona-proposals", "persona_proposal", "人格提案", ("patch", "confidence"), False, True

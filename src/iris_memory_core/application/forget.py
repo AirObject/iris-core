@@ -1514,7 +1514,13 @@ class ForgetService:
                         reason_code=request.reason_code,
                         details={"created_us": request.created_us},
                     )
-                    if selector.kind == "resource" and selector.resource_type == "entity":
+                    if selector.kind == "resource" and selector.resource_type == "persona_draft":
+                        from iris_memory_core.application.persona_draft_deletion import (
+                            replay_draft_discard,
+                        )
+
+                        completed = replay_draft_discard(tx, request, selector_dict)
+                    elif selector.kind == "resource" and selector.resource_type == "entity":
                         from iris_memory_core.application.entity_deletion import (
                             replay_entity_tombstone,
                         )

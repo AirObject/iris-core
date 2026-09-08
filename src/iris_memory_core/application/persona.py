@@ -305,7 +305,7 @@ class PersonaService:
         from iris_memory_core.application.console.resources import ResourceRef
 
         if (
-            actor.operation not in {"persona.publish", "persona.rollback"}
+            actor.operation not in {"persona.publish", "persona.rollback", "persona.draft.publish"}
             or type(expected_revision) is not int
             or expected_revision < 1
             or type(expected_policy_revision) is not int
@@ -337,7 +337,7 @@ class PersonaService:
             ),
             now_us=self._clock.now_us(),
         )
-        if actor.operation == "persona.publish":
+        if actor.operation in {"persona.publish", "persona.draft.publish"}:
             if (
                 set(fields) != {"core", "traits", "narrative"}
                 or target_revision is not None
