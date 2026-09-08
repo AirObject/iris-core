@@ -36,6 +36,7 @@ from iris_memory_core.application.ports.recall import RecallUsageSurface, Recent
 from iris_memory_core.application.ports.reflection import ReflectionSurface
 from iris_memory_core.application.ports.retention import RetentionSurface
 from iris_memory_core.application.ports.state import StateSurface
+from iris_memory_core.application.ports.statistics import StatisticsRepository
 from iris_memory_core.application.ports.surface import SurfaceLeaseSurface
 from iris_memory_core.application.ports.tasks import TaskSurface
 from iris_memory_core.domain.identity import (
@@ -152,6 +153,9 @@ class Transaction(Protocol):
 
     @property
     def providers(self) -> ProviderConfigRepository: ...
+
+    @property
+    def statistics(self) -> StatisticsRepository: ...
 
     @property
     def console_reads(self) -> ConsoleReadRepository: ...

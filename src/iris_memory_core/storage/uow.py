@@ -84,6 +84,7 @@ from iris_memory_core.storage.spine import (
     ScheduleRepository,
     SurfaceRepository,
 )
+from iris_memory_core.storage.statistics import StatisticsRepository
 from iris_memory_core.storage.vector import VectorRepository
 
 BUSY_MESSAGES = ("database is locked", "database table is locked")
@@ -111,6 +112,7 @@ class Transaction:
         *,
         writable: bool = True,
         artifact_root: Path | None = None,
+        statistics_roots: dict[str, Path] | None = None,
     ) -> None:
         self.spaces = SpaceRepository(connection, clock, ids)
         self.identities = IdentityRepository(connection, clock, ids)
@@ -141,6 +143,7 @@ class Transaction:
         self.console = ConsoleRepository(connection)
         self.console_operations = ConsoleOperationRepository(connection)
         self.providers = ProviderConfigRepository(connection)
+        self.statistics = StatisticsRepository(connection, statistics_roots)
         self.console_reads = ConsoleReadRepository(connection, writable=writable)
         self._connection = connection
         self._writable = writable
@@ -610,6 +613,7 @@ class _WriteUnitOfWork(AbstractContextManager[Transaction]):
             self._store.ids,
             writable=True,
             artifact_root=self._store.artifact_root,
+            statistics_roots=self._store.statistics_roots,
         )
         return self._transaction
 
@@ -656,6 +660,7 @@ class _ReadUnitOfWork(AbstractContextManager[Transaction]):
             self._store.ids,
             writable=False,
             artifact_root=self._store.artifact_root,
+            statistics_roots=self._store.statistics_roots,
         )
 
     def __exit__(
@@ -701,6 +706,7 @@ class Store:
         #: Controlled local blob root for Phase 5 artifacts (§13.6): derived
         #: from the database location, never configurable per request.
         self.artifact_root: Path = runtime.database.parent / "artifacts"
+        self.statistics_roots: dict[str, Path] = {}
         self._busy_retry_attempts = busy_retry_attempts
         self._busy_backoff_ms = busy_backoff_ms
         self._busy_observer = busy_observer

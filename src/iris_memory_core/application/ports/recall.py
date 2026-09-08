@@ -69,6 +69,8 @@ class RecallUsageSurface(Protocol):
         request_fingerprint: str,
         resource_ids: Sequence[str] = (),
         response_json: str | None = None,
+        duration_us: int | None = None,
+        statistics_json: str | None = None,
         now_us: int | None = None,
     ) -> None: ...
 

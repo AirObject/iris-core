@@ -92,6 +92,8 @@ def assemble_recall(
             if not isinstance(uow, Store):
                 raise ValueError("embedding requires an explicit private vector root")
             root = uow.runtime.database.parent / "vector"
+        if isinstance(uow, Store):
+            uow.statistics_roots["storage.vector_bytes"] = root.resolve()
         if embedding_runtime is not None:
             vector = ManagedVectorProjection(uow, clock, embedding_runtime, root.resolve())
             provider_generations = ProviderGenerationRuntime(

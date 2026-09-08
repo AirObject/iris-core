@@ -115,7 +115,11 @@ def test_schema22_snapshot_learns_discard_before_startup_upgrade(tmp_path: Path)
     agent = provisioning.create_agent(access, "Pre Draft schema")
     snapshot, target = tmp_path / "schema22", tmp_path / "restored20"
     BackupService(old).create_backup(snapshot)
-    assert [item.version for item in MigrationRunner(database).migrate()] == [23]
+    assert BackupService(old).verify_backup(snapshot).ok
+    assert [
+        item.version
+        for item in MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
+    ] == [23, 24]
     current = Store(SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)))
     with current.write() as tx:
         draft = tx.persona_drafts.create(**arguments({"agent": agent.id}))
@@ -135,7 +139,12 @@ def test_schema22_snapshot_learns_discard_before_startup_upgrade(tmp_path: Path)
     )
     assert result.check.ok, result.check.problems
     restored_database = target / "canonical.sqlite3"
-    assert [item.version for item in MigrationRunner(restored_database).migrate()] == [23]
+    assert [
+        item.version
+        for item in MigrationRunner(restored_database).migrate(
+            allow_offline=True, backup_performed=True
+        )
+    ] == [23, 24]
     restored = Store(SQLiteRuntime(restored_database, allowed_versions=(sqlite_runtime_version(),)))
     with restored.read() as tx:
         assert tx.is_tombstoned("draft-tenant", "persona_draft", draft.id)

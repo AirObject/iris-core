@@ -570,9 +570,9 @@ class OutboxRepository:
             cursor = self._connection.execute(
                 "UPDATE outbox_jobs SET status = 'leased', lease_owner = ?, "
                 "lease_generation = lease_generation + 1, lease_expires_us = ?, "
-                "attempt_count = attempt_count + 1 WHERE id = ? "
+                "attempt_count = attempt_count + 1, last_heartbeat_us = ? WHERE id = ? "
                 "AND status IN ('pending', 'retryable') AND available_at_us <= ?",
-                (owner, now_us + lease_us, row["id"], now_us),
+                (owner, now_us + lease_us, now_us, row["id"], now_us),
             )
             if cursor.rowcount == 1:
                 claimed.append(self.get(str(row["id"])))
@@ -582,9 +582,10 @@ class OutboxRepository:
         self, job_id: str, *, owner: str, generation: int, now_us: int, extend_us: int
     ) -> int:
         cursor = self._connection.execute(
-            "UPDATE outbox_jobs SET lease_expires_us = ? WHERE id = ? AND lease_owner = ? "
+            "UPDATE outbox_jobs SET lease_expires_us = ?, last_heartbeat_us = ? WHERE id "
+            "= ? AND lease_owner = ? "
             "AND lease_generation = ? AND status = 'leased' AND lease_expires_us > ?",
-            (now_us + extend_us, job_id, owner, generation, now_us),
+            (now_us + extend_us, now_us, job_id, owner, generation, now_us),
         )
         return cursor.rowcount
 

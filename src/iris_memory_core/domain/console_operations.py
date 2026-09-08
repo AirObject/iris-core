@@ -32,6 +32,13 @@ class ProviderOperationPayload:
 
 
 @dataclass(frozen=True, slots=True)
+class StatisticsBackfillPayload:
+    build_id: str
+    from_us: int
+    to_us: int
+
+
+@dataclass(frozen=True, slots=True)
 class ConsoleOperation:
     id: str
     tenant_id: str
@@ -56,6 +63,7 @@ class ConsoleOperation:
     forget: ForgetOperationPayload | None = None
     backup: TrustedBackupPayload | None = None
     provider: ProviderOperationPayload | None = None
+    statistics: StatisticsBackfillPayload | None = None
 
     @property
     def forget_payload(self) -> ForgetOperationPayload:

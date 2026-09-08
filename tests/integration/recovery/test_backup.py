@@ -494,7 +494,7 @@ def test_restore_cleans_pending_state_before_switching(
         ).fetchone()[0]
     finally:
         connection.close()
-    assert schema == 23
+    assert schema == 24
     assert fts_state == "pending_rebuild"
 
 

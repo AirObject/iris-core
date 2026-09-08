@@ -220,6 +220,11 @@ def open_store(config: ServiceConfig) -> Store:
     allowed = (sqlite_runtime_version(),) if config.allow_local_sqlite else None
     runtime = SQLiteRuntime(config.database, allowed_versions=allowed)
     store = Store(runtime)
+    store.statistics_roots["storage.staging_bytes"] = (
+        config.export_root or config.database.parent / "exports"
+    )
+    if config.vector_root is not None:
+        store.statistics_roots["storage.vector_bytes"] = config.vector_root
     # Forces runtime allowlist + schema-window validation before Ready.
     with store.read() as tx:
         tx.outbox.status_counts()

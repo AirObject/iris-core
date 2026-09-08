@@ -27,7 +27,7 @@ def test_0012_upgrades_schema11_preserving_rows_and_legacy_auth(tmp_path: Path) 
     database = tmp_path / "database.sqlite3"
     migrate_through(database, 11)
     # Trusted legacy fixture exercises 0012 in isolation, before the current
-    # binary's Schema 23 gate permits normal service access.
+    # binary's Schema 24 gate permits normal service access.
     store = Store(
         SQLiteRuntime(database, allowed_versions=local_allowed_versions()),
         verify_schema_window=False,
@@ -83,7 +83,7 @@ def test_0012_upgrades_schema11_preserving_rows_and_legacy_auth(tmp_path: Path) 
     assert [
         item.version
         for item in MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
-    ] == [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+    ] == [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
     assert MigrationRunner(database).migrate() == ()
     current = Store(SQLiteRuntime(database, allowed_versions=local_allowed_versions()))
     assert CredentialService(current, current.clock).authenticate(token).tenant_id == "tenant"
@@ -106,6 +106,6 @@ def test_published_migrations_unchanged_and_new_migration_online_safe() -> None:
     assert migration.meta and migration.meta.online_safe and migration.meta.min_app == "0.12.0"
     source = json.loads((root / "contracts/source/console.json").read_text())
     manifest = json.loads((root / "schemas/version-manifest.json").read_text())
-    assert source["runtime_versions"] == {"package_version": "0.15.0", "schema_version": 23}
+    assert source["runtime_versions"] == {"package_version": "0.15.0", "schema_version": 24}
     for name, value in source["runtime_versions"].items():
         assert manifest[name] == value

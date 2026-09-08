@@ -54,8 +54,28 @@ def test_terminal_task_cascade_and_restore(
                 for name in re.findall(r"(?m)^CREATE TABLE (\w+)", source.read_text())
             )
             for name in reversed(future_tables):
-                assert connection.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0] == 0
+                if name == "console_stat_coverage":
+                    # Schema24's one bootstrap coverage timestamp is metadata,
+                    # never historical Canonical or a populated rollup.
+                    assert connection.execute(
+                        "SELECT singleton FROM console_stat_coverage"
+                    ).fetchall() == [(1,)]
+                else:
+                    assert connection.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0] == 0
                 connection.execute(f"DROP TABLE {name}")
+            connection.execute("DROP INDEX idx_recall_statistics_time")
+            for table, column in (
+                ("recall_requests", "duration_us"),
+                ("recall_requests", "statistics_json"),
+                ("outbox_jobs", "last_heartbeat_us"),
+            ):
+                assert (
+                    connection.execute(
+                        f"SELECT COUNT(*) FROM {table} WHERE {column} IS NOT NULL"
+                    ).fetchone()[0]
+                    == 0
+                )
+                connection.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
             connection.execute("DELETE FROM schema_migrations WHERE version>=19")
             connection.execute("DELETE FROM migration_runs WHERE version>=19")
         connection.close()  # Checkpoint the fixture before hashing its immutable snapshot.
@@ -117,7 +137,7 @@ def test_terminal_task_cascade_and_restore(
             for m in MigrationRunner(destination / "canonical.sqlite3").migrate(
                 allow_offline=True, backup_performed=True
             )
-        ] == [19, 20, 21, 22, 23]
+        ] == [19, 20, 21, 22, 23, 24]
     restored = Store(
         SQLiteRuntime(
             destination / "canonical.sqlite3", allowed_versions=(sqlite_runtime_version(),)

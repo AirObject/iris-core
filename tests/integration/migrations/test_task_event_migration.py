@@ -85,6 +85,7 @@ class TestPublishedMigrationIntegrity:
             21,
             22,
             23,
+            24,
         ]
         for _version, name, checksum in rows:
             on_disk = hashlib.sha256(
@@ -106,7 +107,7 @@ class TestPublishedMigrationIntegrity:
     def test_empty_database_installs_all_six(self, tmp_path: Path) -> None:
         database = tmp_path / "empty.sqlite3"
         MigrationRunner(database).migrate()
-        assert current_schema_version(sqlite3.connect(database)) == 23
+        assert current_schema_version(sqlite3.connect(database)) == 24
 
 
 def _phase3_database(tmp_path: Path) -> Path:
@@ -264,6 +265,7 @@ class TestSchema4To5Upgrade:
             21,
             22,
             23,
+            24,
         ]
         connection = sqlite3.connect(database)
         try:
@@ -399,7 +401,7 @@ class TestPhase4RestoreInvariants:
             source = self._phase4_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 23
+            assert report["schema_version"] == 24
             assert verify_backup(backup_dir).ok
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
             target.parent.mkdir(parents=True, exist_ok=True)

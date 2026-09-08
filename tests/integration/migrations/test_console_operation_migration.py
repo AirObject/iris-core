@@ -29,7 +29,7 @@ def test_schema19_upgrade_is_online_safe_and_preserves_canonical_rows(tmp_path: 
             "INSERT INTO tenants(id,status,created_us,created_at) "
             "VALUES('operation-upgrade','active',1,'1970-01-01T00:00:00Z')"
         )
-    verify_schema_compatible(23)
+    verify_schema_compatible(24)
     with pytest.raises(SchemaIncompatibleError):
         verify_schema_compatible(19)
     migrations = discover_migrations(default_migrations_path())

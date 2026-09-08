@@ -324,6 +324,9 @@ class StructuredRecallResult:
     #: BEFORE rehydrate dropped any of them.
     retrieved_count: int = 0
     tombstone_watermark: int = 0
+    # Internal low-sensitivity observation; not part of the public response or replay.
+    observation_trace: RecallTrace | None = field(default=None, repr=False, compare=False)
+    observation_budget_truncated: bool = field(default=False, repr=False, compare=False)
 
 
 class RecallRoute(Protocol):
@@ -2216,7 +2219,7 @@ class StructuredRecallOrchestrator:
                     limit=DEFAULT_PENDING_EVENT_IDS,
                 )
 
-        ranked = self._rank_and_trim(rehydrated, request)
+        ranked, budget_truncated = self._rank_and_trim(rehydrated, request)
         missing_components = sum(len(c.missing_components) for c in ranked)
 
         # A partial response requires at least one successful key Route (§18.3).
@@ -2244,6 +2247,9 @@ class StructuredRecallOrchestrator:
                     "structured recall has degraded routes and partial results are not allowed",
                     details={"degraded_routes": [d.route for d in degraded]},
                 )
+        observation_trace = self._trace(
+            request_hash, started, tuple(route_traces), dropped, missing_components
+        )
         return StructuredRecallResult(
             request_id=request.request_id,
             source_watermark=source_watermark,
@@ -2252,11 +2258,9 @@ class StructuredRecallOrchestrator:
             partial=partial,
             candidates=tuple(ranked),
             dropped_by_rehydrate=dropped,
-            trace=self._trace(
-                request_hash, started, tuple(route_traces), dropped, missing_components
-            )
-            if request.include_trace
-            else None,
+            trace=observation_trace if request.include_trace else None,
+            observation_trace=observation_trace,
+            observation_budget_truncated=budget_truncated,
             pending_event_ids=pending_event_ids,
             persona_revision=persona_revision,
             persona_content_hash=persona_content_hash,
@@ -2266,7 +2270,7 @@ class StructuredRecallOrchestrator:
 
     def _rank_and_trim(
         self, candidates: list[RecallCandidate], request: StructuredRecallRequest
-    ) -> list[RecallCandidate]:
+    ) -> tuple[list[RecallCandidate], bool]:
         """Ranker v2 fusion + budget trimming (ADR-0014 §5)."""
         from iris_memory_core.domain.recall import ScoredCandidate
 
@@ -2307,7 +2311,7 @@ class StructuredRecallOrchestrator:
                     missing_components=entry.missing_components,
                 )
             )
-        return kept
+        return kept, len(outcome.kept) < len(ordered)
 
     @staticmethod
     def _authorize_request(
@@ -2745,7 +2749,7 @@ class StructuredRecallOrchestrator:
         self, candidates: list[RecallCandidate], request: StructuredRecallRequest
     ) -> list[RecallCandidate]:
         """Legacy entry kept for Phase 3/4 call sites; delegates to v2."""
-        return self._rank_and_trim(candidates, request)
+        return self._rank_and_trim(candidates, request)[0]
 
 
 def _persona_metadata(tx: Transaction, agent_id: str) -> tuple[int, str]:
@@ -3264,6 +3268,50 @@ class RecallService:
                 request_fingerprint=fingerprint,
                 resource_ids=resource_ids,
                 response_json=_result_to_json(result),
+                duration_us=(
+                    result.observation_trace.total_duration_us if result.observation_trace else None
+                ),
+                statistics_json=json.dumps(
+                    {
+                        "scope": {
+                            "tenant_id": access.tenant_id,
+                            "agent_id": effective.agent_id,
+                            "space_group_id": effective.space_group_id,
+                            "space_id": effective.space_id,
+                            "session_id": effective.session_id,
+                        },
+                        "privacy_labels": sorted(
+                            {
+                                label
+                                for candidate in result.candidates
+                                for label in candidate.privacy_labels
+                            }
+                        ),
+                        "resources": [
+                            [candidate.resource_type, candidate.resource_id]
+                            for candidate in result.candidates
+                        ],
+                        "routes": [
+                            {
+                                "route": trace.route,
+                                "outcome": trace.outcome,
+                                "candidate_count": trace.candidate_count,
+                            }
+                            for trace in (
+                                result.observation_trace.routes if result.observation_trace else ()
+                            )
+                        ],
+                        "degraded": [
+                            {"route": degraded.route, "reason_code": degraded.reason_code}
+                            for degraded in result.degraded_routes
+                        ],
+                        "budget_truncated": result.observation_budget_truncated,
+                        "required_subjects": sorted(access.consent_subject_entity_ids),
+                        "required_custom_labels": sorted(access.granted_custom_labels),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
             )
         return result
 

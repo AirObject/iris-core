@@ -606,6 +606,8 @@ class RecallUsageRepository:
         request_fingerprint: str,
         resource_ids: Sequence[str] = (),
         response_json: str | None = None,
+        duration_us: int | None = None,
+        statistics_json: str | None = None,
         now_us: int | None = None,
     ) -> None:
         """Persist the Core-side usage stages and the served response.
@@ -622,7 +624,8 @@ class RecallUsageRepository:
             "source_watermark, tombstone_watermark, schema_version, ranker_version, "
             "token_estimator_version, retrieved_count, returned_candidate_ids, "
             "returned_count, request_fingerprint, resource_ids_json, response_json, "
-            "created_us) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "created_us, duration_us, statistics_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(tenant_id, id) DO NOTHING",
             (
                 request_id,
@@ -641,6 +644,8 @@ class RecallUsageRepository:
                 canonical_json(sorted(set(resource_ids))),
                 response_json,
                 now_us if now_us is not None else self._clock.now_us(),
+                duration_us,
+                statistics_json,
             ),
         )
 

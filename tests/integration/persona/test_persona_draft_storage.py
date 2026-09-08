@@ -142,8 +142,21 @@ def test_draft_only_closes_as_published_after_matching_real_publication(draft_wo
 def test_upgrade_from_schema22_adds_empty_draft_tables(tmp_path: Path) -> None:
     database = tmp_path / "prior.sqlite3"
     migrate_through(database, 22)
+    from iris_memory_core.storage.backup import BackupService
+
+    old_store = Store(
+        SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)),
+        verify_schema_window=False,
+    )
+    backup = BackupService(old_store)
+    snapshot = tmp_path / "before-statistics"
+    backup.create_backup(snapshot)
+    assert backup.verify_backup(snapshot).ok
     runner = MigrationRunner(database)
-    assert [item.version for item in runner.migrate()] == [23]
+    assert [item.version for item in runner.migrate(allow_offline=True, backup_performed=True)] == [
+        23,
+        24,
+    ]
     assert runner.migrate() == ()
 
 
@@ -197,8 +210,8 @@ def test_concurrent_draft_updates_have_exactly_one_revision_winner(draft_world: 
         assert tx.personas.current(world["agent"]).revision == 1
 
 
-@pytest.mark.parametrize("predecessor", range(1, 23))
-def test_all_historical_migration_prefixes_reach_schema23_without_reordering(
+@pytest.mark.parametrize("predecessor", range(1, 24))
+def test_all_historical_migration_prefixes_reach_schema24_without_reordering(
     tmp_path: Path, predecessor: int
 ) -> None:
     import sqlite3
@@ -215,7 +228,7 @@ def test_all_historical_migration_prefixes_reach_schema23_without_reordering(
             old.backup(backup)
             assert backup.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
     applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
-    assert [item.version for item in applied] == list(range(predecessor + 1, 24))
+    assert [item.version for item in applied] == list(range(predecessor + 1, 25))
     with closing(sqlite3.connect(database)) as upgraded:
         assert (
             upgraded.execute(

@@ -9,6 +9,7 @@ from iris_memory_core.domain.console_operations import (
     OperationProblem,
     OperationSummary,
     ProviderOperationPayload,
+    StatisticsBackfillPayload,
     TrustedBackupPayload,
 )
 from iris_memory_core.domain.errors import ConflictError
@@ -34,11 +35,13 @@ class ConsoleOperationRepository:
             value.pop("forget_id")
             value.pop("backup_id")
             value.pop("provider_id", None)
+            value.pop("statistics_id", None)
             kind = value["kind"]
             payload_type: (
                 type[ForgetOperationPayload]
                 | type[TrustedBackupPayload]
                 | type[ProviderOperationPayload]
+                | type[StatisticsBackfillPayload]
             )
             if kind == "memory_forget":
                 field_name, payload_type, table = (
@@ -57,6 +60,12 @@ class ConsoleOperationRepository:
                     "provider",
                     ProviderOperationPayload,
                     "console_operation_providers",
+                )
+            elif kind == "statistics_backfill":
+                field_name, payload_type, table = (
+                    "statistics",
+                    StatisticsBackfillPayload,
+                    "console_operation_statistics",
                 )
             else:
                 raise ValueError("unknown operation kind")
@@ -80,6 +89,9 @@ class ConsoleOperationRepository:
     def insert(self, operation: ConsoleOperation) -> None:
         row = asdict(operation)
         forget, backup, provider = row.pop("forget"), row.pop("backup"), row.pop("provider")
+        statistics = row.pop("statistics")
+        if statistics is not None and operation.kind != "statistics_backfill":
+            raise ValueError("unexpected statistics payload")
         if (
             operation.kind == "memory_forget"
             and forget is not None
@@ -113,6 +125,16 @@ class ConsoleOperationRepository:
                 or provider["generation_id"] is not None
             ):
                 raise ValueError("new provider operation must be unexecuted")
+        elif (
+            operation.kind == "statistics_backfill"
+            and statistics is not None
+            and forget is None
+            and backup is None
+            and provider is None
+        ):
+            payload, table, reference = statistics, "console_operation_statistics", "statistics_id"
+            if operation.status != "queued" or operation.processed:
+                raise ValueError("new statistics operation must be unexecuted")
         else:
             raise ValueError("operation kind and payload differ")
         row[reference] = operation.id
