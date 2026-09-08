@@ -358,6 +358,14 @@ class OperatorSecurity:
                 self._audit(
                     tx, known, "console.login.failed", actor="anonymous", reason="operator_request"
                 )
+                if wait or global_wait or key_wait or tenant_wait:
+                    self._audit(
+                        tx,
+                        known,
+                        "console.login.locked",
+                        actor="anonymous",
+                        reason="operator_request",
+                    )
         if failure:
             raise failure
         assert result is not None
