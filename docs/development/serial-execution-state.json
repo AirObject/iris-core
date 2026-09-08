@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-08T04:22:37.352619+00:00",
+  "updated_at": "2026-09-08T04:34:27.953680+00:00",
   "automation_id": null,
   "sequence": [
     "W01",
@@ -66,7 +66,23 @@
     "Long verification in background with native completion events; dependencies and acceptance mandatory, independent packages can run in parallel; no timed automation."
   ],
   "blockers": [],
-  "background_tasks": [],
+  "background_tasks": [
+    {
+      "packages": [
+        "W06",
+        "W08"
+      ],
+      "batch": "ci-w06-w08-001",
+      "worktree": "/private/tmp/imc-ci-w06-w08",
+      "head": "298325578e96b6e70e686ad9cbc6265d54b29b8a",
+      "session_id": 99687,
+      "supervisor_pid": 34547,
+      "watch_cell": "45",
+      "run_directory": "/private/tmp/imc-ci-w06-w08/.work-package-runs/W08/ci-w06-w08-001",
+      "status": "running",
+      "command": "env UV_NO_SYNC=1 UV_OFFLINE=1 CI=1 PYTHONPATH=<isolated src/sdk> CONSOLE_BROWSER_EXECUTABLE=<installed Chrome> make ci"
+    }
+  ],
   "verification": {
     "transport-001": "failed:34 passed,6 HTTP response lifecycle/fixture failures",
     "transport-002": "failed:39 passed,1 test hostname rejected by existing plain HTTP boundary",
@@ -107,7 +123,7 @@
     "activations-003": "passed:12 actual activation tests after mapping only snapshot_moved to existing Outbox bounded retry",
     "contracts-002": "passed:generated normalized activation problem codes",
     "structural-002": "passed:whole format/lint/import/docs/count/type/contracts compatibility checks",
-    "activations-004": "passed:567 actual activation/probe,immutable Operation intent,existing backup/Outbox,Schema21\u219222 and Console contract regressions",
+    "activations-004": "passed:567 actual activation/probe,immutable Operation intent,existing backup/Outbox,Schema21→22 and Console contract regressions",
     "types-010": "passed:whole Python and TS SDK types after final immutable-plan test",
     "rollbacks-001": "passed:12 real HTTP/FAISS retained rollback, hot configuration, unusable history rebuild, cancellation, retired reprobe and two Worker fences",
     "types-011": "passed:whole Python and TS SDK typecheck after retained rollback",
@@ -163,14 +179,18 @@
     "package-001": "passed: UV_OFFLINE=1 make package-check; actual cached wheel/sdist builds, isolated installation, public API and real process/SDK Recall smoke",
     "W08/integrated-structural-001": "failed: documentation counts139/167 versus actual144/174; corrected only current generated count markers",
     "W08/integrated-structural-002": "passed: format/lint/types/contracts/Console29tests/production build",
-    "W06/integrated-structural-001": "passed: combined W06/W08 format/lint/types/contracts/public API"
+    "W06/integrated-structural-001": "passed: combined W06/W08 format/lint/types/contracts/public API",
+    "ci-worktree-bootstrap": "first setup command did not start because the new worktree had no .venv; setup rerun using root absolute interpreter, dependencies linked and validation then started",
+    "W08/matrix-integration-001": "failed: 1 passed/1 failed; unconfigured cognitive tenant correctly returns503 after W06, old scheduling fixture assumed default enabled",
+    "W08/matrix-integration-002": "passed: 2 full public HTTP operation matrix tests; explicitly configured scheduling tenant, production default unchanged; commit ef7c159",
+    "W20/release-selection-001": "passed: selected Core/SDK version, mismatch/missing approval and invalid selection checks; YAML parse and separate upload/environment inspection passed; commit a088c5f; full package CI pending"
   },
   "contract_version": "1.11.0",
   "continuation_policy": "User cancelled scheduled automation. Continue active goal from actual background process/session completion events, with no clock sleeps or scheduled-time phase barriers.",
   "automation_status": "deleted by user request on 2026-09-08 Asia/Shanghai",
-  "goal_runtime_status": "active (get_goal confirmed after user resumed)",
+  "goal_runtime_status": "No active goal returned by get_goal in this resumed task; work proceeds under current user instruction.",
   "previous_goal_turn_classification": "progress:real asynchronous Provider probe handler and durable budgets/fences/cancel/dead handling implemented; activation freshness/plan gates and Console1.2 Operation contract added;444 tests and structural gates passed.",
-  "current_goal_turn_classification": "progress: W05 source and evidence committed; W06 and W08 integrated in small functional commits with reviewed public surface; W07/W09/W10 developing independently",
+  "current_goal_turn_classification": "progress: recovered prior actual CI process; continued W07/W09/W10 in parallel; fixed operation matrix integration and separated Core/SDK publication; user deferred production acceptance",
   "runtime_versions": {
     "core": "0.15.0",
     "schema": 23,
@@ -182,7 +202,7 @@
   "pending_external_requirements": [
     {
       "requirement": "Real allowed HTTP Embedding Provider acceptance",
-      "status": "requested; no configured relevant environment variable names found",
+      "status": "TBD by explicit user decision; real production acceptance deferred",
       "needs": [
         "endpoint",
         "model and dimension",
@@ -193,7 +213,9 @@
     }
   ],
   "completion_watch": {
-    "status": "all integrated structural sessions consumed; preparing fixed W06/W08 CI worktree"
+    "status": "Recovered existing supervisor; native macOS KQ_NOTE_EXIT watcher active. Earlier session/cell identifiers are historical, not callable in this task.",
+    "session_id": 53362,
+    "supervisor_pid": 34547
   },
   "execution_mode": "dependency_gated_parallel",
   "commit_policy": "Small coherent behavior commits; related work packages may share a commit; package acceptance remains explicit.",
@@ -205,27 +227,38 @@
     "W06": {
       "owner": "w06_cognitive",
       "directory": "/private/tmp/imc-w06-work",
-      "status": "integrated; full CI and external model quality pending"
+      "status": "fixed candidate full CI running; external quality gate pending"
     },
     "W07": {
-      "owner": "w07_observability",
+      "owner": "w07_finish",
       "directory": "/private/tmp/imc-w07-work",
       "status": "implementation; temporary Schema23 rebased to24 at integration"
     },
     "W08": {
       "owner": "w08_persona_draft",
       "directory": "/private/tmp/imc-w08-work",
-      "status": "integrated Schema23; full CI pending"
+      "status": "fixed candidate full CI running; result required before completion"
     },
     "W09": {
-      "owner": "w06_cognitive",
+      "owner": "w09_finish",
       "directory": "/private/tmp/imc-w06-work",
       "status": "development; ADR0053/Schema26 reserved"
     },
     "W10": {
-      "owner": "w08_persona_draft",
+      "owner": "w10_finish",
       "directory": "/private/tmp/imc-w08-work",
       "status": "development; ADR0054/Schema25 reserved"
+    },
+    "W20": {
+      "owner": "root",
+      "status": "Independent publication selection preparation committed; remaining implementation and package CI pending; production acceptance deferred by user"
     }
+  },
+  "production_acceptance": {
+    "status": "deferred_by_user",
+    "decision_date": "2026-09-08",
+    "instruction": "这些项目都标记为待定，暂不实现生产验收",
+    "inputs": "Target platform/hardware/scale, budgets/RPO/RTO, authorized external Providers/credentials, operators and GitHub/PyPI configuration all TBD.",
+    "impact": "Do not implement/run production acceptance now; W15-W20 production gates remain open, W18/W19 official batches not started. Continue independent local functionality and development validation."
   }
 }
