@@ -62,6 +62,7 @@ from iris_memory_core.storage.memory import (
     RelationRepository,
     RetentionRepository,
 )
+from iris_memory_core.storage.observation_context import ObservationContextRepository
 from iris_memory_core.storage.persona import PersonaRepository
 from iris_memory_core.storage.persona_draft import PersonaDraftRepository
 from iris_memory_core.storage.plans import (
@@ -118,6 +119,7 @@ class Transaction:
         self.identities = IdentityRepository(connection, clock, ids)
         self.ledger = LedgerRepository(connection, clock, ids)
         self.observations = ObservationRepository(connection, clock, ids)
+        self.observation_context = ObservationContextRepository(connection, clock, ids)
         self.outbox = OutboxRepository(connection, clock, ids)
         self.schedules = ScheduleRepository(connection, clock, ids)
         self.surfaces = SurfaceRepository(connection, clock, ids)

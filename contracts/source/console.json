@@ -21707,8 +21707,8 @@
     "backups.write"
   ],
   "runtime_versions": {
-    "package_version": "0.15.0",
-    "schema_version": 24
+    "package_version": "0.16.0",
+    "schema_version": 25
   },
   "schemas": {
     "BootstrapEnvelope": {

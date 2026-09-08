@@ -1,5 +1,7 @@
 # Iris Memory Core 分阶段开发路线图
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 > 状态：In progress；2026-09-07 核查补充了当前集成缺口与后续执行指导。  
 > 架构：[架构基线](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)；决策：[ADR 索引](../adr/README.md)。
 

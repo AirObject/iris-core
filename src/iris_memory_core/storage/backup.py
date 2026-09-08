@@ -964,6 +964,22 @@ def _restore_failure(target_dir: Path, started: float, *problems: str) -> Restor
     )
 
 
+def _reset_context_cursors_for_restore(database: Path) -> None:
+    """Pagination tokens belong to one live snapshot history, never a restored copy."""
+    connection = sqlite3.connect(database)
+    try:
+        exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='observation_context_cursors'"
+        ).fetchone()
+        if exists:
+            connection.execute("DELETE FROM observation_context_cursors")
+            connection.execute("DELETE FROM observation_context_scans")
+            connection.execute("DELETE FROM observation_context_scan_positions")
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def _reset_fts_projection_for_restore(database: Path) -> None:
     """Reset any FTS projection bytes the backup carried (ADR-0014 §9).
 
@@ -1282,6 +1298,7 @@ def restore_backup(
                 reset_operations_for_restore,
             )
 
+            _reset_context_cursors_for_restore(staging / CANONICAL_NAME)
             _reset_fts_projection_for_restore(staging / CANONICAL_NAME)
             _reset_vector_projection_for_restore(staging / CANONICAL_NAME)
             _reset_profile_graph_for_restore(staging / CANONICAL_NAME)

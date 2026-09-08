@@ -118,8 +118,16 @@ class ObservationDraft:
     artifact_refs: tuple[ArtifactRef, ...] = ()
     privacy_labels: tuple[str, ...] = ()
     effect_proof: dict[str, object] | None = None
+    context_kind: str = "interaction"
+    source_thread_id: str | None = None
+    reply_to_source_event_id: str | None = None
 
     def __post_init__(self) -> None:
+        if self.context_kind not in {"interaction", "background"}:
+            raise InvalidObservationError("unknown observation context_kind")
+        for value in (self.source_thread_id, self.reply_to_source_event_id):
+            if value is not None and (not isinstance(value, str) or not 1 <= len(value) <= 256):
+                raise InvalidObservationError("source relationship ids must be 1..256 characters")
         if not self.idempotency_key or len(self.idempotency_key) > 256:
             raise InvalidObservationError("record idempotency_key must be 1..256 characters")
         if not self.kind or len(self.kind) > 128:
@@ -178,6 +186,17 @@ class ObservationDraft:
                 ],
                 "privacy_labels": list(self.privacy_labels),
                 "effect_proof": self.effect_proof,
+                **(
+                    {"context_kind": self.context_kind}
+                    if self.context_kind != "interaction"
+                    else {}
+                ),
+                **({"source_thread_id": self.source_thread_id} if self.source_thread_id else {}),
+                **(
+                    {"reply_to_source_event_id": self.reply_to_source_event_id}
+                    if self.reply_to_source_event_id
+                    else {}
+                ),
             }
         )
 
@@ -212,6 +231,9 @@ class StoredObservation:
     artifact_refs: tuple[ArtifactRef, ...] = ()
     privacy_labels: tuple[str, ...] = ()
     effect_proof: dict[str, object] | None = None
+    context_kind: str = "interaction"
+    source_thread_id: str | None = None
+    reply_to_source_event_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

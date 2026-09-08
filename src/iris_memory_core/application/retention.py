@@ -738,6 +738,8 @@ class RetentionService:
             tx, tenant_id, threshold_us=policy.threshold_days * 86_400_000_000, now_us=now_us
         ):
             observation = tx.observations.get(observation_id)
+            if tx.observation_context.has_live_dependency(tenant_id, observation_id):
+                continue
             if _hold_blocks(
                 holds,
                 space_id=observation.space_id,

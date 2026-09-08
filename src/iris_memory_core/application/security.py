@@ -133,6 +133,7 @@ class CredentialService:
             data_purposes=record.data_purposes,
             consent_subject_entity_ids=record.entity_ids,
             admin=record.plane == "management",
+            credential_id=record.id,
         )
 
 

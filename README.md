@@ -1,5 +1,7 @@
 # Iris Memory Core
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](docs/development/observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 Iris Memory Core is a host-independent cognitive memory service built around a SQLite canonical store, versioned memory and Persona, explainable recall, and persistent background work. The HTTP service and worker are implemented; the optional Web console is in progress. Bellis and AstrBot adapters are deferred and excluded from the current Core release. The planned pip distribution contains Core functionality and exposes only the declared public methods and service contracts; direct access to its storage, indexes, queues or private components is outside the public interface. See the [roadmap](docs/development/README.md) for verified phase status and the [Phase 14 plan](docs/development/phase-14-hardening-release.md) for packaging scope, access boundaries and the remaining release work.
 
 ## Requirements
@@ -7,7 +9,7 @@ Iris Memory Core is a host-independent cognitive memory service built around a S
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/) in the range declared by `pyproject.toml`.
 - Node.js 22.12+ and npm for the TypeScript SDK and Console; CI uses Node.js 24.
 
-FAISS and NumPy are runtime dependencies with lazy imports and explicit Vector degradation. The runtime includes Graph recall. Vector recall requires an explicitly configured embedding provider; its deterministic development provider is opt-in. The cognitive worker still uses a deterministic provider. Production embedding/cognitive configuration and deployment validation remain release work; see the [W01 candidate report](docs/reports/w01-http-recall-assembly.md) for current acceptance status.
+The embedded baseline depends on JSON Schema validation. HTTP serving uses the `server` extra; FAISS and NumPy are in the `vector` extra and remain lazily loaded. Vector and cognitive processing require explicitly configured providers. Unconfigured model capabilities stay disabled; deterministic providers require development configuration. Deployment adapters are implemented in [W05](docs/reports/w05-embedding-provider.md) and [W06](docs/reports/w06-cognitive-provider.md), while real model quality and production acceptance remain separate release gates.
 
 ## Development setup
 
@@ -72,3 +74,7 @@ See the [contract authoring guide](contracts/README.md). Edit `contracts/source/
 ## License
 
 Copyright (C) 2026 Iris Memory Core contributors. Licensed under the GNU Affero General Public License v3.0 only; see [LICENSE](LICENSE).
+
+## 插件内嵌接入（开发候选）
+
+本地使用公共 `iris_memory_core.embedded.EmbeddedMemory`，无监听端口；远程继续使用独立 SDK。Core 基础依赖仅需 jsonschema，HTTP/向量分别安装 `[server]` / `[vector]`，Console 使用 `[console]`。见 [接入指南](docs/development/plugin-integration.md) 与 [验收报告](docs/reports/plugin-integration.md)。本轮源码尚未发布，使用已验证 wheel 摘要识别开发快照。

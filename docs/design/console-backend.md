@@ -1,5 +1,7 @@
 # Console 设计与前后端接入边界
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](../development/observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 > 核查日期：2026-09-06；Phase 13 仍为 In progress。本文合并原后端设计与前端对接说明；接口的当前真源是 [Console OpenAPI](../../schemas/openapi/console.json)。  
 > 阶段和验收：[Phase 13](../development/phase-13-web-console.md) · [合并验证记录](../reports/phase-13-verification.md)；决策：[ADR-0022](../adr/0022-management-console-plane.md)。  
 > 前端启动：[工程 README](../../web/console/README.md)；逐功能差距：[对接矩阵](../../web/console/INTEGRATION_MATRIX.md)。

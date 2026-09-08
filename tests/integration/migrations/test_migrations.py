@@ -191,6 +191,7 @@ def test_repository_migrations_apply_on_empty_database(tmp_path: Path) -> None:
         22,
         23,
         24,
+        25,
     ]
     assert runner.migrate() == ()
 
@@ -259,8 +260,9 @@ def test_phase0_database_upgrades_to_phase1(tmp_path: Path) -> None:
         22,
         23,
         24,
+        25,
     ]
-    assert MigrationRunner(database, default_migrations_path()).current_version() == 24
+    assert MigrationRunner(database, default_migrations_path()).current_version() == 25
 
 
 def test_migration_meta_enforces_app_version_window(tmp_path: Path) -> None:

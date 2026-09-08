@@ -166,6 +166,7 @@ class TestJobKindRegistry:
                     "maintenance.selfcheck",
                     "surface.lease_revoked",
                     "observation.recorded",
+                    "observation.summarize",
                     "recent_context.maintenance",
                     "focus.maintenance",
                     "state.projection",
@@ -202,6 +203,7 @@ class TestJobKindRegistry:
                     "console.trusted_backup",
                     "console.embedding_probe",
                     "console.embedding_activate",
+                    "console.stats.rollup",
                 }
             )
             == ENABLED_JOB_KINDS

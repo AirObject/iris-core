@@ -942,14 +942,14 @@ class TestSecondReviewRound:
 
 def _cleanup_job(ctx: VectorCtx, payload: Mapping[str, object]) -> Any:
     """Minimal claimed-job shape for exercising a handler closure directly."""
+    from dataclasses import replace
+
     from iris_memory_core.domain.jobs import OutboxJob
 
     with ctx.store.read() as tx:
-        row = tx.raw().execute("SELECT * FROM outbox_jobs LIMIT 1").fetchone()
-    if row is not None:
-        columns = row.keys()
-        values = dict(zip(columns, tuple(row), strict=True))
-        return OutboxJob(**{**values, "payload": payload, "job_kind": "vector.cleanup"})
+        row = tx.raw().execute("SELECT id FROM outbox_jobs LIMIT 1").fetchone()
+        if row is not None:
+            return replace(tx.outbox.get(row[0]), payload=payload, job_kind="vector.cleanup")
     return OutboxJob(
         id="job-cleanup-probe",
         tenant_id="t1",

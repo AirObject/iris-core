@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iris-memory-sdk"
-version = "0.11.1"
+version = "0.12.0"
 description = "Async Python client for Iris Memory Core"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -19,7 +19,7 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 authors = [{ name = "Iris Memory Core contributors" }]
-dependencies = []
+dependencies = ["httpx>=0.28,<1"]
 
 [project.urls]
 Repository = "https://github.com/AirObject/iris_memory_core"

@@ -64,6 +64,11 @@ def stored_observation_from_row(row: sqlite3.Row) -> StoredObservation:
     payload = row["structured_payload"]
     decoded_payload = json.loads(payload) if payload else None
     return StoredObservation(
+        context_kind=row["context_kind"] if "context_kind" in set(row.keys()) else "interaction",
+        source_thread_id=row["source_thread_id"] if "source_thread_id" in set(row.keys()) else None,
+        reply_to_source_event_id=row["reply_to_source_event_id"]
+        if "reply_to_source_event_id" in set(row.keys())
+        else None,
         id=row["id"],
         tenant_id=row["tenant_id"],
         agent_id=row["agent_id"],
@@ -270,7 +275,7 @@ class RecentContextRepository:
             clauses.append("session_id IS NULL")
         rows = self._connection.execute(
             f"SELECT * FROM observations WHERE {' AND '.join(clauses)} "
-            "ORDER BY occurred_us DESC, id DESC LIMIT ?",
+            "ORDER BY (context_kind='interaction') DESC, occurred_us DESC, id DESC LIMIT ?",
             (*params, limit),
         ).fetchall()
         return [stored_observation_from_row(row) for row in reversed(rows)]

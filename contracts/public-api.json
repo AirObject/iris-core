@@ -95,6 +95,9 @@
     "get_entity": [
       "getEntity"
     ],
+    "get_entity_profile": [
+      "getEntityProfile"
+    ],
     "get_entity_relations": [
       "getEntityRelations"
     ],
@@ -146,6 +149,9 @@
     "note_action": [
       "archiveNote",
       "promoteNote"
+    ],
+    "observation_context": [
+      "readObservationContext"
     ],
     "observe_batch": [
       "observeBatch"
@@ -227,6 +233,9 @@
     ],
     "state_history": [
       "getStateHistory"
+    ],
+    "summarize_observations": [
+      "summarizeObservationContext"
     ],
     "transition_episode": [
       "transitionEpisode"
@@ -560,6 +569,18 @@
               "nargs": null,
               "required": false,
               "type": "int"
+            },
+            {
+              "action": "_StoreTrueAction",
+              "choices": null,
+              "default": false,
+              "flags": [
+                "--persona-mirror"
+              ],
+              "name": "persona_mirror",
+              "nargs": 0,
+              "required": false,
+              "type": null
             },
             {
               "action": "_StoreAction",
@@ -4260,6 +4281,17 @@
               "#/components/schemas/StateView"
             ]
           },
+          "readObservationContext": {
+            "contract_sha256": "97e4ef97dfb5f81a16ef35e8acfa8b453f8cc87b8ac18b6b0374b984c193e776",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/v1/observations:context",
+            "schemas": [
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/ObservationContextRequest",
+              "#/components/schemas/ObservationContextResponse"
+            ]
+          },
           "rebuildIndex": {
             "contract_sha256": "4b714463f3449897e9898deb1f90b1f4fcb3836b7acfe26dc63b9366d2c5b60a",
             "deprecated": false,
@@ -4449,6 +4481,17 @@
               "#/components/schemas/ErrorEnvelope"
             ]
           },
+          "summarizeObservationContext": {
+            "contract_sha256": "1ddc566ec97dc37ec2cf2eb716915167c4f47095fa824c93f156e5aa42334c8b",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/v1/observations:summarize",
+            "schemas": [
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/ObservationSummaryRequest",
+              "#/components/schemas/ObservationSummaryResponse"
+            ]
+          },
           "transitionEpisode": {
             "contract_sha256": "0b3aaa5d59dddf8a25a97a590603fae4bc92b8c20cab19f5238121e0239fc4d1",
             "deprecated": false,
@@ -4568,8 +4611,12 @@
           "NoteCreateRequest": "667abe42ff7fb130190e628de5fc0c526cfef1329c39ee7caeef9287f667a11a",
           "NoteUpdateRequest": "0545d610f719b46f505f2a6ef8011b9fed26867e8d93ca59b7ef7be551e7dacf",
           "NoteView": "4df7b3e529a42b6d60d98b499eface7cebd565a2d12cd4c054c0da078e135945",
-          "ObservationBatchRequest": "c2e2b2c1d7f6d42dd3aa7791c4268174dd784585867c2388f8383c9da567e78e",
+          "ObservationBatchRequest": "0ff44a4d48716a8f4a684ff2268c26eb4bc15cf03f12e4225e36f3394a1271e2",
           "ObservationBatchResponse": "15adae3bfba48bd43178abb3a25a442673330fa6cc4e729c50cf1f2d9fa6ecd3",
+          "ObservationContextRequest": "480827d590a19e469ce9b8f4e900714c6f2deb5faa72c74108e80325f16cffc4",
+          "ObservationContextResponse": "3528bdc6cfd486a830697e77a7463dc4a5f0d84e7cc68029ba2c00fc0c441045",
+          "ObservationSummaryRequest": "a717fed508754d696b92cdcb298f888ae33cac5c3f4b1a412e9fdc2d0a400150",
+          "ObservationSummaryResponse": "c4a83a6bdeec4f3ece6dcb7a64e4414a6a955ecc50e73ba8764617b7d6fd8a1f",
           "PersonaCurrentResponse": "121f98edb58976db17dabf4cd6483421381a99ddd089b0adad450b4a97105a8b",
           "PersonaHistoryResponse": "4c2c2e1c7de99d293ab8c83abbfef2566eb92a2bf793ea8f5cfbece981b6df7b",
           "PersonaPolicyView": "200f8b287234df272f6931d1931d51c0f5525d8b3ffd0e88976dd8217f149dda",
@@ -4615,14 +4662,14 @@
           "TriggerView": "b850ebcd024eff9db6ce55913dbaf3cc58f9e715e3969702f9428bc9aab3b083",
           "VersionManifest": "bb6cde0e09f0f6653c4625bb8d2a83fd6b17338f37cf69ea314d18d636c9ac3f"
         },
-        "version": "1.11.0"
+        "version": "1.13.0"
       }
     },
     "python": {
       "core_exports": [
         "__version__"
       ],
-      "core_version": "0.15.0",
+      "core_version": "0.16.0",
       "instance_fields": {
         "CapabilitiesEnvelope": {
           "api_version": "str",
@@ -4653,6 +4700,228 @@
         }
       },
       "modules": {
+        "iris_memory_core.embedded": {
+          "EmbeddedConfig": {
+            "annotations": {
+              "allow_local_sqlite": "bool",
+              "auto_summary_enabled": "bool",
+              "background": "bool",
+              "background_retention_days": "int",
+              "bootstrap": "LocalBootstrap",
+              "close_timeout_seconds": "float",
+              "data_directory": "Path",
+              "development_embedding": "bool",
+              "max_pending": "int",
+              "poll_seconds": "float",
+              "summary_batch_size": "int",
+              "summary_max_wait_seconds": "int",
+              "summary_min_messages": "int"
+            },
+            "attributes": {
+              "allow_local_sqlite": "builtins.bool",
+              "auto_summary_enabled": "builtins.bool",
+              "background": "builtins.bool",
+              "background_retention_days": "builtins.int",
+              "close_timeout_seconds": "builtins.float",
+              "development_embedding": "builtins.bool",
+              "max_pending": "builtins.int",
+              "poll_seconds": "builtins.float",
+              "summary_batch_size": "builtins.int",
+              "summary_max_wait_seconds": "builtins.int",
+              "summary_min_messages": "builtins.int"
+            },
+            "bases": [
+              "builtins.object"
+            ],
+            "methods": {},
+            "signature": "(data_directory: 'Path', bootstrap: 'LocalBootstrap' = <factory>, background: 'bool' = False, poll_seconds: 'float' = 0.25, close_timeout_seconds: 'float' = 5.0, max_pending: 'int' = 32, allow_local_sqlite: 'bool' = False, development_embedding: 'bool' = False, auto_summary_enabled: 'bool' = False, summary_min_messages: 'int' = 50, summary_max_wait_seconds: 'int' = 120, summary_batch_size: 'int' = 100, background_retention_days: 'int' = 30) -> None"
+          },
+          "EmbeddedError": {
+            "annotations": {},
+            "attributes": {},
+            "bases": [
+              "builtins.RuntimeError"
+            ],
+            "methods": {},
+            "signature": "(code: 'str', message: 'str', *, request_id: 'str', retryable: 'bool' = False, result_unknown: 'bool' = False) -> 'None'"
+          },
+          "EmbeddedMemory": {
+            "annotations": {},
+            "attributes": {},
+            "bases": [
+              "builtins.object"
+            ],
+            "methods": {
+              "aclose": "(self) -> 'None'",
+              "capabilities": "(self) -> 'dict[str, Any]'",
+              "correct_claim": "(self, claim_id: 'str', record: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'",
+              "diagnostics": "(self) -> 'dict[str, Any]'",
+              "execute": "(self, operation_id: 'str', body: 'dict[str, Any] | None' = None, *, path_parameters: 'Mapping[str, str] | None' = None, query_parameters: 'Mapping[str, str] | None' = None, idempotency_key: 'str | None' = None) -> 'Any'",
+              "forget_memory": "(self, record: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'",
+              "observation_context": "(self, request: 'dict[str, Any]') -> 'dict[str, Any]'",
+              "observe_batch": "(self, records: 'list[dict[str, Any]]', *, idempotency_key: 'str | None' = None, lease_id: 'str | None' = None, lease_epoch: 'int | None' = None) -> 'dict[str, Any]'",
+              "provision_agent": "(self, display_name: 'str', *, key: 'str') -> 'dict[str, str]'",
+              "recall": "(self, record: 'dict[str, Any]') -> 'dict[str, Any]'",
+              "register_actor": "(self, provider: 'str', external_id: 'str', *, display_name: 'str', realm: 'str' = 'default', idempotency_key: 'str') -> 'dict[str, str]'",
+              "remember_claim": "(self, record: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'",
+              "run_pending": "(self) -> 'dict[str, int]'",
+              "start": "(self) -> 'dict[str, str]'",
+              "summarize_observations": "(self, request: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'"
+            },
+            "signature": "(config: 'EmbeddedConfig', *, embedding: 'EmbeddingProvider | AsyncEmbeddingAdapter | None' = None, cognitive: 'AsyncCognitiveAdapter | None' = None) -> 'None'"
+          },
+          "LocalBootstrap": {
+            "annotations": {
+              "agent_name": "str",
+              "app_instance_id": "str",
+              "capabilities": "tuple[str, ...]",
+              "data_purposes": "tuple[str, ...]",
+              "manage_agents": "bool",
+              "manage_identities": "bool",
+              "manage_indexes": "bool",
+              "manage_persona": "bool",
+              "surface_mode": "str",
+              "tenant_id": "str"
+            },
+            "attributes": {
+              "agent_name": "builtins.str",
+              "app_instance_id": "builtins.str",
+              "capabilities": "builtins.tuple",
+              "data_purposes": "builtins.tuple",
+              "manage_agents": "builtins.bool",
+              "manage_identities": "builtins.bool",
+              "manage_indexes": "builtins.bool",
+              "manage_persona": "builtins.bool",
+              "surface_mode": "builtins.str",
+              "tenant_id": "builtins.str"
+            },
+            "bases": [
+              "builtins.object"
+            ],
+            "methods": {},
+            "signature": "(tenant_id: 'str' = 'iris-local', app_instance_id: 'str' = 'iris-plugin', agent_name: 'str' = 'Iris', capabilities: 'tuple[str, ...]' = ('observe.batch.v1', 'claims.v1', 'recall.v1', 'active-surface.v1', 'search.fts.v1', 'recall.graph.v1', 'persona.v1', 'memory-forget.v1', 'persona.read.v1', 'persona.state.v1', 'observation-context.v1', 'consolidation.v1', 'recent-context.v1', 'source-cursor.v1'), data_purposes: 'tuple[str, ...]' = ('reply',), manage_persona: 'bool' = False, manage_identities: 'bool' = False, manage_indexes: 'bool' = False, manage_agents: 'bool' = False, surface_mode: 'str' = 'off') -> None"
+          }
+        },
+        "iris_memory_core.embedded_providers": {
+          "AsyncCognitiveAdapter": {
+            "annotations": {
+              "extract": "Callable[..., Awaitable[Sequence[Mapping[str, Any]]]]",
+              "limits": "CognitiveProviderLimits",
+              "model_id": "str",
+              "summarize": "Callable[..., Awaitable[Mapping[str, Any]]]"
+            },
+            "attributes": {},
+            "bases": [
+              "builtins.object"
+            ],
+            "methods": {},
+            "signature": "(model_id: 'str', extract: 'Callable[..., Awaitable[Sequence[Mapping[str, Any]]]]', summarize: 'Callable[..., Awaitable[Mapping[str, Any]]]', limits: 'CognitiveProviderLimits' = <factory>) -> None"
+          },
+          "AsyncEmbeddingAdapter": {
+            "annotations": {
+              "embed": "Callable[[Sequence[str]], Awaitable[list[Sequence[float]]]]",
+              "space": "VectorSpaceConfig",
+              "timeout_seconds": "float"
+            },
+            "attributes": {
+              "timeout_seconds": "builtins.float"
+            },
+            "bases": [
+              "builtins.object"
+            ],
+            "methods": {},
+            "signature": "(space: 'VectorSpaceConfig', embed: 'Callable[[Sequence[str]], Awaitable[list[Sequence[float]]]]', timeout_seconds: 'float' = 5.0) -> None"
+          },
+          "CognitiveProviderLimits": {
+            "annotations": {
+              "breaker_cooldown_seconds": "float",
+              "breaker_failures": "int",
+              "concurrency": "int",
+              "daily_budget_microunits": "int",
+              "max_qps": "float",
+              "max_retries": "int",
+              "timeout_seconds": "float"
+            },
+            "attributes": {
+              "breaker_cooldown_seconds": "builtins.member_descriptor",
+              "breaker_failures": "builtins.member_descriptor",
+              "concurrency": "builtins.member_descriptor",
+              "daily_budget_microunits": "builtins.member_descriptor",
+              "max_qps": "builtins.member_descriptor",
+              "max_retries": "builtins.member_descriptor",
+              "timeout_seconds": "builtins.member_descriptor"
+            },
+            "bases": [
+              "builtins.object"
+            ],
+            "methods": {},
+            "signature": "(timeout_seconds: 'float' = 5.0, max_retries: 'int' = 3, max_qps: 'float' = 5.0, daily_budget_microunits: 'int' = 1000000, concurrency: 'int' = 2, breaker_failures: 'int' = 5, breaker_cooldown_seconds: 'float' = 30.0) -> None"
+          },
+          "EmbeddingProvider": {
+            "annotations": {},
+            "attributes": {
+              "space": "builtins.property"
+            },
+            "bases": [
+              "typing.Protocol"
+            ],
+            "methods": {
+              "embed_batch": "(self, texts: 'Sequence[str]', *, deadline_monotonic_us: 'int | None' = None) -> 'list[Sequence[float]]'"
+            },
+            "signature": "(*args, **kwargs)"
+          },
+          "ExtractionProvider": {
+            "annotations": {
+              "model_id": "str"
+            },
+            "attributes": {},
+            "bases": [
+              "typing.Protocol"
+            ],
+            "methods": {
+              "extract": "(self, observations: 'Sequence[Mapping[str, object]]', *, prompt_version: 'str', schema_version: 'str', timeout_seconds: 'float') -> 'Sequence[Mapping[str, Any]]'"
+            },
+            "signature": "(*args, **kwargs)"
+          },
+          "SummarizationProvider": {
+            "annotations": {
+              "model_id": "str"
+            },
+            "attributes": {},
+            "bases": [
+              "typing.Protocol"
+            ],
+            "methods": {
+              "summarize": "(self, observations: 'Sequence[Mapping[str, object]]', *, prompt_version: 'str', schema_version: 'str', timeout_seconds: 'float') -> 'Mapping[str, Any]'"
+            },
+            "signature": "(*args, **kwargs)"
+          },
+          "VectorSpaceConfig": {
+            "annotations": {
+              "builder_version": "int",
+              "dimension": "int",
+              "metric": "str",
+              "model": "str",
+              "normalization": "str",
+              "template_version": "int"
+            },
+            "attributes": {
+              "builder_version": "builtins.member_descriptor",
+              "dimension": "builtins.member_descriptor",
+              "metric": "builtins.member_descriptor",
+              "model": "builtins.member_descriptor",
+              "normalization": "builtins.member_descriptor",
+              "template_version": "builtins.member_descriptor"
+            },
+            "bases": [
+              "builtins.object"
+            ],
+            "methods": {
+              "as_manifest_dict": "(self) -> 'dict[str, object]'"
+            },
+            "signature": "(model: 'str', dimension: 'int', metric: 'str' = 'cosine', normalization: 'str' = 'l2', template_version: 'int' = 1, builder_version: 'int' = 1) -> None"
+          }
+        },
         "iris_memory_sdk.client": {
           "AsyncIrisMemoryClient": {
             "annotations": {},
@@ -4662,6 +4931,7 @@
             ],
             "methods": {
               "ack_cognitive_event": "(self, event_id: 'str', *, idempotency_key: 'str', ack_token: 'str | None' = None, lease_id: 'str | None' = None, lease_epoch: 'int | None' = None) -> 'dict[str, Any]'",
+              "aclose": "(self, *, timeout_seconds: 'float' = 5.0) -> 'None'",
               "acquire_surface_lease": "(self, agent_id: 'str', *, holder_app_instance_id: 'str', ttl_us: 'int', priority: 'int' = 0, allow_preempt: 'bool' = False, reason: 'str | None' = None) -> 'dict[str, Any]'",
               "capabilities": "(self) -> 'CapabilitiesEnvelope'",
               "claim_history": "(self, claim_id: 'str', *, as_of_us: 'int | None' = None, limit: 'int | None' = None) -> 'dict[str, Any]'",
@@ -4691,6 +4961,7 @@
               "get_artifact": "(self, artifact_id: 'str') -> 'dict[str, Any]'",
               "get_claim": "(self, claim_id: 'str') -> 'dict[str, Any]'",
               "get_entity": "(self, entity_id: 'str') -> 'dict[str, Any]'",
+              "get_entity_profile": "(self, entity_id: 'str', *, agent_id: 'str', space_id: 'str | None' = None) -> 'dict[str, Any]'",
               "get_entity_relations": "(self, entity_id: 'str') -> 'dict[str, Any]'",
               "get_episode": "(self, episode_id: 'str') -> 'dict[str, Any]'",
               "get_focus_item": "(self, focus_item_id: 'str') -> 'dict[str, Any]'",
@@ -4706,8 +4977,9 @@
               "list_space_groups": "(self) -> 'dict[str, Any]'",
               "list_states": "(self, agent_id: 'str', *, namespace: 'str | None' = None, space_id: 'str | None' = None, session_id: 'str | None' = None) -> 'dict[str, Any]'",
               "list_tasks": "(self, agent_id: 'str', *, status: 'str | None' = None, space_id: 'str | None' = None, session_id: 'str | None' = None) -> 'dict[str, Any]'",
-              "negotiate": "(self, api_versions: 'tuple[str, ...]' = ('v1',)) -> 'CapabilitiesEnvelope'",
+              "negotiate": "(self, api_versions: 'tuple[str, ...]' = ('v1',), *, required_capabilities: 'tuple[str, ...]' = ()) -> 'CapabilitiesEnvelope'",
               "note_action": "(self, note_id: 'str', action: 'str', body: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'",
+              "observation_context": "(self, request: 'dict[str, Any]') -> 'dict[str, Any]'",
               "observe_batch": "(self, records: 'list[dict[str, Any]]', *, idempotency_key: 'str | None' = None, lease_id: 'str | None' = None, lease_epoch: 'int | None' = None) -> 'dict[str, Any]'",
               "persona_history": "(self, agent_id: 'str', *, limit: 'int' = 100) -> 'dict[str, Any]'",
               "prepare_binding": "(self, record: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'",
@@ -4734,6 +5006,7 @@
               "set_space_group_binding": "(self, space_group_id: 'str', space_id: 'str', record: 'dict[str, Any]', *, bind: 'bool', idempotency_key: 'str') -> 'dict[str, Any]'",
               "source_cursor": "(self, agent_id: 'str', source_stream: 'str') -> 'dict[str, Any]'",
               "state_history": "(self, namespace: 'str', key: 'str', *, agent_id: 'str', space_id: 'str | None' = None, session_id: 'str | None' = None) -> 'dict[str, Any]'",
+              "summarize_observations": "(self, request: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'",
               "transition_episode": "(self, episode_id: 'str', target: 'str', record: 'dict[str, Any]', *, idempotency_key: 'str', lease_id: 'str | None' = None, lease_epoch: 'int | None' = None) -> 'dict[str, Any]'",
               "transition_task": "(self, task_id: 'str', body: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'",
               "transition_task_step": "(self, task_id: 'str', step_id: 'str', body: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'",
@@ -4741,7 +5014,7 @@
               "update_persona_state": "(self, agent_id: 'str', record: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'",
               "update_task": "(self, task_id: 'str', body: 'dict[str, Any]', *, idempotency_key: 'str') -> 'dict[str, Any]'"
             },
-            "signature": "(base_url: 'str', *, timeout_seconds: 'float' = 5.0, bearer_token: 'str | None' = None) -> 'None'"
+            "signature": "(base_url: 'str', *, timeout_seconds: 'float' = 5.0, bearer_token: 'str | None' = None, max_in_flight: 'int' = 8, max_pending: 'int' = 64, http_client: 'httpx.AsyncClient | None' = None) -> 'None'"
           },
           "IrisMemoryApiError": {
             "annotations": {},
@@ -4751,6 +5024,15 @@
             ],
             "methods": {},
             "signature": "(envelope: 'ErrorEnvelope') -> 'None'"
+          },
+          "IrisMemoryTransportError": {
+            "annotations": {},
+            "attributes": {},
+            "bases": [
+              "builtins.RuntimeError"
+            ],
+            "methods": {},
+            "signature": "(code: 'str', *, request_id: 'str', result_unknown: 'bool') -> 'None'"
           }
         },
         "iris_memory_sdk.models": {
@@ -4820,7 +5102,7 @@
       "sdk_version": "0.11.1"
     },
     "typescript": {
-      "declaration": "export interface CapabilitiesEnvelope {\n    readonly api_version: string;\n    readonly schema_version: number;\n    readonly capabilities: readonly string[];\n    readonly deprecated_capabilities?: readonly string[];\n    readonly [futureField: string]: unknown;\n}\nexport type IndexKind = \"recent_context\" | \"fts\" | \"vector\" | \"graph\" | \"profile\";\nexport interface ErrorDetail {\n    readonly code: string;\n    readonly message: string;\n    readonly retryable: boolean;\n    readonly details?: Readonly<Record<string, unknown>>;\n    readonly [futureField: string]: unknown;\n}\nexport interface ErrorEnvelope {\n    readonly error: ErrorDetail;\n    readonly request_id: string;\n    readonly [futureField: string]: unknown;\n}\nexport declare class ContractValidationError extends Error {\n    readonly errors: readonly string[];\n    constructor(errors: readonly string[]);\n}\nexport declare function validateContract(schema: string, value: unknown): readonly string[];\nexport interface AdminJob {\n    job_id: string;\n    tenant_id_hash?: string;\n    job_kind: string;\n    status: \"pending\" | \"leased\" | \"completed\" | \"retryable\" | \"dead\";\n    priority?: number;\n    lane: \"normal\" | \"safety\";\n    attempt_count?: number;\n    max_attempts?: number;\n    lease_generation?: number;\n    last_error_code?: string | null;\n    replay_of?: string | null;\n}\nexport interface ScheduleView {\n    schedule_id: string;\n    tenant_id_hash?: string;\n    agent_id_hash?: string | null;\n    job_kind: string;\n    schedule_spec?: Readonly<Record<string, unknown>>;\n    timezone?: string;\n    catch_up_policy: \"all\" | \"latest\" | \"coalesce\" | \"skip\";\n    misfire_grace_us?: number;\n    max_ticks_per_run?: number;\n    enabled: boolean;\n    next_tick_at_us?: number;\n    policy_version?: number;\n    revision?: number;\n}\nexport interface ObservationRecordInput {\n    readonly agent_id: string;\n    readonly role: string;\n    readonly kind: string;\n    readonly idempotency_key: string;\n    readonly occurred_us: number;\n    readonly committed_us: number;\n    readonly effect_state?: string;\n    readonly [futureField: string]: unknown;\n}\nexport interface SourceCursorEnvelope {\n    readonly source_stream: string;\n    readonly cursor_position: number | null;\n    readonly gap_policy: \"accept\" | \"reject\" | \"mark\";\n    readonly [futureField: string]: unknown;\n}\nexport interface PersonaRevisionResponse {\n    readonly agent_id: string;\n    readonly revision: number;\n    readonly content_hash: string;\n    readonly core: Readonly<Record<string, unknown>>;\n    readonly traits: Readonly<Record<string, unknown>>;\n    readonly narrative: Readonly<Record<string, unknown>>;\n    readonly effective_from_us: number;\n    readonly status: \"published\" | \"superseded\" | \"revoked\";\n    readonly [futureField: string]: unknown;\n}\nexport interface PersonaPolicyResponse {\n    readonly mode: \"locked\" | \"manual\" | \"bounded_auto\";\n    readonly [futureField: string]: unknown;\n}\nexport interface PersonaStateResponse {\n    readonly state: Readonly<Record<string, unknown>>;\n    readonly baseline: Readonly<Record<string, unknown>>;\n    readonly expires_us: number;\n    readonly [futureField: string]: unknown;\n}\nexport interface PersonaCurrentResponse {\n    readonly revision: PersonaRevisionResponse;\n    readonly policy: PersonaPolicyResponse;\n    readonly state: PersonaStateResponse | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface CoreEvent {\n    readonly cursor: string;\n    readonly event_id: string;\n    readonly event_type: string;\n    readonly occurred_at: string;\n    readonly source_watermark: number;\n    readonly resource_refs: ReadonlyArray<Readonly<Record<string, unknown>>>;\n}\nexport declare function parseEventStream(payload: string): readonly CoreEvent[];\nexport interface ObservationBatchResponse {\n    readonly accepted_observation_ids: readonly string[];\n    readonly duplicate_observation_ids: readonly string[];\n    readonly outbox_enqueued: number;\n    readonly [futureField: string]: unknown;\n}\nexport interface ExternalActorRef {\n    provider: string;\n    external_id: string;\n    realm?: string;\n    weight?: number;\n}\nexport interface RecallScope {\n    agent_id: string;\n    space_id: string;\n    session_id?: string | null;\n    space_group_id?: string | null;\n}\nexport interface RecallRequest {\n    lease_id?: string;\n    lease_epoch?: number;\n    schema_version: 1;\n    request_id: string;\n    scope: RecallScope;\n    actors: ReadonlyArray<ExternalActorRef>;\n    topic: string;\n    purpose: \"reply\" | \"planning\" | \"reflection\" | \"tool\";\n    token_budget: number;\n    deadline_at: string;\n    categories?: ReadonlyArray<string>;\n    resource_types?: ReadonlyArray<string>;\n    requested_privacy_labels?: ReadonlyArray<string>;\n    layer_budgets?: Readonly<Record<string, number>>;\n    candidate_limits?: Readonly<Record<string, number>>;\n    as_of?: string | null;\n    minimum_watermark?: string | null;\n    allow_partial?: boolean;\n    include_trace?: boolean;\n}\nexport interface DegradedRoute {\n    route: string;\n    reason_code: string;\n    retryable: boolean;\n    fallback: string;\n}\nexport interface RecallCandidate {\n    candidate_id: string;\n    resource_ref: {\n        resource_type: string;\n        resource_id: string;\n        revision: number;\n    };\n    content_hash: string;\n    text: string;\n    category: string;\n    placement: \"working\" | \"memory\";\n    subject_entity_id?: string | null;\n    scope: {\n        space_group_id?: string | null;\n        space_id?: string | null;\n        session_id?: string | null;\n    };\n    privacy_labels: ReadonlyArray<string>;\n    source_refs: ReadonlyArray<Record<string, unknown>>;\n    scores: Readonly<Record<string, number | null>>;\n    final_score: number;\n    token_estimate: number;\n    conflict_state?: \"conflicts\" | \"redundant\" | null;\n    expires_at?: string | null;\n}\nexport interface RecallTrace {\n    request_hash: string;\n    ranker_version: number;\n    total_duration_us: number;\n    routes: ReadonlyArray<{\n        route: string;\n        outcome: \"completed\" | \"degraded\";\n        candidate_count: number;\n        duration_us: number;\n        fallback?: string | null;\n    }>;\n    rehydrated_out: number;\n    missing_score_components?: number;\n}\nexport interface RecallResponse {\n    schema_version: 1;\n    request_id: string;\n    source_watermark: string;\n    persona_revision: number;\n    persona_content_hash: string;\n    candidates: ReadonlyArray<RecallCandidate>;\n    pending_event_ids: ReadonlyArray<string>;\n    completed_routes: ReadonlyArray<string>;\n    degraded_routes: ReadonlyArray<DegradedRoute>;\n    partial: boolean;\n    cache_until: string | null;\n    next_wake_at: string | null;\n    trace?: RecallTrace | null;\n}\nexport interface RecallUsageReportRequest {\n    host_cycle_id: string;\n    persona_revision: number;\n    returned_candidate_ids: ReadonlyArray<string>;\n    host_selected_candidate_ids: ReadonlyArray<string>;\n    model_visible_candidate_ids: ReadonlyArray<string>;\n    reported_at: string;\n}\nexport interface RecallUsageReportResponse {\n    report_id: string;\n    created: boolean;\n    request_id: string;\n    stages: {\n        retrieved_count: number;\n        returned_count: number;\n        host_selected_count: number;\n        model_visible_count: number;\n    };\n}\nexport interface SearchRequest {\n    agent_id: string;\n    query: string;\n    space_id?: string | null;\n    session_id?: string | null;\n    limit?: number;\n}\nexport interface SearchResponse {\n    results: ReadonlyArray<RecallCandidate>;\n}\nexport interface LeaseView {\n    readonly lease_id: string;\n    readonly tenant_id: string;\n    readonly agent_id: string;\n    readonly holder_app_instance_id: string;\n    readonly lease_epoch: number;\n    readonly status: string;\n    readonly expires_us: number;\n    readonly [futureField: string]: unknown;\n}\nexport interface RecentContextView {\n    readonly agent_id: string;\n    readonly space_id: string;\n    readonly session_id?: string | null;\n    readonly builder_version: number;\n    readonly source_watermark: number;\n    readonly source: string;\n    readonly token_estimate: number;\n    readonly result_hash: string;\n    readonly [futureField: string]: unknown;\n}\nexport interface StateView {\n    readonly record_id: string;\n    readonly namespace: string;\n    readonly key: string;\n    readonly agent_id: string;\n    readonly revision: number;\n    readonly value: Readonly<Record<string, unknown>>;\n    readonly source_authority?: string;\n    readonly expires_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface FocusView {\n    readonly focus_item_id: string;\n    readonly agent_id: string;\n    readonly kind: string;\n    readonly summary: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly salience?: number;\n    readonly activation?: number;\n    readonly importance?: number;\n    readonly promotion_target_type?: string | null;\n    readonly promotion_target_id?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport type FocusAction = \"activate\" | \"dormant\" | \"dismiss\" | \"expire\" | \"promote\";\nexport interface NoteView {\n    readonly note_id: string;\n    readonly agent_id: string;\n    readonly kind: string;\n    readonly title: string;\n    readonly body?: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly importance?: number;\n    readonly space_id?: string | null;\n    readonly session_id?: string | null;\n    readonly review_after_us?: number | null;\n    readonly snooze_until_us?: number | null;\n    readonly due_at_us?: number | null;\n    readonly archived_us?: number | null;\n    readonly promotion_target_type?: string | null;\n    readonly promotion_target_id?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport type NoteAction = \"archive\" | \"promote\";\nexport interface TaskView {\n    readonly task_id: string;\n    readonly agent_id: string;\n    readonly title: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly goal?: string;\n    readonly owner_kind?: string;\n    readonly owner_entity_id?: string | null;\n    readonly priority?: number;\n    readonly next_action?: string | null;\n    readonly progress_note?: string | null;\n    readonly due_at_us?: number | null;\n    readonly completed_us?: number | null;\n    readonly steps?: readonly TaskStepView[];\n    readonly [futureField: string]: unknown;\n}\nexport interface TaskStepView {\n    readonly task_step_id: string;\n    readonly task_id: string;\n    readonly stable_key: string;\n    readonly title: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly description?: string | null;\n    readonly ordinal?: number;\n    readonly expected_effect?: string | null;\n    readonly completion_evidence_refs?: readonly unknown[];\n    readonly started_us?: number | null;\n    readonly completed_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface TriggerView {\n    readonly trigger_id: string;\n    readonly task_id: string;\n    readonly kind: string;\n    readonly enabled: boolean;\n    readonly revision: number;\n    readonly task_step_id?: string | null;\n    readonly schedule_spec?: Readonly<Record<string, unknown>> | null;\n    readonly condition_spec?: Readonly<Record<string, unknown>> | null;\n    readonly timezone?: string;\n    readonly catch_up_policy?: string;\n    readonly misfire_grace_us?: number;\n    readonly max_occurrences_per_run?: number;\n    readonly next_fire_at_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface CognitiveEventView {\n    readonly cognitive_event_id: string;\n    readonly agent_id: string;\n    readonly kind: string;\n    readonly object_type: string;\n    readonly object_id: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly delivery_attempts: number;\n    readonly occurrence_id?: string | null;\n    readonly scheduled_at_us?: number;\n    readonly deliver_after_us?: number;\n    readonly expires_us?: number | null;\n    readonly delivered_lease_id?: string | null;\n    readonly delivered_lease_epoch?: number | null;\n    readonly ack_id?: string | null;\n    readonly acknowledged_us?: number | null;\n    readonly summary_of_count?: number;\n    readonly [futureField: string]: unknown;\n}\nexport interface ClaimView {\n    readonly claim_id: string;\n    readonly agent_id: string;\n    readonly subject_entity_id: string;\n    readonly current_subject_entity_id: string;\n    readonly predicate: string;\n    readonly category: string;\n    readonly status: string;\n    readonly canonical_text: string;\n    readonly revision: number;\n    readonly confidence: number;\n    readonly importance: number;\n    readonly accessibility: number;\n    readonly source_authority: string;\n    readonly evidence_count: number;\n    readonly recorded_at_us: number;\n    readonly value: unknown;\n    readonly privacy_labels?: readonly string[];\n    readonly scope?: Readonly<Record<string, unknown>>;\n    readonly valid_from_us?: number | null;\n    readonly valid_until_us?: number | null;\n    readonly superseded_at_us?: number | null;\n    readonly extractor_version?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface ClaimRevisionView {\n    readonly revision: number;\n    readonly status: string;\n    readonly canonical_text: string;\n    readonly value: unknown;\n    readonly recorded_at_us: number;\n    readonly privacy_labels?: readonly string[];\n    readonly content_hash: string;\n    readonly superseded_at_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface ClaimHistoryResponse {\n    readonly claim_id?: string;\n    readonly revisions: readonly ClaimRevisionView[];\n    readonly [futureField: string]: unknown;\n}\nexport interface MemoryForgetView {\n    readonly request_id: string;\n    readonly selector_key: string;\n    readonly target_count: number;\n    readonly erased_count: number;\n    readonly protected_skipped: number;\n    readonly held_skipped: number;\n    readonly tombstone_seq_lo: number;\n    readonly tombstone_seq_hi: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface ForgetRequestView {\n    readonly request_id: string;\n    readonly selector_key: string;\n    readonly reason_code: string;\n    readonly created_us: number;\n    readonly target_count: number;\n    readonly erased_count: number;\n    readonly protected_skipped: number;\n    readonly held_skipped: number;\n    readonly tombstone_seq_lo: number;\n    readonly tombstone_seq_hi: number | null;\n    readonly selector?: Readonly<Record<string, unknown>>;\n    readonly [futureField: string]: unknown;\n}\nexport interface EpisodeView {\n    readonly episode_id: string;\n    readonly agent_id: string;\n    readonly status: string;\n    readonly summary: string;\n    readonly importance: number;\n    readonly revision: number;\n    readonly title?: string | null;\n    readonly valence?: number | null;\n    readonly arousal?: number | null;\n    readonly started_at_us?: number | null;\n    readonly ended_at_us?: number | null;\n    readonly participant_entity_ids?: readonly string[];\n    readonly observation_refs?: readonly Readonly<Record<string, unknown>>[];\n    readonly privacy_labels?: readonly string[];\n    readonly scope?: Readonly<Record<string, unknown>>;\n    readonly extractor_version?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface RelationView {\n    readonly relation_id: string;\n    readonly agent_id: string;\n    readonly source_entity_id: string;\n    readonly relation_type: string;\n    readonly target_entity_id: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly confidence: number;\n    readonly importance: number;\n    readonly accessibility: number;\n    readonly evidence_count: number;\n    readonly privacy_labels?: readonly string[];\n    readonly evidence_refs?: readonly Readonly<Record<string, unknown>>[];\n    readonly scope?: Readonly<Record<string, unknown>>;\n    readonly valid_from_us?: number | null;\n    readonly valid_until_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface ArtifactView {\n    readonly artifact_id: string;\n    readonly agent_id: string;\n    readonly media_type: string;\n    readonly storage_kind: string;\n    readonly locator: string;\n    readonly content_hash: string;\n    readonly size_bytes: number;\n    readonly status: string;\n    readonly refcount: number;\n    readonly privacy_labels?: readonly string[];\n    readonly scope?: Readonly<Record<string, unknown>>;\n    readonly [futureField: string]: unknown;\n}\nexport interface RetentionPolicyView {\n    readonly policy_id: string;\n    readonly resource_type: string;\n    readonly action: string;\n    readonly threshold_days: number;\n    readonly policy_version: number;\n    readonly enabled: boolean;\n    readonly privacy_label?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface LegalHoldView {\n    readonly legal_hold_id: string;\n    readonly reason_code: string;\n    readonly created_at_us: number;\n    readonly released_at_us?: number | null;\n    readonly space_id?: string | null;\n    readonly session_id?: string | null;\n    readonly subject_entity_id?: string | null;\n    readonly agent_id?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport declare class AsyncIrisMemoryClient {\n    #private;\n    constructor(baseUrl: string, options?: {\n        bearerToken?: string;\n        fetch?: typeof fetch;\n    });\n    capabilities(options?: {\n        signal?: AbortSignal;\n    }): Promise<CapabilitiesEnvelope>;\n    negotiate(apiVersions?: readonly string[], options?: {\n        signal?: AbortSignal;\n    }): Promise<CapabilitiesEnvelope>;\n    observeBatch(records: readonly ObservationRecordInput[], options?: {\n        idempotencyKey?: string;\n        signal?: AbortSignal;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<ObservationBatchResponse>;\n    acquireSurfaceLease(input: {\n        agent_id: string;\n        holder_app_instance_id: string;\n        ttl_us: number;\n        priority?: number;\n        allow_preempt?: boolean;\n        reason?: string;\n    }, options?: {\n        signal?: AbortSignal;\n    }): Promise<LeaseView>;\n    heartbeatSurfaceLease(leaseId: string, input: {\n        lease_epoch: number;\n        holder_app_instance_id: string;\n        ttl_us: number;\n    }, options?: {\n        signal?: AbortSignal;\n    }): Promise<LeaseView>;\n    releaseSurfaceLease(leaseId: string, input: {\n        lease_epoch: number;\n        holder_app_instance_id: string;\n        reason?: string;\n    }, options?: {\n        signal?: AbortSignal;\n    }): Promise<LeaseView>;\n    readiness(): Promise<Readonly<Record<string, unknown>>>;\n    recentContext(input: {\n        agent_id: string;\n        space_id: string;\n        session_id?: string | null;\n    }): Promise<RecentContextView>;\n    putState(namespace: string, key: string, input: {\n        agent_id: string;\n        value: Readonly<Record<string, unknown>>;\n        source_authority: string;\n        idempotencyKey: string;\n        space_id?: string | null;\n        session_id?: string | null;\n        ttl_us?: number;\n        expected_revision?: number;\n    }): Promise<StateView>;\n    getState(namespace: string, key: string, input: {\n        agent_id: string;\n        space_id?: string | null;\n        session_id?: string | null;\n    }): Promise<StateView | null>;\n    listStates(input: {\n        agent_id: string;\n        namespace?: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<{\n        items: readonly StateView[];\n    }>;\n    stateHistory(namespace: string, key: string, input: {\n        agent_id: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<Readonly<Record<string, unknown>>>;\n    createFocusItem(input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<FocusView>;\n    getFocusItem(focusItemId: string): Promise<FocusView>;\n    listFocusItems(input: {\n        agent_id: string;\n        status?: string;\n        kind?: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<{\n        items: readonly FocusView[];\n    }>;\n    focusTransition(focusItemId: string, action: FocusAction, input: {\n        expected_revision: number;\n        reason: string;\n        idempotencyKey: string;\n        promotion_target_type?: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<FocusView>;\n    rebuildRecentContext(input: {\n        agent_id: string;\n        space_id: string;\n        reason: string;\n        session_id?: string | null;\n    }): Promise<RecentContextView>;\n    listAdminJobs(query?: {\n        status?: string;\n        job_kind?: string;\n    }): Promise<{\n        jobs: readonly AdminJob[];\n    }>;\n    retryAdminJob(jobId: string, input: {\n        reason: string;\n    }): Promise<AdminJob>;\n    createSchedule(input: {\n        job_kind: string;\n        schedule_spec: Readonly<Record<string, unknown>>;\n        reason: string;\n        agent_id?: string | null;\n        timezone?: string;\n        catch_up_policy?: string;\n    }): Promise<ScheduleView>;\n    runScheduleNow(scheduleId: string, input: {\n        reason: string;\n    }): Promise<Readonly<Record<string, unknown>>>;\n    recall(input: RecallRequest, options?: {\n        signal?: AbortSignal;\n    }): Promise<RecallResponse>;\n    reportRecallUsage(requestId: string, input: RecallUsageReportRequest, options: {\n        idempotencyKey: string;\n        signal?: AbortSignal;\n    }): Promise<RecallUsageReportResponse>;\n    search(input: SearchRequest): Promise<SearchResponse>;\n    createNote(input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<NoteView>;\n    listNotes(input: {\n        agent_id: string;\n        status?: string;\n        kind?: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<{\n        items: readonly NoteView[];\n    }>;\n    updateNote(noteId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<NoteView>;\n    noteAction(noteId: string, action: NoteAction, input: {\n        expected_revision: number;\n        reason: string;\n        idempotencyKey: string;\n        promotion_target_type?: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<NoteView>;\n    createTask(input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<TaskView>;\n    listTasks(input: {\n        agent_id: string;\n        status?: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<{\n        items: readonly TaskView[];\n    }>;\n    updateTask(taskId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<TaskView>;\n    transitionTask(taskId: string, input: {\n        target: string;\n        expected_revision: number;\n        reason: string;\n        idempotencyKey: string;\n        origin?: string;\n        completion_evidence_refs?: readonly Readonly<Record<string, unknown>>[];\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<TaskView>;\n    createTaskStep(taskId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<TaskStepView>;\n    transitionTaskStep(taskId: string, stepId: string, input: {\n        target: string;\n        expected_revision: number;\n        reason: string;\n        idempotencyKey: string;\n        completion_evidence_refs?: readonly Readonly<Record<string, unknown>>[];\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<TaskStepView>;\n    createTaskDependency(taskId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Readonly<Record<string, unknown>>>;\n    createTaskTrigger(taskId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<TriggerView>;\n    listCognitiveEvents(input: {\n        agent_id: string;\n        status?: string;\n        pull?: boolean;\n        lease_id?: string;\n        lease_epoch?: number;\n        limit?: number;\n    }): Promise<{\n        items: readonly CognitiveEventView[];\n    }>;\n    ackCognitiveEvent(eventId: string, options: {\n        idempotencyKey: string;\n        ack_token?: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<CognitiveEventView>;\n    rememberClaim(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<ClaimView>;\n    correctClaim(claimId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<ClaimView>;\n    getClaim(claimId: string): Promise<ClaimView>;\n    searchClaims(input: {\n        agent_id: string;\n        space_id?: string;\n        session_id?: string;\n        subject_entity_id?: string;\n        predicate?: string;\n        category?: string;\n        statuses?: readonly string[];\n        valid_at_us?: number;\n        as_of_us?: number;\n        limit?: number;\n    }): Promise<{\n        items: readonly ClaimView[];\n    }>;\n    claimHistory(claimId: string, query?: {\n        as_of_us?: number;\n        limit?: number;\n    }): Promise<ClaimHistoryResponse>;\n    forgetMemory(record: Readonly<Record<string, unknown>>, options?: {\n        idempotencyKey?: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<MemoryForgetView>;\n    exportDeletionLedger(query?: {\n        created_after_us?: number;\n    }): Promise<{\n        requests: readonly ForgetRequestView[];\n    }>;\n    setRetentionPolicy(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<RetentionPolicyView>;\n    listRetentionPolicies(): Promise<{\n        items: readonly RetentionPolicyView[];\n    }>;\n    createLegalHold(record: Readonly<Record<string, unknown>>, options?: {\n        idempotencyKey?: string;\n    }): Promise<LegalHoldView>;\n    releaseLegalHold(legalHoldId: string, record: Readonly<Record<string, unknown>>, options?: {\n        idempotencyKey?: string;\n    }): Promise<LegalHoldView>;\n    createEpisode(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<EpisodeView>;\n    transitionEpisode(episodeId: string, target: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<EpisodeView>;\n    getEpisode(episodeId: string): Promise<EpisodeView>;\n    createRelation(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<RelationView>;\n    getRelation(relationId: string): Promise<RelationView>;\n    createArtifact(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<ArtifactView>;\n    getArtifact(artifactId: string): Promise<ArtifactView>;\n    currentPersona(agentId: string, options?: {\n        signal?: AbortSignal;\n    }): Promise<PersonaCurrentResponse>;\n    sourceCursor(sourceStream: string, agentId: string, options?: {\n        signal?: AbortSignal;\n    }): Promise<SourceCursorEnvelope>;\n    events(options?: {\n        after?: string;\n        afterEventId?: string;\n        signal?: AbortSignal;\n    }): Promise<readonly CoreEvent[]>;\n    personaHistory(agentId: string, limit?: number): Promise<Record<string, unknown>>;\n    publishPersonaRevision(agentId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    updatePersonaState(agentId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    createPersonaProposal(agentId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    reviewPersonaProposal(agentId: string, proposalId: string, action: \"approve\" | \"reject\", reason: string, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    rollbackPersona(agentId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    getEntity(entityId: string): Promise<Record<string, unknown>>;\n    getEntityRelations(entityId: string): Promise<Record<string, unknown>>;\n    createIdentity(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    prepareBinding(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    reviewBinding(bindingId: string, action: \"confirm\" | \"revoke\", record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    listSpaceGroups(): Promise<Record<string, unknown>>;\n    createSpaceGroup(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    setSpaceGroupBinding(groupId: string, spaceId: string, action: \"bind\" | \"unbind\", record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    rebuildIndex(kind: IndexKind, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    createBackup(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    createExport(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    listAuditEvents(reason: string, afterUs?: number, limit?: number): Promise<Record<string, unknown>>;\n    dryRunReflection(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    replayReflection(reflectionId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n}\n",
+      "declaration": "export interface CapabilitiesEnvelope {\n    readonly api_version: string;\n    readonly schema_version: number;\n    readonly capabilities: readonly string[];\n    readonly deprecated_capabilities?: readonly string[];\n    readonly [futureField: string]: unknown;\n}\nexport type IndexKind = \"recent_context\" | \"fts\" | \"vector\" | \"graph\" | \"profile\";\nexport interface ErrorDetail {\n    readonly code: string;\n    readonly message: string;\n    readonly retryable: boolean;\n    readonly details?: Readonly<Record<string, unknown>>;\n    readonly [futureField: string]: unknown;\n}\nexport interface ErrorEnvelope {\n    readonly error: ErrorDetail;\n    readonly request_id: string;\n    readonly [futureField: string]: unknown;\n}\nexport declare class ContractValidationError extends Error {\n    readonly errors: readonly string[];\n    constructor(errors: readonly string[]);\n}\nexport declare function validateContract(schema: string, value: unknown): readonly string[];\nexport interface AdminJob {\n    job_id: string;\n    tenant_id_hash?: string;\n    job_kind: string;\n    status: \"pending\" | \"leased\" | \"completed\" | \"retryable\" | \"dead\";\n    priority?: number;\n    lane: \"normal\" | \"safety\";\n    attempt_count?: number;\n    max_attempts?: number;\n    lease_generation?: number;\n    last_error_code?: string | null;\n    replay_of?: string | null;\n}\nexport interface ScheduleView {\n    schedule_id: string;\n    tenant_id_hash?: string;\n    agent_id_hash?: string | null;\n    job_kind: string;\n    schedule_spec?: Readonly<Record<string, unknown>>;\n    timezone?: string;\n    catch_up_policy: \"all\" | \"latest\" | \"coalesce\" | \"skip\";\n    misfire_grace_us?: number;\n    max_ticks_per_run?: number;\n    enabled: boolean;\n    next_tick_at_us?: number;\n    policy_version?: number;\n    revision?: number;\n}\nexport interface ObservationContextRequest {\n    scope: {\n        agent_id: string;\n        space_id: string;\n        space_group_id?: string;\n        session_id?: string;\n    };\n    purpose?: string;\n    lease_id?: string;\n    lease_epoch?: number;\n    limit?: number;\n    start_us?: number;\n    end_us?: number;\n    cursor?: string;\n    include_summaries?: boolean;\n}\nexport interface ObservationContextMessage {\n    observation_id: string;\n    revision: number;\n    role: string;\n    kind: string;\n    content: string | null;\n    context_kind: \"interaction\" | \"background\";\n    effect_state: \"committed\" | \"partial\";\n    structured_payload: Record<string, unknown> | null;\n    occurred_us: number;\n    committed_us: number;\n    created_us: number;\n    source_event_id: string | null;\n    source_stream: string | null;\n    source_cursor: string | null;\n    source_thread_id: string | null;\n    reply_to_source_event_id: string | null;\n    actor_entity_id: string | null;\n    processing_status: \"unprocessed\" | \"pending\" | \"processed\" | \"failed\";\n}\nexport interface ObservationContextSummary {\n    episode_id: string;\n    revision: number;\n    title: string;\n    summary: string;\n    observation_refs: {\n        resource_type: string;\n        resource_id: string;\n        revision: number;\n    }[];\n    source_refs: {\n        resource_type: string;\n        resource_id: string;\n        revision: number;\n    }[];\n}\nexport interface ObservationContextResponse {\n    messages: ObservationContextMessage[];\n    summaries: ObservationContextSummary[];\n    source_watermark: string;\n    next_cursor: string | null;\n    has_more: boolean;\n    partial: boolean;\n    summaries_partial: boolean;\n}\nexport interface ObservationSummaryResponse {\n    batch_id: string | null;\n    job_id: string | null;\n    observation_ids: string[];\n    status: \"idle\" | \"pending\" | \"completed\" | \"failed\";\n}\nexport interface ObservationRecordInput {\n    context_kind?: \"interaction\" | \"background\";\n    source_thread_id?: string;\n    reply_to_source_event_id?: string;\n    readonly agent_id: string;\n    readonly role: string;\n    readonly kind: string;\n    readonly idempotency_key: string;\n    readonly occurred_us: number;\n    readonly committed_us: number;\n    readonly effect_state?: string;\n    readonly [futureField: string]: unknown;\n}\nexport interface SourceCursorEnvelope {\n    readonly source_stream: string;\n    readonly cursor_position: number | null;\n    readonly gap_policy: \"accept\" | \"reject\" | \"mark\";\n    readonly [futureField: string]: unknown;\n}\nexport interface PersonaRevisionResponse {\n    readonly agent_id: string;\n    readonly revision: number;\n    readonly content_hash: string;\n    readonly core: Readonly<Record<string, unknown>>;\n    readonly traits: Readonly<Record<string, unknown>>;\n    readonly narrative: Readonly<Record<string, unknown>>;\n    readonly effective_from_us: number;\n    readonly status: \"published\" | \"superseded\" | \"revoked\";\n    readonly [futureField: string]: unknown;\n}\nexport interface PersonaPolicyResponse {\n    readonly mode: \"locked\" | \"manual\" | \"bounded_auto\";\n    readonly [futureField: string]: unknown;\n}\nexport interface PersonaStateResponse {\n    readonly state: Readonly<Record<string, unknown>>;\n    readonly baseline: Readonly<Record<string, unknown>>;\n    readonly expires_us: number;\n    readonly [futureField: string]: unknown;\n}\nexport interface PersonaCurrentResponse {\n    readonly revision: PersonaRevisionResponse;\n    readonly policy: PersonaPolicyResponse;\n    readonly state: PersonaStateResponse | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface CoreEvent {\n    readonly cursor: string;\n    readonly event_id: string;\n    readonly event_type: string;\n    readonly occurred_at: string;\n    readonly source_watermark: number;\n    readonly resource_refs: ReadonlyArray<Readonly<Record<string, unknown>>>;\n}\nexport declare function parseEventStream(payload: string): readonly CoreEvent[];\nexport interface ObservationBatchResponse {\n    readonly accepted_observation_ids: readonly string[];\n    readonly duplicate_observation_ids: readonly string[];\n    readonly outbox_enqueued: number;\n    readonly [futureField: string]: unknown;\n}\nexport interface ExternalActorRef {\n    provider: string;\n    external_id: string;\n    realm?: string;\n    weight?: number;\n}\nexport interface RecallScope {\n    agent_id: string;\n    space_id: string;\n    session_id?: string | null;\n    space_group_id?: string | null;\n}\nexport interface RecallRequest {\n    lease_id?: string;\n    lease_epoch?: number;\n    schema_version: 1;\n    request_id: string;\n    scope: RecallScope;\n    actors: ReadonlyArray<ExternalActorRef>;\n    topic: string;\n    purpose: \"reply\" | \"planning\" | \"reflection\" | \"tool\";\n    token_budget: number;\n    deadline_at: string;\n    categories?: ReadonlyArray<string>;\n    resource_types?: ReadonlyArray<string>;\n    requested_privacy_labels?: ReadonlyArray<string>;\n    layer_budgets?: Readonly<Record<string, number>>;\n    candidate_limits?: Readonly<Record<string, number>>;\n    as_of?: string | null;\n    minimum_watermark?: string | null;\n    allow_partial?: boolean;\n    include_trace?: boolean;\n}\nexport interface DegradedRoute {\n    route: string;\n    reason_code: string;\n    retryable: boolean;\n    fallback: string;\n}\nexport interface RecallCandidate {\n    candidate_id: string;\n    resource_ref: {\n        resource_type: string;\n        resource_id: string;\n        revision: number;\n    };\n    content_hash: string;\n    text: string;\n    category: string;\n    placement: \"working\" | \"memory\";\n    subject_entity_id?: string | null;\n    scope: {\n        space_group_id?: string | null;\n        space_id?: string | null;\n        session_id?: string | null;\n    };\n    privacy_labels: ReadonlyArray<string>;\n    source_refs: ReadonlyArray<Record<string, unknown>>;\n    scores: Readonly<Record<string, number | null>>;\n    final_score: number;\n    token_estimate: number;\n    conflict_state?: \"conflicts\" | \"redundant\" | null;\n    expires_at?: string | null;\n}\nexport interface RecallTrace {\n    request_hash: string;\n    ranker_version: number;\n    total_duration_us: number;\n    routes: ReadonlyArray<{\n        route: string;\n        outcome: \"completed\" | \"degraded\";\n        candidate_count: number;\n        duration_us: number;\n        fallback?: string | null;\n    }>;\n    rehydrated_out: number;\n    missing_score_components?: number;\n}\nexport interface RecallResponse {\n    schema_version: 1;\n    request_id: string;\n    source_watermark: string;\n    persona_revision: number;\n    persona_content_hash: string;\n    candidates: ReadonlyArray<RecallCandidate>;\n    pending_event_ids: ReadonlyArray<string>;\n    completed_routes: ReadonlyArray<string>;\n    degraded_routes: ReadonlyArray<DegradedRoute>;\n    partial: boolean;\n    cache_until: string | null;\n    next_wake_at: string | null;\n    trace?: RecallTrace | null;\n}\nexport interface RecallUsageReportRequest {\n    host_cycle_id: string;\n    persona_revision: number;\n    returned_candidate_ids: ReadonlyArray<string>;\n    host_selected_candidate_ids: ReadonlyArray<string>;\n    model_visible_candidate_ids: ReadonlyArray<string>;\n    reported_at: string;\n}\nexport interface RecallUsageReportResponse {\n    report_id: string;\n    created: boolean;\n    request_id: string;\n    stages: {\n        retrieved_count: number;\n        returned_count: number;\n        host_selected_count: number;\n        model_visible_count: number;\n    };\n}\nexport interface SearchRequest {\n    agent_id: string;\n    query: string;\n    space_id?: string | null;\n    session_id?: string | null;\n    limit?: number;\n}\nexport interface SearchResponse {\n    results: ReadonlyArray<RecallCandidate>;\n}\nexport interface LeaseView {\n    readonly lease_id: string;\n    readonly tenant_id: string;\n    readonly agent_id: string;\n    readonly holder_app_instance_id: string;\n    readonly lease_epoch: number;\n    readonly status: string;\n    readonly expires_us: number;\n    readonly [futureField: string]: unknown;\n}\nexport interface RecentContextView {\n    readonly agent_id: string;\n    readonly space_id: string;\n    readonly session_id?: string | null;\n    readonly builder_version: number;\n    readonly source_watermark: number;\n    readonly source: string;\n    readonly token_estimate: number;\n    readonly result_hash: string;\n    readonly [futureField: string]: unknown;\n}\nexport interface StateView {\n    readonly record_id: string;\n    readonly namespace: string;\n    readonly key: string;\n    readonly agent_id: string;\n    readonly revision: number;\n    readonly value: Readonly<Record<string, unknown>>;\n    readonly source_authority?: string;\n    readonly expires_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface FocusView {\n    readonly focus_item_id: string;\n    readonly agent_id: string;\n    readonly kind: string;\n    readonly summary: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly salience?: number;\n    readonly activation?: number;\n    readonly importance?: number;\n    readonly promotion_target_type?: string | null;\n    readonly promotion_target_id?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport type FocusAction = \"activate\" | \"dormant\" | \"dismiss\" | \"expire\" | \"promote\";\nexport interface NoteView {\n    readonly note_id: string;\n    readonly agent_id: string;\n    readonly kind: string;\n    readonly title: string;\n    readonly body?: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly importance?: number;\n    readonly space_id?: string | null;\n    readonly session_id?: string | null;\n    readonly review_after_us?: number | null;\n    readonly snooze_until_us?: number | null;\n    readonly due_at_us?: number | null;\n    readonly archived_us?: number | null;\n    readonly promotion_target_type?: string | null;\n    readonly promotion_target_id?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport type NoteAction = \"archive\" | \"promote\";\nexport interface TaskView {\n    readonly task_id: string;\n    readonly agent_id: string;\n    readonly title: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly goal?: string;\n    readonly owner_kind?: string;\n    readonly owner_entity_id?: string | null;\n    readonly priority?: number;\n    readonly next_action?: string | null;\n    readonly progress_note?: string | null;\n    readonly due_at_us?: number | null;\n    readonly completed_us?: number | null;\n    readonly steps?: readonly TaskStepView[];\n    readonly [futureField: string]: unknown;\n}\nexport interface TaskStepView {\n    readonly task_step_id: string;\n    readonly task_id: string;\n    readonly stable_key: string;\n    readonly title: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly description?: string | null;\n    readonly ordinal?: number;\n    readonly expected_effect?: string | null;\n    readonly completion_evidence_refs?: readonly unknown[];\n    readonly started_us?: number | null;\n    readonly completed_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface TriggerView {\n    readonly trigger_id: string;\n    readonly task_id: string;\n    readonly kind: string;\n    readonly enabled: boolean;\n    readonly revision: number;\n    readonly task_step_id?: string | null;\n    readonly schedule_spec?: Readonly<Record<string, unknown>> | null;\n    readonly condition_spec?: Readonly<Record<string, unknown>> | null;\n    readonly timezone?: string;\n    readonly catch_up_policy?: string;\n    readonly misfire_grace_us?: number;\n    readonly max_occurrences_per_run?: number;\n    readonly next_fire_at_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface CognitiveEventView {\n    readonly cognitive_event_id: string;\n    readonly agent_id: string;\n    readonly kind: string;\n    readonly object_type: string;\n    readonly object_id: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly delivery_attempts: number;\n    readonly occurrence_id?: string | null;\n    readonly scheduled_at_us?: number;\n    readonly deliver_after_us?: number;\n    readonly expires_us?: number | null;\n    readonly delivered_lease_id?: string | null;\n    readonly delivered_lease_epoch?: number | null;\n    readonly ack_id?: string | null;\n    readonly acknowledged_us?: number | null;\n    readonly summary_of_count?: number;\n    readonly [futureField: string]: unknown;\n}\nexport interface ClaimView {\n    readonly claim_id: string;\n    readonly agent_id: string;\n    readonly subject_entity_id: string;\n    readonly current_subject_entity_id: string;\n    readonly predicate: string;\n    readonly category: string;\n    readonly status: string;\n    readonly canonical_text: string;\n    readonly revision: number;\n    readonly confidence: number;\n    readonly importance: number;\n    readonly accessibility: number;\n    readonly source_authority: string;\n    readonly evidence_count: number;\n    readonly recorded_at_us: number;\n    readonly value: unknown;\n    readonly privacy_labels?: readonly string[];\n    readonly scope?: Readonly<Record<string, unknown>>;\n    readonly valid_from_us?: number | null;\n    readonly valid_until_us?: number | null;\n    readonly superseded_at_us?: number | null;\n    readonly extractor_version?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface ClaimRevisionView {\n    readonly revision: number;\n    readonly status: string;\n    readonly canonical_text: string;\n    readonly value: unknown;\n    readonly recorded_at_us: number;\n    readonly privacy_labels?: readonly string[];\n    readonly content_hash: string;\n    readonly superseded_at_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface ClaimHistoryResponse {\n    readonly claim_id?: string;\n    readonly revisions: readonly ClaimRevisionView[];\n    readonly [futureField: string]: unknown;\n}\nexport interface MemoryForgetView {\n    readonly request_id: string;\n    readonly selector_key: string;\n    readonly target_count: number;\n    readonly erased_count: number;\n    readonly protected_skipped: number;\n    readonly held_skipped: number;\n    readonly tombstone_seq_lo: number;\n    readonly tombstone_seq_hi: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface ForgetRequestView {\n    readonly request_id: string;\n    readonly selector_key: string;\n    readonly reason_code: string;\n    readonly created_us: number;\n    readonly target_count: number;\n    readonly erased_count: number;\n    readonly protected_skipped: number;\n    readonly held_skipped: number;\n    readonly tombstone_seq_lo: number;\n    readonly tombstone_seq_hi: number | null;\n    readonly selector?: Readonly<Record<string, unknown>>;\n    readonly [futureField: string]: unknown;\n}\nexport interface EpisodeView {\n    readonly episode_id: string;\n    readonly agent_id: string;\n    readonly status: string;\n    readonly summary: string;\n    readonly importance: number;\n    readonly revision: number;\n    readonly title?: string | null;\n    readonly valence?: number | null;\n    readonly arousal?: number | null;\n    readonly started_at_us?: number | null;\n    readonly ended_at_us?: number | null;\n    readonly participant_entity_ids?: readonly string[];\n    readonly observation_refs?: readonly Readonly<Record<string, unknown>>[];\n    readonly privacy_labels?: readonly string[];\n    readonly scope?: Readonly<Record<string, unknown>>;\n    readonly extractor_version?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface RelationView {\n    readonly relation_id: string;\n    readonly agent_id: string;\n    readonly source_entity_id: string;\n    readonly relation_type: string;\n    readonly target_entity_id: string;\n    readonly status: string;\n    readonly revision: number;\n    readonly confidence: number;\n    readonly importance: number;\n    readonly accessibility: number;\n    readonly evidence_count: number;\n    readonly privacy_labels?: readonly string[];\n    readonly evidence_refs?: readonly Readonly<Record<string, unknown>>[];\n    readonly scope?: Readonly<Record<string, unknown>>;\n    readonly valid_from_us?: number | null;\n    readonly valid_until_us?: number | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface ArtifactView {\n    readonly artifact_id: string;\n    readonly agent_id: string;\n    readonly media_type: string;\n    readonly storage_kind: string;\n    readonly locator: string;\n    readonly content_hash: string;\n    readonly size_bytes: number;\n    readonly status: string;\n    readonly refcount: number;\n    readonly privacy_labels?: readonly string[];\n    readonly scope?: Readonly<Record<string, unknown>>;\n    readonly [futureField: string]: unknown;\n}\nexport interface RetentionPolicyView {\n    readonly policy_id: string;\n    readonly resource_type: string;\n    readonly action: string;\n    readonly threshold_days: number;\n    readonly policy_version: number;\n    readonly enabled: boolean;\n    readonly privacy_label?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport interface LegalHoldView {\n    readonly legal_hold_id: string;\n    readonly reason_code: string;\n    readonly created_at_us: number;\n    readonly released_at_us?: number | null;\n    readonly space_id?: string | null;\n    readonly session_id?: string | null;\n    readonly subject_entity_id?: string | null;\n    readonly agent_id?: string | null;\n    readonly [futureField: string]: unknown;\n}\nexport declare class AsyncIrisMemoryClient {\n    #private;\n    constructor(baseUrl: string, options?: {\n        bearerToken?: string;\n        fetch?: typeof fetch;\n    });\n    capabilities(options?: {\n        signal?: AbortSignal;\n    }): Promise<CapabilitiesEnvelope>;\n    negotiate(apiVersions?: readonly string[], options?: {\n        signal?: AbortSignal;\n        requiredCapabilities?: readonly string[];\n    }): Promise<CapabilitiesEnvelope>;\n    observationContext(request: ObservationContextRequest, options?: {\n        signal?: AbortSignal;\n    }): Promise<ObservationContextResponse>;\n    summarizeObservations(request: Pick<ObservationContextRequest, \"scope\" | \"purpose\" | \"lease_id\" | \"lease_epoch\">, options: {\n        idempotencyKey: string;\n        signal?: AbortSignal;\n    }): Promise<ObservationSummaryResponse>;\n    observeBatch(records: readonly ObservationRecordInput[], options?: {\n        idempotencyKey?: string;\n        signal?: AbortSignal;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<ObservationBatchResponse>;\n    acquireSurfaceLease(input: {\n        agent_id: string;\n        holder_app_instance_id: string;\n        ttl_us: number;\n        priority?: number;\n        allow_preempt?: boolean;\n        reason?: string;\n    }, options?: {\n        signal?: AbortSignal;\n    }): Promise<LeaseView>;\n    heartbeatSurfaceLease(leaseId: string, input: {\n        lease_epoch: number;\n        holder_app_instance_id: string;\n        ttl_us: number;\n    }, options?: {\n        signal?: AbortSignal;\n    }): Promise<LeaseView>;\n    releaseSurfaceLease(leaseId: string, input: {\n        lease_epoch: number;\n        holder_app_instance_id: string;\n        reason?: string;\n    }, options?: {\n        signal?: AbortSignal;\n    }): Promise<LeaseView>;\n    readiness(): Promise<Readonly<Record<string, unknown>>>;\n    recentContext(input: {\n        agent_id: string;\n        space_id: string;\n        session_id?: string | null;\n    }): Promise<RecentContextView>;\n    putState(namespace: string, key: string, input: {\n        agent_id: string;\n        value: Readonly<Record<string, unknown>>;\n        source_authority: string;\n        idempotencyKey: string;\n        space_id?: string | null;\n        session_id?: string | null;\n        ttl_us?: number;\n        expected_revision?: number;\n    }): Promise<StateView>;\n    getState(namespace: string, key: string, input: {\n        agent_id: string;\n        space_id?: string | null;\n        session_id?: string | null;\n    }): Promise<StateView | null>;\n    listStates(input: {\n        agent_id: string;\n        namespace?: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<{\n        items: readonly StateView[];\n    }>;\n    stateHistory(namespace: string, key: string, input: {\n        agent_id: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<Readonly<Record<string, unknown>>>;\n    createFocusItem(input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<FocusView>;\n    getFocusItem(focusItemId: string): Promise<FocusView>;\n    listFocusItems(input: {\n        agent_id: string;\n        status?: string;\n        kind?: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<{\n        items: readonly FocusView[];\n    }>;\n    focusTransition(focusItemId: string, action: FocusAction, input: {\n        expected_revision: number;\n        reason: string;\n        idempotencyKey: string;\n        promotion_target_type?: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<FocusView>;\n    rebuildRecentContext(input: {\n        agent_id: string;\n        space_id: string;\n        reason: string;\n        session_id?: string | null;\n    }): Promise<RecentContextView>;\n    listAdminJobs(query?: {\n        status?: string;\n        job_kind?: string;\n    }): Promise<{\n        jobs: readonly AdminJob[];\n    }>;\n    retryAdminJob(jobId: string, input: {\n        reason: string;\n    }): Promise<AdminJob>;\n    createSchedule(input: {\n        job_kind: string;\n        schedule_spec: Readonly<Record<string, unknown>>;\n        reason: string;\n        agent_id?: string | null;\n        timezone?: string;\n        catch_up_policy?: string;\n    }): Promise<ScheduleView>;\n    runScheduleNow(scheduleId: string, input: {\n        reason: string;\n    }): Promise<Readonly<Record<string, unknown>>>;\n    recall(input: RecallRequest, options?: {\n        signal?: AbortSignal;\n    }): Promise<RecallResponse>;\n    reportRecallUsage(requestId: string, input: RecallUsageReportRequest, options: {\n        idempotencyKey: string;\n        signal?: AbortSignal;\n    }): Promise<RecallUsageReportResponse>;\n    search(input: SearchRequest): Promise<SearchResponse>;\n    createNote(input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<NoteView>;\n    listNotes(input: {\n        agent_id: string;\n        status?: string;\n        kind?: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<{\n        items: readonly NoteView[];\n    }>;\n    updateNote(noteId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<NoteView>;\n    noteAction(noteId: string, action: NoteAction, input: {\n        expected_revision: number;\n        reason: string;\n        idempotencyKey: string;\n        promotion_target_type?: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<NoteView>;\n    createTask(input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<TaskView>;\n    listTasks(input: {\n        agent_id: string;\n        status?: string;\n        space_id?: string;\n        session_id?: string;\n    }): Promise<{\n        items: readonly TaskView[];\n    }>;\n    updateTask(taskId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<TaskView>;\n    transitionTask(taskId: string, input: {\n        target: string;\n        expected_revision: number;\n        reason: string;\n        idempotencyKey: string;\n        origin?: string;\n        completion_evidence_refs?: readonly Readonly<Record<string, unknown>>[];\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<TaskView>;\n    createTaskStep(taskId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<TaskStepView>;\n    transitionTaskStep(taskId: string, stepId: string, input: {\n        target: string;\n        expected_revision: number;\n        reason: string;\n        idempotencyKey: string;\n        completion_evidence_refs?: readonly Readonly<Record<string, unknown>>[];\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<TaskStepView>;\n    createTaskDependency(taskId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Readonly<Record<string, unknown>>>;\n    createTaskTrigger(taskId: string, input: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<TriggerView>;\n    listCognitiveEvents(input: {\n        agent_id: string;\n        status?: string;\n        pull?: boolean;\n        lease_id?: string;\n        lease_epoch?: number;\n        limit?: number;\n    }): Promise<{\n        items: readonly CognitiveEventView[];\n    }>;\n    ackCognitiveEvent(eventId: string, options: {\n        idempotencyKey: string;\n        ack_token?: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<CognitiveEventView>;\n    rememberClaim(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<ClaimView>;\n    correctClaim(claimId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<ClaimView>;\n    getClaim(claimId: string): Promise<ClaimView>;\n    searchClaims(input: {\n        agent_id: string;\n        space_id?: string;\n        session_id?: string;\n        subject_entity_id?: string;\n        predicate?: string;\n        category?: string;\n        statuses?: readonly string[];\n        valid_at_us?: number;\n        as_of_us?: number;\n        limit?: number;\n    }): Promise<{\n        items: readonly ClaimView[];\n    }>;\n    claimHistory(claimId: string, query?: {\n        as_of_us?: number;\n        limit?: number;\n    }): Promise<ClaimHistoryResponse>;\n    forgetMemory(record: Readonly<Record<string, unknown>>, options?: {\n        idempotencyKey?: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<MemoryForgetView>;\n    exportDeletionLedger(query?: {\n        created_after_us?: number;\n    }): Promise<{\n        requests: readonly ForgetRequestView[];\n    }>;\n    setRetentionPolicy(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<RetentionPolicyView>;\n    listRetentionPolicies(): Promise<{\n        items: readonly RetentionPolicyView[];\n    }>;\n    createLegalHold(record: Readonly<Record<string, unknown>>, options?: {\n        idempotencyKey?: string;\n    }): Promise<LegalHoldView>;\n    releaseLegalHold(legalHoldId: string, record: Readonly<Record<string, unknown>>, options?: {\n        idempotencyKey?: string;\n    }): Promise<LegalHoldView>;\n    createEpisode(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<EpisodeView>;\n    transitionEpisode(episodeId: string, target: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<EpisodeView>;\n    getEpisode(episodeId: string): Promise<EpisodeView>;\n    createRelation(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<RelationView>;\n    getRelation(relationId: string): Promise<RelationView>;\n    createArtifact(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n        lease_id?: string;\n        lease_epoch?: number;\n    }): Promise<ArtifactView>;\n    getArtifact(artifactId: string): Promise<ArtifactView>;\n    currentPersona(agentId: string, options?: {\n        signal?: AbortSignal;\n    }): Promise<PersonaCurrentResponse>;\n    sourceCursor(sourceStream: string, agentId: string, options?: {\n        signal?: AbortSignal;\n    }): Promise<SourceCursorEnvelope>;\n    events(options?: {\n        after?: string;\n        afterEventId?: string;\n        signal?: AbortSignal;\n    }): Promise<readonly CoreEvent[]>;\n    personaHistory(agentId: string, limit?: number): Promise<Record<string, unknown>>;\n    publishPersonaRevision(agentId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    updatePersonaState(agentId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    createPersonaProposal(agentId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    reviewPersonaProposal(agentId: string, proposalId: string, action: \"approve\" | \"reject\", reason: string, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    rollbackPersona(agentId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    getEntity(entityId: string): Promise<Record<string, unknown>>;\n    getEntityProfile(entityId: string, options: {\n        agentId: string;\n        spaceId?: string;\n    }): Promise<Record<string, unknown>>;\n    getEntityRelations(entityId: string): Promise<Record<string, unknown>>;\n    createIdentity(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    prepareBinding(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    reviewBinding(bindingId: string, action: \"confirm\" | \"revoke\", record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    listSpaceGroups(): Promise<Record<string, unknown>>;\n    createSpaceGroup(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    setSpaceGroupBinding(groupId: string, spaceId: string, action: \"bind\" | \"unbind\", record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    rebuildIndex(kind: IndexKind, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    createBackup(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    createExport(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    listAuditEvents(reason: string, afterUs?: number, limit?: number): Promise<Record<string, unknown>>;\n    dryRunReflection(record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n    replayReflection(reflectionId: string, record: Readonly<Record<string, unknown>>, options: {\n        idempotencyKey: string;\n    }): Promise<Record<string, unknown>>;\n}\n",
       "exports": [
         "AdminJob",
         "ArtifactView",
@@ -4847,7 +5129,12 @@
         "NoteAction",
         "NoteView",
         "ObservationBatchResponse",
+        "ObservationContextMessage",
+        "ObservationContextRequest",
+        "ObservationContextResponse",
+        "ObservationContextSummary",
         "ObservationRecordInput",
+        "ObservationSummaryResponse",
         "PersonaCurrentResponse",
         "PersonaPolicyResponse",
         "PersonaRevisionResponse",
@@ -4904,6 +5191,7 @@
         "getArtifact",
         "getClaim",
         "getEntity",
+        "getEntityProfile",
         "getEntityRelations",
         "getEpisode",
         "getFocusItem",
@@ -4921,6 +5209,7 @@
         "listTasks",
         "negotiate",
         "noteAction",
+        "observationContext",
         "observeBatch",
         "personaHistory",
         "prepareBinding",
@@ -4947,6 +5236,7 @@
         "setSpaceGroupBinding",
         "sourceCursor",
         "stateHistory",
+        "summarizeObservations",
         "transitionEpisode",
         "transitionTask",
         "transitionTaskStep",

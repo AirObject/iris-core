@@ -119,7 +119,7 @@ def test_schema22_snapshot_learns_discard_before_startup_upgrade(tmp_path: Path)
     assert [
         item.version
         for item in MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
-    ] == [23, 24]
+    ] == [23, 24, 25]
     current = Store(SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)))
     with current.write() as tx:
         draft = tx.persona_drafts.create(**arguments({"agent": agent.id}))
@@ -144,7 +144,7 @@ def test_schema22_snapshot_learns_discard_before_startup_upgrade(tmp_path: Path)
         for item in MigrationRunner(restored_database).migrate(
             allow_offline=True, backup_performed=True
         )
-    ] == [23, 24]
+    ] == [23, 24, 25]
     restored = Store(SQLiteRuntime(restored_database, allowed_versions=(sqlite_runtime_version(),)))
     with restored.read() as tx:
         assert tx.is_tombstoned("draft-tenant", "persona_draft", draft.id)

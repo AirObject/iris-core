@@ -193,7 +193,8 @@ class ObservationRepository:
             "source_stream, source_cursor, source_event_id, occurrence_id, idempotency_key, "
             "record_fingerprint, actor_external_identity_id, actor_entity_id_at_ingest, role, "
             "kind, content, structured_payload, artifact_refs, privacy_labels, effect_state, "
-            "effect_proof, occurred_us, committed_us, schema_version, revision, created_us"
+            "effect_proof, occurred_us, committed_us, schema_version, revision, created_us, "
+            "context_kind, source_thread_id, reply_to_source_event_id"
         )
         values = (
             observation_id,
@@ -228,6 +229,9 @@ class ObservationRepository:
             1,
             1,
             created_us,
+            draft.context_kind,
+            draft.source_thread_id,
+            draft.reply_to_source_event_id,
         )
         assert len(columns.split(",")) == len(values), "observation insert arity"
         placeholders = ",".join("?" for _ in values)
@@ -317,9 +321,16 @@ class ObservationRepository:
     def scrub_content(self, observation_id: str) -> int:
         """Compliance erasure (§19.4, ADR-0013): destroy payload columns,
         keep the identity/timing/scope metadata the journal owes its audit."""
+        # Authenticated legacy snapshots may replay their deletion ledger before migration.
+        columns = {row[1] for row in self._connection.execute("PRAGMA table_info(observations)")}
+        context = (
+            ", source_thread_id = NULL, reply_to_source_event_id = NULL"
+            if "context_kind" in columns
+            else ""
+        )
         cursor = self._connection.execute(
             "UPDATE observations SET content = NULL, structured_payload = NULL, "
-            "effect_proof = NULL WHERE id = ?",
+            "effect_proof = NULL" + context + " WHERE id = ?",
             (observation_id,),
         )
         return cursor.rowcount
@@ -355,6 +366,15 @@ class ObservationRepository:
             ),
             privacy_labels=tuple(json.loads(row["privacy_labels"])),
             effect_proof=_decode_json(row["effect_proof"]),
+            context_kind=row["context_kind"]
+            if "context_kind" in set(row.keys())
+            else "interaction",
+            source_thread_id=row["source_thread_id"]
+            if "source_thread_id" in set(row.keys())
+            else None,
+            reply_to_source_event_id=row["reply_to_source_event_id"]
+            if "reply_to_source_event_id" in set(row.keys())
+            else None,
         )
 
 

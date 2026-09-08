@@ -3358,6 +3358,13 @@
                 "content": {
                   "type": "string"
                 },
+                "context_kind": {
+                  "default": "interaction",
+                  "enum": [
+                    "interaction",
+                    "background"
+                  ]
+                },
                 "effect_proof": {
                   "type": "object"
                 },
@@ -3391,6 +3398,11 @@
                   },
                   "type": "array"
                 },
+                "reply_to_source_event_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
                 "role": {
                   "enum": [
                     "user",
@@ -3413,6 +3425,11 @@
                   "type": "string"
                 },
                 "source_stream": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source_thread_id": {
                   "maxLength": 256,
                   "minLength": 1,
                   "type": "string"
@@ -3506,6 +3523,427 @@
           "outbox_enqueued"
         ],
         "title": "ObservationBatchResponse",
+        "type": "object"
+      },
+      "ObservationContextRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/observation-context-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "end_us": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "include_summaries": {
+            "default": true,
+            "type": "boolean"
+          },
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "purpose": {
+            "default": "reply",
+            "type": "string"
+          },
+          "scope": {
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "session_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "space_group_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "space_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "agent_id",
+              "space_id"
+            ],
+            "type": "object"
+          },
+          "start_us": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "title": "ObservationContextRequest",
+        "type": "object"
+      },
+      "ObservationContextResponse": {
+        "$id": "https://schemas.iris-memory-core.local/v1/observation-context-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "actor_entity_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "committed_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "content": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "context_kind": {
+                  "enum": [
+                    "interaction",
+                    "background"
+                  ]
+                },
+                "created_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "effect_state": {
+                  "enum": [
+                    "committed",
+                    "partial"
+                  ]
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "observation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "occurred_us": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "processing_status": {
+                  "enum": [
+                    "unprocessed",
+                    "pending",
+                    "processed",
+                    "failed"
+                  ]
+                },
+                "reply_to_source_event_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "source_cursor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "source_event_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "source_stream": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "source_thread_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "structured_payload": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "observation_id",
+                "revision",
+                "role",
+                "kind",
+                "content",
+                "context_kind",
+                "occurred_us",
+                "committed_us",
+                "created_us",
+                "source_event_id",
+                "source_stream",
+                "source_cursor",
+                "source_thread_id",
+                "reply_to_source_event_id",
+                "actor_entity_id",
+                "processing_status",
+                "effect_state",
+                "structured_payload"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "source_watermark": {
+            "pattern": "^(0|[1-9][0-9]{0,17})$",
+            "type": "string"
+          },
+          "summaries": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "episode_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "observation_refs": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resource_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "resource_type": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "resource_type",
+                      "resource_id",
+                      "revision"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "source_refs": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resource_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "resource_type": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "resource_type",
+                      "resource_id",
+                      "revision"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "episode_id",
+                "revision",
+                "title",
+                "summary",
+                "observation_refs",
+                "source_refs"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "summaries_partial": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "messages",
+          "summaries",
+          "source_watermark",
+          "next_cursor",
+          "has_more",
+          "partial",
+          "summaries_partial"
+        ],
+        "title": "ObservationContextResponse",
+        "type": "object"
+      },
+      "ObservationSummaryRequest": {
+        "$id": "https://schemas.iris-memory-core.local/v1/observation-summary-request.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "lease_epoch": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lease_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "purpose": {
+            "default": "reply",
+            "type": "string"
+          },
+          "scope": {
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "session_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "space_group_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "space_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "agent_id",
+              "space_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "title": "ObservationSummaryRequest",
+        "type": "object"
+      },
+      "ObservationSummaryResponse": {
+        "$id": "https://schemas.iris-memory-core.local/v1/observation-summary-response.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observation_ids": {
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "pending",
+              "completed",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "batch_id",
+          "job_id",
+          "observation_ids",
+          "status"
+        ],
+        "title": "ObservationSummaryResponse",
         "type": "object"
       },
       "PersonaCurrentResponse": {
@@ -7898,7 +8336,7 @@
       "name": "AGPL-3.0-only"
     },
     "title": "Iris Memory Core API",
-    "version": "1.11.0"
+    "version": "1.13.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11594,6 +12032,153 @@
             "description": "Stable error envelope"
           },
           "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/observations:context": {
+      "post": {
+        "operationId": "readObservationContext",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationContextResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          }
+        }
+      }
+    },
+    "/v1/observations:summarize": {
+      "post": {
+        "operationId": "summarizeObservationContext",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationSummaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stable error envelope"
+          },
+          "503": {
             "content": {
               "application/json": {
                 "schema": {

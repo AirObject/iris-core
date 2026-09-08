@@ -1,10 +1,27 @@
 import { readFileSync } from "node:fs";
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+async function login(page: Page, token: string) {
+  // The shared real backend can throttle this test after earlier authentication flows.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.getByLabel("运营密钥", { exact: true }).fill(token);
+    const response = page.waitForResponse((value) => value.url().endsWith("/v1/auth/login"));
+    await page.getByRole("button", { name: "登录控制台" }).click();
+    const result = await response;
+    if (result.status() !== 429 || attempt === 2) {
+      expect(result.status()).toBe(200);
+      return;
+    }
+    const waitSeconds = Number(result.headers()["retry-after"] ?? "1");
+    expect(waitSeconds).toBeLessThanOrEqual(15);
+    await page.waitForTimeout(waitSeconds * 1000 + 100);
+  }
+}
 
 test("real Persona reader has current and history without publication controls", async ({ page }) => {
+  test.setTimeout(60000);
   await page.goto("/console/");
-  await page.getByLabel("运营密钥", { exact: true }).fill(readFileSync("/tmp/imc-console-test-persona-reader-credential", "utf8"));
-  await page.getByRole("button", { name: "登录控制台" }).click();
+  await login(page, readFileSync("/tmp/imc-console-test-persona-reader-credential", "utf8"));
   await page.getByRole("link", { name: "Persona 人格", exact: true }).click();
   await page.getByRole("combobox", { name: "选择已有 Agent", exact: true }).selectOption({ label: "Browser seed" });
   await expect(page.getByRole("heading", { name: /^Current · Revision/ })).toBeVisible();
@@ -26,12 +43,12 @@ test("real Persona reader has current and history without publication controls",
 });
 
 test("real Persona publish, reauth, refresh and rollback preserve immutable history in Required mode", async ({ page, context }) => {
+  test.setTimeout(60000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const token = readFileSync("/tmp/imc-console-test-persona-credential", "utf8");
   await page.goto("/console/");
-  await page.getByLabel("运营密钥", { exact: true }).fill(token);
-  await page.getByRole("button", { name: "登录控制台" }).click();
+  await login(page, token);
   await page.getByRole("link", { name: "Persona 人格", exact: true }).click();
   await page.getByRole("combobox", { name: "选择已有 Agent", exact: true }).selectOption({ label: "Browser seed" });
   await expect(page.getByRole("heading", { name: "Current · Revision 1", exact: true })).toBeVisible();

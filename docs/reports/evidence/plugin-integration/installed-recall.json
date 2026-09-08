@@ -1,0 +1,15 @@
+{
+  "development_embedding": true,
+  "installed_recall": {
+    "graph": {
+      "expected_resource_found": true,
+      "trace_candidates": 2
+    },
+    "vector": {
+      "expected_resource_found": true,
+      "trace_candidates": 1
+    }
+  },
+  "required_lease": true,
+  "worker_rebuilds": 4
+}

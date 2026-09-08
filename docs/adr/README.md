@@ -87,3 +87,5 @@ ADR-0022 supersedes the delivery path of the original Phase 13 ("legacy Iris dat
 - [ADR-0052：独立 Persona 草稿、发布和删除恢复](0052-console-persona-drafts.md)
 
 - [ADR-0050：生产认知 Provider 部署绑定](0050-cognitive-provider-deployment.md)
+
+- [ADR-0054：统一 Observation 上下文与有界批量总结](0054-observation-context-and-batch-summaries.md)

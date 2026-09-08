@@ -149,6 +149,7 @@ def test_schema21_backup_upgrade_preserves_forget_backup_and_problem_history(
         22,
         23,
         24,
+        25,
     ]
     assert_history(store.runtime.database, history)
     with store.read() as tx:
@@ -163,7 +164,7 @@ def test_schema21_backup_upgrade_preserves_forget_backup_and_problem_history(
     assert [
         m.version
         for m in MigrationRunner(restored_db).migrate(allow_offline=True, backup_performed=True)
-    ] == [22, 23, 24]
+    ] == [22, 23, 24, 25]
     assert_history(restored_db, history)
     with sqlite3.connect(restored_db) as connection:
         connection.row_factory = sqlite3.Row

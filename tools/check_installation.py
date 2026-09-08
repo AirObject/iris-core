@@ -20,6 +20,48 @@ def main() -> int:
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="iris-installation-") as name:
         root = Path(name)
+        for label, wheel in (("embedded", args.core), ("sdk-only", args.sdk)):
+            minimal = root / label
+            subprocess.run(["uv", "venv", str(minimal), "--python", "3.12"], check=True)
+            minimal_python = minimal / "bin/python"
+            subprocess.run(
+                [
+                    "uv",
+                    "pip",
+                    "install",
+                    "--python",
+                    str(minimal_python),
+                    *(["--offline"] if args.offline else []),
+                    str(wheel.resolve()),
+                ],
+                check=True,
+            )
+            if label == "embedded":
+                subprocess.run(
+                    [
+                        str(minimal_python),
+                        "-I",
+                        str(ROOT / "tools/smoke_installed_embedded.py"),
+                        *(["--allow-local-sqlite"] if args.allow_local_sqlite else []),
+                    ],
+                    cwd=root,
+                    check=True,
+                    timeout=120,
+                )
+            else:
+                subprocess.run(
+                    [
+                        str(minimal_python),
+                        "-I",
+                        "-c",
+                        "import importlib.util; from iris_memory_sdk import AsyncIrisMemoryClient; "
+                        "assert all(importlib.util.find_spec(name) is None for name in "
+                        "('iris_memory_core','faiss','numpy','fastapi','uvicorn')); "
+                        "print('SDK-only dependency boundary: passed')",
+                    ],
+                    cwd=root,
+                    check=True,
+                )
         environment = root / "venv"
         subprocess.run(["uv", "venv", str(environment), "--python", "3.12"], check=True)
         python = environment / "bin/python"
@@ -31,7 +73,7 @@ def main() -> int:
                 "--python",
                 str(python),
                 *(["--offline"] if args.offline else []),
-                str(args.core.resolve()) + "[console]",
+                str(args.core.resolve()) + "[server,vector,console]",
                 str(args.sdk.resolve()),
             ],
             check=True,

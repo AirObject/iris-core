@@ -1,21 +1,42 @@
-"""Dependency-free asynchronous HTTP client skeleton."""
+"""Bounded asynchronous HTTP client; the SDK remains independent of Core."""
 
 from __future__ import annotations
 
 import asyncio
-import json
-from typing import Any, Literal, cast
-from urllib.error import HTTPError
+import uuid
+from typing import Any, Literal, Self, cast
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
-from iris_memory_sdk.models import CapabilitiesEnvelope, ErrorEnvelope
+import httpx
+
+from iris_memory_sdk.models import (
+    CapabilitiesEnvelope,
+    ContractValidationError,
+    ErrorEnvelope,
+    validate_contract,
+)
 
 
 class IrisMemoryApiError(RuntimeError):
     def __init__(self, envelope: ErrorEnvelope) -> None:
         self.envelope = envelope
         super().__init__(f"{envelope.code}: {envelope.message}")
+
+
+class IrisMemoryTransportError(RuntimeError):
+    """A low-disclosure failure; unknown writes must reconcile by their original key."""
+
+    def __init__(self, code: str, *, request_id: str, result_unknown: bool) -> None:
+        self.code = code
+        self.request_id = request_id
+        self.result_unknown = result_unknown
+        self.retryable = code in {
+            "deadline_exceeded",
+            "socket_timeout",
+            "transport_unavailable",
+            "concurrency_exhausted",
+        }
+        super().__init__(code)
 
 
 class AsyncIrisMemoryClient:
@@ -25,25 +46,67 @@ class AsyncIrisMemoryClient:
         *,
         timeout_seconds: float = 5.0,
         bearer_token: str | None = None,
+        max_in_flight: int = 8,
+        max_pending: int = 64,
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
+        if not 0 < timeout_seconds <= 300:
+            raise ValueError("timeout_seconds must be within (0,300]")
+        if not 1 <= max_in_flight <= max_pending <= 1024:
+            raise ValueError("require 1 <= max_in_flight <= max_pending <= 1024")
+        self._client = http_client
+        self._owns_client = http_client is None
+        self._slots = asyncio.Semaphore(max_in_flight)
+        self._max_in_flight = max_in_flight
+        self._max_pending = max_pending
+        self._requests: set[asyncio.Task[object]] = set()
+        self._closed = False
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._bearer_token = bearer_token
 
     async def capabilities(self) -> CapabilitiesEnvelope:
-        value = await asyncio.to_thread(self._request_json, "GET", "/v1/capabilities", None)
+        value = await self._request_json("GET", "/v1/capabilities", None)
         return CapabilitiesEnvelope.from_value(value)
 
-    async def negotiate(self, api_versions: tuple[str, ...] = ("v1",)) -> CapabilitiesEnvelope:
-        value = await asyncio.to_thread(
-            self._request_json,
+    async def negotiate(
+        self,
+        api_versions: tuple[str, ...] = ("v1",),
+        *,
+        required_capabilities: tuple[str, ...] = (),
+    ) -> CapabilitiesEnvelope:
+        value = await self._request_json(
             "POST",
             "/v1/negotiation",
-            {"api_versions": list(api_versions)},
+            {
+                "api_versions": list(api_versions),
+                "required_capabilities": list(required_capabilities),
+            },
         )
         return CapabilitiesEnvelope.from_value(value)
 
     # -- Phase 2: observation journal ------------------------------------
+
+    async def observation_context(self, request: dict[str, Any]) -> dict[str, Any]:
+        value = await self._request_json("POST", "/v1/observations:context", request)
+        errors = validate_contract("observation-context-response", value)
+        if errors:
+            raise ContractValidationError(errors)
+        return cast(dict[str, Any], value)
+
+    async def summarize_observations(
+        self, request: dict[str, Any], *, idempotency_key: str
+    ) -> dict[str, Any]:
+        value = await self._request_json(
+            "POST",
+            "/v1/observations:summarize",
+            request,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )
+        errors = validate_contract("observation-summary-response", value)
+        if errors:
+            raise ContractValidationError(errors)
+        return cast(dict[str, Any], value)
 
     async def observe_batch(
         self,
@@ -58,8 +121,7 @@ class AsyncIrisMemoryClient:
             body["lease_id"] = lease_id
         if lease_epoch is not None:
             body["lease_epoch"] = lease_epoch
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/observations:batch",
             body,
@@ -73,7 +135,7 @@ class AsyncIrisMemoryClient:
         stream = quote(source_stream, safe="")
         agent = quote(agent_id, safe="")
         path = f"/v1/observations/cursors/{stream}?agent_id={agent}"
-        value = await asyncio.to_thread(self._request_json, "GET", path, None)
+        value = await self._request_json("GET", path, None)
         return cast(dict[str, Any], value)
 
     # -- Phase 2: active surface ------------------------------------------
@@ -88,8 +150,7 @@ class AsyncIrisMemoryClient:
         allow_preempt: bool = False,
         reason: str | None = None,
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/active-surfaces:acquire",
             {
@@ -113,8 +174,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/active-surfaces/{quote(lease_id, safe='')}:heartbeat",
             {
@@ -135,8 +195,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/active-surfaces/{quote(lease_id, safe='')}:release",
             {
@@ -150,8 +209,7 @@ class AsyncIrisMemoryClient:
     async def current_surface_lease(self, agent_id: str) -> dict[str, Any] | None:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/active-surfaces/current?agent_id={quote(agent_id, safe='')}",
             None,
@@ -172,9 +230,7 @@ class AsyncIrisMemoryClient:
         query = f"agent_id={quote(agent_id, safe='')}&space_id={quote(space_id, safe='')}"
         if session_id is not None:
             query += f"&session_id={quote(session_id, safe='')}"
-        value = await asyncio.to_thread(
-            self._request_json, "GET", f"/v1/recent-context?{query}", None
-        )
+        value = await self._request_json("GET", f"/v1/recent-context?{query}", None)
         return cast(dict[str, Any], value)
 
     async def put_state(
@@ -206,8 +262,7 @@ class AsyncIrisMemoryClient:
             body["ttl_us"] = ttl_us
         if expected_revision is not None:
             body["expected_revision"] = expected_revision
-        result = await asyncio.to_thread(
-            self._request_json,
+        result = await self._request_json(
             "PUT",
             f"/v1/state/{quote(namespace, safe='')}/{quote(key, safe='')}",
             body,
@@ -231,8 +286,7 @@ class AsyncIrisMemoryClient:
             query += f"&space_id={quote(space_id, safe='')}"
         if session_id is not None:
             query += f"&session_id={quote(session_id, safe='')}"
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/state/{quote(namespace, safe='')}/{quote(key, safe='')}?{query}",
             None,
@@ -256,7 +310,7 @@ class AsyncIrisMemoryClient:
             query += f"&space_id={quote(space_id, safe='')}"
         if session_id is not None:
             query += f"&session_id={quote(session_id, safe='')}"
-        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/state?{query}", None)
+        value = await self._request_json("GET", f"/v1/state?{query}", None)
         return cast(dict[str, Any], value)
 
     async def state_history(
@@ -275,8 +329,7 @@ class AsyncIrisMemoryClient:
             query += f"&space_id={quote(space_id, safe='')}"
         if session_id is not None:
             query += f"&session_id={quote(session_id, safe='')}"
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/state/{quote(namespace, safe='')}/{quote(key, safe='')}/history?{query}",
             None,
@@ -289,8 +342,7 @@ class AsyncIrisMemoryClient:
         *,
         idempotency_key: str,
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/focus-items",
             record,
@@ -301,8 +353,7 @@ class AsyncIrisMemoryClient:
     async def get_focus_item(self, focus_item_id: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/focus-items/{quote(focus_item_id, safe='')}",
             None,
@@ -329,7 +380,7 @@ class AsyncIrisMemoryClient:
             query += f"&space_id={quote(space_id, safe='')}"
         if session_id is not None:
             query += f"&session_id={quote(session_id, safe='')}"
-        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/focus-items?{query}", None)
+        value = await self._request_json("GET", f"/v1/focus-items?{query}", None)
         return cast(dict[str, Any], value)
 
     async def focus_transition(
@@ -358,8 +409,7 @@ class AsyncIrisMemoryClient:
             body["lease_epoch"] = lease_epoch
         if promotion_target_type is not None:
             body["promotion_target_type"] = promotion_target_type
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/focus-items/{quote(focus_item_id, safe='')}:{action}",
             body,
@@ -382,9 +432,7 @@ class AsyncIrisMemoryClient:
         }
         if session_id is not None:
             body["session_id"] = session_id
-        value = await asyncio.to_thread(
-            self._request_json, "POST", "/v1/admin/recent-context:rebuild", body
-        )
+        value = await self._request_json("POST", "/v1/admin/recent-context:rebuild", body)
         return cast(dict[str, Any], value)
 
     # -- Phase 4: notes -------------------------------------------------------
@@ -395,8 +443,7 @@ class AsyncIrisMemoryClient:
         *,
         idempotency_key: str,
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/notes",
             record,
@@ -424,7 +471,7 @@ class AsyncIrisMemoryClient:
         ):
             if item is not None:
                 query += f"&{key}={quote(item, safe='')}"
-        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/notes?{query}", None)
+        value = await self._request_json("GET", f"/v1/notes?{query}", None)
         return cast(dict[str, Any], value)
 
     async def update_note(
@@ -436,8 +483,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "PATCH",
             f"/v1/notes/{quote(note_id, safe='')}",
             body,
@@ -457,8 +503,7 @@ class AsyncIrisMemoryClient:
 
         if action not in ("archive", "promote"):
             raise ValueError(f"unknown note action: {action!r}")
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/notes/{quote(note_id, safe='')}:{action}",
             body,
@@ -474,8 +519,7 @@ class AsyncIrisMemoryClient:
         *,
         idempotency_key: str,
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/tasks",
             record,
@@ -501,7 +545,7 @@ class AsyncIrisMemoryClient:
         ):
             if item is not None:
                 query += f"&{key}={quote(item, safe='')}"
-        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/tasks?{query}", None)
+        value = await self._request_json("GET", f"/v1/tasks?{query}", None)
         return cast(dict[str, Any], value)
 
     async def update_task(
@@ -513,8 +557,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "PATCH",
             f"/v1/tasks/{quote(task_id, safe='')}",
             body,
@@ -531,8 +574,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/tasks/{quote(task_id, safe='')}:transition",
             body,
@@ -549,8 +591,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/tasks/{quote(task_id, safe='')}/steps",
             body,
@@ -568,8 +609,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/tasks/{quote(task_id, safe='')}/steps/{quote(step_id, safe='')}:transition",
             body,
@@ -586,8 +626,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/tasks/{quote(task_id, safe='')}/dependencies",
             body,
@@ -604,8 +643,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/tasks/{quote(task_id, safe='')}/triggers",
             body,
@@ -638,9 +676,7 @@ class AsyncIrisMemoryClient:
             query += f"&lease_epoch={lease_epoch}"
         if limit is not None:
             query += f"&limit={limit}"
-        value = await asyncio.to_thread(
-            self._request_json, "GET", f"/v1/cognitive-events?{query}", None
-        )
+        value = await self._request_json("GET", f"/v1/cognitive-events?{query}", None)
         return cast(dict[str, Any], value)
 
     async def ack_cognitive_event(
@@ -667,8 +703,7 @@ class AsyncIrisMemoryClient:
             body["lease_id"] = lease_id
         if lease_epoch is not None:
             body["lease_epoch"] = lease_epoch
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/cognitive-events/{quote(event_id, safe='')}:ack",
             body,
@@ -687,8 +722,7 @@ class AsyncIrisMemoryClient:
         lease_epoch: int | None = None,
     ) -> dict[str, Any]:
         body = self._with_lease_proof(record, lease_id, lease_epoch)
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/claims:remember",
             body,
@@ -708,8 +742,7 @@ class AsyncIrisMemoryClient:
         from urllib.parse import quote
 
         body = self._with_lease_proof(record, lease_id, lease_epoch)
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/claims/{quote(claim_id, safe='')}:correct",
             body,
@@ -720,8 +753,7 @@ class AsyncIrisMemoryClient:
     async def get_claim(self, claim_id: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/claims/{quote(claim_id, safe='')}",
             None,
@@ -764,7 +796,7 @@ class AsyncIrisMemoryClient:
         ):
             if numeric is not None:
                 query += f"&{key}={numeric}"
-        value = await asyncio.to_thread(self._request_json, "GET", f"/v1/claims?{query}", None)
+        value = await self._request_json("GET", f"/v1/claims?{query}", None)
         return cast(dict[str, Any], value)
 
     async def claim_history(
@@ -783,7 +815,7 @@ class AsyncIrisMemoryClient:
         path = f"/v1/claims/{quote(claim_id, safe='')}/history"
         if query:
             path += f"?{query[1:]}"
-        value = await asyncio.to_thread(self._request_json, "GET", path, None)
+        value = await self._request_json("GET", path, None)
         return cast(dict[str, Any], value)
 
     async def forget_memory(
@@ -795,8 +827,7 @@ class AsyncIrisMemoryClient:
         lease_epoch: int | None = None,
     ) -> dict[str, Any]:
         body = self._with_lease_proof(record, lease_id, lease_epoch)
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/memory:forget",
             body,
@@ -813,8 +844,7 @@ class AsyncIrisMemoryClient:
         lease_epoch: int | None = None,
     ) -> dict[str, Any]:
         body = self._with_lease_proof(record, lease_id, lease_epoch)
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/episodes",
             body,
@@ -837,8 +867,7 @@ class AsyncIrisMemoryClient:
         # The transition target rides in the body (the contract has no query
         # parameter for it); an explicit argument always wins over the record.
         body = self._with_lease_proof({**record, "target": target}, lease_id, lease_epoch)
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/episodes/{quote(episode_id, safe='')}:transition",
             body,
@@ -849,8 +878,7 @@ class AsyncIrisMemoryClient:
     async def get_episode(self, episode_id: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/episodes/{quote(episode_id, safe='')}",
             None,
@@ -866,8 +894,7 @@ class AsyncIrisMemoryClient:
         lease_epoch: int | None = None,
     ) -> dict[str, Any]:
         body = self._with_lease_proof(record, lease_id, lease_epoch)
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/relations",
             body,
@@ -878,8 +905,7 @@ class AsyncIrisMemoryClient:
     async def get_relation(self, relation_id: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/relations/{quote(relation_id, safe='')}",
             None,
@@ -895,8 +921,7 @@ class AsyncIrisMemoryClient:
         lease_epoch: int | None = None,
     ) -> dict[str, Any]:
         body = self._with_lease_proof(record, lease_id, lease_epoch)
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/artifacts",
             body,
@@ -907,8 +932,7 @@ class AsyncIrisMemoryClient:
     async def get_artifact(self, artifact_id: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/artifacts/{quote(artifact_id, safe='')}",
             None,
@@ -926,8 +950,7 @@ class AsyncIrisMemoryClient:
         The contract declares the Idempotency-Key header on this write (the
         mock enforces it), so the SDK carries it as a header-only parameter.
         """
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/retention-policies",
             record,
@@ -936,7 +959,7 @@ class AsyncIrisMemoryClient:
         return cast(dict[str, Any], value)
 
     async def list_retention_policies(self) -> dict[str, Any]:
-        value = await asyncio.to_thread(self._request_json, "GET", "/v1/retention-policies", None)
+        value = await self._request_json("GET", "/v1/retention-policies", None)
         return cast(dict[str, Any], value)
 
     async def create_legal_hold(
@@ -945,8 +968,7 @@ class AsyncIrisMemoryClient:
         *,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/legal-holds",
             record,
@@ -963,8 +985,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/legal-holds/{quote(legal_hold_id, safe='')}:release",
             record,
@@ -980,7 +1001,7 @@ class AsyncIrisMemoryClient:
         path = "/v1/memory/deletion-ledger"
         if created_after_us is not None:
             path += f"?created_after_us={created_after_us}"
-        value = await asyncio.to_thread(self._request_json, "GET", path, None)
+        value = await self._request_json("GET", path, None)
         return cast(dict[str, Any], value)
 
     @staticmethod
@@ -1000,7 +1021,7 @@ class AsyncIrisMemoryClient:
     # -- Phase 2: health -----------------------------------------------------
 
     async def readiness(self) -> dict[str, Any]:
-        value = await asyncio.to_thread(self._request_json, "GET", "/health/ready", None)
+        value = await self._request_json("GET", "/health/ready", None)
         return cast(dict[str, Any], value)
 
     # -- Phase 2: admin plane (jobs & schedules) ------------------------------
@@ -1019,14 +1040,13 @@ class AsyncIrisMemoryClient:
             if value is not None
         )
         path = "/v1/admin/jobs" + (f"?{query}" if query else "")
-        value = await asyncio.to_thread(self._request_json, "GET", path, None)
+        value = await self._request_json("GET", path, None)
         return cast(dict[str, Any], value)
 
     async def retry_admin_job(self, job_id: str, *, reason: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/admin/jobs/{quote(job_id, safe='')}:retry",
             {"reason": reason},
@@ -1043,8 +1063,7 @@ class AsyncIrisMemoryClient:
         timezone_name: str = "UTC",
         catch_up_policy: str = "latest",
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/admin/schedules",
             {
@@ -1061,8 +1080,7 @@ class AsyncIrisMemoryClient:
     async def run_schedule_now(self, schedule_id: str, *, reason: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/admin/schedules/{quote(schedule_id, safe='')}:run",
             {"reason": reason},
@@ -1080,8 +1098,7 @@ class AsyncIrisMemoryClient:
         The SDK does not hide scope, partial, degraded routes, persona
         revision or cache_until; every field of the envelope is returned as-is.
         """
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/recall",
             record,
@@ -1098,8 +1115,7 @@ class AsyncIrisMemoryClient:
         """POST /v1/recall/{request_id}/usage — four-stage usage report."""
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/recall/{quote(request_id, safe='')}/usage",
             record,
@@ -1122,8 +1138,7 @@ class AsyncIrisMemoryClient:
             body["space_id"] = space_id
         if session_id is not None:
             body["session_id"] = session_id
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/search",
             body,
@@ -1135,8 +1150,7 @@ class AsyncIrisMemoryClient:
     async def current_persona(self, agent_id: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/personas/{quote(agent_id, safe='')}/current",
             None,
@@ -1147,7 +1161,7 @@ class AsyncIrisMemoryClient:
         from urllib.parse import quote
 
         path = f"/v1/personas/{quote(agent_id, safe='')}/history?limit={limit}"
-        value = await asyncio.to_thread(self._request_json, "GET", path, None)
+        value = await self._request_json("GET", path, None)
         return cast(dict[str, Any], value)
 
     async def publish_persona_revision(
@@ -1159,8 +1173,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/personas/{quote(agent_id, safe='')}/revisions",
             record,
@@ -1177,8 +1190,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "PATCH",
             f"/v1/personas/{quote(agent_id, safe='')}/state",
             record,
@@ -1195,8 +1207,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/personas/{quote(agent_id, safe='')}/evolution-proposals",
             record,
@@ -1220,8 +1231,7 @@ class AsyncIrisMemoryClient:
             f"/v1/personas/{quote(agent_id, safe='')}/evolution-proposals/"
             f"{quote(proposal_id, safe='')}:{action}"
         )
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             path,
             {"reason": reason},
@@ -1238,8 +1248,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/personas/{quote(agent_id, safe='')}:rollback",
             record,
@@ -1252,16 +1261,13 @@ class AsyncIrisMemoryClient:
     async def get_entity(self, entity_id: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json, "GET", f"/v1/entities/{quote(entity_id, safe='')}", None
-        )
+        value = await self._request_json("GET", f"/v1/entities/{quote(entity_id, safe='')}", None)
         return cast(dict[str, Any], value)
 
     async def get_entity_relations(self, entity_id: str) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/entities/{quote(entity_id, safe='')}/relations",
             None,
@@ -1271,8 +1277,7 @@ class AsyncIrisMemoryClient:
     async def create_identity(
         self, record: dict[str, Any], *, idempotency_key: str
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/identities",
             record,
@@ -1283,8 +1288,7 @@ class AsyncIrisMemoryClient:
     async def prepare_binding(
         self, record: dict[str, Any], *, idempotency_key: str
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/bindings:prepare",
             record,
@@ -1303,8 +1307,7 @@ class AsyncIrisMemoryClient:
         from urllib.parse import quote
 
         action = "confirm" if confirm else "revoke"
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/bindings/{quote(binding_id, safe='')}:{action}",
             record,
@@ -1313,14 +1316,13 @@ class AsyncIrisMemoryClient:
         return cast(dict[str, Any], value)
 
     async def list_space_groups(self) -> dict[str, Any]:
-        value = await asyncio.to_thread(self._request_json, "GET", "/v1/space-groups", None)
+        value = await self._request_json("GET", "/v1/space-groups", None)
         return cast(dict[str, Any], value)
 
     async def create_space_group(
         self, record: dict[str, Any], *, idempotency_key: str
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/space-groups",
             record,
@@ -1344,8 +1346,7 @@ class AsyncIrisMemoryClient:
             f"/v1/space-groups/{quote(space_group_id, safe='')}/spaces/"
             f"{quote(space_id, safe='')}:{action}"
         )
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             path,
             record,
@@ -1362,8 +1363,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/admin/indexes/{quote(kind, safe='')}:rebuild",
             record,
@@ -1374,8 +1374,7 @@ class AsyncIrisMemoryClient:
     async def create_backup(
         self, record: dict[str, Any], *, idempotency_key: str
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/admin/backups",
             record,
@@ -1386,8 +1385,7 @@ class AsyncIrisMemoryClient:
     async def create_export(
         self, record: dict[str, Any], *, idempotency_key: str
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/admin/exports",
             record,
@@ -1399,8 +1397,7 @@ class AsyncIrisMemoryClient:
         self, *, reason: str, after_us: int = 0, limit: int = 100
     ) -> dict[str, Any]:
         query = urlencode({"reason": reason, "after_us": after_us, "limit": limit})
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "GET",
             f"/v1/admin/audit-events?{query}",
             None,
@@ -1410,8 +1407,7 @@ class AsyncIrisMemoryClient:
     async def dry_run_reflection(
         self, record: dict[str, Any], *, idempotency_key: str
     ) -> dict[str, Any]:
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             "/v1/admin/reflections:dry-run",
             record,
@@ -1428,8 +1424,7 @@ class AsyncIrisMemoryClient:
     ) -> dict[str, Any]:
         from urllib.parse import quote
 
-        value = await asyncio.to_thread(
-            self._request_json,
+        value = await self._request_json(
             "POST",
             f"/v1/admin/reflections/{quote(reflection_id, safe='')}:replay",
             record,
@@ -1437,7 +1432,51 @@ class AsyncIrisMemoryClient:
         )
         return cast(dict[str, Any], value)
 
-    def _request_json(
+    async def get_entity_profile(
+        self,
+        entity_id: str,
+        *,
+        agent_id: str,
+        space_id: str | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import quote
+
+        query = {"agent_id": agent_id}
+        if space_id is not None:
+            query["space_id"] = space_id
+        value = await self._request_json(
+            "GET", f"/v1/entities/{quote(entity_id, safe='')}/profile?{urlencode(query)}", None
+        )
+        return cast(dict[str, Any], value)
+
+    async def __aenter__(self) -> Self:
+        if self._closed:
+            raise RuntimeError("client is closed")
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.aclose()
+
+    async def aclose(self, *, timeout_seconds: float = 5.0) -> None:
+        """Stop admission and cancel requests; a borrowed client stays open."""
+        if not 0 < timeout_seconds <= 300:
+            raise ValueError("close timeout must be within (0,300]")
+        self._closed = True
+        pending = tuple(self._requests)
+        for task in pending:
+            task.cancel()
+        if pending:
+            _, unfinished = await asyncio.wait(pending, timeout=timeout_seconds)
+            if unfinished:
+                raise IrisMemoryTransportError(
+                    "close_deadline_exceeded",
+                    request_id=str(uuid.uuid4()),
+                    result_unknown=True,
+                )
+        if self._owns_client and self._client is not None:
+            await self._client.aclose()
+
+    async def _request_json(
         self,
         method: str,
         path: str,
@@ -1445,21 +1484,92 @@ class AsyncIrisMemoryClient:
         *,
         extra_headers: dict[str, str] | None = None,
     ) -> object:
-        data = None if body is None else json.dumps(body).encode()
-        headers = {"Content-Type": "application/json"}
-        if self._bearer_token is not None:
-            headers["Authorization"] = f"Bearer {self._bearer_token}"
-        if extra_headers:
-            headers.update(extra_headers)
-        request = Request(
-            f"{self._base_url}{path}",
-            data=data,
-            headers=headers,
-            method=method,
-        )
+        request_id = str(uuid.uuid4())
+        if self._closed or len(self._requests) >= self._max_pending:
+            raise IrisMemoryTransportError(
+                "client_closed" if self._closed else "concurrency_exhausted",
+                request_id=request_id,
+                result_unknown=False,
+            )
+        task = asyncio.create_task(self._perform(method, path, body, extra_headers, request_id))
+        self._requests.add(task)
         try:
-            with urlopen(request, timeout=self._timeout_seconds) as response:
-                return cast(object, json.loads(response.read()))
-        except HTTPError as error:
-            value = cast(object, json.loads(error.read()))
-            raise IrisMemoryApiError(ErrorEnvelope.from_value(value)) from error
+            return await task
+        finally:
+            self._requests.discard(task)
+
+    async def _perform(
+        self,
+        method: str,
+        path: str,
+        body: object | None,
+        extra_headers: dict[str, str] | None,
+        request_id: str,
+    ) -> object:
+        sent = False
+        mutating = method not in {"GET", "HEAD"}
+        try:
+            async with asyncio.timeout(self._timeout_seconds), self._slots:
+                if self._closed:
+                    raise IrisMemoryTransportError(
+                        "client_closed",
+                        request_id=request_id,
+                        result_unknown=False,
+                    )
+                if self._client is None:
+                    self._client = httpx.AsyncClient(
+                        limits=httpx.Limits(
+                            max_connections=self._max_in_flight,
+                            max_keepalive_connections=self._max_in_flight,
+                        ),
+                        follow_redirects=False,
+                    )
+                headers = {"Content-Type": "application/json", "X-Request-ID": request_id}
+                if self._bearer_token is not None:
+                    headers["Authorization"] = f"Bearer {self._bearer_token}"
+                if extra_headers:
+                    headers.update(extra_headers)
+                sent = True
+                response = await self._client.request(
+                    method,
+                    f"{self._base_url}{path}",
+                    json=body,
+                    headers=headers,
+                    timeout=self._timeout_seconds,
+                    follow_redirects=False,
+                )
+                request_id = response.headers.get("X-Request-ID", request_id)
+                value = response.json()
+                if response.is_error:
+                    raise IrisMemoryApiError(ErrorEnvelope.from_value(value))
+                if response.is_redirect:
+                    raise IrisMemoryTransportError(
+                        "unexpected_redirect",
+                        request_id=request_id,
+                        result_unknown=mutating,
+                    )
+                return cast(object, value)
+        except httpx.TimeoutException as error:
+            raise IrisMemoryTransportError(
+                "socket_timeout",
+                request_id=request_id,
+                result_unknown=sent and mutating,
+            ) from error
+        except TimeoutError as error:
+            raise IrisMemoryTransportError(
+                "deadline_exceeded",
+                request_id=request_id,
+                result_unknown=sent and mutating,
+            ) from error
+        except httpx.TransportError as error:
+            raise IrisMemoryTransportError(
+                "transport_unavailable",
+                request_id=request_id,
+                result_unknown=sent and mutating,
+            ) from error
+        except (ValueError, TypeError, KeyError) as error:
+            raise IrisMemoryTransportError(
+                "invalid_response",
+                request_id=request_id,
+                result_unknown=sent and mutating,
+            ) from error

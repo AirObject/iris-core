@@ -1,6 +1,8 @@
 # Iris Memory TypeScript SDK
 
-Dependency-free client for the Core public `/v1` API. Version `0.11.1` covers
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](../../docs/development/observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
+Dependency-free client for the Core public `/v1` API. Version `0.12.0` covers
 observations and cursors, leases, jobs, explicit memory, recall/search/usage,
 profiles, personas, identity and administrative resources. The separate
 Phase 13 console `/console/v1` API is not part of this SDK.
@@ -49,3 +51,20 @@ release baseline comes from [`version-manifest.json`](../../schemas/version-mani
 ### Task 子资源与父修订
 
 步骤、依赖和触发器写入会在同一事务推进父 Task 修订。子资源返回自己的修订；后续更新或转换父 Task 前，先用公共 Task 列表接口读取当前父修订。不要复用创建子资源之前的父修订。幂等重放不额外推进父修订。
+
+## Observation context (0.12.0)
+
+Background messages use `context_kind: "background"` in `observeBatch`. They are ordinary Observations; ingestion and context reads do not call a model.
+
+```typescript
+const scope = { agent_id: agentId, space_id: spaceId };
+const page = await client.observationContext({ scope, limit: 100 });
+if (page.has_more && page.next_cursor) {
+  const following = await client.observationContext({ scope, limit: 100, cursor: page.next_cursor });
+}
+const accepted = await client.summarizeObservations(
+  { scope }, { idempotencyKey: "summary-request-1" },
+);
+```
+
+`ObservationContextResponse` contains raw messages, processing status, Episode summaries, source references and explicit pagination flags. Reading requires `observation-context.v1`; requesting a summary additionally requires `consolidation.v1` and a configured cognitive provider. The summary response acknowledges queue admission. Automatic summaries are opt-in on Core, and the SDK starts no background model work. Background content expires after 30 days by default, while explicitly cited evidence is preserved. See the [full contract and configuration guide](../../docs/development/observation-context.md).

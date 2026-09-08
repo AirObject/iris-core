@@ -346,7 +346,7 @@ def test_removed_dependency_survives_backup_restore_and_mismatch_is_rejected(
     service = BackupService(world["store"])
     source, destination = tmp_path / "backup", tmp_path / "restored"
     report = service.create_backup(source)
-    assert report.schema_version == 23
+    assert report.schema_version == 25
     restored = service.restore_backup(source, destination)
     assert restored.check.ok, restored.check.problems
     database = destination / "canonical.sqlite3"

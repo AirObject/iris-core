@@ -29,6 +29,7 @@ from iris_memory_core.application.ports.memory import (
 )
 from iris_memory_core.application.ports.notes import NoteSurface
 from iris_memory_core.application.ports.observation import ObservationSurface
+from iris_memory_core.application.ports.observation_context import ObservationContextSurface
 from iris_memory_core.application.ports.persona import PersonaSurface
 from iris_memory_core.application.ports.persona_drafts import PersonaDraftSurface
 from iris_memory_core.application.ports.provider_configs import ProviderConfigRepository
@@ -75,6 +76,9 @@ class Transaction(Protocol):
 
     @property
     def identities(self) -> IdentitySurface: ...
+
+    @property
+    def observation_context(self) -> ObservationContextSurface: ...
 
     @property
     def observations(self) -> ObservationSurface: ...

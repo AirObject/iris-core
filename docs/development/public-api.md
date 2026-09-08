@@ -1,14 +1,16 @@
 # 公开客户端方法与接口变更门禁
 
-当前清单适用于 Core 0.15.0、Schema 23、业务契约 1.11.0、Console 契约 1.3.0、Python SDK 0.11.1、TS SDK 0.11.2。稳定级别为开发候选；尚未构成 Phase 14 的逐方法生产验收。Core 和 SDK 分别分发。
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
+当前清单适用于 Core 0.16.0、Schema 25、业务契约 1.13.0、Console 契约 1.3.0、Python SDK 0.12.0、TS SDK 0.12.0。稳定级别为开发候选；尚未构成 Phase 14 的逐方法生产验收。Core 和 SDK 分别分发。
 
 ## 导入和错误
 
-Core 顶层只有 `iris_memory_core.__version__`；业务调用入口为独立包的 `iris_memory_sdk.AsyncIrisMemoryClient`。其构造参数是 URL、可选超时和 Bearer Token，没有 Store、连接、Provider、Worker 或通用对象查找参数。
+Core 顶层继续只有 `iris_memory_core.__version__`。新增本地公开入口 `iris_memory_core.embedded.EmbeddedMemory` 及配置、错误、可信初始化 DTO；公开 Provider 适配器见 `iris_memory_core.embedded_providers`。远程入口仍为独立 `iris_memory_sdk.AsyncIrisMemoryClient`，新增有界连接池、借用 HTTP 客户端与 `aclose()`。业务消费不能获得 Store、Worker 或 AccessContext。详见 [插件接入](plugin-integration.md) 和 [ADR-0053](../adr/0053-embedded-plugin-integration.md)。
 
-Python 根导出 `AsyncIrisMemoryClient`、`CapabilitiesEnvelope`、`ErrorEnvelope`、`ContractValidationError`、`validate_contract`，并提供版本属性 `__version__`。服务错误使用 `iris_memory_sdk.client.IrisMemoryApiError`，其 `envelope` 是由公开错误响应构造的 DTO；网络/超时错误仍由标准库抛出。其余结果为 JSON 字典或具名 Capabilities DTO，不能将这些字典视为客户端授予的授权上下文。
+Python 根导出 `AsyncIrisMemoryClient`、`CapabilitiesEnvelope`、`ErrorEnvelope`、`ContractValidationError`、`validate_contract`，并提供版本属性 `__version__`。服务错误使用 `iris_memory_sdk.client.IrisMemoryApiError`，其 `envelope` 是由公开错误响应构造的 DTO；网络/超时错误为公开 `iris_memory_sdk.client.IrisMemoryTransportError`，包含 request_id 与写入 result_unknown；取消保留 `CancelledError`。其余结果为 JSON 字典或具名 Capabilities DTO，不能将这些字典视为客户端授予的授权上下文。
 
-类型与签名、DTO 字段和继承、两套 HTTP operation/Schema 摘要、CLI 子命令和参数全部记录在 [机器清单](../../contracts/public-api.json)。TS 公开声明也在该快照内；TS 方法使用对应 camelCase 名称，缺少 Python 的 `current_surface_lease`，另有 `events`。`getEntityProfile`、Liveness、Metrics 没有 SDK 便捷方法；可以按公开 HTTP 契约消费，不能通过私有 `_request_json` 代替受支持方法。
+类型与签名、DTO 字段和继承、两套 HTTP operation/Schema 摘要、CLI 子命令和参数全部记录在 [机器清单](../../contracts/public-api.json)。TS 公开声明也在该快照内；TS 方法使用对应 camelCase 名称，缺少 Python 的 `current_surface_lease`，另有 `events`。`getEntityProfile` 已有 Python/TS 便捷方法；Liveness、Metrics 没有 SDK 便捷方法；可以按公开 HTTP 契约消费，不能通过私有 `_request_json` 代替受支持方法。
 
 ## 共同语义
 
@@ -18,7 +20,7 @@ Python 根导出 `AsyncIrisMemoryClient`、`CapabilitiesEnvelope`、`ErrorEnvelo
 
 `rebuild_recent_context` 已弃用，替代为 `rebuild_index("recent_context", ...)`。现有 /v1 窗口继续保留旧入口，不承诺在 1.0 时删除；移除按 [ADR-0006](../adr/0006-api-version-and-compatibility.md) 另开版本和迁移窗口。其余方法不设隐式删除期限。
 
-业务协商 `/v1/negotiation` 在 Contract 1.11.0 增加可选 `required_capabilities`；未配置、未授权或未知的必需能力返回既有 `unsupported_version`，旧客户端无此字段时仍兼容。配置后暂不可用的 Vector 保留支持声明，通过 Recall 降级与运行就绪探针表达当前故障。SDK `negotiate()` 的既有签名保持兼容；需要显式必需能力集合的调用方使用公开 HTTP 请求并核查响应。
+业务协商 `/v1/negotiation` 在 Contract 1.11.0 增加可选 `required_capabilities`；未配置、未授权或未知的必需能力返回既有 `unsupported_version`，旧客户端无此字段时仍兼容。配置后暂不可用的 Vector 保留支持声明，通过 Recall 降级与运行就绪探针表达当前故障。SDK `negotiate()` 保留旧参数并新增可选 `required_capabilities`，TS 对应 `requiredCapabilities`。
 
 ## Python 方法映射
 
@@ -55,6 +57,7 @@ Python 根导出 `AsyncIrisMemoryClient`、`CapabilitiesEnvelope`、`ErrorEnvelo
 | `forget_memory` | `forgetMemory` |
 | `get_artifact` | `getArtifact` |
 | `get_claim` | `getClaim` |
+| `get_entity_profile` | `getEntityProfile` |
 | `get_entity` | `getEntity` |
 | `get_entity_relations` | `getEntityRelations` |
 | `get_episode` | `getEpisode` |
@@ -74,6 +77,8 @@ Python 根导出 `AsyncIrisMemoryClient`、`CapabilitiesEnvelope`、`ErrorEnvelo
 | `negotiate` | `negotiateCapabilities` |
 | `note_action` | `archiveNote`, `promoteNote` |
 | `observe_batch` | `observeBatch` |
+| `observation_context` | `readObservationContext` |
+| `summarize_observations` | `summarizeObservationContext` |
 | `persona_history` | `getPersonaHistory` |
 | `prepare_binding` | `prepareBinding` |
 | `publish_persona_revision` | `publishPersonaRevision` |
@@ -117,3 +122,5 @@ Python 根导出 `AsyncIrisMemoryClient`、`CapabilitiesEnvelope`、`ErrorEnvelo
 W05 已逐项审查独立候选：仅增加 14 个已实现的 Console Provider 操作、有限 Operation 类型/问题码、离线秘密轮换命令和 serve/worker 的五个可选部署参数。既有 CLI 参数/默认值、两套 SDK 方法及映射、业务 HTTP 均逐值不变，因此 SDK 显式映射无需修改。证据与候选摘要见[审查记录](../reports/evidence/w05/public-api-review.json)；公开接口清单更新不代表 W05 的真实外部 Provider 门禁已完成。
 
 W08 新增七项草稿 Console 操作；旧方法、业务 HTTP、SDK 与 CLI 保持。见[独立接口审查](../reports/evidence/w08/public-api-review.json)，整合验收见 [W08 报告](../reports/w08-persona-draft.md)。
+
+人格内容镜像可单独授予 `persona.mirror.v1`（Contract 1.12.0），沿 application 的 Agent 范围发布/回滚；Policy 与 Console 不随之授权。SDK `aclose` 为本地生命周期方法，没有 HTTP operationId。

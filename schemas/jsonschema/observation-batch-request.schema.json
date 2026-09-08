@@ -62,6 +62,13 @@
           "content": {
             "type": "string"
           },
+          "context_kind": {
+            "default": "interaction",
+            "enum": [
+              "interaction",
+              "background"
+            ]
+          },
           "effect_proof": {
             "type": "object"
           },
@@ -95,6 +102,11 @@
             },
             "type": "array"
           },
+          "reply_to_source_event_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
           "role": {
             "enum": [
               "user",
@@ -117,6 +129,11 @@
             "type": "string"
           },
           "source_stream": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_thread_id": {
             "maxLength": 256,
             "minLength": 1,
             "type": "string"

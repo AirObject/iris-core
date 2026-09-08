@@ -131,6 +131,22 @@ def _refresh_backup_checksums(backup_dir: Path) -> None:
     (backup_dir / "checksums.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _rewind_observation_context(connection: sqlite3.Connection) -> None:
+    """Remove Schema 25 additions to existing resources before rewinding tables."""
+    assert (
+        connection.execute(
+            "SELECT COUNT(*) FROM observations WHERE context_kind!='interaction' "
+            "OR source_thread_id IS NOT NULL OR reply_to_source_event_id IS NOT NULL"
+        ).fetchone()[0]
+        == 0
+    )
+    connection.execute("DROP VIEW observation_context_dependencies")
+    connection.execute("DROP INDEX idx_observations_context_time")
+    connection.execute("DROP INDEX idx_observations_background_retention")
+    for column in ("context_kind", "source_thread_id", "reply_to_source_event_id"):
+        connection.execute(f"ALTER TABLE observations DROP COLUMN {column}")
+
+
 # A round-2 build predates Phase 6, so every table introduced by migration
 # 0007 and later has to disappear from the snapshot.  That list is DERIVED
 # from the migration files rather than hand-maintained: the hand-maintained
@@ -224,6 +240,20 @@ def _downgrade_snapshot_to_round2(backup_dir: Path) -> None:
     canonical = backup_dir / "canonical.sqlite3"
     connection = sqlite3.connect(canonical)
     try:
+        _rewind_observation_context(connection)
+        connection.execute("DROP INDEX idx_recall_statistics_time")
+        for table, column in (
+            ("recall_requests", "duration_us"),
+            ("recall_requests", "statistics_json"),
+            ("outbox_jobs", "last_heartbeat_us"),
+        ):
+            assert (
+                connection.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE {column} IS NOT NULL"
+                ).fetchone()[0]
+                == 0
+            )
+            connection.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
         connection.execute("DROP INDEX idx_artifacts_live_content")
         connection.execute("ALTER TABLE artifacts DROP COLUMN privacy_key")
         connection.execute(

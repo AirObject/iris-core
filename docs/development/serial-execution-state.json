@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-08T05:00:31.871402+00:00",
+  "updated_at": "2026-09-08T05:02:08.634875+00:00",
   "automation_id": null,
   "sequence": [
     "W01",
@@ -81,6 +81,20 @@
       "run_directory": "/private/tmp/imc-ci-w06-w08/.work-package-runs/W08/ci-w06-w08-001",
       "status": "observed_failed; supervisor receipt missing; test log proves 6 failures/15207 passes/85.85% coverage",
       "command": "env UV_NO_SYNC=1 UV_OFFLINE=1 CI=1 PYTHONPATH=<isolated src/sdk> CONSOLE_BROWSER_EXECUTABLE=<installed Chrome> make ci"
+    },
+    {
+      "packages": [
+        "W07",
+        "W08"
+      ],
+      "batch": "ci-w07-w08-002",
+      "worktree": "/private/tmp/imc-ci-w07-w08-002",
+      "head": "7629152",
+      "session_id": 34805,
+      "supervisor_pid": 60748,
+      "run_directory": "/private/tmp/imc-ci-w07-w08-002/.work-package-runs/W07/ci-w07-w08-002",
+      "status": "running",
+      "command": "UV_NO_SYNC=1 UV_OFFLINE=1 CI=1 PYTHONPATH=<isolated src and sdk/python/src> CONSOLE_BROWSER_EXECUTABLE=<installed Chrome> make ci"
     }
   ],
   "verification": {
@@ -220,7 +234,7 @@
     }
   ],
   "completion_watch": {
-    "status": "Prior supervisor exit event consumed; original final receipt missing and explicitly archived. Preparing fixed W07/W08 full CI."
+    "status": "Native attached supervisor34805 owns result; log write events identify performance boundary; no timer automation."
   },
   "execution_mode": "dependency_gated_parallel",
   "commit_policy": "Small coherent behavior commits; related work packages may share a commit; package acceptance remains explicit.",

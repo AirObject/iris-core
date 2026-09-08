@@ -1,5 +1,7 @@
 # Iris Memory Core Console
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](../../docs/development/observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 独立 React + strict TypeScript + Vite 前端；页面 `/console/`，同源 API `/console/v1`。当前后端已有认证/密钥、已修复验证的读面及 State 创建/更正/过期、Note 创建/编辑/状态转换、Focus 创建/编辑/激活/状态转换、Task 创建/编辑/状态转换/步骤及依赖创建和解除；其他业务写入、统计、导入导出、Provider、Settings 和运维仍只有前端设计适配。2026-09-06 已修复类型漂移并适配 Memory 正式 descriptor，真实浏览器覆盖注册表、Note 列表/详情/历史与刷新；固定筛选与批量 Forget Operation 已按 Schema 20 接入正式契约、实际 Worker 与进度/取消页面，Event 取消投递也已接入严格契约和真实领域 CAS，保留投递历史及 Task 状态；上述切片的当前完整组合验收已通过，剩余业务模块尚未真实联调。
 
 Persona 发布与回滚已按 [ADR-0044](../../docs/adr/0044-console-persona-publication.md) 整合，使用独立 Current 页面、正式命令元数据和 Persona/Policy 双 CAS。只读及发布/重新认证/回滚/刷新已通过主目录完整 CI、真实浏览器和独立安装验收；PersonaState 管理已按 [ADR-0045](../../docs/adr/0045-console-persona-state.md) 通过完整组合验收。Proposal 已按 [ADR-0046](../../docs/adr/0046-console-persona-proposals.md) 通过主目录完整 CI、创建/审批/拒绝真实浏览器和独立安装验收；Policy 管理已按 [ADR-0047](../../docs/adr/0047-console-persona-policy.md) 通过完整组合验收；Draft 管理仍未完成。 Persona 各类表单的并发差异提示已补齐并整合，专项验证通过、完整组合待运行，见 Phase14 验证报告。

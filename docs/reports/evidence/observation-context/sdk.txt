@@ -1,0 +1,37 @@
+
+> @iris-memory/sdk@0.12.0 test
+> npm run build && node --test dist/test/*.test.js
+
+
+> @iris-memory/sdk@0.12.0 build
+> tsc --project tsconfig.json
+
+✔ parseEventStream retains cursor and forward fields (0.61575ms)
+✔ adapter-facing reads propagate AbortSignal and authentication (57.400916ms)
+✔ events sends Last-Event-ID and parses a finite SSE poll (0.592417ms)
+✔ events rejects invalid saved checkpoints before transport (0.481541ms)
+✔ events rejects an HTTP error instead of treating it as an empty poll (0.278666ms)
+✔ TypeScript SDK matches the shared fixture manifest (136.018125ms)
+✔ Phase 10 management requests carry Bearer and idempotency headers (58.135125ms)
+✔ noteAction carries the lease proof on the wire (2.691292ms)
+✔ task and step transitions carry the lease proof on the wire (1.514958ms)
+✔ ackCognitiveEvent carries the lease proof on the wire (0.484958ms)
+✔ rememberClaim carries the lease proof on the wire (0.704458ms)
+✔ correctClaim carries the lease proof on the wire (0.311583ms)
+✔ forgetMemory carries the lease proof on the wire (1.902958ms)
+✔ createArtifact carries the lease proof on the wire (0.353083ms)
+✔ transitionEpisode carries target and the lease proof on the wire (0.334917ms)
+✔ recall posts the full request scope on the wire (1.992417ms)
+✔ reportRecallUsage posts stage ids and idempotency key (1.140292ms)
+✔ search posts query and scope on the wire (1.749ms)
+✔ persona mutations carry idempotency keys and exact resource paths (4.331583ms)
+✔ plugin negotiation and Entity Profile use public wire fields (0.211584ms)
+✔ observation context and explicit summaries send scope, cursor and idempotency (0.2245ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 191.076667

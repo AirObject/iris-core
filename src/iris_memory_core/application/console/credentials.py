@@ -46,6 +46,8 @@ APPLICATION_CAPABILITIES = frozenset(
         "identities.v1",
         "notes.v1",
         "observe.batch.v1",
+        "observation-context.v1",
+        "consolidation.v1",
         "persona.read.v1",
         "persona.state.v1",
         "persona.state.write.v1",

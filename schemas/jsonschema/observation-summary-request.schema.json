@@ -1,0 +1,55 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/observation-summary-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "lease_epoch": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lease_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "purpose": {
+      "default": "reply",
+      "type": "string"
+    },
+    "scope": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "space_group_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "space_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "space_id"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "scope"
+  ],
+  "title": "ObservationSummaryRequest",
+  "type": "object"
+}

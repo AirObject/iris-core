@@ -621,6 +621,8 @@ def _drive_success(world: dict[str, Any], client: TestClient) -> dict[str, int]:
     # degrades (503) by design, which is the failure case, not the success one.
     FtsProjectionService(world["store"], world["store"].clock).rebuild(world["tenant"])
     api.call("search", body={"agent_id": agent, "space_id": space, "query": "coffee"})
+    api.call("readObservationContext", body={"scope": {"agent_id": agent, "space_id": space}})
+    api.call("summarizeObservationContext", body={"scope": {"agent_id": agent, "space_id": space}})
     api.call("getRecentContext", query={"agent_id": agent, "space_id": space})
 
     # --- identities, bindings, space groups -------------------------------

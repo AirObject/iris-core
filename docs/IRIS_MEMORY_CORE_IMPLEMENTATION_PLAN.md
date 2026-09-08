@@ -399,6 +399,8 @@ L1/L2/L3 可以作为内部迁移、检索或认知处理术语，但不出现�
 
 ## 8. Observation Journal
 
+2026-09-08 增量决定见 [ADR-0054](adr/0054-observation-context-and-batch-summaries.md) 和[实施说明](development/observation-context.md)。Observation 统一接收已确认的背景消息和直接交互，在线不做模型相关性筛选。实时原始窗口独立于批量总结；分组摘要复用 Episode 并引用原始事件，不能成为新的用户/助手 Observation。自动总结显式开启，背景默认 30 天保留可配置，引用保护与主动遗忘分开处理。以下原有事实/时间/幂等/Scope 约束继续适用。
+
 ### 8.1 数据模型
 
 数据结构与校验见 [domain/observation.py](../src/iris_memory_core/domain/observation.py)；公共请求/响应以生成契约为准。

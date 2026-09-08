@@ -24,6 +24,8 @@
 
 ## 横向审计
 
+- [Observation 上下文与批量总结](observation-context.md)：统一原始记录、实时读取、分组摘要及保留策略；记录本轮实现、验证结果与限制。
+
 - [2026-09-07 Phase 1–10、13–14 完成情况](phase-completion-audit-2026-09-07.md)：区分领域实现、HTTP 接线与验收证据，记录 Vector/Graph 能力声明缺口、Console 实际切片和本轮定向实测。
 - [2026-09-07 项目组织与发布就绪度](structure-and-release-readiness-2026-09-07.md)：§6 记录逐项核实、工程修复、复验和保留的功能/生产验收清单。
 - [2026-09-07 测试分层与 pytest 耗时诊断](test-layering-analysis-2026-09-07.md)：本机数据的诊断分析而非阶段验收；优化方案未实施，1,080.53 s 为多次运行的拼接估算而非一次实测，不代表 CI 数据。

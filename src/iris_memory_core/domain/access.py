@@ -26,6 +26,7 @@ class AccessContext:
     #: Tenant-defined custom privacy labels granted to this caller.
     granted_custom_labels: frozenset[str] = field(default_factory=frozenset)
     admin: bool = False
+    credential_id: str | None = None
 
     def authorize_scope(self, request: Scope) -> Scope:
         """Cross-check a request scope against server-registered relations.
@@ -81,6 +82,7 @@ class AccessContext:
             consent_subject_entity_ids=self.consent_subject_entity_ids,
             granted_custom_labels=self.granted_custom_labels,
             admin=self.admin,
+            credential_id=self.credential_id,
         )
 
 

@@ -1,5 +1,7 @@
 # Core 安装与可信初始化
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](../development/observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 [English](core-installation.en.md)
 
 本页说明当前开发候选的安装路径；生产运行时、隔离、恢复与发布验收仍按 [Phase 14](../development/phase-14-hardening-release.md) 执行。Core、Python SDK、TS SDK、Console 静态文件分别交付，不包含 Bellis/AstrBot 适配器。
@@ -50,19 +52,21 @@ Required 模式下，SDK 先使用 `acquire_surface_lease` 获得属于自身 ap
 Core 无公共嵌入式 façade；不要通过 storage/runtime/application 私有类、SQL、FAISS 文件或队列记录执行客户端业务。普通 Python 导入不是安全沙箱，生产隔离仍依赖独立 OS 身份、私有目录权限和不向客户端挂载数据卷。
 
 
-## Core 0.13.0 / Schema 20 升级
+## Core 0.16.0 / Schema 25 升级
 
-运行时只支持 Schema 20。首次空库由 init/serve/worker 应用完整迁移；已有库禁止自动应用 0015、0017 或 0018。0016 的持久删除预览表允许在线升级，但 0017 扫描历史 Entity Tombstone 并补写删除账本，要求停机与验证备份。0018 重建 State 主/修订表并添加删除代际唯一索引，同样需要停机和验证备份。0019 仅增加 Task 删除查找索引，0020 新增固定批量删除 Operation 表，Schema 18/19 可在线升级。从 Schema 17 或更早版本升级须停止 API 和 Worker，使用以下流程：
+运行时只支持 Schema 25。Schema 24 → 25 新增 Observation 上下文列、处理账本和读取索引，迁移 0025 声明 online-safe，可在停掉旧版本进程后运行普通 `migrate`，预期 `schema_version=25 applied=1`。首次空库会应用全部 25 项迁移。
+
+Schema 23 或更早的已有库仍需遵守历史离线迁移要求：0015、0017、0018、0021、0022、0024 含离线或备份前置条件。停止 API 和 Worker，再运行：
 
 ```sh
 iris-memory-core migrate /var/lib/iris-core/data/core.sqlite3 \
   --allow-offline \
-  --with-backup /var/lib/iris-core/backups/before-schema-20
+  --with-backup /var/lib/iris-core/backups/before-schema-25
 ```
 
-CLI 创建并验证备份后才执行迁移。备份认证可另传 `--backup-key-file`；目录必须独立且保存好旧安装物。成功应为 `schema_version=20 applied=6`（从 Schema 14 升级），从 Schema 15/16/17 升级的 applied 分别为 5/4/3；Schema 18/19 只需普通 migrate，结果分别为 `schema_version=20 applied=2` 与 `schema_version=20 applied=1`。重复执行不再应用迁移。确认 schema-version 和 Ready 后再启动两个进程。
+CLI 创建并验证备份后才执行迁移。备份认证可另传 `--backup-key-file`；目录必须独立且保留旧安装物。从 Schema 14 升级预期 `schema_version=25 applied=11`，从 Schema 23 升级为 `schema_version=25 applied=2`。重复执行不再应用迁移。确认 schema-version 和 Ready 后再启动两个进程。默认不会开启模型总结；背景保留和自动总结配置见 [Observation 上下文](../development/observation-context.md)。
 
-回退需要先停新进程，再隔离恢复升级前备份并使用与其 Schema 匹配的原安装物（例如 Schema 14 配套旧 Core 0.12.0）；不对 Schema 20 原地降级。升级后的新增内容需另行保全核对。中断的首次建库也按已有库检查、备份和继续迁移，不自动视为空库。完整约束见 [ADR-0026](../adr/0026-task-dependency-lifecycle.md)、[ADR-0037](../adr/0037-console-durable-forget-previews.md)、[ADR-0038](../adr/0038-console-entity-tombstone-ledger.md)、[ADR-0040](../adr/0040-console-state-forget-generations.md) 、[ADR-0041](../adr/0041-console-task-forget-cascade.md) 和 [ADR-0042](../adr/0042-console-forget-operations.md)。
+回退需要先停新进程，再隔离恢复升级前备份并使用与其 Schema 匹配的原安装物（例如 Schema 14 配套旧 Core 0.12.0）；不对 Schema 25 原地降级。升级后的新增内容需另行保全核对。中断的首次建库也按已有库检查、备份和继续迁移，不自动视为空库。完整约束见 [ADR-0026](../adr/0026-task-dependency-lifecycle.md)、[ADR-0037](../adr/0037-console-durable-forget-previews.md)、[ADR-0038](../adr/0038-console-entity-tombstone-ledger.md)、[ADR-0040](../adr/0040-console-state-forget-generations.md) 、[ADR-0041](../adr/0041-console-task-forget-cascade.md) 和 [ADR-0042](../adr/0042-console-forget-operations.md)。
 
 Trusted `init` credentials include the application read capability `events.sse.v1`, allowing a host to negotiate and consume public invalidation notifications within the credential scope. This does not grant administration rights or update existing credentials. Hosts must acknowledge their own durable processing before advancing the stream cursor.
 

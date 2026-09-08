@@ -103,6 +103,7 @@ class TestEmptyAndUpgrade:
             22,
             23,
             24,
+            25,
         ]
         connection = sqlite3.connect(database)
         try:
@@ -119,7 +120,7 @@ class TestEmptyAndUpgrade:
         database = tmp_path / "db.sqlite3"
         MigrationRunner(database).migrate()
         assert MigrationRunner(database).migrate() == ()
-        assert current_schema_version(sqlite3.connect(database)) == 24
+        assert current_schema_version(sqlite3.connect(database)) == 25
 
     def test_schema6_upgrades_to_7_with_data_intact(self, tmp_path: Path) -> None:
         database = tmp_path / "db.sqlite3"
@@ -155,7 +156,7 @@ class TestEmptyAndUpgrade:
         assert state is None  # the marker row appears after the first rebuild
 
     def test_window_is_7_to_8(self) -> None:
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (24, 24)
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (25, 25)
 
     def test_checksum_recorded_in_db_matches_disk(self, tmp_path: Path) -> None:
         database = tmp_path / "db.sqlite3"
@@ -192,6 +193,7 @@ class TestEmptyAndUpgrade:
             22,
             23,
             24,
+            25,
         ]
         for version, name, checksum in rows:
             on_disk = hashlib.sha256(

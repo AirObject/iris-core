@@ -1,5 +1,7 @@
 # 阶段 5：显式长期记忆与 Episode
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 > 状态：Completed（历史交付快照；不代表当前发布验收）  
 > 前置阶段：[阶段 4](./phase-04-notes-tasks-events.md)  
 > 阶段交付版本：0.6.0（阶段记录：Core/Python SDK/TypeScript SDK 0.6.0，Schema 6，契约 1.4.0）  

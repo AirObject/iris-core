@@ -1,0 +1,43 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/observation-summary-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "batch_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "job_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "observation_ids": {
+      "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "idle",
+        "pending",
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "required": [
+    "batch_id",
+    "job_id",
+    "observation_ids",
+    "status"
+  ],
+  "title": "ObservationSummaryResponse",
+  "type": "object"
+}

@@ -172,6 +172,13 @@ def _validate_observation_batch_request(value: object) -> tuple[str, ...]:
         if not isinstance(record, Mapping):
             errors.append(f"records[{index}] must be an object")
             continue
+        if record.get("context_kind", "interaction") not in {"interaction", "background"}:
+            errors.append("context_kind must be interaction or background")
+        for field in ("source_thread_id", "reply_to_source_event_id"):
+            if field in record and (
+                not isinstance(record[field], str) or not 1 <= len(record[field]) <= 256
+            ):
+                errors.append(f"{field} must be 1..256 characters")
         if record.get("role") not in _ROLES:
             errors.append(f"records[{index}].role must be a known role")
         if record.get("effect_state", "committed") not in _EFFECT_STATES:
@@ -1945,7 +1952,70 @@ def _validate_phase10_surface(schema: str, value: object) -> tuple[str, ...]:
     return tuple(errors)
 
 
+def _validate_observation_context(schema: str, value: object) -> tuple[str, ...]:
+    if not isinstance(value, Mapping):
+        return ("root must be an object",)
+    errors: list[str] = []
+    if schema.endswith("request"):
+        scope = value.get("scope")
+        if not isinstance(scope, Mapping):
+            errors.append("scope must be an object")
+        else:
+            for key in ("agent_id", "space_id"):
+                _require_non_empty_str(scope.get(key), key, errors)
+        limit = value.get("limit", 100)
+        if type(limit) is not int or not 1 <= limit <= 200:
+            errors.append("limit must be within 1..200")
+        _require_lease_proof(value, errors)
+    elif schema == "observation-summary-response":
+        if not isinstance(value.get("status"), str) or not value.get("status"):
+            errors.append("status must be a string")
+        ids = value.get("observation_ids")
+        if not isinstance(ids, list) or any(not isinstance(x, str) or not x for x in ids):
+            errors.append("observation_ids must be an array of strings")
+        for key in ("batch_id", "job_id"):
+            if key not in value or (value[key] is not None and not isinstance(value[key], str)):
+                errors.append(f"{key} must be a string or null")
+    else:
+        watermark = value.get("source_watermark")
+        if not isinstance(watermark, str) or not _CURSOR_PATTERN.fullmatch(watermark):
+            errors.append("source_watermark must be a decimal string")
+        for key in ("has_more", "partial", "summaries_partial"):
+            if type(value.get(key)) is not bool:
+                errors.append(f"{key} must be boolean")
+        if "next_cursor" not in value or (
+            value["next_cursor"] is not None and not isinstance(value["next_cursor"], str)
+        ):
+            errors.append("next_cursor must be a string or null")
+        for key, identifier in (("messages", "observation_id"), ("summaries", "episode_id")):
+            rows = value.get(key)
+            if not isinstance(rows, list):
+                errors.append(f"{key} must be an array")
+                continue
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    errors.append(f"{key} entries must be objects")
+                    continue
+                _require_non_empty_str(row.get(identifier), identifier, errors)
+                if type(row.get("revision")) is not int or row["revision"] < 1:
+                    errors.append("revision must be positive")
+                if key == "summaries":
+                    for field in ("title", "summary"):
+                        _require_non_empty_str(row.get(field), field, errors)
+                    for field in ("observation_refs", "source_refs"):
+                        if not isinstance(row.get(field), list):
+                            errors.append(f"{field} must be an array")
+    return tuple(errors)
+
+
 def validate_contract(schema: str, value: object) -> tuple[str, ...]:
+    if schema in {
+        "observation-context-request",
+        "observation-context-response",
+        "observation-summary-request",
+        "observation-summary-response",
+    }:
+        return _validate_observation_context(schema, value)
     validators = {
         "capabilities": _validate_capabilities,
         "error-envelope": _validate_error_envelope,

@@ -195,6 +195,12 @@ _KINDS: dict[str, JobKindSpec] = dict(
             "the Forget machinery; protected resources skipped).",
         ),
         _spec(
+            "observation.summarize",
+            priority=7,
+            enabled=True,
+            notes="Durable bounded Observation grouping and summary.",
+        ),
+        _spec(
             "episode.consolidation",
             priority=7,
             catch_up="latest",

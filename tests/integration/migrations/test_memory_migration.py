@@ -172,7 +172,7 @@ class TestUpgrade:
         try:
             from iris_memory_core.storage.migrations import current_app_version
 
-            assert current_app_version() == "0.15.0"
+            assert current_app_version() == "0.16.0"
         finally:
             connection.close()
         applied = MigrationRunner(database, default_migrations_path()).migrate(
@@ -200,6 +200,7 @@ class TestUpgrade:
             22,
             23,
             24,
+            25,
         ]
         connection = sqlite3.connect(database)
         try:
@@ -223,13 +224,13 @@ class TestUpgrade:
             version = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
         finally:
             connection.close()
-        assert version == 24
+        assert version == 25
         assert not verify_database_invariants(database)
 
     def test_window_is_7_to_8(self) -> None:
-        # Core 0.15.0 opens only Schema 24; existing data upgrades offline (ADR-0026).
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (24, 24)
-        verify_schema_compatible(24)
+        # Core 0.16.0 opens only Schema 25; existing data upgrades offline (ADR-0026).
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (25, 25)
+        verify_schema_compatible(25)
 
     def test_upgraded_database_openable_by_runtime(self, tmp_path: Path) -> None:
         database = tmp_path / "canonical.sqlite3"

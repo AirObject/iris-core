@@ -11,10 +11,7 @@ from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
-import uvicorn
-
 from iris_memory_core import __version__
-from iris_memory_core.api import create_app
 from iris_memory_core.api.console.config import ConsoleConfig, parse_bind
 from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.forget import ForgetService
@@ -70,6 +67,11 @@ class ServiceConfig:
     provider_config_file: Path | None = None
     cognitive_config_file: Path | None = None
     development_cognitive: bool = False
+    auto_summary_enabled: bool = False
+    summary_min_messages: int = 50
+    summary_max_wait_seconds: int = 120
+    summary_batch_size: int = 100
+    background_retention_days: int = 30
 
     def recall_config(self) -> RecallAssemblyConfig:
         return RecallAssemblyConfig(
@@ -91,7 +93,19 @@ class ServiceConfig:
             assets=self.console_assets,
         )
 
+    def _context_config(self) -> Any:
+        from iris_memory_core.domain.observation_context import ObservationContextConfig
+
+        return ObservationContextConfig(
+            auto_summary_enabled=self.auto_summary_enabled,
+            summary_min_messages=self.summary_min_messages,
+            summary_max_wait_seconds=self.summary_max_wait_seconds,
+            summary_batch_size=self.summary_batch_size,
+            background_retention_days=self.background_retention_days,
+        )
+
     def validate(self) -> None:
+        self._context_config()
         if self.enable_console:
             self.console_config().validate()
             if self.console_bind and parse_bind(self.console_bind) == (self.host, self.port):
@@ -175,7 +189,13 @@ def load_config(
     ):
         if name in values and values[name] is not None:
             values[name] = Path(str(values[name]))
-    for name in ("port",):
+    for name in (
+        "port",
+        "summary_min_messages",
+        "summary_max_wait_seconds",
+        "summary_batch_size",
+        "background_retention_days",
+    ):
         if name in values:
             values[name] = int(values[name])
     for name in ("grace_seconds", "poll_seconds"):
@@ -191,6 +211,7 @@ def load_config(
             elif not isinstance(raw_list, tuple):
                 raise ValueError(f"{name} must be a list of strings")
     for name in (
+        "auto_summary_enabled",
         "migrate",
         "sse_enabled",
         "allow_local_sqlite",
@@ -242,6 +263,10 @@ def open_store(config: ServiceConfig) -> Store:
 
 
 def serve(config: ServiceConfig) -> int:
+    import uvicorn
+
+    from iris_memory_core.api import create_app
+
     store = open_store(config)
     cognitive = load_cognitive_deployment(
         store,
@@ -258,6 +283,7 @@ def serve(config: ServiceConfig) -> int:
         enable_console=config.enable_console and config.console_bind is None,
         console_config=config.console_config() if config.enable_console else None,
         recall_config=config.recall_config(),
+        observation_context_config=config._context_config(),
     )
     if config.enable_console and config.console_bind:
         from iris_memory_core.api.console.listening import serve_separate
@@ -298,6 +324,7 @@ def worker(config: ServiceConfig, *, once: bool = False) -> int:
         cognitive_handlers = {
             kind: cognitive_work
             for kind in (
+                "observation.summarize",
                 "episode.consolidation",
                 "reflection.generate",
                 "memory.reconciliation",
@@ -336,6 +363,12 @@ def worker(config: ServiceConfig, *, once: bool = False) -> int:
             ),
         ),
     }
+    from iris_memory_core.application.observation_context import ObservationContextService
+    from iris_memory_core.application.scheduler import SchedulerService
+
+    context = ObservationContextService(store, store.clock, config=config._context_config())
+    scheduler = SchedulerService(store, store.clock, enabled_kinds=frozenset(handlers))
+    next_maintenance = 0.0
     runtime = OutboxWorker(service, handlers)
     stopping = threading.Event()
 
@@ -349,6 +382,11 @@ def worker(config: ServiceConfig, *, once: bool = False) -> int:
     }
     try:
         while not stopping.is_set():
+            if time.monotonic() >= next_maintenance:
+                scheduler.advance()
+                context.advance(frozenset(cognitive.providers) if cognitive else frozenset())
+                context.expire_background()
+                next_maintenance = time.monotonic() + 1.0
             runtime.run_once()
             if once:
                 break

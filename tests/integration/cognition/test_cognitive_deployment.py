@@ -45,8 +45,20 @@ def gateway() -> Iterator[dict[str, Any]]:
                 time.sleep(state["delay"])
             material = json.loads(document["messages"][1]["content"])
             prompt = document["messages"][0]["content"]
-            if "Summarize only" in prompt:
-                value: dict[str, Any] = {"title": "Preferences", "summary": "User prefers tea."}
+            value: dict[str, Any]
+            if "ignored_observation_ids" in prompt:
+                value = {
+                    "groups": [
+                        {
+                            "title": "Preferences",
+                            "summary": "User prefers tea.",
+                            "observation_ids": [row["id"] for row in material],
+                        }
+                    ],
+                    "ignored_observation_ids": [],
+                }
+            elif "Summarize only" in prompt:
+                value = {"title": "Preferences", "summary": "User prefers tea."}
             else:
                 source = material[0]
                 value = {
@@ -524,3 +536,36 @@ def test_retry_success_or_admission_failure_keeps_previous_attempt_cost(
     assert tuple(row) == (expected, cost)
     assert len(gateway["requests"]) == cost // 100
     assert deployment.governance.budget_spent(tenant, "summarization") == cost
+
+
+def test_grouped_http_summary_preserves_thread_and_time_context(
+    clocked_store: Store, tmp_path: Path, gateway: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenant, *_ = _world(clocked_store)
+    path, _ = configuration(tmp_path, gateway, tenant)
+    monkeypatch.setenv("W06_FIXTURE_KEY", "synthetic-local-only-secret")
+    deployment = load_cognitive_deployment(clocked_store, path, development_cognitive=True)
+    assert deployment is not None
+    result = deployment.providers[tenant].summarize(
+        [
+            {
+                "id": "raw",
+                "revision": 1,
+                "content": "I prefer tea",
+                "privacy_labels": [],
+                "context_kind": "background",
+                "occurred_us": 42,
+                "source_event_id": "platform-2",
+                "source_thread_id": "thread",
+                "reply_to_source_event_id": "platform-1",
+            }
+        ],
+        prompt_version="summary.groups.v1",
+        schema_version="summary.groups.v1",
+        timeout_seconds=2,
+    )
+    assert result["groups"][0]["observation_ids"] == ["raw"]
+    submitted = json.loads(gateway["requests"][0]["messages"][1]["content"])
+    assert submitted[0]["occurred_us"] == 42
+    assert submitted[0]["source_thread_id"] == "thread"
+    assert submitted[0]["reply_to_source_event_id"] == "platform-1"

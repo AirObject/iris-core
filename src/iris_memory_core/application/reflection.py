@@ -136,6 +136,11 @@ def _provider_observation(item: StoredObservation) -> dict[str, object]:
         "content": item.content,
         "structured_payload": item.structured_payload,
         "privacy_labels": list(item.privacy_labels),
+        "context_kind": item.context_kind,
+        "source_thread_id": item.source_thread_id,
+        "reply_to_source_event_id": item.reply_to_source_event_id,
+        "source_event_id": item.source_event_id,
+        "source_stream": item.source_stream,
     }
 
 
@@ -179,6 +184,31 @@ class ReflectionPipeline:
         self._notes = NoteService(uow, clock)
         self._tasks = TaskService(uow, clock)
         self._personas = PersonaService(uow, clock)
+
+    def observation_summary_work(self, job: OutboxJob) -> JobCommit:
+        from iris_memory_core.application.observation_summary import prepare_summary
+
+        return prepare_summary(self, job)
+
+    def _check_admission(self, tx: Transaction, job: OutboxJob) -> None:
+        if "context_access" in job.payload:
+            from iris_memory_core.application.observation_context import (
+                require_current_access,
+                restore_access,
+            )
+            from iris_memory_core.application.promotion import require_promotion_references
+            from iris_memory_core.domain.scope import Scope
+
+            access = restore_access(cast(dict[str, Any], job.payload["context_access"]))
+            require_current_access(tx, access, self._clock.now_us())
+            scope = Scope(**cast(dict[str, Any], job.payload["context_scope"]))
+            require_promotion_references(
+                tx,
+                access,
+                scope,
+                cast(tuple[dict[str, Any], ...], job.payload["context_sources"]),
+                now_us=self._clock.now_us(),
+            )
 
     def _record_provider_failure(
         self,
@@ -272,6 +302,7 @@ class ReflectionPipeline:
         if not reflection_id:
             raise InvalidRequestError("memory.reconciliation requires reflection_id")
         with self._uow.read() as tx:
+            self._check_admission(tx, job)
             run = tx.reflection.get_run(reflection_id)
             window = tx.reflection.get_window(run.window_id)
             rows = tx.reflection.candidates_for_run(reflection_id)
@@ -281,6 +312,7 @@ class ReflectionPipeline:
             )
 
         def commit(tx: Transaction) -> None:
+            self._check_admission(tx, job)
             current_run = tx.reflection.get_run(reflection_id)
             current_window = tx.reflection.get_window(current_run.window_id)
             self._revalidate_window(tx, current_window)
@@ -377,6 +409,7 @@ class ReflectionPipeline:
         if not reflection_id:
             raise InvalidRequestError("persona.evaluation requires reflection_id")
         with self._uow.read() as tx:
+            self._check_admission(tx, job)
             run = tx.reflection.get_run(reflection_id)
             window = tx.reflection.get_window(run.window_id)
             candidates = tuple(
@@ -386,6 +419,7 @@ class ReflectionPipeline:
             )
 
         def commit(tx: Transaction) -> None:
+            self._check_admission(tx, job)
             self._revalidate_window(tx, window)
             if not candidates:
                 return
@@ -459,6 +493,7 @@ class ReflectionPipeline:
             raise InvalidRequestError("topic_key must be 1..256 characters")
         scope = _scope_from(payload)
         with self._uow.read() as tx:
+            self._check_admission(tx, job)
             observations = tx.reflection.observations_at_watermark(
                 tenant_id=job.tenant_id,
                 agent_id=job.agent_id,
@@ -662,6 +697,7 @@ class ReflectionPipeline:
         if commit_mode not in {"commit", "dry_run"}:
             raise InvalidRequestError("commit_mode must be commit or dry_run")
         with self._uow.read() as tx:
+            self._check_admission(tx, job)
             window = tx.reflection.get_window(window_id)
             self._revalidate_window(tx, window)
             observations = tuple(
@@ -781,6 +817,7 @@ class ReflectionPipeline:
         )
 
     def commit_reflection(self, tx: Transaction, prepared: PreparedReflection) -> None:
+        self._check_admission(tx, prepared.job)
         window = tx.reflection.get_window(prepared.window_id)
         self._revalidate_window(tx, window)
         fingerprint = run_fingerprint(
@@ -857,7 +894,16 @@ class ReflectionPipeline:
                     aggregate_type="reflection",
                     aggregate_id=run.id,
                     source_revision=run.source_watermark,
-                    payload={"version": 2, "job_kind": kind, "reflection_id": run.id},
+                    payload={
+                        "version": 2,
+                        "job_kind": kind,
+                        "reflection_id": run.id,
+                        **{
+                            key: value
+                            for key, value in prepared.job.payload.items()
+                            if key.startswith("context_")
+                        },
+                    },
                     dedupe_key=f"{kind}:{run.id}",
                     coalesce_key=(
                         f"reconcile:{run.agent_id}" if kind == "memory.reconciliation" else None

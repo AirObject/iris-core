@@ -90,6 +90,14 @@ def _capability(access: AccessContext, capability: str, *, admin: bool = False) 
         raise AccessDeniedError(f"operation requires {capability}")
 
 
+def _publication_capability(access: AccessContext) -> None:
+    # A separately issued mirror grant is scoped by the ordinary application
+    # envelope. It permits content publication/rollback, never policy editing.
+    if "persona.mirror.v1" in access.capabilities:
+        return
+    _capability(access, PERSONA_MANAGE_CAPABILITY, admin=True)
+
+
 def normalize_persona_layer(raw: str) -> dict[str, Any]:
     if raw == "":
         return {}
@@ -429,7 +437,7 @@ class PersonaService:
         idempotency_key: str | None = None,
     ) -> PersonaRecord:
         _agent_access(access, agent_id)
-        _capability(access, PERSONA_MANAGE_CAPABILITY, admin=True)
+        _publication_capability(access)
         reason_code = require_reason(reason)
         core_value = validate_content_layer("core", core)
         trait_value = validate_content_layer("traits", traits)
@@ -484,7 +492,7 @@ class PersonaService:
         idempotency_key: str | None = None,
     ) -> PersonaRecord:
         _agent_access(access, agent_id)
-        _capability(access, PERSONA_MANAGE_CAPABILITY, admin=True)
+        _publication_capability(access)
         reason_code = require_reason(reason)
 
         def op(tx: Transaction) -> PersonaRecord:

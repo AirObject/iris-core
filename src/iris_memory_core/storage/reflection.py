@@ -831,6 +831,15 @@ class ReflectionRepository:
             ),
             privacy_labels=tuple(json.loads(str(row["privacy_labels"]))),
             effect_proof=proof,
+            context_kind=row["context_kind"]
+            if "context_kind" in set(row.keys())
+            else "interaction",
+            source_thread_id=row["source_thread_id"]
+            if "source_thread_id" in set(row.keys())
+            else None,
+            reply_to_source_event_id=row["reply_to_source_event_id"]
+            if "reply_to_source_event_id" in set(row.keys())
+            else None,
         )
 
     @staticmethod

@@ -105,6 +105,7 @@ def test_migration_preserves_bytes_fks_and_releases_only_deleted_key(tmp_path: P
         22,
         23,
         24,
+        25,
     ]
     assert runner.migrate() == ()
     with store.write() as tx:
@@ -168,7 +169,7 @@ def test_migration_failure_restores_original_tables(tmp_path: Path) -> None:
         for m in MigrationRunner(store.runtime.database).migrate(
             allow_offline=True, backup_performed=True
         )
-    ] == [18, 19, 20, 21, 22, 23, 24]
+    ] == [18, 19, 20, 21, 22, 23, 24, 25]
 
 
 @pytest.mark.parametrize("before_creation", [False, True])
@@ -219,7 +220,7 @@ def test_schema17_backup_replays_new_ledger_then_upgrades(
     assert [
         m.version
         for m in MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
-    ] == [18, 19, 20, 21, 22, 23, 24]
+    ] == [18, 19, 20, 21, 22, 23, 24, 25]
     restored = Store(SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)))
     with restored.write() as tx:
         assert tx.is_tombstoned("tenant", "state_record", identifier)

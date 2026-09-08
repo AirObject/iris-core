@@ -31,6 +31,8 @@ APPLICATION_CAPABILITIES = (
     "health.v1",
     "notes.v1",
     "observe.batch.v1",
+    "observation-context.v1",
+    "consolidation.v1",
     "persona.read.v1",
     "recall.v1",
     "recall.revalidate.v1",
@@ -46,6 +48,11 @@ def configure(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--app-instance", required=True)
     parser.add_argument("--credential-file", type=Path, required=True)
     parser.add_argument("--expires-days", type=int, default=30)
+    parser.add_argument(
+        "--persona-mirror",
+        action="store_true",
+        help="Grant scoped persona content publication and rollback",
+    )
     parser.add_argument("--actor-provider")
     parser.add_argument("--actor-subject")
     parser.add_argument("--surface-mode", choices=("off", "advisory", "required"), default="off")
@@ -163,7 +170,8 @@ def run(args: argparse.Namespace) -> int:
                 plane="application",
                 agent_ids=[agent.id],
                 space_ids=[space.id],
-                capabilities=APPLICATION_CAPABILITIES,
+                capabilities=APPLICATION_CAPABILITIES
+                + (("persona.mirror.v1",) if getattr(args, "persona_mirror", False) else ()),
                 data_purposes=["reply"],
                 expires_us=store.clock.now_us() + args.expires_days * 86_400_000_000,
                 actor="offline-bootstrap",

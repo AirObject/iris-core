@@ -235,6 +235,7 @@ def phase9_handlers(clock: Clock) -> dict[str, JobWork]:
 def phase10_handlers(*, pipeline: ReflectionPipeline) -> dict[str, JobWork]:
     """Evidence-driven Phase 10 handlers; provider work precedes fenced commit."""
     return {
+        "observation.summarize": pipeline.observation_summary_work,
         "episode.consolidation": pipeline.episode_consolidation_work,
         "reflection.generate": pipeline.reflection_generate_work,
         "memory.reconciliation": pipeline.reconciliation_work,

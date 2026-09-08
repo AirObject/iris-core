@@ -37,10 +37,12 @@ def test_terminal_task_cascade_and_restore(
         from iris_memory_core.storage.migrations import default_migrations_path
         from tests.integration.recovery.test_memory_legacy_restore_and_ledger_identity import (
             _refresh_backup_checksums,
+            _rewind_observation_context,
         )
 
         # Schema 19 adds only indexes; retain the exact Schema 18 domain rows.
         with sqlite3.connect(backup / "canonical.sqlite3") as connection:
+            _rewind_observation_context(connection)
             migration = (default_migrations_path() / "0019_task_deletion_lookups.sql").read_text()
             for name in re.findall(r"CREATE INDEX (\w+)", migration):
                 connection.execute(f"DROP INDEX {name}")
@@ -137,7 +139,7 @@ def test_terminal_task_cascade_and_restore(
             for m in MigrationRunner(destination / "canonical.sqlite3").migrate(
                 allow_offline=True, backup_performed=True
             )
-        ] == [19, 20, 21, 22, 23, 24]
+        ] == [19, 20, 21, 22, 23, 24, 25]
     restored = Store(
         SQLiteRuntime(
             destination / "canonical.sqlite3", allowed_versions=(sqlite_runtime_version(),)

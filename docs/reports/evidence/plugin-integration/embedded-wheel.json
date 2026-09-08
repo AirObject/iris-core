@@ -1,0 +1,40 @@
+{
+  "core_version": "0.15.0",
+  "python": "3.12.13",
+  "sqlite": "3.50.4",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "development_sqlite_exception": true,
+  "schema_version": 24,
+  "cold_start_ms": 485.729,
+  "restart_cycles": 50,
+  "restart_min_ms": 10.327,
+  "restart_max_ms": 16.842,
+  "peak_rss_samples": [
+    65961984,
+    65961984,
+    65961984,
+    65961984,
+    65961984,
+    65961984
+  ],
+  "peak_rss_unit": "bytes",
+  "heavy_imports": [],
+  "model_calls": 0,
+  "background": false,
+  "passed": [
+    "observe",
+    "remember",
+    "idempotency",
+    "recall",
+    "correct",
+    "forget",
+    "restart",
+    "50_lifecycles"
+  ],
+  "limitations": [
+    "synthetic single-claim data",
+    "cumulative process peak RSS, not retained heap",
+    "no real model or AstrBot",
+    "no vector rebuild capacity benchmark"
+  ]
+}

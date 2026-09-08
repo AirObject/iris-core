@@ -1,5 +1,11 @@
 # Iris Memory Core 文档索引
 
+本轮功能、模块与对外接口的简要汇总见 [main 本轮实现概要](main-implementation-summary.md)，其中区分已提交基线和当前工作区新增实现。
+
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](development/observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
+第一次接触项目，先读[新开发者功能与运行指南](./development/developer-onboarding.md)：从用途、存储类型、后台任务、主动事件到宿主接入，按当前源码说明能力和运行边界。
+
 先看 [阶段路线图](./development/README.md) 了解进度；准备继续构建时阅读[后续构建指导](./development/next-build-guide.md)，并从[工作队列](./development/work-packages.md)选择一个工作包。[Phase 14](./development/phase-14-hardening-release.md)保留稳定发布要求。阶段编号、实现存在、测试通过与稳定发布是不同证据。
 
 ## 文档分工

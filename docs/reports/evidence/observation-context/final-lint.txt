@@ -1,0 +1,10 @@
+UV_CACHE_DIR=.uv-cache uv run ruff format --check .
+467 files already formatted
+UV_CACHE_DIR=.uv-cache uv run ruff check .
+All checks passed!
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_import_boundaries
+domain import boundary: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_docs
+documentation structure and local links: ok
+UV_CACHE_DIR=.uv-cache uv run python -m tools.check_contract_counts
+current documentation contract counts: ok

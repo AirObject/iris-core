@@ -1,5 +1,7 @@
 # Core installation and trusted initialization
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](../development/observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 [中文版](core-installation.md)
 
 This guide covers the current development candidate. Production runtime, isolation,
@@ -23,7 +25,7 @@ Install the verified wheels into separate service and client environments:
 
 ```sh
 uv pip install --python /path/to/core-venv/bin/python /path/to/iris_memory_core-0.13.0-py3-none-any.whl
-uv pip install --python /path/to/client-venv/bin/python /path/to/iris_memory_sdk-0.11.1-py3-none-any.whl
+uv pip install --python /path/to/client-venv/bin/python /path/to/iris_memory_sdk-0.12.0-py3-none-any.whl
 ```
 
 These paths are placeholders for locally built artifacts, not claims of PyPI availability.
@@ -99,34 +101,35 @@ notifications within their scope. This neither grants administration rights nor
 updates existing credentials. Advance the stream cursor only after the host has
 acknowledged its own durable processing.
 
-## Upgrade to Core 0.13.0 / Schema 20
+## Upgrade to Core 0.16.0 / Schema 25
 
-The runtime supports Schema 20. A fresh database receives all migrations through
-`init`, `serve` or `worker`. Existing databases cannot automatically apply 0015,
-0017 or 0018. Migration 0016 adds durable previews and is online-safe; 0017 backfills
-the entity tombstone deletion ledger, and 0018 rebuilds State tables and adds
-uniqueness for deletion generations. Both require downtime and verified backups.
-Migration 0019 adds Task deletion indexes; 0020 adds durable batch deletion operations.
-Schema 18/19 can therefore upgrade online.
+The runtime supports Schema 25. Migration 0025 adds Observation context metadata,
+processing ledgers and query indexes. Upgrading Schema 24 uses ordinary `migrate`
+after stopping the old processes and reports `schema_version=25 applied=1`.
+A fresh database applies all 25 migrations.
 
-For Schema 17 or earlier, stop both API and worker, then run:
+Schema 23 or earlier must still satisfy the offline and verified-backup requirements
+of earlier migrations, including 0015, 0017, 0018, 0021, 0022 and 0024. Stop the API
+and Worker, then run:
 
 ```sh
 iris-memory-core migrate /var/lib/iris-core/data/core.sqlite3 \
   --allow-offline \
-  --with-backup /var/lib/iris-core/backups/before-schema-20
+  --with-backup /var/lib/iris-core/backups/before-schema-25
 ```
 
-The CLI creates and verifies the backup before migrating. Use `--backup-key-file`
-for backup authentication when needed. Keep backups separate and retain the old
-installation artifacts. From Schema 14 the result is `schema_version=20 applied=6`;
-from Schema 15/16/17 the applied counts are 5/4/3. Ordinary migration from Schema
-18/19 reports 2/1 applied migrations. Repeating a completed migration applies none.
-Check `schema-version` and readiness before returning the service to use.
+The CLI verifies the backup before migration. From Schema 14 the expected result is
+`schema_version=25 applied=11`; from Schema 23 it is `schema_version=25 applied=2`.
+Retain the old installation artifacts and verify schema-version and readiness before
+restarting. Automatic model summaries remain disabled by default. Configure
+`auto_summary_enabled`, `summary_min_messages` (50), `summary_max_wait_seconds` (120),
+`summary_batch_size` (100), and `background_retention_days` (30) under `[service]` or
+through matching `IRIS_MEMORY_` environment variables. Background messages are
+Observations; only explicitly cited sources outlive ordinary expiry.
 
 Rollback requires stopping the new processes, restoring the pre-upgrade backup
 in isolation and using the installation matching that backup's schema (for example,
-Core 0.12.0 for Schema 14). There is no in-place downgrade from Schema 20. Preserve
+Core 0.12.0 for Schema 14). There is no in-place downgrade from Schema 25. Preserve
 and reconcile post-upgrade data separately. An interrupted initial database is
 handled as an existing database requiring checks, backup and continued migration.
 See [ADR-0026](../adr/0026-task-dependency-lifecycle.md),

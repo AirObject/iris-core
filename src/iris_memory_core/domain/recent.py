@@ -19,7 +19,7 @@ from iris_memory_core.domain.observation import StoredObservation
 
 #: Bump on any change to window selection, ordering, segments or hashing;
 #: a new version rebuilds through the shadow path before the pointer swaps.
-RECENT_BUILDER_VERSION = 1
+RECENT_BUILDER_VERSION = 2
 
 RECENT_PROJECTION_TTL_US = 3_600_000_000  # one hour
 DEFAULT_RECENT_TOKEN_BUDGET = 4_000
@@ -236,36 +236,27 @@ def build_projection(
     ]
     hot: list[ObservationRef] = []
     used = 0
-    cursor = len(tokened) - 1
-    while cursor >= 0 and len(hot) < policy.max_observations:
-        item, tokens = tokened[cursor]
+    # Interactions get first choice of the bounded budget; background uses the remainder.
+    preferred = sorted(
+        tokened,
+        key=lambda pair: (pair[0].context_kind == "interaction", _window_order(pair[0])),
+        reverse=True,
+    )
+    for item, tokens in preferred:
+        if len(hot) >= policy.max_observations:
+            break
         if used + tokens > policy.token_budget and hot:
             break
-        hot.append(
-            ObservationRef(
-                observation_id=item.id,
-                revision=item.revision,
-                occurred_us=item.occurred_us,
-                token_estimate=tokens,
-            )
-        )
+        hot.append(ObservationRef(item.id, item.revision, item.occurred_us, tokens))
         used += tokens
-        cursor -= 1
-    hot.reverse()  # oldest-first inside the hot window
-    # Remaining older observations become bounded source-ref segments. The
-    # chunk endpoint is clamped to the un-windowed prefix — a plain slice
-    # would run past `cursor` and re-cover hot-window observations.
+    hot.sort(key=lambda ref: (ref.occurred_us, ref.observation_id))
+    selected_ids = {ref.observation_id for ref in hot}
+    remaining = [(item, tokens) for item, tokens in tokened if item.id not in selected_ids]
     segments: list[SummarySegment] = []
-    for start in range(0, cursor + 1, policy.segment_sources):
-        chunk = tokened[start : min(start + policy.segment_sources, cursor + 1)]
+    for start in range(0, len(remaining), policy.segment_sources):
         refs = tuple(
-            ObservationRef(
-                observation_id=item.id,
-                revision=item.revision,
-                occurred_us=item.occurred_us,
-                token_estimate=tokens,
-            )
-            for item, tokens in chunk
+            ObservationRef(item.id, item.revision, item.occurred_us, tokens)
+            for item, tokens in remaining[start : start + policy.segment_sources]
         )
         segments.append(
             SummarySegment(

@@ -1,0 +1,7 @@
+{
+  "scope": {
+    "agent_id": "agent",
+    "space_id": "space"
+  },
+  "limit": 100
+}

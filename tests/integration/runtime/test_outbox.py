@@ -649,6 +649,7 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "maintenance.selfcheck",
                 "surface.lease_revoked",
                 "observation.recorded",
+                "observation.summarize",
                 "recent_context.maintenance",
                 "focus.maintenance",
                 "state.projection",

@@ -112,7 +112,7 @@ class TestPublishedMigrationIntegrity:
             ).fetchall()
         finally:
             connection.close()
-        assert len(rows) == 24
+        assert len(rows) == 25
         on_disk = hashlib.sha256(
             (REPOSITORY_ROOT / "migrations" / "0003_phase2_reliability_spine.sql").read_bytes()
         ).hexdigest()
@@ -152,6 +152,7 @@ class TestSchemaUpgrade:
             22,
             23,
             24,
+            25,
         ]
 
         connection = sqlite3.connect(database)
@@ -183,19 +184,19 @@ class TestSchemaUpgrade:
         MigrationRunner(database).migrate()
         connection = sqlite3.connect(database)
         try:
-            assert current_schema_version(connection) == 24
+            assert current_schema_version(connection) == 25
         finally:
             connection.close()
 
     def test_schema_window_is_5_to_6(self) -> None:
         from iris_memory_core.domain.errors import SchemaIncompatibleError
 
-        # Core 0.15.0 opens only Schema 24; existing data upgrades offline (ADR-0026).
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (24, 24)
-        verify_schema_compatible(24)
+        # Core 0.16.0 opens only Schema 25; existing data upgrades offline (ADR-0026).
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (25, 25)
+        verify_schema_compatible(25)
 
         with pytest.raises(SchemaIncompatibleError):
-            verify_schema_compatible(25)
+            verify_schema_compatible(26)
         with pytest.raises(SchemaIncompatibleError):
             verify_schema_compatible(10)
 
@@ -337,7 +338,7 @@ class TestPhase2BackupRestore:
             source = self._phase2_database(tmp_path / f"round{round_index}")
             backup_dir = tmp_path / f"backup{round_index}"
             report = create_standalone_backup(source, backup_dir)
-            assert report["schema_version"] == 24
+            assert report["schema_version"] == 25
             assert verify_backup(backup_dir).ok
 
             target = tmp_path / f"restored{round_index}" / "canonical.sqlite3"
@@ -382,4 +383,4 @@ class TestPhase2BackupRestore:
         service = BackupService(store)
         backup_dir = tmp_path / "catalog-backup"
         report = service.create_backup(backup_dir)
-        assert report.schema_version == 24
+        assert report.schema_version == 25

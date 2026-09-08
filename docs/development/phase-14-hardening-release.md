@@ -1,5 +1,7 @@
 # 阶段 14：前置闭环、生产硬化与稳定发布
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 > 状态：In progress（2026-09-08 最新授权按依赖并行推进至 W20，W01–W04 已完成，W05 本地收尾、W06/W08 集成验收、W07/W09/W10 开发；此前整体 goal 已停止；2026-09-07 已实施读面、State/Note/Focus/Observation/Claim/Episode/Relation 与 Task 管理写入、Artifact 文本创建与附件上传、Recall/Focus Lease 与安装门禁；Identity 注册/绑定、实体重定向与属性已验收；六类内容删除、Entity 软删除与恢复账本及 Focus/State/Task 固定集合删除已验收；固定筛选与 Operation 批量删除、Event dismiss 及待投递 Recall 重验已通过 Schema 20 当前完整组合验收，Persona 发布回滚已按 ADR-0044 通过当前完整组合验收，PersonaState 管理按 ADR-0045 已通过完整组合验收，Proposal 按 ADR-0046 已通过完整组合验收，Policy 按 ADR-0047 已通过完整组合验收；尚未进入发布验收）  
 > 前置阶段：[Phase 0–10](./README.md) 的 Core 基线与 [Phase 13](./phase-13-web-console.md) 的管理平面；Phase 11/12 均已暂缓，移出当前发布依赖  
 > pip 范围：仅 Core 功能及其必要运行资源；不包含 Bellis/AstrBot 适配器；业务调用只经冻结的公共方法与契约  

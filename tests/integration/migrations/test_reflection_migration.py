@@ -76,12 +76,12 @@ def test_empty_database_and_schema10_upgrade_apply_0011(tmp_path: Path) -> None:
 
 
 def test_schema_compatibility_requires_dependency_lifecycle_schema() -> None:
-    verify_schema_compatible(24)
+    verify_schema_compatible(25)
     for schema in (10, 11, 12, 13, 14, 15, 16, 17):
         with pytest.raises(SchemaIncompatibleError):
             verify_schema_compatible(schema)
     with pytest.raises(SchemaIncompatibleError):
-        verify_schema_compatible(25)
+        verify_schema_compatible(26)
 
 
 def test_credentials_are_hashed_rotatable_and_never_exported(

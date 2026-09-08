@@ -400,52 +400,68 @@ wheels = [
 
 [[package]]
 name = "iris-memory-core"
-version = "0.15.0"
+version = "0.16.0"
 source = { editable = "." }
 dependencies = [
-    { name = "faiss-cpu" },
-    { name = "fastapi" },
     { name = "jsonschema" },
-    { name = "numpy" },
-    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
 console = [
     { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
+server = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
+vector = [
+    { name = "faiss-cpu" },
+    { name = "numpy" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "cryptography" },
+    { name = "faiss-cpu" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "mypy" },
+    { name = "numpy" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "types-jsonschema" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "cryptography", marker = "extra == 'console'", specifier = ">=46,<52" },
-    { name = "faiss-cpu", specifier = ">=1.15,<2" },
-    { name = "fastapi", specifier = ">=0.116,<1" },
+    { name = "faiss-cpu", marker = "extra == 'vector'", specifier = ">=1.15,<2" },
+    { name = "fastapi", marker = "extra == 'console'", specifier = ">=0.116,<1" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.116,<1" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
-    { name = "numpy", specifier = ">=2.1,<3" },
-    { name = "uvicorn", specifier = ">=0.35,<1" },
+    { name = "numpy", marker = "extra == 'vector'", specifier = ">=2.1,<3" },
+    { name = "uvicorn", marker = "extra == 'console'", specifier = ">=0.35,<1" },
+    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.35,<1" },
 ]
-provides-extras = ["console"]
+provides-extras = ["server", "vector", "console"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "cryptography", specifier = ">=46,<52" },
+    { name = "faiss-cpu", specifier = ">=1.15,<2" },
+    { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "mypy", specifier = ">=1.15,<2" },
+    { name = "numpy", specifier = ">=2.1,<3" },
     { name = "pytest", specifier = ">=8.3,<9" },
     { name = "pytest-cov", specifier = ">=6,<8" },
     { name = "ruff", specifier = ">=0.11,<0.15" },
     { name = "types-jsonschema", specifier = ">=4.26.0.20260518" },
+    { name = "uvicorn", specifier = ">=0.35,<1" },
 ]
 
 [[package]]

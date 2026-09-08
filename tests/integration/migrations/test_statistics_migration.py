@@ -184,7 +184,7 @@ def test_schema23_populated_draft_and_discard_ledger_survive_statistics_upgrade(
             allow_offline=True,
             backup_performed=True,
         )
-    ] == [24]
+    ] == [24, 25]
     upgraded = Store(SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)))
     with upgraded.read() as tx:
         assert tx.persona_drafts.get("draft-tenant", agent.id, live.id) == live

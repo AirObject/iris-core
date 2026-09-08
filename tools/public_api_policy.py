@@ -4,6 +4,8 @@
 PYTHON_OPERATIONS: dict[str, tuple[str, ...]] = {
     "capabilities": ("getCapabilities",),
     "negotiate": ("negotiateCapabilities",),
+    "observation_context": ("readObservationContext",),
+    "summarize_observations": ("summarizeObservationContext",),
     "observe_batch": ("observeBatch",),
     "source_cursor": ("getSourceCursor",),
     "acquire_surface_lease": ("acquireSurfaceLease",),
@@ -76,6 +78,7 @@ PYTHON_OPERATIONS: dict[str, tuple[str, ...]] = {
         "rejectPersonaEvolutionProposal",
     ),
     "rollback_persona": ("rollbackPersona",),
+    "get_entity_profile": ("getEntityProfile",),
     "get_entity": ("getEntity",),
     "get_entity_relations": ("getEntityRelations",),
     "create_identity": ("createIdentity",),
@@ -101,7 +104,11 @@ SDK_EXPORTS = (
     "validate_contract",
 )
 SDK_MODULE_SYMBOLS = {
-    "iris_memory_sdk.client": ("AsyncIrisMemoryClient", "IrisMemoryApiError"),
+    "iris_memory_sdk.client": (
+        "AsyncIrisMemoryClient",
+        "IrisMemoryApiError",
+        "IrisMemoryTransportError",
+    ),
     "iris_memory_sdk.models": (
         "CapabilitiesEnvelope",
         "ContractValidationError",
@@ -109,3 +116,6 @@ SDK_MODULE_SYMBOLS = {
         "validate_contract",
     ),
 }
+
+# Lifecycle methods do not correspond to HTTP operations.
+PYTHON_LIFECYCLE = ("aclose",)

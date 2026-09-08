@@ -468,7 +468,7 @@ def test_recall_identity_migration_preserves_rows_and_composite_fk(tmp_path: Pat
         requests = db.execute("SELECT * FROM recall_requests").fetchall()
         usage = db.execute("SELECT * FROM recall_usage_reports").fetchall()
     applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
-    assert [item.version for item in applied] == [14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+    assert [item.version for item in applied] == [14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
     with sqlite3.connect(database) as db:
         # Schema24 appends nullable observations without inventing past timing.
         assert db.execute("SELECT * FROM recall_requests").fetchall() == [

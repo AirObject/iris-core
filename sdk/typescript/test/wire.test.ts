@@ -428,3 +428,38 @@ test("persona mutations carry idempotency keys and exact resource paths", async 
   }
   assert.equal(call(stub.calls, 3).body?.reason, "reviewed");
 });
+
+test("plugin negotiation and Entity Profile use public wire fields", async () => {
+  const stub = stubFetch([
+    { api_version: "v1", schema_version: 23, capabilities: ["profile.v1"] },
+    { subject_id: "entity/id" },
+  ]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://mock.local");
+    await client.negotiate(["v1"], { requiredCapabilities: ["profile.v1"] });
+    await client.getEntityProfile("entity/id", { agentId: "agent", spaceId: "space" });
+  } finally {
+    stub.restore();
+  }
+  assert.deepEqual(call(stub.calls, 0).body, {
+    api_versions: ["v1"], required_capabilities: ["profile.v1"],
+  });
+  assert.match(call(stub.calls, 1).url, /entity%2Fid\/profile\?agent_id=agent&space_id=space/);
+});
+
+
+test("observation context and explicit summaries send scope, cursor and idempotency", async () => {
+  const raw = { messages: [], summaries: [], source_watermark: "5", next_cursor: null, has_more: false, partial: false, summaries_partial: false };
+  const accepted = { batch_id: "batch", job_id: "job", observation_ids: ["obs"], status: "pending" };
+  const stub = stubFetch([raw, accepted]);
+  try {
+    const client = new AsyncIrisMemoryClient("http://localhost:8765");
+    const scope = { agent_id: "agent", space_id: "space" };
+    assert.deepEqual(await client.observationContext({ scope, cursor: "cursor", limit: 20 }), raw);
+    assert.deepEqual(await client.summarizeObservations({ scope }, { idempotencyKey: "summary" }), accepted);
+    assert.equal(stub.calls[0]?.url, "http://localhost:8765/v1/observations:context");
+    assert.deepEqual(stub.calls[0]?.body, { scope, cursor: "cursor", limit: 20 });
+    assert.equal(stub.calls[1]?.headers["Idempotency-Key"], "summary");
+    assert.equal(stub.calls[1]?.url, "http://localhost:8765/v1/observations:summarize");
+  } finally { stub.restore(); }
+});

@@ -1,5 +1,7 @@
 # Console 前端对接矩阵
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](../../docs/development/observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 核查日期：2026-09-07。当前行为以 [Console OpenAPI](../../schemas/openapi/console.json) 和实际服务为准；目标语义见 [Console 设计与接入边界](../../docs/design/console-backend.md)，测试范围见 [合并验证记录](../../docs/reports/phase-13-verification.md)。本表只维护接入差距，不另存 API 规格或历史执行流水。
 
 当前契约已有 <!-- contract-count:console:paths -->154<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->184<!-- /contract-count --> 个 HTTP 操作；前端类型已同步；Reflection/Candidate 不透明 ID 已通过契约回归。读面真实浏览器证据见 [Phase 14 报告](../../docs/reports/phase-14-verification.md)，表中其余“已接线”不等于完整验收。

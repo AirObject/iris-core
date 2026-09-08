@@ -598,7 +598,41 @@ function validatePhase10Surface(schema: string, value: unknown): string[] {
   return errors;
 }
 
+function validateObservationContext(schema: string, value: unknown): string[] {
+  if (!isRecord(value)) return ["root must be an object"];
+  const errors: string[] = [];
+  if (schema.endsWith("request")) {
+    if (!isRecord(value.scope)) errors.push("scope must be an object");
+    else for (const key of ["agent_id", "space_id"]) requireNonEmptyString(value.scope[key], key, errors);
+    const limit = value.limit ?? 100;
+    if (!Number.isInteger(limit) || Number(limit) < 1 || Number(limit) > 200) errors.push("limit must be within 1..200");
+  } else if (schema === "observation-summary-response") {
+    requireNonEmptyString(value.status, "status", errors);
+    if (!Array.isArray(value.observation_ids) || value.observation_ids.some(x => typeof x !== "string" || !x)) errors.push("observation_ids must be an array of strings");
+    for (const key of ["batch_id", "job_id"]) if (value[key] !== null && typeof value[key] !== "string") errors.push(`${key} must be a string or null`);
+  } else {
+    if (typeof value.source_watermark !== "string" || !/^(0|[1-9][0-9]{0,17})$/.test(value.source_watermark)) errors.push("source_watermark must be a decimal string");
+    for (const key of ["has_more", "partial", "summaries_partial"]) if (typeof value[key] !== "boolean") errors.push(`${key} must be boolean`);
+    if (value.next_cursor !== null && typeof value.next_cursor !== "string") errors.push("next_cursor must be a string or null");
+    for (const [key, identifier] of [["messages", "observation_id"], ["summaries", "episode_id"]] as const) {
+      const rows = value[key];
+      if (!Array.isArray(rows)) { errors.push(`${key} must be an array`); continue; }
+      for (const row of rows) {
+        if (!isRecord(row)) { errors.push(`${key} entries must be objects`); continue; }
+        requireNonEmptyString(row[identifier], identifier, errors);
+        if (!Number.isInteger(row.revision) || Number(row.revision) < 1) errors.push("revision must be positive");
+        if (key === "summaries") {
+          for (const field of ["title", "summary"]) requireNonEmptyString(row[field], field, errors);
+          for (const field of ["observation_refs", "source_refs"]) if (!Array.isArray(row[field])) errors.push(`${field} must be an array`);
+        }
+      }
+    }
+  }
+  return errors;
+}
+
 export function validateContract(schema: string, value: unknown): readonly string[] {
+  if (["observation-context-request", "observation-context-response", "observation-summary-request", "observation-summary-response"].includes(schema)) return validateObservationContext(schema, value);
   if ([
     "entity-view", "identity-create-request", "identity-view", "binding-request",
     "binding-view", "space-group-view", "admin-operation-request",
@@ -1007,6 +1041,8 @@ function validateObservationBatchRequest(value: unknown): string[] {
       errors.push(`records[${index}] must be an object`);
       return;
     }
+    if (record.context_kind !== undefined && !["interaction", "background"].includes(String(record.context_kind))) errors.push("context_kind must be interaction or background");
+    for (const key of ["source_thread_id", "reply_to_source_event_id"]) if (record[key] !== undefined && (typeof record[key] !== "string" || !String(record[key]).length || String(record[key]).length > 256)) errors.push(`${key} must be 1..256 characters`);
     if (!ROLES.has(String(record.role))) errors.push(`records[${index}].role must be a known role`);
     const effect = record.effect_state === undefined ? "committed" : String(record.effect_state);
     if (!EFFECT_STATES.has(effect)) {
@@ -2146,7 +2182,69 @@ export interface ScheduleView {
   revision?: number;
 }
 
+export interface ObservationContextRequest {
+  scope: { agent_id: string; space_id: string; space_group_id?: string; session_id?: string };
+  purpose?: string;
+  lease_id?: string;
+  lease_epoch?: number;
+  limit?: number;
+  start_us?: number;
+  end_us?: number;
+  cursor?: string;
+  include_summaries?: boolean;
+}
+
+export interface ObservationContextMessage {
+  observation_id: string;
+  revision: number;
+  role: string;
+  kind: string;
+  content: string | null;
+  context_kind: "interaction" | "background";
+  effect_state: "committed" | "partial";
+  structured_payload: Record<string, unknown> | null;
+  occurred_us: number;
+  committed_us: number;
+  created_us: number;
+  source_event_id: string | null;
+  source_stream: string | null;
+  source_cursor: string | null;
+  source_thread_id: string | null;
+  reply_to_source_event_id: string | null;
+  actor_entity_id: string | null;
+  processing_status: "unprocessed" | "pending" | "processed" | "failed";
+}
+
+export interface ObservationContextSummary {
+  episode_id: string;
+  revision: number;
+  title: string;
+  summary: string;
+  observation_refs: { resource_type: string; resource_id: string; revision: number }[];
+  source_refs: { resource_type: string; resource_id: string; revision: number }[];
+}
+
+export interface ObservationContextResponse {
+  messages: ObservationContextMessage[];
+  summaries: ObservationContextSummary[];
+  source_watermark: string;
+  next_cursor: string | null;
+  has_more: boolean;
+  partial: boolean;
+  summaries_partial: boolean;
+}
+
+export interface ObservationSummaryResponse {
+  batch_id: string | null;
+  job_id: string | null;
+  observation_ids: string[];
+  status: "idle" | "pending" | "completed" | "failed";
+}
+
 export interface ObservationRecordInput {
+  context_kind?: "interaction" | "background";
+  source_thread_id?: string;
+  reply_to_source_event_id?: string;
   readonly agent_id: string;
   readonly role: string;
   readonly kind: string;
@@ -2705,15 +2803,31 @@ export class AsyncIrisMemoryClient {
 
   public async negotiate(
     apiVersions: readonly string[] = ["v1"],
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; requiredCapabilities?: readonly string[] } = {},
   ): Promise<CapabilitiesEnvelope> {
     const response = await this.#request("/v1/negotiation", {
-      body: JSON.stringify({ api_versions: apiVersions }),
+      body: JSON.stringify({ api_versions: apiVersions, required_capabilities: options.requiredCapabilities ?? [] }),
       headers: { "content-type": "application/json" },
       method: "POST",
       signal: options.signal ?? null,
     });
     return asCapabilities(await response.json());
+  }
+
+  public async observationContext(request: ObservationContextRequest, options: { signal?: AbortSignal } = {}): Promise<ObservationContextResponse> {
+    const response = await this.#request("/v1/observations:context", { method: "POST", body: JSON.stringify(request), headers: { "content-type": "application/json" }, signal: options.signal ?? null });
+    const value: unknown = await response.json();
+    const errors = validateObservationContext("observation-context-response", value);
+    if (errors.length) throw new ContractValidationError(errors);
+    return value as ObservationContextResponse;
+  }
+
+  public async summarizeObservations(request: Pick<ObservationContextRequest, "scope" | "purpose" | "lease_id" | "lease_epoch">, options: { idempotencyKey: string; signal?: AbortSignal }): Promise<ObservationSummaryResponse> {
+    const response = await this.#request("/v1/observations:summarize", { method: "POST", body: JSON.stringify(request), headers: { "content-type": "application/json", "Idempotency-Key": options.idempotencyKey }, signal: options.signal ?? null });
+    const value: unknown = await response.json();
+    const errors = validateObservationContext("observation-summary-response", value);
+    if (errors.length) throw new ContractValidationError(errors);
+    return value as ObservationSummaryResponse;
   }
 
   public async observeBatch(
@@ -3983,6 +4097,17 @@ export class AsyncIrisMemoryClient {
   // Phase 10 identity, grouping, reflection and administration surface.
   public async getEntity(entityId: string): Promise<Record<string, unknown>> {
     return (await (await this.#request(`/v1/entities/${encodeURIComponent(entityId)}`)).json()) as Record<string, unknown>;
+  }
+
+  public async getEntityProfile(
+    entityId: string,
+    options: { agentId: string; spaceId?: string },
+  ): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams({ agent_id: options.agentId });
+    if (options.spaceId !== undefined) query.set("space_id", options.spaceId);
+    return (await (await this.#request(
+      `/v1/entities/${encodeURIComponent(entityId)}/profile?${query}`,
+    )).json()) as Record<string, unknown>;
   }
 
   public async getEntityRelations(entityId: string): Promise<Record<string, unknown>> {

@@ -1,0 +1,245 @@
+{
+  "$id": "https://schemas.iris-memory-core.local/v1/observation-context-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "has_more": {
+      "type": "boolean"
+    },
+    "messages": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_entity_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "committed_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "context_kind": {
+            "enum": [
+              "interaction",
+              "background"
+            ]
+          },
+          "created_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "effect_state": {
+            "enum": [
+              "committed",
+              "partial"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "observation_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "occurred_us": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "processing_status": {
+            "enum": [
+              "unprocessed",
+              "pending",
+              "processed",
+              "failed"
+            ]
+          },
+          "reply_to_source_event_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "role": {
+            "type": "string"
+          },
+          "source_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_event_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_stream": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "structured_payload": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "observation_id",
+          "revision",
+          "role",
+          "kind",
+          "content",
+          "context_kind",
+          "occurred_us",
+          "committed_us",
+          "created_us",
+          "source_event_id",
+          "source_stream",
+          "source_cursor",
+          "source_thread_id",
+          "reply_to_source_event_id",
+          "actor_entity_id",
+          "processing_status",
+          "effect_state",
+          "structured_payload"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "next_cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "partial": {
+      "type": "boolean"
+    },
+    "source_watermark": {
+      "pattern": "^(0|[1-9][0-9]{0,17})$",
+      "type": "string"
+    },
+    "summaries": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "episode_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "observation_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id",
+                "revision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "resource_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "resource_type": {
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "resource_type",
+                "resource_id",
+                "revision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "episode_id",
+          "revision",
+          "title",
+          "summary",
+          "observation_refs",
+          "source_refs"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "summaries_partial": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "messages",
+    "summaries",
+    "source_watermark",
+    "next_cursor",
+    "has_more",
+    "partial",
+    "summaries_partial"
+  ],
+  "title": "ObservationContextResponse",
+  "type": "object"
+}

@@ -1,5 +1,7 @@
 # Test navigation
 
+2026-09-08 新实施项：[Observation 全量上下文与批量总结](../docs/development/observation-context.md)。统一使用 Observation 保存背景/交互原始事件，复用 Episode 保存分组摘要；自动总结显式开启，背景默认保留 30 天可配置。已接通实现，使用方式与本轮验证进度见链接说明；下文历史验收记录仅代表当时版本。
+
 Tests are organized by execution layer, then by subject. New filenames should
 name behavior or an invariant; phase and review identifiers belong in docstrings
 and historical reports.

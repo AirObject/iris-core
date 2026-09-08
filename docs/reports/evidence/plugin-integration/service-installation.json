@@ -1,0 +1,12 @@
+{
+  "core_version": "0.15.0",
+  "development_sqlite_override": true,
+  "private_endpoint_rejections": 4,
+  "public_sdk_smoke": "passed",
+  "schema_version": 24,
+  "sdk_version": "0.11.1",
+  "serve_exit_code": -15,
+  "shutdown_seconds": 0.1997152090043528,
+  "surface_mode": "required",
+  "worker_once": "passed"
+}

@@ -69,7 +69,12 @@ def python_surface() -> dict[str, Any]:
     import iris_memory_core
 
     modules: dict[str, Any] = {}
-    for name in ("iris_memory_sdk.client", "iris_memory_sdk.models"):
+    for name in (
+        "iris_memory_sdk.client",
+        "iris_memory_sdk.models",
+        "iris_memory_core.embedded",
+        "iris_memory_core.embedded_providers",
+    ):
         module = importlib.import_module(name)
         source = Path(str(module.__file__)).read_text()
         for node in ast.walk(ast.parse(source)):
@@ -80,11 +85,16 @@ def python_surface() -> dict[str, Any]:
                 if isinstance(node, ast.ImportFrom)
                 else []
             )
-            if any(value.startswith("iris_memory_core") for value in imports):
+            if name.startswith("iris_memory_sdk") and any(
+                value.startswith("iris_memory_core") for value in imports
+            ):
                 raise ValueError("SDK imports a Core implementation module")
         symbols: dict[str, Any] = {}
         for symbol_name, symbol in vars(module).items():
-            if symbol_name.startswith("_") or getattr(symbol, "__module__", None) != name:
+            if symbol_name.startswith("_") or (
+                getattr(symbol, "__module__", None) != name
+                and symbol_name not in getattr(module, "__all__", ())
+            ):
                 continue
             if not (inspect.isclass(symbol) or inspect.isfunction(symbol)):
                 continue
@@ -216,7 +226,9 @@ def validate_mapping(value: dict[str, Any], mapping: dict[str, list[str]]) -> No
     methods = value["python"]["modules"]["iris_memory_sdk.client"]["AsyncIrisMemoryClient"][
         "methods"
     ]
-    if set(methods) != set(mapping):
+    lifecycle = {"aclose"}
+
+    if set(methods) != set(mapping) | lifecycle:
         raise ValueError(f"Python client methods differ from policy: {set(methods) ^ set(mapping)}")
     operations = value["http"]["openapi"]["operations"]
     for method, names in mapping.items():

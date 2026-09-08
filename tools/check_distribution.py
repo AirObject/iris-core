@@ -92,8 +92,11 @@ def inspect_archive(path: Path) -> dict[str, object]:
         word in dependency.lower() for dependency in dependencies for word in ("bellis", "astrbot")
     ):
         raise ValueError("host dependency in Core metadata")
-    if package.get_all("Provides-Extra", []) != ["console"]:
+    if set(package.get_all("Provides-Extra", [])) != {"console", "server", "vector"}:
         raise ValueError("unreviewed Core extra")
+    base = [dependency for dependency in dependencies if ";" not in dependency]
+    if len(base) != 1 or not base[0].startswith("jsonschema"):
+        raise ValueError("embedded baseline contains an unreviewed dependency")
     names = {re.split(r"[<>=!~;\[ ]", dependency)[0].lower() for dependency in dependencies}
     if names != {"faiss-cpu", "fastapi", "jsonschema", "numpy", "uvicorn", "cryptography"}:
         raise ValueError("unreviewed Core runtime dependency")

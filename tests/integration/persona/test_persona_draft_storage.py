@@ -156,6 +156,7 @@ def test_upgrade_from_schema22_adds_empty_draft_tables(tmp_path: Path) -> None:
     assert [item.version for item in runner.migrate(allow_offline=True, backup_performed=True)] == [
         23,
         24,
+        25,
     ]
     assert runner.migrate() == ()
 
@@ -210,8 +211,8 @@ def test_concurrent_draft_updates_have_exactly_one_revision_winner(draft_world: 
         assert tx.personas.current(world["agent"]).revision == 1
 
 
-@pytest.mark.parametrize("predecessor", range(1, 24))
-def test_all_historical_migration_prefixes_reach_schema24_without_reordering(
+@pytest.mark.parametrize("predecessor", range(1, 25))
+def test_all_historical_migration_prefixes_reach_schema25_without_reordering(
     tmp_path: Path, predecessor: int
 ) -> None:
     import sqlite3
@@ -228,7 +229,7 @@ def test_all_historical_migration_prefixes_reach_schema24_without_reordering(
             old.backup(backup)
             assert backup.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
     applied = MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
-    assert [item.version for item in applied] == list(range(predecessor + 1, 25))
+    assert [item.version for item in applied] == list(range(predecessor + 1, 26))
     with closing(sqlite3.connect(database)) as upgraded:
         assert (
             upgraded.execute(

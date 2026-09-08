@@ -1,0 +1,51 @@
+{
+  "python_affected": {
+    "passed": 1198,
+    "failed": 0,
+    "seconds": 148.23,
+    "coverage_gate": false,
+    "log": "Affected runtime, contract, persona, cognitive pipeline, SDK and Console transport tests; exact command in report."
+  },
+  "additional_socket_timeout_test": {
+    "passed": 1,
+    "failed": 0
+  },
+  "typescript": {
+    "passed": 20,
+    "failed": 0
+  },
+  "static_checks": {
+    "mypy": "453 source files passed",
+    "ruff": "passed",
+    "format": "459 files passed",
+    "domain_import_boundary": "passed",
+    "contract_generation": "passed",
+    "contract_compatibility": "passed",
+    "public_api_snapshot": "passed",
+    "documentation_links": "passed"
+  },
+  "isolated_installation": {
+    "embedded": "passed",
+    "sdk_only": "passed",
+    "server_vector_console": "passed",
+    "python_isolated_mode": true,
+    "development_sqlite_exception": true
+  },
+  "full_suite": {
+    "completed": false,
+    "count_collected": 15336,
+    "reason": "Stopped the full run; final validation uses the completed affected suite. No full coverage or production-release claim."
+  },
+  "real_models": {
+    "tested": false
+  },
+  "astrbot_e2e": {
+    "tested": false
+  },
+  "final_artifacts_installation": "passed: minimal Embedded, SDK-only, server/vector/console; exact hashes in artifacts.json",
+  "logs_sha256": {
+    "affected_tests": "fc8f3130ad0f3ee410e6cb31f3425d0f5a8cbfa2694d47af4742939c9d0a9580",
+    "typescript": "befdcd03edbb1958367a4ff3135dedb84c97a05726b81b8852d0ece4d1a8cfa8",
+    "installation": "11816410e9163ce71a2231db020392c1ca646ac3a8d3885561d2d3f607285b0b"
+  }
+}

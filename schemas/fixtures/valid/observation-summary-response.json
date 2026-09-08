@@ -1,0 +1,8 @@
+{
+  "batch_id": "batch",
+  "job_id": "job",
+  "observation_ids": [
+    "obs"
+  ],
+  "status": "pending"
+}
