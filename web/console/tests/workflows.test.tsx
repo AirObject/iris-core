@@ -10,7 +10,6 @@ import {
   type Bootstrap,
   type ImportReport,
   type Operation,
-  type ProviderView,
   type Resource,
 } from "../src/api/design";
 import {
@@ -22,7 +21,7 @@ import {
 } from "../src/components/core";
 import { ForgetDialog } from "../src/pages/Memory";
 import { OperationPanel, pollingDelay } from "../src/components/Operation";
-import { canActivate } from "../src/pages/Configuration";
+import { canActivate, type ProviderConfig } from "../src/pages/Providers";
 import { reportUsable } from "../src/pages/Transfers";
 import { action, makeResource, resourceTypes } from "../src/mock/fixtures";
 import { createMockTransport } from "../src/mock/server";
@@ -64,12 +63,21 @@ describe("domain safeguards", () => {
         { id: "a", v: 2 },
       ]),
     ).toEqual([{ id: "a", v: 2 }]);
-    expect(cas({ version_token: "opaque", revision: 1 })).toEqual({ expected_revision: 1 });
-    expect(cas({ version_token: "opaque" })).toEqual({ version_token: "opaque" });
-    expect(encodeFields([
-      { key: "body", label: "正文", type: "text", allow_empty: true },
-      { key: "snooze_until_at", label: "推迟至", type: "string" },
-    ], { body: "", snooze_until_at: null })).toEqual({ body: "" });
+    expect(cas({ version_token: "opaque", revision: 1 })).toEqual({
+      expected_revision: 1,
+    });
+    expect(cas({ version_token: "opaque" })).toEqual({
+      version_token: "opaque",
+    });
+    expect(
+      encodeFields(
+        [
+          { key: "body", label: "正文", type: "text", allow_empty: true },
+          { key: "snooze_until_at", label: "推迟至", type: "string" },
+        ],
+        { body: "", snooze_until_at: null },
+      ),
+    ).toEqual({ body: "" });
   });
   it("does not offer arbitrary updates on append-only, projection, or event resources", () => {
     for (const collection of [
@@ -139,22 +147,66 @@ describe("domain safeguards", () => {
       false,
     );
   });
-  it("provider activation requires non-dirty, recent, matching-dimension successful probe", () => {
-    const p: ProviderView = {
+  it("provider activation requires a clean revision and server-verified matching plan", () => {
+    const p: ProviderConfig = {
       id: "p",
-      revision: 1,
+      revision: 2,
+      content_revision: 1,
       status: "probed",
-      fields: { dimension: 32 },
-      available_actions: ["activate"],
-      blocked_actions: [],
-      probe: {
-        ok: true,
-        dimension_observed: 32,
-        expires_at: new Date(Date.now() + 60000).toISOString(),
+      provider_kind: "embedding",
+      created_at: "2026-09-08T00:00:00.000000Z",
+      updated_at: "2026-09-08T00:00:00.000000Z",
+      current_operation_id: null,
+      last_generation_id: null,
+      latest_probe_id: "probe",
+      secret_mode: null,
+      secret_hint: "",
+      secret_digest_prefix: "",
+      resolved: true,
+      definition: {
+        adapter: "deterministic",
+        endpoint: "",
+        label: "fixture",
+        space: {
+          model: "fixture",
+          dimension: 32,
+          metric: "cosine",
+          normalization: "l2",
+          template_version: 1,
+          builder_version: 1,
+        },
+        limits: {
+          batch_size: 32,
+          timeout_us: 2000000,
+          max_qps: 50,
+          max_input_chars: 24000,
+          breaker_failures: 5,
+          breaker_cooldown_us: 10000000,
+        },
       },
-      side_effects: {},
-      generation: "2",
-      serving_generation: "1",
+      probe: {
+        id: "probe",
+        ok: true,
+        normalized: true,
+        dimension_observed: 32,
+        latency_ms: 1,
+        outcome: "ok",
+        created_at: "2026-09-08T00:00:00.000000Z",
+      },
+      activation_plan: {
+        config_id: "p",
+        content_revision: 1,
+        expected_revision: 2,
+        rebuild_plan_hash: "a".repeat(64),
+        reuse_generation_id: null,
+        side_effects: {
+          rebuild: true,
+          estimated_resources: "10",
+          worker_required: true,
+          estimated_duration_seconds: { lower: 0, upper: 2 },
+          estimate_basis: "request_limits_excluding_queue_and_index_io",
+        },
+      },
     };
     expect(canActivate(p, false)).toBe(true);
     expect(canActivate(p, true)).toBe(false);
@@ -167,10 +219,16 @@ describe("domain safeguards", () => {
     expect(canActivate({ ...p, probe: undefined }, false)).toBe(false);
     expect(
       canActivate(
-        { ...p, probe: { ...p.probe!, expires_at: "2000-01-01" } },
+        {
+          ...p,
+          activation_plan: null,
+          activation_blocked_reason: "provider_probe_expired",
+        },
         false,
       ),
     ).toBe(false);
+    expect(canActivate({ ...p, revision: 3 }, false)).toBe(false);
+    expect(canActivate({ ...p, status: "activating" }, false)).toBe(false);
   });
   it("retains CAS conflict draft and fetches newest data without overwriting", async () => {
     HTMLDialogElement.prototype.showModal = function () {

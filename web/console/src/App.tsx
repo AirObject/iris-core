@@ -22,7 +22,8 @@ import {
 } from "./components/core";
 import { MemoryPage } from "./pages/Memory";
 import { ExportsPage, ImportsPage, StatsPage } from "./pages/Transfers";
-import { ProvidersPage, SettingsPage } from "./pages/Configuration";
+import { SettingsPage } from "./pages/Configuration";
+import { ProvidersPage } from "./pages/Providers";
 import {
   KeysPage,
   ManagementPage,
@@ -222,7 +223,9 @@ function ConsoleShell({ epoch }: { epoch: number }) {
                   .filter(
                     ([id, , permission]) =>
                       bootstrap.data!.modules.includes(id) &&
-                      bootstrap.data!.permissions.includes(permission),
+                      (bootstrap.data!.permissions.includes(permission) ||
+                        (id === "providers" &&
+                          bootstrap.data!.permissions.includes("system.read"))),
                   )
                   .map(([id, label]) => (
                     <NavLink key={id} to={`/${id}`}>
@@ -271,7 +274,11 @@ function ConsoleShell({ epoch }: { epoch: number }) {
                     .filter(
                       ([id, , permission]) =>
                         bootstrap.data!.modules.includes(id) &&
-                        bootstrap.data!.permissions.includes(permission),
+                        (bootstrap.data!.permissions.includes(permission) ||
+                          (id === "providers" &&
+                            bootstrap.data!.permissions.includes(
+                              "system.read",
+                            ))),
                     )
                     .map(([id]) => (
                       <Route
@@ -375,7 +382,9 @@ function Overview({ bootstrap }: { bootstrap: Bootstrap }) {
               .filter(
                 ([id, , permission]) =>
                   bootstrap.modules.includes(id) &&
-                  bootstrap.permissions.includes(permission),
+                  (bootstrap.permissions.includes(permission) ||
+                    (id === "providers" &&
+                      bootstrap.permissions.includes("system.read"))),
               )
               .map(([id, label]) => (
                 <Link key={id} to={`/${id}`}>

@@ -80,6 +80,7 @@ export function OperationPanel({
         userActivity: true,
       });
       setOp(r.data);
+      onChange?.(r.data);
     } catch (e) {
       setError(e);
     } finally {

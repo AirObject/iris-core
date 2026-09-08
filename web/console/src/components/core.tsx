@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -64,7 +65,8 @@ export function useQuery<T>(path: string | null) {
         });
     return () => controller.abort();
   }, [path, epoch, reload]);
-  return { ...state, refresh: () => setReload((v) => v + 1) };
+  const refresh = useCallback(() => setReload((v) => v + 1), []);
+  return { ...state, refresh };
 }
 export function ErrorNotice({ error }: { error: unknown }) {
   if (!error) return null;
