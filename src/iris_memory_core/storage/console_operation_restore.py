@@ -110,6 +110,36 @@ def reset_operations_for_restore(database: Path) -> None:
             operation = repository.get(row["tenant_id"], row["id"])
             assert operation is not None
             after = operation.id
+            if operation.kind == "embedding_provider":
+                if operation.blocked_reason == "restore_requires_review":
+                    continue
+                now = max(clock.now_us(), operation.updated_us)
+                repository.advance(
+                    replace(
+                        operation,
+                        status="blocked",
+                        revision=operation.revision + 1,
+                        current_job_id=None,
+                        blocked_reason="restore_requires_review",
+                        updated_us=now,
+                        finished_us=None,
+                    ),
+                    expected_revision=operation.revision,
+                )
+                repository.add_problem(
+                    OperationProblem(operation.id, -1, "restore_requires_review", now)
+                )
+                ledger.audit(
+                    tenant_id=operation.tenant_id,
+                    actor="restore:console_operations",
+                    action="console.operation.restored",
+                    resource_type="console_operation",
+                    resource_id=operation.id,
+                    revision=operation.revision + 1,
+                    reason_code="restore_requires_review",
+                    details={"kind": "embedding_provider"},
+                )
+                continue
             if typed and operation.kind == "trusted_backup":
                 if operation.blocked_reason == "restore_requires_review":
                     continue

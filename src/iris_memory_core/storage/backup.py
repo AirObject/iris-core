@@ -1025,6 +1025,9 @@ def _reset_vector_projection_for_restore(database: Path) -> None:
         if not has_vector:
             return
         connection.execute("BEGIN IMMEDIATE")
+        from iris_memory_core.storage.provider_restore import reset_provider_projection
+
+        reset_provider_projection(connection, now_us=time.time_ns() // 1000)
         connection.execute("DELETE FROM vector_delta_ledger")
         connection.execute("DELETE FROM vector_current")
         connection.execute("DELETE FROM vector_generations")
@@ -1368,6 +1371,11 @@ def verify_database_invariants(database: Path) -> tuple[str, ...]:
                 ).fetchone()
                 is not None
             )
+
+        if _has("provider_configs"):
+            from iris_memory_core.storage.provider_restore import provider_invariants
+
+            problems.extend(provider_invariants(connection))
 
         if _has("console_operation_backups"):
             invalid_receipt = connection.execute(
