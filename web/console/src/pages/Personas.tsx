@@ -6,6 +6,7 @@ import type { Action, Resource } from "../api/design";
 import { ActionButton, ActionDialog, FieldsForm, QueryState, TextData, useQuery } from "../components/core";
 import { Related } from "./Memory";
 import { PersonaProposals } from "./PersonaProposals";
+import { PersonaDrafts } from "./PersonaDrafts";
 import { PersonaPolicy } from "./PersonaPolicy";
 
 type Commands = components["schemas"]["PersonaCommandsView"];
@@ -66,6 +67,7 @@ function PersonaWorkspace({ agent }: { agent: string }) {
     <PersonaStatePanel key={`state-${generation}`} path={`${path}/state`} />
     <PersonaPolicy key={`policy-${generation}`} path={`${path}/policy`} onChanged={refresh} />
     <Related key={`history-${generation}`} path={`${path}/history`} title="Persona 历史" />
+    <PersonaDrafts key={`drafts-${generation}`} path={`${path}/drafts`} onChanged={refresh} />
     <PersonaProposals key={`proposals-${generation}`} path={`${path}/proposals`} onChanged={refresh} />
     {selected && <ActionDialog action={selected.action} resource={selected.resource}
       path={`${path}${selected.action.id === "publish" ? "/revisions" : ":rollback"}`}

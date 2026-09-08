@@ -45,6 +45,16 @@ provisioning.create_tenant(tenant)
 agent = provisioning.create_agent(
     AccessContext(tenant_id=tenant, app_instance_id="browser-seed", admin=True), "Browser seed"
 )
+draft_agent = provisioning.create_agent(
+    AccessContext(tenant_id=tenant, app_instance_id="browser-seed", admin=True),
+    "Browser draft seed",
+)
+SurfaceCoordinatorService(store, store.clock).set_mode(
+    AccessContext(tenant_id=tenant, app_instance_id="browser-seed", admin=True),
+    draft_agent.id,
+    SurfaceMode.REQUIRED,
+    reason="browser draft mode",
+)
 with store.write() as tx:
     for name in ("Browser Alice", "Browser Bob"):
         tx.identities.insert_entity(
