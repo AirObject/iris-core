@@ -1,0 +1,48 @@
+{
+  "coverage_from": null,
+  "description": "当前 Grant 可见集合；不返回正文或不可见余数。",
+  "filters": [
+    {
+      "key": "agent_id",
+      "label": "agent_id",
+      "type": "string"
+    },
+    {
+      "key": "space_group_id",
+      "label": "space_group_id",
+      "type": "string"
+    },
+    {
+      "key": "space_id",
+      "label": "space_id",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "label": "session_id",
+      "type": "string"
+    }
+  ],
+  "granularity": [
+    "hour",
+    "day",
+    "week"
+  ],
+  "group_by": [
+    "agent_id",
+    "space_group_id",
+    "space_id",
+    "session_id",
+    "resource_type"
+  ],
+  "label": "现存记忆",
+  "metric_id": "memory.present",
+  "panel": "overview",
+  "permission": "stats.read",
+  "required_permissions": [
+    "stats.read"
+  ],
+  "source": "rollup",
+  "unit": "count",
+  "value_type": "decimal"
+}

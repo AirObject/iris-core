@@ -3027,6 +3027,107 @@
               "#/components/schemas/TaskChildCommandReceiptEnvelope"
             ]
           },
+          "consoleStatsBackfill": {
+            "contract_sha256": "6882d9c62c9441243260ecdc554599eb06a4c48b3e7b56bb1acdb0e6f03aaa15",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/stats/rollups:backfill",
+            "schemas": [
+              "#/components/schemas/ConsoleOperationEnvelope",
+              "#/components/schemas/ConsoleStatisticsBackfillRequest",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleStatsMetrics": {
+            "contract_sha256": "cbbcf5e7fe040fb4d0aeefc4766adcb980396371cdfedbeec22148f7d10853da",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/stats/metrics",
+            "schemas": [
+              "#/components/schemas/ConsoleStatisticsRegistry",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleStatsOverview": {
+            "contract_sha256": "628e41ee914c5d263e725dfa96082f6b369d3405ed4d8f32e3c249fd2e19eb5e",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/stats/overview",
+            "schemas": [
+              "#/components/schemas/ConsoleStatisticsEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleStatsPipeline": {
+            "contract_sha256": "55bd98823208218af2c752cf40dba96d0cff0c7c189c7411f25e685df362c214",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/stats/pipeline",
+            "schemas": [
+              "#/components/schemas/ConsoleStatisticsEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleStatsProjections": {
+            "contract_sha256": "b8c136073afeaa50e4175bee45d3d2b603f7d69f674b0e42e86d5412db8f94eb",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/stats/projections",
+            "schemas": [
+              "#/components/schemas/ConsoleStatisticsEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleStatsProviders": {
+            "contract_sha256": "e47902db7702f7c8169cae8a5c55b598274788dfb0bd7d3911a31d7198c353cf",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/stats/providers",
+            "schemas": [
+              "#/components/schemas/ConsoleStatisticsEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleStatsRecall": {
+            "contract_sha256": "5a7cc5ceaf923cc8fc7370f72b7a48e79d20da03ad79ab09266908afbaf33691",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/stats/recall",
+            "schemas": [
+              "#/components/schemas/ConsoleStatisticsEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleStatsSecurity": {
+            "contract_sha256": "c550a3a06b2078a099f322b063c715a914fdeba98f6dfa64753816d327c8fa56",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/stats/security",
+            "schemas": [
+              "#/components/schemas/ConsoleStatisticsEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleStatsStorage": {
+            "contract_sha256": "589e3f43d2db7fd672e21aed5beb3e19e7012fb80e5de87387e0192cdc6eba44",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/stats/storage",
+            "schemas": [
+              "#/components/schemas/ConsoleStatisticsEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleStatsTimeseries": {
+            "contract_sha256": "946daceb749450e4d350f5eeb996cb0042927d84d0bdaad95c2f3fde6a82b0ba",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/stats/timeseries",
+            "schemas": [
+              "#/components/schemas/ConsoleStatisticsEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
           "consoleTaskDependencies": {
             "contract_sha256": "be10ddf38c1ce1bea72a4bb050126edbbc7512e322708fef67a9683bbd752d9e",
             "deprecated": false,
@@ -3259,7 +3360,7 @@
         },
         "schemas": {
           "BootstrapEnvelope": "701d6e5fa305d2d7d99f9520095d3b6eed0d8158c4a12380f5a7785fe15fd1e4",
-          "BootstrapView": "8258e08bff9b641feff9422c5a9d4de8c7b93d0f3caaa84b295293994eb64699",
+          "BootstrapView": "ddd56529b34bd771b44f7e0515b35b3c06dffe7244d3dcfa0ab164cf31edb800",
           "ColumnSpec": "cf6785af16a92525097819517fec2d80e27caaa90ec39535ec1e8f3bd47d049f",
           "CommandActionSpec": "ca7a2884f6f6ca712ccbf6a8c5be80a583f835ce67562cf39c4f9cfb6a17f769",
           "CommandFieldSpec": "3f2b54077f2f48c73d085915a01d5df08c26127571bccd001df4080531ee91c0",
@@ -3321,7 +3422,7 @@
           "ConsoleObservationAnnotateRequest": "93c4591d47d06201b933f2db57a21170c2651549fca93a7f0df9d832cc7012c5",
           "ConsoleObservationCreateFields": "cd8bee0185b6be82b9242ca010d1596e9a28f114bca99858adf57911cfb165bb",
           "ConsoleObservationCreateRequest": "bd7f599179cad937a5583c61337b61167b54466f4c60f596afb32fb935962c93",
-          "ConsoleOperation": "059a895dc33349cd49d68fde004d036d85a6b042e4f2c0fd4e3e6d1784857103",
+          "ConsoleOperation": "8c59ed34a0559d44d6469f3d76dcbbf6062c66eb6ce4f1a1f8a4de36408912e3",
           "ConsoleOperationCancelRequest": "63e5bc40443e21aff39f0e2fff1d7cc9bfac4ff5d3d3f7a05909609373837ce3",
           "ConsoleOperationEnvelope": "d56df2d3e35e760803e5d6e9adafc71775b7e824622279b6fe0d4f55c6c75219",
           "ConsoleOperationPage": "d3ef5a70350f99c102bba607ba76ae925ea10071792f289b8c108b672a45003c",
@@ -3349,6 +3450,12 @@
           "ConsoleStateExpireRequest": "cabcf6d1fc53063ac02b9dadb91792c86524f0898682ac1cb1062c96fb779352",
           "ConsoleStateUpdateFields": "4c5c2a064c282975f017b0a309688944b394df15e0465277eed484ed92627450",
           "ConsoleStateUpdateRequest": "5a4d29ce61af98078e179ad243f7c4386d03bbed9b235d0f844ee97b7237a9fa",
+          "ConsoleStatisticMetric": "385281708caec1f70dfc7061bfb531ff1425541002f47c5124de26730484c935",
+          "ConsoleStatisticPoint": "dfdbdac0c7ecddf1f7f4065018424ead8f78fb25d6979ff2956653d913c96b26",
+          "ConsoleStatisticsBackfillRequest": "8725002851b61242145e9b3460905cb6fb9feb84adc7d0fa3b790b2738aaedc3",
+          "ConsoleStatisticsEnvelope": "d70cf398b1dc96651aa177bf5bfbe842d6fa5119001ba923fe3108cef09f161b",
+          "ConsoleStatisticsMeta": "c9d6e7caf6b92b795a011d63ae9135dd14b44f996f28d446db00e0a775ff020a",
+          "ConsoleStatisticsRegistry": "3edf6ff60b2eafd056ad32688424900d34b8efe33a8b6e2f5ade9cbe84bb76b4",
           "ConsoleTaskCreateFields": "04546ec966ecad4e04e8443a028327334aaea38363d52bf6a0a52db26f880a83",
           "ConsoleTaskCreateRequest": "afbeb451d696d22b95933145bfbdbbc2dc947afcf70ba344d7790f385f1c8668",
           "ConsoleTaskDependencyCreateFields": "c9d289a8d6aa3922caf7bc7289001e91ef418a3a33a7eb8b874969a0cc901055",
@@ -3400,7 +3507,7 @@
           "KeyViewEnvelope": "93eda58a0e9fb731b8543244d50b6d6e681f5941799ce7fce6c8773507b3dc28",
           "KeyViewPage": "73727c98d452df3e3217786f51cac6f482db6d83d583482925ef1044d3d3f1cc",
           "LoginRequest": "41de08dd51f417dfe4952cb8549929bfd3f3224d6d430928508556a5aa967ffe",
-          "Meta": "22166ed2521e230ae6309df8ed335be6625177be540e014726224b71c4681058",
+          "Meta": "409ea84a145e003b2506af923a6cff13b94c06a5228f845d608016195f9f369f",
           "Page": "10ba191392226a1ec1145532b5ab68609668dc09ad51ca8e330ec72759bbf0ef",
           "PersonaCommandReceipt": "652cccb1b6a86ed3a648672f9dbf80610d3b2ed8ba98abfa5b47da058f2c03c9",
           "PersonaCommandReceiptEnvelope": "25c320b3d452f4e6c9bc265ff47813ed40d78f71eb3cf6d4a4fc8e7cf91aebaf",
@@ -3461,7 +3568,7 @@
           "TaskChildCommandReceiptEnvelope": "547be83c371aeb31b1e600a9a0aa0b9b6f129de11354f5880450c60ceb70f521",
           "Total": "2b0c3e356933796f4b5432308598beabef9f3c68159302998b616e3f6ea1919b"
         },
-        "version": "1.3.0"
+        "version": "1.4.0"
       },
       "openapi": {
         "operations": {

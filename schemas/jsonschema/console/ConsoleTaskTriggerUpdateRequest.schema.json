@@ -20,7 +20,7 @@
       "additionalProperties": true,
       "properties": {
         "contract_version": {
-          "const": "1.3.0"
+          "const": "1.4.0"
         },
         "display_timezone": {
           "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
@@ -2654,43 +2654,6 @@
       "additionalProperties": false,
       "allOf": [
         {
-          "else": {
-            "else": {
-              "properties": {
-                "phase": {
-                  "const": "provider_configuration"
-                },
-                "progress": {
-                  "properties": {
-                    "unit": {
-                      "const": "steps"
-                    }
-                  }
-                }
-              }
-            },
-            "if": {
-              "properties": {
-                "kind": {
-                  "const": "trusted_backup"
-                }
-              }
-            },
-            "then": {
-              "properties": {
-                "phase": {
-                  "const": "backup_verify"
-                },
-                "progress": {
-                  "properties": {
-                    "unit": {
-                      "const": "steps"
-                    }
-                  }
-                }
-              }
-            }
-          },
           "if": {
             "properties": {
               "kind": {
@@ -2710,6 +2673,75 @@
                 "properties": {
                   "unit": {
                     "const": "records"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "trusted_backup"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase": {
+                "const": "backup_verify"
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "steps"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "embedding_provider"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase": {
+                "const": "provider_configuration"
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "steps"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "statistics_backfill"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase": {
+                "const": "statistics_rollup"
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "steps"
                   }
                 }
               }
@@ -2765,7 +2797,8 @@
           "enum": [
             "memory_forget",
             "trusted_backup",
-            "embedding_provider"
+            "embedding_provider",
+            "statistics_backfill"
           ],
           "type": "string"
         },
@@ -2773,7 +2806,8 @@
           "enum": [
             "canonical_forget",
             "backup_verify",
-            "provider_configuration"
+            "provider_configuration",
+            "statistics_rollup"
           ]
         },
         "problems_count": {
@@ -4114,6 +4148,494 @@
         "fields",
         "expected_revision",
         "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "filters": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "enum": [
+                  "agent_id",
+                  "space_group_id",
+                  "space_id",
+                  "session_id"
+                ]
+              },
+              "label": {
+                "maxLength": 256,
+                "type": "string"
+              },
+              "type": {
+                "const": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label",
+              "type"
+            ],
+            "type": "object"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "granularity": {
+          "items": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "group_by": {
+          "items": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "label": {
+          "maxLength": 256,
+          "type": "string"
+        },
+        "metric_id": {
+          "enum": [
+            "memory.present",
+            "memory.created",
+            "memory.created_24h",
+            "memory.created_7d",
+            "memory.tombstones",
+            "active.agents",
+            "active.spaces",
+            "active.sessions",
+            "pending.items",
+            "recall.requests",
+            "recall.candidates",
+            "recall.degraded",
+            "recall.budget_truncated",
+            "recall.host_selected",
+            "recall.model_visible",
+            "recall.latency_p50",
+            "recall.latency_p95",
+            "recall.latency_p99",
+            "pipeline.jobs",
+            "pipeline.oldest_pending_us",
+            "pipeline.dlq",
+            "pipeline.schedule_lag_us",
+            "pipeline.leases",
+            "pipeline.heartbeat_us",
+            "projection.documents",
+            "projection.source_watermark",
+            "projection.tombstone_watermark",
+            "projection.lag",
+            "provider.calls",
+            "provider.cost",
+            "provider.circuit",
+            "provider.budget",
+            "provider.rate_limited",
+            "storage.rows",
+            "storage.estimated_bytes",
+            "storage.database_bytes",
+            "storage.wal_bytes",
+            "storage.free_bytes",
+            "storage.staging_bytes",
+            "storage.vector_bytes",
+            "security.keys",
+            "security.expiring_keys",
+            "security.sessions",
+            "security.login_failures",
+            "security.lockouts",
+            "security.audit",
+            "security.holds",
+            "security.retention"
+          ]
+        },
+        "panel": {
+          "enum": [
+            "overview",
+            "pipeline",
+            "projections",
+            "providers",
+            "recall",
+            "security",
+            "storage",
+            "timeseries"
+          ]
+        },
+        "permission": {
+          "const": "stats.read"
+        },
+        "required_permissions": {
+          "items": {
+            "enum": [
+              "stats.read",
+              "system.read"
+            ]
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "rollup",
+            "live"
+          ]
+        },
+        "unit": {
+          "enum": [
+            "count",
+            "bytes",
+            "microseconds",
+            "ratio",
+            "microunits"
+          ]
+        },
+        "value_type": {
+          "const": "decimal"
+        }
+      },
+      "required": [
+        "metric_id",
+        "panel",
+        "label",
+        "unit",
+        "value_type",
+        "source",
+        "granularity",
+        "group_by",
+        "filters",
+        "permission",
+        "required_permissions",
+        "coverage_from",
+        "description"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "approximate": {
+          "type": "boolean"
+        },
+        "bucket": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "group": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "histogram_bounds_us": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/DecimalCount"
+              },
+              "maxItems": 5000,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "maxLength": 512,
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          },
+          "maxProperties": 16,
+          "type": "object"
+        },
+        "metric_id": {
+          "enum": [
+            "memory.present",
+            "memory.created",
+            "memory.created_24h",
+            "memory.created_7d",
+            "memory.tombstones",
+            "active.agents",
+            "active.spaces",
+            "active.sessions",
+            "pending.items",
+            "recall.requests",
+            "recall.candidates",
+            "recall.degraded",
+            "recall.budget_truncated",
+            "recall.host_selected",
+            "recall.model_visible",
+            "recall.latency_p50",
+            "recall.latency_p95",
+            "recall.latency_p99",
+            "pipeline.jobs",
+            "pipeline.oldest_pending_us",
+            "pipeline.dlq",
+            "pipeline.schedule_lag_us",
+            "pipeline.leases",
+            "pipeline.heartbeat_us",
+            "projection.documents",
+            "projection.source_watermark",
+            "projection.tombstone_watermark",
+            "projection.lag",
+            "provider.calls",
+            "provider.cost",
+            "provider.circuit",
+            "provider.budget",
+            "provider.rate_limited",
+            "storage.rows",
+            "storage.estimated_bytes",
+            "storage.database_bytes",
+            "storage.wal_bytes",
+            "storage.free_bytes",
+            "storage.staging_bytes",
+            "storage.vector_bytes",
+            "security.keys",
+            "security.expiring_keys",
+            "security.sessions",
+            "security.login_failures",
+            "security.lockouts",
+            "security.audit",
+            "security.holds",
+            "security.retention"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]+(?:\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "metric_id",
+        "value",
+        "bucket",
+        "group",
+        "approximate",
+        "histogram_bounds_us",
+        "labels"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticsBackfillRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "reason_code": {
+          "const": "operator_request"
+        },
+        "to": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticsEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ConsoleStatisticPoint"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/ConsoleStatisticsMeta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticsMeta": {
+      "additionalProperties": true,
+      "properties": {
+        "as_of": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "computed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contract_version": {
+          "const": "1.4.0"
+        },
+        "coverage_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "descriptor": {
+          "$ref": "#/$defs/ResourceTypeDescriptor"
+        },
+        "instance_local": {
+          "type": "boolean"
+        },
+        "page": {
+          "$ref": "#/$defs/Page"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "request_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "rollup_lag_us": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecimalCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope_fingerprint": {
+          "pattern": "^sf_[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "rollup",
+            "live",
+            "mixed"
+          ]
+        },
+        "stale": {
+          "type": "boolean"
+        },
+        "total": {
+          "$ref": "#/$defs/Total"
+        },
+        "warnings": {
+          "items": {
+            "enum": [
+              "stats_timeout",
+              "rollup_lagging",
+              "projection_unavailable",
+              "scope_truncated",
+              "stats_row_limit",
+              "no_historical_coverage"
+            ]
+          },
+          "maxItems": 5000,
+          "type": "array"
+        }
+      },
+      "required": [
+        "request_id",
+        "contract_version",
+        "as_of",
+        "source",
+        "computed_at",
+        "coverage_from",
+        "stale",
+        "scope_fingerprint",
+        "warnings",
+        "partial",
+        "rollup_lag_us",
+        "instance_local"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticsRegistry": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ConsoleStatisticMetric"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/ConsoleStatisticsMeta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
       ],
       "type": "object"
     },
@@ -6435,7 +6957,7 @@
           "type": "string"
         },
         "contract_version": {
-          "const": "1.3.0"
+          "const": "1.4.0"
         },
         "descriptor": {
           "$ref": "#/$defs/ResourceTypeDescriptor"
@@ -9239,7 +9761,7 @@
       "type": "object"
     }
   },
-  "$id": "https://schemas.iris-memory-core.local/console/1.3.0/ConsoleTaskTriggerUpdateRequest.schema.json",
+  "$id": "https://schemas.iris-memory-core.local/console/1.4.0/ConsoleTaskTriggerUpdateRequest.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {

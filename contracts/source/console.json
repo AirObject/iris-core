@@ -578,7 +578,7 @@
       ]
     }
   },
-  "contract_version": "1.3.0",
+  "contract_version": "1.4.0",
   "fixtures": {
     "forward/ColumnSpec": {
       "schema": "ColumnSpec",
@@ -662,7 +662,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -821,7 +821,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -840,7 +840,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -877,7 +877,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -896,7 +896,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -917,7 +917,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -935,7 +935,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -953,7 +953,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -975,7 +975,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -1028,7 +1028,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -1100,7 +1100,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -1169,7 +1169,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -1274,7 +1274,7 @@
       "schema": "BootstrapEnvelope",
       "value": {
         "data": {
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "display_timezone": "UTC",
           "future_optional": true,
           "import_in_progress": false,
@@ -1292,7 +1292,7 @@
         },
         "meta": {
           "as_of": "2026-09-05T08:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "future_optional": "ok",
           "request_id": "01991bab-a000-7000-8000-000000000001"
         }
@@ -3117,7 +3117,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         },
         "unexpected_private_field": "forbidden"
@@ -3155,7 +3155,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         },
         "unexpected_private_field": "forbidden"
@@ -3176,7 +3176,7 @@
         "data": [],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         },
         "unexpected_private_field": "forbidden"
@@ -4272,7 +4272,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -4317,7 +4317,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -4378,7 +4378,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -4477,7 +4477,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -4667,7 +4667,7 @@
       "schema": "BootstrapEnvelope",
       "value": {
         "data": {
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "display_timezone": "UTC",
           "import_in_progress": false,
           "maintenance": false,
@@ -4684,7 +4684,7 @@
         },
         "meta": {
           "as_of": "2026-09-05T08:00:00Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "01991bab-a000-7000-8000-000000000001"
         }
       }
@@ -5207,7 +5207,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -5244,7 +5244,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -5343,7 +5343,7 @@
         "data": [],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -5864,7 +5864,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -5919,7 +5919,7 @@
         ],
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -5967,7 +5967,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6276,7 +6276,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6305,7 +6305,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6390,7 +6390,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6419,7 +6419,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6452,7 +6452,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6479,7 +6479,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6506,7 +6506,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6563,7 +6563,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -6584,7 +6584,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6647,7 +6647,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -6722,7 +6722,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6819,7 +6819,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6924,7 +6924,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7027,7 +7027,7 @@
         ],
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -7105,7 +7105,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7194,7 +7194,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7233,7 +7233,7 @@
         ],
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -7335,7 +7335,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7374,7 +7374,7 @@
       "schema": "BootstrapEnvelope",
       "value": {
         "data": {
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "display_timezone": "UTC",
           "import_in_progress": false,
           "maintenance": false,
@@ -7391,7 +7391,7 @@
         },
         "meta": {
           "as_of": "2026-09-05T08:00:00.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "01991bab-a000-7000-8000-000000000001"
         }
       }
@@ -8083,7 +8083,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8130,7 +8130,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8149,7 +8149,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8167,7 +8167,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8220,7 +8220,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8268,7 +8268,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8293,7 +8293,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8317,7 +8317,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8329,7 +8329,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8340,7 +8340,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8352,7 +8352,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8363,7 +8363,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8375,7 +8375,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8386,7 +8386,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8857,7 +8857,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -8890,8 +8890,420 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.3.0",
+          "contract_version": "1.4.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
+        }
+      }
+    },
+    "invalid/ConsoleStatisticMetric-unknown": {
+      "schema": "ConsoleStatisticMetric",
+      "value": {
+        "coverage_from": null,
+        "description": "\u5f53\u524d Grant \u53ef\u89c1\u96c6\u5408\uff1b\u4e0d\u8fd4\u56de\u6b63\u6587\u6216\u4e0d\u53ef\u89c1\u4f59\u6570\u3002",
+        "filters": [
+          {
+            "key": "agent_id",
+            "label": "agent_id",
+            "type": "string"
+          },
+          {
+            "key": "space_group_id",
+            "label": "space_group_id",
+            "type": "string"
+          },
+          {
+            "key": "space_id",
+            "label": "space_id",
+            "type": "string"
+          },
+          {
+            "key": "session_id",
+            "label": "session_id",
+            "type": "string"
+          }
+        ],
+        "granularity": [
+          "hour",
+          "day",
+          "week"
+        ],
+        "group_by": [
+          "agent_id",
+          "space_group_id",
+          "space_id",
+          "session_id",
+          "resource_type"
+        ],
+        "label": "\u73b0\u5b58\u8bb0\u5fc6",
+        "metric_id": "memory.present",
+        "panel": "overview",
+        "permission": "stats.read",
+        "required_permissions": [
+          "stats.read"
+        ],
+        "source": "rollup",
+        "unit": "count",
+        "unknown": true,
+        "value_type": "decimal"
+      }
+    },
+    "invalid/ConsoleStatisticPoint-unknown": {
+      "schema": "ConsoleStatisticPoint",
+      "value": {
+        "approximate": false,
+        "bucket": null,
+        "group": null,
+        "histogram_bounds_us": null,
+        "id": "memory.present:None:None",
+        "labels": {},
+        "metric_id": "memory.present",
+        "unknown": true,
+        "value": "2"
+      }
+    },
+    "invalid/ConsoleStatisticsBackfillRequest-unknown": {
+      "schema": "ConsoleStatisticsBackfillRequest",
+      "value": {
+        "from": "2026-09-08T00:00:00.000000Z",
+        "reason_code": "operator_request",
+        "to": "2026-09-08T01:00:00.000000Z",
+        "unknown": true
+      }
+    },
+    "invalid/ConsoleStatisticsEnvelope-unknown": {
+      "schema": "ConsoleStatisticsEnvelope",
+      "value": {
+        "data": [
+          {
+            "approximate": false,
+            "bucket": null,
+            "group": null,
+            "histogram_bounds_us": null,
+            "id": "memory.present:None:None",
+            "labels": {},
+            "metric_id": "memory.present",
+            "value": "2"
+          }
+        ],
+        "meta": {
+          "as_of": "2026-09-08T00:00:00.000000Z",
+          "computed_at": "2026-09-08T00:00:00.000000Z",
+          "contract_version": "1.4.0",
+          "coverage_from": "2026-09-08T00:00:00.000000Z",
+          "instance_local": false,
+          "partial": false,
+          "request_id": "0198b326-3910-7000-8000-000000000001",
+          "rollup_lag_us": "0",
+          "scope_fingerprint": "sf_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source": "rollup",
+          "stale": false,
+          "warnings": []
+        },
+        "unknown": true
+      }
+    },
+    "invalid/ConsoleStatisticsMeta-unknown": {
+      "schema": "ConsoleStatisticsMeta",
+      "value": {
+        "as_of": "2026-09-08T00:00:00.000000Z",
+        "computed_at": "2026-09-08T00:00:00.000000Z",
+        "contract_version": "1.4.0",
+        "coverage_from": "2026-09-08T00:00:00.000000Z",
+        "instance_local": false,
+        "partial": false,
+        "request_id": "0198b326-3910-7000-8000-000000000001",
+        "rollup_lag_us": "0",
+        "scope_fingerprint": "sf_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source": "pretend",
+        "stale": false,
+        "unknown": true,
+        "warnings": []
+      }
+    },
+    "invalid/ConsoleStatisticsRegistry-unknown": {
+      "schema": "ConsoleStatisticsRegistry",
+      "value": {
+        "data": [
+          {
+            "coverage_from": null,
+            "description": "\u5f53\u524d Grant \u53ef\u89c1\u96c6\u5408\uff1b\u4e0d\u8fd4\u56de\u6b63\u6587\u6216\u4e0d\u53ef\u89c1\u4f59\u6570\u3002",
+            "filters": [
+              {
+                "key": "agent_id",
+                "label": "agent_id",
+                "type": "string"
+              },
+              {
+                "key": "space_group_id",
+                "label": "space_group_id",
+                "type": "string"
+              },
+              {
+                "key": "space_id",
+                "label": "space_id",
+                "type": "string"
+              },
+              {
+                "key": "session_id",
+                "label": "session_id",
+                "type": "string"
+              }
+            ],
+            "granularity": [
+              "hour",
+              "day",
+              "week"
+            ],
+            "group_by": [
+              "agent_id",
+              "space_group_id",
+              "space_id",
+              "session_id",
+              "resource_type"
+            ],
+            "label": "\u73b0\u5b58\u8bb0\u5fc6",
+            "metric_id": "memory.present",
+            "panel": "overview",
+            "permission": "stats.read",
+            "required_permissions": [
+              "stats.read"
+            ],
+            "source": "rollup",
+            "unit": "count",
+            "value_type": "decimal"
+          }
+        ],
+        "meta": {
+          "as_of": "2026-09-08T00:00:00.000000Z",
+          "computed_at": "2026-09-08T00:00:00.000000Z",
+          "contract_version": "1.4.0",
+          "coverage_from": "2026-09-08T00:00:00.000000Z",
+          "instance_local": false,
+          "partial": false,
+          "request_id": "0198b326-3910-7000-8000-000000000001",
+          "rollup_lag_us": "0",
+          "scope_fingerprint": "sf_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source": "rollup",
+          "stale": false,
+          "warnings": []
+        },
+        "unknown": true
+      }
+    },
+    "valid/ConsoleOperation-statistics": {
+      "schema": "ConsoleOperation",
+      "value": {
+        "available_actions": [
+          "cancel"
+        ],
+        "blocked_reason": null,
+        "cancellable": true,
+        "created_at": "2026-09-07T00:00:00.000000Z",
+        "created_by": "00000000-0000-4000-8000-000000000002",
+        "finished_at": null,
+        "id": "00000000-0000-4000-8000-000000000001",
+        "kind": "statistics_backfill",
+        "phase": "statistics_rollup",
+        "problems_count": 0,
+        "progress": {
+          "processed": "0",
+          "total": "2",
+          "unit": "steps"
+        },
+        "reason_codes": [
+          "operator_request"
+        ],
+        "result_ref": null,
+        "started_at": null,
+        "status": "queued"
+      }
+    },
+    "valid/ConsoleStatisticMetric": {
+      "schema": "ConsoleStatisticMetric",
+      "value": {
+        "coverage_from": null,
+        "description": "\u5f53\u524d Grant \u53ef\u89c1\u96c6\u5408\uff1b\u4e0d\u8fd4\u56de\u6b63\u6587\u6216\u4e0d\u53ef\u89c1\u4f59\u6570\u3002",
+        "filters": [
+          {
+            "key": "agent_id",
+            "label": "agent_id",
+            "type": "string"
+          },
+          {
+            "key": "space_group_id",
+            "label": "space_group_id",
+            "type": "string"
+          },
+          {
+            "key": "space_id",
+            "label": "space_id",
+            "type": "string"
+          },
+          {
+            "key": "session_id",
+            "label": "session_id",
+            "type": "string"
+          }
+        ],
+        "granularity": [
+          "hour",
+          "day",
+          "week"
+        ],
+        "group_by": [
+          "agent_id",
+          "space_group_id",
+          "space_id",
+          "session_id",
+          "resource_type"
+        ],
+        "label": "\u73b0\u5b58\u8bb0\u5fc6",
+        "metric_id": "memory.present",
+        "panel": "overview",
+        "permission": "stats.read",
+        "required_permissions": [
+          "stats.read"
+        ],
+        "source": "rollup",
+        "unit": "count",
+        "value_type": "decimal"
+      }
+    },
+    "valid/ConsoleStatisticPoint": {
+      "schema": "ConsoleStatisticPoint",
+      "value": {
+        "approximate": false,
+        "bucket": null,
+        "group": null,
+        "histogram_bounds_us": null,
+        "id": "memory.present:None:None",
+        "labels": {},
+        "metric_id": "memory.present",
+        "value": "2"
+      }
+    },
+    "valid/ConsoleStatisticsBackfillRequest": {
+      "schema": "ConsoleStatisticsBackfillRequest",
+      "value": {
+        "from": "2026-09-08T00:00:00.000000Z",
+        "reason_code": "operator_request",
+        "to": "2026-09-08T01:00:00.000000Z"
+      }
+    },
+    "valid/ConsoleStatisticsEnvelope": {
+      "schema": "ConsoleStatisticsEnvelope",
+      "value": {
+        "data": [
+          {
+            "approximate": false,
+            "bucket": null,
+            "group": null,
+            "histogram_bounds_us": null,
+            "id": "memory.present:None:None",
+            "labels": {},
+            "metric_id": "memory.present",
+            "value": "2"
+          }
+        ],
+        "meta": {
+          "as_of": "2026-09-08T00:00:00.000000Z",
+          "computed_at": "2026-09-08T00:00:00.000000Z",
+          "contract_version": "1.4.0",
+          "coverage_from": "2026-09-08T00:00:00.000000Z",
+          "instance_local": false,
+          "partial": false,
+          "request_id": "0198b326-3910-7000-8000-000000000001",
+          "rollup_lag_us": "0",
+          "scope_fingerprint": "sf_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source": "rollup",
+          "stale": false,
+          "warnings": []
+        }
+      }
+    },
+    "valid/ConsoleStatisticsMeta": {
+      "schema": "ConsoleStatisticsMeta",
+      "value": {
+        "as_of": "2026-09-08T00:00:00.000000Z",
+        "computed_at": "2026-09-08T00:00:00.000000Z",
+        "contract_version": "1.4.0",
+        "coverage_from": "2026-09-08T00:00:00.000000Z",
+        "instance_local": false,
+        "partial": false,
+        "request_id": "0198b326-3910-7000-8000-000000000001",
+        "rollup_lag_us": "0",
+        "scope_fingerprint": "sf_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source": "rollup",
+        "stale": false,
+        "warnings": []
+      }
+    },
+    "valid/ConsoleStatisticsRegistry": {
+      "schema": "ConsoleStatisticsRegistry",
+      "value": {
+        "data": [
+          {
+            "coverage_from": null,
+            "description": "\u5f53\u524d Grant \u53ef\u89c1\u96c6\u5408\uff1b\u4e0d\u8fd4\u56de\u6b63\u6587\u6216\u4e0d\u53ef\u89c1\u4f59\u6570\u3002",
+            "filters": [
+              {
+                "key": "agent_id",
+                "label": "agent_id",
+                "type": "string"
+              },
+              {
+                "key": "space_group_id",
+                "label": "space_group_id",
+                "type": "string"
+              },
+              {
+                "key": "space_id",
+                "label": "space_id",
+                "type": "string"
+              },
+              {
+                "key": "session_id",
+                "label": "session_id",
+                "type": "string"
+              }
+            ],
+            "granularity": [
+              "hour",
+              "day",
+              "week"
+            ],
+            "group_by": [
+              "agent_id",
+              "space_group_id",
+              "space_id",
+              "session_id",
+              "resource_type"
+            ],
+            "label": "\u73b0\u5b58\u8bb0\u5fc6",
+            "metric_id": "memory.present",
+            "panel": "overview",
+            "permission": "stats.read",
+            "required_permissions": [
+              "stats.read"
+            ],
+            "source": "rollup",
+            "unit": "count",
+            "value_type": "decimal"
+          }
+        ],
+        "meta": {
+          "as_of": "2026-09-08T00:00:00.000000Z",
+          "computed_at": "2026-09-08T00:00:00.000000Z",
+          "contract_version": "1.4.0",
+          "coverage_from": "2026-09-08T00:00:00.000000Z",
+          "instance_local": false,
+          "partial": false,
+          "request_id": "0198b326-3910-7000-8000-000000000001",
+          "rollup_lag_us": "0",
+          "scope_fingerprint": "sf_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source": "rollup",
+          "stale": false,
+          "warnings": []
         }
       }
     }
@@ -20408,6 +20820,868 @@
       "request": "ConsolePersonaDraftDiscardRequest",
       "response": "PersonaDraftCommandReceiptEnvelope",
       "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        429,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consoleStatsMetrics",
+      "parameters": [],
+      "path": "/console/v1/stats/metrics",
+      "response": "ConsoleStatisticsRegistry",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        429,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consoleStatsOverview",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "metric_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "granularity",
+          "required": false,
+          "schema": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          }
+        },
+        {
+          "in": "query",
+          "name": "group_by",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "from",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "to",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_group_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "session_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/stats/overview",
+      "response": "ConsoleStatisticsEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        429,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consoleStatsTimeseries",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "metric_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "granularity",
+          "required": false,
+          "schema": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          }
+        },
+        {
+          "in": "query",
+          "name": "group_by",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "from",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "to",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_group_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "session_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/stats/timeseries",
+      "response": "ConsoleStatisticsEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        429,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consoleStatsPipeline",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "metric_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "granularity",
+          "required": false,
+          "schema": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          }
+        },
+        {
+          "in": "query",
+          "name": "group_by",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "from",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "to",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_group_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "session_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/stats/pipeline",
+      "response": "ConsoleStatisticsEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        429,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consoleStatsProjections",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "metric_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "granularity",
+          "required": false,
+          "schema": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          }
+        },
+        {
+          "in": "query",
+          "name": "group_by",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "from",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "to",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_group_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "session_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/stats/projections",
+      "response": "ConsoleStatisticsEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        429,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consoleStatsRecall",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "metric_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "granularity",
+          "required": false,
+          "schema": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          }
+        },
+        {
+          "in": "query",
+          "name": "group_by",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "from",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "to",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_group_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "session_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/stats/recall",
+      "response": "ConsoleStatisticsEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        429,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consoleStatsProviders",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "metric_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "granularity",
+          "required": false,
+          "schema": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          }
+        },
+        {
+          "in": "query",
+          "name": "group_by",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "from",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "to",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_group_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "session_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/stats/providers",
+      "response": "ConsoleStatisticsEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        429,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consoleStatsStorage",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "metric_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "granularity",
+          "required": false,
+          "schema": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          }
+        },
+        {
+          "in": "query",
+          "name": "group_by",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "from",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "to",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_group_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "session_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/stats/storage",
+      "response": "ConsoleStatisticsEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        429,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consoleStatsSecurity",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "metric_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "granularity",
+          "required": false,
+          "schema": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          }
+        },
+        {
+          "in": "query",
+          "name": "group_by",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "from",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "to",
+          "required": false,
+          "schema": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "agent_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_group_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "space_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "session_id",
+          "required": false,
+          "schema": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/stats/security",
+      "response": "ConsoleStatisticsEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "method": "post",
+      "operation_id": "consoleStatsBackfill",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/stats/rollups:backfill",
+      "request": "ConsoleStatisticsBackfillRequest",
+      "response": "ConsoleOperationEnvelope",
+      "status": 202
     }
   ],
   "permissions": [
@@ -20434,7 +21708,7 @@
   ],
   "runtime_versions": {
     "package_version": "0.15.0",
-    "schema_version": 23
+    "schema_version": 24
   },
   "schemas": {
     "BootstrapEnvelope": {
@@ -20457,7 +21731,7 @@
       "additionalProperties": true,
       "properties": {
         "contract_version": {
-          "const": "1.3.0"
+          "const": "1.4.0"
         },
         "display_timezone": {
           "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
@@ -22961,43 +24235,6 @@
       "additionalProperties": false,
       "allOf": [
         {
-          "else": {
-            "else": {
-              "properties": {
-                "phase": {
-                  "const": "provider_configuration"
-                },
-                "progress": {
-                  "properties": {
-                    "unit": {
-                      "const": "steps"
-                    }
-                  }
-                }
-              }
-            },
-            "if": {
-              "properties": {
-                "kind": {
-                  "const": "trusted_backup"
-                }
-              }
-            },
-            "then": {
-              "properties": {
-                "phase": {
-                  "const": "backup_verify"
-                },
-                "progress": {
-                  "properties": {
-                    "unit": {
-                      "const": "steps"
-                    }
-                  }
-                }
-              }
-            }
-          },
           "if": {
             "properties": {
               "kind": {
@@ -23017,6 +24254,75 @@
                 "properties": {
                   "unit": {
                     "const": "records"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "trusted_backup"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase": {
+                "const": "backup_verify"
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "steps"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "embedding_provider"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase": {
+                "const": "provider_configuration"
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "steps"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "statistics_backfill"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase": {
+                "const": "statistics_rollup"
+              },
+              "progress": {
+                "properties": {
+                  "unit": {
+                    "const": "steps"
                   }
                 }
               }
@@ -23072,7 +24378,8 @@
           "enum": [
             "memory_forget",
             "trusted_backup",
-            "embedding_provider"
+            "embedding_provider",
+            "statistics_backfill"
           ],
           "type": "string"
         },
@@ -23080,7 +24387,8 @@
           "enum": [
             "canonical_forget",
             "backup_verify",
-            "provider_configuration"
+            "provider_configuration",
+            "statistics_rollup"
           ]
         },
         "problems_count": {
@@ -25541,7 +26849,7 @@
           "type": "string"
         },
         "contract_version": {
-          "const": "1.3.0"
+          "const": "1.4.0"
         },
         "descriptor": {
           "$ref": "#/$defs/ResourceTypeDescriptor"
@@ -29667,6 +30975,494 @@
         },
         "meta": {
           "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "filters": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "enum": [
+                  "agent_id",
+                  "space_group_id",
+                  "space_id",
+                  "session_id"
+                ]
+              },
+              "label": {
+                "maxLength": 256,
+                "type": "string"
+              },
+              "type": {
+                "const": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label",
+              "type"
+            ],
+            "type": "object"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "granularity": {
+          "items": {
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ]
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "group_by": {
+          "items": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "label": {
+          "maxLength": 256,
+          "type": "string"
+        },
+        "metric_id": {
+          "enum": [
+            "memory.present",
+            "memory.created",
+            "memory.created_24h",
+            "memory.created_7d",
+            "memory.tombstones",
+            "active.agents",
+            "active.spaces",
+            "active.sessions",
+            "pending.items",
+            "recall.requests",
+            "recall.candidates",
+            "recall.degraded",
+            "recall.budget_truncated",
+            "recall.host_selected",
+            "recall.model_visible",
+            "recall.latency_p50",
+            "recall.latency_p95",
+            "recall.latency_p99",
+            "pipeline.jobs",
+            "pipeline.oldest_pending_us",
+            "pipeline.dlq",
+            "pipeline.schedule_lag_us",
+            "pipeline.leases",
+            "pipeline.heartbeat_us",
+            "projection.documents",
+            "projection.source_watermark",
+            "projection.tombstone_watermark",
+            "projection.lag",
+            "provider.calls",
+            "provider.cost",
+            "provider.circuit",
+            "provider.budget",
+            "provider.rate_limited",
+            "storage.rows",
+            "storage.estimated_bytes",
+            "storage.database_bytes",
+            "storage.wal_bytes",
+            "storage.free_bytes",
+            "storage.staging_bytes",
+            "storage.vector_bytes",
+            "security.keys",
+            "security.expiring_keys",
+            "security.sessions",
+            "security.login_failures",
+            "security.lockouts",
+            "security.audit",
+            "security.holds",
+            "security.retention"
+          ]
+        },
+        "panel": {
+          "enum": [
+            "overview",
+            "pipeline",
+            "projections",
+            "providers",
+            "recall",
+            "security",
+            "storage",
+            "timeseries"
+          ]
+        },
+        "permission": {
+          "const": "stats.read"
+        },
+        "required_permissions": {
+          "items": {
+            "enum": [
+              "stats.read",
+              "system.read"
+            ]
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "rollup",
+            "live"
+          ]
+        },
+        "unit": {
+          "enum": [
+            "count",
+            "bytes",
+            "microseconds",
+            "ratio",
+            "microunits"
+          ]
+        },
+        "value_type": {
+          "const": "decimal"
+        }
+      },
+      "required": [
+        "metric_id",
+        "panel",
+        "label",
+        "unit",
+        "value_type",
+        "source",
+        "granularity",
+        "group_by",
+        "filters",
+        "permission",
+        "required_permissions",
+        "coverage_from",
+        "description"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "approximate": {
+          "type": "boolean"
+        },
+        "bucket": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "group": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "histogram_bounds_us": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/DecimalCount"
+              },
+              "maxItems": 5000,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "maxLength": 512,
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          },
+          "maxProperties": 16,
+          "type": "object"
+        },
+        "metric_id": {
+          "enum": [
+            "memory.present",
+            "memory.created",
+            "memory.created_24h",
+            "memory.created_7d",
+            "memory.tombstones",
+            "active.agents",
+            "active.spaces",
+            "active.sessions",
+            "pending.items",
+            "recall.requests",
+            "recall.candidates",
+            "recall.degraded",
+            "recall.budget_truncated",
+            "recall.host_selected",
+            "recall.model_visible",
+            "recall.latency_p50",
+            "recall.latency_p95",
+            "recall.latency_p99",
+            "pipeline.jobs",
+            "pipeline.oldest_pending_us",
+            "pipeline.dlq",
+            "pipeline.schedule_lag_us",
+            "pipeline.leases",
+            "pipeline.heartbeat_us",
+            "projection.documents",
+            "projection.source_watermark",
+            "projection.tombstone_watermark",
+            "projection.lag",
+            "provider.calls",
+            "provider.cost",
+            "provider.circuit",
+            "provider.budget",
+            "provider.rate_limited",
+            "storage.rows",
+            "storage.estimated_bytes",
+            "storage.database_bytes",
+            "storage.wal_bytes",
+            "storage.free_bytes",
+            "storage.staging_bytes",
+            "storage.vector_bytes",
+            "security.keys",
+            "security.expiring_keys",
+            "security.sessions",
+            "security.login_failures",
+            "security.lockouts",
+            "security.audit",
+            "security.holds",
+            "security.retention"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]+(?:\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "metric_id",
+        "value",
+        "bucket",
+        "group",
+        "approximate",
+        "histogram_bounds_us",
+        "labels"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticsBackfillRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "reason_code": {
+          "const": "operator_request"
+        },
+        "to": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticsEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ConsoleStatisticPoint"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/ConsoleStatisticsMeta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticsMeta": {
+      "additionalProperties": true,
+      "properties": {
+        "as_of": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "computed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contract_version": {
+          "const": "1.4.0"
+        },
+        "coverage_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "descriptor": {
+          "$ref": "#/$defs/ResourceTypeDescriptor"
+        },
+        "instance_local": {
+          "type": "boolean"
+        },
+        "page": {
+          "$ref": "#/$defs/Page"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "request_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "rollup_lag_us": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecimalCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope_fingerprint": {
+          "pattern": "^sf_[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "rollup",
+            "live",
+            "mixed"
+          ]
+        },
+        "stale": {
+          "type": "boolean"
+        },
+        "total": {
+          "$ref": "#/$defs/Total"
+        },
+        "warnings": {
+          "items": {
+            "enum": [
+              "stats_timeout",
+              "rollup_lagging",
+              "projection_unavailable",
+              "scope_truncated",
+              "stats_row_limit",
+              "no_historical_coverage"
+            ]
+          },
+          "maxItems": 5000,
+          "type": "array"
+        }
+      },
+      "required": [
+        "request_id",
+        "contract_version",
+        "as_of",
+        "source",
+        "computed_at",
+        "coverage_from",
+        "stale",
+        "scope_fingerprint",
+        "warnings",
+        "partial",
+        "rollup_lag_us",
+        "instance_local"
+      ],
+      "type": "object"
+    },
+    "ConsoleStatisticsRegistry": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/ConsoleStatisticMetric"
+          },
+          "maxItems": 5000,
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/ConsoleStatisticsMeta"
         }
       },
       "required": [

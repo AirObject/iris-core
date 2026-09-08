@@ -33,6 +33,7 @@ from iris_memory_core.api.console.routes_persona_proposals import router as pers
 from iris_memory_core.api.console.routes_persona_states import router as persona_states_router
 from iris_memory_core.api.console.routes_personas import router as personas_router
 from iris_memory_core.api.console.routes_providers import router as providers_router
+from iris_memory_core.api.console.routes_statistics import router as statistics_router
 from iris_memory_core.api.console.views import envelope
 from iris_memory_core.application.console.backup_operations import TrustedBackupArchive
 from iris_memory_core.application.ports.clock import Clock, SystemClock, Uuid7Generator
@@ -199,11 +200,17 @@ def create_console_app(
                     else []
                 )
                 + (
-                    ["providers"]
+                    (["stats"] if "stats.read" in principal.permissions else []) + ["providers"]
                     if {"system.read", "providers.manage"} & set(principal.permissions)
                     and hasattr(principal, "key")
                     and "console.manage" in principal.key.grant.data_purposes
-                    else []
+                    else (
+                        ["stats"]
+                        if "stats.read" in principal.permissions
+                        and hasattr(principal, "key")
+                        and "console.manage" in principal.key.grant.data_purposes
+                        else []
+                    )
                 ),
                 "read_only": False,
                 "maintenance": False,
@@ -226,6 +233,7 @@ def create_console_app(
     app.include_router(forget_router)
     app.include_router(operations_router)
     app.include_router(providers_router)
+    app.include_router(statistics_router)
     app.include_router(personas_router)
     app.include_router(persona_states_router)
     app.include_router(persona_proposals_router)

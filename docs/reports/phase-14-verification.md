@@ -4,7 +4,7 @@
 
 基于 `692de12b4b9a9d8d47ebfdd938ba9622d152f0d9` 的未提交工作区实施，保留开始时已有的范围规划修改。初始切片当时为 Core 0.13.0 / Schema 15；业务 Contract 1.10.0、Console Contract 1.1.0；独立 Python SDK 0.11.1、TS SDK 0.11.2。环境为 macOS ARM64、Python 3.12.13、SQLite 3.50.4、Node 26.8.1、Chrome。没有创建 RC、签名、上传或发布产物。
 
-当前生成契约计数（由 `make lint` 核对）：业务 <!-- contract-count:openapi:paths -->86<!-- /contract-count --> 个路径、<!-- contract-count:openapi:operations -->92<!-- /contract-count --> 个操作；Console <!-- contract-count:console:paths -->144<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->174<!-- /contract-count --> 个操作。下文逐切片的接口与测试数字保留当时的历史口径。
+当前生成契约计数（由 `make lint` 核对）：业务 <!-- contract-count:openapi:paths -->86<!-- /contract-count --> 个路径、<!-- contract-count:openapi:operations -->92<!-- /contract-count --> 个操作；Console <!-- contract-count:console:paths -->154<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->184<!-- /contract-count --> 个操作。下文逐切片的接口与测试数字保留当时的历史口径。
 
 ## 已落地切片
 

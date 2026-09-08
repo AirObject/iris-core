@@ -1,0 +1,11 @@
+{
+  "approximate": false,
+  "bucket": null,
+  "group": null,
+  "histogram_bounds_us": null,
+  "id": "memory.present:None:None",
+  "labels": {},
+  "metric_id": "memory.present",
+  "unknown": true,
+  "value": "2"
+}

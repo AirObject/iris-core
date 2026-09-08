@@ -2308,6 +2308,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/v1/stats/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleStatsMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/stats/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleStatsOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/stats/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleStatsPipeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/stats/projections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleStatsProjections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/stats/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleStatsProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/stats/recall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleStatsRecall"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/stats/rollups:backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consoleStatsBackfill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/stats/security": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleStatsSecurity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/stats/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleStatsStorage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/stats/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleStatsTimeseries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2320,7 +2480,7 @@ export interface components {
         };
         BootstrapView: {
             /** @constant */
-            contract_version: "1.3.0";
+            contract_version: "1.4.0";
             display_timezone: string;
             import_in_progress: boolean;
             maintenance: boolean;
@@ -2821,9 +2981,9 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            kind: "memory_forget" | "trusted_backup" | "embedding_provider";
+            kind: "memory_forget" | "trusted_backup" | "embedding_provider" | "statistics_backfill";
             /** @enum {unknown} */
-            phase: "canonical_forget" | "backup_verify" | "provider_configuration";
+            phase: "canonical_forget" | "backup_verify" | "provider_configuration" | "statistics_rollup";
             problems_count: number;
             progress: {
                 processed: components["schemas"]["DecimalCount"];
@@ -2836,7 +2996,7 @@ export interface components {
             started_at: string | null;
             /** @enum {string} */
             status: "queued" | "running" | "paused" | "blocked" | "completed" | "completed_with_warnings" | "failed" | "cancelled" | "cancelled_partial";
-        } & unknown;
+        } & (unknown & unknown & unknown & unknown);
         ConsoleOperationCancelRequest: {
             /** @constant */
             reason_code: "operator_request";
@@ -3150,6 +3310,85 @@ export interface components {
             fields: components["schemas"]["ConsoleStateUpdateFields"];
             /** @constant */
             reason_code: "operator_request";
+        };
+        ConsoleStatisticMetric: {
+            coverage_from: string | null;
+            description: string;
+            filters: {
+                /** @enum {unknown} */
+                key: "agent_id" | "space_group_id" | "space_id" | "session_id";
+                label: string;
+                /** @constant */
+                type: "string";
+            }[];
+            granularity: ("hour" | "day" | "week")[];
+            group_by: string[];
+            label: string;
+            /** @enum {unknown} */
+            metric_id: "memory.present" | "memory.created" | "memory.created_24h" | "memory.created_7d" | "memory.tombstones" | "active.agents" | "active.spaces" | "active.sessions" | "pending.items" | "recall.requests" | "recall.candidates" | "recall.degraded" | "recall.budget_truncated" | "recall.host_selected" | "recall.model_visible" | "recall.latency_p50" | "recall.latency_p95" | "recall.latency_p99" | "pipeline.jobs" | "pipeline.oldest_pending_us" | "pipeline.dlq" | "pipeline.schedule_lag_us" | "pipeline.leases" | "pipeline.heartbeat_us" | "projection.documents" | "projection.source_watermark" | "projection.tombstone_watermark" | "projection.lag" | "provider.calls" | "provider.cost" | "provider.circuit" | "provider.budget" | "provider.rate_limited" | "storage.rows" | "storage.estimated_bytes" | "storage.database_bytes" | "storage.wal_bytes" | "storage.free_bytes" | "storage.staging_bytes" | "storage.vector_bytes" | "security.keys" | "security.expiring_keys" | "security.sessions" | "security.login_failures" | "security.lockouts" | "security.audit" | "security.holds" | "security.retention";
+            /** @enum {unknown} */
+            panel: "overview" | "pipeline" | "projections" | "providers" | "recall" | "security" | "storage" | "timeseries";
+            /** @constant */
+            permission: "stats.read";
+            required_permissions: ("stats.read" | "system.read")[];
+            /** @enum {unknown} */
+            source: "rollup" | "live";
+            /** @enum {unknown} */
+            unit: "count" | "bytes" | "microseconds" | "ratio" | "microunits";
+            /** @constant */
+            value_type: "decimal";
+        };
+        ConsoleStatisticPoint: {
+            approximate: boolean;
+            bucket: string | null;
+            group: string | null;
+            histogram_bounds_us: components["schemas"]["DecimalCount"][] | null;
+            id: string;
+            labels: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** @enum {unknown} */
+            metric_id: "memory.present" | "memory.created" | "memory.created_24h" | "memory.created_7d" | "memory.tombstones" | "active.agents" | "active.spaces" | "active.sessions" | "pending.items" | "recall.requests" | "recall.candidates" | "recall.degraded" | "recall.budget_truncated" | "recall.host_selected" | "recall.model_visible" | "recall.latency_p50" | "recall.latency_p95" | "recall.latency_p99" | "pipeline.jobs" | "pipeline.oldest_pending_us" | "pipeline.dlq" | "pipeline.schedule_lag_us" | "pipeline.leases" | "pipeline.heartbeat_us" | "projection.documents" | "projection.source_watermark" | "projection.tombstone_watermark" | "projection.lag" | "provider.calls" | "provider.cost" | "provider.circuit" | "provider.budget" | "provider.rate_limited" | "storage.rows" | "storage.estimated_bytes" | "storage.database_bytes" | "storage.wal_bytes" | "storage.free_bytes" | "storage.staging_bytes" | "storage.vector_bytes" | "security.keys" | "security.expiring_keys" | "security.sessions" | "security.login_failures" | "security.lockouts" | "security.audit" | "security.holds" | "security.retention";
+            value: string | null;
+        };
+        ConsoleStatisticsBackfillRequest: {
+            /** Format: date-time */
+            from: string;
+            /** @constant */
+            reason_code: "operator_request";
+            /** Format: date-time */
+            to: string;
+        };
+        ConsoleStatisticsEnvelope: {
+            data: components["schemas"]["ConsoleStatisticPoint"][];
+            meta: components["schemas"]["ConsoleStatisticsMeta"];
+        };
+        ConsoleStatisticsMeta: {
+            /** Format: date-time */
+            as_of: string;
+            computed_at: string | null;
+            /** @constant */
+            contract_version: "1.4.0";
+            coverage_from: string | null;
+            descriptor?: components["schemas"]["ResourceTypeDescriptor"];
+            instance_local: boolean;
+            page?: components["schemas"]["Page"];
+            partial: boolean;
+            /** Format: uuid */
+            request_id: string;
+            rollup_lag_us: components["schemas"]["DecimalCount"] | null;
+            scope_fingerprint: string;
+            /** @enum {unknown} */
+            source: "rollup" | "live" | "mixed";
+            stale: boolean;
+            total?: components["schemas"]["Total"];
+            warnings: ("stats_timeout" | "rollup_lagging" | "projection_unavailable" | "scope_truncated" | "stats_row_limit" | "no_historical_coverage")[];
+        } & {
+            [key: string]: unknown;
+        };
+        ConsoleStatisticsRegistry: {
+            data: components["schemas"]["ConsoleStatisticMetric"][];
+            meta: components["schemas"]["ConsoleStatisticsMeta"];
         };
         ConsoleTaskCreateFields: {
             /** Format: date-time */
@@ -3604,7 +3843,7 @@ export interface components {
             /** Format: date-time */
             as_of: string;
             /** @constant */
-            contract_version: "1.3.0";
+            contract_version: "1.4.0";
             descriptor?: components["schemas"]["ResourceTypeDescriptor"];
             page?: components["schemas"]["Page"];
             /** Format: uuid */
@@ -20027,6 +20266,771 @@ export interface operations {
             };
             /** @description Console error */
             415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleStatisticsRegistry"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsOverview: {
+        parameters: {
+            query?: {
+                metric_id?: string;
+                granularity?: "hour" | "day" | "week";
+                group_by?: string;
+                from?: string;
+                to?: string;
+                agent_id?: string;
+                space_group_id?: string;
+                space_id?: string;
+                session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleStatisticsEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsPipeline: {
+        parameters: {
+            query?: {
+                metric_id?: string;
+                granularity?: "hour" | "day" | "week";
+                group_by?: string;
+                from?: string;
+                to?: string;
+                agent_id?: string;
+                space_group_id?: string;
+                space_id?: string;
+                session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleStatisticsEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsProjections: {
+        parameters: {
+            query?: {
+                metric_id?: string;
+                granularity?: "hour" | "day" | "week";
+                group_by?: string;
+                from?: string;
+                to?: string;
+                agent_id?: string;
+                space_group_id?: string;
+                space_id?: string;
+                session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleStatisticsEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsProviders: {
+        parameters: {
+            query?: {
+                metric_id?: string;
+                granularity?: "hour" | "day" | "week";
+                group_by?: string;
+                from?: string;
+                to?: string;
+                agent_id?: string;
+                space_group_id?: string;
+                space_id?: string;
+                session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleStatisticsEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsRecall: {
+        parameters: {
+            query?: {
+                metric_id?: string;
+                granularity?: "hour" | "day" | "week";
+                group_by?: string;
+                from?: string;
+                to?: string;
+                agent_id?: string;
+                space_group_id?: string;
+                space_id?: string;
+                session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleStatisticsEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsBackfill: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleStatisticsBackfillRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleOperationEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsSecurity: {
+        parameters: {
+            query?: {
+                metric_id?: string;
+                granularity?: "hour" | "day" | "week";
+                group_by?: string;
+                from?: string;
+                to?: string;
+                agent_id?: string;
+                space_group_id?: string;
+                space_id?: string;
+                session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleStatisticsEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsStorage: {
+        parameters: {
+            query?: {
+                metric_id?: string;
+                granularity?: "hour" | "day" | "week";
+                group_by?: string;
+                from?: string;
+                to?: string;
+                agent_id?: string;
+                space_group_id?: string;
+                space_id?: string;
+                session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleStatisticsEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleStatsTimeseries: {
+        parameters: {
+            query?: {
+                metric_id?: string;
+                granularity?: "hour" | "day" | "week";
+                group_by?: string;
+                from?: string;
+                to?: string;
+                agent_id?: string;
+                space_group_id?: string;
+                space_id?: string;
+                session_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleStatisticsEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

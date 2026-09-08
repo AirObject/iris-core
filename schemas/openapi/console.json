@@ -21,7 +21,7 @@
         "additionalProperties": true,
         "properties": {
           "contract_version": {
-            "const": "1.3.0"
+            "const": "1.4.0"
           },
           "display_timezone": {
             "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
@@ -2655,43 +2655,6 @@
         "additionalProperties": false,
         "allOf": [
           {
-            "else": {
-              "else": {
-                "properties": {
-                  "phase": {
-                    "const": "provider_configuration"
-                  },
-                  "progress": {
-                    "properties": {
-                      "unit": {
-                        "const": "steps"
-                      }
-                    }
-                  }
-                }
-              },
-              "if": {
-                "properties": {
-                  "kind": {
-                    "const": "trusted_backup"
-                  }
-                }
-              },
-              "then": {
-                "properties": {
-                  "phase": {
-                    "const": "backup_verify"
-                  },
-                  "progress": {
-                    "properties": {
-                      "unit": {
-                        "const": "steps"
-                      }
-                    }
-                  }
-                }
-              }
-            },
             "if": {
               "properties": {
                 "kind": {
@@ -2711,6 +2674,75 @@
                   "properties": {
                     "unit": {
                       "const": "records"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "trusted_backup"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "phase": {
+                  "const": "backup_verify"
+                },
+                "progress": {
+                  "properties": {
+                    "unit": {
+                      "const": "steps"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "embedding_provider"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "phase": {
+                  "const": "provider_configuration"
+                },
+                "progress": {
+                  "properties": {
+                    "unit": {
+                      "const": "steps"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "statistics_backfill"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "phase": {
+                  "const": "statistics_rollup"
+                },
+                "progress": {
+                  "properties": {
+                    "unit": {
+                      "const": "steps"
                     }
                   }
                 }
@@ -2766,7 +2798,8 @@
             "enum": [
               "memory_forget",
               "trusted_backup",
-              "embedding_provider"
+              "embedding_provider",
+              "statistics_backfill"
             ],
             "type": "string"
           },
@@ -2774,7 +2807,8 @@
             "enum": [
               "canonical_forget",
               "backup_verify",
-              "provider_configuration"
+              "provider_configuration",
+              "statistics_rollup"
             ]
           },
           "problems_count": {
@@ -4115,6 +4149,494 @@
           "fields",
           "expected_revision",
           "reason_code"
+        ],
+        "type": "object"
+      },
+      "ConsoleStatisticMetric": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "filters": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "enum": [
+                    "agent_id",
+                    "space_group_id",
+                    "space_id",
+                    "session_id"
+                  ]
+                },
+                "label": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                "type": {
+                  "const": "string"
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "type"
+              ],
+              "type": "object"
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "granularity": {
+            "items": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "group_by": {
+            "items": {
+              "maxLength": 256,
+              "type": "string"
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "label": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "metric_id": {
+            "enum": [
+              "memory.present",
+              "memory.created",
+              "memory.created_24h",
+              "memory.created_7d",
+              "memory.tombstones",
+              "active.agents",
+              "active.spaces",
+              "active.sessions",
+              "pending.items",
+              "recall.requests",
+              "recall.candidates",
+              "recall.degraded",
+              "recall.budget_truncated",
+              "recall.host_selected",
+              "recall.model_visible",
+              "recall.latency_p50",
+              "recall.latency_p95",
+              "recall.latency_p99",
+              "pipeline.jobs",
+              "pipeline.oldest_pending_us",
+              "pipeline.dlq",
+              "pipeline.schedule_lag_us",
+              "pipeline.leases",
+              "pipeline.heartbeat_us",
+              "projection.documents",
+              "projection.source_watermark",
+              "projection.tombstone_watermark",
+              "projection.lag",
+              "provider.calls",
+              "provider.cost",
+              "provider.circuit",
+              "provider.budget",
+              "provider.rate_limited",
+              "storage.rows",
+              "storage.estimated_bytes",
+              "storage.database_bytes",
+              "storage.wal_bytes",
+              "storage.free_bytes",
+              "storage.staging_bytes",
+              "storage.vector_bytes",
+              "security.keys",
+              "security.expiring_keys",
+              "security.sessions",
+              "security.login_failures",
+              "security.lockouts",
+              "security.audit",
+              "security.holds",
+              "security.retention"
+            ]
+          },
+          "panel": {
+            "enum": [
+              "overview",
+              "pipeline",
+              "projections",
+              "providers",
+              "recall",
+              "security",
+              "storage",
+              "timeseries"
+            ]
+          },
+          "permission": {
+            "const": "stats.read"
+          },
+          "required_permissions": {
+            "items": {
+              "enum": [
+                "stats.read",
+                "system.read"
+              ]
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "rollup",
+              "live"
+            ]
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "bytes",
+              "microseconds",
+              "ratio",
+              "microunits"
+            ]
+          },
+          "value_type": {
+            "const": "decimal"
+          }
+        },
+        "required": [
+          "metric_id",
+          "panel",
+          "label",
+          "unit",
+          "value_type",
+          "source",
+          "granularity",
+          "group_by",
+          "filters",
+          "permission",
+          "required_permissions",
+          "coverage_from",
+          "description"
+        ],
+        "type": "object"
+      },
+      "ConsoleStatisticPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "approximate": {
+            "type": "boolean"
+          },
+          "bucket": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "histogram_bounds_us": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DecimalCount"
+                },
+                "maxItems": 5000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            },
+            "maxProperties": 16,
+            "type": "object"
+          },
+          "metric_id": {
+            "enum": [
+              "memory.present",
+              "memory.created",
+              "memory.created_24h",
+              "memory.created_7d",
+              "memory.tombstones",
+              "active.agents",
+              "active.spaces",
+              "active.sessions",
+              "pending.items",
+              "recall.requests",
+              "recall.candidates",
+              "recall.degraded",
+              "recall.budget_truncated",
+              "recall.host_selected",
+              "recall.model_visible",
+              "recall.latency_p50",
+              "recall.latency_p95",
+              "recall.latency_p99",
+              "pipeline.jobs",
+              "pipeline.oldest_pending_us",
+              "pipeline.dlq",
+              "pipeline.schedule_lag_us",
+              "pipeline.leases",
+              "pipeline.heartbeat_us",
+              "projection.documents",
+              "projection.source_watermark",
+              "projection.tombstone_watermark",
+              "projection.lag",
+              "provider.calls",
+              "provider.cost",
+              "provider.circuit",
+              "provider.budget",
+              "provider.rate_limited",
+              "storage.rows",
+              "storage.estimated_bytes",
+              "storage.database_bytes",
+              "storage.wal_bytes",
+              "storage.free_bytes",
+              "storage.staging_bytes",
+              "storage.vector_bytes",
+              "security.keys",
+              "security.expiring_keys",
+              "security.sessions",
+              "security.login_failures",
+              "security.lockouts",
+              "security.audit",
+              "security.holds",
+              "security.retention"
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9]+(?:\\.[0-9]+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "metric_id",
+          "value",
+          "bucket",
+          "group",
+          "approximate",
+          "histogram_bounds_us",
+          "labels"
+        ],
+        "type": "object"
+      },
+      "ConsoleStatisticsBackfillRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason_code": {
+            "const": "operator_request"
+          },
+          "to": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "reason_code"
+        ],
+        "type": "object"
+      },
+      "ConsoleStatisticsEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ConsoleStatisticPoint"
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ConsoleStatisticsMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "ConsoleStatisticsMeta": {
+        "additionalProperties": true,
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+            "type": "string"
+          },
+          "computed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contract_version": {
+            "const": "1.4.0"
+          },
+          "coverage_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "descriptor": {
+            "$ref": "#/components/schemas/ResourceTypeDescriptor"
+          },
+          "instance_local": {
+            "type": "boolean"
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "request_id": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "rollup_lag_us": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalCount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope_fingerprint": {
+            "pattern": "^sf_[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "rollup",
+              "live",
+              "mixed"
+            ]
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "total": {
+            "$ref": "#/components/schemas/Total"
+          },
+          "warnings": {
+            "items": {
+              "enum": [
+                "stats_timeout",
+                "rollup_lagging",
+                "projection_unavailable",
+                "scope_truncated",
+                "stats_row_limit",
+                "no_historical_coverage"
+              ]
+            },
+            "maxItems": 5000,
+            "type": "array"
+          }
+        },
+        "required": [
+          "request_id",
+          "contract_version",
+          "as_of",
+          "source",
+          "computed_at",
+          "coverage_from",
+          "stale",
+          "scope_fingerprint",
+          "warnings",
+          "partial",
+          "rollup_lag_us",
+          "instance_local"
+        ],
+        "type": "object"
+      },
+      "ConsoleStatisticsRegistry": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ConsoleStatisticMetric"
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ConsoleStatisticsMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
         ],
         "type": "object"
       },
@@ -6436,7 +6958,7 @@
             "type": "string"
           },
           "contract_version": {
-            "const": "1.3.0"
+            "const": "1.4.0"
           },
           "descriptor": {
             "$ref": "#/components/schemas/ResourceTypeDescriptor"
@@ -9250,7 +9772,7 @@
   },
   "info": {
     "title": "Iris Memory Core Console",
-    "version": "1.3.0"
+    "version": "1.4.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -33548,6 +34070,1433 @@
             "description": "Console error"
           },
           "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/metrics": {
+      "get": {
+        "operationId": "consoleStatsMetrics",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleStatisticsRegistry"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/overview": {
+      "get": {
+        "operationId": "consoleStatsOverview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_group_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleStatisticsEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/pipeline": {
+      "get": {
+        "operationId": "consoleStatsPipeline",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_group_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleStatisticsEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/projections": {
+      "get": {
+        "operationId": "consoleStatsProjections",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_group_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleStatisticsEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/providers": {
+      "get": {
+        "operationId": "consoleStatsProviders",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_group_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleStatisticsEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/recall": {
+      "get": {
+        "operationId": "consoleStatsRecall",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_group_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleStatisticsEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/rollups:backfill": {
+      "post": {
+        "operationId": "consoleStatsBackfill",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-IMC-Console",
+            "required": true,
+            "schema": {
+              "const": "1"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-IMC-CSRF",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleStatisticsBackfillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOperationEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/security": {
+      "get": {
+        "operationId": "consoleStatsSecurity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_group_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleStatisticsEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/storage": {
+      "get": {
+        "operationId": "consoleStatsStorage",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_group_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleStatisticsEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          }
+        }
+      }
+    },
+    "/console/v1/stats/timeseries": {
+      "get": {
+        "operationId": "consoleStatsTimeseries",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_group_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleStatisticsEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Console error"
+          },
+          "403": {
             "content": {
               "application/json": {
                 "schema": {

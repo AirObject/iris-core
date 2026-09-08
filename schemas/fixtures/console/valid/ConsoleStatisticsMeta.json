@@ -1,0 +1,14 @@
+{
+  "as_of": "2026-09-08T00:00:00.000000Z",
+  "computed_at": "2026-09-08T00:00:00.000000Z",
+  "contract_version": "1.4.0",
+  "coverage_from": "2026-09-08T00:00:00.000000Z",
+  "instance_local": false,
+  "partial": false,
+  "request_id": "0198b326-3910-7000-8000-000000000001",
+  "rollup_lag_us": "0",
+  "scope_fingerprint": "sf_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source": "rollup",
+  "stale": false,
+  "warnings": []
+}
