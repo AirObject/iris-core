@@ -35,13 +35,13 @@ W01–W04 已完成全部验收并各自独立提交。W05 本地收尾；W06/W0
 | [W04 Operation 扩展与可信备份流程](next-build-guide.md#w04-operation-扩展与可信备份流程) | 13.11 最小前置 | Completed；[W04 报告](../reports/w04-operations-trusted-backup.md)，14795 项功能/85.58% 覆盖率、21 项真实浏览器及完整 CI/安装通过；Commit `d4998ed` |
 | [W05 Embedding Provider 全链路](next-build-guide.md#w05-embedding-provider-全链路) | 13.9，14.2 | In progress；[W05 报告](../reports/w05-embedding-provider.md)，Embedding 配置/Worker/API 全链路 |
 | [W06 认知 Provider 运行接线](next-build-guide.md#w06-认知-provider-运行接线) | Phase 10，14.0-D/14.2 | In progress；已整合生产适配器与治理接线，完整 CI 待运行；[报告](../reports/w06-cognitive-provider.md)保留真实模型待验收 |
-| [W07 统计与运行观测](next-build-guide.md#w07-统计与运行观测) | 13.6 | In progress；独立副本，持久统计/授权桶/回填和真实页面 |
-| [W08 Persona Draft](next-build-guide.md#w08-persona-draft) | 13.4 | In progress；已整合 Schema23 草稿生命周期/HTTP/UI；[报告](../reports/w08-persona-draft.md)，完整 CI 待运行 |
+| [W07 统计与运行观测](next-build-guide.md#w07-统计与运行观测) | 13.6 | In progress；持久统计/授权桶/回填和真实页面已小提交整合；[报告](../reports/w07-statistics-observability.md)，固定候选完整CI待运行 |
+| [W08 Persona Draft](next-build-guide.md#w08-persona-draft) | 13.4 | In progress；已整合草稿生命周期/HTTP/UI，Schema24兼容补验通过；[报告](../reports/w08-persona-draft.md)，原完整CI失败已保留，修复后CI待运行 |
 | [W09 Reflection/Candidate 管理](next-build-guide.md#w09-reflectioncandidate-管理) | 13.4 原队列漏项 | In progress；W06 独立副本续作 dry-run/replay/候选审核；真实模型验收仍待条件 |
 | [W10 Retention/Hold 与清理状态](next-build-guide.md#w10-retentionhold-与清理状态) | 13.5 | In progress；基于 W08 草稿实现开发策略/Hold/分页扫描；依赖最终验收仍须完成 |
 | [W11 业务导出与授权下载](next-build-guide.md#w11-业务导出与授权下载) | 13.7 | Planned |
-| [W12 手动导入闭环](next-build-guide.md#w12-手动导入闭环) | 13.8 | Planned |
-| [W13 Settings 与实际生效](next-build-guide.md#w13-settings-与实际生效) | 13.10 | Planned |
+| [W12 手动导入闭环](next-build-guide.md#w12-手动导入闭环) | 13.8 | In progress（独立staging切片）；JSONL framing已提交，完整提交链依赖仍保留 |
+| [W13 Settings 与实际生效](next-build-guide.md#w13-settings-与实际生效) | 13.10 | In progress；独立副本实现注册表/真实生效/历史与回退，尚未整合 |
 | [W14 其余运维与部署前读面](next-build-guide.md#w14-其余运维与部署前读面) | 13.11 | Planned |
 | [W15 兼容、产物与验收输入冻结](next-build-guide.md#w15-兼容产物与验收输入冻结) | 14.0/14.1 剩余闭环 | Planned |
 | [W16 生产装配与进程验证](next-build-guide.md#w16-生产装配与进程验证) | 14.2 | Planned |

@@ -1,0 +1,21 @@
+{
+  "status": "reviewed",
+  "candidate_sha256": "f03873162a9eb56671b8e914b705a646535fe6433cb1a148264de77f2ac2c9a1",
+  "prior_sha256": "2750dab671f4db490adb4ccf600fa365e124a83dd6ac0ec65ee305b90576d863",
+  "unchanged": [
+    "Python/Core/SDK exports and method policy",
+    "TypeScript client surface",
+    "Business HTTP and CLI",
+    "All existing Console operations"
+  ],
+  "additions": [
+    "10 statistics discovery/read/backfill operations",
+    "6 statistics schemas"
+  ],
+  "reviewed_changes": {
+    "ConsoleOperation": "finite statistics_backfill kind, phase and steps constraint",
+    "BootstrapView": "Console contract version change through schema metadata",
+    "Meta": "ConsoleContract1.4.0"
+  },
+  "scope": "W07 additive management plane; no accepted unknown exports; full CI pending"
+}

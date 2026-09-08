@@ -45,3 +45,9 @@
 ## 主目录整合检查点
 
 2026-09-08 已分组整合生命周期、受保护发布/删除恢复、实际 Console HTTP、Schema23 升级窗口、Console1.3 契约与真实前端。新增七项操作，旧 SDK/业务 HTTP/CLI 保持，公共接口差异已逐项审查。integrated-structural-001 仅文档接口计数过期导致失败；更新至144路径/174操作后 integrated-structural-002 全部格式、lint、类型、契约与前端29项/构建通过。W06 随后集成后的结构/公共API复验同样通过。完整 CI 将在固定候选的独立工作树执行，结果未完成前不关闭 W08。
+
+## 固定候选全量CI与修复
+
+候选2983255的ci-w06-w08-001已实际结束：11项独立性能通过，功能15207 passed/6 failed，覆盖率85.85%。失败为认知调度fixture默认启用假设、四项历史Schema断言遗漏和一项Focus发布503；该轮未进入SDK/浏览器/安装阶段。监督进程未留下终态result.json，故用单独[观察记录](evidence/w08/ci-w06-w08-001-observation.json)说明，原输出归档于[CI证据](evidence/w08/ci-w06-w08-001.tar.xz)，不伪造监督结果。
+
+认知fixture修复ef7c159定向2 passed。Schema24整合后相关77项回归76 passed（包含此前Focus失败的完整参数化用例），1项是新增两个nullable统计列使原SELECT星号元组长度变化；显式验证旧值及新增NULL后单项通过。没有修改Focus业务实现或放宽其时间预算，原受并发负载影响的503保留为本轮失败记录；最终完整CI仍需重新通过。[修复批次](evidence/w08/integration-repairs.tar.xz)保留全部失败和复验。W08尚未Completed。

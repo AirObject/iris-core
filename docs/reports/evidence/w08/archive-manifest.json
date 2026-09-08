@@ -1,0 +1,26 @@
+{
+  "delivery-manifest.json": {
+    "sha256": "2178582767c0edc80d68d357a7a47ad766ca2fdab60d14cac3f3fdc38ba2814b",
+    "bytes": 17006
+  },
+  "ci-w06-w08-001.tar.xz": {
+    "sha256": "cbb19049faffc33577eba37dea9e4fc1645c3b78695f3290a68ee928e42cf09c",
+    "bytes": 96768
+  },
+  "ci-w06-w08-001-observation.json": {
+    "sha256": "7d7658b868ed46fde5205c55dcf2579f246af09561406234afd0b402809f2f4d",
+    "bytes": 441
+  },
+  "validation.tar.gz": {
+    "sha256": "38c280e189af3b6dcb82cd8a697df6f94c7c075b082d6d9a10ed0ddc695365d2",
+    "bytes": 2200092
+  },
+  "public-api-review.json": {
+    "sha256": "3b1568a36c42fea1454b676e909f56d15b84977d14499eac225ba1c8d2a9200c",
+    "bytes": 1329
+  },
+  "integration-repairs.tar.xz": {
+    "sha256": "5e3d132b94d66ecb015e03c97518bab1303692c714cf1e7b8d8c4624122e4e27",
+    "bytes": 144192
+  }
+}

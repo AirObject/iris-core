@@ -1,0 +1,22 @@
+{
+  "delivery-manifest.json": {
+    "sha256": "e593beaac74164084716069e60956b4353219e230c1a5cbf21d6106262654a21",
+    "bytes": 11020
+  },
+  "integration-batches.tar.xz": {
+    "sha256": "ef9f12efc4bdcc9548d795ad483f89eefd4f5f3da7ad6c45771f22d9054bd6f4",
+    "bytes": 216368
+  },
+  "independent-evidence.tar.xz": {
+    "sha256": "da13eda15667d78544f916e231bc4c2a3d7a3f8c8e88637e21787f554167b6c3",
+    "bytes": 10748
+  },
+  "independent-evidence-manifest.json": {
+    "sha256": "4ef5bf59a303ffc26b1af363d21f2301c729f433d7cf61cecb027fd44047ff59",
+    "bytes": 1953
+  },
+  "public-api-review.json": {
+    "sha256": "60f3eb4fa2d24bf7113289daa322fddeb45b8fe2c169f6ff3ef43374e92e6085",
+    "bytes": 800
+  }
+}

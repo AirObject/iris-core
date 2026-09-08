@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-08T04:34:27.953680+00:00",
+  "updated_at": "2026-09-08T05:00:31.871402+00:00",
   "automation_id": null,
   "sequence": [
     "W01",
@@ -24,7 +24,7 @@
     "W19",
     "W20"
   ],
-  "current_package": "W05",
+  "current_package": "W07/W08",
   "status": "in_progress",
   "start_commit": "d4998edff6986180328a218440c8c239f26461a9",
   "completed_packages": [
@@ -55,9 +55,9 @@
   ],
   "report": "docs/reports/w05-embedding-provider.md",
   "next_actions": [
-    "Finish W05 contract/UI/evidence small commits and truthfully record full CI and separately passing package recovery; external model acceptance still pending.",
-    "Integrate independently completed W06/W07/W08 changes in dependency order, reconcile contracts/migration versions and verify affected/full gates.",
-    "Continue ready W09-W20 under latest dependency-gated parallel authorization; preserve actual external and production acceptance requirements."
+    "Run fixed W07/W08 candidate complete make ci and archive actual terminal receipt; keep original failed CI.",
+    "Integrate delivered W10/Schema25 then W09/Schema26 in small behavior commits with unchanged source contract portions preserved.",
+    "Continue independent W11/W12/W13/W14 local work; production acceptance inputs all TBD by explicit user decision; W18/W19 do not start."
   ],
   "constraints": [
     "Phase 11/12 Deferred.",
@@ -79,7 +79,7 @@
       "supervisor_pid": 34547,
       "watch_cell": "45",
       "run_directory": "/private/tmp/imc-ci-w06-w08/.work-package-runs/W08/ci-w06-w08-001",
-      "status": "running",
+      "status": "observed_failed; supervisor receipt missing; test log proves 6 failures/15207 passes/85.85% coverage",
       "command": "env UV_NO_SYNC=1 UV_OFFLINE=1 CI=1 PYTHONPATH=<isolated src/sdk> CONSOLE_BROWSER_EXECUTABLE=<installed Chrome> make ci"
     }
   ],
@@ -183,7 +183,14 @@
     "ci-worktree-bootstrap": "first setup command did not start because the new worktree had no .venv; setup rerun using root absolute interpreter, dependencies linked and validation then started",
     "W08/matrix-integration-001": "failed: 1 passed/1 failed; unconfigured cognitive tenant correctly returns503 after W06, old scheduling fixture assumed default enabled",
     "W08/matrix-integration-002": "passed: 2 full public HTTP operation matrix tests; explicitly configured scheduling tenant, production default unchanged; commit ef7c159",
-    "W20/release-selection-001": "passed: selected Core/SDK version, mismatch/missing approval and invalid selection checks; YAML parse and separate upload/environment inspection passed; commit a088c5f; full package CI pending"
+    "W20/release-selection-001": "passed: selected Core/SDK version, mismatch/missing approval and invalid selection checks; YAML parse and separate upload/environment inspection passed; commit a088c5f; full package CI pending",
+    "W06-W08/ci-w06-w08-001": "observed failed: performance11 passed; function15207 passed/6 failed,85.85%; wrapper result missing; not run SDK/browser/package. Original logs archived.",
+    "W08/ci-failures-affected-003": "failed:76 passed/1 failed; original focus failure passes all parameterizations; added nullable columns change old Recall tuple shape",
+    "W08/recall-upgrade-repair-004": "passed:exact old Recall row values plus two NULL statistics fields and FK identity",
+    "W07/integrated-regression-002": "failed:353 passed/2 syntheticSchema18 snapshot failures; corrected bootstrap metadata and removed empty future columns",
+    "W07/legacy-repair-003": "passed:4 originalTask cascade/erase/soft/old/current restore cases",
+    "W07/draft-upgrade-003": "passed:2 populated Provider and Schema23 Draft/discard-ledger migrations",
+    "W07/integrated-structural-003": "passed:format/lint/types/contracts/Console29/build; public API separately reviewed and passed"
   },
   "contract_version": "1.11.0",
   "continuation_policy": "User cancelled scheduled automation. Continue active goal from actual background process/session completion events, with no clock sleeps or scheduled-time phase barriers.",
@@ -193,9 +200,9 @@
   "current_goal_turn_classification": "progress: recovered prior actual CI process; continued W07/W09/W10 in parallel; fixed operation matrix integration and separated Core/SDK publication; user deferred production acceptance",
   "runtime_versions": {
     "core": "0.15.0",
-    "schema": 23,
+    "schema": 24,
     "contract": "1.11.0",
-    "console_contract": "1.3.0",
+    "console_contract": "1.4.0",
     "python_sdk": "0.11.1",
     "typescript_sdk": "0.11.2"
   },
@@ -213,9 +220,7 @@
     }
   ],
   "completion_watch": {
-    "status": "Recovered existing supervisor; native macOS KQ_NOTE_EXIT watcher active. Earlier session/cell identifiers are historical, not callable in this task.",
-    "session_id": 53362,
-    "supervisor_pid": 34547
+    "status": "Prior supervisor exit event consumed; original final receipt missing and explicitly archived. Preparing fixed W07/W08 full CI."
   },
   "execution_mode": "dependency_gated_parallel",
   "commit_policy": "Small coherent behavior commits; related work packages may share a commit; package acceptance remains explicit.",
@@ -232,17 +237,17 @@
     "W07": {
       "owner": "w07_finish",
       "directory": "/private/tmp/imc-w07-work",
-      "status": "implementation; temporary Schema23 rebased to24 at integration"
+      "status": "Integrated in five small feature commits; final fixed candidate make ci pending"
     },
     "W08": {
       "owner": "w08_persona_draft",
       "directory": "/private/tmp/imc-w08-work",
-      "status": "fixed candidate full CI running; result required before completion"
+      "status": "Integrated; original full CI failed, affected repairs passed; final make ci pending"
     },
     "W09": {
       "owner": "w09_finish",
       "directory": "/private/tmp/imc-w06-work",
-      "status": "development; ADR0053/Schema26 reserved"
+      "status": "Local implementation delivered; awaits Schema25/W10 prerequisite integration and full CI; real model acceptance deferred"
     },
     "W10": {
       "owner": "w10_finish",
@@ -252,6 +257,16 @@
     "W20": {
       "owner": "root",
       "status": "Independent publication selection preparation committed; remaining implementation and package CI pending; production acceptance deferred by user"
+    },
+    "W12": {
+      "owner": "w09_finish",
+      "directory": "/private/tmp/imc-w12-work",
+      "status": "Independent upload/staging/review implementation; shared JSONL framing4c00293 locally verified; commit path remains dependency-gated"
+    },
+    "W13": {
+      "owner": "w07_finish",
+      "directory": "/private/tmp/imc-w13-work",
+      "status": "Local registry/behavior wiring implementation; no production acceptance"
     }
   },
   "production_acceptance": {

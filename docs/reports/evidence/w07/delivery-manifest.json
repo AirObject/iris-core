@@ -1,0 +1,292 @@
+{
+  "base_commit": "b1c517e53f88cb2f3f7ce2eeb63977be7ee6cd17",
+  "source_root": "/private/tmp/imc-w07-work",
+  "final_migration": "migrations/0024_console_statistics.sql",
+  "temporary_migration": "migrations/0023_console_statistics.sql",
+  "files": [
+    {
+      "path": "contracts/source/console.json",
+      "status": "modified",
+      "sha256": "12036205edf9a9d48fb42ac3174f0076dad0442203e133e08f303fa4dfb65cb4"
+    },
+    {
+      "path": "src/iris_memory_core/api/console/app.py",
+      "status": "modified",
+      "sha256": "aba575ade2be70fa031603c2da3143555fe83d4a80ac12f5a9e27caba34749b4"
+    },
+    {
+      "path": "src/iris_memory_core/application/console/operations.py",
+      "status": "modified",
+      "sha256": "12073b762ffff1be94301a6c69cc4e871a90eef87079b60dcaf24c16484dcf6f"
+    },
+    {
+      "path": "src/iris_memory_core/application/console/security.py",
+      "status": "modified",
+      "sha256": "f7d699bbc0c4cb6611da5f15b5a5688b03eec0a40163069c0191053ec984d686"
+    },
+    {
+      "path": "src/iris_memory_core/application/outbox.py",
+      "status": "modified",
+      "sha256": "0963e93a36ebfd912737aef59f405770876e9a137f772da7198a8ea619f15fb6"
+    },
+    {
+      "path": "src/iris_memory_core/application/ports/recall.py",
+      "status": "modified",
+      "sha256": "f42c1e7e18224529f3df48c4f6d7783c2945c07f4052373228cb271ce5d7813d"
+    },
+    {
+      "path": "src/iris_memory_core/application/ports/transaction.py",
+      "status": "modified",
+      "sha256": "82e15a1cddf9acb532f3705b8f82557174c2e4e3364e7b900af871859d3e2c87"
+    },
+    {
+      "path": "src/iris_memory_core/application/recall.py",
+      "status": "modified",
+      "sha256": "4a07147c4e28b97ccd181a593860f6710e60244dd0ca3ce3f22bd7a27b1fc891"
+    },
+    {
+      "path": "src/iris_memory_core/domain/console_operations.py",
+      "status": "modified",
+      "sha256": "e01b81deb06e2f584628c154d4cac29e02c46d71cde8e52e0268b1d578065cfe"
+    },
+    {
+      "path": "src/iris_memory_core/domain/jobs.py",
+      "status": "modified",
+      "sha256": "aa36a7baaa16e0d230bc67e77ce34781c073f031c98b3da0ade17233f40b1a26"
+    },
+    {
+      "path": "src/iris_memory_core/jobs/worker.py",
+      "status": "modified",
+      "sha256": "9bbbb28b9844de36ca6bce5ba0f78b4212eae9c907e11e6816ca119dd33e9809"
+    },
+    {
+      "path": "src/iris_memory_core/recall_runtime.py",
+      "status": "modified",
+      "sha256": "680148846f94d81090433106815191efa8e1b61add30b63c59b832270aeb28b5"
+    },
+    {
+      "path": "src/iris_memory_core/runtime.py",
+      "status": "modified",
+      "sha256": "1ddc87c21b11bf0e761e1185c8cbc99475bec65aa37da91f49b24d4eee4a6de3"
+    },
+    {
+      "path": "src/iris_memory_core/storage/console_operation_restore.py",
+      "status": "modified",
+      "sha256": "a4a3d2108716ebd8856998f8fa376d3cdf14fcd19bbc930592dee539c3c57970"
+    },
+    {
+      "path": "src/iris_memory_core/storage/console_operations.py",
+      "status": "modified",
+      "sha256": "c76531e3b64b295ae1fdc87a53f5d598c126f17c9de68dfe41c6995f8c4eb64a"
+    },
+    {
+      "path": "src/iris_memory_core/storage/fts.py",
+      "status": "modified",
+      "sha256": "61e67456b51bd0f54ef6ade0bfd828b9d028959164afe2caaade3baaf2b2a25a"
+    },
+    {
+      "path": "src/iris_memory_core/storage/runtime.py",
+      "status": "modified",
+      "sha256": "7da9ca7a099b4ede6a5f8d5cc9f2007ad5b4ff1c7dfc434cb3d2bf4522107742"
+    },
+    {
+      "path": "src/iris_memory_core/storage/spine.py",
+      "status": "modified",
+      "sha256": "0004865204dcbdba161e2669581da562e54f54584ee56e1ba82c97a20529c6cf"
+    },
+    {
+      "path": "src/iris_memory_core/storage/uow.py",
+      "status": "modified",
+      "sha256": "7d062bf58fd6c4b07bcd34e209eea2b4037eacd44a68fff0561ce4ab0531df84"
+    },
+    {
+      "path": "tests/integration/runtime/test_outbox.py",
+      "status": "modified",
+      "sha256": "b72702e940c52e036763e149a02103bd2b5d5f3d9e185d4cf59824b554ee2d32"
+    },
+    {
+      "path": "web/console/package.json",
+      "status": "modified",
+      "sha256": "d2d2567286276322a32f7f20dec4e3d2dbc717f12bd5ac93dc9daaf62bfe6a76"
+    },
+    {
+      "path": "web/console/src/api/client.ts",
+      "status": "modified",
+      "sha256": "6e4fdf9ce245e0ee58f4bba0688341f484fc64a1f27b68daba9b34de139d51e2"
+    },
+    {
+      "path": "web/console/src/api/design.ts",
+      "status": "modified",
+      "sha256": "99c42f6a3c3cb5bf28efeb2a71269314be3122aee6cf904efb819e4842ed26f3"
+    },
+    {
+      "path": "web/console/src/pages/Transfers.tsx",
+      "status": "modified",
+      "sha256": "feae0f9394aca5ec5c51e234edb1bde220cac5c3f62da7f7648312ef96c5f535"
+    },
+    {
+      "path": "docs/adr/0051-authorized-console-observability.md",
+      "status": "new",
+      "sha256": "e795674489afe10516d1a81e07fcf21b4195fa76751ce81b73fd26666112cba3"
+    },
+    {
+      "path": "docs/reports/w07-statistics-observability.md",
+      "status": "new",
+      "sha256": "c318f8bf219a883b72bdbebc121c1e7ada2302eb89ab258074765acf796c475f"
+    },
+    {
+      "path": "migrations/0023_console_statistics.sql",
+      "status": "new",
+      "sha256": "89784a0a5d6cbdde191ab99cff4ae8833a6b2ea9567d25903430529a997dbf4c"
+    },
+    {
+      "path": "schemas/fixtures/console/invalid/ConsoleStatisticMetric-unknown.json",
+      "status": "new",
+      "sha256": "3ca55414253a649fbe4a07e8725f45023020c5b43e243d1dd24b5fe41115fde6"
+    },
+    {
+      "path": "schemas/fixtures/console/invalid/ConsoleStatisticPoint-unknown.json",
+      "status": "new",
+      "sha256": "c6d92d016b524320d35ec992b1cc0f4d97092b16d40d997611e9677d2a028402"
+    },
+    {
+      "path": "schemas/fixtures/console/invalid/ConsoleStatisticsBackfillRequest-unknown.json",
+      "status": "new",
+      "sha256": "778caf34435106f6d16833c39b1991c125363c1b9849f389c4dd2be4623fe1f5"
+    },
+    {
+      "path": "schemas/fixtures/console/invalid/ConsoleStatisticsEnvelope-unknown.json",
+      "status": "new",
+      "sha256": "8051a2f9ea2de981f1bff918dab18c96374086e9d7c286069c5d8657662241ad"
+    },
+    {
+      "path": "schemas/fixtures/console/invalid/ConsoleStatisticsMeta-unknown.json",
+      "status": "new",
+      "sha256": "4eb24c3265984ecd14e36f7ac80b01f6a77c69ce27d1e0b6db4cf65826d343f0"
+    },
+    {
+      "path": "schemas/fixtures/console/invalid/ConsoleStatisticsRegistry-unknown.json",
+      "status": "new",
+      "sha256": "ca3c9f96026f223997eb26dd54fc856ef4f83208e51103c5dad7c926f9afdd3d"
+    },
+    {
+      "path": "schemas/fixtures/console/valid/ConsoleOperation-statistics.json",
+      "status": "new",
+      "sha256": "901b903fd5932ffb5afeb474571a5000c8e0cd7b0c5efb468149e07d381acb6e"
+    },
+    {
+      "path": "schemas/fixtures/console/valid/ConsoleStatisticMetric.json",
+      "status": "new",
+      "sha256": "f0eeb72d1d811b0af432c7b74fc1f18219890ed73851a3ef207e5ba6a530a65a"
+    },
+    {
+      "path": "schemas/fixtures/console/valid/ConsoleStatisticPoint.json",
+      "status": "new",
+      "sha256": "422267f546da5741d386458c224062e47f8eec8cbd34512bcf2e8681557d10ea"
+    },
+    {
+      "path": "schemas/fixtures/console/valid/ConsoleStatisticsBackfillRequest.json",
+      "status": "new",
+      "sha256": "3afce96bafda8a14103e6cac7dfadbf390b06816e40ebe0f96830c9d53e28162"
+    },
+    {
+      "path": "schemas/fixtures/console/valid/ConsoleStatisticsEnvelope.json",
+      "status": "new",
+      "sha256": "63447ef9ce77e7717c4423dfeff4808a45cb122cbe0d7b2fe9a516837eeb5803"
+    },
+    {
+      "path": "schemas/fixtures/console/valid/ConsoleStatisticsMeta.json",
+      "status": "new",
+      "sha256": "f6d4a9df8f12d55ab2163613d5726acb7f87e5e791c4a2540d397b2be51d5912"
+    },
+    {
+      "path": "schemas/fixtures/console/valid/ConsoleStatisticsRegistry.json",
+      "status": "new",
+      "sha256": "55d8fe214aaadd21a2677a5d5763e8606521eab8ed3d8f95cb39026078fc5757"
+    },
+    {
+      "path": "src/iris_memory_core/api/console/routes_statistics.py",
+      "status": "new",
+      "sha256": "943c5230a196e90316fc7505ce450b9206ade27d85c3a3e89f17911c6f34f02e"
+    },
+    {
+      "path": "src/iris_memory_core/application/console/statistics.py",
+      "status": "new",
+      "sha256": "dd5e1dee763e46449a0ff1c16353c8ed6ef0650ddd0e0fc0059d7d4697c66339"
+    },
+    {
+      "path": "src/iris_memory_core/application/console/statistics_operations.py",
+      "status": "new",
+      "sha256": "5b0c154b9e327c3e02f1cf194b20c1e96eb6649ed702c4f116596c9039ee235b"
+    },
+    {
+      "path": "src/iris_memory_core/application/console/statistics_rollup.py",
+      "status": "new",
+      "sha256": "944e93f417d704aeefcf37d4042d770cc5315fe34dcbda1211cca80876867d86"
+    },
+    {
+      "path": "src/iris_memory_core/application/ports/statistics.py",
+      "status": "new",
+      "sha256": "5ea704c97536733d45ed229883e27091abdd1bfba746919870234d727778045e"
+    },
+    {
+      "path": "src/iris_memory_core/domain/statistics.py",
+      "status": "new",
+      "sha256": "5dcc444e3f30fa50eaa1d580128b92022ff61aa58e786795239d98b74d8e70ea"
+    },
+    {
+      "path": "src/iris_memory_core/storage/statistics.py",
+      "status": "new",
+      "sha256": "96cf8c96ac13f9fe01204426e588ac1bf37dddbfd2bae238aebd0a2db9529515"
+    },
+    {
+      "path": "tests/integration/console/test_statistics_http.py",
+      "status": "new",
+      "sha256": "d0e90cfe7cab97d46b65593bd58c15263f2d0f3b21e517a3e71ddc28a5ee4876"
+    },
+    {
+      "path": "tests/integration/console/test_statistics_operations.py",
+      "status": "new",
+      "sha256": "5694212857c51cd442c3370eeba36ea6de3e8003b080885e230c77fc2748cffa"
+    },
+    {
+      "path": "tests/integration/console/test_statistics_projection.py",
+      "status": "new",
+      "sha256": "56a3136656e864de3495bd84676c789f204e97272622a4d6657ca50dab617741"
+    },
+    {
+      "path": "tests/integration/migrations/test_statistics_migration.py",
+      "status": "new",
+      "sha256": "a68d1b451712b4ab4adb88ac3ea0a8b40eb9b394bea856513ba5ed6e0c91629f"
+    },
+    {
+      "path": "tests/integration/recall/test_statistics_observations.py",
+      "status": "new",
+      "sha256": "651d4808770d72aa210d761a1916ac3f63b8bdb5f80bab4b0c2de8c21fe138e7"
+    },
+    {
+      "path": "web/console/playwright.statistics.config.ts",
+      "status": "new",
+      "sha256": "4126c218ab6ffc6a229b3cbcd4f32975474864ae4820c4a225bca6201efafab5"
+    },
+    {
+      "path": "web/console/src/pages/Statistics.tsx",
+      "status": "new",
+      "sha256": "61420755e0adf4506dc45790bd5db03b77ae9e0df137ba521f8998b485da8e59"
+    },
+    {
+      "path": "web/console/tests/backend/serve_statistics_fixture.py",
+      "status": "new",
+      "sha256": "36b33d64637f0dd1100de4387f753ace4062c68fb00236f11b6baa9078771968"
+    },
+    {
+      "path": "web/console/tests/statistics/statistics.spec.ts",
+      "status": "new",
+      "sha256": "005d3f4f858b56b14eb067e8cd896fb97adeaffb15c3d17d6e4eab9878de297b"
+    }
+  ],
+  "warnings": [
+    "Merge shared files by behavior; do not copy source contract wholesale.",
+    "Root owns final Schema24, package/contract versions, regeneration, public snapshot, complete make ci and queue."
+  ]
+}

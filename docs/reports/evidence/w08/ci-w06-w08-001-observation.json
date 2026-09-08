@@ -1,0 +1,13 @@
+{
+  "status": "observed_failed",
+  "supervisor_receipt": "missing",
+  "evidence": "ci-w06-w08-001.tar.xz/output.log: make test error; 6 failed,15207 passed,85.85% coverage",
+  "phase": "functional tests",
+  "not_run": [
+    "SDK",
+    "Console browser",
+    "package-check"
+  ],
+  "warning": "Do not treat this observation as an original supervisor result.json or successful CI.",
+  "candidate": "298325578e96b6e70e686ad9cbc6265d54b29b8a"
+}

@@ -1,6 +1,6 @@
 # 后续构建指导：Core 集成闭环、Console 补齐与稳定发布
 
-> 状态：In progress；2026-09-08 最新授权按依赖并行推进至 W20，W01–W04 已完成，当前 W05 收尾与 W06/W07/W08 并行。  
+> 状态：In progress；2026-09-08 最新授权按依赖并行推进至 W20，W01–W04 已完成，当前 W07/W08 收尾，W09/W10/W12/W13 依赖内并行。  
 > 更新日期：2026-09-07  
 > 起始代码基线：`e2a6bbd7793f7bd4b73a51d32149eb8e3015ed33`；Core 0.13.0 / Schema 20。实际开工时重新读取版本真源与工作区状态。  
 > 依据：[完成情况核查](../reports/phase-completion-audit-2026-09-07.md)、[架构基线](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)、[Console 设计](../design/console-backend.md)、[Phase 14 发布要求](phase-14-hardening-release.md)。
