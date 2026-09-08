@@ -139,6 +139,10 @@ def world(clocked_store: Store, tmp_path: Path) -> dict[str, Any]:
         credentials=credentials,
         backup_root=tmp_path / "backups",
         export_root=tmp_path / "exports",
+        # This transport fixture explicitly enables the tenant's scheduling
+        # surface. Production defaults remain disabled; real Provider/Worker
+        # execution is exercised by test_cognitive_deployment.
+        cognitive_tenants=frozenset({tenant}),
     )
     return {
         "app": app,
