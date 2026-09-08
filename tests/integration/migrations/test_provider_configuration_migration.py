@@ -145,7 +145,10 @@ def test_schema21_backup_upgrade_preserves_forget_backup_and_problem_history(
     with pytest.raises(MigrationNotOnlineSafe):
         runner.migrate(allow_offline=True)
     assert runner.current_version() == 21
-    assert [m.version for m in runner.migrate(allow_offline=True, backup_performed=True)] == [22]
+    assert [m.version for m in runner.migrate(allow_offline=True, backup_performed=True)] == [
+        22,
+        23,
+    ]
     assert_history(store.runtime.database, history)
     with store.read() as tx:
         assert tx.console_operations.get(queued.tenant_id, queued.id) == queued
@@ -159,7 +162,7 @@ def test_schema21_backup_upgrade_preserves_forget_backup_and_problem_history(
     assert [
         m.version
         for m in MigrationRunner(restored_db).migrate(allow_offline=True, backup_performed=True)
-    ] == [22]
+    ] == [22, 23]
     assert_history(restored_db, history)
     with sqlite3.connect(restored_db) as connection:
         connection.row_factory = sqlite3.Row

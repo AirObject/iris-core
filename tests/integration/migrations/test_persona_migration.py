@@ -84,6 +84,7 @@ def test_schema9_upgrade_preserves_bootstrap_bytes_pointer_and_hash(tmp_path: Pa
         20,
         21,
         22,
+        23,
     ]
     connection = sqlite3.connect(database)
     try:

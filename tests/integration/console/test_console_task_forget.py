@@ -117,7 +117,7 @@ def test_terminal_task_cascade_and_restore(
             for m in MigrationRunner(destination / "canonical.sqlite3").migrate(
                 allow_offline=True, backup_performed=True
             )
-        ] == [19, 20, 21, 22]
+        ] == [19, 20, 21, 22, 23]
     restored = Store(
         SQLiteRuntime(
             destination / "canonical.sqlite3", allowed_versions=(sqlite_runtime_version(),)

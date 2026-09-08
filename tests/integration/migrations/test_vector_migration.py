@@ -100,6 +100,7 @@ class TestEmptyAndUpgrade:
             20,
             21,
             22,
+            23,
         ]
         connection = sqlite3.connect(database)
         try:
@@ -116,7 +117,7 @@ class TestEmptyAndUpgrade:
         database = tmp_path / "twice.sqlite3"
         MigrationRunner(database).migrate()
         assert MigrationRunner(database).migrate() == ()
-        assert current_schema_version(sqlite3.connect(database)) == 22
+        assert current_schema_version(sqlite3.connect(database)) == 23
 
     def test_schema7_upgrades_to_8_with_fts_data_intact(self, tmp_path: Path) -> None:
         database = tmp_path / "upgrade.sqlite3"
@@ -143,7 +144,7 @@ class TestEmptyAndUpgrade:
         assert [item.version for item in applied] == [8]
         connection = sqlite3.connect(database)
         try:
-            assert current_schema_version(connection) == 22
+            assert current_schema_version(connection) == 23
             # The pre-existing FTS projection state survives the upgrade.
             assert (
                 connection.execute(
@@ -162,8 +163,8 @@ class TestEmptyAndUpgrade:
             connection.close()
 
     def test_window_is_7_to_8(self) -> None:
-        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (22, 22)
-        verify_schema_compatible(22)
+        assert (SUPPORTED_SCHEMA_MIN, SUPPORTED_SCHEMA_MAX) == (23, 23)
+        verify_schema_compatible(23)
 
     def test_strict_shapes_and_constraints(self, tmp_path: Path) -> None:
         database = tmp_path / "strict.sqlite3"
@@ -254,6 +255,7 @@ class TestEmptyAndUpgrade:
             20,
             21,
             22,
+            23,
         ]
         for version, name, checksum in rows:
             disk = hashlib.sha256((default_migrations_path() / str(name)).read_bytes()).hexdigest()

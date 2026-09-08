@@ -6164,7 +6164,7 @@
     "trigger-view.schema.json": "TriggerView",
     "version-manifest.schema.json": "VersionManifest"
   },
-  "schema_version": 22,
+  "schema_version": 23,
   "schemas": {
     "AdminJob": {
       "$id": "https://schemas.iris-memory-core.local/v1/admin-job.schema.json",

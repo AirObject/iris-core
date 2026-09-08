@@ -140,6 +140,7 @@ def test_schema20_upgrade_requires_backup_and_preserves_every_forget_field(tmp_p
     assert [m.version for m in runner.migrate(allow_offline=True, backup_performed=True)] == [
         21,
         22,
+        23,
     ]
     assert runner.migrate() == ()
     assert_history(store.runtime.database, records)
@@ -176,5 +177,5 @@ def test_schema20_backup_restores_history_then_upgrades_with_verified_backup(
     assert [
         m.version
         for m in MigrationRunner(database).migrate(allow_offline=True, backup_performed=True)
-    ] == [21, 22]
+    ] == [21, 22, 23]
     assert_history(database, records)

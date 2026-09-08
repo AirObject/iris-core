@@ -29,7 +29,7 @@ def legacy_store(tmp_path: Path) -> tuple[Path, str]:
     database = tmp_path / "legacy.sqlite3"
     MigrationRunner(database, migrations).migrate(app_version="0.12.0")
     # A trusted fixture prepares legacy bytes before upgrading; normal runtime
-    # access remains gated to Schema 22 and never uses this bypass.
+    # access remains gated to Schema 23 and never uses this bypass.
     store = Store(
         SQLiteRuntime(database, allowed_versions=local_allowed_versions()),
         verify_schema_window=False,
@@ -128,6 +128,7 @@ def test_existing_database_requires_offline_ack_and_verified_backup(tmp_path: Pa
         20,
         21,
         22,
+        23,
     ]
     with sqlite3.connect(database) as connection:
         assert connection.execute(
@@ -141,7 +142,7 @@ def test_existing_database_requires_offline_ack_and_verified_backup(tmp_path: Pa
 
 def test_only_a_genuinely_empty_database_can_bootstrap(tmp_path: Path) -> None:
     runner = MigrationRunner(tmp_path / "empty.sqlite3")
-    assert len(runner.migrate()) == 22
+    assert len(runner.migrate()) == 23
     database = tmp_path / "foreign.sqlite3"
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE application_data (value TEXT)")
@@ -193,7 +194,7 @@ def test_cli_upgrades_only_after_verifying_a_real_backup(
         )
         == 0
     )
-    assert "schema_version=22 applied=8" in capsys.readouterr().out
+    assert "schema_version=23 applied=9" in capsys.readouterr().out
     check = verify_backup(backup)
     assert check.ok, check.problems
     with sqlite3.connect(backup / "canonical.sqlite3") as connection:

@@ -74,11 +74,11 @@ def check_runtime(
 
 #: Application binary compatibility window for schema versions (§20.7). Outside
 #: this window Ready fails with ``schema_incompatible``.
-#: Core 0.15.0 requires immutable Provider configuration from Schema 22.
+#: Core 0.15.0 requires independent Persona drafts from Schema 23.
 #: Upgrade through Schema 18 still requires its verified offline backup.
 #: This window bounds Ready; MigrationRunner may still walk older steps.
-SUPPORTED_SCHEMA_MIN = 22
-SUPPORTED_SCHEMA_MAX = 22
+SUPPORTED_SCHEMA_MIN = 23
+SUPPORTED_SCHEMA_MAX = 23
 
 
 def verify_schema_compatible(schema_version: int) -> None:
