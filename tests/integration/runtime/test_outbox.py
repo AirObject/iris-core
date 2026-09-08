@@ -685,6 +685,7 @@ def test_enabled_kinds_only_safe_seed() -> None:
                 "console.trusted_backup",
                 "console.embedding_probe",
                 "console.embedding_activate",
+                "console.stats.rollup",
             }
         )
         == ENABLED_JOB_KINDS

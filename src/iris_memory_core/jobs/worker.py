@@ -255,10 +255,12 @@ def phase14_handlers(
     from iris_memory_core.application.console.operations import ConsoleOperations
     from iris_memory_core.application.console.provider_activation_work import ProviderActivations
     from iris_memory_core.application.console.provider_probes import ProviderProbes
+    from iris_memory_core.application.console.statistics_operations import StatisticsOperations
 
     operations = ConsoleOperations(WorkerExecutionContext(uow, clock, ids))
     return {
         "console.memory_forget": operations.batch_work,
+        "console.stats.rollup": StatisticsOperations(operations.context).work,
         "console.trusted_backup": BackupOperations(operations.context, archives).work,
         "console.embedding_probe": ProviderProbes(operations.context, embedding_runtime).work,
         "console.embedding_activate": ProviderActivations(

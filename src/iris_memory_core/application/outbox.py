@@ -423,6 +423,7 @@ class OutboxService:
                     "console.trusted_backup",
                     "console.embedding_probe",
                     "console.embedding_activate",
+                    "console.stats.rollup",
                 }:
                     from iris_memory_core.application.console.operations import ConsoleOperations
 

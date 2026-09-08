@@ -409,6 +409,12 @@ _KINDS: dict[str, JobKindSpec] = dict(
             notes="Verified internal backup Operation.",
         ),
         _spec(
+            "console.stats.rollup",
+            priority=6,
+            enabled=True,
+            notes="W07 bounded authorized statistics projection.",
+        ),
+        _spec(
             "console.memory_forget",
             priority=1,
             lane=JobLane.SAFETY,

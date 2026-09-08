@@ -41,7 +41,9 @@ TERMINAL_STATUSES = frozenset(
     }
 )
 OPERATION_STATUSES = TERMINAL_STATUSES | {"queued", "running", "paused", "blocked"}
-OPERATION_KINDS = frozenset({"memory_forget", "trusted_backup", "embedding_provider"})
+OPERATION_KINDS = frozenset(
+    {"memory_forget", "trusted_backup", "embedding_provider", "statistics_backfill"}
+)
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,12 @@ class ConsoleOperations:
     ) -> OperatorPrincipal:
         if kind == "memory_forget":
             return self.forget._principal(tx, principal, recent=recent)
+        if kind == "statistics_backfill":
+            from iris_memory_core.application.console.statistics import authorize_statistics
+
+            return authorize_statistics(
+                tx, principal, self.context.clock.now_us(), system=True, recent=recent
+            )
         if kind not in {"trusted_backup", "embedding_provider"}:
             raise InvalidRequestError("unknown operation kind")
         fresh = authorize(
@@ -191,7 +199,7 @@ class ConsoleOperations:
             OperatorPrincipal(key, session),
             operation.kind,
             recent=operation.kind in {"trusted_backup", "embedding_provider"}
-            or operation.mode == "erase",
+            or (operation.forget is not None and operation.mode == "erase"),
         )
 
     def batch_work(self, job: OutboxJob) -> JobCommit:
@@ -401,6 +409,8 @@ class ConsoleOperations:
             expected_revision=operation.revision,
         )
         ConsoleOperations.release_provider_intent(tx, operation, now_us=now_us)
+        if operation.statistics is not None:
+            tx.statistics.cancel(operation.tenant_id, operation.statistics.build_id)
         tx.console_operations.add_problem(
             OperationProblem(operation.id, -1, "execution_failed", now_us)
         )
@@ -511,6 +521,8 @@ class ConsoleOperations:
                 )
                 tx.console_operations.advance(updated, expected_revision=operation.revision)
                 self.release_provider_intent(tx, operation, now_us=now)
+                if operation.statistics is not None:
+                    tx.statistics.cancel(operation.tenant_id, operation.statistics.build_id)
                 tx.audit(
                     tenant_id=fresh.key.tenant_id,
                     actor="console:" + fresh.key.id,
@@ -547,6 +559,7 @@ class ConsoleOperations:
                 "memory_forget": "canonical_forget",
                 "trusted_backup": "backup_verify",
                 "embedding_provider": "provider_configuration",
+                "statistics_backfill": "statistics_rollup",
             }[operation.kind],
             "progress": {
                 "processed": str(operation.processed),

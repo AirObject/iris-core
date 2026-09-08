@@ -96,12 +96,19 @@ def reset_operations_for_restore(database: Path) -> None:
             ).fetchone()
             is not None
         )
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='console_stat_rollups'"
+        ).fetchone():
+            connection.execute("DELETE FROM console_stat_rollups")
+            connection.execute("DELETE FROM console_stat_leases")
+            connection.execute("UPDATE console_stat_builds SET state='cancelled',completed_us=NULL")
         after = ""
         while True:
             # Load at most one private snapshot; no unbounded payload materialization.
             row = connection.execute(
                 "SELECT * FROM console_operations WHERE id>? "
-                "AND (status IN ('queued','running','paused','blocked') OR kind='trusted_backup') "
+                "AND (status IN ('queued','running','paused','blocked') OR kind IN "
+                "('trusted_backup','statistics_backfill')) "
                 "ORDER BY id LIMIT 1",
                 (after,),
             ).fetchone()
@@ -110,6 +117,42 @@ def reset_operations_for_restore(database: Path) -> None:
             operation = repository.get(row["tenant_id"], row["id"])
             assert operation is not None
             after = operation.id
+            if operation.kind == "statistics_backfill":
+                if operation.blocked_reason == "restore_requires_review":
+                    continue
+                now = max(clock.now_us(), operation.updated_us)
+                connection.execute(
+                    "DELETE FROM console_stat_rollups WHERE tenant_id=?", (operation.tenant_id,)
+                )
+                connection.execute(
+                    "DELETE FROM console_stat_leases WHERE tenant_id=?", (operation.tenant_id,)
+                )
+                connection.execute(
+                    "UPDATE console_stat_builds SET state='cancelled',completed_us=NULL "
+                    "WHERE tenant_id=?",
+                    (operation.tenant_id,),
+                )
+                connection.execute(
+                    "UPDATE console_operations SET "
+                    "status='blocked',revision=revision+1,processed=0,"
+                    "current_job_id=NULL,blocked_reason='restore_requires_review',"
+                    "finished_us=NULL,updated_us=? WHERE id=?",
+                    (now, operation.id),
+                )
+                repository.add_problem(
+                    OperationProblem(operation.id, -1, "restore_requires_review", now)
+                )
+                ledger.audit(
+                    tenant_id=operation.tenant_id,
+                    actor="restore:console_operations",
+                    action="console.operation.restored",
+                    resource_type="console_operation",
+                    resource_id=operation.id,
+                    revision=operation.revision + 1,
+                    reason_code="restore_requires_review",
+                    details={"kind": "statistics_backfill"},
+                )
+                continue
             if operation.kind == "embedding_provider":
                 if operation.blocked_reason == "restore_requires_review":
                     continue
