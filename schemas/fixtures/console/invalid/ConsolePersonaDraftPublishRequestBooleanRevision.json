@@ -1,0 +1,6 @@
+{
+  "base_revision": 1,
+  "expected_policy_revision": 1,
+  "expected_revision": true,
+  "reason_code": "operator_request"
+}

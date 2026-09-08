@@ -1,0 +1,12 @@
+{
+  "data": {
+    "actions": [],
+    "agent_id": "018bcfe5-6800-7000-8000-000000000001",
+    "available_actions": [],
+    "base_revision": null,
+    "current": null,
+    "draft": null,
+    "expected_policy_revision": null,
+    "expected_revision": 0
+  }
+}

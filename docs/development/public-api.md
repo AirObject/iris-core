@@ -1,6 +1,6 @@
 # 公开客户端方法与接口变更门禁
 
-当前清单适用于 Core 0.15.0、Schema 22、业务契约 1.11.0、Console 契约 1.2.0、Python SDK 0.11.1、TS SDK 0.11.2。稳定级别为开发候选；尚未构成 Phase 14 的逐方法生产验收。Core 和 SDK 分别分发。
+当前清单适用于 Core 0.15.0、Schema 23、业务契约 1.11.0、Console 契约 1.2.0、Python SDK 0.11.1、TS SDK 0.11.2。稳定级别为开发候选；尚未构成 Phase 14 的逐方法生产验收。Core 和 SDK 分别分发。
 
 ## 导入和错误
 
@@ -115,3 +115,5 @@ Python 根导出 `AsyncIrisMemoryClient`、`CapabilitiesEnvelope`、`ErrorEnvelo
 快照检查不是 Python 沙箱，也不替代权限测试、响应泄漏测试或 OS 文件隔离。可信 CLI 允许操作者指定数据库/备份路径，不能把它作为普通 SDK 用户的业务接口；参见 [可信初始化](../operations/core-installation.md)。
 
 W05 已逐项审查独立候选：仅增加 14 个已实现的 Console Provider 操作、有限 Operation 类型/问题码、离线秘密轮换命令和 serve/worker 的五个可选部署参数。既有 CLI 参数/默认值、两套 SDK 方法及映射、业务 HTTP 均逐值不变，因此 SDK 显式映射无需修改。证据与候选摘要见[审查记录](../reports/evidence/w05/public-api-review.json)；公开接口清单更新不代表 W05 的真实外部 Provider 门禁已完成。
+
+W08 新增七项草稿 Console 操作；旧方法、业务 HTTP、SDK 与 CLI 保持。见[独立接口审查](../reports/evidence/w08/public-api-review.json)，整合验收见 [W08 报告](../reports/w08-persona-draft.md)。

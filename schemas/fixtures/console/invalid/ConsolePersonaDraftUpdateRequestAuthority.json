@@ -1,0 +1,17 @@
+{
+  "admin": true,
+  "base_revision": 1,
+  "expected_policy_revision": 1,
+  "expected_revision": 1,
+  "fields": {
+    "core": {
+      "name": "Iris"
+    },
+    "narrative": {},
+    "traits": {
+      "style": "careful"
+    }
+  },
+  "reason_code": "operator_request",
+  "source_refs": []
+}

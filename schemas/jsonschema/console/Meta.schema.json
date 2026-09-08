@@ -20,7 +20,7 @@
       "additionalProperties": true,
       "properties": {
         "contract_version": {
-          "const": "1.2.0"
+          "const": "1.3.0"
         },
         "display_timezone": {
           "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
@@ -2965,6 +2965,285 @@
       "required": [
         "data",
         "meta"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaDraftCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_policy_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "const": 0,
+          "type": "integer"
+        },
+        "fields": {
+          "additionalProperties": false,
+          "properties": {
+            "core": {
+              "additionalProperties": false,
+              "properties": {
+                "identity": {},
+                "language": {},
+                "name": {},
+                "name_placeholder": {},
+                "relationship_constraints": {},
+                "safety_boundaries": {},
+                "values": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "narrative": {
+              "additionalProperties": false,
+              "properties": {
+                "experiences": {},
+                "goals": {},
+                "relationships": {},
+                "summary": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "traits": {
+              "additionalProperties": false,
+              "properties": {
+                "habits": {},
+                "interests": {},
+                "style": {},
+                "tendencies": {},
+                "weights": {}
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "core",
+            "traits",
+            "narrative"
+          ],
+          "type": "object"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "resource_type": {
+                "enum": [
+                  "claim",
+                  "episode",
+                  "relation",
+                  "task",
+                  "persona_state"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "base_revision",
+        "expected_policy_revision",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaDraftDiscardRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaDraftPublishRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_policy_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "base_revision",
+        "expected_policy_revision"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaDraftUpdateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_policy_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "additionalProperties": false,
+          "properties": {
+            "core": {
+              "additionalProperties": false,
+              "properties": {
+                "identity": {},
+                "language": {},
+                "name": {},
+                "name_placeholder": {},
+                "relationship_constraints": {},
+                "safety_boundaries": {},
+                "values": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "narrative": {
+              "additionalProperties": false,
+              "properties": {
+                "experiences": {},
+                "goals": {},
+                "relationships": {},
+                "summary": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "traits": {
+              "additionalProperties": false,
+              "properties": {
+                "habits": {},
+                "interests": {},
+                "style": {},
+                "tendencies": {},
+                "weights": {}
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "core",
+            "traits",
+            "narrative"
+          ],
+          "type": "object"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "resource_type": {
+                "enum": [
+                  "claim",
+                  "episode",
+                  "relation",
+                  "task",
+                  "persona_state"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "base_revision",
+        "expected_policy_revision",
+        "fields"
       ],
       "type": "object"
     },
@@ -6156,7 +6435,7 @@
           "type": "string"
         },
         "contract_version": {
-          "const": "1.2.0"
+          "const": "1.3.0"
         },
         "descriptor": {
           "$ref": "#/$defs/ResourceTypeDescriptor"
@@ -6383,6 +6662,323 @@
       "properties": {
         "data": {
           "$ref": "#/$defs/PersonaCommandsView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaDraftCommandReceipt": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "published_revision_id": {
+                "type": "null"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "status": {
+                "const": "published"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "published_revision_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "canonical_status": {
+          "const": "committed",
+          "type": "string"
+        },
+        "published_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "const": "persona_draft",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "published",
+            "discarded"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_id",
+        "agent_id",
+        "revision",
+        "status",
+        "published_revision_id",
+        "resource_type",
+        "canonical_status"
+      ],
+      "type": "object"
+    },
+    "PersonaDraftCommandReceiptEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaDraftCommandReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaDraftContext": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "items": {
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "else": {
+                  "properties": {
+                    "high_risk": {
+                      "const": false
+                    }
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "id": {
+                      "enum": [
+                        "publish",
+                        "discard"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "high_risk": {
+                      "const": true
+                    }
+                  }
+                }
+              },
+              {
+                "else": {
+                  "properties": {
+                    "method": {
+                      "const": "POST"
+                    }
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "id": {
+                      "const": "update"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "method": {
+                      "const": "PUT"
+                    }
+                  }
+                }
+              }
+            ],
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "fields": {
+                "items": {
+                  "$ref": "#/$defs/CommandFieldSpec"
+                },
+                "maxItems": 4,
+                "type": "array"
+              },
+              "high_risk": {
+                "type": "boolean"
+              },
+              "id": {
+                "enum": [
+                  "create",
+                  "update",
+                  "publish",
+                  "discard"
+                ],
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "method": {
+                "enum": [
+                  "POST",
+                  "PUT"
+                ],
+                "type": "string"
+              },
+              "permission": {
+                "const": "persona.publish",
+                "type": "string"
+              },
+              "reason_codes": {
+                "items": {
+                  "const": "operator_request",
+                  "type": "string"
+                },
+                "maxItems": 1,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "description",
+              "method",
+              "permission",
+              "high_risk",
+              "reason_codes",
+              "fields"
+            ],
+            "type": "object"
+          },
+          "maxItems": 3,
+          "type": "array"
+        },
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "available_actions": {
+          "items": {
+            "enum": [
+              "create",
+              "update",
+              "publish",
+              "discard"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "base_revision": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "draft": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_policy_revision": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent_id",
+        "draft",
+        "current",
+        "expected_revision",
+        "base_revision",
+        "expected_policy_revision",
+        "available_actions",
+        "actions"
+      ],
+      "type": "object"
+    },
+    "PersonaDraftContextEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaDraftContext"
         },
         "meta": {
           "$ref": "#/$defs/Meta"
@@ -8643,7 +9239,7 @@
       "type": "object"
     }
   },
-  "$id": "https://schemas.iris-memory-core.local/console/1.2.0/Meta.schema.json",
+  "$id": "https://schemas.iris-memory-core.local/console/1.3.0/Meta.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": true,
   "properties": {
@@ -8653,7 +9249,7 @@
       "type": "string"
     },
     "contract_version": {
-      "const": "1.2.0"
+      "const": "1.3.0"
     },
     "descriptor": {
       "$ref": "#/$defs/ResourceTypeDescriptor"

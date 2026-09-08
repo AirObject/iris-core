@@ -1780,6 +1780,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/v1/personas/{agent_id}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consolePersonaDrafts"];
+        put?: never;
+        post: operations["consoleCreatePersonaDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/personas/{agent_id}/drafts/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consolePersonaDraftCommands"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/personas/{agent_id}/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consolePersonaDraft"];
+        put: operations["consoleUpdatePersonaDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/personas/{agent_id}/drafts/{draft_id}:discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consoleDiscardPersonaDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/personas/{agent_id}/drafts/{draft_id}:publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consolePublishPersonaDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/console/v1/personas/{agent_id}/history": {
         parameters: {
             query?: never;
@@ -2240,7 +2320,7 @@ export interface components {
         };
         BootstrapView: {
             /** @constant */
-            contract_version: "1.2.0";
+            contract_version: "1.3.0";
             display_timezone: string;
             import_in_progress: boolean;
             maintenance: boolean;
@@ -2779,6 +2859,93 @@ export interface components {
         ConsoleOperationProblemPage: {
             data: components["schemas"]["ConsoleOperationProblem"][];
             meta: components["schemas"]["Meta"];
+        };
+        ConsolePersonaDraftCreateRequest: {
+            base_revision: number;
+            expected_policy_revision: number;
+            /** @constant */
+            expected_revision: 0;
+            fields: {
+                core: {
+                    identity?: unknown;
+                    language?: unknown;
+                    name?: unknown;
+                    name_placeholder?: unknown;
+                    relationship_constraints?: unknown;
+                    safety_boundaries?: unknown;
+                    values?: unknown;
+                };
+                narrative: {
+                    experiences?: unknown;
+                    goals?: unknown;
+                    relationships?: unknown;
+                    summary?: unknown;
+                };
+                traits: {
+                    habits?: unknown;
+                    interests?: unknown;
+                    style?: unknown;
+                    tendencies?: unknown;
+                    weights?: unknown;
+                };
+            };
+            /** @constant */
+            reason_code: "operator_request";
+            source_refs?: {
+                resource_id: string;
+                /** @enum {string} */
+                resource_type: "claim" | "episode" | "relation" | "task" | "persona_state";
+                revision?: number;
+            }[];
+        };
+        ConsolePersonaDraftDiscardRequest: {
+            expected_revision: number;
+            /** @constant */
+            reason_code: "operator_request";
+        };
+        ConsolePersonaDraftPublishRequest: {
+            base_revision: number;
+            expected_policy_revision: number;
+            expected_revision: number;
+            /** @constant */
+            reason_code: "operator_request";
+        };
+        ConsolePersonaDraftUpdateRequest: {
+            base_revision: number;
+            expected_policy_revision: number;
+            expected_revision: number;
+            fields: {
+                core: {
+                    identity?: unknown;
+                    language?: unknown;
+                    name?: unknown;
+                    name_placeholder?: unknown;
+                    relationship_constraints?: unknown;
+                    safety_boundaries?: unknown;
+                    values?: unknown;
+                };
+                narrative: {
+                    experiences?: unknown;
+                    goals?: unknown;
+                    relationships?: unknown;
+                    summary?: unknown;
+                };
+                traits: {
+                    habits?: unknown;
+                    interests?: unknown;
+                    style?: unknown;
+                    tendencies?: unknown;
+                    weights?: unknown;
+                };
+            };
+            /** @constant */
+            reason_code: "operator_request";
+            source_refs?: {
+                resource_id: string;
+                /** @enum {string} */
+                resource_type: "claim" | "episode" | "relation" | "task" | "persona_state";
+                revision?: number;
+            }[];
         };
         ConsolePersonaPolicyReplaceRequest: {
             config: components["schemas"]["PersonaPolicyConfiguration"];
@@ -3437,7 +3604,7 @@ export interface components {
             /** Format: date-time */
             as_of: string;
             /** @constant */
-            contract_version: "1.2.0";
+            contract_version: "1.3.0";
             descriptor?: components["schemas"]["ResourceTypeDescriptor"];
             page?: components["schemas"]["Page"];
             /** Format: uuid */
@@ -3503,6 +3670,48 @@ export interface components {
             meta: components["schemas"]["Meta"];
         } & {
             [key: string]: unknown;
+        };
+        PersonaDraftCommandReceipt: {
+            agent_id: string;
+            /** @constant */
+            canonical_status: "committed";
+            published_revision_id: string | null;
+            resource_id: string;
+            /** @constant */
+            resource_type: "persona_draft";
+            revision: number;
+            /** @enum {string} */
+            status: "draft" | "published" | "discarded";
+        } & unknown;
+        PersonaDraftCommandReceiptEnvelope: {
+            data: components["schemas"]["PersonaDraftCommandReceipt"];
+            meta: components["schemas"]["Meta"];
+        };
+        PersonaDraftContext: {
+            actions: ({
+                description: string;
+                fields: components["schemas"]["CommandFieldSpec"][];
+                high_risk: boolean;
+                /** @enum {string} */
+                id: "create" | "update" | "publish" | "discard";
+                label: string;
+                /** @enum {string} */
+                method: "POST" | "PUT";
+                /** @constant */
+                permission: "persona.publish";
+                reason_codes: "operator_request"[];
+            } & (unknown & unknown))[];
+            agent_id: string;
+            available_actions: ("create" | "update" | "publish" | "discard")[];
+            base_revision: number | null;
+            current: components["schemas"]["ResourceView"] | null;
+            draft: components["schemas"]["ResourceView"] | null;
+            expected_policy_revision: number | null;
+            expected_revision: number;
+        };
+        PersonaDraftContextEnvelope: {
+            data: components["schemas"]["PersonaDraftContext"];
+            meta: components["schemas"]["Meta"];
         };
         PersonaPolicyCommandReceipt: {
             agent_id: string;
@@ -16018,6 +16227,658 @@ export interface operations {
             };
             /** @description Console error */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consolePersonaDrafts: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourcePage"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleCreatePersonaDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsolePersonaDraftCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaDraftCommandReceiptEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consolePersonaDraftCommands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaDraftContextEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consolePersonaDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaDraftContextEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleUpdatePersonaDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                agent_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsolePersonaDraftUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaDraftCommandReceiptEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleDiscardPersonaDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                agent_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsolePersonaDraftDiscardRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaDraftCommandReceiptEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consolePublishPersonaDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                agent_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsolePersonaDraftPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaDraftCommandReceiptEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

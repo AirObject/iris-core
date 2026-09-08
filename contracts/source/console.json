@@ -578,7 +578,7 @@
       ]
     }
   },
-  "contract_version": "1.2.0",
+  "contract_version": "1.3.0",
   "fixtures": {
     "forward/ColumnSpec": {
       "schema": "ColumnSpec",
@@ -662,7 +662,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -821,7 +821,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -840,7 +840,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -877,7 +877,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -896,7 +896,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -917,7 +917,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -935,7 +935,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -953,7 +953,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -975,7 +975,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -1028,7 +1028,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -1100,7 +1100,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -1169,7 +1169,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -1274,7 +1274,7 @@
       "schema": "BootstrapEnvelope",
       "value": {
         "data": {
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "display_timezone": "UTC",
           "future_optional": true,
           "import_in_progress": false,
@@ -1292,7 +1292,7 @@
         },
         "meta": {
           "as_of": "2026-09-05T08:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "future_optional": "ok",
           "request_id": "01991bab-a000-7000-8000-000000000001"
         }
@@ -3117,7 +3117,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         },
         "unexpected_private_field": "forbidden"
@@ -3155,7 +3155,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         },
         "unexpected_private_field": "forbidden"
@@ -3176,7 +3176,7 @@
         "data": [],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         },
         "unexpected_private_field": "forbidden"
@@ -4272,7 +4272,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -4317,7 +4317,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -4378,7 +4378,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -4477,7 +4477,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -4667,7 +4667,7 @@
       "schema": "BootstrapEnvelope",
       "value": {
         "data": {
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "display_timezone": "UTC",
           "import_in_progress": false,
           "maintenance": false,
@@ -4684,7 +4684,7 @@
         },
         "meta": {
           "as_of": "2026-09-05T08:00:00Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "01991bab-a000-7000-8000-000000000001"
         }
       }
@@ -5207,7 +5207,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -5244,7 +5244,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -5343,7 +5343,7 @@
         "data": [],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -5864,7 +5864,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -5919,7 +5919,7 @@
         ],
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -5967,7 +5967,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6276,7 +6276,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6305,7 +6305,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6390,7 +6390,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6419,7 +6419,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6452,7 +6452,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6479,7 +6479,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6506,7 +6506,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6563,7 +6563,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -6584,7 +6584,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6647,7 +6647,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -6722,7 +6722,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6819,7 +6819,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6924,7 +6924,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7027,7 +7027,7 @@
         ],
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -7105,7 +7105,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7194,7 +7194,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7233,7 +7233,7 @@
         ],
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -7335,7 +7335,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7374,7 +7374,7 @@
       "schema": "BootstrapEnvelope",
       "value": {
         "data": {
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "display_timezone": "UTC",
           "import_in_progress": false,
           "maintenance": false,
@@ -7391,7 +7391,7 @@
         },
         "meta": {
           "as_of": "2026-09-05T08:00:00.000000Z",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "request_id": "01991bab-a000-7000-8000-000000000001"
         }
       }
@@ -8083,7 +8083,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8130,7 +8130,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8149,7 +8149,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8167,7 +8167,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8220,7 +8220,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8268,7 +8268,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8293,7 +8293,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8317,7 +8317,7 @@
         },
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8329,7 +8329,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8340,7 +8340,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8352,7 +8352,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8363,7 +8363,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8375,7 +8375,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         }
       }
@@ -8386,7 +8386,7 @@
         "data": [],
         "meta": {
           "request_id": "01a07e00-0000-7000-8000-000000000001",
-          "contract_version": "1.2.0",
+          "contract_version": "1.3.0",
           "as_of": "2026-09-08T00:00:00.000000Z"
         },
         "unexpected_private_field": "not allowed"
@@ -8549,6 +8549,350 @@
         "expected_revision": 1,
         "reason_code": "operator_request",
         "unexpected_private_field": "not allowed"
+      }
+    },
+    "invalid/ConsolePersonaDraftCreateRequestAuthority": {
+      "schema": "ConsolePersonaDraftCreateRequest",
+      "value": {
+        "admin": true,
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": 0,
+        "fields": {
+          "core": {
+            "name": "Iris"
+          },
+          "narrative": {},
+          "traits": {
+            "style": "careful"
+          }
+        },
+        "reason_code": "operator_request",
+        "source_refs": []
+      }
+    },
+    "invalid/ConsolePersonaDraftCreateRequestBooleanRevision": {
+      "schema": "ConsolePersonaDraftCreateRequest",
+      "value": {
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": true,
+        "fields": {
+          "core": {
+            "name": "Iris"
+          },
+          "narrative": {},
+          "traits": {
+            "style": "careful"
+          }
+        },
+        "reason_code": "operator_request",
+        "source_refs": []
+      }
+    },
+    "invalid/ConsolePersonaDraftCreateRequestMissingReason": {
+      "schema": "ConsolePersonaDraftCreateRequest",
+      "value": {
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": 0,
+        "fields": {
+          "core": {
+            "name": "Iris"
+          },
+          "narrative": {},
+          "traits": {
+            "style": "careful"
+          }
+        },
+        "source_refs": []
+      }
+    },
+    "invalid/ConsolePersonaDraftDiscardRequestAuthority": {
+      "schema": "ConsolePersonaDraftDiscardRequest",
+      "value": {
+        "admin": true,
+        "expected_revision": 1,
+        "reason_code": "operator_request"
+      }
+    },
+    "invalid/ConsolePersonaDraftDiscardRequestBooleanRevision": {
+      "schema": "ConsolePersonaDraftDiscardRequest",
+      "value": {
+        "expected_revision": true,
+        "reason_code": "operator_request"
+      }
+    },
+    "invalid/ConsolePersonaDraftDiscardRequestMissingReason": {
+      "schema": "ConsolePersonaDraftDiscardRequest",
+      "value": {
+        "expected_revision": 1
+      }
+    },
+    "invalid/ConsolePersonaDraftPublishRequestAuthority": {
+      "schema": "ConsolePersonaDraftPublishRequest",
+      "value": {
+        "admin": true,
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": 1,
+        "reason_code": "operator_request"
+      }
+    },
+    "invalid/ConsolePersonaDraftPublishRequestBooleanRevision": {
+      "schema": "ConsolePersonaDraftPublishRequest",
+      "value": {
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": true,
+        "reason_code": "operator_request"
+      }
+    },
+    "invalid/ConsolePersonaDraftPublishRequestMissingReason": {
+      "schema": "ConsolePersonaDraftPublishRequest",
+      "value": {
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": 1
+      }
+    },
+    "invalid/ConsolePersonaDraftUpdateRequestAuthority": {
+      "schema": "ConsolePersonaDraftUpdateRequest",
+      "value": {
+        "admin": true,
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": 1,
+        "fields": {
+          "core": {
+            "name": "Iris"
+          },
+          "narrative": {},
+          "traits": {
+            "style": "careful"
+          }
+        },
+        "reason_code": "operator_request",
+        "source_refs": []
+      }
+    },
+    "invalid/ConsolePersonaDraftUpdateRequestBooleanRevision": {
+      "schema": "ConsolePersonaDraftUpdateRequest",
+      "value": {
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": true,
+        "fields": {
+          "core": {
+            "name": "Iris"
+          },
+          "narrative": {},
+          "traits": {
+            "style": "careful"
+          }
+        },
+        "reason_code": "operator_request",
+        "source_refs": []
+      }
+    },
+    "invalid/ConsolePersonaDraftUpdateRequestMissingReason": {
+      "schema": "ConsolePersonaDraftUpdateRequest",
+      "value": {
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": 1,
+        "fields": {
+          "core": {
+            "name": "Iris"
+          },
+          "narrative": {},
+          "traits": {
+            "style": "careful"
+          }
+        },
+        "source_refs": []
+      }
+    },
+    "invalid/PersonaDraftCommandReceiptEnvelopeMissingMeta": {
+      "schema": "PersonaDraftCommandReceiptEnvelope",
+      "value": {
+        "data": {
+          "agent_id": "018bcfe5-6800-7000-8000-000000000001",
+          "canonical_status": "committed",
+          "published_revision_id": null,
+          "resource_id": "018bcfe5-6800-7000-8000-000000000001",
+          "resource_type": "persona_draft",
+          "revision": 1,
+          "status": "draft"
+        }
+      }
+    },
+    "invalid/PersonaDraftCommandReceiptMissingAgent": {
+      "schema": "PersonaDraftCommandReceipt",
+      "value": {
+        "canonical_status": "committed",
+        "published_revision_id": null,
+        "resource_id": "018bcfe5-6800-7000-8000-000000000001",
+        "resource_type": "persona_draft",
+        "revision": 1,
+        "status": "draft"
+      }
+    },
+    "invalid/PersonaDraftContextEnvelopeMissingMeta": {
+      "schema": "PersonaDraftContextEnvelope",
+      "value": {
+        "data": {
+          "actions": [],
+          "agent_id": "018bcfe5-6800-7000-8000-000000000001",
+          "available_actions": [],
+          "base_revision": null,
+          "current": null,
+          "draft": null,
+          "expected_policy_revision": null,
+          "expected_revision": 0
+        }
+      }
+    },
+    "invalid/PersonaDraftContextMissingAgent": {
+      "schema": "PersonaDraftContext",
+      "value": {
+        "actions": [],
+        "available_actions": [],
+        "base_revision": null,
+        "current": null,
+        "draft": null,
+        "expected_policy_revision": null,
+        "expected_revision": 0
+      }
+    },
+    "invalid/PersonaDraftPublishedWithoutRevision": {
+      "schema": "PersonaDraftCommandReceipt",
+      "value": {
+        "agent_id": "018bcfe5-6800-7000-8000-000000000001",
+        "canonical_status": "committed",
+        "published_revision_id": null,
+        "resource_id": "018bcfe5-6800-7000-8000-000000000001",
+        "resource_type": "persona_draft",
+        "revision": 1,
+        "status": "published"
+      }
+    },
+    "valid/ConsolePersonaDraftCreateRequest": {
+      "schema": "ConsolePersonaDraftCreateRequest",
+      "value": {
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": 0,
+        "fields": {
+          "core": {
+            "name": "Iris"
+          },
+          "narrative": {},
+          "traits": {
+            "style": "careful"
+          }
+        },
+        "reason_code": "operator_request",
+        "source_refs": []
+      }
+    },
+    "valid/ConsolePersonaDraftDiscardRequest": {
+      "schema": "ConsolePersonaDraftDiscardRequest",
+      "value": {
+        "expected_revision": 1,
+        "reason_code": "operator_request"
+      }
+    },
+    "valid/ConsolePersonaDraftPublishRequest": {
+      "schema": "ConsolePersonaDraftPublishRequest",
+      "value": {
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": 1,
+        "reason_code": "operator_request"
+      }
+    },
+    "valid/ConsolePersonaDraftUpdateRequest": {
+      "schema": "ConsolePersonaDraftUpdateRequest",
+      "value": {
+        "base_revision": 1,
+        "expected_policy_revision": 1,
+        "expected_revision": 1,
+        "fields": {
+          "core": {
+            "name": "Iris"
+          },
+          "narrative": {},
+          "traits": {
+            "style": "careful"
+          }
+        },
+        "reason_code": "operator_request",
+        "source_refs": []
+      }
+    },
+    "valid/PersonaDraftCommandReceipt": {
+      "schema": "PersonaDraftCommandReceipt",
+      "value": {
+        "agent_id": "018bcfe5-6800-7000-8000-000000000001",
+        "canonical_status": "committed",
+        "published_revision_id": null,
+        "resource_id": "018bcfe5-6800-7000-8000-000000000001",
+        "resource_type": "persona_draft",
+        "revision": 1,
+        "status": "draft"
+      }
+    },
+    "valid/PersonaDraftCommandReceiptEnvelope": {
+      "schema": "PersonaDraftCommandReceiptEnvelope",
+      "value": {
+        "data": {
+          "agent_id": "018bcfe5-6800-7000-8000-000000000001",
+          "canonical_status": "committed",
+          "published_revision_id": null,
+          "resource_id": "018bcfe5-6800-7000-8000-000000000001",
+          "resource_type": "persona_draft",
+          "revision": 1,
+          "status": "draft"
+        },
+        "meta": {
+          "as_of": "2023-11-14T22:13:20.000000Z",
+          "contract_version": "1.3.0",
+          "request_id": "018bcfe5-6800-7000-8000-000000000001"
+        }
+      }
+    },
+    "valid/PersonaDraftContext": {
+      "schema": "PersonaDraftContext",
+      "value": {
+        "actions": [],
+        "agent_id": "018bcfe5-6800-7000-8000-000000000001",
+        "available_actions": [],
+        "base_revision": null,
+        "current": null,
+        "draft": null,
+        "expected_policy_revision": null,
+        "expected_revision": 0
+      }
+    },
+    "valid/PersonaDraftContextEnvelope": {
+      "schema": "PersonaDraftContextEnvelope",
+      "value": {
+        "data": {
+          "actions": [],
+          "agent_id": "018bcfe5-6800-7000-8000-000000000001",
+          "available_actions": [],
+          "base_revision": null,
+          "current": null,
+          "draft": null,
+          "expected_policy_revision": null,
+          "expected_revision": 0
+        },
+        "meta": {
+          "as_of": "2023-11-14T22:13:20.000000Z",
+          "contract_version": "1.3.0",
+          "request_id": "018bcfe5-6800-7000-8000-000000000001"
+        }
       }
     }
   },
@@ -19696,6 +20040,374 @@
         503
       ],
       "request": "ConsoleOperationCancelRequest"
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consolePersonaDraftCommands",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/personas/{agent_id}/drafts/commands",
+      "response": "PersonaDraftContextEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consolePersonaDrafts",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "in": "query",
+          "name": "cursor",
+          "schema": {
+            "maxLength": 4096,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/personas/{agent_id}/drafts",
+      "response": "ResourcePage",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        503
+      ],
+      "method": "get",
+      "operation_id": "consolePersonaDraft",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "draft_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/personas/{agent_id}/drafts/{draft_id}",
+      "response": "PersonaDraftContextEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "method": "post",
+      "operation_id": "consoleCreatePersonaDraft",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/personas/{agent_id}/drafts",
+      "request": "ConsolePersonaDraftCreateRequest",
+      "response": "PersonaDraftCommandReceiptEnvelope",
+      "status": 201
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "method": "put",
+      "operation_id": "consoleUpdatePersonaDraft",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "draft_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/personas/{agent_id}/drafts/{draft_id}",
+      "request": "ConsolePersonaDraftUpdateRequest",
+      "response": "PersonaDraftCommandReceiptEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "method": "post",
+      "operation_id": "consolePublishPersonaDraft",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "draft_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/personas/{agent_id}/drafts/{draft_id}:publish",
+      "request": "ConsolePersonaDraftPublishRequest",
+      "response": "PersonaDraftCommandReceiptEnvelope",
+      "status": 200
+    },
+    {
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "method": "post",
+      "operation_id": "consoleDiscardPersonaDraft",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "agent_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "draft_id",
+          "required": true,
+          "schema": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/console/v1/personas/{agent_id}/drafts/{draft_id}:discard",
+      "request": "ConsolePersonaDraftDiscardRequest",
+      "response": "PersonaDraftCommandReceiptEnvelope",
+      "status": 200
     }
   ],
   "permissions": [
@@ -19722,7 +20434,7 @@
   ],
   "runtime_versions": {
     "package_version": "0.15.0",
-    "schema_version": 22
+    "schema_version": 23
   },
   "schemas": {
     "BootstrapEnvelope": {
@@ -19745,7 +20457,7 @@
       "additionalProperties": true,
       "properties": {
         "contract_version": {
-          "const": "1.2.0"
+          "const": "1.3.0"
         },
         "display_timezone": {
           "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
@@ -24829,7 +25541,7 @@
           "type": "string"
         },
         "contract_version": {
-          "const": "1.2.0"
+          "const": "1.3.0"
         },
         "descriptor": {
           "$ref": "#/$defs/ResourceTypeDescriptor"
@@ -28366,6 +29078,602 @@
         "expected_revision",
         "reason_code"
       ]
+    },
+    "ConsolePersonaDraftCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_policy_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "const": 0,
+          "type": "integer"
+        },
+        "fields": {
+          "additionalProperties": false,
+          "properties": {
+            "core": {
+              "additionalProperties": false,
+              "properties": {
+                "identity": {},
+                "language": {},
+                "name": {},
+                "name_placeholder": {},
+                "relationship_constraints": {},
+                "safety_boundaries": {},
+                "values": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "narrative": {
+              "additionalProperties": false,
+              "properties": {
+                "experiences": {},
+                "goals": {},
+                "relationships": {},
+                "summary": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "traits": {
+              "additionalProperties": false,
+              "properties": {
+                "habits": {},
+                "interests": {},
+                "style": {},
+                "tendencies": {},
+                "weights": {}
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "core",
+            "traits",
+            "narrative"
+          ],
+          "type": "object"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "resource_type": {
+                "enum": [
+                  "claim",
+                  "episode",
+                  "relation",
+                  "task",
+                  "persona_state"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "base_revision",
+        "expected_policy_revision",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaDraftDiscardRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaDraftPublishRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_policy_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "base_revision",
+        "expected_policy_revision"
+      ],
+      "type": "object"
+    },
+    "ConsolePersonaDraftUpdateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_policy_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "additionalProperties": false,
+          "properties": {
+            "core": {
+              "additionalProperties": false,
+              "properties": {
+                "identity": {},
+                "language": {},
+                "name": {},
+                "name_placeholder": {},
+                "relationship_constraints": {},
+                "safety_boundaries": {},
+                "values": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "narrative": {
+              "additionalProperties": false,
+              "properties": {
+                "experiences": {},
+                "goals": {},
+                "relationships": {},
+                "summary": {}
+              },
+              "required": [],
+              "type": "object"
+            },
+            "traits": {
+              "additionalProperties": false,
+              "properties": {
+                "habits": {},
+                "interests": {},
+                "style": {},
+                "tendencies": {},
+                "weights": {}
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "core",
+            "traits",
+            "narrative"
+          ],
+          "type": "object"
+        },
+        "reason_code": {
+          "const": "operator_request",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+                "type": "string"
+              },
+              "resource_type": {
+                "enum": [
+                  "claim",
+                  "episode",
+                  "relation",
+                  "task",
+                  "persona_state"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resource_type",
+              "resource_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code",
+        "base_revision",
+        "expected_policy_revision",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "PersonaDraftCommandReceipt": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "published_revision_id": {
+                "type": "null"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "status": {
+                "const": "published"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "published_revision_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "canonical_status": {
+          "const": "committed",
+          "type": "string"
+        },
+        "published_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resource_type": {
+          "const": "persona_draft",
+          "type": "string"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "published",
+            "discarded"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_id",
+        "agent_id",
+        "revision",
+        "status",
+        "published_revision_id",
+        "resource_type",
+        "canonical_status"
+      ],
+      "type": "object"
+    },
+    "PersonaDraftCommandReceiptEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaDraftCommandReceipt"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "PersonaDraftContext": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "items": {
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "else": {
+                  "properties": {
+                    "high_risk": {
+                      "const": false
+                    }
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "id": {
+                      "enum": [
+                        "publish",
+                        "discard"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "high_risk": {
+                      "const": true
+                    }
+                  }
+                }
+              },
+              {
+                "else": {
+                  "properties": {
+                    "method": {
+                      "const": "POST"
+                    }
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "id": {
+                      "const": "update"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "method": {
+                      "const": "PUT"
+                    }
+                  }
+                }
+              }
+            ],
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "fields": {
+                "items": {
+                  "$ref": "#/$defs/CommandFieldSpec"
+                },
+                "maxItems": 4,
+                "type": "array"
+              },
+              "high_risk": {
+                "type": "boolean"
+              },
+              "id": {
+                "enum": [
+                  "create",
+                  "update",
+                  "publish",
+                  "discard"
+                ],
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "method": {
+                "enum": [
+                  "POST",
+                  "PUT"
+                ],
+                "type": "string"
+              },
+              "permission": {
+                "const": "persona.publish",
+                "type": "string"
+              },
+              "reason_codes": {
+                "items": {
+                  "const": "operator_request",
+                  "type": "string"
+                },
+                "maxItems": 1,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "description",
+              "method",
+              "permission",
+              "high_risk",
+              "reason_codes",
+              "fields"
+            ],
+            "type": "object"
+          },
+          "maxItems": 3,
+          "type": "array"
+        },
+        "agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "available_actions": {
+          "items": {
+            "enum": [
+              "create",
+              "update",
+              "publish",
+              "discard"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "base_revision": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "draft": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_policy_revision": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent_id",
+        "draft",
+        "current",
+        "expected_revision",
+        "base_revision",
+        "expected_policy_revision",
+        "available_actions",
+        "actions"
+      ],
+      "type": "object"
+    },
+    "PersonaDraftContextEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/PersonaDraftContext"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
     }
   }
 }

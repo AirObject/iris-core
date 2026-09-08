@@ -1,0 +1,16 @@
+{
+  "data": {
+    "agent_id": "018bcfe5-6800-7000-8000-000000000001",
+    "canonical_status": "committed",
+    "published_revision_id": null,
+    "resource_id": "018bcfe5-6800-7000-8000-000000000001",
+    "resource_type": "persona_draft",
+    "revision": 1,
+    "status": "draft"
+  },
+  "meta": {
+    "as_of": "2023-11-14T22:13:20.000000Z",
+    "contract_version": "1.3.0",
+    "request_id": "018bcfe5-6800-7000-8000-000000000001"
+  }
+}

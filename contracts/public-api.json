@@ -1633,6 +1633,17 @@
               "#/components/schemas/ResourceViewEnvelope"
             ]
           },
+          "consoleCreatePersonaDraft": {
+            "contract_sha256": "6a7ad8fa1a09383b71fd40cab0943e5d161672dde9cee719532f24bdbb8d20db",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/personas/{agent_id}/drafts",
+            "schemas": [
+              "#/components/schemas/ConsolePersonaDraftCreateRequest",
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/PersonaDraftCommandReceiptEnvelope"
+            ]
+          },
           "consoleCreatePersonaProposal": {
             "contract_sha256": "51b2ff7bed52bfbf0eb66c618f44ae4f5c27a790b6065bdf649360c097dcab8b",
             "deprecated": false,
@@ -1719,6 +1730,17 @@
               "#/components/schemas/ConsoleEmbeddingRevisionRequest",
               "#/components/schemas/EmbeddingConfigViewEnvelope",
               "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleDiscardPersonaDraft": {
+            "contract_sha256": "cf540a154446858051b9f972b8e6a324ded3fe5a248b2e864c19514b105861d2",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/personas/{agent_id}/drafts/{draft_id}:discard",
+            "schemas": [
+              "#/components/schemas/ConsolePersonaDraftDiscardRequest",
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/PersonaDraftCommandReceiptEnvelope"
             ]
           },
           "consoleDismissCognitiveEvent": {
@@ -2480,6 +2502,36 @@
               "#/components/schemas/PersonaCommandsViewEnvelope"
             ]
           },
+          "consolePersonaDraft": {
+            "contract_sha256": "f95e444f151cf457256d658e0d03f06f2405beb1cf341b5b9c80356173d6a6db",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/personas/{agent_id}/drafts/{draft_id}",
+            "schemas": [
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/PersonaDraftContextEnvelope"
+            ]
+          },
+          "consolePersonaDraftCommands": {
+            "contract_sha256": "c90421b4d2b76838bd4899e38c39b8260d159a41303350306a4ed6f731c7ea25",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/personas/{agent_id}/drafts/commands",
+            "schemas": [
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/PersonaDraftContextEnvelope"
+            ]
+          },
+          "consolePersonaDrafts": {
+            "contract_sha256": "ed90591b11d9811a1aaa5c8b9ab8c7949dffc93cb2920365465629a4439cb01b",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/personas/{agent_id}/drafts",
+            "schemas": [
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/ResourcePage"
+            ]
+          },
           "consolePersonaHistory": {
             "contract_sha256": "ca1f1b500e70a9fa031008c19325ed82a3a387aec9d2250ebb2b83edb894a228",
             "deprecated": false,
@@ -2559,6 +2611,17 @@
               "#/components/schemas/ConsolePersonaPublishRequest",
               "#/components/schemas/ErrorEnvelope",
               "#/components/schemas/PersonaCommandReceiptEnvelope"
+            ]
+          },
+          "consolePublishPersonaDraft": {
+            "contract_sha256": "530da219b955a9d0d9291bffccbf7565356e7e23e3c5e46c2ec238c43af180fd",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/personas/{agent_id}/drafts/{draft_id}:publish",
+            "schemas": [
+              "#/components/schemas/ConsolePersonaDraftPublishRequest",
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/PersonaDraftCommandReceiptEnvelope"
             ]
           },
           "consoleReauth": {
@@ -3067,6 +3130,17 @@
               "#/components/schemas/ResourceViewEnvelope"
             ]
           },
+          "consoleUpdatePersonaDraft": {
+            "contract_sha256": "868ceafe99c951b9e6799a566494242ca600e45f25cec93ddde0d6e1d3186be5",
+            "deprecated": false,
+            "method": "PUT",
+            "path": "/console/v1/personas/{agent_id}/drafts/{draft_id}",
+            "schemas": [
+              "#/components/schemas/ConsolePersonaDraftUpdateRequest",
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/PersonaDraftCommandReceiptEnvelope"
+            ]
+          },
           "consoleUpdatePersonaState": {
             "contract_sha256": "82e1bbb6f24d46a31eb0c9f096c76bb5d6439d154e5ba829dc6e21aa3df9847b",
             "deprecated": false,
@@ -3137,7 +3211,7 @@
         },
         "schemas": {
           "BootstrapEnvelope": "701d6e5fa305d2d7d99f9520095d3b6eed0d8158c4a12380f5a7785fe15fd1e4",
-          "BootstrapView": "f93c25d59b6f70ee95f2cfd2a1831f907a75be3584ce778bd8ba30279f1c9d52",
+          "BootstrapView": "8258e08bff9b641feff9422c5a9d4de8c7b93d0f3caaa84b295293994eb64699",
           "ColumnSpec": "cf6785af16a92525097819517fec2d80e27caaa90ec39535ec1e8f3bd47d049f",
           "CommandActionSpec": "ca7a2884f6f6ca712ccbf6a8c5be80a583f835ce67562cf39c4f9cfb6a17f769",
           "CommandFieldSpec": "3f2b54077f2f48c73d085915a01d5df08c26127571bccd001df4080531ee91c0",
@@ -3205,6 +3279,10 @@
           "ConsoleOperationPage": "d3ef5a70350f99c102bba607ba76ae925ea10071792f289b8c108b672a45003c",
           "ConsoleOperationProblem": "e3a5e23fd09625417e87ed16d0e3984e48f8574e34757bb2c082c31daf1bd57e",
           "ConsoleOperationProblemPage": "44fa7e649504c800a3fc7e746eafc8bf5e46a4845c1296cc0d1b014d41307875",
+          "ConsolePersonaDraftCreateRequest": "73faac939d8844a52572d7ffe1ca11faf983870c1db66ff49d1a2642d83bf706",
+          "ConsolePersonaDraftDiscardRequest": "cabcf6d1fc53063ac02b9dadb91792c86524f0898682ac1cb1062c96fb779352",
+          "ConsolePersonaDraftPublishRequest": "1f92a468077841cdd303204242012a8b267cc339a160890cbd598ce0b3ed2469",
+          "ConsolePersonaDraftUpdateRequest": "3eaaf26b7bec9cb637bcddb1279c6625cad70459705af6bafc569170a94df4c6",
           "ConsolePersonaPolicyReplaceRequest": "ec4fec30f762520567437dc18086962eb50d494ff9ce15fb33cb91b8893662c4",
           "ConsolePersonaProposalApproveRequest": "bea3db02fe74c4c2f078039d6a8250b1ef0ec77cd4661cd84462dc282b7836ae",
           "ConsolePersonaProposalCreateRequest": "b2901d5e6506881865d65e2e2957760823dc811a8c1942514fbb82f94e7fb13b",
@@ -3274,12 +3352,16 @@
           "KeyViewEnvelope": "93eda58a0e9fb731b8543244d50b6d6e681f5941799ce7fce6c8773507b3dc28",
           "KeyViewPage": "73727c98d452df3e3217786f51cac6f482db6d83d583482925ef1044d3d3f1cc",
           "LoginRequest": "41de08dd51f417dfe4952cb8549929bfd3f3224d6d430928508556a5aa967ffe",
-          "Meta": "a5fde742d6e401415ed9a04f5efd8465b372ad5843294b55f7e6bd7308970382",
+          "Meta": "22166ed2521e230ae6309df8ed335be6625177be540e014726224b71c4681058",
           "Page": "10ba191392226a1ec1145532b5ab68609668dc09ad51ca8e330ec72759bbf0ef",
           "PersonaCommandReceipt": "652cccb1b6a86ed3a648672f9dbf80610d3b2ed8ba98abfa5b47da058f2c03c9",
           "PersonaCommandReceiptEnvelope": "25c320b3d452f4e6c9bc265ff47813ed40d78f71eb3cf6d4a4fc8e7cf91aebaf",
           "PersonaCommandsView": "d8571a08936c1d17f9a7d15cc4f527c73854dca6420f2c10fd2583fae947b9ab",
           "PersonaCommandsViewEnvelope": "22df4ac97afbf8433b43b0fe8e9db595e854654d7d50153c2da6a15f263379df",
+          "PersonaDraftCommandReceipt": "a3371b476fa827b22fa7d0093b4f47acf51aedd71b134328bc6c2d418ca50211",
+          "PersonaDraftCommandReceiptEnvelope": "94d40f97195c272fc89e94a0f92349a27d1cce75073133a1914e3bd1cac3f5a2",
+          "PersonaDraftContext": "6b657e8de91d0142d2e9cdbf540ce8e505ad02aba10d327cf0a284a4cb084014",
+          "PersonaDraftContextEnvelope": "0b80afc0bff24b589589479380a846a2553708baebc6875342bc5d2fb94d099d",
           "PersonaPolicyCommandReceipt": "932f259bc25d81170d5c2384a5471aa3161067cfee0e68cd28aaf8ac6ab9f2f9",
           "PersonaPolicyCommandReceiptEnvelope": "44103ef307384dc3af0b2b56c78c41ef1a7475718a7a4443bf5e55ae75c0cd0f",
           "PersonaPolicyConfiguration": "6a40e78a7b16f5b76a0463a495f299a169713c79eee1b2e54a6c0704091d2c51",
@@ -3331,7 +3413,7 @@
           "TaskChildCommandReceiptEnvelope": "547be83c371aeb31b1e600a9a0aa0b9b6f129de11354f5880450c60ceb70f521",
           "Total": "2b0c3e356933796f4b5432308598beabef9f3c68159302998b616e3f6ea1919b"
         },
-        "version": "1.2.0"
+        "version": "1.3.0"
       },
       "openapi": {
         "operations": {

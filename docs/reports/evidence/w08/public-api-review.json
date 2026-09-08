@@ -1,0 +1,32 @@
+{
+  "review": "W08 additive draft contract integration,2026-09-08",
+  "before_sha256": "3154b34ec4a5a16750dc925dcb06da421c52d4b40ab2ce810930470cfa29cba9",
+  "candidate_sha256": "019f388e0913c1503bbeb924572c33d2adbd9ca263f7f57490817b2372111cd4",
+  "unchanged": [
+    "All existing Console operations and schemas apart from declared Console version constants",
+    "Business HTTP and SDK surface",
+    "CLI arguments and defaults"
+  ],
+  "added_operations": [
+    "consoleCreatePersonaDraft",
+    "consoleDiscardPersonaDraft",
+    "consolePersonaDraft",
+    "consolePersonaDraftCommands",
+    "consolePersonaDrafts",
+    "consolePublishPersonaDraft",
+    "consoleUpdatePersonaDraft"
+  ],
+  "added_schemas": [
+    "ConsolePersonaDraftCreateRequest",
+    "ConsolePersonaDraftDiscardRequest",
+    "ConsolePersonaDraftPublishRequest",
+    "ConsolePersonaDraftUpdateRequest",
+    "PersonaDraftCommandReceipt",
+    "PersonaDraftCommandReceiptEnvelope",
+    "PersonaDraftContext",
+    "PersonaDraftContextEnvelope"
+  ],
+  "version": "Console1.2\u21921.3; Schema22\u219223; Core0.15 and SDK versions unchanged",
+  "evidence": "W08 delivery manifest records real HTTP/browser and migration/Hold/CAS tests; integrated final make ci still required",
+  "decision": "Accept implemented additive draft operations; no unrelated export changes"
+}
