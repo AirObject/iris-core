@@ -37,15 +37,16 @@ from iris_memory_core.application.ports.transaction import Transaction, UnitOfWo
 from iris_memory_core.application.recent import RecentContextService
 from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService
-from iris_memory_core.domain.errors import NotFoundError
+from iris_memory_core.domain.errors import LeaseFencedError, NotFoundError
 from iris_memory_core.domain.fts import FTS_INDEXABLE_RESOURCE_TYPES
 from iris_memory_core.domain.jobs import JOB_PAYLOAD_VERSION, NewOutboxJob, OutboxJob
 from iris_memory_core.domain.recent import recent_target_key
 from iris_memory_core.domain.vector import VECTOR_INDEXABLE_RESOURCE_TYPES
 from iris_memory_core.indexing.fts import FtsProjectionService
 from iris_memory_core.indexing.graph import GraphProjectionService
+from iris_memory_core.indexing.managed_vector import ManagedVectorProjection
 from iris_memory_core.indexing.profile import ProfileProjectionService
-from iris_memory_core.indexing.vector import VectorProjectionService
+from iris_memory_core.indexing.vector import VectorProjectionMaintenance, VectorProjectionService
 
 
 def _require_payload(job: OutboxJob) -> dict[str, object]:
@@ -912,7 +913,7 @@ def fts_cleanup_handler(projection: FtsProjectionService) -> JobWork:
 # Phase 7 handlers: vector projection maintenance
 
 
-def vector_apply_handler(projection: VectorProjectionService) -> JobWork:
+def vector_apply_handler(projection: VectorProjectionService | ManagedVectorProjection) -> JobWork:
     """vector.apply: id map + delta ledger maintenance for one resource."""
 
     def work(job: OutboxJob) -> JobCommit:
@@ -935,7 +936,9 @@ def vector_apply_handler(projection: VectorProjectionService) -> JobWork:
     return work
 
 
-def vector_rebuild_handler(projection: VectorProjectionService) -> JobWork:
+def vector_rebuild_handler(
+    projection: VectorProjectionService | ManagedVectorProjection,
+) -> JobWork:
     """vector.rebuild: build + verify OUTSIDE the fenced transaction, then
     land only the switch inside it (§20.2: provider calls never run in a
     writer transaction; ADR-0015 §8). Crash between the two halves leaves an
@@ -945,6 +948,26 @@ def vector_rebuild_handler(projection: VectorProjectionService) -> JobWork:
 
     def work(job: OutboxJob) -> JobCommit:
         _require_payload(job)
+        if isinstance(projection, ManagedVectorProjection):
+
+            def check_lease(tx: Transaction) -> None:
+                current = tx.outbox.get(job.id)
+                if (
+                    current.status != "leased"
+                    or current.lease_owner != job.lease_owner
+                    or current.lease_generation != job.lease_generation
+                    or current.source_revision != job.source_revision
+                    or (current.lease_expires_us or 0) <= projection.clock.now_us()
+                ):
+                    raise LeaseFencedError("vector rebuild lease expired")
+
+            managed = projection.prepare_generation(job.tenant_id, check_lease=check_lease)
+
+            def managed_commit(tx: Transaction) -> None:
+                projection.switch_in_tx(tx, job.tenant_id, managed)
+
+            managed_commit.after_commit = managed.generation.after_commit  # type: ignore[attr-defined]
+            return managed_commit
         prepared = projection.prepare_generation(job.tenant_id)
 
         def commit(tx: Transaction) -> None:
@@ -956,7 +979,9 @@ def vector_rebuild_handler(projection: VectorProjectionService) -> JobWork:
     return work
 
 
-def vector_cleanup_handler(projection: VectorProjectionService) -> JobWork:
+def vector_cleanup_handler(
+    projection: VectorProjectionService | ManagedVectorProjection,
+) -> JobWork:
     """vector.cleanup: physical deletion of invalidated id map rows and
     retired generations beyond the rollback window (inside the fenced
     transaction), then the post-commit hook unlinks the deleted generations'
@@ -967,14 +992,24 @@ def vector_cleanup_handler(projection: VectorProjectionService) -> JobWork:
     def work(job: OutboxJob) -> JobCommit:
         _require_payload(job)
         removed_dirs: list[str] = []
+        services: list[VectorProjectionMaintenance] = []
 
         def commit(tx: Transaction) -> None:
-            _id_rows, removed = projection.cleanup_in_tx(tx, job.tenant_id)
+            service = (
+                projection.cleanup_service_in_tx(tx, job.tenant_id)
+                if isinstance(projection, ManagedVectorProjection)
+                else projection
+            )
+            if service is None:
+                return
+            _id_rows, removed = service.cleanup_in_tx(tx, job.tenant_id)
             removed_dirs.extend(removed)
+            services.append(service)
 
         def after_commit() -> None:
-            projection.remove_generation_dirs(removed_dirs)
-            projection.sweep_filesystem()
+            for service in services:
+                service.remove_generation_dirs(removed_dirs)
+                service.sweep_filesystem()
 
         commit.after_commit = after_commit  # type: ignore[attr-defined]
         return commit

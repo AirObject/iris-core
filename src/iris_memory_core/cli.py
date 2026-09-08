@@ -35,6 +35,12 @@ def build_parser() -> argparse.ArgumentParser:
         subparsers.add_parser("init", help="Offline tenant and scoped client bootstrap")
     )
 
+    from iris_memory_core.providers.offline import configure as configure_providers
+
+    configure_providers(
+        subparsers.add_parser("provider", help="Offline Provider secret maintenance")
+    )
+
     migrate = subparsers.add_parser("migrate", help="Apply pending migrations")
     migrate.add_argument("database", type=Path)
     migrate.add_argument("--migrations", type=Path)
@@ -88,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--grace-seconds", type=float)
         command.add_argument("--allow-local-sqlite", action="store_true", default=None)
         command.add_argument("--no-migrate", action="store_true", default=None)
+        command.add_argument("--provider-config-file", type=Path)
+        command.add_argument("--secret-key-file", type=Path)
+        command.add_argument("--vector-root", type=Path)
+        command.add_argument("--vector-required", action="store_true", default=None)
+        command.add_argument("--development-embedding", action="store_true", default=None)
 
     serve_parser = subparsers.add_parser("serve", help="Run the authenticated ASGI service")
     service_arguments(serve_parser)
@@ -114,6 +125,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "provider":
+            from iris_memory_core.providers.offline import run as run_provider
+
+            try:
+                return run_provider(args)
+            except (DomainError, ValueError, OSError):
+                # No backend exception, path, key, ciphertext or provider body.
+                print(
+                    "provider rotation failed; inspect the rotation result before restarting",
+                    file=sys.stderr,
+                )
+                return 1
         if args.command == "init":
             from iris_memory_core.bootstrap import run as run_bootstrap
 

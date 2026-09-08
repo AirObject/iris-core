@@ -70,12 +70,16 @@ class ServiceConfig:
     development_embedding: bool = False
     vector_root: Path | None = None
     vector_required: bool = False
+    secret_key_file: Path | None = None
+    provider_config_file: Path | None = None
 
     def recall_config(self) -> RecallAssemblyConfig:
         return RecallAssemblyConfig(
             development_embedding=self.development_embedding,
             vector_root=self.vector_root,
             vector_required=self.vector_required,
+            secret_key_file=self.secret_key_file,
+            provider_config_file=self.provider_config_file,
         )
 
     def console_config(self) -> ConsoleConfig:
@@ -161,7 +165,15 @@ def load_config(
         if key in env:
             values[name] = env[key]
     values.update({key: value for key, value in (cli_values or {}).items() if value is not None})
-    for name in ("database", "backup_root", "export_root", "console_assets", "vector_root"):
+    for name in (
+        "database",
+        "backup_root",
+        "export_root",
+        "console_assets",
+        "vector_root",
+        "secret_key_file",
+        "provider_config_file",
+    ):
         if name in values and values[name] is not None:
             values[name] = Path(str(values[name]))
     for name in ("port",):
@@ -215,6 +227,12 @@ def open_store(config: ServiceConfig) -> Store:
             raise RuntimeError("Persona pointer integrity check failed")
         for projection in (tx.fts, tx.vector, tx.profile, tx.graph):
             projection.projection_state()
+    from iris_memory_core.providers.secret_lifecycle import (
+        deployment_secrets,
+        validate_sealed_startup,
+    )
+
+    validate_sealed_startup(store, deployment_secrets(config.database, config.secret_key_file))
     return store
 
 
@@ -282,6 +300,8 @@ def worker(config: ServiceConfig, *, once: bool = False) -> int:
             store,
             store.clock,
             store.ids,
+            embedding_runtime=projections.embedding_runtime,
+            provider_generations=projections.provider_generations,
             archives=AdminArchiveService(
                 store,
                 backup_root=config.backup_root or config.database.parent / "backups",

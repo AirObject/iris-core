@@ -17,6 +17,7 @@ from iris_memory_core.application.recall import DEFAULT_ROUTES, VectorRoute
 from iris_memory_core.application.security import CredentialService
 from iris_memory_core.domain.retention import ForgetSelector, ForgetSelectorKind
 from iris_memory_core.domain.vector import EmbeddingProviderError, VectorSpaceConfig
+from iris_memory_core.indexing.vector import VectorProjectionService
 from iris_memory_core.providers.embedding import DeterministicEmbeddingProvider
 from iris_memory_core.recall_runtime import RecallAssemblyConfig, assemble_recall
 from iris_memory_core.runtime import load_config
@@ -162,6 +163,8 @@ def test_api_and_worker_config_resolve_same_projection_root(world: Phase8World) 
     first = assemble_recall(world.store, world.clock, config.recall_config())
     second = assemble_recall(world.store, world.clock, config.recall_config())
     assert first.vector is not None and second.vector is not None
+    assert isinstance(first.vector, VectorProjectionService)
+    assert isinstance(second.vector, VectorProjectionService)
     assert first.vector._root == second.vector._root
     assert first.vector._space == second.vector._space
     assert (

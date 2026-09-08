@@ -117,6 +117,7 @@ from iris_memory_core.domain.vector import (
 )
 from iris_memory_core.indexing.fts import FtsDegradedError, FtsProjectionService
 from iris_memory_core.indexing.graph import GraphProjectionService
+from iris_memory_core.indexing.managed_vector import ManagedVectorProjection
 from iris_memory_core.indexing.profile import ProfileProjectionService
 from iris_memory_core.indexing.vector import VectorProjectionService
 
@@ -1225,7 +1226,7 @@ class VectorRoute:
 
     def __init__(
         self,
-        projection: VectorProjectionService,
+        projection: VectorProjectionService | ManagedVectorProjection,
         estimator: TokenEstimator | None = None,
         *,
         monotonic: MonotonicClock | None = None,
@@ -1262,14 +1263,13 @@ class VectorRoute:
         # route's READ snapshot (never a writer transaction) — a WAL reader
         # does not block canonical writes.
         try:
-            query_vector = self._projection.embed_query(
-                request.topic, deadline_monotonic_us=deadline_us
-            )
+            projection = self._projection.resolve_in_tx(tx, access.tenant_id)
+            query_vector = projection.embed_query(request.topic, deadline_monotonic_us=deadline_us)
         except EmbeddingProviderError:
             raise VectorDegradedError(VECTOR_REASON_UNAVAILABLE, retryable=True) from None
         check_deadline(self._monotonic, deadline_us)
         limit = request.candidate_limits.get(ROUTE_VECTOR, DEFAULT_VECTOR_CANDIDATES)
-        hits = self._projection.search_in_tx(
+        hits = projection.search_in_tx(
             tx,
             tenant_id=access.tenant_id,
             agent_id=request.agent_id,
@@ -1853,7 +1853,7 @@ class StructuredRecallOrchestrator:
         relations_enabled: bool = False,
         claims_enabled: bool = False,
         fts: FtsProjectionService | None = None,
-        vector: VectorProjectionService | None = None,
+        vector: VectorProjectionService | ManagedVectorProjection | None = None,
         graph: GraphProjectionService | None = None,
         profile: ProfileProjectionService | None = None,
         monotonic: MonotonicClock | None = None,

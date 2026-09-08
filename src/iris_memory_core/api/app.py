@@ -1727,7 +1727,13 @@ def create_app(
             raise ValueError("Console requires a configured SQLite Store")
         app.mount(
             "/console",
-            create_console_app(store=uow, config=console_config, archives=archives),
+            create_console_app(
+                store=uow,
+                config=console_config,
+                archives=archives,
+                embedding_runtime=runtime.projections.embedding_runtime,
+                provider_generations=runtime.projections.provider_generations,
+            ),
             name="console",
         )
     app.add_exception_handler(DomainError, domain_error_handler)  # type: ignore[arg-type]
@@ -1881,7 +1887,9 @@ def _readiness(app: FastAPI, uow: UnitOfWork, access: AccessContext) -> JSONResp
         gauge=BackpressureGauge(BackpressureConfig(), database_path=database_path),
         vector_required=projections.vector_required,
         vector_capability=(
-            projections.vector.capability_available if projections.vector else lambda: False
+            (lambda: projections.vector.capability_available(access.tenant_id))
+            if projections.vector
+            else lambda: False
         ),
     ).readiness()
     try:
