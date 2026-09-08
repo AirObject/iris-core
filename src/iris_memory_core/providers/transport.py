@@ -178,6 +178,15 @@ class PinnedEmbeddingTransport:
     def __call__(
         self, endpoint: str, api_key: str, model: str, texts: list[str], timeout_s: float
     ) -> list[Sequence[float]]:
+        return _vectors(
+            self.request_json(endpoint, api_key, {"model": model, "input": texts}, timeout_s),
+            len(texts),
+        )
+
+    def request_json(
+        self, endpoint: str, api_key: str, document: dict[str, object], timeout_s: float
+    ) -> object:
+        """Send one bounded JSON request through the same checked socket boundary."""
         if not math.isfinite(timeout_s) or timeout_s <= 0:
             raise EmbeddingProviderError("timeout", retryable=True)
         if any(character in api_key for character in "\r\n") or len(api_key) > 4096:
@@ -200,7 +209,7 @@ class PinnedEmbeddingTransport:
         connection: http.client.HTTPConnection | None = None
         try:
             parsed, host, port = self.policy.endpoint(endpoint)
-            payload = json.dumps({"model": model, "input": texts}, allow_nan=False).encode("utf-8")
+            payload = json.dumps(document, allow_nan=False).encode("utf-8")
             if len(payload) > self.policy.max_request_bytes:
                 raise _deny("request_too_large")
             addresses = self._addresses(host, port, deadline)
@@ -267,7 +276,7 @@ class PinnedEmbeddingTransport:
                 decoded = json.loads(body)
             except (ValueError, UnicodeError):
                 raise _deny("invalid_output") from None
-            return _vectors(decoded, len(texts))
+            return decoded
         except EmbeddingProviderError:
             raise
         except TimeoutError:
