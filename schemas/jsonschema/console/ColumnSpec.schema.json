@@ -20,7 +20,7 @@
       "additionalProperties": true,
       "properties": {
         "contract_version": {
-          "const": "1.1.0"
+          "const": "1.2.0"
         },
         "display_timezone": {
           "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
@@ -945,6 +945,136 @@
       "required": [
         "resource_type",
         "resource_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleEmbeddingActivateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request"
+        },
+        "rebuild_ack": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleEmbeddingConfigCreateRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "$ref": "#/$defs/EmbeddingDefinition"
+        },
+        "reason_code": {
+          "const": "operator_request"
+        },
+        "secret": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingSecretInput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "definition",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleEmbeddingConfigPatchRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "$ref": "#/$defs/EmbeddingDefinition"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request"
+        },
+        "secret": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingSecretInput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "definition",
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleEmbeddingRevisionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "ConsoleEmbeddingRollbackRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason_code": {
+          "const": "operator_request"
+        },
+        "target_config_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_config_id",
+        "expected_revision",
+        "reason_code"
       ],
       "type": "object"
     },
@@ -2525,14 +2655,37 @@
       "allOf": [
         {
           "else": {
-            "properties": {
-              "phase": {
-                "const": "backup_verify"
-              },
-              "progress": {
-                "properties": {
-                  "unit": {
-                    "const": "steps"
+            "else": {
+              "properties": {
+                "phase": {
+                  "const": "provider_configuration"
+                },
+                "progress": {
+                  "properties": {
+                    "unit": {
+                      "const": "steps"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "trusted_backup"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "phase": {
+                  "const": "backup_verify"
+                },
+                "progress": {
+                  "properties": {
+                    "unit": {
+                      "const": "steps"
+                    }
                   }
                 }
               }
@@ -2611,14 +2764,16 @@
         "kind": {
           "enum": [
             "memory_forget",
-            "trusted_backup"
+            "trusted_backup",
+            "embedding_provider"
           ],
           "type": "string"
         },
         "phase": {
           "enum": [
             "canonical_forget",
-            "backup_verify"
+            "backup_verify",
+            "provider_configuration"
           ]
         },
         "problems_count": {
@@ -2762,7 +2917,15 @@
             "query_budget",
             "execution_failed",
             "restore_requires_review",
-            "backup_unavailable"
+            "backup_unavailable",
+            "provider_budget_exhausted",
+            "provider_unavailable",
+            "secret_unavailable",
+            "secret_changed",
+            "provider_probe_failed",
+            "provider_configuration_moved",
+            "provider_serving_moved",
+            "provider_probe_invalid"
           ],
           "type": "string"
         },
@@ -4486,6 +4649,928 @@
       "pattern": "^(0|[1-9][0-9]*)$",
       "type": "string"
     },
+    "EmbeddingActivationPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "config_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "content_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "rebuild_plan_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "reuse_generation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "side_effects": {
+          "$ref": "#/$defs/EmbeddingSideEffects"
+        }
+      },
+      "required": [
+        "config_id",
+        "content_revision",
+        "expected_revision",
+        "rebuild_plan_hash",
+        "reuse_generation_id",
+        "side_effects"
+      ],
+      "type": "object"
+    },
+    "EmbeddingAdapter": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "default_limits": {
+          "$ref": "#/$defs/EmbeddingLimits"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/EmbeddingAdapterField"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "id": {
+          "enum": [
+            "openai-compatible",
+            "deterministic"
+          ]
+        },
+        "label": {
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "secret_modes": {
+          "items": {
+            "enum": [
+              "secret_ref",
+              "sealed"
+            ]
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
+        "space_constants": {
+          "additionalProperties": false,
+          "properties": {
+            "builder_version": {
+              "const": 1
+            },
+            "metric": {
+              "const": "cosine"
+            },
+            "normalization": {
+              "const": "l2"
+            },
+            "template_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "metric",
+            "normalization",
+            "template_version",
+            "builder_version"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "available",
+        "secret_modes",
+        "default_limits",
+        "fields",
+        "space_constants"
+      ],
+      "type": "object"
+    },
+    "EmbeddingAdapterField": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "maximum": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "minimum": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "integer",
+            "number"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "type",
+        "required",
+        "minimum",
+        "maximum"
+      ],
+      "type": "object"
+    },
+    "EmbeddingAdapterPage": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/EmbeddingAdapter"
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "EmbeddingConfigView": {
+      "additionalProperties": false,
+      "properties": {
+        "activation_blocked_reason": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "activation_plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingActivationPlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "current_operation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "definition": {
+          "$ref": "#/$defs/EmbeddingDefinition"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "last_generation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest_probe_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "probe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingProbe"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_kind": {
+          "const": "embedding"
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "secret_digest_prefix": {
+          "pattern": "^(?:[0-9a-f]{8})?$",
+          "type": "string"
+        },
+        "secret_hint": {
+          "maxLength": 4,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "secret_mode": {
+          "enum": [
+            "secret_ref",
+            "sealed",
+            null
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "probing",
+            "probed",
+            "activating",
+            "active",
+            "retired",
+            "discarded"
+          ]
+        },
+        "updated_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "revision",
+        "content_revision",
+        "provider_kind",
+        "definition",
+        "secret_mode",
+        "secret_hint",
+        "secret_digest_prefix",
+        "resolved",
+        "created_at",
+        "updated_at",
+        "current_operation_id",
+        "latest_probe_id",
+        "last_generation_id"
+      ],
+      "type": "object"
+    },
+    "EmbeddingConfigViewEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/EmbeddingConfigView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "EmbeddingDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "enum": [
+            "openai-compatible",
+            "deterministic"
+          ]
+        },
+        "endpoint": {
+          "maxLength": 2048,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "limits": {
+          "$ref": "#/$defs/EmbeddingLimits"
+        },
+        "space": {
+          "$ref": "#/$defs/EmbeddingSpace"
+        }
+      },
+      "required": [
+        "adapter",
+        "endpoint",
+        "space",
+        "limits",
+        "label"
+      ],
+      "type": "object"
+    },
+    "EmbeddingLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "batch_size": {
+          "maximum": 512,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "breaker_cooldown_us": {
+          "maximum": 3600000000,
+          "minimum": 1000,
+          "type": "integer"
+        },
+        "breaker_failures": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_input_chars": {
+          "maximum": 400000,
+          "minimum": 16,
+          "type": "integer"
+        },
+        "max_qps": {
+          "maximum": 10000,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "timeout_us": {
+          "maximum": 30000000,
+          "minimum": 1000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "batch_size",
+        "timeout_us",
+        "max_qps",
+        "breaker_failures",
+        "breaker_cooldown_us",
+        "max_input_chars"
+      ],
+      "type": "object"
+    },
+    "EmbeddingOverview": {
+      "additionalProperties": false,
+      "properties": {
+        "active_config_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "can_manage": {
+          "type": "boolean"
+        },
+        "configs": {
+          "items": {
+            "$ref": "#/$defs/EmbeddingConfigView"
+          },
+          "maxItems": 100,
+          "type": "array"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "generation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projection_state": {
+          "enum": [
+            "never_built",
+            "ready",
+            "pending_rebuild"
+          ]
+        }
+      },
+      "required": [
+        "configured",
+        "active_config_id",
+        "generation_id",
+        "projection_state",
+        "can_manage",
+        "configs"
+      ],
+      "type": "object"
+    },
+    "EmbeddingOverviewEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/EmbeddingOverview"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "EmbeddingProbe": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "dimension_observed": {
+          "anyOf": [
+            {
+              "maximum": 33554432,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "latency_ms": {
+          "maximum": 120000,
+          "minimum": 0,
+          "type": "number"
+        },
+        "normalized": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "enum": [
+            "ok",
+            "timeout",
+            "rate_limited",
+            "circuit_open",
+            "invalid_output",
+            "transport_error"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "ok",
+        "dimension_observed",
+        "normalized",
+        "latency_ms",
+        "outcome",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "EmbeddingRebuild": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "activate",
+            "rollback"
+          ]
+        },
+        "config_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "estimated_remaining_seconds": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/ConsoleOperation"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "embedding_provider"
+                }
+              }
+            }
+          ]
+        },
+        "serving_generation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "side_effects": {
+          "$ref": "#/$defs/EmbeddingSideEffects"
+        }
+      },
+      "required": [
+        "operation",
+        "config_id",
+        "action",
+        "generation_id",
+        "serving_generation_id",
+        "side_effects",
+        "estimated_remaining_seconds"
+      ],
+      "type": "object"
+    },
+    "EmbeddingRebuildEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/EmbeddingRebuild"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "EmbeddingRebuildPage": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/EmbeddingRebuild"
+          },
+          "maxItems": 100,
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "EmbeddingRevisionPage": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/EmbeddingRevisionView"
+          },
+          "maxItems": 100,
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "EmbeddingRevisionView": {
+      "additionalProperties": false,
+      "properties": {
+        "config_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "content_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "definition": {
+          "$ref": "#/$defs/EmbeddingDefinition"
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "secret_digest_prefix": {
+          "pattern": "^(?:[0-9a-f]{8})?$",
+          "type": "string"
+        },
+        "secret_hint": {
+          "maxLength": 4,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "secret_mode": {
+          "enum": [
+            "secret_ref",
+            "sealed",
+            null
+          ]
+        }
+      },
+      "required": [
+        "config_id",
+        "content_revision",
+        "definition",
+        "created_at",
+        "secret_mode",
+        "secret_hint",
+        "secret_digest_prefix",
+        "resolved"
+      ],
+      "type": "object"
+    },
+    "EmbeddingSecretInput": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "secret_ref",
+            "sealed"
+          ]
+        },
+        "value": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "value"
+      ],
+      "type": "object"
+    },
+    "EmbeddingSideEffects": {
+      "additionalProperties": false,
+      "properties": {
+        "estimate_basis": {
+          "const": "request_limits_excluding_queue_and_index_io"
+        },
+        "estimated_duration_seconds": {
+          "additionalProperties": false,
+          "properties": {
+            "lower": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "upper": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "lower",
+            "upper"
+          ],
+          "type": "object"
+        },
+        "estimated_resources": {
+          "$ref": "#/$defs/DecimalCount"
+        },
+        "rebuild": {
+          "type": "boolean"
+        },
+        "worker_required": {
+          "const": true
+        }
+      },
+      "required": [
+        "rebuild",
+        "estimated_resources",
+        "worker_required",
+        "estimated_duration_seconds",
+        "estimate_basis"
+      ],
+      "type": "object"
+    },
+    "EmbeddingSpace": {
+      "additionalProperties": false,
+      "properties": {
+        "builder_version": {
+          "const": 1
+        },
+        "dimension": {
+          "maximum": 65536,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "metric": {
+          "const": "cosine"
+        },
+        "model": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "type": "string"
+        },
+        "normalization": {
+          "const": "l2"
+        },
+        "template_version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "model",
+        "dimension",
+        "metric",
+        "normalization",
+        "template_version",
+        "builder_version"
+      ],
+      "type": "object"
+    },
+    "EmbeddingSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "active_config_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "can_manage": {
+          "type": "boolean"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "generation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projection_state": {
+          "enum": [
+            "never_built",
+            "ready",
+            "pending_rebuild"
+          ]
+        }
+      },
+      "required": [
+        "configured",
+        "active_config_id",
+        "generation_id",
+        "projection_state",
+        "can_manage"
+      ],
+      "type": "object"
+    },
     "EmptyRequest": {
       "additionalProperties": false,
       "properties": {},
@@ -4522,21 +5607,32 @@
         "kind": {
           "enum": [
             "authentication_required",
-            "permission_denied",
-            "csrf_failed",
-            "reauth_required",
-            "rate_limited",
-            "validation_failed",
-            "cursor_invalid",
-            "revision_conflict",
-            "preview_stale",
-            "format_unsupported",
-            "upload_too_large",
-            "media_type_unsupported",
             "config_changed",
+            "csrf_failed",
+            "cursor_invalid",
+            "format_unsupported",
+            "media_type_unsupported",
+            "permission_denied",
+            "preview_stale",
+            "protected_resource",
+            "provider_configuration_moved",
+            "provider_configuration_unavailable",
+            "provider_estimate_unavailable",
+            "provider_probe_expired",
+            "provider_probe_mismatch",
+            "provider_probe_required",
+            "provider_rebuild_ack_required",
+            "provider_rebuild_plan_changed",
+            "provider_secret_changed",
+            "provider_serving_moved",
+            "provider_unavailable",
+            "rate_limited",
+            "reauth_required",
+            "revision_conflict",
             "secret_unavailable",
             "session_limit",
-            "protected_resource"
+            "upload_too_large",
+            "validation_failed"
           ]
         }
       },
@@ -5060,7 +6156,7 @@
           "type": "string"
         },
         "contract_version": {
-          "const": "1.1.0"
+          "const": "1.2.0"
         },
         "descriptor": {
           "$ref": "#/$defs/ResourceTypeDescriptor"
@@ -6036,6 +7132,59 @@
       "properties": {
         "data": {
           "$ref": "#/$defs/PersonaStateView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "type": "object"
+    },
+    "ProvidersView": {
+      "additionalProperties": false,
+      "properties": {
+        "adapters": {
+          "items": {
+            "$ref": "#/$defs/EmbeddingAdapter"
+          },
+          "maxItems": 2,
+          "type": "array"
+        },
+        "cognitive": {
+          "additionalProperties": false,
+          "properties": {
+            "configuration_source": {
+              "const": "deployment"
+            },
+            "read_only": {
+              "const": true
+            }
+          },
+          "required": [
+            "read_only",
+            "configuration_source"
+          ],
+          "type": "object"
+        },
+        "embedding": {
+          "$ref": "#/$defs/EmbeddingSummary"
+        }
+      },
+      "required": [
+        "embedding",
+        "adapters",
+        "cognitive"
+      ],
+      "type": "object"
+    },
+    "ProvidersViewEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ProvidersView"
         },
         "meta": {
           "$ref": "#/$defs/Meta"
@@ -7494,7 +8643,7 @@
       "type": "object"
     }
   },
-  "$id": "https://schemas.iris-memory-core.local/console/1.1.0/ColumnSpec.schema.json",
+  "$id": "https://schemas.iris-memory-core.local/console/1.2.0/ColumnSpec.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": true,
   "properties": {

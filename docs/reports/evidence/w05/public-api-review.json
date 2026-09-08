@@ -1,0 +1,43 @@
+{
+  "review": "W05 implementation and compatibility review,2026-09-08",
+  "before_sha256": "c8766cd8d4d03325859d14618fe7c681b04eb653a7f273f813c3a6b639182813",
+  "candidate_sha256": "3154b34ec4a5a16750dc925dcb06da421c52d4b40ab2ce810930470cfa29cba9",
+  "unchanged": [
+    "Python SDK methods,types,signatures and method mapping",
+    "TypeScript SDK exports/types",
+    "All business HTTP operations and schemas",
+    "Existing CLI arguments and defaults"
+  ],
+  "additions": {
+    "console_operations": [
+      "consoleActivateEmbeddingConfig",
+      "consoleCancelEmbeddingRebuild",
+      "consoleCreateEmbeddingConfig",
+      "consoleDiscardEmbeddingConfig",
+      "consoleEmbedding",
+      "consoleEmbeddingAdapters",
+      "consoleEmbeddingConfig",
+      "consoleEmbeddingRebuild",
+      "consoleEmbeddingRebuilds",
+      "consoleEmbeddingRevisions",
+      "consolePatchEmbeddingConfig",
+      "consoleProviders",
+      "consoleRollbackEmbedding",
+      "consoleTestEmbeddingConfig"
+    ],
+    "cli": "provider rotate-master-key; five optional serve/worker flags"
+  },
+  "changed_schemas": [
+    "BootstrapView/Meta: Console version1.2",
+    "ConsoleOperation: finite embedding_provider kind/phase",
+    "ConsoleOperationProblem/ErrorDetails: normalized provider codes"
+  ],
+  "evidence": [
+    "provider-http-contract-001:472 contract fixture/route checks",
+    "console-regression-001:1341 real Console tests",
+    "provider-browser-003/browser-regression-001:real lifecycle and23browsercases",
+    "deployment-003:real CLI/HTTP deployment tests",
+    "rotation-001:49 actual startup/backup/offline rotation tests"
+  ],
+  "decision": "Accept only the implemented additive Console/CLI surface and Core0.15/Console1.2 candidate version; this is not W05 production acceptance."
+}

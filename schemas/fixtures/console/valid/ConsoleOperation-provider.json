@@ -1,0 +1,25 @@
+{
+  "available_actions": [
+    "cancel"
+  ],
+  "blocked_reason": null,
+  "cancellable": true,
+  "created_at": "2026-09-07T00:00:00.000000Z",
+  "created_by": "00000000-0000-4000-8000-000000000002",
+  "finished_at": null,
+  "id": "00000000-0000-4000-8000-000000000001",
+  "kind": "embedding_provider",
+  "phase": "provider_configuration",
+  "problems_count": 0,
+  "progress": {
+    "processed": "0",
+    "total": "2",
+    "unit": "steps"
+  },
+  "reason_codes": [
+    "operator_request"
+  ],
+  "result_ref": null,
+  "started_at": null,
+  "status": "queued"
+}

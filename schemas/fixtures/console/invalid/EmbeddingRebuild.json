@@ -1,0 +1,39 @@
+{
+  "action": "activate",
+  "config_id": "x",
+  "estimated_remaining_seconds": 0,
+  "generation_id": "x",
+  "operation": {
+    "available_actions": [],
+    "blocked_reason": "x",
+    "cancellable": false,
+    "created_at": "2026-09-08T00:00:00.000000Z",
+    "created_by": "01a07e00-0000-7000-8000-000000000001",
+    "finished_at": "2026-09-08T00:00:00.000000Z",
+    "id": "01a07e00-0000-7000-8000-000000000001",
+    "kind": "memory_forget",
+    "phase": "canonical_forget",
+    "problems_count": 0,
+    "progress": {
+      "processed": "0",
+      "total": "0",
+      "unit": "records"
+    },
+    "reason_codes": [],
+    "result_ref": null,
+    "started_at": "2026-09-08T00:00:00.000000Z",
+    "status": "queued"
+  },
+  "serving_generation_id": "x",
+  "side_effects": {
+    "estimate_basis": "request_limits_excluding_queue_and_index_io",
+    "estimated_duration_seconds": {
+      "lower": 0,
+      "upper": 0
+    },
+    "estimated_resources": "0",
+    "rebuild": false,
+    "worker_required": true
+  },
+  "unexpected_private_field": "not allowed"
+}

@@ -704,6 +704,127 @@
           ],
           "commands": {}
         },
+        "provider": {
+          "arguments": [
+            {
+              "action": "_HelpAction",
+              "choices": null,
+              "default": "==SUPPRESS==",
+              "flags": [
+                "-h",
+                "--help"
+              ],
+              "name": "help",
+              "nargs": 0,
+              "required": false,
+              "type": null
+            }
+          ],
+          "commands": {
+            "rotate-master-key": {
+              "arguments": [
+                {
+                  "action": "_HelpAction",
+                  "choices": null,
+                  "default": "==SUPPRESS==",
+                  "flags": [
+                    "-h",
+                    "--help"
+                  ],
+                  "name": "help",
+                  "nargs": 0,
+                  "required": false,
+                  "type": null
+                },
+                {
+                  "action": "_StoreAction",
+                  "choices": null,
+                  "default": null,
+                  "flags": [
+                    "--database"
+                  ],
+                  "name": "database",
+                  "nargs": null,
+                  "required": true,
+                  "type": "Path"
+                },
+                {
+                  "action": "_StoreAction",
+                  "choices": null,
+                  "default": null,
+                  "flags": [
+                    "--old-key-file"
+                  ],
+                  "name": "old_key_file",
+                  "nargs": null,
+                  "required": true,
+                  "type": "Path"
+                },
+                {
+                  "action": "_StoreAction",
+                  "choices": null,
+                  "default": null,
+                  "flags": [
+                    "--new-key-file"
+                  ],
+                  "name": "new_key_file",
+                  "nargs": null,
+                  "required": true,
+                  "type": "Path"
+                },
+                {
+                  "action": "_StoreAction",
+                  "choices": null,
+                  "default": null,
+                  "flags": [
+                    "--with-backup"
+                  ],
+                  "name": "with_backup",
+                  "nargs": null,
+                  "required": true,
+                  "type": "Path"
+                },
+                {
+                  "action": "_StoreAction",
+                  "choices": null,
+                  "default": null,
+                  "flags": [
+                    "--backup-key-file"
+                  ],
+                  "name": "backup_key_file",
+                  "nargs": null,
+                  "required": false,
+                  "type": "Path"
+                },
+                {
+                  "action": "_StoreTrueAction",
+                  "choices": null,
+                  "default": false,
+                  "flags": [
+                    "--allow-local-sqlite"
+                  ],
+                  "name": "allow_local_sqlite",
+                  "nargs": 0,
+                  "required": false,
+                  "type": null
+                },
+                {
+                  "action": "_StoreTrueAction",
+                  "choices": null,
+                  "default": false,
+                  "flags": [
+                    "--allow-offline"
+                  ],
+                  "name": "allow_offline",
+                  "nargs": 0,
+                  "required": false,
+                  "type": null
+                }
+              ],
+              "commands": {}
+            }
+          }
+        },
         "recover-switch": {
           "arguments": [
             {
@@ -893,6 +1014,66 @@
                 "--no-migrate"
               ],
               "name": "no_migrate",
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "action": "_StoreAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--provider-config-file"
+              ],
+              "name": "provider_config_file",
+              "nargs": null,
+              "required": false,
+              "type": "Path"
+            },
+            {
+              "action": "_StoreAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--secret-key-file"
+              ],
+              "name": "secret_key_file",
+              "nargs": null,
+              "required": false,
+              "type": "Path"
+            },
+            {
+              "action": "_StoreAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--vector-root"
+              ],
+              "name": "vector_root",
+              "nargs": null,
+              "required": false,
+              "type": "Path"
+            },
+            {
+              "action": "_StoreTrueAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--vector-required"
+              ],
+              "name": "vector_required",
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "action": "_StoreTrueAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--development-embedding"
+              ],
+              "name": "development_embedding",
               "nargs": 0,
               "required": false,
               "type": null
@@ -1124,6 +1305,66 @@
               "choices": null,
               "default": null,
               "flags": [
+                "--provider-config-file"
+              ],
+              "name": "provider_config_file",
+              "nargs": null,
+              "required": false,
+              "type": "Path"
+            },
+            {
+              "action": "_StoreAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--secret-key-file"
+              ],
+              "name": "secret_key_file",
+              "nargs": null,
+              "required": false,
+              "type": "Path"
+            },
+            {
+              "action": "_StoreAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--vector-root"
+              ],
+              "name": "vector_root",
+              "nargs": null,
+              "required": false,
+              "type": "Path"
+            },
+            {
+              "action": "_StoreTrueAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--vector-required"
+              ],
+              "name": "vector_required",
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "action": "_StoreTrueAction",
+              "choices": null,
+              "default": null,
+              "flags": [
+                "--development-embedding"
+              ],
+              "name": "development_embedding",
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "action": "_StoreAction",
+              "choices": null,
+              "default": null,
+              "flags": [
                 "--poll-seconds"
               ],
               "name": "poll_seconds",
@@ -1151,6 +1392,17 @@
     "http": {
       "console": {
         "operations": {
+          "consoleActivateEmbeddingConfig": {
+            "contract_sha256": "0a4fb02af4b84c7cae56c5a0677bd65d5ff2083cc42cbcc9d6cc445a490ad932",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/providers/embedding/configs/{id}:activate",
+            "schemas": [
+              "#/components/schemas/ConsoleEmbeddingActivateRequest",
+              "#/components/schemas/EmbeddingRebuildEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
           "consoleActivateFocus": {
             "contract_sha256": "8620fcb466c0dc05dde89cdcd651cb8dcc7f448c13b9f13bd902d3d89a69ec17",
             "deprecated": false,
@@ -1191,6 +1443,17 @@
             "path": "/console/v1/bootstrap",
             "schemas": [
               "#/components/schemas/BootstrapEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleCancelEmbeddingRebuild": {
+            "contract_sha256": "2ce22b40b02b514c94f49cd9c192ff03d240b6a00d9f4f704ef9f39301095c89",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/providers/embedding/rebuilds/{id}:cancel",
+            "schemas": [
+              "#/components/schemas/ConsoleOperationCancelRequest",
+              "#/components/schemas/EmbeddingRebuildEnvelope",
               "#/components/schemas/ErrorEnvelope"
             ]
           },
@@ -1291,6 +1554,17 @@
               "#/components/schemas/ConsoleClaimCreateRequest",
               "#/components/schemas/ErrorEnvelope",
               "#/components/schemas/ResourceViewEnvelope"
+            ]
+          },
+          "consoleCreateEmbeddingConfig": {
+            "contract_sha256": "184a8b1907cfc39cced8de3f6b90556a5a4822042a6842e6bb3c2ad876cc9da1",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/providers/embedding/configs",
+            "schemas": [
+              "#/components/schemas/ConsoleEmbeddingConfigCreateRequest",
+              "#/components/schemas/EmbeddingConfigViewEnvelope",
+              "#/components/schemas/ErrorEnvelope"
             ]
           },
           "consoleCreateEntity": {
@@ -1436,6 +1710,17 @@
               "#/components/schemas/TaskChildCommandReceiptEnvelope"
             ]
           },
+          "consoleDiscardEmbeddingConfig": {
+            "contract_sha256": "bc7335d6d46f20036066f41cf273338257eda6111879a85b0ba1e59fd54c4131",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/providers/embedding/configs/{id}:discard",
+            "schemas": [
+              "#/components/schemas/ConsoleEmbeddingRevisionRequest",
+              "#/components/schemas/EmbeddingConfigViewEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
           "consoleDismissCognitiveEvent": {
             "contract_sha256": "3f98cbfeddbce00d435614738a3fee9ca46844f156566896e3009504195c8c20",
             "deprecated": false,
@@ -1445,6 +1730,66 @@
               "#/components/schemas/ConsoleEventDismissRequest",
               "#/components/schemas/ErrorEnvelope",
               "#/components/schemas/EventCommandReceiptEnvelope"
+            ]
+          },
+          "consoleEmbedding": {
+            "contract_sha256": "f3b2c0f5a82d2e9f20e512704b3b021a3400cc2bf717f91ef2ec433a7ad27c12",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/providers/embedding",
+            "schemas": [
+              "#/components/schemas/EmbeddingOverviewEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleEmbeddingAdapters": {
+            "contract_sha256": "796336f1c6765085997724a2d7bdef9f1b535c9c030d2f5f558a60ee9b5ec1b3",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/providers/embedding/adapters",
+            "schemas": [
+              "#/components/schemas/EmbeddingAdapterPage",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleEmbeddingConfig": {
+            "contract_sha256": "d59db3fd22accb30f5466d8a951ce75c8bbf25ed57c136f73cb7a042b7fd3679",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/providers/embedding/configs/{id}",
+            "schemas": [
+              "#/components/schemas/EmbeddingConfigViewEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleEmbeddingRebuild": {
+            "contract_sha256": "3db95d0314a8c1c33c1c160531826c52d669f026aa530f594c203108afe72c12",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/providers/embedding/rebuilds/{id}",
+            "schemas": [
+              "#/components/schemas/EmbeddingRebuildEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleEmbeddingRebuilds": {
+            "contract_sha256": "9c9cd5a61ff9362532d2d428ccce8a72654142ee7f5f046a8ffd0c0faa55da6b",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/providers/embedding/rebuilds",
+            "schemas": [
+              "#/components/schemas/EmbeddingRebuildPage",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consoleEmbeddingRevisions": {
+            "contract_sha256": "178604ec5db6f4fdc03592ae5a16a92b916264d8e08aa702a8f2f2674ea11038",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/providers/embedding/configs/{id}/revisions",
+            "schemas": [
+              "#/components/schemas/EmbeddingRevisionPage",
+              "#/components/schemas/ErrorEnvelope"
             ]
           },
           "consoleEntityAttributes": {
@@ -2095,12 +2440,23 @@
             ]
           },
           "consoleOperations": {
-            "contract_sha256": "056b6dd3cb1ec06bd8f888faaa4424c6842b8695e3c4a2d553577f149b3d5872",
+            "contract_sha256": "62fe74507c0a9a36c93c029ed35f8d8c4f32b37acb1687942ae2ec803382be40",
             "deprecated": false,
             "method": "GET",
             "path": "/console/v1/operations",
             "schemas": [
               "#/components/schemas/ConsoleOperationPage",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
+          "consolePatchEmbeddingConfig": {
+            "contract_sha256": "b26b38f173fa3dc931909400bb4ea3927c365f0e50c681905b492966802db5c5",
+            "deprecated": false,
+            "method": "PATCH",
+            "path": "/console/v1/providers/embedding/configs/{id}",
+            "schemas": [
+              "#/components/schemas/ConsoleEmbeddingConfigPatchRequest",
+              "#/components/schemas/EmbeddingConfigViewEnvelope",
               "#/components/schemas/ErrorEnvelope"
             ]
           },
@@ -2182,6 +2538,16 @@
             "schemas": [
               "#/components/schemas/ErrorEnvelope",
               "#/components/schemas/PersonaStateViewEnvelope"
+            ]
+          },
+          "consoleProviders": {
+            "contract_sha256": "47ea80292c6741be7963551defe0cc0c3f0dfe79451380069f86a6522f928075",
+            "deprecated": false,
+            "method": "GET",
+            "path": "/console/v1/providers",
+            "schemas": [
+              "#/components/schemas/ErrorEnvelope",
+              "#/components/schemas/ProvidersViewEnvelope"
             ]
           },
           "consolePublishPersona": {
@@ -2465,6 +2831,17 @@
               "#/components/schemas/SessionRevokeRequest"
             ]
           },
+          "consoleRollbackEmbedding": {
+            "contract_sha256": "f053f8d7c0f7dbc4ed9cdea98e5d2de2a8759447d5aa0302519229a547c4577c",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/providers/embedding:rollback",
+            "schemas": [
+              "#/components/schemas/ConsoleEmbeddingRollbackRequest",
+              "#/components/schemas/EmbeddingRebuildEnvelope",
+              "#/components/schemas/ErrorEnvelope"
+            ]
+          },
           "consoleRollbackPersona": {
             "contract_sha256": "ca13fef87338b60f52075cd1decaedbf23901e18d8c1f306ea47795924393fe3",
             "deprecated": false,
@@ -2567,6 +2944,17 @@
             "schemas": [
               "#/components/schemas/ErrorEnvelope",
               "#/components/schemas/ResourcePage"
+            ]
+          },
+          "consoleTestEmbeddingConfig": {
+            "contract_sha256": "5637eb8d23b186da0114261cf038fc9376a10c637b449b1fa27f44f500c7ee0e",
+            "deprecated": false,
+            "method": "POST",
+            "path": "/console/v1/providers/embedding/configs/{id}:test",
+            "schemas": [
+              "#/components/schemas/ConsoleEmbeddingRevisionRequest",
+              "#/components/schemas/ConsoleOperationEnvelope",
+              "#/components/schemas/ErrorEnvelope"
             ]
           },
           "consoleTransitionEpisode": {
@@ -2749,7 +3137,7 @@
         },
         "schemas": {
           "BootstrapEnvelope": "701d6e5fa305d2d7d99f9520095d3b6eed0d8158c4a12380f5a7785fe15fd1e4",
-          "BootstrapView": "6d5b29c3266274e2d5b0eb9076d6ea39c0d1ca2219cf259dd2551193d4be1f76",
+          "BootstrapView": "f93c25d59b6f70ee95f2cfd2a1831f907a75be3584ce778bd8ba30279f1c9d52",
           "ColumnSpec": "cf6785af16a92525097819517fec2d80e27caaa90ec39535ec1e8f3bd47d049f",
           "CommandActionSpec": "ca7a2884f6f6ca712ccbf6a8c5be80a583f835ce67562cf39c4f9cfb6a17f769",
           "CommandFieldSpec": "3f2b54077f2f48c73d085915a01d5df08c26127571bccd001df4080531ee91c0",
@@ -2769,6 +3157,11 @@
           "ConsoleClaimEvidence": "bbd7fab1e5441af7183ac9076086c9795ac39dad691d1030b0808e01932b1970",
           "ConsoleCommandScope": "4bd18d40721afb710f42ff8e789bfbc1eedde93a17033c5a032ca0e0b8f55843",
           "ConsoleCommandSourceRef": "bb59a0ffe59b6f3be7117390cd344c4eb15a1ba52cbc286dec9a6a0160358492",
+          "ConsoleEmbeddingActivateRequest": "3e6765e72541e8c41236cb5465c21147fafb2cea304f0d36aace006520f04ee9",
+          "ConsoleEmbeddingConfigCreateRequest": "2f83c7eb4fd0b3821e46ac0376b6ca45007800393646ba96473bd2e26e481f17",
+          "ConsoleEmbeddingConfigPatchRequest": "4ed457cab66d0ea69fbda0e4346bae5fa357c13bf90d57ad29a9c799dd4478f0",
+          "ConsoleEmbeddingRevisionRequest": "a693771206250fdf78977a5ddc28a9e8aa41804b2baa93d9a8f8108017cf99c7",
+          "ConsoleEmbeddingRollbackRequest": "539e272849fb41d6dfe215a62267798dc11d96b3b513c0e910f7e0ea1472839e",
           "ConsoleEntityAttributeFields": "e9b23ef1aad8959289aeb653456273133774277f754d803c7d5ac992a82f5d2a",
           "ConsoleEntityAttributeRequest": "322d76f99948fe7c23e0e3c355a4465ebdf0bce3433df813d492bf94c642c9cd",
           "ConsoleEntityCreateFields": "7f66c8a0432cc6a8c46d6d182033a10c7acaa9f015fa5126969f95b377e64490",
@@ -2806,11 +3199,11 @@
           "ConsoleObservationAnnotateRequest": "93c4591d47d06201b933f2db57a21170c2651549fca93a7f0df9d832cc7012c5",
           "ConsoleObservationCreateFields": "cd8bee0185b6be82b9242ca010d1596e9a28f114bca99858adf57911cfb165bb",
           "ConsoleObservationCreateRequest": "bd7f599179cad937a5583c61337b61167b54466f4c60f596afb32fb935962c93",
-          "ConsoleOperation": "7b20a568ff9083110c276bb06ce4887bd734374522ce38722ad70362b32b3fb0",
+          "ConsoleOperation": "059a895dc33349cd49d68fde004d036d85a6b042e4f2c0fd4e3e6d1784857103",
           "ConsoleOperationCancelRequest": "63e5bc40443e21aff39f0e2fff1d7cc9bfac4ff5d3d3f7a05909609373837ce3",
           "ConsoleOperationEnvelope": "d56df2d3e35e760803e5d6e9adafc71775b7e824622279b6fe0d4f55c6c75219",
           "ConsoleOperationPage": "d3ef5a70350f99c102bba607ba76ae925ea10071792f289b8c108b672a45003c",
-          "ConsoleOperationProblem": "d38aba9720b831c9a34ca0fa60d575fccd6f2c8713b3d04fe483c8cf8dca5057",
+          "ConsoleOperationProblem": "e3a5e23fd09625417e87ed16d0e3984e48f8574e34757bb2c082c31daf1bd57e",
           "ConsoleOperationProblemPage": "44fa7e649504c800a3fc7e746eafc8bf5e46a4845c1296cc0d1b014d41307875",
           "ConsolePersonaPolicyReplaceRequest": "ec4fec30f762520567437dc18086962eb50d494ff9ce15fb33cb91b8893662c4",
           "ConsolePersonaProposalApproveRequest": "bea3db02fe74c4c2f078039d6a8250b1ef0ec77cd4661cd84462dc282b7836ae",
@@ -2847,8 +3240,28 @@
           "ConsoleTaskUpdateFields": "a63ed061ee9de2c2cec2f4373bd8d3d4bf248e787b519ae897e7fe80e6cfef77",
           "ConsoleTaskUpdateRequest": "d23445f761de293d14d307a0f85c7df44461f1102895a5a55cf26b4d8a8b853b",
           "DecimalCount": "f4c30d337e611533b3d22f96e087bb0c7bf8108247c68433093a722c30cd37f9",
+          "EmbeddingActivationPlan": "5d731c81cb8222097b118d20cdc81ea580d22488d28e6bc2912c16ac496b76d5",
+          "EmbeddingAdapter": "fc0ced0cbbf6c7a4e65acc8908f1c46a5c7d75841f2af0118b108feb5255c39e",
+          "EmbeddingAdapterField": "9bfb70f0debdd2a99f13e9b11455ebebeba0fa24fbc452b6b4e1f9c5980e0bfa",
+          "EmbeddingAdapterPage": "c51fadececbae7c807cd7f7eb7378524c65f3d198fd41290931b079da8af8ad0",
+          "EmbeddingConfigView": "259c59b56d96b8ff3c9e970d87c046d532482f145d4db12414f3c8da9793e3aa",
+          "EmbeddingConfigViewEnvelope": "05e5ae5e60417388f7607b59b33de765bb03fd98d3b4586f828689076af28c3b",
+          "EmbeddingDefinition": "e8adb28d3348a7ef396896e001b87270c702e7db28aac6102939b939e8f1d86a",
+          "EmbeddingLimits": "e84b1632a6af9ed65c0ed2053764e8a77743df062ccb57183dc543eb920539d9",
+          "EmbeddingOverview": "820fe8f41457b2c6989fd2cfb87974dce630718234e8e1af6582d9d1278f2687",
+          "EmbeddingOverviewEnvelope": "d61499bb5bf1916cd2e9ded793faa54baa9cde5fd2927eacc415f4262e56c992",
+          "EmbeddingProbe": "48772767faccf16532aaecb52bb1e5c97244f736dd8486beaac59154d33b4570",
+          "EmbeddingRebuild": "1badd6734b900bf431c21075d3cc5ed324326260399f21364c4b09395735dd01",
+          "EmbeddingRebuildEnvelope": "2e821f1baf5d55cdb7daa063acffd6d088bfb7c6dda5658235799a730257f634",
+          "EmbeddingRebuildPage": "f32b810e7f4ef78e0156ed8350c98645d7fae5ffff91bd0d59bce0cb836d31d0",
+          "EmbeddingRevisionPage": "db67f0e525a43b3e99ff6267a0b3a2f94e30fe2a9403b5cd597b4a9efce5dfa2",
+          "EmbeddingRevisionView": "875673f260fe02179e09d9ccb543ba2b6f1537693bc842061c03bab7ee972bf4",
+          "EmbeddingSecretInput": "974a8d6b8c2cf0ba94df4acfbe4ebff981b051519d5a01f57f8f160ccd780125",
+          "EmbeddingSideEffects": "161313396e7d386ed80c44d1407df4dd669a233d0b75a83f8eb0c7c8a8515c60",
+          "EmbeddingSpace": "37b7e75bb761076650aae71cc16b5c5db2c81fe2bb2deeadeff93f5e9663019d",
+          "EmbeddingSummary": "7edcc5dbc5aba4f2e25c02dc6f965f7331c43316015a5ff9fa1cff66891bd61b",
           "EmptyRequest": "35fb909c1c89bbf6b557ecdf67caf1c0d7b6fe9211151f907bb30ce931e6244e",
-          "ErrorDetails": "515d05a2522bc261008d055c254d53a75850670cdecde6b86d80c37b40cfcee1",
+          "ErrorDetails": "6b9312244fd85bfa038f1dca0dd742ba54c884706e823d5510299d8e8334ad93",
           "ErrorEnvelope": "a626983f60ef5b6dd251fa79f3dc72b60726d48995feb363a526ba7e8339c278",
           "EventCommandReceipt": "f49108aa176c17edecefdb342b7494e4eabbb72aaf2ad096736169766c2b15df",
           "EventCommandReceiptEnvelope": "5dcef6ec1d66abeb12dc0a335846a91c768f643fda8bbd28a2fdf606106ce438",
@@ -2861,7 +3274,7 @@
           "KeyViewEnvelope": "93eda58a0e9fb731b8543244d50b6d6e681f5941799ce7fce6c8773507b3dc28",
           "KeyViewPage": "73727c98d452df3e3217786f51cac6f482db6d83d583482925ef1044d3d3f1cc",
           "LoginRequest": "41de08dd51f417dfe4952cb8549929bfd3f3224d6d430928508556a5aa967ffe",
-          "Meta": "8fb01125076b24128a70271b0d16bece54cf0c56736e46cf281fb5d23fadbecc",
+          "Meta": "a5fde742d6e401415ed9a04f5efd8465b372ad5843294b55f7e6bd7308970382",
           "Page": "10ba191392226a1ec1145532b5ab68609668dc09ad51ca8e330ec72759bbf0ef",
           "PersonaCommandReceipt": "652cccb1b6a86ed3a648672f9dbf80610d3b2ed8ba98abfa5b47da058f2c03c9",
           "PersonaCommandReceiptEnvelope": "25c320b3d452f4e6c9bc265ff47813ed40d78f71eb3cf6d4a4fc8e7cf91aebaf",
@@ -2880,6 +3293,8 @@
           "PersonaStateCommandReceiptEnvelope": "992840c0d8b965517d900a01e0a1275e2e2279df92901fe79b4e3ebbda316c11",
           "PersonaStateView": "24e5caa323fbe9a73d6ecfb4a06ff6ddc7b1ddaa8160a7379fbcab649740fa23",
           "PersonaStateViewEnvelope": "9954f4b4704d1167d2e11a0506d1c3c765e5a4b98f7108d76f116e178988ee5f",
+          "ProvidersView": "7d5dba2325b0a490bc472395eceefd14839ea1535954d118029b8460a9a8b040",
+          "ProvidersViewEnvelope": "96ff95b6a2047caa4124dc80c5fa35037cd390c7cc63c25b351fc89810844942",
           "ReadGrant": "430ee2a74a850f5d8398c6593dda5f9590266d36b82d9fd9cd967e3004d972a5",
           "ReadSelector": "81548ae10afbac1a4bccfd30c8748eda83ec13a80cacb46e544f61543f57f515",
           "ReasonCode": "e763a304272a0f2f39a7045bb327bf9e6f61d7d067801ac4ee999ad5a2f85458",
@@ -2916,7 +3331,7 @@
           "TaskChildCommandReceiptEnvelope": "547be83c371aeb31b1e600a9a0aa0b9b6f129de11354f5880450c60ceb70f521",
           "Total": "2b0c3e356933796f4b5432308598beabef9f3c68159302998b616e3f6ea1919b"
         },
-        "version": "1.1.0"
+        "version": "1.2.0"
       },
       "openapi": {
         "operations": {
@@ -3970,7 +4385,7 @@
       "core_exports": [
         "__version__"
       ],
-      "core_version": "0.14.0",
+      "core_version": "0.15.0",
       "instance_fields": {
         "CapabilitiesEnvelope": {
           "api_version": "str",

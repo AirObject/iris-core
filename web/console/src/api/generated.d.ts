@@ -1956,6 +1956,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/v1/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleEmbedding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/adapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleEmbeddingAdapters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consoleCreateEmbeddingConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/configs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleEmbeddingConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["consolePatchEmbeddingConfig"];
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/configs/{id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleEmbeddingRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/configs/{id}:activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consoleActivateEmbeddingConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/configs/{id}:discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consoleDiscardEmbeddingConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/configs/{id}:test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consoleTestEmbeddingConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/rebuilds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleEmbeddingRebuilds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/rebuilds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["consoleEmbeddingRebuild"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding/rebuilds/{id}:cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consoleCancelEmbeddingRebuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/v1/providers/embedding:rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["consoleRollbackEmbedding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/console/v1/service-credentials": {
         parameters: {
             query?: never;
@@ -2032,7 +2240,7 @@ export interface components {
         };
         BootstrapView: {
             /** @constant */
-            contract_version: "1.1.0";
+            contract_version: "1.2.0";
             display_timezone: string;
             import_in_progress: boolean;
             maintenance: boolean;
@@ -2194,6 +2402,36 @@ export interface components {
             /** @enum {string} */
             resource_type: "observation" | "episode" | "claim" | "entity" | "external_identity" | "binding" | "relation" | "state_record" | "focus_item" | "note" | "task" | "task_step" | "task_trigger" | "cognitive_event" | "persona_revision" | "persona_proposal" | "reflection_record" | "artifact";
             revision?: number;
+        };
+        ConsoleEmbeddingActivateRequest: {
+            expected_revision: number;
+            /** @constant */
+            reason_code: "operator_request";
+            rebuild_ack?: string | null;
+        };
+        ConsoleEmbeddingConfigCreateRequest: {
+            definition: components["schemas"]["EmbeddingDefinition"];
+            /** @constant */
+            reason_code: "operator_request";
+            secret?: components["schemas"]["EmbeddingSecretInput"] | null;
+        };
+        ConsoleEmbeddingConfigPatchRequest: {
+            definition: components["schemas"]["EmbeddingDefinition"];
+            expected_revision: number;
+            /** @constant */
+            reason_code: "operator_request";
+            secret?: components["schemas"]["EmbeddingSecretInput"] | null;
+        };
+        ConsoleEmbeddingRevisionRequest: {
+            expected_revision: number;
+            /** @constant */
+            reason_code: "operator_request";
+        };
+        ConsoleEmbeddingRollbackRequest: {
+            expected_revision: number;
+            /** @constant */
+            reason_code: "operator_request";
+            target_config_id: string;
         };
         ConsoleEntityAttributeFields: {
             field: string;
@@ -2503,9 +2741,9 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            kind: "memory_forget" | "trusted_backup";
+            kind: "memory_forget" | "trusted_backup" | "embedding_provider";
             /** @enum {unknown} */
-            phase: "canonical_forget" | "backup_verify";
+            phase: "canonical_forget" | "backup_verify" | "provider_configuration";
             problems_count: number;
             progress: {
                 processed: components["schemas"]["DecimalCount"];
@@ -2533,7 +2771,7 @@ export interface components {
         };
         ConsoleOperationProblem: {
             /** @enum {string} */
-            code: "authority_changed" | "preview_changed" | "query_budget" | "execution_failed" | "restore_requires_review" | "backup_unavailable";
+            code: "authority_changed" | "preview_changed" | "query_budget" | "execution_failed" | "restore_requires_review" | "backup_unavailable" | "provider_budget_exhausted" | "provider_unavailable" | "secret_unavailable" | "secret_changed" | "provider_probe_failed" | "provider_configuration_moved" | "provider_serving_moved" | "provider_probe_invalid";
             /** Format: date-time */
             created_at: string;
             input_index: number | null;
@@ -2897,12 +3135,194 @@ export interface components {
             reason_code: "operator_request";
         };
         DecimalCount: string;
+        EmbeddingActivationPlan: {
+            config_id: string;
+            content_revision: number;
+            expected_revision: number;
+            rebuild_plan_hash: string;
+            reuse_generation_id: string | null;
+            side_effects: components["schemas"]["EmbeddingSideEffects"];
+        };
+        EmbeddingAdapter: {
+            available: boolean;
+            default_limits: components["schemas"]["EmbeddingLimits"];
+            fields: components["schemas"]["EmbeddingAdapterField"][];
+            /** @enum {unknown} */
+            id: "openai-compatible" | "deterministic";
+            label: string;
+            secret_modes: ("secret_ref" | "sealed")[];
+            space_constants: {
+                /** @constant */
+                builder_version: 1;
+                /** @constant */
+                metric: "cosine";
+                /** @constant */
+                normalization: "l2";
+                /** @constant */
+                template_version: 1;
+            };
+        };
+        EmbeddingAdapterField: {
+            key: string;
+            maximum: number;
+            minimum: number;
+            required: boolean;
+            /** @enum {unknown} */
+            type: "string" | "integer" | "number";
+        };
+        EmbeddingAdapterPage: {
+            data: components["schemas"]["EmbeddingAdapter"][];
+            meta: components["schemas"]["Meta"];
+        };
+        EmbeddingConfigView: {
+            activation_blocked_reason?: string | null;
+            activation_plan?: components["schemas"]["EmbeddingActivationPlan"] | null;
+            content_revision: number;
+            /** Format: date-time */
+            created_at: string;
+            current_operation_id: string | null;
+            definition: components["schemas"]["EmbeddingDefinition"];
+            id: string;
+            last_generation_id: string | null;
+            latest_probe_id: string | null;
+            probe?: components["schemas"]["EmbeddingProbe"] | null;
+            /** @constant */
+            provider_kind: "embedding";
+            resolved: boolean;
+            revision: number;
+            secret_digest_prefix: string;
+            secret_hint: string;
+            /** @enum {unknown} */
+            secret_mode: "secret_ref" | "sealed" | null;
+            /** @enum {unknown} */
+            status: "draft" | "probing" | "probed" | "activating" | "active" | "retired" | "discarded";
+            /** Format: date-time */
+            updated_at: string;
+        };
+        EmbeddingConfigViewEnvelope: {
+            data: components["schemas"]["EmbeddingConfigView"];
+            meta: components["schemas"]["Meta"];
+        };
+        EmbeddingDefinition: {
+            /** @enum {unknown} */
+            adapter: "openai-compatible" | "deterministic";
+            endpoint: string;
+            label: string;
+            limits: components["schemas"]["EmbeddingLimits"];
+            space: components["schemas"]["EmbeddingSpace"];
+        };
+        EmbeddingLimits: {
+            batch_size: number;
+            breaker_cooldown_us: number;
+            breaker_failures: number;
+            max_input_chars: number;
+            max_qps: number;
+            timeout_us: number;
+        };
+        EmbeddingOverview: {
+            active_config_id: string | null;
+            can_manage: boolean;
+            configs: components["schemas"]["EmbeddingConfigView"][];
+            configured: boolean;
+            generation_id: string | null;
+            /** @enum {unknown} */
+            projection_state: "never_built" | "ready" | "pending_rebuild";
+        };
+        EmbeddingOverviewEnvelope: {
+            data: components["schemas"]["EmbeddingOverview"];
+            meta: components["schemas"]["Meta"];
+        };
+        EmbeddingProbe: {
+            /** Format: date-time */
+            created_at: string;
+            dimension_observed: number | null;
+            id: string;
+            latency_ms: number;
+            normalized: boolean | null;
+            ok: boolean;
+            /** @enum {unknown} */
+            outcome: "ok" | "timeout" | "rate_limited" | "circuit_open" | "invalid_output" | "transport_error";
+        };
+        EmbeddingRebuild: {
+            /** @enum {unknown} */
+            action: "activate" | "rollback";
+            config_id: string;
+            estimated_remaining_seconds: number | null;
+            generation_id: string | null;
+            operation: components["schemas"]["ConsoleOperation"] & {
+                /** @constant */
+                kind?: "embedding_provider";
+            };
+            serving_generation_id: string | null;
+            side_effects: components["schemas"]["EmbeddingSideEffects"];
+        };
+        EmbeddingRebuildEnvelope: {
+            data: components["schemas"]["EmbeddingRebuild"];
+            meta: components["schemas"]["Meta"];
+        };
+        EmbeddingRebuildPage: {
+            data: components["schemas"]["EmbeddingRebuild"][];
+            meta: components["schemas"]["Meta"];
+        };
+        EmbeddingRevisionPage: {
+            data: components["schemas"]["EmbeddingRevisionView"][];
+            meta: components["schemas"]["Meta"];
+        };
+        EmbeddingRevisionView: {
+            config_id: string;
+            content_revision: number;
+            /** Format: date-time */
+            created_at: string;
+            definition: components["schemas"]["EmbeddingDefinition"];
+            resolved: boolean;
+            secret_digest_prefix: string;
+            secret_hint: string;
+            /** @enum {unknown} */
+            secret_mode: "secret_ref" | "sealed" | null;
+        };
+        EmbeddingSecretInput: {
+            /** @enum {unknown} */
+            mode: "secret_ref" | "sealed";
+            value: string;
+        };
+        EmbeddingSideEffects: {
+            /** @constant */
+            estimate_basis: "request_limits_excluding_queue_and_index_io";
+            estimated_duration_seconds: {
+                lower: number;
+                upper: number;
+            };
+            estimated_resources: components["schemas"]["DecimalCount"];
+            rebuild: boolean;
+            /** @constant */
+            worker_required: true;
+        };
+        EmbeddingSpace: {
+            /** @constant */
+            builder_version: 1;
+            dimension: number;
+            /** @constant */
+            metric: "cosine";
+            model: string;
+            /** @constant */
+            normalization: "l2";
+            /** @constant */
+            template_version: 1;
+        };
+        EmbeddingSummary: {
+            active_config_id: string | null;
+            can_manage: boolean;
+            configured: boolean;
+            generation_id: string | null;
+            /** @enum {unknown} */
+            projection_state: "never_built" | "ready" | "pending_rebuild";
+        };
         EmptyRequest: Record<string, never>;
         ErrorDetails: {
             current_revision?: number | null;
             expected_revision?: number | null;
             /** @enum {unknown} */
-            kind?: "authentication_required" | "permission_denied" | "csrf_failed" | "reauth_required" | "rate_limited" | "validation_failed" | "cursor_invalid" | "revision_conflict" | "preview_stale" | "format_unsupported" | "upload_too_large" | "media_type_unsupported" | "config_changed" | "secret_unavailable" | "session_limit" | "protected_resource";
+            kind?: "authentication_required" | "config_changed" | "csrf_failed" | "cursor_invalid" | "format_unsupported" | "media_type_unsupported" | "permission_denied" | "preview_stale" | "protected_resource" | "provider_configuration_moved" | "provider_configuration_unavailable" | "provider_estimate_unavailable" | "provider_probe_expired" | "provider_probe_mismatch" | "provider_probe_required" | "provider_rebuild_ack_required" | "provider_rebuild_plan_changed" | "provider_secret_changed" | "provider_serving_moved" | "provider_unavailable" | "rate_limited" | "reauth_required" | "revision_conflict" | "secret_unavailable" | "session_limit" | "upload_too_large" | "validation_failed";
         };
         ErrorEnvelope: {
             error: {
@@ -3017,7 +3437,7 @@ export interface components {
             /** Format: date-time */
             as_of: string;
             /** @constant */
-            contract_version: "1.1.0";
+            contract_version: "1.2.0";
             descriptor?: components["schemas"]["ResourceTypeDescriptor"];
             page?: components["schemas"]["Page"];
             /** Format: uuid */
@@ -3243,6 +3663,20 @@ export interface components {
             meta: components["schemas"]["Meta"];
         } & {
             [key: string]: unknown;
+        };
+        ProvidersView: {
+            adapters: components["schemas"]["EmbeddingAdapter"][];
+            cognitive: {
+                /** @constant */
+                configuration_source: "deployment";
+                /** @constant */
+                read_only: true;
+            };
+            embedding: components["schemas"]["EmbeddingSummary"];
+        };
+        ProvidersViewEnvelope: {
+            data: components["schemas"]["ProvidersView"];
+            meta: components["schemas"]["Meta"];
         };
         ReadGrant: {
             agent_selector: components["schemas"]["ReadSelector"];
@@ -15049,7 +15483,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 cursor?: string;
-                kind?: "memory_forget" | "trusted_backup";
+                kind?: "memory_forget" | "trusted_backup" | "embedding_provider";
                 status?: "queued" | "running" | "paused" | "blocked" | "completed" | "completed_with_warnings" | "failed" | "cancelled" | "cancelled_partial";
                 created_from?: string;
                 created_before?: string;
@@ -16840,6 +17274,1312 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonaCommandReceiptEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvidersViewEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleEmbedding: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingOverviewEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleEmbeddingAdapters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingAdapterPage"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleCreateEmbeddingConfig: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleEmbeddingConfigCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingConfigViewEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleEmbeddingConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingConfigViewEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consolePatchEmbeddingConfig: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleEmbeddingConfigPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingConfigViewEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleEmbeddingRevisions: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingRevisionPage"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleActivateEmbeddingConfig: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleEmbeddingActivateRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingRebuildEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleDiscardEmbeddingConfig: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleEmbeddingRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingConfigViewEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleTestEmbeddingConfig: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleEmbeddingRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleOperationEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleEmbeddingRebuilds: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingRebuildPage"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleEmbeddingRebuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingRebuildEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleCancelEmbeddingRebuild: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleOperationCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingRebuildEnvelope"];
+                };
+            };
+            /** @description Console error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Console error */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consoleRollbackEmbedding: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-IMC-Console": "1";
+                "X-IMC-CSRF": string;
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleEmbeddingRollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingRebuildEnvelope"];
                 };
             };
             /** @description Console error */

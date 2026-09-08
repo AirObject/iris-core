@@ -1,0 +1,16 @@
+{
+  "data": {
+    "active_config_id": "x",
+    "can_manage": false,
+    "configs": [],
+    "configured": false,
+    "generation_id": "x",
+    "projection_state": "never_built"
+  },
+  "meta": {
+    "as_of": "2026-09-08T00:00:00.000000Z",
+    "contract_version": "1.2.0",
+    "request_id": "01a07e00-0000-7000-8000-000000000001"
+  },
+  "unexpected_private_field": "not allowed"
+}

@@ -578,7 +578,7 @@
       ]
     }
   },
-  "contract_version": "1.1.0",
+  "contract_version": "1.2.0",
   "fixtures": {
     "forward/ColumnSpec": {
       "schema": "ColumnSpec",
@@ -662,7 +662,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -821,7 +821,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -840,7 +840,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -877,7 +877,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -896,7 +896,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -917,7 +917,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -935,7 +935,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -953,7 +953,7 @@
         "future_optional": true,
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -975,7 +975,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -1028,7 +1028,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -1100,7 +1100,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -1169,7 +1169,7 @@
         "future_optional": "allowed",
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -1274,7 +1274,7 @@
       "schema": "BootstrapEnvelope",
       "value": {
         "data": {
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "display_timezone": "UTC",
           "future_optional": true,
           "import_in_progress": false,
@@ -1292,7 +1292,7 @@
         },
         "meta": {
           "as_of": "2026-09-05T08:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "future_optional": "ok",
           "request_id": "01991bab-a000-7000-8000-000000000001"
         }
@@ -3052,6 +3052,34 @@
         "status": "queued"
       }
     },
+    "invalid/ConsoleOperation-provider-backup-phase": {
+      "schema": "ConsoleOperation",
+      "value": {
+        "available_actions": [
+          "cancel"
+        ],
+        "blocked_reason": null,
+        "cancellable": true,
+        "created_at": "2026-09-07T00:00:00.000000Z",
+        "created_by": "00000000-0000-4000-8000-000000000002",
+        "finished_at": null,
+        "id": "00000000-0000-4000-8000-000000000001",
+        "kind": "embedding_provider",
+        "phase": "backup_verify",
+        "problems_count": 0,
+        "progress": {
+          "processed": "0",
+          "total": "2",
+          "unit": "steps"
+        },
+        "reason_codes": [
+          "operator_request"
+        ],
+        "result_ref": null,
+        "started_at": null,
+        "status": "queued"
+      }
+    },
     "invalid/ConsoleOperationCancelRequest": {
       "schema": "ConsoleOperationCancelRequest",
       "value": {
@@ -3089,7 +3117,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         },
         "unexpected_private_field": "forbidden"
@@ -3127,7 +3155,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         },
         "unexpected_private_field": "forbidden"
@@ -3148,7 +3176,7 @@
         "data": [],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         },
         "unexpected_private_field": "forbidden"
@@ -4244,7 +4272,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -4289,7 +4317,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -4350,7 +4378,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -4449,7 +4477,7 @@
       "value": {
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -4639,7 +4667,7 @@
       "schema": "BootstrapEnvelope",
       "value": {
         "data": {
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "display_timezone": "UTC",
           "import_in_progress": false,
           "maintenance": false,
@@ -4656,7 +4684,7 @@
         },
         "meta": {
           "as_of": "2026-09-05T08:00:00Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "01991bab-a000-7000-8000-000000000001"
         }
       }
@@ -5115,6 +5143,34 @@
         "status": "queued"
       }
     },
+    "valid/ConsoleOperation-provider": {
+      "schema": "ConsoleOperation",
+      "value": {
+        "available_actions": [
+          "cancel"
+        ],
+        "blocked_reason": null,
+        "cancellable": true,
+        "created_at": "2026-09-07T00:00:00.000000Z",
+        "created_by": "00000000-0000-4000-8000-000000000002",
+        "finished_at": null,
+        "id": "00000000-0000-4000-8000-000000000001",
+        "kind": "embedding_provider",
+        "phase": "provider_configuration",
+        "problems_count": 0,
+        "progress": {
+          "processed": "0",
+          "total": "2",
+          "unit": "steps"
+        },
+        "reason_codes": [
+          "operator_request"
+        ],
+        "result_ref": null,
+        "started_at": null,
+        "status": "queued"
+      }
+    },
     "valid/ConsoleOperationCancelRequest": {
       "schema": "ConsoleOperationCancelRequest",
       "value": {
@@ -5151,7 +5207,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -5188,7 +5244,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -5217,13 +5273,77 @@
         "input_index": 9000
       }
     },
+    "valid/ConsoleOperationProblem-provider_budget_exhausted": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "provider_budget_exhausted",
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "input_index": null
+      }
+    },
+    "valid/ConsoleOperationProblem-provider_configuration_moved": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "provider_configuration_moved",
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "input_index": null
+      }
+    },
+    "valid/ConsoleOperationProblem-provider_probe_failed": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "provider_probe_failed",
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "input_index": null
+      }
+    },
+    "valid/ConsoleOperationProblem-provider_probe_invalid": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "provider_probe_invalid",
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "input_index": null
+      }
+    },
+    "valid/ConsoleOperationProblem-provider_serving_moved": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "provider_serving_moved",
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "input_index": null
+      }
+    },
+    "valid/ConsoleOperationProblem-provider_unavailable": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "provider_unavailable",
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "input_index": null
+      }
+    },
+    "valid/ConsoleOperationProblem-secret_changed": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "secret_changed",
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "input_index": null
+      }
+    },
+    "valid/ConsoleOperationProblem-secret_unavailable": {
+      "schema": "ConsoleOperationProblem",
+      "value": {
+        "code": "secret_unavailable",
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "input_index": null
+      }
+    },
     "valid/ConsoleOperationProblemPage": {
       "schema": "ConsoleOperationProblemPage",
       "value": {
         "data": [],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -5744,7 +5864,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -5799,7 +5919,7 @@
         ],
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -5847,7 +5967,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6156,7 +6276,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6185,7 +6305,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6270,7 +6390,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6299,7 +6419,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6332,7 +6452,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6359,7 +6479,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6386,7 +6506,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6443,7 +6563,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -6464,7 +6584,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6527,7 +6647,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -6602,7 +6722,7 @@
         ],
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6699,7 +6819,7 @@
         },
         "meta": {
           "as_of": "2023-11-14T22:13:20.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "018bcfe5-6800-7000-8000-000000000001"
         }
       }
@@ -6804,7 +6924,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -6907,7 +7027,7 @@
         ],
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -6985,7 +7105,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7074,7 +7194,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7113,7 +7233,7 @@
         ],
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "page": {
             "has_more": false,
             "limit": 50,
@@ -7215,7 +7335,7 @@
         },
         "meta": {
           "as_of": "2026-09-06T00:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "01991bf3-1000-7000-8000-000000000001"
         }
       }
@@ -7254,7 +7374,7 @@
       "schema": "BootstrapEnvelope",
       "value": {
         "data": {
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "display_timezone": "UTC",
           "import_in_progress": false,
           "maintenance": false,
@@ -7271,7 +7391,7 @@
         },
         "meta": {
           "as_of": "2026-09-05T08:00:00.000000Z",
-          "contract_version": "1.1.0",
+          "contract_version": "1.2.0",
           "request_id": "01991bab-a000-7000-8000-000000000001"
         }
       }
@@ -7333,6 +7453,1103 @@
     "valid/large-count": {
       "schema": "DecimalCount",
       "value": "9223372036854775807"
+    },
+    "valid/EmbeddingLimits": {
+      "schema": "EmbeddingLimits",
+      "value": {
+        "batch_size": 1,
+        "timeout_us": 1000,
+        "max_qps": 0.1,
+        "breaker_failures": 1,
+        "breaker_cooldown_us": 1000,
+        "max_input_chars": 16
+      }
+    },
+    "invalid/EmbeddingLimits": {
+      "schema": "EmbeddingLimits",
+      "value": {
+        "batch_size": 1,
+        "timeout_us": 1000,
+        "max_qps": 0.1,
+        "breaker_failures": 1,
+        "breaker_cooldown_us": 1000,
+        "max_input_chars": 16,
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingSpace": {
+      "schema": "EmbeddingSpace",
+      "value": {
+        "model": "x",
+        "dimension": 1,
+        "metric": "cosine",
+        "normalization": "l2",
+        "template_version": 1,
+        "builder_version": 1
+      }
+    },
+    "invalid/EmbeddingSpace": {
+      "schema": "EmbeddingSpace",
+      "value": {
+        "model": "x",
+        "dimension": 1,
+        "metric": "cosine",
+        "normalization": "l2",
+        "template_version": 1,
+        "builder_version": 1,
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingDefinition": {
+      "schema": "EmbeddingDefinition",
+      "value": {
+        "adapter": "openai-compatible",
+        "endpoint": "x",
+        "space": {
+          "model": "x",
+          "dimension": 1,
+          "metric": "cosine",
+          "normalization": "l2",
+          "template_version": 1,
+          "builder_version": 1
+        },
+        "limits": {
+          "batch_size": 1,
+          "timeout_us": 1000,
+          "max_qps": 0.1,
+          "breaker_failures": 1,
+          "breaker_cooldown_us": 1000,
+          "max_input_chars": 16
+        },
+        "label": "x"
+      }
+    },
+    "invalid/EmbeddingDefinition": {
+      "schema": "EmbeddingDefinition",
+      "value": {
+        "adapter": "openai-compatible",
+        "endpoint": "x",
+        "space": {
+          "model": "x",
+          "dimension": 1,
+          "metric": "cosine",
+          "normalization": "l2",
+          "template_version": 1,
+          "builder_version": 1
+        },
+        "limits": {
+          "batch_size": 1,
+          "timeout_us": 1000,
+          "max_qps": 0.1,
+          "breaker_failures": 1,
+          "breaker_cooldown_us": 1000,
+          "max_input_chars": 16
+        },
+        "label": "x",
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingSecretInput": {
+      "schema": "EmbeddingSecretInput",
+      "value": {
+        "mode": "secret_ref",
+        "value": "x"
+      }
+    },
+    "invalid/EmbeddingSecretInput": {
+      "schema": "EmbeddingSecretInput",
+      "value": {
+        "mode": "secret_ref",
+        "value": "x",
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingSideEffects": {
+      "schema": "EmbeddingSideEffects",
+      "value": {
+        "rebuild": false,
+        "estimated_resources": "0",
+        "worker_required": true,
+        "estimated_duration_seconds": {
+          "lower": 0,
+          "upper": 0
+        },
+        "estimate_basis": "request_limits_excluding_queue_and_index_io"
+      }
+    },
+    "invalid/EmbeddingSideEffects": {
+      "schema": "EmbeddingSideEffects",
+      "value": {
+        "rebuild": false,
+        "estimated_resources": "0",
+        "worker_required": true,
+        "estimated_duration_seconds": {
+          "lower": 0,
+          "upper": 0
+        },
+        "estimate_basis": "request_limits_excluding_queue_and_index_io",
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingActivationPlan": {
+      "schema": "EmbeddingActivationPlan",
+      "value": {
+        "config_id": "x",
+        "content_revision": 1,
+        "expected_revision": 1,
+        "rebuild_plan_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "reuse_generation_id": "x",
+        "side_effects": {
+          "rebuild": false,
+          "estimated_resources": "0",
+          "worker_required": true,
+          "estimated_duration_seconds": {
+            "lower": 0,
+            "upper": 0
+          },
+          "estimate_basis": "request_limits_excluding_queue_and_index_io"
+        }
+      }
+    },
+    "invalid/EmbeddingActivationPlan": {
+      "schema": "EmbeddingActivationPlan",
+      "value": {
+        "config_id": "x",
+        "content_revision": 1,
+        "expected_revision": 1,
+        "rebuild_plan_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "reuse_generation_id": "x",
+        "side_effects": {
+          "rebuild": false,
+          "estimated_resources": "0",
+          "worker_required": true,
+          "estimated_duration_seconds": {
+            "lower": 0,
+            "upper": 0
+          },
+          "estimate_basis": "request_limits_excluding_queue_and_index_io"
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingProbe": {
+      "schema": "EmbeddingProbe",
+      "value": {
+        "id": "x",
+        "ok": false,
+        "dimension_observed": 0,
+        "normalized": false,
+        "latency_ms": 0,
+        "outcome": "ok",
+        "created_at": "2026-09-08T00:00:00.000000Z"
+      }
+    },
+    "invalid/EmbeddingProbe": {
+      "schema": "EmbeddingProbe",
+      "value": {
+        "id": "x",
+        "ok": false,
+        "dimension_observed": 0,
+        "normalized": false,
+        "latency_ms": 0,
+        "outcome": "ok",
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingConfigView": {
+      "schema": "EmbeddingConfigView",
+      "value": {
+        "id": "x",
+        "status": "draft",
+        "revision": 1,
+        "content_revision": 1,
+        "provider_kind": "embedding",
+        "definition": {
+          "adapter": "openai-compatible",
+          "endpoint": "x",
+          "space": {
+            "model": "x",
+            "dimension": 1,
+            "metric": "cosine",
+            "normalization": "l2",
+            "template_version": 1,
+            "builder_version": 1
+          },
+          "limits": {
+            "batch_size": 1,
+            "timeout_us": 1000,
+            "max_qps": 0.1,
+            "breaker_failures": 1,
+            "breaker_cooldown_us": 1000,
+            "max_input_chars": 16
+          },
+          "label": "x"
+        },
+        "secret_mode": "secret_ref",
+        "secret_hint": "hint",
+        "secret_digest_prefix": "00000000",
+        "resolved": false,
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "updated_at": "2026-09-08T00:00:00.000000Z",
+        "current_operation_id": "x",
+        "latest_probe_id": "x",
+        "last_generation_id": "x"
+      }
+    },
+    "invalid/EmbeddingConfigView": {
+      "schema": "EmbeddingConfigView",
+      "value": {
+        "id": "x",
+        "status": "draft",
+        "revision": 1,
+        "content_revision": 1,
+        "provider_kind": "embedding",
+        "definition": {
+          "adapter": "openai-compatible",
+          "endpoint": "x",
+          "space": {
+            "model": "x",
+            "dimension": 1,
+            "metric": "cosine",
+            "normalization": "l2",
+            "template_version": 1,
+            "builder_version": 1
+          },
+          "limits": {
+            "batch_size": 1,
+            "timeout_us": 1000,
+            "max_qps": 0.1,
+            "breaker_failures": 1,
+            "breaker_cooldown_us": 1000,
+            "max_input_chars": 16
+          },
+          "label": "x"
+        },
+        "secret_mode": "secret_ref",
+        "secret_hint": "hint",
+        "secret_digest_prefix": "0",
+        "resolved": false,
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "updated_at": "2026-09-08T00:00:00.000000Z",
+        "current_operation_id": "x",
+        "latest_probe_id": "x",
+        "last_generation_id": "x",
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingRevisionView": {
+      "schema": "EmbeddingRevisionView",
+      "value": {
+        "config_id": "x",
+        "content_revision": 1,
+        "definition": {
+          "adapter": "openai-compatible",
+          "endpoint": "x",
+          "space": {
+            "model": "x",
+            "dimension": 1,
+            "metric": "cosine",
+            "normalization": "l2",
+            "template_version": 1,
+            "builder_version": 1
+          },
+          "limits": {
+            "batch_size": 1,
+            "timeout_us": 1000,
+            "max_qps": 0.1,
+            "breaker_failures": 1,
+            "breaker_cooldown_us": 1000,
+            "max_input_chars": 16
+          },
+          "label": "x"
+        },
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "secret_mode": "secret_ref",
+        "secret_hint": "hint",
+        "secret_digest_prefix": "00000000",
+        "resolved": false
+      }
+    },
+    "invalid/EmbeddingRevisionView": {
+      "schema": "EmbeddingRevisionView",
+      "value": {
+        "config_id": "x",
+        "content_revision": 1,
+        "definition": {
+          "adapter": "openai-compatible",
+          "endpoint": "x",
+          "space": {
+            "model": "x",
+            "dimension": 1,
+            "metric": "cosine",
+            "normalization": "l2",
+            "template_version": 1,
+            "builder_version": 1
+          },
+          "limits": {
+            "batch_size": 1,
+            "timeout_us": 1000,
+            "max_qps": 0.1,
+            "breaker_failures": 1,
+            "breaker_cooldown_us": 1000,
+            "max_input_chars": 16
+          },
+          "label": "x"
+        },
+        "created_at": "2026-09-08T00:00:00.000000Z",
+        "secret_mode": "secret_ref",
+        "secret_hint": "hint",
+        "secret_digest_prefix": "0",
+        "resolved": false,
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingSummary": {
+      "schema": "EmbeddingSummary",
+      "value": {
+        "configured": false,
+        "active_config_id": "x",
+        "generation_id": "x",
+        "projection_state": "never_built",
+        "can_manage": false
+      }
+    },
+    "invalid/EmbeddingSummary": {
+      "schema": "EmbeddingSummary",
+      "value": {
+        "configured": false,
+        "active_config_id": "x",
+        "generation_id": "x",
+        "projection_state": "never_built",
+        "can_manage": false,
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingOverview": {
+      "schema": "EmbeddingOverview",
+      "value": {
+        "configured": false,
+        "active_config_id": "x",
+        "generation_id": "x",
+        "projection_state": "never_built",
+        "can_manage": false,
+        "configs": []
+      }
+    },
+    "invalid/EmbeddingOverview": {
+      "schema": "EmbeddingOverview",
+      "value": {
+        "configured": false,
+        "active_config_id": "x",
+        "generation_id": "x",
+        "projection_state": "never_built",
+        "can_manage": false,
+        "configs": [],
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingAdapterField": {
+      "schema": "EmbeddingAdapterField",
+      "value": {
+        "key": "x",
+        "type": "string",
+        "required": false,
+        "minimum": 0,
+        "maximum": 0
+      }
+    },
+    "invalid/EmbeddingAdapterField": {
+      "schema": "EmbeddingAdapterField",
+      "value": {
+        "key": "x",
+        "type": "string",
+        "required": false,
+        "minimum": 0,
+        "maximum": 0,
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingAdapter": {
+      "schema": "EmbeddingAdapter",
+      "value": {
+        "id": "openai-compatible",
+        "label": "x",
+        "available": false,
+        "secret_modes": [],
+        "default_limits": {
+          "batch_size": 1,
+          "timeout_us": 1000,
+          "max_qps": 0.1,
+          "breaker_failures": 1,
+          "breaker_cooldown_us": 1000,
+          "max_input_chars": 16
+        },
+        "fields": [],
+        "space_constants": {
+          "metric": "cosine",
+          "normalization": "l2",
+          "template_version": 1,
+          "builder_version": 1
+        }
+      }
+    },
+    "invalid/EmbeddingAdapter": {
+      "schema": "EmbeddingAdapter",
+      "value": {
+        "id": "openai-compatible",
+        "label": "x",
+        "available": false,
+        "secret_modes": [],
+        "default_limits": {
+          "batch_size": 1,
+          "timeout_us": 1000,
+          "max_qps": 0.1,
+          "breaker_failures": 1,
+          "breaker_cooldown_us": 1000,
+          "max_input_chars": 16
+        },
+        "fields": [],
+        "space_constants": {
+          "metric": "cosine",
+          "normalization": "l2",
+          "template_version": 1,
+          "builder_version": 1
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingRebuild": {
+      "schema": "EmbeddingRebuild",
+      "value": {
+        "operation": {
+          "available_actions": [
+            "cancel"
+          ],
+          "blocked_reason": null,
+          "cancellable": true,
+          "created_at": "2026-09-07T00:00:00.000000Z",
+          "created_by": "00000000-0000-4000-8000-000000000002",
+          "finished_at": null,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "kind": "embedding_provider",
+          "phase": "provider_configuration",
+          "problems_count": 0,
+          "progress": {
+            "processed": "0",
+            "total": "2",
+            "unit": "steps"
+          },
+          "reason_codes": [
+            "operator_request"
+          ],
+          "result_ref": null,
+          "started_at": null,
+          "status": "queued"
+        },
+        "config_id": "x",
+        "action": "activate",
+        "generation_id": "x",
+        "serving_generation_id": "x",
+        "side_effects": {
+          "rebuild": false,
+          "estimated_resources": "0",
+          "worker_required": true,
+          "estimated_duration_seconds": {
+            "lower": 0,
+            "upper": 0
+          },
+          "estimate_basis": "request_limits_excluding_queue_and_index_io"
+        },
+        "estimated_remaining_seconds": 0
+      }
+    },
+    "invalid/EmbeddingRebuild": {
+      "schema": "EmbeddingRebuild",
+      "value": {
+        "operation": {
+          "id": "01a07e00-0000-7000-8000-000000000001",
+          "kind": "memory_forget",
+          "status": "queued",
+          "phase": "canonical_forget",
+          "progress": {
+            "processed": "0",
+            "total": "0",
+            "unit": "records"
+          },
+          "blocked_reason": "x",
+          "created_by": "01a07e00-0000-7000-8000-000000000001",
+          "created_at": "2026-09-08T00:00:00.000000Z",
+          "started_at": "2026-09-08T00:00:00.000000Z",
+          "finished_at": "2026-09-08T00:00:00.000000Z",
+          "cancellable": false,
+          "result_ref": null,
+          "problems_count": 0,
+          "available_actions": [],
+          "reason_codes": []
+        },
+        "config_id": "x",
+        "action": "activate",
+        "generation_id": "x",
+        "serving_generation_id": "x",
+        "side_effects": {
+          "rebuild": false,
+          "estimated_resources": "0",
+          "worker_required": true,
+          "estimated_duration_seconds": {
+            "lower": 0,
+            "upper": 0
+          },
+          "estimate_basis": "request_limits_excluding_queue_and_index_io"
+        },
+        "estimated_remaining_seconds": 0,
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/ProvidersView": {
+      "schema": "ProvidersView",
+      "value": {
+        "embedding": {
+          "configured": false,
+          "active_config_id": "x",
+          "generation_id": "x",
+          "projection_state": "never_built",
+          "can_manage": false
+        },
+        "adapters": [],
+        "cognitive": {
+          "read_only": true,
+          "configuration_source": "deployment"
+        }
+      }
+    },
+    "invalid/ProvidersView": {
+      "schema": "ProvidersView",
+      "value": {
+        "embedding": {
+          "configured": false,
+          "active_config_id": "x",
+          "generation_id": "x",
+          "projection_state": "never_built",
+          "can_manage": false
+        },
+        "adapters": [],
+        "cognitive": {
+          "read_only": true,
+          "configuration_source": "deployment"
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingConfigViewEnvelope": {
+      "schema": "EmbeddingConfigViewEnvelope",
+      "value": {
+        "data": {
+          "id": "x",
+          "status": "draft",
+          "revision": 1,
+          "content_revision": 1,
+          "provider_kind": "embedding",
+          "definition": {
+            "adapter": "openai-compatible",
+            "endpoint": "x",
+            "space": {
+              "model": "x",
+              "dimension": 1,
+              "metric": "cosine",
+              "normalization": "l2",
+              "template_version": 1,
+              "builder_version": 1
+            },
+            "limits": {
+              "batch_size": 1,
+              "timeout_us": 1000,
+              "max_qps": 0.1,
+              "breaker_failures": 1,
+              "breaker_cooldown_us": 1000,
+              "max_input_chars": 16
+            },
+            "label": "x"
+          },
+          "secret_mode": "secret_ref",
+          "secret_hint": "hint",
+          "secret_digest_prefix": "00000000",
+          "resolved": false,
+          "created_at": "2026-09-08T00:00:00.000000Z",
+          "updated_at": "2026-09-08T00:00:00.000000Z",
+          "current_operation_id": "x",
+          "latest_probe_id": "x",
+          "last_generation_id": "x"
+        },
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        }
+      }
+    },
+    "invalid/EmbeddingConfigViewEnvelope": {
+      "schema": "EmbeddingConfigViewEnvelope",
+      "value": {
+        "data": {
+          "id": "x",
+          "status": "draft",
+          "revision": 1,
+          "content_revision": 1,
+          "provider_kind": "embedding",
+          "definition": {
+            "adapter": "openai-compatible",
+            "endpoint": "x",
+            "space": {
+              "model": "x",
+              "dimension": 1,
+              "metric": "cosine",
+              "normalization": "l2",
+              "template_version": 1,
+              "builder_version": 1
+            },
+            "limits": {
+              "batch_size": 1,
+              "timeout_us": 1000,
+              "max_qps": 0.1,
+              "breaker_failures": 1,
+              "breaker_cooldown_us": 1000,
+              "max_input_chars": 16
+            },
+            "label": "x"
+          },
+          "secret_mode": "secret_ref",
+          "secret_hint": "hint",
+          "secret_digest_prefix": "0",
+          "resolved": false,
+          "created_at": "2026-09-08T00:00:00.000000Z",
+          "updated_at": "2026-09-08T00:00:00.000000Z",
+          "current_operation_id": "x",
+          "latest_probe_id": "x",
+          "last_generation_id": "x"
+        },
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingOverviewEnvelope": {
+      "schema": "EmbeddingOverviewEnvelope",
+      "value": {
+        "data": {
+          "configured": false,
+          "active_config_id": "x",
+          "generation_id": "x",
+          "projection_state": "never_built",
+          "can_manage": false,
+          "configs": []
+        },
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        }
+      }
+    },
+    "invalid/EmbeddingOverviewEnvelope": {
+      "schema": "EmbeddingOverviewEnvelope",
+      "value": {
+        "data": {
+          "configured": false,
+          "active_config_id": "x",
+          "generation_id": "x",
+          "projection_state": "never_built",
+          "can_manage": false,
+          "configs": []
+        },
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingRebuildEnvelope": {
+      "schema": "EmbeddingRebuildEnvelope",
+      "value": {
+        "data": {
+          "operation": {
+            "available_actions": [
+              "cancel"
+            ],
+            "blocked_reason": null,
+            "cancellable": true,
+            "created_at": "2026-09-07T00:00:00.000000Z",
+            "created_by": "00000000-0000-4000-8000-000000000002",
+            "finished_at": null,
+            "id": "00000000-0000-4000-8000-000000000001",
+            "kind": "embedding_provider",
+            "phase": "provider_configuration",
+            "problems_count": 0,
+            "progress": {
+              "processed": "0",
+              "total": "2",
+              "unit": "steps"
+            },
+            "reason_codes": [
+              "operator_request"
+            ],
+            "result_ref": null,
+            "started_at": null,
+            "status": "queued"
+          },
+          "config_id": "x",
+          "action": "activate",
+          "generation_id": "x",
+          "serving_generation_id": "x",
+          "side_effects": {
+            "rebuild": false,
+            "estimated_resources": "0",
+            "worker_required": true,
+            "estimated_duration_seconds": {
+              "lower": 0,
+              "upper": 0
+            },
+            "estimate_basis": "request_limits_excluding_queue_and_index_io"
+          },
+          "estimated_remaining_seconds": 0
+        },
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        }
+      }
+    },
+    "invalid/EmbeddingRebuildEnvelope": {
+      "schema": "EmbeddingRebuildEnvelope",
+      "value": {
+        "data": {
+          "operation": {
+            "id": "01a07e00-0000-7000-8000-000000000001",
+            "kind": "memory_forget",
+            "status": "queued",
+            "phase": "canonical_forget",
+            "progress": {
+              "processed": "0",
+              "total": "0",
+              "unit": "records"
+            },
+            "blocked_reason": "x",
+            "created_by": "01a07e00-0000-7000-8000-000000000001",
+            "created_at": "2026-09-08T00:00:00.000000Z",
+            "started_at": "2026-09-08T00:00:00.000000Z",
+            "finished_at": "2026-09-08T00:00:00.000000Z",
+            "cancellable": false,
+            "result_ref": null,
+            "problems_count": 0,
+            "available_actions": [],
+            "reason_codes": []
+          },
+          "config_id": "x",
+          "action": "activate",
+          "generation_id": "x",
+          "serving_generation_id": "x",
+          "side_effects": {
+            "rebuild": false,
+            "estimated_resources": "0",
+            "worker_required": true,
+            "estimated_duration_seconds": {
+              "lower": 0,
+              "upper": 0
+            },
+            "estimate_basis": "request_limits_excluding_queue_and_index_io"
+          },
+          "estimated_remaining_seconds": 0
+        },
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/ProvidersViewEnvelope": {
+      "schema": "ProvidersViewEnvelope",
+      "value": {
+        "data": {
+          "embedding": {
+            "configured": false,
+            "active_config_id": "x",
+            "generation_id": "x",
+            "projection_state": "never_built",
+            "can_manage": false
+          },
+          "adapters": [],
+          "cognitive": {
+            "read_only": true,
+            "configuration_source": "deployment"
+          }
+        },
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        }
+      }
+    },
+    "invalid/ProvidersViewEnvelope": {
+      "schema": "ProvidersViewEnvelope",
+      "value": {
+        "data": {
+          "embedding": {
+            "configured": false,
+            "active_config_id": "x",
+            "generation_id": "x",
+            "projection_state": "never_built",
+            "can_manage": false
+          },
+          "adapters": [],
+          "cognitive": {
+            "read_only": true,
+            "configuration_source": "deployment"
+          }
+        },
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingRebuildPage": {
+      "schema": "EmbeddingRebuildPage",
+      "value": {
+        "data": [],
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        }
+      }
+    },
+    "invalid/EmbeddingRebuildPage": {
+      "schema": "EmbeddingRebuildPage",
+      "value": {
+        "data": [],
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingRevisionPage": {
+      "schema": "EmbeddingRevisionPage",
+      "value": {
+        "data": [],
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        }
+      }
+    },
+    "invalid/EmbeddingRevisionPage": {
+      "schema": "EmbeddingRevisionPage",
+      "value": {
+        "data": [],
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/EmbeddingAdapterPage": {
+      "schema": "EmbeddingAdapterPage",
+      "value": {
+        "data": [],
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        }
+      }
+    },
+    "invalid/EmbeddingAdapterPage": {
+      "schema": "EmbeddingAdapterPage",
+      "value": {
+        "data": [],
+        "meta": {
+          "request_id": "01a07e00-0000-7000-8000-000000000001",
+          "contract_version": "1.2.0",
+          "as_of": "2026-09-08T00:00:00.000000Z"
+        },
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/ConsoleEmbeddingConfigCreateRequest": {
+      "schema": "ConsoleEmbeddingConfigCreateRequest",
+      "value": {
+        "definition": {
+          "adapter": "openai-compatible",
+          "endpoint": "x",
+          "space": {
+            "model": "x",
+            "dimension": 1,
+            "metric": "cosine",
+            "normalization": "l2",
+            "template_version": 1,
+            "builder_version": 1
+          },
+          "limits": {
+            "batch_size": 1,
+            "timeout_us": 1000,
+            "max_qps": 0.1,
+            "breaker_failures": 1,
+            "breaker_cooldown_us": 1000,
+            "max_input_chars": 16
+          },
+          "label": "x"
+        },
+        "reason_code": "operator_request"
+      }
+    },
+    "invalid/ConsoleEmbeddingConfigCreateRequest": {
+      "schema": "ConsoleEmbeddingConfigCreateRequest",
+      "value": {
+        "definition": {
+          "adapter": "openai-compatible",
+          "endpoint": "x",
+          "space": {
+            "model": "x",
+            "dimension": 1,
+            "metric": "cosine",
+            "normalization": "l2",
+            "template_version": 1,
+            "builder_version": 1
+          },
+          "limits": {
+            "batch_size": 1,
+            "timeout_us": 1000,
+            "max_qps": 0.1,
+            "breaker_failures": 1,
+            "breaker_cooldown_us": 1000,
+            "max_input_chars": 16
+          },
+          "label": "x"
+        },
+        "reason_code": "operator_request",
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/ConsoleEmbeddingConfigPatchRequest": {
+      "schema": "ConsoleEmbeddingConfigPatchRequest",
+      "value": {
+        "definition": {
+          "adapter": "openai-compatible",
+          "endpoint": "x",
+          "space": {
+            "model": "x",
+            "dimension": 1,
+            "metric": "cosine",
+            "normalization": "l2",
+            "template_version": 1,
+            "builder_version": 1
+          },
+          "limits": {
+            "batch_size": 1,
+            "timeout_us": 1000,
+            "max_qps": 0.1,
+            "breaker_failures": 1,
+            "breaker_cooldown_us": 1000,
+            "max_input_chars": 16
+          },
+          "label": "x"
+        },
+        "expected_revision": 1,
+        "reason_code": "operator_request"
+      }
+    },
+    "invalid/ConsoleEmbeddingConfigPatchRequest": {
+      "schema": "ConsoleEmbeddingConfigPatchRequest",
+      "value": {
+        "definition": {
+          "adapter": "openai-compatible",
+          "endpoint": "x",
+          "space": {
+            "model": "x",
+            "dimension": 1,
+            "metric": "cosine",
+            "normalization": "l2",
+            "template_version": 1,
+            "builder_version": 1
+          },
+          "limits": {
+            "batch_size": 1,
+            "timeout_us": 1000,
+            "max_qps": 0.1,
+            "breaker_failures": 1,
+            "breaker_cooldown_us": 1000,
+            "max_input_chars": 16
+          },
+          "label": "x"
+        },
+        "expected_revision": 1,
+        "reason_code": "operator_request",
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/ConsoleEmbeddingRevisionRequest": {
+      "schema": "ConsoleEmbeddingRevisionRequest",
+      "value": {
+        "expected_revision": 1,
+        "reason_code": "operator_request"
+      }
+    },
+    "invalid/ConsoleEmbeddingRevisionRequest": {
+      "schema": "ConsoleEmbeddingRevisionRequest",
+      "value": {
+        "expected_revision": 1,
+        "reason_code": "operator_request",
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/ConsoleEmbeddingActivateRequest": {
+      "schema": "ConsoleEmbeddingActivateRequest",
+      "value": {
+        "expected_revision": 1,
+        "reason_code": "operator_request"
+      }
+    },
+    "invalid/ConsoleEmbeddingActivateRequest": {
+      "schema": "ConsoleEmbeddingActivateRequest",
+      "value": {
+        "expected_revision": 1,
+        "reason_code": "operator_request",
+        "unexpected_private_field": "not allowed"
+      }
+    },
+    "valid/ConsoleEmbeddingRollbackRequest": {
+      "schema": "ConsoleEmbeddingRollbackRequest",
+      "value": {
+        "target_config_id": "x",
+        "expected_revision": 1,
+        "reason_code": "operator_request"
+      }
+    },
+    "invalid/ConsoleEmbeddingRollbackRequest": {
+      "schema": "ConsoleEmbeddingRollbackRequest",
+      "value": {
+        "target_config_id": "x",
+        "expected_revision": 1,
+        "reason_code": "operator_request",
+        "unexpected_private_field": "not allowed"
+      }
     }
   },
   "operations": [
@@ -17029,7 +18246,8 @@
           "schema": {
             "enum": [
               "memory_forget",
-              "trusted_backup"
+              "trusted_backup",
+              "embedding_provider"
             ]
           }
         },
@@ -17883,6 +19101,601 @@
       "request": "ConsoleBackupCreateRequest",
       "response": "ConsoleOperationEnvelope",
       "status": 202
+    },
+    {
+      "method": "get",
+      "path": "/console/v1/providers",
+      "operation_id": "consoleProviders",
+      "parameters": [],
+      "status": 200,
+      "response": "ProvidersViewEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        503
+      ]
+    },
+    {
+      "method": "get",
+      "path": "/console/v1/providers/embedding",
+      "operation_id": "consoleEmbedding",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "in": "query",
+          "name": "cursor",
+          "schema": {
+            "type": "string",
+            "maxLength": 4096,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+          }
+        }
+      ],
+      "status": 200,
+      "response": "EmbeddingOverviewEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        503
+      ]
+    },
+    {
+      "method": "get",
+      "path": "/console/v1/providers/embedding/adapters",
+      "operation_id": "consoleEmbeddingAdapters",
+      "parameters": [],
+      "status": 200,
+      "response": "EmbeddingAdapterPage",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        503
+      ]
+    },
+    {
+      "method": "get",
+      "path": "/console/v1/providers/embedding/configs/{id}",
+      "operation_id": "consoleEmbeddingConfig",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "minLength": 1
+          }
+        }
+      ],
+      "status": 200,
+      "response": "EmbeddingConfigViewEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        503
+      ]
+    },
+    {
+      "method": "get",
+      "path": "/console/v1/providers/embedding/configs/{id}/revisions",
+      "operation_id": "consoleEmbeddingRevisions",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "minLength": 1
+          }
+        },
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "in": "query",
+          "name": "cursor",
+          "schema": {
+            "type": "string",
+            "maxLength": 4096,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+          }
+        }
+      ],
+      "status": 200,
+      "response": "EmbeddingRevisionPage",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        503
+      ]
+    },
+    {
+      "method": "post",
+      "path": "/console/v1/providers/embedding/configs",
+      "operation_id": "consoleCreateEmbeddingConfig",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        }
+      ],
+      "status": 201,
+      "response": "EmbeddingConfigViewEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "request": "ConsoleEmbeddingConfigCreateRequest"
+    },
+    {
+      "method": "patch",
+      "path": "/console/v1/providers/embedding/configs/{id}",
+      "operation_id": "consolePatchEmbeddingConfig",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "minLength": 1
+          }
+        }
+      ],
+      "status": 200,
+      "response": "EmbeddingConfigViewEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "request": "ConsoleEmbeddingConfigPatchRequest"
+    },
+    {
+      "method": "post",
+      "path": "/console/v1/providers/embedding/configs/{id}:test",
+      "operation_id": "consoleTestEmbeddingConfig",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "minLength": 1
+          }
+        }
+      ],
+      "status": 202,
+      "response": "ConsoleOperationEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "request": "ConsoleEmbeddingRevisionRequest"
+    },
+    {
+      "method": "post",
+      "path": "/console/v1/providers/embedding/configs/{id}:activate",
+      "operation_id": "consoleActivateEmbeddingConfig",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "minLength": 1
+          }
+        }
+      ],
+      "status": 202,
+      "response": "EmbeddingRebuildEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "request": "ConsoleEmbeddingActivateRequest"
+    },
+    {
+      "method": "post",
+      "path": "/console/v1/providers/embedding/configs/{id}:discard",
+      "operation_id": "consoleDiscardEmbeddingConfig",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "minLength": 1
+          }
+        }
+      ],
+      "status": 200,
+      "response": "EmbeddingConfigViewEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "request": "ConsoleEmbeddingRevisionRequest"
+    },
+    {
+      "method": "post",
+      "path": "/console/v1/providers/embedding:rollback",
+      "operation_id": "consoleRollbackEmbedding",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        }
+      ],
+      "status": 202,
+      "response": "EmbeddingRebuildEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "request": "ConsoleEmbeddingRollbackRequest"
+    },
+    {
+      "method": "get",
+      "path": "/console/v1/providers/embedding/rebuilds",
+      "operation_id": "consoleEmbeddingRebuilds",
+      "parameters": [
+        {
+          "in": "query",
+          "name": "limit",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "in": "query",
+          "name": "cursor",
+          "schema": {
+            "type": "string",
+            "maxLength": 4096,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+          }
+        }
+      ],
+      "status": 200,
+      "response": "EmbeddingRebuildPage",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        503
+      ]
+    },
+    {
+      "method": "get",
+      "path": "/console/v1/providers/embedding/rebuilds/{id}",
+      "operation_id": "consoleEmbeddingRebuild",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "minLength": 1
+          }
+        }
+      ],
+      "status": 200,
+      "response": "EmbeddingRebuildEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        503
+      ]
+    },
+    {
+      "method": "post",
+      "path": "/console/v1/providers/embedding/rebuilds/{id}:cancel",
+      "operation_id": "consoleCancelEmbeddingRebuild",
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IMC-Console",
+          "required": true,
+          "schema": {
+            "const": "1"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IMC-CSRF",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "in": "header",
+          "name": "Idempotency-Key",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+            "minLength": 1
+          }
+        }
+      ],
+      "status": 200,
+      "response": "EmbeddingRebuildEnvelope",
+      "errors": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        413,
+        415,
+        429,
+        503
+      ],
+      "request": "ConsoleOperationCancelRequest"
     }
   ],
   "permissions": [
@@ -17908,8 +19721,8 @@
     "backups.write"
   ],
   "runtime_versions": {
-    "package_version": "0.14.0",
-    "schema_version": 21
+    "package_version": "0.15.0",
+    "schema_version": 22
   },
   "schemas": {
     "BootstrapEnvelope": {
@@ -17932,7 +19745,7 @@
       "additionalProperties": true,
       "properties": {
         "contract_version": {
-          "const": "1.1.0"
+          "const": "1.2.0"
         },
         "display_timezone": {
           "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
@@ -20437,14 +22250,37 @@
       "allOf": [
         {
           "else": {
-            "properties": {
-              "phase": {
-                "const": "backup_verify"
-              },
-              "progress": {
-                "properties": {
-                  "unit": {
-                    "const": "steps"
+            "else": {
+              "properties": {
+                "phase": {
+                  "const": "provider_configuration"
+                },
+                "progress": {
+                  "properties": {
+                    "unit": {
+                      "const": "steps"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "trusted_backup"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "phase": {
+                  "const": "backup_verify"
+                },
+                "progress": {
+                  "properties": {
+                    "unit": {
+                      "const": "steps"
+                    }
                   }
                 }
               }
@@ -20523,14 +22359,16 @@
         "kind": {
           "enum": [
             "memory_forget",
-            "trusted_backup"
+            "trusted_backup",
+            "embedding_provider"
           ],
           "type": "string"
         },
         "phase": {
           "enum": [
             "canonical_forget",
-            "backup_verify"
+            "backup_verify",
+            "provider_configuration"
           ]
         },
         "problems_count": {
@@ -20674,7 +22512,15 @@
             "query_budget",
             "execution_failed",
             "restore_requires_review",
-            "backup_unavailable"
+            "backup_unavailable",
+            "provider_budget_exhausted",
+            "provider_unavailable",
+            "secret_unavailable",
+            "secret_changed",
+            "provider_probe_failed",
+            "provider_configuration_moved",
+            "provider_serving_moved",
+            "provider_probe_invalid"
           ],
           "type": "string"
         },
@@ -22434,21 +24280,32 @@
         "kind": {
           "enum": [
             "authentication_required",
-            "permission_denied",
-            "csrf_failed",
-            "reauth_required",
-            "rate_limited",
-            "validation_failed",
-            "cursor_invalid",
-            "revision_conflict",
-            "preview_stale",
-            "format_unsupported",
-            "upload_too_large",
-            "media_type_unsupported",
             "config_changed",
+            "csrf_failed",
+            "cursor_invalid",
+            "format_unsupported",
+            "media_type_unsupported",
+            "permission_denied",
+            "preview_stale",
+            "protected_resource",
+            "provider_configuration_moved",
+            "provider_configuration_unavailable",
+            "provider_estimate_unavailable",
+            "provider_probe_expired",
+            "provider_probe_mismatch",
+            "provider_probe_required",
+            "provider_rebuild_ack_required",
+            "provider_rebuild_plan_changed",
+            "provider_secret_changed",
+            "provider_serving_moved",
+            "provider_unavailable",
+            "rate_limited",
+            "reauth_required",
+            "revision_conflict",
             "secret_unavailable",
             "session_limit",
-            "protected_resource"
+            "upload_too_large",
+            "validation_failed"
           ]
         }
       },
@@ -22972,7 +24829,7 @@
           "type": "string"
         },
         "contract_version": {
-          "const": "1.1.0"
+          "const": "1.2.0"
         },
         "descriptor": {
           "$ref": "#/$defs/ResourceTypeDescriptor"
@@ -25404,6 +27261,1111 @@
         "duration_us"
       ],
       "type": "object"
+    },
+    "EmbeddingLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "batch_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "timeout_us": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 30000000
+        },
+        "max_qps": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 10000
+        },
+        "breaker_failures": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "breaker_cooldown_us": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 3600000000
+        },
+        "max_input_chars": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 400000
+        }
+      },
+      "required": [
+        "batch_size",
+        "timeout_us",
+        "max_qps",
+        "breaker_failures",
+        "breaker_cooldown_us",
+        "max_input_chars"
+      ]
+    },
+    "EmbeddingSpace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        },
+        "dimension": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "metric": {
+          "const": "cosine"
+        },
+        "normalization": {
+          "const": "l2"
+        },
+        "template_version": {
+          "const": 1
+        },
+        "builder_version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "model",
+        "dimension",
+        "metric",
+        "normalization",
+        "template_version",
+        "builder_version"
+      ]
+    },
+    "EmbeddingDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "enum": [
+            "openai-compatible",
+            "deterministic"
+          ]
+        },
+        "endpoint": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+        },
+        "space": {
+          "$ref": "#/$defs/EmbeddingSpace"
+        },
+        "limits": {
+          "$ref": "#/$defs/EmbeddingLimits"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "adapter",
+        "endpoint",
+        "space",
+        "limits",
+        "label"
+      ]
+    },
+    "EmbeddingSecretInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "secret_ref",
+            "sealed"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "maxLength": 4096,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "mode",
+        "value"
+      ]
+    },
+    "EmbeddingSideEffects": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rebuild": {
+          "type": "boolean"
+        },
+        "estimated_resources": {
+          "$ref": "#/$defs/DecimalCount"
+        },
+        "worker_required": {
+          "const": true
+        },
+        "estimated_duration_seconds": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lower": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "upper": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "lower",
+            "upper"
+          ]
+        },
+        "estimate_basis": {
+          "const": "request_limits_excluding_queue_and_index_io"
+        }
+      },
+      "required": [
+        "rebuild",
+        "estimated_resources",
+        "worker_required",
+        "estimated_duration_seconds",
+        "estimate_basis"
+      ]
+    },
+    "EmbeddingActivationPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "config_id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        },
+        "content_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "rebuild_plan_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "reuse_generation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "side_effects": {
+          "$ref": "#/$defs/EmbeddingSideEffects"
+        }
+      },
+      "required": [
+        "config_id",
+        "content_revision",
+        "expected_revision",
+        "rebuild_plan_hash",
+        "reuse_generation_id",
+        "side_effects"
+      ]
+    },
+    "EmbeddingProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "dimension_observed": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 33554432
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "normalized": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 120000
+        },
+        "outcome": {
+          "enum": [
+            "ok",
+            "timeout",
+            "rate_limited",
+            "circuit_open",
+            "invalid_output",
+            "transport_error"
+          ]
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ok",
+        "dimension_observed",
+        "normalized",
+        "latency_ms",
+        "outcome",
+        "created_at"
+      ]
+    },
+    "EmbeddingConfigView": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "probing",
+            "probed",
+            "activating",
+            "active",
+            "retired",
+            "discarded"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "content_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "provider_kind": {
+          "const": "embedding"
+        },
+        "definition": {
+          "$ref": "#/$defs/EmbeddingDefinition"
+        },
+        "secret_mode": {
+          "enum": [
+            "secret_ref",
+            "sealed",
+            null
+          ]
+        },
+        "secret_hint": {
+          "type": "string",
+          "maxLength": 4,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+        },
+        "secret_digest_prefix": {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{8})?$"
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "current_operation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest_probe_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_generation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "probe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingProbe"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "activation_plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingActivationPlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "activation_blocked_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "revision",
+        "content_revision",
+        "provider_kind",
+        "definition",
+        "secret_mode",
+        "secret_hint",
+        "secret_digest_prefix",
+        "resolved",
+        "created_at",
+        "updated_at",
+        "current_operation_id",
+        "latest_probe_id",
+        "last_generation_id"
+      ]
+    },
+    "EmbeddingRevisionView": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "config_id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        },
+        "content_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "definition": {
+          "$ref": "#/$defs/EmbeddingDefinition"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+          "type": "string"
+        },
+        "secret_mode": {
+          "enum": [
+            "secret_ref",
+            "sealed",
+            null
+          ]
+        },
+        "secret_hint": {
+          "type": "string",
+          "maxLength": 4,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+        },
+        "secret_digest_prefix": {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{8})?$"
+        },
+        "resolved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "config_id",
+        "content_revision",
+        "definition",
+        "created_at",
+        "secret_mode",
+        "secret_hint",
+        "secret_digest_prefix",
+        "resolved"
+      ]
+    },
+    "EmbeddingSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "configured": {
+          "type": "boolean"
+        },
+        "active_config_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projection_state": {
+          "enum": [
+            "never_built",
+            "ready",
+            "pending_rebuild"
+          ]
+        },
+        "can_manage": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "configured",
+        "active_config_id",
+        "generation_id",
+        "projection_state",
+        "can_manage"
+      ]
+    },
+    "EmbeddingOverview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "configured": {
+          "type": "boolean"
+        },
+        "active_config_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projection_state": {
+          "enum": [
+            "never_built",
+            "ready",
+            "pending_rebuild"
+          ]
+        },
+        "can_manage": {
+          "type": "boolean"
+        },
+        "configs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EmbeddingConfigView"
+          },
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "configured",
+        "active_config_id",
+        "generation_id",
+        "projection_state",
+        "can_manage",
+        "configs"
+      ]
+    },
+    "EmbeddingAdapterField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "string",
+            "integer",
+            "number"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "minimum": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maximum": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "key",
+        "type",
+        "required",
+        "minimum",
+        "maximum"
+      ]
+    },
+    "EmbeddingAdapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "enum": [
+            "openai-compatible",
+            "deterministic"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "secret_modes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "secret_ref",
+              "sealed"
+            ]
+          },
+          "maxItems": 2
+        },
+        "default_limits": {
+          "$ref": "#/$defs/EmbeddingLimits"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EmbeddingAdapterField"
+          },
+          "maxItems": 32
+        },
+        "space_constants": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "metric": {
+              "const": "cosine"
+            },
+            "normalization": {
+              "const": "l2"
+            },
+            "template_version": {
+              "const": 1
+            },
+            "builder_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "metric",
+            "normalization",
+            "template_version",
+            "builder_version"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "available",
+        "secret_modes",
+        "default_limits",
+        "fields",
+        "space_constants"
+      ]
+    },
+    "EmbeddingRebuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/ConsoleOperation"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "embedding_provider"
+                }
+              }
+            }
+          ]
+        },
+        "config_id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        },
+        "action": {
+          "enum": [
+            "activate",
+            "rollback"
+          ]
+        },
+        "generation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serving_generation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "side_effects": {
+          "$ref": "#/$defs/EmbeddingSideEffects"
+        },
+        "estimated_remaining_seconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "operation",
+        "config_id",
+        "action",
+        "generation_id",
+        "serving_generation_id",
+        "side_effects",
+        "estimated_remaining_seconds"
+      ]
+    },
+    "ProvidersView": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "embedding": {
+          "$ref": "#/$defs/EmbeddingSummary"
+        },
+        "adapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EmbeddingAdapter"
+          },
+          "maxItems": 2
+        },
+        "cognitive": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "read_only": {
+              "const": true
+            },
+            "configuration_source": {
+              "const": "deployment"
+            }
+          },
+          "required": [
+            "read_only",
+            "configuration_source"
+          ]
+        }
+      },
+      "required": [
+        "embedding",
+        "adapters",
+        "cognitive"
+      ]
+    },
+    "EmbeddingConfigViewEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/EmbeddingConfigView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ]
+    },
+    "EmbeddingOverviewEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/EmbeddingOverview"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ]
+    },
+    "EmbeddingRebuildEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/EmbeddingRebuild"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ]
+    },
+    "ProvidersViewEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ProvidersView"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ]
+    },
+    "EmbeddingRebuildPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EmbeddingRebuild"
+          },
+          "maxItems": 100
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ]
+    },
+    "EmbeddingRevisionPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EmbeddingRevisionView"
+          },
+          "maxItems": 100
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ]
+    },
+    "EmbeddingAdapterPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EmbeddingAdapter"
+          },
+          "maxItems": 2
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ]
+    },
+    "ConsoleEmbeddingConfigCreateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "$ref": "#/$defs/EmbeddingDefinition"
+        },
+        "secret": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingSecretInput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason_code": {
+          "const": "operator_request"
+        }
+      },
+      "required": [
+        "definition",
+        "reason_code"
+      ]
+    },
+    "ConsoleEmbeddingConfigPatchRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "$ref": "#/$defs/EmbeddingDefinition"
+        },
+        "secret": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingSecretInput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "reason_code": {
+          "const": "operator_request"
+        }
+      },
+      "required": [
+        "definition",
+        "expected_revision",
+        "reason_code"
+      ]
+    },
+    "ConsoleEmbeddingRevisionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "reason_code": {
+          "const": "operator_request"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ]
+    },
+    "ConsoleEmbeddingActivateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "rebuild_ack": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason_code": {
+          "const": "operator_request"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "reason_code"
+      ]
+    },
+    "ConsoleEmbeddingRollbackRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "target_config_id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?:[^\\u0000\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$",
+          "minLength": 1
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "reason_code": {
+          "const": "operator_request"
+        }
+      },
+      "required": [
+        "target_config_id",
+        "expected_revision",
+        "reason_code"
+      ]
     }
   }
 }

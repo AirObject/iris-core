@@ -1,0 +1,22 @@
+{
+  "available": false,
+  "default_limits": {
+    "batch_size": 1,
+    "breaker_cooldown_us": 1000,
+    "breaker_failures": 1,
+    "max_input_chars": 16,
+    "max_qps": 0.1,
+    "timeout_us": 1000
+  },
+  "fields": [],
+  "id": "openai-compatible",
+  "label": "x",
+  "secret_modes": [],
+  "space_constants": {
+    "builder_version": 1,
+    "metric": "cosine",
+    "normalization": "l2",
+    "template_version": 1
+  },
+  "unexpected_private_field": "not allowed"
+}

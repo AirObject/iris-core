@@ -1,0 +1,17 @@
+{
+  "config_id": "x",
+  "content_revision": 1,
+  "expected_revision": 1,
+  "rebuild_plan_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "reuse_generation_id": "x",
+  "side_effects": {
+    "estimate_basis": "request_limits_excluding_queue_and_index_io",
+    "estimated_duration_seconds": {
+      "lower": 0,
+      "upper": 0
+    },
+    "estimated_resources": "0",
+    "rebuild": false,
+    "worker_required": true
+  }
+}

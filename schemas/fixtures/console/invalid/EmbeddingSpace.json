@@ -1,0 +1,9 @@
+{
+  "builder_version": 1,
+  "dimension": 1,
+  "metric": "cosine",
+  "model": "x",
+  "normalization": "l2",
+  "template_version": 1,
+  "unexpected_private_field": "not allowed"
+}

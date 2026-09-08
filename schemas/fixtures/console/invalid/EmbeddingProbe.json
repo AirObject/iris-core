@@ -1,0 +1,10 @@
+{
+  "created_at": "2026-09-08T00:00:00.000000Z",
+  "dimension_observed": 0,
+  "id": "x",
+  "latency_ms": 0,
+  "normalized": false,
+  "ok": false,
+  "outcome": "ok",
+  "unexpected_private_field": "not allowed"
+}

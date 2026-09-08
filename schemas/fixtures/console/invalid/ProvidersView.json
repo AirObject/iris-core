@@ -1,0 +1,15 @@
+{
+  "adapters": [],
+  "cognitive": {
+    "configuration_source": "deployment",
+    "read_only": true
+  },
+  "embedding": {
+    "active_config_id": "x",
+    "can_manage": false,
+    "configured": false,
+    "generation_id": "x",
+    "projection_state": "never_built"
+  },
+  "unexpected_private_field": "not allowed"
+}

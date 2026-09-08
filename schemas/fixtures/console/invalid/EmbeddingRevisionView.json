@@ -1,0 +1,31 @@
+{
+  "config_id": "x",
+  "content_revision": 1,
+  "created_at": "2026-09-08T00:00:00.000000Z",
+  "definition": {
+    "adapter": "openai-compatible",
+    "endpoint": "x",
+    "label": "x",
+    "limits": {
+      "batch_size": 1,
+      "breaker_cooldown_us": 1000,
+      "breaker_failures": 1,
+      "max_input_chars": 16,
+      "max_qps": 0.1,
+      "timeout_us": 1000
+    },
+    "space": {
+      "builder_version": 1,
+      "dimension": 1,
+      "metric": "cosine",
+      "model": "x",
+      "normalization": "l2",
+      "template_version": 1
+    }
+  },
+  "resolved": false,
+  "secret_digest_prefix": "0",
+  "secret_hint": "hint",
+  "secret_mode": "secret_ref",
+  "unexpected_private_field": "not allowed"
+}

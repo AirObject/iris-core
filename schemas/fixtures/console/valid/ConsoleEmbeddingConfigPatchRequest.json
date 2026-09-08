@@ -1,0 +1,25 @@
+{
+  "definition": {
+    "adapter": "openai-compatible",
+    "endpoint": "x",
+    "label": "x",
+    "limits": {
+      "batch_size": 1,
+      "breaker_cooldown_us": 1000,
+      "breaker_failures": 1,
+      "max_input_chars": 16,
+      "max_qps": 0.1,
+      "timeout_us": 1000
+    },
+    "space": {
+      "builder_version": 1,
+      "dimension": 1,
+      "metric": "cosine",
+      "model": "x",
+      "normalization": "l2",
+      "template_version": 1
+    }
+  },
+  "expected_revision": 1,
+  "reason_code": "operator_request"
+}

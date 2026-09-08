@@ -1,0 +1,44 @@
+{
+  "data": {
+    "content_revision": 1,
+    "created_at": "2026-09-08T00:00:00.000000Z",
+    "current_operation_id": "x",
+    "definition": {
+      "adapter": "openai-compatible",
+      "endpoint": "x",
+      "label": "x",
+      "limits": {
+        "batch_size": 1,
+        "breaker_cooldown_us": 1000,
+        "breaker_failures": 1,
+        "max_input_chars": 16,
+        "max_qps": 0.1,
+        "timeout_us": 1000
+      },
+      "space": {
+        "builder_version": 1,
+        "dimension": 1,
+        "metric": "cosine",
+        "model": "x",
+        "normalization": "l2",
+        "template_version": 1
+      }
+    },
+    "id": "x",
+    "last_generation_id": "x",
+    "latest_probe_id": "x",
+    "provider_kind": "embedding",
+    "resolved": false,
+    "revision": 1,
+    "secret_digest_prefix": "00000000",
+    "secret_hint": "hint",
+    "secret_mode": "secret_ref",
+    "status": "draft",
+    "updated_at": "2026-09-08T00:00:00.000000Z"
+  },
+  "meta": {
+    "as_of": "2026-09-08T00:00:00.000000Z",
+    "contract_version": "1.2.0",
+    "request_id": "01a07e00-0000-7000-8000-000000000001"
+  }
+}
