@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from provider_fixture import BrowserProvider
 
 from iris_memory_core.api.console.app import create_console_app
 from iris_memory_core.api.console.config import ConsoleConfig
@@ -35,7 +35,7 @@ from iris_memory_core.storage.migrations import MigrationRunner
 from iris_memory_core.storage.runtime import SQLiteRuntime, sqlite_runtime_version
 from iris_memory_core.storage.uow import Store
 
-root = Path(tempfile.mkdtemp(prefix="imc-frontend-real-"))
+root = Path(tempfile.mkdtemp(prefix="imc-frontend-real-")).resolve()
 database = root / "canonical.sqlite3"
 MigrationRunner(database).migrate()
 store = Store(SQLiteRuntime(database, allowed_versions=(sqlite_runtime_version(),)))
@@ -140,13 +140,17 @@ proposal_evidence = proposal_service.update_state(
 SurfaceCoordinatorService(store, store.clock).set_mode(
     proposal_access, proposal_agent.id, SurfaceMode.REQUIRED, reason="proposal browser gate"
 )
+provider = BrowserProvider(store, root)
 app = create_console_app(
+    embedding_runtime=provider.projections.embedding_runtime,
+    provider_generations=provider.projections.provider_generations,
     store=store,
     config=ConsoleConfig(
         origin="http://127.0.0.1:8766", dev_http=True, allowed_hosts=("127.0.0.1",), assets=assets
     ),
 )
 service = app.state.security
+provider.issue(service)
 policy_agent = provisioning.create_agent(
     AccessContext(tenant_id=tenant, app_instance_id="policy-browser-seed", admin=True),
     "Policy browser seed",
@@ -335,11 +339,12 @@ with os.fdopen(event_key_fd, "w") as output:
 operation_fd = os.open(operation_fixture, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
 with os.fdopen(operation_fd, "w") as output:
     json.dump({"database": str(database), "tenant": tenant, "agent": agent.id}, output)
-parent = FastAPI()
+parent = provider.parent
 parent.mount("/console", app)
 try:
     uvicorn.run(parent, host="127.0.0.1", port=8766, access_log=False)
 finally:
+    provider.close()
     policy_credential.unlink(missing_ok=True)
     for proposal_file in proposal_files:
         proposal_file.unlink(missing_ok=True)

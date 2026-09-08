@@ -534,41 +534,8 @@ test("import wizard invalidates mapping report and distinguishes cancelled_parti
   ).toBeVisible();
 });
 
-test("provider rebuild acknowledgement and settings pending restart", async ({
-  page,
-}) => {
+test("settings pending restart", async ({ page }) => {
   await fixtureLogin(page);
-  await page
-    .getByRole("link", { name: "Embedding Provider", exact: true })
-    .click();
-  await page
-    .getByRole("combobox", { name: "适配器", exact: true })
-    .selectOption("openai-compatible");
-  await page
-    .getByLabel("HTTPS Endpoint", { exact: false })
-    .fill("https://provider.example.test");
-  await page.getByLabel("Model", { exact: false }).fill("embedding-test");
-  await page.getByLabel("Dimension", { exact: false }).fill("32");
-  await page
-    .getByLabel("密钥承载", { exact: false })
-    .selectOption("secret_ref");
-  await page.getByLabel("Secret 引用", { exact: false }).fill("env:TEST_ONLY");
-  await page.getByLabel("操作原因").selectOption("operator_request");
-  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "激活配置", exact: true }),
-  ).toBeDisabled();
-  await page.getByRole("button", { name: "服务端探测" }).click();
-  await page
-    .getByLabel("确认以上服务端 side_effects 与 rebuild_plan_hash")
-    .check();
-  await expect(
-    page.getByRole("button", { name: "激活配置", exact: true }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "激活配置", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Operation · vector_rebuild" }),
-  ).toBeVisible();
   await page.getByRole("link", { name: "运行参数", exact: true }).click();
   await page.getByLabel("上传限额", { exact: true }).fill("1048576");
   await page.getByLabel("操作原因").selectOption("operator_request");

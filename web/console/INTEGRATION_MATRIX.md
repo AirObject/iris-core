@@ -2,7 +2,7 @@
 
 核查日期：2026-09-07。当前行为以 [Console OpenAPI](../../schemas/openapi/console.json) 和实际服务为准；目标语义见 [Console 设计与接入边界](../../docs/design/console-backend.md)，测试范围见 [合并验证记录](../../docs/reports/phase-13-verification.md)。本表只维护接入差距，不另存 API 规格或历史执行流水。
 
-当前契约已有 <!-- contract-count:console:paths -->126<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->153<!-- /contract-count --> 个 HTTP 操作；前端类型已同步；Reflection/Candidate 不透明 ID 已通过契约回归。读面真实浏览器证据见 [Phase 14 报告](../../docs/reports/phase-14-verification.md)，表中其余“已接线”不等于完整验收。
+当前契约已有 <!-- contract-count:console:paths -->139<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->167<!-- /contract-count --> 个 HTTP 操作；前端类型已同步；Reflection/Candidate 不透明 ID 已通过契约回归。读面真实浏览器证据见 [Phase 14 报告](../../docs/reports/phase-14-verification.md)，表中其余“已接线”不等于完整验收。
 
 | 功能 | 当前契约/后端 | 当前前端与证据 | 下一项真实验证 |
 | --- | --- | --- | --- |
@@ -30,7 +30,7 @@
 | 统计八个面 | 未发布 | metric/时间桶、null/stale/warnings/coverage 等模拟 | 正式 metric 结构、可见组聚合、有界查询与真实延迟采集 |
 | 导出/下载 | 未发布 | 格式/原因、Operation/行数/bytes/hash/过期 UI | 格式发现、白名单快照、Tombstone 失效、真实 JSONL 往返、Blob 内存上限 |
 | 导入 | 未发布 | 字节上传→映射→报告/review→commit，resume/cancel/补偿模拟 | records/映射 Schema、报告绑定、备份 blocked、事务断点、去重/删除优先 |
-| Provider | 未发布 | 草稿/探测/激活/rebuild_ack/history/rollback 模拟 | 异步探测结果路径、SSRF、配置/Worker/API 三处接线与 Generation 服务切换 |
+| Provider | W05 候选；整包验收未完成 | 真实配置/探测/激活/回滚/重建/取消、服务器计划、部署/Worker/Recall 同代装配；90 HTTP/认证回归和 Console 构建通过 | 23 项真实浏览器、双租户 40 次并发及 CI 功能/性能通过；安装包 TLS 失败单独补验通过；真实允许外部 Provider 仍待验收 |
 | Settings | 未发布 | registry/validate/原子保存/历史/reset/rollback/待重启模拟 | reset/rollback validate intent、每键行为与实例修订传播 |
 | Operation/运维/审计 | Schema21 类型化 memory_forget/trusted_backup Operation 已整合 | 真实批量删除及可信备份创建/重新认证/独立 Worker/进度/刷新通过；完整 CI 通过 | 其余运维与审计由 W14 承接；内部备份不提供内容下载或 Web 恢复入口 |
 
