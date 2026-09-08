@@ -63,6 +63,7 @@ from iris_memory_core.storage.memory import (
     RetentionRepository,
 )
 from iris_memory_core.storage.persona import PersonaRepository
+from iris_memory_core.storage.persona_draft import PersonaDraftRepository
 from iris_memory_core.storage.plans import (
     CognitiveEventRepository,
     NoteRepository,
@@ -135,6 +136,7 @@ class Transaction:
         self.profile = ProfileRepository(connection, clock, ids)
         self.graph = GraphRepository(connection, clock, ids)
         self.personas = PersonaRepository(connection, clock, ids)
+        self.persona_drafts = PersonaDraftRepository(connection, clock, ids)
         self.reflection = ReflectionRepository(connection, clock, ids)
         self.console = ConsoleRepository(connection)
         self.console_operations = ConsoleOperationRepository(connection)
