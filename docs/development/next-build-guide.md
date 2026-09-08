@@ -1,6 +1,6 @@
 # 后续构建指导：Core 集成闭环、Console 补齐与稳定发布
 
-> 状态：In progress；2026-09-07 最新用户授权已启动 W01→W20 串行执行，W01/W02/W03 已独立提交，当前 W04。  
+> 状态：In progress；2026-09-08 最新授权按依赖并行推进至 W20，W01–W04 已完成，当前 W05 收尾与 W06/W07/W08 并行。  
 > 更新日期：2026-09-07  
 > 起始代码基线：`e2a6bbd7793f7bd4b73a51d32149eb8e3015ed33`；Core 0.13.0 / Schema 20。实际开工时重新读取版本真源与工作区状态。  
 > 依据：[完成情况核查](../reports/phase-completion-audit-2026-09-07.md)、[架构基线](../IRIS_MEMORY_CORE_IMPLEMENTATION_PLAN.md)、[Console 设计](../design/console-backend.md)、[Phase 14 发布要求](phase-14-hardening-release.md)。
@@ -17,9 +17,9 @@ Phase 11/12 继续 Deferred：不开发 Bellis/AstrBot 适配、不做其分发�
 
 ## 2. 开工规则与通用交付要求
 
-最新用户授权覆盖本文原“完成后停止、下一包另行下达”规则：严格 W01→W20 串行，每包全部验收、报告/队列更新并单独提交后立即续作，无需逐包确认。构建、测试、Soak、恢复通过后台任务的实际完成结果续作；2026-09-08 已按用户要求取消定时 automation；结果未完成不关闭、不跳包。具体状态见[队列](work-packages.md#当前执行授权)。本文下方原下达/停止描述保留为历史规则，以此授权为准。
+2026-09-08 最新用户授权：完成剩余 W 至 W20，无依赖工作并行，按可审查功能小提交，关联包允许合并提交；依赖和原验收仍必须满足。完成全部验收、报告与队列后标记该包完成并继续已就绪工作，无需逐包确认。长构建、测试、Soak、恢复通过后台任务的实际完成结果续作，定时 automation 保持取消。具体状态见[队列](work-packages.md#当前执行授权)。
 
-每次只启动一个明确工作包，完成后记录结果并交接。实现可拆为可独立审查的行为提交；契约、迁移、生成物、代码及必要测试随相同行为一起交付。不要因本指南列出全部剩余项而启动一个贯穿发布的整体 goal。
+并行工作各自限定范围、依赖、负责人和受影响文件；共享迁移、契约与完整 CI 统一整合。实现拆为可独立审查的行为提交，生成物与证据可独立分组但必须对应同一候选。当前已按用户明确指令使用覆盖剩余 W 的 goal。
 
 每包开工先确认：当前 HEAD/未提交变更、依赖包报告、已接受 ADR、实际 Schema/Contract/SDK 版本及受影响路径。新建迁移使用当时下一可用编号，旧 SQL 不改写；Draft 分支上的 Schema 21 原型不能直接当作主线下一编号。
 
@@ -36,7 +36,9 @@ Phase 11/12 继续 Deferred：不开发 Bellis/AstrBot 适配、不做其分发�
 
 ## 3. 建议顺序与依赖
 
-**当前执行 W04：Operation 扩展与可信备份流程。** W01 接线、W02 Graph 与 W03 Persona 原量化门禁均已完成完整验收并独立提交，见 [W01](../reports/w01-http-recall-assembly.md)、[W02](../reports/w02-graph-quantitative-gates.md)、[W03](../reports/w03-persona-quantitative-gates.md) 报告。
+2026-09-08 最新执行授权：完成剩余工作至 W20，无依赖工作并行；允许关联多个 W 合并提交，但保持每次提交可审查、体积适度。此授权覆盖下文历史串行/逐包提交/停止规则，不放宽必需依赖、验收或 Phase11/12 Deferred。当前 W05 收尾与 W06/W07/W08 独立开发并行；接收验证以实际完成事件驱动，定时 automation 保持取消。
+
+**当前执行 W05：Embedding Provider 全链路。** W01–W04 均已完成全部验收并独立提交，最新 W04 Commit `d4998ed`，见 [W04](../reports/w04-operations-trusted-backup.md) 和当前 [W05](../reports/w05-embedding-provider.md) 报告。
 
 | 顺序 | 工作包 | 对应原范围 | 必需依赖 |
 | --- | --- | --- | --- |

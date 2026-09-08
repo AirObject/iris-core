@@ -1,0 +1,433 @@
+{
+  "baseline": "1c53d7e7e43c81b997c8bbafa36f1211dce590a1",
+  "root": "/private/tmp/imc-w08-work",
+  "patches": [
+    {
+      "name": "01-draft-lifecycle.patch",
+      "bytes": 58865,
+      "sha256": "7e2990a06c2ce774795c6776ba939e53070b73008d3d2eee95fa0d2131734095",
+      "files": [
+        "docs/adr/0052-console-persona-drafts.md",
+        "docs/adr/README.md",
+        "migrations/0023_persona_drafts.sql",
+        "src/iris_memory_core/domain/persona_draft.py",
+        "src/iris_memory_core/storage/persona_draft.py",
+        "src/iris_memory_core/storage/uow.py",
+        "src/iris_memory_core/application/ports/persona_drafts.py",
+        "src/iris_memory_core/application/ports/transaction.py",
+        "src/iris_memory_core/application/persona_drafts.py",
+        "src/iris_memory_core/application/persona_draft_deletion.py",
+        "src/iris_memory_core/application/forget.py",
+        "src/iris_memory_core/application/console/resources.py",
+        "src/iris_memory_core/storage/console_reads.py",
+        "tests/integration/persona/test_persona_draft_storage.py",
+        "tests/integration/persona/test_persona_draft_restore.py"
+      ]
+    },
+    {
+      "name": "02-console-management.patch",
+      "bytes": 45005,
+      "sha256": "11d0658a1551b3c01b62c8a1966d5605faab57b166ece1a398cd905c74949913",
+      "files": [
+        "src/iris_memory_core/application/console/persona_drafts.py",
+        "src/iris_memory_core/application/console/commands.py",
+        "src/iris_memory_core/application/persona.py",
+        "src/iris_memory_core/api/console/app.py",
+        "src/iris_memory_core/api/console/routes_persona_drafts.py",
+        "tests/integration/console/test_console_persona_drafts.py",
+        "tests/integration/console/test_console_persona_draft_http.py",
+        "tests/integration/console/test_console_persona_draft_holds.py"
+      ]
+    },
+    {
+      "name": "04-persona-ui.patch",
+      "bytes": 16153,
+      "sha256": "cbcc89a7d59dc8da65d2697df406d6d5e096bdfcea121f39f82b1b585aa9a3ca",
+      "files": [
+        "web/console/src/pages/PersonaDrafts.tsx",
+        "web/console/src/pages/Personas.tsx",
+        "web/console/tests/browser/persona-drafts.spec.ts",
+        "web/console/tests/backend/serve_fixture.py"
+      ]
+    },
+    {
+      "name": "05-schema-alignment.patch",
+      "bytes": 26982,
+      "sha256": "d38ba2073bda6b226cdefbad807138dd5a46520cea3e47c406b29099592c998a",
+      "files": [
+        "src/iris_memory_core/storage/runtime.py",
+        "contracts/source/contracts.json",
+        "tests/integration/migrations/test_vector_migration.py",
+        "tests/integration/migrations/test_console_preview_migration.py",
+        "tests/integration/migrations/test_ingestion_migration.py",
+        "tests/integration/migrations/test_console_migration.py",
+        "tests/integration/migrations/test_dependency_lifecycle_migration.py",
+        "tests/integration/migrations/test_provider_configuration_migration.py",
+        "tests/integration/migrations/test_fts_recall_migration.py",
+        "tests/integration/migrations/test_memory_migration.py",
+        "tests/integration/migrations/test_graph_profile_migration.py",
+        "tests/integration/migrations/test_migrations.py",
+        "tests/integration/migrations/test_working_memory_migration.py",
+        "tests/integration/migrations/test_task_event_migration.py",
+        "tests/integration/migrations/test_console_operation_migration.py",
+        "tests/integration/migrations/test_typed_operations_migration.py",
+        "tests/integration/migrations/test_reflection_migration.py",
+        "tests/integration/migrations/test_state_deletion_migration.py",
+        "tests/integration/migrations/test_persona_migration.py",
+        "tests/integration/recovery/test_backup.py",
+        "tests/integration/recovery/test_memory_backup.py",
+        "tests/integration/console/test_console_task_dependencies.py",
+        "tests/integration/console/test_console_task_forget.py"
+      ]
+    },
+    {
+      "name": "06-report.patch",
+      "bytes": 5936,
+      "sha256": "879bfa9e0fc1ba10a748712b16da8f0ff8ae69c0686338814f947a16baafd7d5",
+      "files": [
+        "docs/reports/w08-persona-draft.md"
+      ]
+    }
+  ],
+  "required_order": [
+    "01-draft-lifecycle.patch",
+    "02-console-management.patch",
+    "03-console-contract.delta.json",
+    "04-persona-ui.patch",
+    "05-schema-alignment.patch",
+    "06-report.patch"
+  ],
+  "generated_files": "Intentionally excluded; regenerate once after integration",
+  "status": "Ready for integration; all identified affected failures repaired and rerun; final integrated make ci remains required",
+  "contract_delta": {
+    "name": "03-console-contract.delta.json",
+    "schemas": 8,
+    "fixtures": 25,
+    "operations": 7,
+    "bytes": 33466,
+    "sha256": "fac3556d0164544e34f143c4785777c7e5020ac4cf7c7ae4b4552080847e87bd"
+  },
+  "results": [
+    {
+      "batch": "affected-001",
+      "result": {
+        "started_at": "2026-09-07T23:59:06.242131+00:00",
+        "supervisor_pid": 51993,
+        "child_pid": 52007,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-08T00:12:43.138967+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/console tests/integration/persona tests/integration/cognition tests/integration/migrations tests/integration/recovery tests/integration/memory/test_memory_forget.py tests/contract/test_console_contract.py tests/unit/test_persona_domain.py"
+      ],
+      "candidate_sha256": "9988c25fac52ef37e93ada0fbc20ee114c23d2dbbc152d48c2b61a8ed0151e90",
+      "log_sha256": "5ddbf5093247546f5ae8eb19e546fbc0030a8bb44c38ba231d9823da66bbb3af"
+    },
+    {
+      "batch": "browser-001",
+      "result": {
+        "started_at": "2026-09-07T23:56:31.279690+00:00",
+        "supervisor_pid": 48725,
+        "child_pid": 48742,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-07T23:56:38.492538+00:00"
+      },
+      "command": [
+        "npm",
+        "run",
+        "test:browser",
+        "--prefix",
+        "web/console",
+        "--",
+        "--config=playwright.w08.config.ts"
+      ],
+      "candidate_sha256": "cac3591ee10c4e1753c973d2126aab778e34c01b3716a2cc08560d431338da22",
+      "log_sha256": "9c586a91921424ada0120e9b0fce5cf06958e61856ce86d69cebcc4436b776ff"
+    },
+    {
+      "batch": "console-check-001",
+      "result": {
+        "started_at": "2026-09-07T23:55:21.753421+00:00",
+        "supervisor_pid": 46837,
+        "child_pid": 46853,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-07T23:55:29.642501+00:00"
+      },
+      "command": [
+        "make",
+        "console-check"
+      ],
+      "candidate_sha256": "e5973de54c17ab5eb38c31ccdca013f677215003677c88af435051e9e405c9c2",
+      "log_sha256": "917746204d9c8063912f419525a7ac6ae744481e6c0bb98b8c7d6d870ec74068"
+    },
+    {
+      "batch": "holds-001",
+      "result": {
+        "started_at": "2026-09-07T23:54:24.123242+00:00",
+        "supervisor_pid": 45919,
+        "child_pid": 45938,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:54:26.323359+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/console/test_console_persona_draft_holds.py tests/integration/persona/test_persona_draft_storage.py tests/integration/persona/test_persona_draft_restore.py"
+      ],
+      "candidate_sha256": "39058ee03297a3f233168c2b3888af02f5890ac60c9300e340b2ec7a27a41556",
+      "log_sha256": "b2413c118fd559cb93020b0c4932cd968b6696443b0d34d4304d21344bf4ab2b"
+    },
+    {
+      "batch": "holds-003",
+      "result": {
+        "started_at": "2026-09-07T23:56:22.851179+00:00",
+        "supervisor_pid": 48489,
+        "child_pid": 48512,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-07T23:56:24.672596+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/console/test_console_persona_draft_holds.py"
+      ],
+      "candidate_sha256": "cac3591ee10c4e1753c973d2126aab778e34c01b3716a2cc08560d431338da22",
+      "log_sha256": "a02b38056f24ce6a36ab1fb14e6946e9b35038cf362c58b8894cb297c9afa440"
+    },
+    {
+      "batch": "holds-http-002",
+      "result": {
+        "started_at": "2026-09-07T23:55:20.943281+00:00",
+        "supervisor_pid": 46811,
+        "child_pid": 46828,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:55:29.801796+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/console/test_console_persona_draft_holds.py tests/integration/console/test_console_persona_draft_http.py tests/integration/persona/test_persona_draft_storage.py tests/integration/persona/test_persona_draft_restore.py tests/contract/test_console_contract.py"
+      ],
+      "candidate_sha256": "e5973de54c17ab5eb38c31ccdca013f677215003677c88af435051e9e405c9c2",
+      "log_sha256": "d8bdddaeca09244f130b4012785b22955e68ce22122169e4bfa38c33b9afc295"
+    },
+    {
+      "batch": "http-contract-001",
+      "result": {
+        "started_at": "2026-09-07T23:53:40.643641+00:00",
+        "supervisor_pid": 45530,
+        "child_pid": 45547,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:53:45.543944+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/console/test_console_persona_draft_http.py tests/contract/test_console_contract.py"
+      ],
+      "candidate_sha256": "6c742d8ae76811ff473d268f8a7434fd6e9888505b8dff859e1c26895359fc93",
+      "log_sha256": "44e811b7dae56122596d6709a8ae60b8ab55c137a4c7d5a2b6a74b5b1eaea3a1"
+    },
+    {
+      "batch": "migration-concurrency-001",
+      "result": {
+        "started_at": "2026-09-07T23:57:51.725694+00:00",
+        "supervisor_pid": 51091,
+        "child_pid": 51130,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-07T23:57:59.326183+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/persona/test_persona_draft_storage.py tests/integration/console/test_console_persona_drafts.py"
+      ],
+      "candidate_sha256": "aa3e6bd4a20b1571ae156ce28c3c5672e56972e0805bc3e954cf4a9a07896498",
+      "log_sha256": "7ab87dc78fd167a6746ad7eafb46d73cc4c07343f8f4b343ce34c88271abe899"
+    },
+    {
+      "batch": "prototype-adapted-001",
+      "result": {
+        "started_at": "2026-09-07T23:51:29.579648+00:00",
+        "supervisor_pid": 44194,
+        "child_pid": 44208,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:51:37.469138+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/test_persona_draft_storage.py tests/integration/test_persona_draft_restore.py tests/integration/test_console_persona_drafts.py"
+      ],
+      "candidate_sha256": "45dcc76722f85e81e5ab52fd6e17ebe571eff72ebe6fa07063bf20ee40e5a7d2",
+      "log_sha256": "f14f62572169169e7587038d5244aeb47878d1581f58734b66e47f80a42d7729"
+    },
+    {
+      "batch": "prototype-adapted-002",
+      "result": {
+        "started_at": "2026-09-07T23:51:52.059820+00:00",
+        "supervisor_pid": 44400,
+        "child_pid": 44413,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:51:52.571483+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/test_persona_draft_storage.py tests/integration/test_persona_draft_restore.py tests/integration/test_console_persona_drafts.py"
+      ],
+      "candidate_sha256": "45dcc76722f85e81e5ab52fd6e17ebe571eff72ebe6fa07063bf20ee40e5a7d2",
+      "log_sha256": "acfd96db6b465d0b3ddbe68f4e78503061bbd3c0c0e32f9c6db4bfdca868a4db"
+    },
+    {
+      "batch": "prototype-adapted-003",
+      "result": {
+        "started_at": "2026-09-07T23:52:11.672197+00:00",
+        "supervisor_pid": 44691,
+        "child_pid": 44705,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-07T23:52:15.356607+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/persona/test_persona_draft_storage.py tests/integration/persona/test_persona_draft_restore.py tests/integration/console/test_console_persona_drafts.py"
+      ],
+      "candidate_sha256": "0fac24183f1006a59a6c74c1826bfbd724d57499a902d10111b65f8fd23c74f6",
+      "log_sha256": "4e772a723ea75af1c45f3d26c4787932788c101ecf33bff5c364042de9d6e8f6"
+    },
+    {
+      "batch": "repair-001",
+      "result": {
+        "started_at": "2026-09-08T04:08:54.861114+00:00",
+        "supervisor_pid": 25662,
+        "child_pid": 25798,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-08T04:09:11.246973+00:00"
+      },
+      "command": [
+        "make",
+        "test-affected",
+        "TESTS=tests/integration/migrations tests/integration/persona tests/integration/console/test_console_reads.py::test_created_keyset_queries_use_indexes_for_every_table tests/integration/console/test_console_task_dependencies.py::test_removed_dependency_survives_backup_restore_and_mismatch_is_rejected tests/integration/console/test_console_task_forget.py::test_terminal_task_cascade_and_restore tests/integration/recovery/test_backup.py::test_restore_cleans_pending_state_before_switching tests/integration/recovery/test_memory_backup.py::TestBackupRestoreDrill::test_three_consecutive_rounds"
+      ],
+      "candidate_sha256": "e5d5fd5b26db33fe3deddd36c66142b769720d8904b8d63d37290a0db3d147fc",
+      "log_sha256": "f28cc8242013105ff3b0603ea26a1ae8a401efa2ee26bdafb5af38ad54cd14f4"
+    },
+    {
+      "batch": "structural-002",
+      "result": {
+        "started_at": "2026-09-07T23:58:27.816498+00:00",
+        "supervisor_pid": 51509,
+        "child_pid": 51542,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:58:28.021054+00:00"
+      },
+      "command": [
+        "make",
+        "format-check",
+        "lint",
+        "typecheck",
+        "contracts-check"
+      ],
+      "candidate_sha256": "1a262f0665964a82549b99440ddec01c54c04ebf63ce2afc340bc6ea6d79637a",
+      "log_sha256": "31c5b9e8197d28cc1992377f3839875a395dd04a462ca9917059479c1273a5d3"
+    },
+    {
+      "batch": "structural-003",
+      "result": {
+        "started_at": "2026-09-07T23:59:03.135331+00:00",
+        "supervisor_pid": 51891,
+        "child_pid": 51951,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:59:03.445816+00:00"
+      },
+      "command": [
+        "make",
+        "format-check",
+        "lint",
+        "typecheck",
+        "contracts-check"
+      ],
+      "candidate_sha256": "9988c25fac52ef37e93ada0fbc20ee114c23d2dbbc152d48c2b61a8ed0151e90",
+      "log_sha256": "6da6207b493a4b9ee199ebd30a4eedb39d8345b579ee28774db3d6b85b98f034"
+    },
+    {
+      "batch": "structural-004",
+      "result": {
+        "started_at": "2026-09-07T23:59:53.737788+00:00",
+        "supervisor_pid": 52333,
+        "child_pid": 52351,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-07T23:59:58.702293+00:00"
+      },
+      "command": [
+        "make",
+        "format-check",
+        "lint",
+        "typecheck",
+        "contracts-check"
+      ],
+      "candidate_sha256": "f1797f127a6c600d17391ad2d3b7b618bd80f1e32bee6d0d0d9a441976198138",
+      "log_sha256": "5892b554c2b55a9056a196608a456ec8148c897cbee4337ef4a277b227e5f1a3"
+    },
+    {
+      "batch": "structural-final",
+      "result": {
+        "started_at": "2026-09-08T04:10:29.546497+00:00",
+        "supervisor_pid": 26507,
+        "child_pid": 26521,
+        "exit_code": 0,
+        "status": "passed",
+        "finished_at": "2026-09-08T04:10:32.651520+00:00"
+      },
+      "command": [
+        "make",
+        "format-check",
+        "lint",
+        "typecheck",
+        "contracts-check"
+      ],
+      "candidate_sha256": "e5d5fd5b26db33fe3deddd36c66142b769720d8904b8d63d37290a0db3d147fc",
+      "log_sha256": "5892b554c2b55a9056a196608a456ec8148c897cbee4337ef4a277b227e5f1a3"
+    },
+    {
+      "batch": "types-001",
+      "result": {
+        "started_at": "2026-09-07T23:55:22.965052+00:00",
+        "supervisor_pid": 46913,
+        "child_pid": 46951,
+        "exit_code": 2,
+        "status": "failed",
+        "finished_at": "2026-09-07T23:55:30.576968+00:00"
+      },
+      "command": [
+        "make",
+        "typecheck"
+      ],
+      "candidate_sha256": "e5973de54c17ab5eb38c31ccdca013f677215003677c88af435051e9e405c9c2",
+      "log_sha256": "64882eff288cc366ec7e12040381d9a79400b80fb5bd3a9bde5e7882363ba3ac"
+    }
+  ],
+  "validation_archive": {
+    "name": "validation.tar.gz",
+    "bytes": 2200092,
+    "sha256": "38c280e189af3b6dcb82cd8a697df6f94c7c075b082d6d9a10ed0ddc695365d2"
+  }
+}

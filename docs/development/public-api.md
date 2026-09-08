@@ -1,6 +1,6 @@
 # 公开客户端方法与接口变更门禁
 
-当前清单适用于 Core 0.15.0、Schema 23、业务契约 1.11.0、Console 契约 1.2.0、Python SDK 0.11.1、TS SDK 0.11.2。稳定级别为开发候选；尚未构成 Phase 14 的逐方法生产验收。Core 和 SDK 分别分发。
+当前清单适用于 Core 0.15.0、Schema 23、业务契约 1.11.0、Console 契约 1.3.0、Python SDK 0.11.1、TS SDK 0.11.2。稳定级别为开发候选；尚未构成 Phase 14 的逐方法生产验收。Core 和 SDK 分别分发。
 
 ## 导入和错误
 

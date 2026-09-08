@@ -81,3 +81,9 @@ ADR-0022 supersedes the delivery path of the original Phase 13 ("legacy Iris dat
 - [ADR-0047：Console Persona Policy 管理](0047-console-persona-policy.md)
 
 - [ADR-0048：类型化 Operation 与内部可信备份](0048-typed-operations-trusted-backup.md)
+
+- [ADR-0049：Embedding 配置修订、受控出站与 Generation 切换](0049-embedding-provider-lifecycle.md)
+
+- [ADR-0052：独立 Persona 草稿、发布和删除恢复](0052-console-persona-drafts.md)
+
+- [ADR-0050：生产认知 Provider 部署绑定](0050-cognitive-provider-deployment.md)

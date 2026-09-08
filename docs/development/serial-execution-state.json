@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T19:55:14.717353+00:00",
+  "updated_at": "2026-09-08T04:22:37.352619+00:00",
   "automation_id": null,
   "sequence": [
     "W01",
@@ -24,9 +24,9 @@
     "W19",
     "W20"
   ],
-  "current_package": "W04",
-  "status": "acceptance_passed_pending_commit",
-  "start_commit": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
+  "current_package": "W05",
+  "status": "in_progress",
+  "start_commit": "d4998edff6986180328a218440c8c239f26461a9",
   "completed_packages": [
     {
       "package": "W01",
@@ -45,65 +45,187 @@
       "commit": "460f7dd1f3fd35a3480a9e19e76cba94e0a69cd8",
       "report": "docs/reports/w03-persona-quantitative-gates.md",
       "final_ci": ".work-package-runs/W03/ci-001/result.json"
+    },
+    {
+      "package": "W04",
+      "commit": "d4998edff6986180328a218440c8c239f26461a9",
+      "report": "docs/reports/w04-operations-trusted-backup.md",
+      "final_ci": ".work-package-runs/W04/ci-003/result.json"
     }
   ],
-  "report": "docs/reports/w04-operations-trusted-backup.md",
+  "report": "docs/reports/w05-embedding-provider.md",
   "next_actions": [
-    "Commit completed W04 report, evidence, queue and implementation independently.",
-    "Record actual W04 commit then immediately create W05 report/queue/checkpoint and begin original full scope."
+    "Finish W05 contract/UI/evidence small commits and truthfully record full CI and separately passing package recovery; external model acceptance still pending.",
+    "Integrate independently completed W06/W07/W08 changes in dependency order, reconcile contracts/migration versions and verify affected/full gates.",
+    "Continue ready W09-W20 under latest dependency-gated parallel authorization; preserve actual external and production acceptance requirements."
   ],
   "constraints": [
-    "No synchronous long validation, dense polling, idle wait or starting later packages before current acceptance.",
     "Phase 11/12 Deferred.",
     "Preserve pre-existing docs edits; they define user-authorized guide.",
-    "Do not mark complete on partial evidence."
+    "Do not mark complete on partial evidence.",
+    "Long verification in background with native completion events; dependencies and acceptance mandatory, independent packages can run in parallel; no timed automation."
   ],
   "blockers": [],
   "background_tasks": [],
   "verification": {
-    "forget-regression-001": "passed:27",
-    "backup-003": "passed:16",
-    "migrations-002": "passed:140",
-    "make_ci": {
-      "status": "passed",
-      "run": "ci-003",
-      "result": ".work-package-runs/W04/ci-003/result.json",
-      "log": ".work-package-runs/W04/ci-003/output.log"
-    },
-    "browser-001": "passed:1 actual Chrome + independent worker",
-    "fixes-001": "passed:570 targeted failures and real HTTP/SDK",
-    "console-check-001": "passed:29 units + lint/types/build",
-    "affected-002": "failed:1846 passed, 13 failures, 54 setup errors; fixes-001 addresses all failures; full CI still required",
-    "lease-final-001": "passed:60, including actual lease renewal, two-worker fencing, backup verification and Outbox",
-    "problems-red-001": "2 expected failures reproduce actual HTTP schema mismatch",
-    "problems-green-001": "passed:431 actual HTTP and contract regressions",
-    "ci-001": "failed:14789 passed,4 stale migration/handler inventory expectations failed;85.59% coverage;nonfinal pre-contract-fix candidate",
-    "ci-fixes-002": "passed:83; all migration inventory and enabled-handler assertions corrected",
-    "ci-002": "failed:14795 functional tests passed;11 performance passed;20 browser passed,1 real login rate-limit not handled;package stages not reached",
-    "package-001": "passed: fresh Core/SDK wheel+sdist, archive boundaries, isolated Schema21 HTTP/Worker/SDK and installed Recall",
-    "browser-002": "failed:20 passed,1 test helper incorrectly assumed cleared-key disabled UI represented Retry-After cooldown; helper corrected to bounded one-shot server-directed delay",
-    "browser-003": "failed:20 passed,1 test expected successful retry while independent key window still blocked; two retries maximum now handle staggered address/key windows",
-    "browser-004": "passed:21 real browser tests;29 Console units, lint/types/build; real address/key Retry-After honored with bounded retries",
-    "ci-003": "passed:14795 functional/85.58%coverage,11 performance,19 TS SDK,29 Console units,21 actual browsers, fresh packages and isolated installation"
+    "transport-001": "failed:34 passed,6 HTTP response lifecycle/fixture failures",
+    "transport-002": "failed:39 passed,1 test hostname rejected by existing plain HTTP boundary",
+    "transport-003": "passed:41 real isolated HTTP/TLS, SSRF/IP pinning, response bounds, total deadline and DNS concurrency",
+    "types-transport": "mypy passed for transport and initial tests; final whole typecheck still required",
+    "secrets-001": "failed:39 passed,1 fixture did not retain setuid bit in macOS sandbox",
+    "secrets-002": "passed:42 real files/AES-GCM, tenant refs, AAD, permissions, symlink/FIFO/hardlink, masked metadata and reseal; special mode and ownership metadata explicitly injected",
+    "types-secrets": "mypy and Ruff passed; final whole CI still required",
+    "storage-001": "passed:51 immutable configuration, real Schema21 backup/restore/upgrade, six concurrent writers, tenant/deep pages, budgets, secrets and existing Operation storage",
+    "types-001": "passed: whole Python mypy and TypeScript SDK typecheck",
+    "migrations-001": "failed:226 passed,2 synthetic Schema18 Task restore fixtures retained new Provider tables; empty-table validation and removal corrected",
+    "migrations-002": "passed:228 migration, backup, restore and existing Console operation regressions",
+    "rotation-001": "passed:49 secret and real sealed startup/offline rotation/recovery tests",
+    "types-002": "passed:whole Python and TS SDK typecheck after startup/rotation",
+    "configured-001": "failed:9 fixtures could not bind loopback ports in sandbox; no outbound executed",
+    "configured-002": "passed:9 real loopback HTTP configured adapters, fixed probes, dimensions, faults, credential/model isolation and shared breaker",
+    "configured-003": "passed:100 configured real HTTP, transport HTTP/TLS, secrets and startup/rotation tests",
+    "runtime-001": "passed:84 existing HTTP Recall assembly/faults, release surface and CLI",
+    "types-003": "passed:whole Python and TS SDK typecheck after configured factory",
+    "config-commands-001": "failed:10 passed,1 fixture queried idempotency_keys instead of actual idempotency_records",
+    "config-commands-002": "passed:11 actual Console principal/CAS/idempotency/draft/reseal tests",
+    "config-commands-003": "passed:16 tests including genuine second tenant principal, separated system.read/providers.manage, post-replay revocation and six concurrent writers",
+    "types-004": "failed:test helper returned Any; annotate actual ProviderConfigCommands service",
+    "types-005": "passed:whole Python and TS SDK typecheck after application draft commands",
+    "types-006": "passed:whole Python and TS SDK typecheck including final draft authorization tests",
+    "probes-001": "passed:28 actual HTTP configured probe and Outbox/Console/budget/lease tests",
+    "types-007": "failed:probe constant moved to domain;test still imported adapter reexport",
+    "types-008": "passed:whole Python and TS SDK typecheck after constant import correction",
+    "probe-regression-001": "failed:135 passed,1 enabled-kind inventory omitted new actual console.embedding_probe handler",
+    "probe-regression-002": "passed:90 Outbox and ingestion-domain tests after explicit inventory update",
+    "activation-plans-001": "passed:8 fresh actual-probe plans,30min boundary/rollback clock,real canonical counts,exact ack and actual FAISS Generation hot-limit/endpoint decisions",
+    "contracts-001": "passed:Console1.2 generated Operation metadata/problem schemas and fixtures",
+    "probes-002": "passed:444 actual HTTP probe/Operation contract,FAISS activation-plan endpoint/model/dimension and Console contract fixture tests",
+    "structural-001": "passed:whole format-check,lint/import/docs/count checks,typecheck,and generated contracts/compatibility checks",
+    "types-009": "passed:whole Python and TS SDK types after Provider generation ports and activation worker",
+    "activations-001": "passed:8 actual HTTP/FAISS activation,old-generation direct queries,hot-limit switch and competing Worker cases",
+    "activations-002": "failed:47 passed,1 actual canonical-change race was classified dead by generic ConflictError instead of bounded retry",
+    "activations-003": "passed:12 actual activation tests after mapping only snapshot_moved to existing Outbox bounded retry",
+    "contracts-002": "passed:generated normalized activation problem codes",
+    "structural-002": "passed:whole format/lint/import/docs/count/type/contracts compatibility checks",
+    "activations-004": "passed:567 actual activation/probe,immutable Operation intent,existing backup/Outbox,Schema21\u219222 and Console contract regressions",
+    "types-010": "passed:whole Python and TS SDK types after final immutable-plan test",
+    "rollbacks-001": "passed:12 real HTTP/FAISS retained rollback, hot configuration, unusable history rebuild, cancellation, retired reprobe and two Worker fences",
+    "types-011": "passed:whole Python and TS SDK typecheck after retained rollback",
+    "restore-001": "failed:2 passed/6 failed; reopened fixture omitted required IdempotencyManager, actual restore and stale-intent fences passed",
+    "types-012": "passed:whole Python and TS SDK typecheck after restore implementation",
+    "restore-002": "failed:2 passed/11 failed; fixture used 2023 controlled clock against actual restore wall clock and read uncheckpointed WAL as immutable; corrected clock and snapshot checkpoint",
+    "restore-003": "passed:13 real backups invalidate old queued/leased intents, preserve immutable history, require fresh probe/rebuild; invalid serving/probe/space bindings rejected",
+    "structural-003": "failed:rollback additions had three lint findings; fixed equivalent condition and two SQL string line lengths",
+    "structural-004": "passed:whole format/lint/import/docs/typecheck/contracts and compatibility",
+    "restore-004": "passed:319 provider rollback/restore (including prepared late completion), recovery, migration, Vector and secret lifecycle regressions; exit 0 at 2026-09-07T22:15:31Z",
+    "managed-001": "failed:3 passed/2 failed; HTTP fixture ExternalIdentityKey omitted tenant; corrected real identity construction",
+    "managed-002": "failed:3 passed/2 failed; real HTTP actor required verified binding; added actual propose/confirm rather than bypassing identity",
+    "managed-003": "failed:3 passed/2 failed; fixed actual initial readiness VectorDegradedError handling; test requests now unique to avoid legitimate Recall receipt cache",
+    "managed-004": "passed:7 actual HTTP/FAISS read-snapshot model switch, initial degrade, ordinary rebuild/hot fence, ID MAP race, fault breaker",
+    "managed-005": "failed:132 passed/1 failed in expanded HTTP/vector/concurrency/activation/rollback/restore tests; cleanup fixture omitted existing two-retired-generation retention floor",
+    "managed-006": "passed:9 managed tests after real successor generations satisfy existing age and retention floor; includes current secret rotation and no-secret cleanup",
+    "types-013": "failed:new report import and fixed-runtime fixture union narrowing corrected",
+    "types-014": "failed:two new test annotations corrected (ExternalIdentityKey and JSON cast)",
+    "types-015": "passed:whole Python and TS SDK typecheck",
+    "structural-005": "failed:new TestClient fixture needed explicit FastAPI cast",
+    "structural-006": "passed:whole format/lint/import/docs/types/contracts/compatibility after final source changes",
+    "managed-007": "passed:10 real ASGI/HTTP/FAISS binding, readiness, current generation lifetime, credential/breaker, cleanup and normal Worker fence tests; finished 2026-09-07T22:36:21Z",
+    "types-016": "passed:whole Python and TS SDK typecheck after final managed HTTP readiness/lifetime tests",
+    "deployment-001": "passed:22 strict deployment parsing/file boundaries and actual CLI worker probe/FAISS activation consumed by pre-existing ASGI app",
+    "deployment-002": "passed:118 deployment/real CLI worker/ASGI/ordinary batch fences/old runtime/rollback/restore/secret lifecycle regressions",
+    "types-017": "passed:whole Python and TS SDK typecheck after deployment source",
+    "types-018": "failed:BaseRoute fixture required Mount narrowing; corrected",
+    "structural-007": "passed:whole format/lint/import/docs/types/contracts/compatibility after deployment",
+    "structural-008": "passed:whole structural checks after ordinary rebuild batch/lease guards",
+    "managed-008": "failed:12 passed/1 failed; test used nonexistent attempts field, corrected to actual attempt_count; missing-secret finite retry behavior passed before fixture failure",
+    "structural-009": "failed:format only in final managed binding helper, formatted without behavior change",
+    "deployment-003": "passed:58 deployment, managed binding/missing-secret finite retry/recovery and mounted/separate Console plane tests; finished 2026-09-07T22:54:12Z",
+    "structural-010": "passed:whole format/lint/import/docs/types/contracts/compatibility on final deployment/batch/secret recovery source",
+    "provider-http-contract-001": "passed:472 Console source-owned fixtures and actual route inventory",
+    "structural-011": "failed:Provider history secret metadata inferred dict type; explicit annotation corrected",
+    "provider-http-001": "failed:6 actual HTTP tests passed; helper tested accidentally collected and affected-only invocation inherited global coverage threshold; renamed helper/use make test-affected",
+    "structural-012": "failed:test payload inferred Collection instead of dict; annotation corrected",
+    "provider-http-002": "failed:84 passed/6 failed; leak assertion matched allowed provider_kind value instead of forbidden vector property; exact JSON property match corrected",
+    "structural-013": "passed:whole format/lint/import/docs/types/contracts compatibility after HTTP routes",
+    "provider-http-003": "passed:90 actual HTTP lifecycle/tenant/history/reauth/fault/credential and existing Console authentication/config commands",
+    "console-001": "failed:strict TypeScript required descriptor numeric fields guarded explicitly",
+    "console-002": "passed:generated types/lint/TS/29 frontend tests/production build",
+    "console-003": "passed:whole Console check including browser specs types,29 tests,production build",
+    "provider-browser-001": "failed:disposable fixture used AccessContext convenience aliases; corrected actual fields",
+    "provider-browser-002": "failed:fixture temp path crossed macOS /var symlink; resolved test root without weakening deployment file checks",
+    "provider-browser-003": "passed:2 real Chrome lifecycle/reader cases, independent Worker and HTTP Recall verify initial degrade/old model/new model/retained rollback; exit0",
+    "browser-regression-001": "passed:23 full browser cases including real Provider and prior Console management; exit0",
+    "console-regression-001": "passed:1341 full Console integration and contract tests; exit0",
+    "tenant-http-001": "passed:two actual tenants concurrently issue20 Recall requests each to one ASGI runtime;40 outgoing HTTP calls use exact tenant model/secret and return no foreign candidates",
+    "structural-014": "passed:whole format/lint/import/docs/types/contracts after browser and two-tenant test sources",
+    "ci-001": "failed before tests: reviewed W05 additive public API drift; reviewed snapshot accepted, evidence/public-api-review.json",
+    "ci-002": "failed only at final package-check: external PyPI TLS EOF. Structural/public API/performance11/function15103/coverage85.78%/SDK/Console29/browser23 passed; original failed result retained.",
+    "package-001": "passed: UV_OFFLINE=1 make package-check; actual cached wheel/sdist builds, isolated installation, public API and real process/SDK Recall smoke",
+    "W08/integrated-structural-001": "failed: documentation counts139/167 versus actual144/174; corrected only current generated count markers",
+    "W08/integrated-structural-002": "passed: format/lint/types/contracts/Console29tests/production build",
+    "W06/integrated-structural-001": "passed: combined W06/W08 format/lint/types/contracts/public API"
   },
   "contract_version": "1.11.0",
   "continuation_policy": "User cancelled scheduled automation. Continue active goal from actual background process/session completion events, with no clock sleeps or scheduled-time phase barriers.",
   "automation_status": "deleted by user request on 2026-09-08 Asia/Shanghai",
   "goal_runtime_status": "active (get_goal confirmed after user resumed)",
-  "previous_goal_turn_classification": "progress: actual problem-page contract failures reproduced and repaired; 431 targeted regressions passed.",
-  "current_goal_turn_classification": "progress: ci-003 passed; no material drift, final evidence archived; W04 acceptance completed pending independent commit.",
+  "previous_goal_turn_classification": "progress:real asynchronous Provider probe handler and durable budgets/fences/cancel/dead handling implemented; activation freshness/plan gates and Console1.2 Operation contract added;444 tests and structural gates passed.",
+  "current_goal_turn_classification": "progress: W05 source and evidence committed; W06 and W08 integrated in small functional commits with reviewed public surface; W07/W09/W10 developing independently",
   "runtime_versions": {
-    "core": "0.14.0",
-    "schema": 21,
+    "core": "0.15.0",
+    "schema": 23,
     "contract": "1.11.0",
-    "console_contract": "1.1.0",
+    "console_contract": "1.3.0",
     "python_sdk": "0.11.1",
     "typescript_sdk": "0.11.2"
   },
+  "pending_external_requirements": [
+    {
+      "requirement": "Real allowed HTTP Embedding Provider acceptance",
+      "status": "requested; no configured relevant environment variable names found",
+      "needs": [
+        "endpoint",
+        "model and dimension",
+        "authorized test cost limit",
+        "environment variable name or local credential file path"
+      ],
+      "blocks": "final real outbound acceptance only; local W05 implementation continues"
+    }
+  ],
   "completion_watch": {
-    "cell_id": "365",
-    "session_id": 93121,
-    "mode": "native session completion watcher; do not separately poll session",
-    "status": "completed_and_consumed"
+    "status": "all integrated structural sessions consumed; preparing fixed W06/W08 CI worktree"
+  },
+  "execution_mode": "dependency_gated_parallel",
+  "commit_policy": "Small coherent behavior commits; related work packages may share a commit; package acceptance remains explicit.",
+  "active_packages": {
+    "W05": {
+      "owner": "root",
+      "status": "local implementation verified and small commits in progress; external Provider gate pending; full CI final package failure separately recovered"
+    },
+    "W06": {
+      "owner": "w06_cognitive",
+      "directory": "/private/tmp/imc-w06-work",
+      "status": "integrated; full CI and external model quality pending"
+    },
+    "W07": {
+      "owner": "w07_observability",
+      "directory": "/private/tmp/imc-w07-work",
+      "status": "implementation; temporary Schema23 rebased to24 at integration"
+    },
+    "W08": {
+      "owner": "w08_persona_draft",
+      "directory": "/private/tmp/imc-w08-work",
+      "status": "integrated Schema23; full CI pending"
+    },
+    "W09": {
+      "owner": "w06_cognitive",
+      "directory": "/private/tmp/imc-w06-work",
+      "status": "development; ADR0053/Schema26 reserved"
+    },
+    "W10": {
+      "owner": "w08_persona_draft",
+      "directory": "/private/tmp/imc-w08-work",
+      "status": "development; ADR0054/Schema25 reserved"
+    }
   }
 }

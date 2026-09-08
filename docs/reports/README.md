@@ -35,3 +35,8 @@
 - [W03 Persona 原量化门禁](w03-persona-quantitative-gates.md)：Completed，Policy 每项 200 案例、50 客户端发布、三次时钟轨迹及完整 CI 通过。
 
 - [W04 Operation 扩展与可信备份](w04-operations-trusted-backup.md)：Completed，Schema21 类型化 Operation 与内部校验备份；14795 项功能、21 项真实浏览器及完整 CI/安装通过。
+
+- [W05 Embedding Provider 全链路](w05-embedding-provider.md)：In progress，不可变配置、可信探测、Generation 切换与真实运行装配。
+
+- [W06 认知 Provider 运行接线](w06-cognitive-provider.md)：In progress，本地整合；真实允许模型质量验收待提供条件。
+- [W08 Persona Draft](w08-persona-draft.md)：In progress，独立迁移/授权/恢复/浏览器通过，主目录整合 CI 待运行。

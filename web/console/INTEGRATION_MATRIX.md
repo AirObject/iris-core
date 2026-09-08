@@ -2,7 +2,7 @@
 
 核查日期：2026-09-07。当前行为以 [Console OpenAPI](../../schemas/openapi/console.json) 和实际服务为准；目标语义见 [Console 设计与接入边界](../../docs/design/console-backend.md)，测试范围见 [合并验证记录](../../docs/reports/phase-13-verification.md)。本表只维护接入差距，不另存 API 规格或历史执行流水。
 
-当前契约已有 <!-- contract-count:console:paths -->139<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->167<!-- /contract-count --> 个 HTTP 操作；前端类型已同步；Reflection/Candidate 不透明 ID 已通过契约回归。读面真实浏览器证据见 [Phase 14 报告](../../docs/reports/phase-14-verification.md)，表中其余“已接线”不等于完整验收。
+当前契约已有 <!-- contract-count:console:paths -->144<!-- /contract-count --> 个路径、<!-- contract-count:console:operations -->174<!-- /contract-count --> 个 HTTP 操作；前端类型已同步；Reflection/Candidate 不透明 ID 已通过契约回归。读面真实浏览器证据见 [Phase 14 报告](../../docs/reports/phase-14-verification.md)，表中其余“已接线”不等于完整验收。
 
 | 功能 | 当前契约/后端 | 当前前端与证据 | 下一项真实验证 |
 | --- | --- | --- | --- |

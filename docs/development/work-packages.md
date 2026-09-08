@@ -1,4 +1,4 @@
-# 单一工作包执行队列
+# 工作包执行队列
 
 2026-09-07 项目负责人决定：停止“根据构建文档实现 Phase 14”整体 goal。后续依照完成情况核查编写了[构建指导](next-build-guide.md)，本页只维护队列、状态与交接；具体范围、依赖和验收统一在指导文档。更新队列不自动启动下一项。Phase 14 尚未完成，也未进入稳定发布验收；Phase 11/12 保持 Deferred。
 
@@ -8,6 +8,8 @@
 - 未合入 Draft 原型：`codex/phase14-persona-drafts-checkpoint`，提交 `e639a2d`，基于上述主目录检查点保存 22 个差异文件。包含独立 Draft 版本、Schema 21 原型、授权命令与删除恢复账本，以及未完成的上下文/API。此前 22 个定向测试通过；最后的上下文/API 编辑尚未复验，路由未注册、请求契约/UI/Hold 审查/完整 Schema 21 回归未完成，ADR 仍为 Proposed。该分支用于续作，不能直接作为已验收版本合入。
 
 ## 当前执行授权
+
+2026-09-08 最新用户指令进一步覆盖串行和逐包单独提交要求：按本指导完成剩余 W 至 W20，无依赖工作允许并行；关联的多个 W 可以合并提交，但按可审查行为拆分，避免大提交。依赖、原验收、收尾 make ci、报告与状态真实性仍保留；某包的外部验收缺失不阻止无依赖包开发，也不代表该包完成。当前 W05 本地收尾，W06/W08 已整合待完整 CI；W07/W09/W10 在独立副本开发；共享契约、迁移编号和最终集成统一协调。W18/W19 满足冻结输入和资源隔离后可并行运行，24h Soak 等原门槛不缩减。Phase 11/12 Deferred。
 
 2026-09-08 最新补充：已按用户要求删除定时 automation `w01-w20`；继续现有 goal，以后台任务实际完成结果触发收尾和下一包，不设置定时阶段门、不执行 clock sleep。
 
@@ -21,20 +23,20 @@
 
 ## 交互式工作包队列
 
-W01/W02/W03 已完成全部验收并各自独立提交，W04 全部门禁通过并进入独立提交收尾；其余保持 Planned。新的建议顺序先处理核查确认的 Recall 能力声明与接线问题；原“13.6 统计下一项”调整为 W07。独立准备可并行，但不得跳过[指导中的必需依赖](next-build-guide.md#3-建议顺序与依赖)。
+W01–W04 已完成全部验收并各自独立提交。W05 本地收尾；W06/W08 已整合等待完整 CI，W07 继续独立副本实施，W09/W10 依已交付接缝开始开发。不得跳过[指导中的必需依赖](next-build-guide.md#3-建议顺序与依赖)，开发进展和最终验收分开记录。
 
 | 工作包 | 原范围 | 状态/交接 |
 | --- | --- | --- |
 | [W01 HTTP Recall 接线与能力声明](next-build-guide.md#w01-http-recall-接线与能力声明) | Phase 7/8/10，14.0-D/F | Completed；[W01 报告](../reports/w01-http-recall-assembly.md)，完整 `ci-002` 通过：11705 项功能测试、85.50% 覆盖率、20 项真实浏览器与独立安装 Recall；Commit `0959259` |
 | [W02 Graph 原量化门禁](next-build-guide.md#w02-graph-原量化门禁) | Phase 8，14.0-D | Completed；[W02 报告](../reports/w02-graph-quantitative-gates.md)，456 项定向回归、11966 项功能/85.52% 覆盖率、完整 CI/浏览器/安装通过；Commit `4c6277b` |
 | [W03 Persona 原量化门禁](next-build-guide.md#w03-persona-原量化门禁) | Phase 9，14.0-D | Completed；[W03 报告](../reports/w03-persona-quantitative-gates.md)，2800 Policy 案例、50 客户端与三次时钟轨迹、14768 项功能/85.55% 覆盖率、完整 CI 通过；Commit `460f7dd` |
-| [W04 Operation 扩展与可信备份流程](next-build-guide.md#w04-operation-扩展与可信备份流程) | 13.11 最小前置 | Completed；[W04 报告](../reports/w04-operations-trusted-backup.md)，14795 项功能/85.58% 覆盖率、21 项真实浏览器及完整 CI/安装通过；随本包独立提交交付 |
-| [W05 Embedding Provider 全链路](next-build-guide.md#w05-embedding-provider-全链路) | 13.9，14.2 | Planned |
-| [W06 认知 Provider 运行接线](next-build-guide.md#w06-认知-provider-运行接线) | Phase 10，14.0-D/14.2 | Planned |
-| [W07 统计与运行观测](next-build-guide.md#w07-统计与运行观测) | 13.6 | Planned |
-| [W08 Persona Draft](next-build-guide.md#w08-persona-draft) | 13.4 | Planned；保存分支仅作待审原型 |
-| [W09 Reflection/Candidate 管理](next-build-guide.md#w09-reflectioncandidate-管理) | 13.4 原队列漏项 | Planned |
-| [W10 Retention/Hold 与清理状态](next-build-guide.md#w10-retentionhold-与清理状态) | 13.5 | Planned |
+| [W04 Operation 扩展与可信备份流程](next-build-guide.md#w04-operation-扩展与可信备份流程) | 13.11 最小前置 | Completed；[W04 报告](../reports/w04-operations-trusted-backup.md)，14795 项功能/85.58% 覆盖率、21 项真实浏览器及完整 CI/安装通过；Commit `d4998ed` |
+| [W05 Embedding Provider 全链路](next-build-guide.md#w05-embedding-provider-全链路) | 13.9，14.2 | In progress；[W05 报告](../reports/w05-embedding-provider.md)，Embedding 配置/Worker/API 全链路 |
+| [W06 认知 Provider 运行接线](next-build-guide.md#w06-认知-provider-运行接线) | Phase 10，14.0-D/14.2 | In progress；已整合生产适配器与治理接线，完整 CI 待运行；[报告](../reports/w06-cognitive-provider.md)保留真实模型待验收 |
+| [W07 统计与运行观测](next-build-guide.md#w07-统计与运行观测) | 13.6 | In progress；独立副本，持久统计/授权桶/回填和真实页面 |
+| [W08 Persona Draft](next-build-guide.md#w08-persona-draft) | 13.4 | In progress；已整合 Schema23 草稿生命周期/HTTP/UI；[报告](../reports/w08-persona-draft.md)，完整 CI 待运行 |
+| [W09 Reflection/Candidate 管理](next-build-guide.md#w09-reflectioncandidate-管理) | 13.4 原队列漏项 | In progress；W06 独立副本续作 dry-run/replay/候选审核；真实模型验收仍待条件 |
+| [W10 Retention/Hold 与清理状态](next-build-guide.md#w10-retentionhold-与清理状态) | 13.5 | In progress；基于 W08 草稿实现开发策略/Hold/分页扫描；依赖最终验收仍须完成 |
 | [W11 业务导出与授权下载](next-build-guide.md#w11-业务导出与授权下载) | 13.7 | Planned |
 | [W12 手动导入闭环](next-build-guide.md#w12-手动导入闭环) | 13.8 | Planned |
 | [W13 Settings 与实际生效](next-build-guide.md#w13-settings-与实际生效) | 13.10 | Planned |
