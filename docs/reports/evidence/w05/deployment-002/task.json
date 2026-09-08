@@ -1,0 +1,12 @@
+{
+  "command": [
+    "make",
+    "test-affected",
+    "TESTS=tests/integration/runtime/test_provider_deployment.py tests/integration/runtime/test_managed_vector_binding.py tests/integration/runtime/test_http_recall_assembly.py tests/integration/runtime/test_http_recall_provider_faults.py tests/unit/test_cli.py tests/integration/console/test_provider_activations.py tests/integration/console/test_provider_rollbacks.py tests/integration/console/test_provider_restore.py tests/integration/recall/test_provider_secret_lifecycle.py"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 600,
+  "created_at": "2026-09-07T22:50:45.039150+00:00",
+  "head": "d4998edff6986180328a218440c8c239f26461a9",
+  "supervisor_pid": 22944
+}

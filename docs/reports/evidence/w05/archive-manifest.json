@@ -1,0 +1,8 @@
+{
+  "archive": "batch-artifacts.tar.xz",
+  "sha256": "f85c0ec7a9401938977320bff887ed1947220db182c84ba2a0e5e69a048ea498",
+  "bytes": 524784,
+  "batches": 91,
+  "members": 273,
+  "verification": "Every decompressed member matched original bytes SHA-256 before duplicate evidence removal"
+}

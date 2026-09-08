@@ -1,0 +1,13 @@
+{
+  "command": [
+    "env",
+    "UV_OFFLINE=1",
+    "make",
+    "package-check"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 900,
+  "created_at": "2026-09-08T01:02:15.033481+00:00",
+  "head": "40bd4d17e7f195438961e4550c601aca2a487a13",
+  "supervisor_pid": 70806
+}

@@ -1,0 +1,12 @@
+{
+  "command": [
+    "make",
+    "test-affected",
+    "TESTS=tests/integration/console/test_provider_activations.py"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 300,
+  "created_at": "2026-09-07T21:35:00.015574+00:00",
+  "head": "d4998edff6986180328a218440c8c239f26461a9",
+  "supervisor_pid": 98583
+}

@@ -1,0 +1,12 @@
+{
+  "command": [
+    "make",
+    "test-affected",
+    "TESTS=tests/integration/console/test_console_operation_http.py tests/integration/console/test_console_operation_batches.py tests/integration/console/test_console_operation_ordering.py tests/integration/console/test_console_operation_cancellation.py tests/integration/console/test_console_backup_operations.py tests/integration/runtime/test_outbox.py tests/integration/migrations/test_provider_configuration_migration.py tests/unit/test_ingestion_domain.py"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 600,
+  "created_at": "2026-09-07T21:15:41.917550+00:00",
+  "head": "d4998edff6986180328a218440c8c239f26461a9",
+  "supervisor_pid": 92523
+}

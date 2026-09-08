@@ -1,0 +1,8 @@
+{
+  "started_at": "2026-09-07T23:20:22.062341+00:00",
+  "supervisor_pid": 32012,
+  "child_pid": 32023,
+  "exit_code": 2,
+  "status": "failed",
+  "finished_at": "2026-09-07T23:20:23.334145+00:00"
+}

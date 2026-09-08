@@ -1,0 +1,14 @@
+{
+  "command": [
+    "env",
+    "CI=1",
+    "CONSOLE_BROWSER_EXECUTABLE=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "make",
+    "ci"
+  ],
+  "cwd": "/Users/cassia/Local/Code/iris_memory_core",
+  "timeout_seconds": 5400,
+  "created_at": "2026-09-07T23:53:54.848543+00:00",
+  "head": "12a65e839b2749cebd779e3ffbe1d3ec2195eb2c",
+  "supervisor_pid": 45663
+}

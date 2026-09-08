@@ -1,0 +1,2641 @@
+[
+  {
+    "batch": "activation-plans-001",
+    "started_at": "2026-09-07T21:20:53.593100+00:00",
+    "supervisor_pid": 94045,
+    "child_pid": 94053,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:20:59.714717+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activation-plans-001/candidate-files.json",
+        "raw_bytes": 219215,
+        "raw_sha256": "da6bcd7d46c6049aa3b67a9a6a0cd8f8369b4a603568f81c4ee6b04a9801bb6b"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activation-plans-001/candidate.patch",
+        "raw_bytes": 77677,
+        "raw_sha256": "f083720c0ac557c3b36d1b4e4c10fb51bfa0c51411f53fb27a6030c0acb63a3e"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activation-plans-001/output.log",
+        "raw_bytes": 1414,
+        "raw_sha256": "e19d7ad108ead03ceff1ca9bd820558a2e06e471f872d90e9b6f24faf516c939"
+      }
+    }
+  },
+  {
+    "batch": "activations-001",
+    "started_at": "2026-09-07T21:35:00.367018+00:00",
+    "supervisor_pid": 98583,
+    "child_pid": 98593,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:35:07.892210+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-001/candidate-files.json",
+        "raw_bytes": 224173,
+        "raw_sha256": "5eb52f0410df4e5d8e71ed7b5621cce361c4fb963e7dec4b44783397f739bc70"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-001/candidate.patch",
+        "raw_bytes": 172800,
+        "raw_sha256": "63984c4d554eb845b8c9d283413b5fc4431ade3853f1abdb29e437dca025be79"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-001/output.log",
+        "raw_bytes": 1409,
+        "raw_sha256": "46ee123e91c46941bb1d7b19a1a16983a876ea348b8ca858fdcee8cfc8a93bfb"
+      }
+    }
+  },
+  {
+    "batch": "activations-002",
+    "started_at": "2026-09-07T21:36:38.628621+00:00",
+    "supervisor_pid": 99084,
+    "child_pid": 99093,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T21:37:10.101256+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-002/candidate-files.json",
+        "raw_bytes": 224173,
+        "raw_sha256": "0df3323f264139d5010d06dd0de554f7cff6802b88e24ac04c78c8f55c241c3b"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-002/candidate.patch",
+        "raw_bytes": 172800,
+        "raw_sha256": "63984c4d554eb845b8c9d283413b5fc4431ade3853f1abdb29e437dca025be79"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-002/output.log",
+        "raw_bytes": 3520,
+        "raw_sha256": "aa225af69059e149f36b4903dd3eb1e0237271a3e8836e791fb20602f232d8ca"
+      }
+    }
+  },
+  {
+    "batch": "activations-003",
+    "started_at": "2026-09-07T21:38:19.245933+00:00",
+    "supervisor_pid": 99600,
+    "child_pid": 99610,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:38:30.020332+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-003/candidate-files.json",
+        "raw_bytes": 224173,
+        "raw_sha256": "ac0288014f4fa1af4f3fac22819bdd681e3aa51f552daed878bd7e661a2e84c5"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-003/candidate.patch",
+        "raw_bytes": 172800,
+        "raw_sha256": "63984c4d554eb845b8c9d283413b5fc4431ade3853f1abdb29e437dca025be79"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-003/output.log",
+        "raw_bytes": 1410,
+        "raw_sha256": "0348deab6689afb6d9025dd093a1fa3f9127eec49ea8b9cda60f4f36d7ce3f1b"
+      }
+    }
+  },
+  {
+    "batch": "activations-004",
+    "started_at": "2026-09-07T21:41:47.625429+00:00",
+    "supervisor_pid": 1137,
+    "child_pid": 1145,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:42:20.667861+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-004/candidate-files.json",
+        "raw_bytes": 224647,
+        "raw_sha256": "02d1fbe08e971597e364848462e64cf5c167805ab0d06fd129934612bb568d76"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-004/candidate.patch",
+        "raw_bytes": 173868,
+        "raw_sha256": "14bcc084383901dba14ce8b2d7babf6136d50c80d8bd07438dd1eb504751cfe6"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "activations-004/output.log",
+        "raw_bytes": 2988,
+        "raw_sha256": "8fdd7f779ec970bb5f7571796710f275da4a3f7d4e06e7f17992790ea2af86d5"
+      }
+    }
+  },
+  {
+    "batch": "browser-regression-001",
+    "started_at": "2026-09-07T23:39:19.231249+00:00",
+    "supervisor_pid": 38410,
+    "child_pid": 38416,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:41:30.393862+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "browser-regression-001/candidate-files.json",
+        "raw_bytes": 278397,
+        "raw_sha256": "88707976951d5452d2932289f1a8319e2f5afa8299997ab99143968303c819c1"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "browser-regression-001/candidate.patch",
+        "raw_bytes": 1250909,
+        "raw_sha256": "277b403412d4119ac583b75baafc99d7fa5fc539b8c675b42a1c5c1c74295c95"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "browser-regression-001/output.log",
+        "raw_bytes": 172755,
+        "raw_sha256": "c70b2c47d9bd681d0da2eabec61fb9b38e11ac36883ce87cea9b4c7890598562"
+      }
+    }
+  },
+  {
+    "batch": "ci-001",
+    "started_at": "2026-09-07T23:43:51.301830+00:00",
+    "supervisor_pid": 39978,
+    "child_pid": 39985,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T23:43:54.077518+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "ci-001/candidate-files.json",
+        "raw_bytes": 278525,
+        "raw_sha256": "9bc981063e8524b46a894336974c7e8453e5c176e3ed55a2588178ef1719dd82"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "ci-001/candidate.patch",
+        "raw_bytes": 1143085,
+        "raw_sha256": "051083ce58fec7b6a4f514a96041aa8e4ad95f2041bf00a630db635e36962256"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "ci-001/output.log",
+        "raw_bytes": 5277,
+        "raw_sha256": "70f7f15e25b9ca900ff453aa94c1ce72cc9b70c2e04265d4a2a7da3f2e946ad0"
+      }
+    }
+  },
+  {
+    "batch": "ci-002",
+    "started_at": "2026-09-07T23:53:55.412266+00:00",
+    "supervisor_pid": 45663,
+    "child_pid": 45669,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-08T00:23:06.437187+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "ci-002/candidate-files.json",
+        "raw_bytes": 282562,
+        "raw_sha256": "3a8e85b0144d1514c6da8de643ee7e097a661eac5461bd0de773d61a732e4c1c"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "ci-002/candidate.patch",
+        "raw_bytes": 1175965,
+        "raw_sha256": "cc558ce5975f54cebbe09cd9e98c844211dc4a2f2fdaf331e296fc5ccacc7a97"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "ci-002/output.log",
+        "raw_bytes": 248730,
+        "raw_sha256": "8633ad4deb8e4233128be6b9826d86cbb4434ebb130fd47e4f621d0e268e0f39"
+      }
+    }
+  },
+  {
+    "batch": "config-commands-001",
+    "started_at": "2026-09-07T21:01:36.168111+00:00",
+    "supervisor_pid": 88119,
+    "child_pid": 88128,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T21:01:38.401993+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "config-commands-001/candidate-files.json",
+        "raw_bytes": 215595,
+        "raw_sha256": "4f1e6945e00ae6fb964badcce37bc20bd07950e5e211cb62f8169678b49665f4"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "config-commands-001/candidate.patch",
+        "raw_bytes": 67877,
+        "raw_sha256": "8a1eafdbf5a284782e920919d98f041297861d8eca744cb3be02c9fa990b53b5"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "config-commands-001/output.log",
+        "raw_bytes": 4058,
+        "raw_sha256": "7a39d338a37bef5cfb1093d4c158a7dc7cbcaccdb8ed3e84071d6c759e05c9da"
+      }
+    }
+  },
+  {
+    "batch": "config-commands-002",
+    "started_at": "2026-09-07T21:02:21.189116+00:00",
+    "supervisor_pid": 88350,
+    "child_pid": 88357,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:02:23.323189+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "config-commands-002/candidate-files.json",
+        "raw_bytes": 215595,
+        "raw_sha256": "b3cdeb9dd6cc4cbe30c74ece756dcc206ad9f774bc40d930971439a9e07393ef"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "config-commands-002/candidate.patch",
+        "raw_bytes": 67877,
+        "raw_sha256": "8a1eafdbf5a284782e920919d98f041297861d8eca744cb3be02c9fa990b53b5"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "config-commands-002/output.log",
+        "raw_bytes": 1414,
+        "raw_sha256": "10a73f6e5850364bd27696e328d0748cfe7d7d7592a921b68c218040349d3b1a"
+      }
+    }
+  },
+  {
+    "batch": "config-commands-003",
+    "started_at": "2026-09-07T21:04:11.965118+00:00",
+    "supervisor_pid": 88934,
+    "child_pid": 88941,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:04:14.869599+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "config-commands-003/candidate-files.json",
+        "raw_bytes": 215595,
+        "raw_sha256": "2c50b2397b4fb449d12ab854aefc1b1367acafeb657125b6d8fbedcf11d24857"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "config-commands-003/candidate.patch",
+        "raw_bytes": 67877,
+        "raw_sha256": "8a1eafdbf5a284782e920919d98f041297861d8eca744cb3be02c9fa990b53b5"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "config-commands-003/output.log",
+        "raw_bytes": 1494,
+        "raw_sha256": "e569ea010290daa381cc6da2d4e43113fdc12dc1103923b5c1d90a5be5f0a9ca"
+      }
+    }
+  },
+  {
+    "batch": "configured-001",
+    "started_at": "2026-09-07T20:53:36.490935+00:00",
+    "supervisor_pid": 85565,
+    "child_pid": 85574,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T20:53:36.931294+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "configured-001/candidate-files.json",
+        "raw_bytes": 212968,
+        "raw_sha256": "3c9e31a913a3baa31b314c630a7586ea0fa6282754c05727a8c923b5ac5595ed"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "configured-001/candidate.patch",
+        "raw_bytes": 67171,
+        "raw_sha256": "5a1c2a1a3617f2c865d9758269c9b418d9aedd6f059fb8151f4d3e260576bf42"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "configured-001/output.log",
+        "raw_bytes": 28216,
+        "raw_sha256": "7cd9bdbc6a312945a468590c10931c9b049a8281fdc380a4910ad830e103d426"
+      }
+    }
+  },
+  {
+    "batch": "configured-002",
+    "started_at": "2026-09-07T20:54:07.429471+00:00",
+    "supervisor_pid": 85799,
+    "child_pid": 85803,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:54:12.428993+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "configured-002/candidate-files.json",
+        "raw_bytes": 212968,
+        "raw_sha256": "3c9e31a913a3baa31b314c630a7586ea0fa6282754c05727a8c923b5ac5595ed"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "configured-002/candidate.patch",
+        "raw_bytes": 67171,
+        "raw_sha256": "5a1c2a1a3617f2c865d9758269c9b418d9aedd6f059fb8151f4d3e260576bf42"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "configured-002/output.log",
+        "raw_bytes": 535,
+        "raw_sha256": "6a3f3f18951686c532eba6a2af41a1a3146577f6764c9714decc4ad915360a44"
+      }
+    }
+  },
+  {
+    "batch": "configured-003",
+    "started_at": "2026-09-07T20:55:34.573139+00:00",
+    "supervisor_pid": 86197,
+    "child_pid": 86206,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:55:48.992700+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "configured-003/candidate-files.json",
+        "raw_bytes": 212968,
+        "raw_sha256": "745d94fa61c531b694a2088b77c93238db020f3e623202d0ceae551739535e35"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "configured-003/candidate.patch",
+        "raw_bytes": 67171,
+        "raw_sha256": "5a1c2a1a3617f2c865d9758269c9b418d9aedd6f059fb8151f4d3e260576bf42"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "configured-003/output.log",
+        "raw_bytes": 1105,
+        "raw_sha256": "a04e42ffaee5278cb7965fa233b3bfd551d8780f3fcda04b12f86ef2feaf990b"
+      }
+    }
+  },
+  {
+    "batch": "console-001",
+    "started_at": "2026-09-07T23:28:29.823955+00:00",
+    "supervisor_pid": 34504,
+    "child_pid": 34510,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T23:28:32.513945+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-001/candidate-files.json",
+        "raw_bytes": 270243,
+        "raw_sha256": "39af2ddb4e51e90ab451fe5bf03de055cae269f895eb40740d73c48817d8306f"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-001/candidate.patch",
+        "raw_bytes": 1141520,
+        "raw_sha256": "75eb098e865bbec8d26055e94580bf801811ea158da064b9773dc3f7834356d0"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-001/output.log",
+        "raw_bytes": 1784,
+        "raw_sha256": "0bf0b4a54dedba343c28e48fcd05808e6bd97fbfd793269f4e850ef1f2ded31c"
+      }
+    }
+  },
+  {
+    "batch": "console-002",
+    "started_at": "2026-09-07T23:29:39.846799+00:00",
+    "supervisor_pid": 34979,
+    "child_pid": 34986,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:29:44.698476+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-002/candidate-files.json",
+        "raw_bytes": 270243,
+        "raw_sha256": "5ebff34820d7e99cf7265c3150e383c7ecbe56f8811e25b2adb9f1d417140ad4"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-002/candidate.patch",
+        "raw_bytes": 1141520,
+        "raw_sha256": "75eb098e865bbec8d26055e94580bf801811ea158da064b9773dc3f7834356d0"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-002/output.log",
+        "raw_bytes": 1761,
+        "raw_sha256": "c90bd1e3d54e092893d283f21f6d52bfee42ce477fc6e31a5ab2c7e394a17c0e"
+      }
+    }
+  },
+  {
+    "batch": "console-003",
+    "started_at": "2026-09-07T23:33:48.527261+00:00",
+    "supervisor_pid": 36411,
+    "child_pid": 36424,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:33:53.644740+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-003/candidate-files.json",
+        "raw_bytes": 270597,
+        "raw_sha256": "a0633d7504d475c06a6756cba1d30c7f56e298d9d117d9fceda0c1f974a1a50e"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-003/candidate.patch",
+        "raw_bytes": 1246442,
+        "raw_sha256": "4d3ebefcbf2ab70ee89cd097eb6b7b63d34013f2e427e387aa0f5df891cdf289"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-003/output.log",
+        "raw_bytes": 1761,
+        "raw_sha256": "3b564f343717d708706c2995408ef79a416683ceacc023548a4594a987ca33e0"
+      }
+    }
+  },
+  {
+    "batch": "console-regression-001",
+    "started_at": "2026-09-07T23:34:46.586225+00:00",
+    "supervisor_pid": 36955,
+    "child_pid": 36960,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:40:08.045641+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-regression-001/candidate-files.json",
+        "raw_bytes": 270597,
+        "raw_sha256": "96ae5c5ff41832aea6b8a094601dd5575cabae480280c9006a14cddc50ecff6a"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-regression-001/candidate.patch",
+        "raw_bytes": 1246442,
+        "raw_sha256": "4d3ebefcbf2ab70ee89cd097eb6b7b63d34013f2e427e387aa0f5df891cdf289"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "console-regression-001/output.log",
+        "raw_bytes": 8463,
+        "raw_sha256": "4090e6cc6791bf86aa5da398fb964425afc3f72cdbf87e70b51d57550bd2a382"
+      }
+    }
+  },
+  {
+    "batch": "contracts-001",
+    "started_at": "2026-09-07T21:22:54.139067+00:00",
+    "supervisor_pid": 94642,
+    "child_pid": 94647,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:22:54.760727+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "contracts-001/candidate-files.json",
+        "raw_bytes": 219215,
+        "raw_sha256": "9cac4b58c6b538bbd97b86a86df137ada969f4e8bba7c3d094a4d99b2293c311"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "contracts-001/candidate.patch",
+        "raw_bytes": 97915,
+        "raw_sha256": "517f47219f9fa0a32e151c02a6075644f7009d85457ef0e02439608b5000f54b"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "contracts-001/output.log",
+        "raw_bytes": 94,
+        "raw_sha256": "05241c306754d2577a3ac8aa948071dcf7458831a6a0451303c35f0c548012ab"
+      }
+    }
+  },
+  {
+    "batch": "contracts-002",
+    "started_at": "2026-09-07T21:39:07.713703+00:00",
+    "supervisor_pid": 99854,
+    "child_pid": 99860,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:39:08.325538+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "contracts-002/candidate-files.json",
+        "raw_bytes": 224173,
+        "raw_sha256": "b09f1f20da3b5dfba80bead3e63c172bba6537c96ce470c917bc92420ae1e6e7"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "contracts-002/candidate.patch",
+        "raw_bytes": 173739,
+        "raw_sha256": "8ee98e1285911d26246e4734766de18d9748f9fd98a2cd96c7a92bd29772b325"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "contracts-002/output.log",
+        "raw_bytes": 94,
+        "raw_sha256": "05241c306754d2577a3ac8aa948071dcf7458831a6a0451303c35f0c548012ab"
+      }
+    }
+  },
+  {
+    "batch": "deployment-001",
+    "started_at": "2026-09-07T22:45:43.574825+00:00",
+    "supervisor_pid": 21380,
+    "child_pid": 21385,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:45:46.122713+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "deployment-001/candidate-files.json",
+        "raw_bytes": 252509,
+        "raw_sha256": "bf8e660126874bcb879dfb7524f17d278b435c8ff79173196d69df6bfa92c5d2"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "deployment-001/candidate.patch",
+        "raw_bytes": 215274,
+        "raw_sha256": "d932422eb1a7aa7efb18e666c47025a6c9bd625ea1fc3836b155df8c22b972ec"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "deployment-001/output.log",
+        "raw_bytes": 1489,
+        "raw_sha256": "912146a3121940ab5024c7f73f9538c2efd7d85a28e2a0d4bc92ac686f9d796b"
+      }
+    }
+  },
+  {
+    "batch": "deployment-002",
+    "started_at": "2026-09-07T22:50:45.277317+00:00",
+    "supervisor_pid": 22944,
+    "child_pid": 22949,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:51:37.773004+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "deployment-002/candidate-files.json",
+        "raw_bytes": 252623,
+        "raw_sha256": "1b396b4bad8e8724c4941aa390846e4945e1d754288a7e1ed6271bd2293771f2"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "deployment-002/candidate.patch",
+        "raw_bytes": 216514,
+        "raw_sha256": "115bb28ff214334469107047f07746f13e70259bdbec3678e658fdc423c0dec0"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "deployment-002/output.log",
+        "raw_bytes": 2625,
+        "raw_sha256": "a9c3103883ca4498f3a11dd206f2695af9a8f624bb2573ddaa04c70a7ccaf0f8"
+      }
+    }
+  },
+  {
+    "batch": "deployment-003",
+    "started_at": "2026-09-07T22:53:59.561651+00:00",
+    "supervisor_pid": 23992,
+    "child_pid": 23997,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:54:12.934654+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "deployment-003/candidate-files.json",
+        "raw_bytes": 252623,
+        "raw_sha256": "34b946a0a941788c44e098d86790fdae0b817b947680e02714b4799b2b379f60"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "deployment-003/candidate.patch",
+        "raw_bytes": 216514,
+        "raw_sha256": "115bb28ff214334469107047f07746f13e70259bdbec3678e658fdc423c0dec0"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "deployment-003/output.log",
+        "raw_bytes": 1754,
+        "raw_sha256": "fafe501a8edfbb7df543181cd01e50e620acd95dfa5f07f137dfb9050e9f0c50"
+      }
+    }
+  },
+  {
+    "batch": "managed-001",
+    "started_at": "2026-09-07T22:25:16.039127+00:00",
+    "supervisor_pid": 14878,
+    "child_pid": 14883,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:25:20.485108+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-001/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "f87ec2c5e993f91367fd2db90f6373be17cf8bccfb786905162fa67938b5016f"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-001/candidate.patch",
+        "raw_bytes": 196906,
+        "raw_sha256": "7aaaba685edcb1f63c7e235446a55430d536b1dc5d7d7b68d1ecdb80c0f16c64"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-001/output.log",
+        "raw_bytes": 6250,
+        "raw_sha256": "8a3480881067f68bb01c132d0b288ca680acc1121972f0646e1e1b263fb38f8d"
+      }
+    }
+  },
+  {
+    "batch": "managed-002",
+    "started_at": "2026-09-07T22:27:01.608956+00:00",
+    "supervisor_pid": 15429,
+    "child_pid": 15435,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:27:05.869813+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-002/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "fa5f8878aa0039e7754d10162dd40e095a1661dbf87105ee34bb480bba820023"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-002/candidate.patch",
+        "raw_bytes": 198148,
+        "raw_sha256": "e202d77e94204e1485d8d88ffe1e49a05df815b08e0c8015731109b0046f8b42"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-002/output.log",
+        "raw_bytes": 5302,
+        "raw_sha256": "29924d4735c4eb1d8b503ed9fc26186566f097fe2f60e67cf6622b0d484eb1c4"
+      }
+    }
+  },
+  {
+    "batch": "managed-003",
+    "started_at": "2026-09-07T22:28:15.268338+00:00",
+    "supervisor_pid": 15847,
+    "child_pid": 15852,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:28:19.980916+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-003/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "3bf8d7c56f82114a1d25074a833425b25e0bda691149a1e7a98d677d2b7523c0"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-003/candidate.patch",
+        "raw_bytes": 198148,
+        "raw_sha256": "e202d77e94204e1485d8d88ffe1e49a05df815b08e0c8015731109b0046f8b42"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-003/output.log",
+        "raw_bytes": 5775,
+        "raw_sha256": "01901582e1990737380cf489a11e5cdc1e1412990bcfa4614d9d2d11d5ff9a35"
+      }
+    }
+  },
+  {
+    "batch": "managed-004",
+    "started_at": "2026-09-07T22:30:24.011345+00:00",
+    "supervisor_pid": 16504,
+    "child_pid": 16509,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:30:30.541968+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-004/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "92b44f02157cb7bd8f3e71a38eedc9c213557bb37304ee12156ecca048ad44d6"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-004/candidate.patch",
+        "raw_bytes": 198148,
+        "raw_sha256": "e202d77e94204e1485d8d88ffe1e49a05df815b08e0c8015731109b0046f8b42"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-004/output.log",
+        "raw_bytes": 1411,
+        "raw_sha256": "df576bdfd91412a566e2e7d1a25273599d433c0a7f2d75c29cd1d0090af2d8fc"
+      }
+    }
+  },
+  {
+    "batch": "managed-005",
+    "started_at": "2026-09-07T22:32:09.069514+00:00",
+    "supervisor_pid": 17041,
+    "child_pid": 17046,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:33:34.410386+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-005/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "4640354a3ae92120c7855e7e69074cd3fba4f4df14a68d24abc9aae9b4ef2f24"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-005/candidate.patch",
+        "raw_bytes": 206696,
+        "raw_sha256": "81d520761a8f650695a8b29efc743c15de5e209f46cd0cec61b35f11bb841c01"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-005/output.log",
+        "raw_bytes": 5797,
+        "raw_sha256": "4b7e4f7db6d2cb524b0995f51d471c18f31da8d4cd973d895d7f71d93cbb9fe5"
+      }
+    }
+  },
+  {
+    "batch": "managed-006",
+    "started_at": "2026-09-07T22:34:11.490392+00:00",
+    "supervisor_pid": 17715,
+    "child_pid": 17721,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:34:19.667876+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-006/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "cc6b35ca0d263e00ea74a67821fca16c99675d24ae211ddb3e9f588e4d8a9aa9"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-006/candidate.patch",
+        "raw_bytes": 206696,
+        "raw_sha256": "81d520761a8f650695a8b29efc743c15de5e209f46cd0cec61b35f11bb841c01"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-006/output.log",
+        "raw_bytes": 1411,
+        "raw_sha256": "72e118a375cc53ff789551433c2d0ce322163f56bf9f441d47362056fa3b1d3a"
+      }
+    }
+  },
+  {
+    "batch": "managed-007",
+    "started_at": "2026-09-07T22:36:12.576008+00:00",
+    "supervisor_pid": 18353,
+    "child_pid": 18358,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:36:21.469228+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-007/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "16e01e5e458974e63e43bcc7e1c987193568cd9ec847f48f801160ca5ef17a5b"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-007/candidate.patch",
+        "raw_bytes": 206696,
+        "raw_sha256": "81d520761a8f650695a8b29efc743c15de5e209f46cd0cec61b35f11bb841c01"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-007/output.log",
+        "raw_bytes": 1412,
+        "raw_sha256": "cb96905ea59bc48e9fb45f269aee576f826cbf07e52b7b27333f6a175d77d389"
+      }
+    }
+  },
+  {
+    "batch": "managed-008",
+    "started_at": "2026-09-07T22:53:19.887812+00:00",
+    "supervisor_pid": 23778,
+    "child_pid": 23783,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:53:31.183598+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-008/candidate-files.json",
+        "raw_bytes": 252623,
+        "raw_sha256": "a5f66f43d4750e65c64f0a0d0751eda735f3a01996cfd5940bab943f03b8edac"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-008/candidate.patch",
+        "raw_bytes": 216514,
+        "raw_sha256": "115bb28ff214334469107047f07746f13e70259bdbec3678e658fdc423c0dec0"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "managed-008/output.log",
+        "raw_bytes": 3157,
+        "raw_sha256": "463e53adc9593e55a5fec117fc15f1e5031269783c1341498c6dbcfd3d9da6c8"
+      }
+    }
+  },
+  {
+    "batch": "migrations-001",
+    "started_at": "2026-09-07T20:35:16.228384+00:00",
+    "supervisor_pid": 79951,
+    "child_pid": 79955,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T20:35:49.578829+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "migrations-001/candidate-files.json",
+        "raw_bytes": 211251,
+        "raw_sha256": "c177b09812ae391734f1a2fbcce7f71a6bdac14dd25b8475b3ff79184a7ab33c"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "migrations-001/candidate.patch",
+        "raw_bytes": 60451,
+        "raw_sha256": "5a5858742915f6d8571626321ce5475ca62903fd7f383111f37503eca4cebb49"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "migrations-001/output.log",
+        "raw_bytes": 29221,
+        "raw_sha256": "36fca7156dfec5aa000396a4ca23a12ad6eaa343d9217a60c74c2e37bc1a1cc6"
+      }
+    }
+  },
+  {
+    "batch": "migrations-002",
+    "started_at": "2026-09-07T20:37:40.926324+00:00",
+    "supervisor_pid": 80827,
+    "child_pid": 80832,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:38:14.121222+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "migrations-002/candidate-files.json",
+        "raw_bytes": 211977,
+        "raw_sha256": "47f3b3cbabbdb0803d3f633894a8c6d9f8d777353ad4828f226f7c2ee5fd0e08"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "migrations-002/candidate.patch",
+        "raw_bytes": 62804,
+        "raw_sha256": "106affee95a67f7822172ac8501e26305f41c4e1f85915a29f1b8107ede48422"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "migrations-002/output.log",
+        "raw_bytes": 3890,
+        "raw_sha256": "a7e64a569576bd94b43480bfdf91f2abc3daf473d26f7afc75c563cc048288af"
+      }
+    }
+  },
+  {
+    "batch": "package-001",
+    "started_at": "2026-09-08T01:02:15.545363+00:00",
+    "supervisor_pid": 70806,
+    "child_pid": 70813,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-08T01:02:26.305763+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "package-001/candidate-files.json",
+        "raw_bytes": 283472,
+        "raw_sha256": "e973136c6081c86f01abefefcd1a004b9aac3bf5c74dd4fc4ff69711f2bc1425"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "package-001/candidate.patch",
+        "raw_bytes": 1103607,
+        "raw_sha256": "db1e136bf38ef30cf2d0e14208f4f758d3a57e082fcf31d8183129c79b1fc3f3"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "package-001/output.log",
+        "raw_bytes": 3860,
+        "raw_sha256": "1c46b1d715132c01b42590fcbaaa3cbf6fd5c3c48d82fd4716ff06d7b13327c6"
+      }
+    }
+  },
+  {
+    "batch": "probe-regression-001",
+    "started_at": "2026-09-07T21:15:42.015008+00:00",
+    "supervisor_pid": 92523,
+    "child_pid": 92528,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T21:16:08.010234+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probe-regression-001/candidate-files.json",
+        "raw_bytes": 218945,
+        "raw_sha256": "7e81bccac6c3a2c96b20b75579bc61522a45f04d7c098afd7417a8c0998eab22"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probe-regression-001/candidate.patch",
+        "raw_bytes": 77163,
+        "raw_sha256": "ab1950cd77c39449d614b72765be4b9109754d32f8dc0c16d26c4d73002a5e5e"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probe-regression-001/output.log",
+        "raw_bytes": 5610,
+        "raw_sha256": "5065fe4d2e527ed64f7c1422548762566d83e973f68003a3afe15cf9b66087cd"
+      }
+    }
+  },
+  {
+    "batch": "probe-regression-002",
+    "started_at": "2026-09-07T21:17:18.028292+00:00",
+    "supervisor_pid": 93011,
+    "child_pid": 93019,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:17:21.658445+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probe-regression-002/candidate-files.json",
+        "raw_bytes": 218945,
+        "raw_sha256": "297f761064593e9e678a0866e93c7ce7b2491e3637a67286d3b1cfbf91afa595"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probe-regression-002/candidate.patch",
+        "raw_bytes": 77677,
+        "raw_sha256": "f083720c0ac557c3b36d1b4e4c10fb51bfa0c51411f53fb27a6030c0acb63a3e"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probe-regression-002/output.log",
+        "raw_bytes": 799,
+        "raw_sha256": "bef0d5b41d2503f60d2a9af9251f7283632305c0ef2d716bc3e891b08ed4532a"
+      }
+    }
+  },
+  {
+    "batch": "probes-001",
+    "started_at": "2026-09-07T21:14:15.448662+00:00",
+    "supervisor_pid": 92060,
+    "child_pid": 92070,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:14:33.744870+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probes-001/candidate-files.json",
+        "raw_bytes": 218945,
+        "raw_sha256": "8bdb7b044436a1579115e84cc3591bc7b70eb7665be6b7718c696d3283ca50ef"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probes-001/candidate.patch",
+        "raw_bytes": 76663,
+        "raw_sha256": "e8d4f71fd6a93435503b6c48b473bdf516949f93f112a383fa98b275e6d3b802"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probes-001/output.log",
+        "raw_bytes": 1539,
+        "raw_sha256": "a622eabeb7d7a9f521297f26be34c62024fc88446e51f8b476ede0db60af7ecc"
+      }
+    }
+  },
+  {
+    "batch": "probes-002",
+    "started_at": "2026-09-07T21:23:52.924980+00:00",
+    "supervisor_pid": 95050,
+    "child_pid": 95060,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:24:14.220448+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probes-002/candidate-files.json",
+        "raw_bytes": 220268,
+        "raw_sha256": "a89ac12fabca665db8319eaf3b091cfdad3167d1d2a514ae16b7b2f289cc9269"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probes-002/candidate.patch",
+        "raw_bytes": 170127,
+        "raw_sha256": "938c26e871925eed2847336bbb10537c8664d51f8e029144f4a645a83caa6520"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "probes-002/output.log",
+        "raw_bytes": 2146,
+        "raw_sha256": "373a8d1e564ff079f362bae214eb8f040a5af9e3d70defc0b4985c55c9e6175e"
+      }
+    }
+  },
+  {
+    "batch": "provider-browser-001",
+    "started_at": "2026-09-07T23:34:39.433429+00:00",
+    "supervisor_pid": 36877,
+    "child_pid": 36885,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T23:34:40.391108+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-browser-001/candidate-files.json",
+        "raw_bytes": 270597,
+        "raw_sha256": "96ae5c5ff41832aea6b8a094601dd5575cabae480280c9006a14cddc50ecff6a"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-browser-001/candidate.patch",
+        "raw_bytes": 1246442,
+        "raw_sha256": "4d3ebefcbf2ab70ee89cd097eb6b7b63d34013f2e427e387aa0f5df891cdf289"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-browser-001/output.log",
+        "raw_bytes": 939,
+        "raw_sha256": "afb85e7f73f7138e2b35c25e4ea9c8306911480752b8cc89fb03b20ecac2f833"
+      }
+    }
+  },
+  {
+    "batch": "provider-browser-002",
+    "started_at": "2026-09-07T23:36:46.405163+00:00",
+    "supervisor_pid": 37517,
+    "child_pid": 37525,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T23:36:47.237359+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-browser-002/candidate-files.json",
+        "raw_bytes": 270597,
+        "raw_sha256": "e18dbcaa9faf87aa0ba6d1c6468296e1ee742b239d667f0351454928057d1c5a"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-browser-002/candidate.patch",
+        "raw_bytes": 1246442,
+        "raw_sha256": "4d3ebefcbf2ab70ee89cd097eb6b7b63d34013f2e427e387aa0f5df891cdf289"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-browser-002/output.log",
+        "raw_bytes": 1173,
+        "raw_sha256": "86e6defb4987fba4e50343d01d9ac0bd9d5fc14d73e97d49ab9f42769fc3126d"
+      }
+    }
+  },
+  {
+    "batch": "provider-browser-003",
+    "started_at": "2026-09-07T23:38:02.887361+00:00",
+    "supervisor_pid": 37945,
+    "child_pid": 37952,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:38:12.880171+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-browser-003/candidate-files.json",
+        "raw_bytes": 270597,
+        "raw_sha256": "66e8ab6d932225065cf3189e16be17266aa814d6a37dae417c0f6337c94d95b0"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-browser-003/candidate.patch",
+        "raw_bytes": 1246950,
+        "raw_sha256": "0d1e568b32085b7366b7b71f4512e461f0ef7c0bfef18e5382884159b469a0c9"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-browser-003/output.log",
+        "raw_bytes": 11351,
+        "raw_sha256": "b6d785ab979a71fe4f9787129f3774836429a545209869e62f558a5538d40783"
+      }
+    }
+  },
+  {
+    "batch": "provider-http-001",
+    "started_at": "2026-09-07T23:20:21.245726+00:00",
+    "supervisor_pid": 31999,
+    "child_pid": 32007,
+    "exit_code": 1,
+    "status": "failed",
+    "finished_at": "2026-09-07T23:20:30.411730+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-001/candidate-files.json",
+        "raw_bytes": 270134,
+        "raw_sha256": "2ea96699cc8cf12e3195199ea6c35b92ea29647e85033e1242a1ecd6ea7a1387"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-001/candidate.patch",
+        "raw_bytes": 1113953,
+        "raw_sha256": "bc1101c1e08b28ca4f51763b96b17bac0b85278ceb608f8e869a03e57c00212d"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-001/output.log",
+        "raw_bytes": 40999,
+        "raw_sha256": "46daf3243fa4c8a177c236e8fd890fae9793b618ac8388d28eb1072504e9950f"
+      }
+    }
+  },
+  {
+    "batch": "provider-http-002",
+    "started_at": "2026-09-07T23:23:29.539517+00:00",
+    "supervisor_pid": 32979,
+    "child_pid": 32987,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T23:23:58.955226+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-002/candidate-files.json",
+        "raw_bytes": 270134,
+        "raw_sha256": "636d459ecec99357aaac187c8c9889fcef4552a3a1b81401e8a6bbeef696044f"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-002/candidate.patch",
+        "raw_bytes": 1113953,
+        "raw_sha256": "bc1101c1e08b28ca4f51763b96b17bac0b85278ceb608f8e869a03e57c00212d"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-002/output.log",
+        "raw_bytes": 23200,
+        "raw_sha256": "1e55b7930e382fbfd89bfe041dc4f7a93f5cfec1734e30c09b4a1d4091b83d1c"
+      }
+    }
+  },
+  {
+    "batch": "provider-http-003",
+    "started_at": "2026-09-07T23:28:28.656761+00:00",
+    "supervisor_pid": 34489,
+    "child_pid": 34494,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:28:58.155836+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-003/candidate-files.json",
+        "raw_bytes": 270243,
+        "raw_sha256": "39af2ddb4e51e90ab451fe5bf03de055cae269f895eb40740d73c48817d8306f"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-003/candidate.patch",
+        "raw_bytes": 1141520,
+        "raw_sha256": "75eb098e865bbec8d26055e94580bf801811ea158da064b9773dc3f7834356d0"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-003/output.log",
+        "raw_bytes": 1839,
+        "raw_sha256": "c99e6f1756a12f4aa5ec8aa3d8b2a4c144bc3b31ed1de90073879c58d8f8bf7e"
+      }
+    }
+  },
+  {
+    "batch": "provider-http-contract-001",
+    "started_at": "2026-09-07T23:09:54.605847+00:00",
+    "supervisor_pid": 28896,
+    "child_pid": 28902,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:09:56.072696+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-contract-001/candidate-files.json",
+        "raw_bytes": 270013,
+        "raw_sha256": "3235a6f1cbe1cb3097fb0334c82220b6ee633c31b7c8041f0a657fb271629fb5"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-contract-001/candidate.patch",
+        "raw_bytes": 1113953,
+        "raw_sha256": "bc1101c1e08b28ca4f51763b96b17bac0b85278ceb608f8e869a03e57c00212d"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "provider-http-contract-001/output.log",
+        "raw_bytes": 1083,
+        "raw_sha256": "f3695bc6f295fbbd17cfd59c5bbe1d94b1e0a40b5b16028552a8d18f101d8232"
+      }
+    }
+  },
+  {
+    "batch": "restore-001",
+    "started_at": "2026-09-07T22:09:28.077932+00:00",
+    "supervisor_pid": 9689,
+    "child_pid": 9695,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:09:35.255421+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-001/candidate-files.json",
+        "raw_bytes": 227998,
+        "raw_sha256": "08439c9a944ad27725d0b834df3396ffb0f7faa30cda7ddb8fd2e7f768c977f2"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-001/candidate.patch",
+        "raw_bytes": 182540,
+        "raw_sha256": "88f6f7238e2bc75540e431428a87b7e03c942082d8a90f4b942e94fca2b99fe9"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-001/output.log",
+        "raw_bytes": 43340,
+        "raw_sha256": "76e2e685ee700b5a356c89aab422d6d17d6cd45109fc07d346333dd5d589623e"
+      }
+    }
+  },
+  {
+    "batch": "restore-002",
+    "started_at": "2026-09-07T22:11:24.685870+00:00",
+    "supervisor_pid": 10341,
+    "child_pid": 10346,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:11:35.479777+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-002/candidate-files.json",
+        "raw_bytes": 227998,
+        "raw_sha256": "ed9744e513d28b20ffa1028e638e7446920160c8ce151386a2b29437f2a3eab1"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-002/candidate.patch",
+        "raw_bytes": 182540,
+        "raw_sha256": "88f6f7238e2bc75540e431428a87b7e03c942082d8a90f4b942e94fca2b99fe9"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-002/output.log",
+        "raw_bytes": 52218,
+        "raw_sha256": "ccaef5ab6805cefc01ea140705355d2d459cc54f0fa6b75aecaa7c98da7d7dc9"
+      }
+    }
+  },
+  {
+    "batch": "restore-003",
+    "started_at": "2026-09-07T22:12:58.027532+00:00",
+    "supervisor_pid": 10831,
+    "child_pid": 10837,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:13:09.506824+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-003/candidate-files.json",
+        "raw_bytes": 227998,
+        "raw_sha256": "a0f49115ea8b5a4e0e44eae83654e664b7837144e54e54563c209023001ee3d6"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-003/candidate.patch",
+        "raw_bytes": 182540,
+        "raw_sha256": "88f6f7238e2bc75540e431428a87b7e03c942082d8a90f4b942e94fca2b99fe9"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-003/output.log",
+        "raw_bytes": 1406,
+        "raw_sha256": "927e99b45755aa2bbeb0c15c9e2ff4b81dc5562d248c59ec2b8460b276149c88"
+      }
+    }
+  },
+  {
+    "batch": "restore-004",
+    "started_at": "2026-09-07T22:13:55.006993+00:00",
+    "supervisor_pid": 11124,
+    "child_pid": 11129,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:15:31.236147+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-004/candidate-files.json",
+        "raw_bytes": 227998,
+        "raw_sha256": "d498a08e2705e82592377836fc67c12a89f7eb6af1e0039887a20d42e1a4dab5"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-004/candidate.patch",
+        "raw_bytes": 182540,
+        "raw_sha256": "88f6f7238e2bc75540e431428a87b7e03c942082d8a90f4b942e94fca2b99fe9"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "restore-004/output.log",
+        "raw_bytes": 4773,
+        "raw_sha256": "b82e1b7919c9514c2fca241dc2a17ea6ee398a2ab8a3ceae9adb121db3676c70"
+      }
+    }
+  },
+  {
+    "batch": "rollbacks-001",
+    "started_at": "2026-09-07T21:58:39.455688+00:00",
+    "supervisor_pid": 6433,
+    "child_pid": 6441,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:58:50.933705+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "rollbacks-001/candidate-files.json",
+        "raw_bytes": 227752,
+        "raw_sha256": "b50f1e5f75d555763a811d8645c3d0f7ae53cdb955154393366d3bbdef8c45b3"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "rollbacks-001/candidate.patch",
+        "raw_bytes": 178534,
+        "raw_sha256": "945b5538566376e2a8fadf061fc63d9d3ae70c099f19c66bd5a1ccee1af8dcb4"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "rollbacks-001/output.log",
+        "raw_bytes": 1408,
+        "raw_sha256": "4459c800a25a89dbb6886e79ae7b3d9c49f492cc620314b1f1a2b665fc2e524b"
+      }
+    }
+  },
+  {
+    "batch": "rotation-001",
+    "started_at": "2026-09-07T20:49:34.206907+00:00",
+    "supervisor_pid": 84361,
+    "child_pid": 84369,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:49:35.460255+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "rotation-001/candidate-files.json",
+        "raw_bytes": 212723,
+        "raw_sha256": "026207a8062b5a1f51d6116b00f84143bd94c8afc328f081a37e90fbd8d1c24d"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "rotation-001/candidate.patch",
+        "raw_bytes": 67149,
+        "raw_sha256": "5bf5c704dc934c06bf99797eb1bea33039ae392013cc187bc7e9bc2de2fae3ce"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "rotation-001/output.log",
+        "raw_bytes": 751,
+        "raw_sha256": "25ef5efdcf137a10ae5de63bdc526ed78fd1a83b0ec412025ac2dd54dc7220e0"
+      }
+    }
+  },
+  {
+    "batch": "runtime-001",
+    "started_at": "2026-09-07T20:57:35.464645+00:00",
+    "supervisor_pid": 86883,
+    "child_pid": 86888,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:57:45.674096+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "runtime-001/candidate-files.json",
+        "raw_bytes": 215197,
+        "raw_sha256": "2d75996b3512d00dd9abb4d1550f978744ed4518d07ad8e8ec097cc640301f84"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "runtime-001/candidate.patch",
+        "raw_bytes": 67877,
+        "raw_sha256": "8a1eafdbf5a284782e920919d98f041297861d8eca744cb3be02c9fa990b53b5"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "runtime-001/output.log",
+        "raw_bytes": 1945,
+        "raw_sha256": "81f5c571cfc1c4dad5af614245814bbd7d3eef8e7df3d61de01d16a1ae7eac6c"
+      }
+    }
+  },
+  {
+    "batch": "secrets-001",
+    "started_at": "2026-09-07T20:13:09.036852+00:00",
+    "supervisor_pid": 73463,
+    "child_pid": 73469,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T20:13:09.520923+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "secrets-001/candidate-files.json",
+        "raw_bytes": 209881,
+        "raw_sha256": "f41d933c47ff6c027b52bf89922bc2dce5dea26931523e2a528925701a2c31c4"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "secrets-001/candidate.patch",
+        "raw_bytes": 18031,
+        "raw_sha256": "9f0857c1bbfccfdbe813d18859e67464fdc21fab86e811036f494f60ff373bbd"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "secrets-001/output.log",
+        "raw_bytes": 1607,
+        "raw_sha256": "7dc6bf7853042029ae8b3e390284aee4a684f6c45b72b4cb3a84015a483d9156"
+      }
+    }
+  },
+  {
+    "batch": "secrets-002",
+    "started_at": "2026-09-07T20:13:58.950761+00:00",
+    "supervisor_pid": 73751,
+    "child_pid": 73757,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:13:59.444792+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "secrets-002/candidate-files.json",
+        "raw_bytes": 209881,
+        "raw_sha256": "714fc9a80388a711662dca92bacdcf63a5ea884632be39cae1e3e58f645bbba0"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "secrets-002/candidate.patch",
+        "raw_bytes": 18031,
+        "raw_sha256": "9f0857c1bbfccfdbe813d18859e67464fdc21fab86e811036f494f60ff373bbd"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "secrets-002/output.log",
+        "raw_bytes": 612,
+        "raw_sha256": "a700f62a05895f01cd008e6bf8f8fcdc4f0a3fe0a92f1e4594e74908220d6722"
+      }
+    }
+  },
+  {
+    "batch": "storage-001",
+    "started_at": "2026-09-07T20:30:26.470104+00:00",
+    "supervisor_pid": 78538,
+    "child_pid": 78545,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:30:28.251573+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "storage-001/candidate-files.json",
+        "raw_bytes": 211119,
+        "raw_sha256": "7759cbac6886706b65d5ee076e987383232a99c87819709e920f326036fcfa74"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "storage-001/candidate.patch",
+        "raw_bytes": 30424,
+        "raw_sha256": "ac2b1aeddc9c15af77253b3e369683d8efe69471c0eebf747246e2e262a320ad"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "storage-001/output.log",
+        "raw_bytes": 1855,
+        "raw_sha256": "ef41b4a55becdd3de3655025a98b499a5f97f04d888d18aa45dccdfbefc2285b"
+      }
+    }
+  },
+  {
+    "batch": "structural-001",
+    "started_at": "2026-09-07T21:24:27.090387+00:00",
+    "supervisor_pid": 95231,
+    "child_pid": 95237,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:24:29.598966+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-001/candidate-files.json",
+        "raw_bytes": 220268,
+        "raw_sha256": "a89ac12fabca665db8319eaf3b091cfdad3167d1d2a514ae16b7b2f289cc9269"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-001/candidate.patch",
+        "raw_bytes": 170127,
+        "raw_sha256": "938c26e871925eed2847336bbb10537c8664d51f8e029144f4a645a83caa6520"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-001/output.log",
+        "raw_bytes": 839,
+        "raw_sha256": "76fa4bc18603b33b72e463a682fee8b32a22e17aa5fe3820be59fd70d7b2e93e"
+      }
+    }
+  },
+  {
+    "batch": "structural-002",
+    "started_at": "2026-09-07T21:41:07.708144+00:00",
+    "supervisor_pid": 878,
+    "child_pid": 886,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:41:10.390218+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-002/candidate-files.json",
+        "raw_bytes": 224647,
+        "raw_sha256": "2e441fb1e6c3b774af997668c5f50a7d198068888975a4424e2967ca14f8a123"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-002/candidate.patch",
+        "raw_bytes": 173868,
+        "raw_sha256": "14bcc084383901dba14ce8b2d7babf6136d50c80d8bd07438dd1eb504751cfe6"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-002/output.log",
+        "raw_bytes": 839,
+        "raw_sha256": "67160735817173ccf88543250d5865e17af1507aa9a6e1f0bcc961dcf0463e4a"
+      }
+    }
+  },
+  {
+    "batch": "structural-003",
+    "started_at": "2026-09-07T22:13:56.173326+00:00",
+    "supervisor_pid": 11138,
+    "child_pid": 11144,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:13:56.317788+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-003/candidate-files.json",
+        "raw_bytes": 227998,
+        "raw_sha256": "d498a08e2705e82592377836fc67c12a89f7eb6af1e0039887a20d42e1a4dab5"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-003/candidate.patch",
+        "raw_bytes": 182540,
+        "raw_sha256": "88f6f7238e2bc75540e431428a87b7e03c942082d8a90f4b942e94fca2b99fe9"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-003/output.log",
+        "raw_bytes": 1835,
+        "raw_sha256": "48a3fcf50ab64533e5c67e7f9efa85f0d59188dbf262edb4b270e0c076afa1d6"
+      }
+    }
+  },
+  {
+    "batch": "structural-004",
+    "started_at": "2026-09-07T22:14:26.228408+00:00",
+    "supervisor_pid": 11328,
+    "child_pid": 11339,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:14:28.893545+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-004/candidate-files.json",
+        "raw_bytes": 227998,
+        "raw_sha256": "72d479dde816dc6dbec5c6bfcc8e0c28d7b98c79f17cadf803984cce20e70b5a"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-004/candidate.patch",
+        "raw_bytes": 182556,
+        "raw_sha256": "2ee9edfe6e5c61b26e5f5760b75229c6ec2eaca63179a16497e500be4e35f171"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-004/output.log",
+        "raw_bytes": 839,
+        "raw_sha256": "a458f9d8fc42eccc04fd25e7de2841d5fddd76f965cf2518cd9a7e1979b58af8"
+      }
+    }
+  },
+  {
+    "batch": "structural-005",
+    "started_at": "2026-09-07T22:32:10.213199+00:00",
+    "supervisor_pid": 17058,
+    "child_pid": 17063,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:32:11.585328+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-005/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "4640354a3ae92120c7855e7e69074cd3fba4f4df14a68d24abc9aae9b4ef2f24"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-005/candidate.patch",
+        "raw_bytes": 206696,
+        "raw_sha256": "81d520761a8f650695a8b29efc743c15de5e209f46cd0cec61b35f11bb841c01"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-005/output.log",
+        "raw_bytes": 949,
+        "raw_sha256": "d1ed852aa10b6f7b5dfb1b78da733d00bf20f6d3d30b9dfd1f352fbce5d7dc0d"
+      }
+    }
+  },
+  {
+    "batch": "structural-006",
+    "started_at": "2026-09-07T22:34:12.704723+00:00",
+    "supervisor_pid": 17731,
+    "child_pid": 17736,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:34:14.882104+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-006/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "cc6b35ca0d263e00ea74a67821fca16c99675d24ae211ddb3e9f588e4d8a9aa9"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-006/candidate.patch",
+        "raw_bytes": 206696,
+        "raw_sha256": "81d520761a8f650695a8b29efc743c15de5e209f46cd0cec61b35f11bb841c01"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-006/output.log",
+        "raw_bytes": 839,
+        "raw_sha256": "78b6e18e2b72885be952dcfe267d4e49ab3dee31623f844ae37333d522bef913"
+      }
+    }
+  },
+  {
+    "batch": "structural-007",
+    "started_at": "2026-09-07T22:47:46.903824+00:00",
+    "supervisor_pid": 22035,
+    "child_pid": 22040,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:47:48.872123+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-007/candidate-files.json",
+        "raw_bytes": 252623,
+        "raw_sha256": "ad8ac6a5e303c6b6fe0982daa8c4d27f3676b487a1d6abe7ffb4ceb459ad382d"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-007/candidate.patch",
+        "raw_bytes": 215274,
+        "raw_sha256": "d932422eb1a7aa7efb18e666c47025a6c9bd625ea1fc3836b155df8c22b972ec"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-007/output.log",
+        "raw_bytes": 839,
+        "raw_sha256": "dc2c4de41551aa0a5e836cba9dbf538ad33e74138fe101a4244e181796734af4"
+      }
+    }
+  },
+  {
+    "batch": "structural-008",
+    "started_at": "2026-09-07T22:50:46.454435+00:00",
+    "supervisor_pid": 22963,
+    "child_pid": 22969,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:50:48.974977+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-008/candidate-files.json",
+        "raw_bytes": 252623,
+        "raw_sha256": "1b396b4bad8e8724c4941aa390846e4945e1d754288a7e1ed6271bd2293771f2"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-008/candidate.patch",
+        "raw_bytes": 216514,
+        "raw_sha256": "115bb28ff214334469107047f07746f13e70259bdbec3678e658fdc423c0dec0"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-008/output.log",
+        "raw_bytes": 839,
+        "raw_sha256": "dc2c4de41551aa0a5e836cba9dbf538ad33e74138fe101a4244e181796734af4"
+      }
+    }
+  },
+  {
+    "batch": "structural-009",
+    "started_at": "2026-09-07T22:54:00.744226+00:00",
+    "supervisor_pid": 24009,
+    "child_pid": 24015,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:54:00.789963+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-009/candidate-files.json",
+        "raw_bytes": 252623,
+        "raw_sha256": "34b946a0a941788c44e098d86790fdae0b817b947680e02714b4799b2b379f60"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-009/candidate.patch",
+        "raw_bytes": 216514,
+        "raw_sha256": "115bb28ff214334469107047f07746f13e70259bdbec3678e658fdc423c0dec0"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-009/output.log",
+        "raw_bytes": 206,
+        "raw_sha256": "2f00a2eba1eca897dac5bba424256c831f059cba0b21849992f01260a01ac439"
+      }
+    }
+  },
+  {
+    "batch": "structural-010",
+    "started_at": "2026-09-07T22:55:21.910422+00:00",
+    "supervisor_pid": 24399,
+    "child_pid": 24405,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:55:24.245372+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-010/candidate-files.json",
+        "raw_bytes": 252623,
+        "raw_sha256": "e20e36623a7c25dffc85cb36cfdba8c9bf1d6ffdc529c399492cb59ee25350d0"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-010/candidate.patch",
+        "raw_bytes": 216514,
+        "raw_sha256": "115bb28ff214334469107047f07746f13e70259bdbec3678e658fdc423c0dec0"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-010/output.log",
+        "raw_bytes": 839,
+        "raw_sha256": "dc2c4de41551aa0a5e836cba9dbf538ad33e74138fe101a4244e181796734af4"
+      }
+    }
+  },
+  {
+    "batch": "structural-011",
+    "started_at": "2026-09-07T23:09:55.534993+00:00",
+    "supervisor_pid": 28911,
+    "child_pid": 28925,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T23:09:58.039919+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-011/candidate-files.json",
+        "raw_bytes": 270013,
+        "raw_sha256": "3235a6f1cbe1cb3097fb0334c82220b6ee633c31b7c8041f0a657fb271629fb5"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-011/candidate.patch",
+        "raw_bytes": 1113953,
+        "raw_sha256": "bc1101c1e08b28ca4f51763b96b17bac0b85278ceb608f8e869a03e57c00212d"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-011/output.log",
+        "raw_bytes": 906,
+        "raw_sha256": "075bcd4e428d982e08b86d6f234a4cae6c797c58a0193e0630d619eb0b03ef3a"
+      }
+    }
+  },
+  {
+    "batch": "structural-012",
+    "started_at": "2026-09-07T23:20:22.062341+00:00",
+    "supervisor_pid": 32012,
+    "child_pid": 32023,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T23:20:23.334145+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-012/candidate-files.json",
+        "raw_bytes": 270134,
+        "raw_sha256": "2ea96699cc8cf12e3195199ea6c35b92ea29647e85033e1242a1ecd6ea7a1387"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-012/candidate.patch",
+        "raw_bytes": 1113953,
+        "raw_sha256": "bc1101c1e08b28ca4f51763b96b17bac0b85278ceb608f8e869a03e57c00212d"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-012/output.log",
+        "raw_bytes": 816,
+        "raw_sha256": "ec00454a90aed1f3c855a72b424af174b496ac50cc258af1f1c01097bda16a40"
+      }
+    }
+  },
+  {
+    "batch": "structural-013",
+    "started_at": "2026-09-07T23:23:30.710371+00:00",
+    "supervisor_pid": 32999,
+    "child_pid": 33004,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:23:32.994683+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-013/candidate-files.json",
+        "raw_bytes": 270134,
+        "raw_sha256": "636d459ecec99357aaac187c8c9889fcef4552a3a1b81401e8a6bbeef696044f"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-013/candidate.patch",
+        "raw_bytes": 1113953,
+        "raw_sha256": "bc1101c1e08b28ca4f51763b96b17bac0b85278ceb608f8e869a03e57c00212d"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-013/output.log",
+        "raw_bytes": 839,
+        "raw_sha256": "57005d7bce4b9225b58c04e482dbe88a506a948411fb7f4686a63e949e137bfd"
+      }
+    }
+  },
+  {
+    "batch": "structural-014",
+    "started_at": "2026-09-07T23:41:19.866337+00:00",
+    "supervisor_pid": 39164,
+    "child_pid": 39172,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:41:22.470936+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-014/candidate-files.json",
+        "raw_bytes": 278525,
+        "raw_sha256": "8e2ad99d724669e4d3ac70141e8adb87de7067828fbe53ca0b712c1fe5a3778f"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-014/candidate.patch",
+        "raw_bytes": 1250909,
+        "raw_sha256": "277b403412d4119ac583b75baafc99d7fa5fc539b8c675b42a1c5c1c74295c95"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "structural-014/output.log",
+        "raw_bytes": 839,
+        "raw_sha256": "f70494325432cd70cd8f116a1f2ce27c18e16ed2ab8e11f6df47090b66aea9d1"
+      }
+    }
+  },
+  {
+    "batch": "tenant-http-001",
+    "started_at": "2026-09-07T23:40:57.224510+00:00",
+    "supervisor_pid": 39052,
+    "child_pid": 39058,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T23:41:01.726304+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "tenant-http-001/candidate-files.json",
+        "raw_bytes": 278525,
+        "raw_sha256": "17633e6b8b1da6697680a22a08ee7d2ceaa044825cb1b7d1ffc14be8ddae1b90"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "tenant-http-001/candidate.patch",
+        "raw_bytes": 1250909,
+        "raw_sha256": "277b403412d4119ac583b75baafc99d7fa5fc539b8c675b42a1c5c1c74295c95"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "tenant-http-001/output.log",
+        "raw_bytes": 1408,
+        "raw_sha256": "3a1a4b721ea713934e97ca5efe9e15da160863d0ab92552ae44203b37b966b88"
+      }
+    }
+  },
+  {
+    "batch": "transport-001",
+    "started_at": "2026-09-07T20:04:48.554204+00:00",
+    "supervisor_pid": 70857,
+    "child_pid": 70863,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T20:04:57.095921+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "transport-001/candidate-files.json",
+        "raw_bytes": 208405,
+        "raw_sha256": "55840968ec9da68ba4f1c6934f09bfafd48bcec04541f1a028336b1a0a89b19f"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "transport-001/candidate.patch",
+        "raw_bytes": 16950,
+        "raw_sha256": "9cb8316e25e057a6aced9bc1c797774f92ea471844e9ddeaefde02bbace0076f"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "transport-001/output.log",
+        "raw_bytes": 21958,
+        "raw_sha256": "56e60ae3605e6ff78164ca02d54d225192c1515e7dfbc2e3e44fc8ed8370453d"
+      }
+    }
+  },
+  {
+    "batch": "transport-002",
+    "started_at": "2026-09-07T20:05:53.745548+00:00",
+    "supervisor_pid": 71202,
+    "child_pid": 71208,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T20:06:02.219927+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "transport-002/candidate-files.json",
+        "raw_bytes": 208405,
+        "raw_sha256": "91e5e4a2bf1795b3b3ecd7ba1e59e440e3a4201e68483467bbf802f4aee6e366"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "transport-002/candidate.patch",
+        "raw_bytes": 16950,
+        "raw_sha256": "9cb8316e25e057a6aced9bc1c797774f92ea471844e9ddeaefde02bbace0076f"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "transport-002/output.log",
+        "raw_bytes": 2905,
+        "raw_sha256": "58f41524ac5dfcd9fa181f99dff49ad414aad64b328bebc29129171640b12cd2"
+      }
+    }
+  },
+  {
+    "batch": "transport-003",
+    "started_at": "2026-09-07T20:07:02.318929+00:00",
+    "supervisor_pid": 71538,
+    "child_pid": 71544,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:07:10.776542+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "transport-003/candidate-files.json",
+        "raw_bytes": 208405,
+        "raw_sha256": "506559bc0095e7a3f05d57879eecb536cd16cd213da7edf240b56d11507ea486"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "transport-003/candidate.patch",
+        "raw_bytes": 16950,
+        "raw_sha256": "9cb8316e25e057a6aced9bc1c797774f92ea471844e9ddeaefde02bbace0076f"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "transport-003/output.log",
+        "raw_bytes": 621,
+        "raw_sha256": "e70b78bee8be355794a6d916ac65dbdf74232370aaaee19d73241b963c0dfcdf"
+      }
+    }
+  },
+  {
+    "batch": "types-001",
+    "started_at": "2026-09-07T20:32:22.893445+00:00",
+    "supervisor_pid": 79120,
+    "child_pid": 79125,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:32:25.658795+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-001/candidate-files.json",
+        "raw_bytes": 211251,
+        "raw_sha256": "d62c111d62d2e05fbf3cce2309c5a625b773e22540f9ffdae935a49ede649cc8"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-001/candidate.patch",
+        "raw_bytes": 32670,
+        "raw_sha256": "b5ef6eb7902b3839e96bcb9b7162a2377a8c6b920faf3226ca3aeffe51bb61b4"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-001/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "bf5163320bf0ce65e1072b37eb4f588f75db2baf50e3ba9cc7bf914b663c7a5b"
+      }
+    }
+  },
+  {
+    "batch": "types-002",
+    "started_at": "2026-09-07T20:50:05.636970+00:00",
+    "supervisor_pid": 84532,
+    "child_pid": 84541,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:50:07.403432+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-002/candidate-files.json",
+        "raw_bytes": 212723,
+        "raw_sha256": "65dc927851ba51c348f62b43b6993fc6a062a22ee5a6d7bebfb36973bcaf1f83"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-002/candidate.patch",
+        "raw_bytes": 67171,
+        "raw_sha256": "5a1c2a1a3617f2c865d9758269c9b418d9aedd6f059fb8151f4d3e260576bf42"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-002/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "27dc916307925e60beba75157b78501e344085b1ba3d40ce50a4844a55f6d1cc"
+      }
+    }
+  },
+  {
+    "batch": "types-003",
+    "started_at": "2026-09-07T20:56:13.190301+00:00",
+    "supervisor_pid": 86412,
+    "child_pid": 86430,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T20:56:14.736509+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-003/candidate-files.json",
+        "raw_bytes": 215197,
+        "raw_sha256": "2d75996b3512d00dd9abb4d1550f978744ed4518d07ad8e8ec097cc640301f84"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-003/candidate.patch",
+        "raw_bytes": 67877,
+        "raw_sha256": "8a1eafdbf5a284782e920919d98f041297861d8eca744cb3be02c9fa990b53b5"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-003/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "73f947f286bee769fcf4d31bea35cffddddbf41b5c1136a28c2e67bb6946fd0d"
+      }
+    }
+  },
+  {
+    "batch": "types-004",
+    "started_at": "2026-09-07T21:02:32.863046+00:00",
+    "supervisor_pid": 88429,
+    "child_pid": 88434,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T21:02:33.548722+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-004/candidate-files.json",
+        "raw_bytes": 215595,
+        "raw_sha256": "b3cdeb9dd6cc4cbe30c74ece756dcc206ad9f774bc40d930971439a9e07393ef"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-004/candidate.patch",
+        "raw_bytes": 67877,
+        "raw_sha256": "8a1eafdbf5a284782e920919d98f041297861d8eca744cb3be02c9fa990b53b5"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-004/output.log",
+        "raw_bytes": 416,
+        "raw_sha256": "ca3787c9c7880beb017c1c94c402fe1985662e04ef4ed47c2fb8fcfa12987ef4"
+      }
+    }
+  },
+  {
+    "batch": "types-005",
+    "started_at": "2026-09-07T21:03:19.585525+00:00",
+    "supervisor_pid": 88650,
+    "child_pid": 88657,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:03:20.793442+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-005/candidate-files.json",
+        "raw_bytes": 215595,
+        "raw_sha256": "5802f52f09a599abf1a2ff04bc0cb3532df222c7f964222e38484e2fee37d90b"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-005/candidate.patch",
+        "raw_bytes": 67877,
+        "raw_sha256": "8a1eafdbf5a284782e920919d98f041297861d8eca744cb3be02c9fa990b53b5"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-005/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "2d196eaa6147b1f6a0eb0ebc896cd73367aa496892b53c6d3fee44478a2792e6"
+      }
+    }
+  },
+  {
+    "batch": "types-006",
+    "started_at": "2026-09-07T21:04:48.596149+00:00",
+    "supervisor_pid": 89122,
+    "child_pid": 89127,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:04:49.659546+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-006/candidate-files.json",
+        "raw_bytes": 215595,
+        "raw_sha256": "2c50b2397b4fb449d12ab854aefc1b1367acafeb657125b6d8fbedcf11d24857"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-006/candidate.patch",
+        "raw_bytes": 67877,
+        "raw_sha256": "8a1eafdbf5a284782e920919d98f041297861d8eca744cb3be02c9fa990b53b5"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-006/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "2d196eaa6147b1f6a0eb0ebc896cd73367aa496892b53c6d3fee44478a2792e6"
+      }
+    }
+  },
+  {
+    "batch": "types-007",
+    "started_at": "2026-09-07T21:15:08.926072+00:00",
+    "supervisor_pid": 92342,
+    "child_pid": 92349,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T21:15:11.038072+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-007/candidate-files.json",
+        "raw_bytes": 218945,
+        "raw_sha256": "7e81bccac6c3a2c96b20b75579bc61522a45f04d7c098afd7417a8c0998eab22"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-007/candidate.patch",
+        "raw_bytes": 77163,
+        "raw_sha256": "ab1950cd77c39449d614b72765be4b9109754d32f8dc0c16d26c4d73002a5e5e"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-007/output.log",
+        "raw_bytes": 414,
+        "raw_sha256": "8d92ee764e424d1a091316ecc3d58a0f0429d33af6ea3af760c34d285c38dbea"
+      }
+    }
+  },
+  {
+    "batch": "types-008",
+    "started_at": "2026-09-07T21:17:19.147333+00:00",
+    "supervisor_pid": 93039,
+    "child_pid": 93048,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:17:20.713697+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-008/candidate-files.json",
+        "raw_bytes": 218945,
+        "raw_sha256": "297f761064593e9e678a0866e93c7ce7b2491e3637a67286d3b1cfbf91afa595"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-008/candidate.patch",
+        "raw_bytes": 77677,
+        "raw_sha256": "f083720c0ac557c3b36d1b4e4c10fb51bfa0c51411f53fb27a6030c0acb63a3e"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-008/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "d04769105c8392551a783a019f70b344c39b4395bbb24d3b1564510d6376389e"
+      }
+    }
+  },
+  {
+    "batch": "types-009",
+    "started_at": "2026-09-07T21:32:29.379085+00:00",
+    "supervisor_pid": 97874,
+    "child_pid": 97889,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:32:32.506872+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-009/candidate-files.json",
+        "raw_bytes": 224045,
+        "raw_sha256": "f49966b06aa7acf3f5a2b81ef4db8c381fb42c60a77e39d7cc0febf356584d47"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-009/candidate.patch",
+        "raw_bytes": 172800,
+        "raw_sha256": "63984c4d554eb845b8c9d283413b5fc4431ade3853f1abdb29e437dca025be79"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-009/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "d1cd5cef44f1d2fbcdf55a7df4e2cd3aa45b6ee970c140abcacfdf1ac276c3aa"
+      }
+    }
+  },
+  {
+    "batch": "types-010",
+    "started_at": "2026-09-07T21:44:14.395231+00:00",
+    "supervisor_pid": 2041,
+    "child_pid": 2050,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:44:15.882252+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-010/candidate-files.json",
+        "raw_bytes": 227266,
+        "raw_sha256": "b07e7de71cac94e4d49a4154f9e31546fae2aa94cd574cb61861a42db8b4ba6d"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-010/candidate.patch",
+        "raw_bytes": 174833,
+        "raw_sha256": "7160b147d5950f343fd4f093d3c3ba723e9317d1bcd87aa71fd2436f1d70c972"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-010/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "bf05a0c48ec63e613dd5402aedb4d236556303282e31f7e0ab37689ca49cb246"
+      }
+    }
+  },
+  {
+    "batch": "types-011",
+    "started_at": "2026-09-07T21:56:38.735295+00:00",
+    "supervisor_pid": 5857,
+    "child_pid": 5868,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T21:56:41.767665+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-011/candidate-files.json",
+        "raw_bytes": 227626,
+        "raw_sha256": "9c8f0a20e87a603dc269ee4e5cbe515674a3660c954a8db1c3e138f7863a4c04"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-011/candidate.patch",
+        "raw_bytes": 178534,
+        "raw_sha256": "945b5538566376e2a8fadf061fc63d9d3ae70c099f19c66bd5a1ccee1af8dcb4"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-011/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "bf05a0c48ec63e613dd5402aedb4d236556303282e31f7e0ab37689ca49cb246"
+      }
+    }
+  },
+  {
+    "batch": "types-012",
+    "started_at": "2026-09-07T22:09:39.497157+00:00",
+    "supervisor_pid": 9757,
+    "child_pid": 9762,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:09:41.133119+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-012/candidate-files.json",
+        "raw_bytes": 227998,
+        "raw_sha256": "08439c9a944ad27725d0b834df3396ffb0f7faa30cda7ddb8fd2e7f768c977f2"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-012/candidate.patch",
+        "raw_bytes": 182540,
+        "raw_sha256": "88f6f7238e2bc75540e431428a87b7e03c942082d8a90f4b942e94fca2b99fe9"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-012/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "ffbb1b29140fae7d66884e35d40d7a2f5cef5f52f6e65b2fc16ebe47644995d5"
+      }
+    }
+  },
+  {
+    "batch": "types-013",
+    "started_at": "2026-09-07T22:22:32.364265+00:00",
+    "supervisor_pid": 14033,
+    "child_pid": 14039,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:22:33.729927+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-013/candidate-files.json",
+        "raw_bytes": 244019,
+        "raw_sha256": "f17fd9ee37259dad904a9cb06d190bfb7d358c540be876dc0c4216948f65fe55"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-013/candidate.patch",
+        "raw_bytes": 195439,
+        "raw_sha256": "ea53a0e69b67c771ba46ef1d00d2e78e87c19a422097c43242bce0f59b685917"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-013/output.log",
+        "raw_bytes": 940,
+        "raw_sha256": "aff7e6b33b6bfc4f56ed2eb764c92b8ad682058b8cc17bd71489474a081346e3"
+      }
+    }
+  },
+  {
+    "batch": "types-014",
+    "started_at": "2026-09-07T22:25:17.193631+00:00",
+    "supervisor_pid": 14900,
+    "child_pid": 14905,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:25:18.027631+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-014/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "f87ec2c5e993f91367fd2db90f6373be17cf8bccfb786905162fa67938b5016f"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-014/candidate.patch",
+        "raw_bytes": 196906,
+        "raw_sha256": "7aaaba685edcb1f63c7e235446a55430d536b1dc5d7d7b68d1ecdb80c0f16c64"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-014/output.log",
+        "raw_bytes": 623,
+        "raw_sha256": "87b43efdba1100ab79e24cc63373bd23366861c1d1e0ac2343aab08fe6fb5a9f"
+      }
+    }
+  },
+  {
+    "batch": "types-015",
+    "started_at": "2026-09-07T22:28:08.011667+00:00",
+    "supervisor_pid": 15775,
+    "child_pid": 15782,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:28:09.251422+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-015/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "3bf8d7c56f82114a1d25074a833425b25e0bda691149a1e7a98d677d2b7523c0"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-015/candidate.patch",
+        "raw_bytes": 198148,
+        "raw_sha256": "e202d77e94204e1485d8d88ffe1e49a05df815b08e0c8015731109b0046f8b42"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-015/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "c4fdb1beca3097131360d8cc89cac1644d99668fe819db3ce599bdca0267a78c"
+      }
+    }
+  },
+  {
+    "batch": "types-016",
+    "started_at": "2026-09-07T22:38:01.999958+00:00",
+    "supervisor_pid": 18897,
+    "child_pid": 18903,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:38:03.075665+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-016/candidate-files.json",
+        "raw_bytes": 244149,
+        "raw_sha256": "d9e0df7cf3d7a38b4c663969c02ee459ac00374b8c1eabf64c81d4c2c9981315"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-016/candidate.patch",
+        "raw_bytes": 209067,
+        "raw_sha256": "c723e4b5f274d42a6591e46f2b886ead8bde2a73df804701dabd2354efb792ae"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-016/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "c4fdb1beca3097131360d8cc89cac1644d99668fe819db3ce599bdca0267a78c"
+      }
+    }
+  },
+  {
+    "batch": "types-017",
+    "started_at": "2026-09-07T22:42:53.929602+00:00",
+    "supervisor_pid": 20494,
+    "child_pid": 20499,
+    "exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-09-07T22:42:55.369357+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-017/candidate-files.json",
+        "raw_bytes": 252382,
+        "raw_sha256": "403577af811017efedf98a158e59cbe4341eef910b7d8e76f8e55312d0587bdc"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-017/candidate.patch",
+        "raw_bytes": 215274,
+        "raw_sha256": "d932422eb1a7aa7efb18e666c47025a6c9bd625ea1fc3836b155df8c22b972ec"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-017/output.log",
+        "raw_bytes": 199,
+        "raw_sha256": "bb744777ca514b51b1948e1a7e70e6f5d236d1be31b95ce30c70791f6811ef94"
+      }
+    }
+  },
+  {
+    "batch": "types-018",
+    "started_at": "2026-09-07T22:45:44.754542+00:00",
+    "supervisor_pid": 21409,
+    "child_pid": 21415,
+    "exit_code": 2,
+    "status": "failed",
+    "finished_at": "2026-09-07T22:45:45.544640+00:00",
+    "artifacts": {
+      "candidate-files.json": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-018/candidate-files.json",
+        "raw_bytes": 252509,
+        "raw_sha256": "bf8e660126874bcb879dfb7524f17d278b435c8ff79173196d69df6bfa92c5d2"
+      },
+      "candidate.patch": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-018/candidate.patch",
+        "raw_bytes": 215274,
+        "raw_sha256": "d932422eb1a7aa7efb18e666c47025a6c9bd625ea1fc3836b155df8c22b972ec"
+      },
+      "output.log": {
+        "archive": "batch-artifacts.tar.xz",
+        "member": "types-018/output.log",
+        "raw_bytes": 344,
+        "raw_sha256": "5cb9b9ff17e0924bda7301fa1bfe07fce3763b2aad45bf557692aef7f2c83db6"
+      }
+    }
+  }
+]
