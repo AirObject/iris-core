@@ -3,6 +3,18 @@ name: Build and publish Python distributions
 on:
   workflow_dispatch:
     inputs:
+      distribution:
+        description: Independently reviewed distribution to upload
+        type: choice
+        required: true
+        default: core
+        options:
+          - core
+          - python-sdk
+      expected_version:
+        description: Exact reviewed version of the selected distribution (required for upload)
+        type: string
+        required: false
       publish:
         description: Upload verified artifacts to PyPI after release approval
         type: boolean
@@ -35,6 +47,12 @@ jobs:
           version: "0.11.29"
       - name: Install locked dependencies
         run: make bootstrap
+      - name: Check selected release version
+        env:
+          RELEASE_DISTRIBUTION: ${{ inputs.distribution }}
+          RELEASE_VERSION: ${{ inputs.expected_version }}
+          RELEASE_UPLOAD: ${{ inputs.publish }}
+        run: uv run python -m tools.check_release_selection
       - name: Install browser runtime
         working-directory: web/console
         run: npx playwright install --with-deps chromium
@@ -54,15 +72,20 @@ jobs:
           name: python-distributions
           path: dist/
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: console-static
+          path: web/console/dist/
+          if-no-files-found: error
 
-  publish:
+  publish-core:
     needs: build
     # Explicit opt-in, tag-only, and disabled until maintainers configure the
-    # environment, release evidence and both PyPI Trusted Publishers.
-    if: inputs.publish && startsWith(github.ref, 'refs/tags/') && vars.PYPI_RELEASE_ENABLED == 'true'
+    # Each distribution has its own approval environment and Trusted Publisher.
+    if: inputs.publish && inputs.distribution == 'core' && startsWith(github.ref, 'refs/tags/') && vars.PYPI_CORE_RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: pypi
+    environment: pypi-core
     permissions:
       contents: read
       id-token: write
@@ -76,5 +99,27 @@ jobs:
           version: "0.11.29"
       - name: Verify artifact checksums
         run: sha256sum --check dist/SHA256SUMS
-      - name: Publish the verified distributions
-        run: uv publish --trusted-publishing always dist/core/* dist/sdk/*
+      - name: Publish the verified Core distribution
+        run: uv publish --trusted-publishing always dist/core/*
+
+  publish-sdk:
+    needs: build
+    if: inputs.publish && inputs.distribution == 'python-sdk' && startsWith(github.ref, 'refs/tags/') && vars.PYPI_SDK_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pypi-sdk
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+      - uses: astral-sh/setup-uv@v9
+        with:
+          version: "0.11.29"
+      - name: Verify artifact checksums
+        run: sha256sum --check dist/SHA256SUMS
+      - name: Publish the verified Python SDK distribution
+        run: uv publish --trusted-publishing always dist/sdk/*
