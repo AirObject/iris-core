@@ -19,11 +19,11 @@ from iris_memory_core.api.console.config import ConsoleConfig, parse_bind
 from iris_memory_core.application.focus import FocusService
 from iris_memory_core.application.forget import ForgetService
 from iris_memory_core.application.notes import NoteService
-from iris_memory_core.application.outbox import OutboxService
+from iris_memory_core.application.outbox import JobCommit, JobWork, OutboxService
 from iris_memory_core.application.recent import RecentContextService
-from iris_memory_core.application.reflection import ReflectionPipeline
 from iris_memory_core.application.retention import RetentionService
 from iris_memory_core.application.tasks import TaskService
+from iris_memory_core.domain.jobs import OutboxJob
 from iris_memory_core.jobs.worker import (
     OutboxWorker,
     phase3_handlers,
@@ -36,11 +36,7 @@ from iris_memory_core.jobs.worker import (
     phase10_handlers,
     phase14_handlers,
 )
-from iris_memory_core.providers.cognitive import (
-    DeterministicCognitiveProvider,
-    DurableProviderState,
-    ProviderGovernance,
-)
+from iris_memory_core.providers.cognitive_deployment import load_cognitive_deployment
 from iris_memory_core.recall_runtime import RecallAssemblyConfig, assemble_recall
 from iris_memory_core.storage.admin_archives import AdminArchiveService
 from iris_memory_core.storage.migrations import MigrationRunner
@@ -72,6 +68,8 @@ class ServiceConfig:
     vector_required: bool = False
     secret_key_file: Path | None = None
     provider_config_file: Path | None = None
+    cognitive_config_file: Path | None = None
+    development_cognitive: bool = False
 
     def recall_config(self) -> RecallAssemblyConfig:
         return RecallAssemblyConfig(
@@ -173,6 +171,7 @@ def load_config(
         "vector_root",
         "secret_key_file",
         "provider_config_file",
+        "cognitive_config_file",
     ):
         if name in values and values[name] is not None:
             values[name] = Path(str(values[name]))
@@ -198,6 +197,7 @@ def load_config(
         "enable_console",
         "console_dev_http",
         "development_embedding",
+        "development_cognitive",
         "vector_required",
     ):
         if name in values and isinstance(values[name], str):
@@ -238,8 +238,15 @@ def open_store(config: ServiceConfig) -> Store:
 
 def serve(config: ServiceConfig) -> int:
     store = open_store(config)
+    cognitive = load_cognitive_deployment(
+        store,
+        config.cognitive_config_file,
+        development_cognitive=config.development_cognitive,
+        master_key_file=config.secret_key_file,
+    )
     app = create_app(
         store,
+        cognitive_tenants=frozenset(cognitive.providers) if cognitive else frozenset(),
         sse_enabled=config.sse_enabled,
         backup_root=config.backup_root,
         export_root=config.export_root,
@@ -269,14 +276,29 @@ def serve(config: ServiceConfig) -> int:
 
 def worker(config: ServiceConfig, *, once: bool = False) -> int:
     store = open_store(config)
-    provider = DeterministicCognitiveProvider()
-    pipeline = ReflectionPipeline(
+    cognitive = load_cognitive_deployment(
         store,
-        store.clock,
-        governance=ProviderGovernance(durable_state=DurableProviderState(store, store.clock)),
-        extraction=provider,
-        summarization=provider,
+        config.cognitive_config_file,
+        development_cognitive=config.development_cognitive,
+        master_key_file=config.secret_key_file,
     )
+    cognitive_handlers: dict[str, JobWork] = {}
+    if cognitive is not None:
+
+        def cognitive_work(job: OutboxJob) -> JobCommit:
+            assert cognitive is not None
+            pipeline = cognitive.pipeline(store, job.tenant_id)
+            return phase10_handlers(pipeline=pipeline)[job.job_kind](job)
+
+        cognitive_handlers = {
+            kind: cognitive_work
+            for kind in (
+                "episode.consolidation",
+                "reflection.generate",
+                "memory.reconciliation",
+                "persona.evaluation",
+            )
+        }
     service = OutboxService(store, store.clock)
     recent = RecentContextService(store, store.clock)
     focus = FocusService(store, store.clock)
@@ -295,7 +317,7 @@ def worker(config: ServiceConfig, *, once: bool = False) -> int:
             profile=projections.profile,
         ),
         **phase9_handlers(store.clock),
-        **phase10_handlers(pipeline=pipeline),
+        **cognitive_handlers,
         **phase14_handlers(
             store,
             store.clock,

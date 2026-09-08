@@ -479,9 +479,11 @@ class TransportRuntime:
         *,
         sse_enabled: bool = True,
         recall_config: RecallAssemblyConfig | None = None,
+        cognitive_tenants: frozenset[str] = frozenset(),
     ) -> None:
         self.uow = uow
         self.credentials = credentials
+        self.cognitive_tenants = cognitive_tenants
         self.clock = cast(Any, uow).clock
         self.idempotency = IdempotencyManager(cast(Any, uow))
         self.surface = SurfaceCoordinatorService(uow, self.clock)
@@ -610,6 +612,11 @@ class TransportRuntime:
         current: Any
         method: Any
         common: dict[str, Any]
+        if (
+            operation_id in {"dryRunReflection", "replayReflection"}
+            and access.tenant_id not in self.cognitive_tenants
+        ):
+            raise NotReadyError("cognitive provider is disabled for this tenant")
         if operation_id == "getCapabilities":
             return 200, self.capabilities(access)
         if operation_id == "negotiateCapabilities":
@@ -1647,6 +1654,8 @@ class TransportRuntime:
         path = runtime_resource("contracts/source/contracts.json")
         source = json.loads(path.read_text(encoding="utf-8"))
         advertised = set(source["capabilities"])
+        if access.tenant_id not in self.cognitive_tenants:
+            advertised.difference_update({"reflection.v1", "consolidation.v1"})
         if self.projections.vector is None:
             advertised.difference_update({"recall.vector.v1", "embedding.v1"})
         if not self.sse_enabled:
@@ -1682,6 +1691,7 @@ def create_app(
     enable_console: bool = False,
     console_config: ConsoleConfig | None = None,
     recall_config: RecallAssemblyConfig | None = None,
+    cognitive_tenants: frozenset[str] = frozenset(),
 ) -> FastAPI:
     contract = _load_contract(contract_path)
     credential_service = credentials or CredentialService(uow, cast(Any, uow).clock)
@@ -1695,7 +1705,12 @@ def create_app(
             backup_signing_key=backup_signing_key,
         )
     runtime = TransportRuntime(
-        uow, credential_service, archives, sse_enabled=sse_enabled, recall_config=recall_config
+        uow,
+        credential_service,
+        archives,
+        sse_enabled=sse_enabled,
+        recall_config=recall_config,
+        cognitive_tenants=cognitive_tenants,
     )
 
     @asynccontextmanager

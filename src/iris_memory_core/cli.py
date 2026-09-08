@@ -95,6 +95,8 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--allow-local-sqlite", action="store_true", default=None)
         command.add_argument("--no-migrate", action="store_true", default=None)
         command.add_argument("--provider-config-file", type=Path)
+        command.add_argument("--cognitive-config-file", type=Path)
+        command.add_argument("--development-cognitive", action="store_true", default=None)
         command.add_argument("--secret-key-file", type=Path)
         command.add_argument("--vector-root", type=Path)
         command.add_argument("--vector-required", action="store_true", default=None)

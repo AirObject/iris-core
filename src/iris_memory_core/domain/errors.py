@@ -173,6 +173,8 @@ class ProviderUnavailableError(DomainError):
     """A bounded provider dependency cannot accept this background call."""
 
     code = "provider_unavailable"
+    # Internal accounting only; never added to the public error details.
+    charged_cost_microunits: int = 0
 
     def __init__(
         self,

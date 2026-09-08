@@ -200,6 +200,7 @@ class ReflectionPipeline:
             "circuit_open": "circuit_open",
             "budget_exhausted": "budget_exhausted",
             "cancelled": "cancelled",
+            "invalid_output": "invalid_output",
         }
         outcome_name = outcome_names.get(reason, "server_error")
         outcome = ProviderOutcome(
@@ -208,7 +209,7 @@ class ReflectionPipeline:
             retryable=error.retryable,
             request_hash=content_hash(dict(request_material)),
             response_hash=None,
-            cost_microunits=0,
+            cost_microunits=int(getattr(error, "charged_cost_microunits", 0)),
             duration_us=0,
             diagnostic_code=reason[:128],
         )
@@ -482,7 +483,9 @@ class ReflectionPipeline:
                 tenant_id=job.tenant_id,
                 agent_id=job.agent_id,
                 request_material=request_material,
-                estimated_cost_microunits=max(1, len(observations)),
+                estimated_cost_microunits=getattr(
+                    self._summarization, "estimated_cost_microunits", max(1, len(observations))
+                ),
                 invoke=lambda timeout: self._summarization.summarize(
                     provider_values,
                     prompt_version="summary.v1",
@@ -660,6 +663,7 @@ class ReflectionPipeline:
             raise InvalidRequestError("commit_mode must be commit or dry_run")
         with self._uow.read() as tx:
             window = tx.reflection.get_window(window_id)
+            self._revalidate_window(tx, window)
             observations = tuple(
                 tx.observations.get(str(ref["observation_id"])) for ref in window.observation_refs
             )
@@ -682,7 +686,9 @@ class ReflectionPipeline:
                 tenant_id=job.tenant_id,
                 agent_id=window.agent_id,
                 request_material=request_material,
-                estimated_cost_microunits=max(1, len(observations)),
+                estimated_cost_microunits=getattr(
+                    self._extraction, "estimated_cost_microunits", max(1, len(observations))
+                ),
                 invoke=lambda timeout: self._extraction.extract(
                     provider_values,
                     prompt_version=versions.prompt_version,
@@ -744,6 +750,15 @@ class ReflectionPipeline:
                 )
                 continue
             item = {str(key): child for key, child in value.items()}
+            if getattr(self._extraction, "bind_candidate_scope", False):
+                # Authorization metadata need not leave the deployment. Only
+                # absent fields inherit the fixed server envelope; explicit
+                # model-supplied widening still follows ordinary rejection.
+                item.setdefault("scope", dict(expected_scope))
+                item.setdefault(
+                    "privacy_labels",
+                    sorted({label for source in observations for label in source.privacy_labels}),
+                )
             raw_values.append(item)
             try:
                 candidate = validate_candidate(item, observations=source_map, versions=versions)

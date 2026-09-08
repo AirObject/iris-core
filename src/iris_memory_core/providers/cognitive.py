@@ -16,7 +16,7 @@ from collections import defaultdict, deque
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, TypeVar, cast
 
 from iris_memory_core.application.ports.clock import Clock
@@ -388,9 +388,10 @@ class ProviderGovernance:
         """
         limits = self._limits[kind]
         last: ProviderUnavailableError | None = None
+        charged_cost = 0
         for attempt in range(limits.max_retries + 1):
             try:
-                return self._call_once(
+                value, outcome = self._call_once(
                     kind,
                     tenant_id=tenant_id,
                     agent_id=agent_id,
@@ -398,10 +399,19 @@ class ProviderGovernance:
                     estimated_cost_microunits=estimated_cost_microunits,
                     invoke=invoke,
                 )
+                return value, replace(
+                    outcome, cost_microunits=outcome.cost_microunits + charged_cost
+                )
             except ProviderUnavailableError as error:
+                charged_cost += int(getattr(error, "charged_cost_microunits", 0))
+                error.charged_cost_microunits = charged_cost
                 last = error
                 reason = str(error.details.get("reason_code", ""))
-                if reason not in {"timeout", "server_error"} or attempt >= limits.max_retries:
+                if (
+                    not error.retryable
+                    or reason not in {"timeout", "server_error"}
+                    or attempt >= limits.max_retries
+                ):
                     raise
         assert last is not None
         raise last
@@ -445,6 +455,15 @@ class ProviderGovernance:
                 self._record_breaker(tenant_id, kind, success=False, transport_failure=True)
                 self._emit(kind, "timeout", duration)
                 raise ProviderUnavailableError(reason_code="timeout") from None
+            except ProviderUnavailableError as error:
+                executor.shutdown(wait=False, cancel_futures=True)
+                duration = int((self._monotonic() - started) * 1_000_000)
+                reason = str(error.details.get("reason_code", "server_error"))
+                self._record_breaker(
+                    tenant_id, kind, success=False, transport_failure=error.retryable
+                )
+                self._emit(kind, reason, duration)
+                raise
             except Exception as error:
                 executor.shutdown(wait=False, cancel_futures=True)
                 duration = int((self._monotonic() - started) * 1_000_000)
@@ -469,6 +488,12 @@ class ProviderGovernance:
             self._record_breaker(tenant_id, kind, success=True, transport_failure=False)
             self._emit(kind, "success", duration)
             return result, outcome
+        except ProviderUnavailableError as error:
+            # Every started attempt retains its conservative budget charge,
+            # including invalid responses and timeouts. Admission failures
+            # before this block have not started a billable network attempt.
+            error.charged_cost_microunits = estimated_cost_microunits
+            raise
         finally:
             self._semaphores[kind].release()
 
