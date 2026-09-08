@@ -9,7 +9,10 @@ export type Meta = Pick<components["schemas"]["Meta"], "request_id" | "contract_
   page?: { next_cursor: string | null; has_more: boolean; limit: number };
   warnings?: string[];
   source?: string;
-  computed_at?: string;
+  computed_at?: string | null;
+  partial?: boolean;
+  instance_local?: boolean;
+  rollup_lag_us?: string | null;
   stale?: boolean;
   coverage_from?: string | null;
   approximate?: boolean;
@@ -172,6 +175,7 @@ export interface MetricValue {
   bucket?: string;
   group?: string;
   approximate?: boolean;
+  labels?: Record<string, unknown>;
 }
 export interface ImportFormat {
   id: string;

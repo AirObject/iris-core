@@ -1,0 +1,44 @@
+import { readFileSync } from "node:fs";
+import { test, expect } from "@playwright/test";
+
+const stamp = (value: number) => new Date(value / 1000).toISOString().replace(".000Z", ".000000Z");
+
+test("real statistics registry, scoped filter, missing buckets, lag and reauthenticated backfill", async ({ page }) => {
+  const fixture = JSON.parse(readFileSync("/tmp/imc-w07-browser-context.json", "utf8"));
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/console/");
+  await page.getByLabel("运营密钥", { exact: true }).fill(fixture.token);
+  await page.getByRole("button", { name: "登录控制台" }).click();
+  await page.getByRole("link", { name: "统计观测", exact: true }).click();
+  await expect(page.getByText(/数据已落后/).first()).toBeVisible();
+  const options = await page.getByRole("combobox", { name: "指标", exact: true }).locator("option").evaluateAll((values) => values.map((value) => (value as HTMLOptionElement).value));
+  const registered = await page.evaluate(async () => (await (await fetch("/console/v1/stats/metrics")).json()).data);
+  expect(options).toEqual(registered.filter((value: { panel: string }) => value.panel === "overview").map((value: { metric_id: string }) => value.metric_id));
+  await page.getByRole("button", { name: "timeseries", exact: true }).click();
+  await expect(page.getByText("暂无数据", { exact: true }).first()).toBeVisible();
+  await page.getByRole("combobox", { name: "指标", exact: true }).selectOption("memory.created");
+  await page.getByRole("combobox", { name: "分组", exact: true }).selectOption("agent_id");
+  await page.getByLabel("从（UTC）", { exact: true }).fill(stamp(fixture.from));
+  await page.getByLabel("到（UTC）", { exact: true }).fill(stamp(fixture.to));
+  await page.getByRole("textbox", { name: "agent_id", exact: true }).fill(fixture.agent_id);
+  await page.getByRole("button", { name: "查询", exact: true }).click();
+  await expect(page.locator(".metric").filter({ hasText: fixture.agent_id }).first()).toBeVisible();
+  expect(await page.locator("body").innerText()).not.toContain("不会出现在统计中的正文");
+  await page.getByRole("button", { name: "回填统计", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "回填统计", exact: true });
+  await dialog.getByLabel("开始时间（完整 UTC 小时）", { exact: false }).fill(stamp(fixture.backfill_from));
+  await dialog.getByLabel("结束时间（完整 UTC 小时）", { exact: false }).fill(stamp(fixture.backfill_to));
+  await dialog.getByRole("combobox", { name: "操作原因", exact: true }).selectOption("operator_request");
+  await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
+  const reauth = page.getByRole("dialog", { name: "敏感操作 · 重新认证", exact: true });
+  await expect(reauth).toBeVisible();
+  await reauth.getByLabel("运营密钥", { exact: true }).fill(fixture.token);
+  await reauth.getByRole("button", { name: "重新认证并继续原动作", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Operation · statistics_backfill", exact: true })).toBeVisible();
+  await expect(page.locator(".operation strong")).toHaveText("completed", { timeout: 15000 });
+  await page.getByRole("button", { name: "overview", exact: true }).click();
+  await expect(page.getByText(/数据已落后/)).toHaveCount(0);
+  await expect(page.getByText(/覆盖起点/).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});

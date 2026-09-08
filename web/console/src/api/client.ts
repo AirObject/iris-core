@@ -443,6 +443,9 @@ export function metadataText(meta: Meta) {
     meta.computed_at && `数据截至 ${meta.computed_at}`,
     meta.coverage_from && `覆盖起点 ${meta.coverage_from}`,
     meta.stale && "数据已落后",
+    meta.rollup_lag_us && `汇总延迟 ${meta.rollup_lag_us} 微秒`,
+    meta.partial && "部分统计",
+    meta.instance_local && "此服务实例",
     meta.approximate && "近似值",
     ...(meta.warnings ?? []),
   ]
