@@ -44,7 +44,13 @@ def serve_separate(application: FastAPI, config: ServiceConfig) -> int:
     console = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     console.mount(
         "/console",
-        create_console_app(store=application.state.runtime.uow, config=config.console_config()),
+        create_console_app(
+            store=application.state.runtime.uow,
+            config=config.console_config(),
+            archives=application.state.runtime.archives,
+            embedding_runtime=application.state.runtime.projections.embedding_runtime,
+            provider_generations=application.state.runtime.projections.provider_generations,
+        ),
     )
 
     def server(app: FastAPI, host: str, port: int) -> ManagedServer:

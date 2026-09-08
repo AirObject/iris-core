@@ -31,9 +31,12 @@ from iris_memory_core.api.console.routes_persona_policy import router as persona
 from iris_memory_core.api.console.routes_persona_proposals import router as persona_proposals_router
 from iris_memory_core.api.console.routes_persona_states import router as persona_states_router
 from iris_memory_core.api.console.routes_personas import router as personas_router
+from iris_memory_core.api.console.routes_providers import router as providers_router
 from iris_memory_core.api.console.views import envelope
 from iris_memory_core.application.console.backup_operations import TrustedBackupArchive
 from iris_memory_core.application.ports.clock import Clock, SystemClock, Uuid7Generator
+from iris_memory_core.application.ports.provider_generations import ProviderGenerations
+from iris_memory_core.application.ports.provider_secrets import ConfiguredEmbeddingRuntime
 from iris_memory_core.domain.errors import DomainError
 from iris_memory_core.observability.logging import LowSensitivityLogger
 from iris_memory_core.storage.uow import Store
@@ -92,6 +95,8 @@ def create_console_app(
     clock: Clock | None = None,
     logger: LowSensitivityLogger | None = None,
     archives: TrustedBackupArchive | None = None,
+    embedding_runtime: ConfiguredEmbeddingRuntime | None = None,
+    provider_generations: ProviderGenerations | None = None,
 ) -> FastAPI:
     deployment = config or ConsoleConfig()
     deployment.validate()
@@ -100,6 +105,8 @@ def create_console_app(
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
     app.state.console_config = deployment
     app.state.archives = archives
+    app.state.embedding_runtime = embedding_runtime
+    app.state.provider_generations = provider_generations
     if store is not None:
         app.state.security, app.state.crypto = assemble(store)
     else:
@@ -189,6 +196,13 @@ def create_console_app(
                     and "console.manage" in principal.key.grant.data_purposes
                     and not {"memory.read", "memory.forget"} <= set(principal.permissions)
                     else []
+                )
+                + (
+                    ["providers"]
+                    if {"system.read", "providers.manage"} & set(principal.permissions)
+                    and hasattr(principal, "key")
+                    and "console.manage" in principal.key.grant.data_purposes
+                    else []
                 ),
                 "read_only": False,
                 "maintenance": False,
@@ -210,6 +224,7 @@ def create_console_app(
     app.include_router(memory_router)
     app.include_router(forget_router)
     app.include_router(operations_router)
+    app.include_router(providers_router)
     app.include_router(personas_router)
     app.include_router(persona_states_router)
     app.include_router(persona_proposals_router)
