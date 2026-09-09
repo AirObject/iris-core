@@ -1,6 +1,6 @@
 # 统一配置模块入口
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步本视图与[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
 
 适用主题与局部定义：注册表定义参数元信息；版本、不可变快照与生效计划不同。当前状态、目标、已使用预算属于业务对象。
 
@@ -17,6 +17,7 @@
 | 关注点 | 阅读位置与边界 |
 | --- | --- |
 | 职责、非职责、数据所有权 | [模块所有权行](../architecture/ownership.md#m15)；[本模块完整契约](configuration.md#contract) |
+| 本次参数定义与只读注册表切片 | [当前有效契约](../architecture/configuration.md#configuration-registry-contract)：[依据分类](../architecture/configuration.md#configuration-registry-evidence)、[数据定义](../architecture/configuration.md#configuration-registry-data)、[注册与冻结](../architecture/configuration.md#configuration-registry-lifecycle)、[公开接口](../architecture/configuration.md#configuration-registry-ports)、[错误](../architecture/configuration.md#configuration-registry-errors)、[验收例子](../architecture/configuration.md#configuration-registry-examples)；[本切片已批准](../architecture/configuration.md#configuration-registry-decisions)，仅授权本切片实现 |
 | 公开能力与依赖 | 本模块正文的“建议端口”仍为草名；[统一依赖与启动边界](../architecture/ownership.md#source-line-267) |
 | 状态、提交和恢复 | [接收承诺与允许损失](../architecture/persistence-and-transactions.md#section-04)；[T12](../architecture/persistence-and-transactions.md#t12)、[T13](../architecture/persistence-and-transactions.md#t13)；[远程结果未知](../architecture/persistence-and-transactions.md#source-line-518)（仅涉及外部调用时） |
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-837)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |

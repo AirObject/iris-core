@@ -1,8 +1,8 @@
 # 文档整理报告
 
-日期：2026-09-09。范围：项目文档整理与开发指引建立；本轮不包含实现、技术选型验证或依赖安装。
+历史记录日期：2026-09-09。包含首次文档整理、收尾审查及配置详细契约设计的分段记录，不包含业务实现成果。本报告作为一次性整理的历史记录保留，不再要求每个代码任务重做逐节哈希、全文还原或全量覆盖映射。当前任务由[CURRENT_TASK.md](CURRENT_TASK.md)记录，STATUS.md在切片完成节点简短更新。
 
-下列起始状态、覆盖映射和完整性结果记录首次整理时的事实；同日追加的收尾审查与本地基线范围见[收尾记录](#closeout-review)。首次交付时的未跟踪／未提交状态不代表本地基线提交后的状态。
+下列起始状态、基线哈希、原覆盖映射和完整性结果记录首次整理时的事实；同日的收尾审查与本地基线范围见[收尾记录](#closeout-review)。配置契约归并时留存的哈希、行号与增量覆盖见[契约审查记录](#configuration-contract-review)。全文中的“本次／当前”、授权状态和检查结论均限于所记录的历史轮次；历史哈希、链接及正文校验结果不代表当前文件版本，不据此宣称当前检查通过。
 
 ## 起始状态与生效指引
 
@@ -28,13 +28,13 @@
 
 阅读视图包含原文完整段落与表格，新增内容限于来源、局部定义、导航、模块边界定位和文档锚点。正文中的章节、模块、事务、验收与资料标记转换成真实链接；代码框不改写示意内容，其文档标记附单独定位链接。原文目录作为原文导航保留，新的任务导航由INDEX承接。
 
-原文仍是权威依据。后续规则变动先修改对应原文，再同步其阅读视图及本映射，重新核对哈希和链接；不得只改视图形成分叉。原文的建议、示例、未定事项和草名保持原有性质。原代码树与prompt示例含编号不构成代码规范的例外，未来实现须语义化表达。
+原文仍是权威依据。后续规则变动先修改对应原文，再同步受影响的阅读视图并核对相对链接；本映射及哈希仅作整理历史保留，不要求持续重做；不得只改视图形成分叉。原文的建议、示例、未定事项和草名保持原有性质。原代码树与prompt示例含编号不构成代码规范的例外，未来实现须语义化表达。
 
 <a id="coverage"></a>
 
 ## 逐节覆盖映射
 
-下表按原始实际标题逐项列出，忽略代码框中看似标题的注释；章节行号对应以上字节基线。每个已拆分小节的完整正文属于所列视图，并未仅保存标题或摘要。原文定位链接结合行号使用；视图提供每个标题的显式锚点。
+下表按原始实际标题逐项列出，忽略代码框中看似标题的注释；章节行号对应以上历史字节基线。每个已拆分小节的完整正文属于所列视图，并未仅保存标题或摘要。原文定位链接结合行号使用；视图提供每个标题的显式锚点。新增§11.9及后续章节行号偏移由[增量覆盖映射](#configuration-contract-review)承接，旧source-line锚点保留基线含义，不冒充当前行号。
 
 ### 独立陪伴角色记忆与认知系统设计／产品行为
 
@@ -314,6 +314,8 @@
 
 ## 冲突、缺失与待确认项
 
+本次配置切片已将注册表数据、冻结、接口和错误方面的缺失细化为[待批准决定D1–D7](../architecture/configuration.md#configuration-registry-decisions)。当前任务是文档契约待审查；下表其余未定事项保留，不自动获得本次实施授权。
+
 本轮未发现需要整理者自行裁决的直接产品规则矛盾。下表区分互补解释、待定边界与尚未批准的候选，均不把整理结果当批准记录。用户要求的“已确定、建议、示例、待确认”是分类指引，原文草稿中的具体性质仍以对应措辞为准。
 
 | 事项与性质 | 双方原文位置／具体依据 | 影响与本轮处理 |
@@ -405,3 +407,65 @@
 暂存行尾空白检查报告6处警告：根架构原文L3、L4、L292，部署候选视图L15、L16，以及接入模块视图L35。逐处确认都是原有的两个行尾空格，用于Markdown硬换行；按原文和阅读视图保护范围保留，不把该检查称为无警告通过。本轮修改的三份工作记录没有行尾空白。暂存文件路径和字节已逐项核对，均属于文档基线。
 
 提交范围固定为上方清单列出的45份整理文档，加根目录三份权威原文，共48个明确文件路径；不使用目录通配暂存或 `git add .`。提交前再次核对暂存路径与文件字节，出现无关暂存内容则停止提交，不撤销或混入。文档基线使用提交说明 `docs: establish project documentation baseline`；是否成功、准确标识及剩余工作区状态以实际Git结果和交付回执为准。此提交只记录文档，配置代码任务仍待批准。
+
+<a id="configuration-contract-review"></a>
+
+## 配置参数定义与只读注册表：契约设计与审查历史
+
+以下记录文档设计与定点审查历史；当时的待批准状态不覆盖用户后续批准。有效契约为§11.9，当前执行状态以CURRENT_TASK.md为准，本节不继续追加代码实现记录。
+
+2026-09-09，任务曾由用户明确调整为文档契约设计。开始于 `main / 1ce4cc2`，工作区和暂存区干净。此前配置最小实现任务的语言、范围及验收建议没有成为本次开发授权。
+
+先核对了INDEX、CURRENT_TASK、STATUS和Git状态，再按配置路线读取对应权威原文、模块依赖、T12、相关工程验收、产品§23与代码规范。新增§11.9先写入架构原文，再完整同步到现有配置阅读视图。原§11.1–11.8及其他权威正文不改写，产品原文和代码规范保持原字节。新增实现决定D1–D7全部待批准；没有需要裁决的直接矛盾，未定类型、数值和行为没有被自动归并为既定要求。
+
+本轮修改7份已有Markdown：架构原文、配置架构视图、配置模块入口、INDEX、CURRENT_TASK、STATUS和本报告；没有新增仓库文件。当前任务为“配置参数定义与只读注册表的详细契约设计”，状态为“详细契约待审查”。
+
+本次定点澄清保留此前7份未提交改动，只修改权威契约、配置视图、CURRENT_TASK、STATUS和本报告；不新增报告或重整目录。原文明确排除默认自洽检查，故D2新增静态合法性要求作为待批准修订并列保留；其支持类型映射、空值／枚举相等／范围适用规则仍待批准。依赖关系环与循环值结构区分、冻结失败保持原集合并可继续构建，以及安全规则说明作澄清；五项接口、排序和重复冻结返回语义不变。
+
+### 归并时留存的原文哈希（历史版本）
+
+上方历史哈希继续标识最初整理基线。本表保留归并批准修订时记录的字节信息与SHA-256，不随当前文件修订更新，也不代表后续版本已重新核验。澄清前架构哈希为 `595b77c4acc53fbf9da9c8773b8e7e594fd81f3228e70d3b476d9c8349276679`，仅用于本次差异识别：
+
+| 原文 | 当时字节数／行数 | 当时SHA-256 | 相对基线变化 |
+| --- | --- | --- | --- |
+| [系统原文](../../companion_memory_cognition_system_design_integrated.md) | 100296／1263 | `ce997355992b359fcad08c62284b206db2d64dad46a165a457cd801646a41f62` | 字节不变 |
+| [架构原文](../../companion_memory_module_design_provider_logging_config.md) | 141270／1487 | `061c7e650c82d7b33ecb2bb5920004b52eed4b22c83f8c59eeac79ea770bf631` | 配置详细契约§11.9已归并批准修订 |
+| [代码规范](../../CODING_STANDARDS.md) | 15538／235 | `be6a5909e936e4fab27d5343f67d81c774caedd150260095d09b399cfbc1af18` | 字节不变 |
+
+### 增量覆盖映射
+
+归并时新增连续正文为架构L951–L1150，共200行，完整归入原有`architecture/configuration.md`，没有新增另一套独立需求文件。原文与视图使用相同语义锚点；本表行号对应上方历史架构哈希，不代表后续文件行号。
+
+| 当时原文章节及行号 | 完整阅读视图 |
+| --- | --- |
+| [L953 · 11.9 配置参数定义与只读注册表契约](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-contract) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-contract) |
+| [L959 · 11.9.1 依据、确定程度与范围](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-evidence) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-evidence) |
+| [L973 · 11.9.2 数据定义](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-data) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-data) |
+| [L1023 · 11.9.3 校验与依赖边界](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-validation) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-validation) |
+| [L1050 · 11.9.4 注册、所有权与冻结](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-lifecycle) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-lifecycle) |
+| [L1072 · 11.9.5 公开接口](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-ports) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-ports) |
+| [L1088 · 11.9.6 错误契约](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-errors) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-errors) |
+| [L1109 · 11.9.7 验收例子](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-examples) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-examples) |
+| [L1143 · 11.9.8 批准范围与停止点](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-decisions) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-decisions) |
+
+历史覆盖表和其他阅读视图中的`source-line-*`继续指向原始基线位置；架构原文原L1–L950仍在原位，原L951及之后均后移200行，原章节内容不变。例如原第12节标题L953现为L1153，原第16节标题L1239现为L1439。因此不批量改写历史锚点或无关视图；原映射加本增量表记录当时的完整覆盖。
+
+### 文档检查与限制
+
+此前详细契约草稿的实际检查结果（定点澄清前）：
+
+- 对比Git基线字节，去除新增§11.9后架构原文与HEAD完全一致；产品原文、代码规范字节不变。新增完整正文与配置阅读视图一致，比较只忽略段落末尾用于文件结尾的空行；配置视图原有正文与HEAD一致。
+- 原§11.2的24项元信息全部出现在详细定义中；补充的理由、消费者、验证方式字段形状及全部新增类型／行为明确标为提案，D1–D7在原文与当前任务中逐项待批准。人工核对了依据分类、五项能力、六类错误、生命周期和验收例子的对应关系。
+- 本地解析检查48份Markdown、1967处相对链接，没有缺失目标文件／锚点，没有重复显式锚点。新增9项章节映射与实际标题、行号一致；哈希按当前文件原始字节重新计算。
+- 首次`git diff --check`发现配置视图文件尾部新增空行，已修正；最终该检查无警告。修改集合精确为上述7份文档，暂存区为空，没有新增仓库文件，HEAD仍为 `1ce4cc2`。
+- 检查使用本机已有Python临时处理文档文本与Git差异，临时脚本位于系统临时目录；这不选择项目Python技术栈，也没有建立项目测试工具链或安装依赖。
+
+本次定点澄清后复核：相对本轮起点仅上述5份既有文档变化，INDEX与配置模块入口字节未动；原文改动限于§11.9，原排除条款及旧例子保留，D2修订并列待批准。五项接口正文与六类错误名称不变，当前哈希和9项章节行号一致；48份文档、1967处相对链接再次检查无缺失文件／锚点及重复显式锚点，`git diff --check`无警告。所有既有未提交改动保留，没有新增仓库文件或暂存内容。
+
+注册表行为例子尚未实现或执行，不将它们标为测试通过；也不宣称V73/V74、配置激活或T12已经完成。没有图形渲染、外链联网核验、业务测试、构建或性能结果；相对链接检查使用本地解析与常见标题锚点规则，不承诺每个Markdown客户端的渲染表现。
+
+### 历史待批准状态（已被后续审批替代）
+
+具体待批准决定见[权威D1–D7表](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-decisions)：数据表示、默认／校验深度、键与重复、深不可变、冻结与依赖、公开端口和错误形式。语言、运行库、真实参数默认值和技术栈继续未定。本次只有设计授权，不执行代码、迁移、依赖安装、提交、推送或部署；完成文档检查并报告后停止。
+
+后续审批记录：用户已批准契约及静态校验修订，随后明确Python 3.12和uv管理。旧的默认自洽排除条款及相关例子已移出有效正文，仅在上述历史记录保留。之后用户暂停实现并要求删除源码；当前任务和后续验证由CURRENT_TASK.md记录，切片完成节点简短更新STATUS.md，本报告不继续补记实现结果。
