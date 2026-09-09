@@ -812,6 +812,216 @@ Web只接受本系统类型化白名单配置，不直接加载用户提交的�
 
 M14不读取M15之外的另一份“logging.yaml”作为并行真相。配置回退仍通过新版本审计执行；关闭诊断输出不能关闭强制审计，也不能关闭Provider已知usage记录。
 
+<a id="runtime-diagnostics-contract"></a>
+
+### 10.8 统一运行诊断日志：控制台与文件输出最小契约草案
+
+**状态：待批准；仅授权编写契约，不授权实现。** 本节只细化运行诊断日志切片，不代表完整日志模块或§15.1第一行完成。§10.1–10.7、模块所有权和T13保持原样；§11.9、§11.10的已批准配置行为不变。以下“推荐”条款须经审查批准及另行实现授权后落实；例子全部未执行。
+
+<a id="runtime-diagnostics-scope"></a>
+
+#### 10.8.1 依据、推荐与后续边界
+
+| 性质 | 内容 |
+| --- | --- |
+| 已有要求 | §5.3及M14：统一日志入口、可信启动装配、最小应急stderr；§10：五个标准等级、同事件同ID、分端过滤、入队前脱敏、有界背压、故障隔离；T13：审计同业务事务提交，诊断文件不能冒充该事务 |
+| 本次推荐 | 下述事件准入、过滤公式、JSONL子集、初始化／关闭、逐端投递回执、容量／故障保障和待批准参数。集中决定见本节末表 |
+| 已有实现事实 | 配置注册表和显式值解析／不可变快照已验收并独立提交；快照只表示受限内存解析结果，没有快照ID、运行revision、权限执行或激活承诺 |
+| 后续能力，归属不变 | M14的Web订阅、历史查询、导出、SDK桥接、受控诊断正文捕获、更多格式／时间轮转／压缩、热切换及事务审计；M13的Provider与计量账本；M15的完整校验／加载／激活；I01数据库基础。此切片不提供这些接口或返回成功的占位实现 |
+
+运行诊断、敏感审计和Provider详情的权限仍分离；产品§17.5、§20.3的审计隔离与管理权限继续适用。日志及健康端口仅交可信装配方和内部消费者，不成为agent工具，不用于学习、embedding、记忆使用强化或已删除正文恢复。此处的文件访问权由部署方限制，不宣称本地只读句柄已经实现管理鉴权。
+
+<a id="runtime-diagnostics-events"></a>
+
+#### 10.8.2 事件、输入和安全准入（推荐）
+
+只提供`runtime`事件入口。公开`emit(event)`接收精确内建dict；必填`level`、`event_code`，可选`context`、`attributes`，后二者仅收精确dict。等级仅接受精确str：DEBUG／INFO／WARNING／ERROR／CRITICAL，对应10／20／30／40／50；不接收数值、别名、NOTSET、AUDIT或USAGE作为事件等级。ERROR不终止进程。调用方不能提供event_id、时间、schema版本或logger身份；这些由服务生成。
+
+| 输出白名单 | 来源及条件 |
+| --- | --- |
+| `schema_version`、`category` | 固定为整数1及`runtime`；是事件格式版本，不是配置版本 |
+| `event_id` | 服务在准入成功、过滤之前生成一次随机UUID（规范小写带连字符文本）；每次emit是新事件，不做业务去重。分端复制、格式化备用记录和高等级应急摘要沿用此ID，不用正文哈希或配置对象地址生成 |
+| `timestamp` | 从可信装配注入的UTC墙钟取得一次接收时间，RFC 3339格式、固定微秒及Z后缀；不是外部业务发生时间。所有输出沿用该值；墙钟回拨不排序或重写事件 |
+| `level_name`、`level_number`、`logger`、`event_code`、`message` | 等级来自已校验输入；logger来自已绑定模块句柄；事件码查静态白名单，message取固定模板，禁止调用方插值 |
+| `context` | 仅可含trace_id、span_id、request_id、run_id、batch_id、dream_run_id、entry_id、provider_request_id、attempt_id；值须为可信调用方已确认不含秘密的内部不透明ID，精确str，匹配`[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`；无值就省略，不填空串或伪ID |
+| `attributes` | 仅可含count（0至2^63−1的精确int）、duration_ms（同范围的精确int，调用方由单调时钟差计算）、outcome（SUCCESS／FAILURE／DEGRADED）、error_code（TIMEOUT／IO_FAILURE／VALIDATION_FAILED／INTERNAL_FAILURE）；枚举值仅接受精确str，无值就省略，不隐式转换bool、Decimal或float |
+| `redacted`、`exception_omitted` | 服务生成的布尔值；前者表示至少一个输入字段被移除，后者表示顶层exception字段存在且已移除；不保存被移除字段名、数量明细或内容 |
+
+初始静态事件码及message为：`DIAGNOSTIC_READY`→“运行诊断服务已就绪。”、`OPERATION_COMPLETED`→“操作已完成。”、`OPERATION_FAILED`→“操作未完成。”、`DELIVERY_RECOVERED`→“诊断输出已恢复。”。事件码说明事实，不代表审计已提交；调用方负责事实与等级匹配。新增模板须经代码审查，不能由运行配置或用户文本注册。内部恢复记录使用DELIVERY_RECOVERED／WARNING；不在本切片引入通用事件注册服务。
+
+`get_logger(module)`仅接受§5.1十五个模块的英文语义名及bootstrap，精确匹配；logging_service为日志模块名，不使用M14等编号。上下文由每次调用显式传入，无隐式全局／线程上下文，也不推测当前批次。config_snapshot_id、runtime_policy_revision及其他自报保留字段按非白名单移除；不得用schema_revision、对象身份、随机数或空占位伪造现有配置模块没有的标识。
+
+安全处理顺序：先核验载体；每层dict最多32项且所有键必须是长度不超过128的精确str（允许空键，随后按非白名单移除），之后才按固定字段读取白名单值。顶层message、exception及所有非白名单字段直接移除，不遍历其值、不求str／repr、不格式化异常、不读取异常args、cause、traceback、局部变量、源码行或SDK对象。context／attributes的非白名单项同样整项移除。因此Authorization、API key、cookie、token、URL、prompt、response、原始文本和附件字段均不进入队列；嵌套敏感内容和带签名URL不能靠改大小写绕过白名单。自由文本及原始异常不提供“自称已脱敏”放行通道；安全错误摘要用固定error_code表达，本切片不输出异常栈。
+
+保留字段载体／范围不合格时拒绝整条，不字符串化或截断后伪装有效。ID语法只控制结构和体积，不证明无秘密；原始外部request ID、用户名、令牌或URL必须由可信调用方先映射为真实内部非秘密关联ID，否则省略，不能因字段在白名单或配置标为public就直接透传。此边界约束受支持内部调用，不是同进程恶意代码沙箱。
+
+入队前完成所有移除、隔离、模板选择和JSON编码，含尾部LF的UTF-8记录不得超过配置上限E；超限拒绝，不分行、不截断。JSON转义换行和控制字符，所有输出恰好一条记录一行，禁用颜色。固定模板编码意外失败时仅尝试一次安全备用记录：保留已生成的ID／时间／等级／logger、固定事件码`DIAGNOSTIC_FORMAT_FAILED`及message“诊断记录格式化失败。”，省略context／attributes，标redacted=true；备用再失败则拒绝并仅走常量应急通知，不回显原始异常。DIAGNOSTIC_FORMAT_FAILED仅由服务生成，不接受调用方提交；固定模板也不是格式字符串。ID源或时钟不能取得合法结果时返回EVENT_BUILD_FAILED，无事件回执，不以空值补齐，至多尝试常量应急通知。
+
+返回前取得所有保留数据和编码结果的独立不可变所有权；不保留原dict、异常或被移除对象引用。emit期间调用方保持输入稳定，返回后任意修改原dict及嵌套dict不影响已接收事件。安全发布后的logger支持并发emit／健康查询；initialize／flush／close由装配方串行调用，允许与emit／健康查询并发。并发emit无跨调用全局顺序保证，同一sink按成功接收的本地顺序写出；flush／close的截点与并发emit原子划分，截点前后归属必须明确。emit取得投递资格与close停止接收原子互斥：尚在规范化且未取得资格的调用，在关闭后返回SERVICE_CLOSED；已取得资格的事件须在关闭截点前确定全部端的入队结果，不出现关门后的迟到入队。线程、锁及队列具体实现不作为批准项。
+
+<a id="runtime-diagnostics-filtering"></a>
+
+#### 10.8.3 等级确定顺序（推荐）
+
+实例默认I必须是五个标准等级之一。sink阈值S可为五等级或NOTSET，NOTSET解析为I；禁用sink不参与最低阈值计算。无模块覆写或模块值为NOTSET时，采集阈值C取`min(I, 所有启用sink解析后阈值)`；没有启用端时只返回DISABLED。模块显式覆写为具体等级时，C直接取该等级，可有意过滤各端共同需要的低等级。模块精确匹配，不按名称父子前缀继承。
+
+一条安全事件先按C判断，再独立按每个启用端S判断，只有`level >= C 且 level >= S`才投递该端。不在根logger或中间handler额外套用更高阈值，不向父logger传播产生重复输出。I=INFO、console=INFO、file=DEBUG、无模块覆写时C=DEBUG；DEBUG只进文件。若模块显式WARNING，则两端都过滤DEBUG／INFO。健康结果公开各模块C及各端解析后的S，供可信管理调用方解释共同过滤范围；本切片不实现Web显示或热修改。
+
+<a id="runtime-diagnostics-output"></a>
+
+#### 10.8.4 输出、资源与生命周期（推荐）
+
+两端只支持上述UTF-8 JSONL。控制台支持stderr（全部等级）或split（DEBUG／INFO到stdout，WARNING以上到stderr），流由可信装配方借出；服务不关闭宿主流、不改动宿主／根logger的handler。文件为经批准诊断专用目录下固定活动文件runtime.jsonl；只支持单进程独占写入、大小轮转和关闭段份数保留，不支持任意handler类、路径模板、时间轮转、压缩或外部logrotate共写。
+
+文件目录须预先存在、非符号链接、可写且由部署方授予本服务独占使用权；须与业务blob、审计、账本及备份目录隔离。每个打开／重命名／删除目标都需限制在该目录、拒绝符号链接和非普通文件；启动发现非本服务命名的条目或无法证明独占所有权时拒绝，绝不清空目录。已有合法日志段可恢复追加；活动文件有未完成尾行或段序异常时拒绝初始化，不擅自截断修复。受信部署方负责不在运行中替换目录；运行时仍检查目标，权限或路径校验失败令文件端故障。
+
+**文件恢复一致性条件（推荐，待批准）：** 短写、写入或轮转／保留故障之后，原I/O结束且文件重新可写只是恢复的必要条件。重新接收文件投递前，还须在独占访问下确认活动文件处于完整JSONL记录边界（空文件或每条记录完整且末尾为LF，无残缺尾行）、关闭段及活动文件归属明确、段序与下一段序号一致且无冲突、轮转没有未确认的中间状态，并满足本节关闭段份数、单段大小及稳定状态保留边界。不能仅检查最后一个字节、重新打开成功或一次可写探测就宣告一致；不得将下一条JSON或恢复通知直接追加到残缺尾行。检查只观察既有内容和资源状态，不通过试写业务记录证明可写；仍受既有有界I/O和探测约束，期限内无法确认也视为未通过。任一条件无法确认时文件端保持FAULTED，last_reason为FILE_STATE_UNCONFIRMED，不自动截断、删除、重放、重命名或修复既有内容；本切片不提供修复接口。其他输出端继续按原契约过滤、接收和写出。
+
+设轮转大小B，关闭段上限K，必须E≤B。下一条完整编码记录长L，活动文件非空且当前字节数+L>B时先轮转，等于B可写；禁止拆分事件。关闭段用单调递增段序命名`runtime.<正整数>.jsonl`，启动从已有合法段恢复下一序号，不使用墙钟决定先后。轮转按段序删除最旧关闭段至最多K份，保留不足或删除失败则停用文件端，不继续无界产生新段。当前活动文件、其他目录或未识别条目永不作为清理候选。稳定状态总内容字节≤(K+1)B；一次轮转允许最多额外B的临时空间，磁盘不足进入故障。合法既有段超过B、K或临时空间边界时初始化失败，由管理方处理，不在启动时悄悄执行超范围清理。
+
+生命周期为NEW→READY→CLOSING→CLOSED；初始化失败且资源已收回则回NEW，可显式重试；收回未完成则FAULTED，只允许健康查询和有界close。一个服务成功initialize后再次调用，无论同一快照还是新快照，都返回ALREADY_INITIALIZED，不增加handler、不打开第二份文件、不替换配置；并发initialize不支持。CLOSING／CLOSED／FAULTED不能重初始化。另一个实例竞争同一目录返回RESOURCE_CONFLICT；同进程多实例也不能绕过独占边界。
+
+initialize先检查快照、配置适用性及资源，再准备全部启用端，全部成功才发布READY；任一失败没有可用logger。清理由本次创建的资源负责，已借出的流不关闭，既有文件内容不删改；可能留下本次创建的空活动文件，结果须用布尔cleanup_pending说明是否尚待回收，不能宣称文件系统无副作用。两个端都禁用可READY，emit明确DISABLED；应急通道仍独立存在。成功初始化不等于系统配置激活或业务恢复完成。
+
+接收仅表示输入准入和事件构造成功；入队仅表示某端取得有界投递所有权；写出表示该端完整write返回；flush表示该端缓冲刷新返回。以上状态均不等于介质持久化，不提供fsync收据、崩溃重放或业务事务提交承诺。短写／异常可能已输出前缀，列为UNKNOWN，不重发该事件，避免制造重复。关闭正常结束可确认已入队目标的写出及flush状态，但不能保证终端用户已看到，也不能保证掉电后文件存在。诊断失败不撤销已提交业务，不影响应由独立事务保证的审计或账本。
+
+<a id="runtime-diagnostics-delivery"></a>
+
+#### 10.8.5 有界投递、故障与健康（推荐）
+
+每端配置总容量Q及WARNING以上预留R，约束0<R<Q；计入待写及正在写的记录，不能把在途记录移出容量统计。DEBUG／INFO只在该端总占用<Q−R时接收，否则丢弃新到低等级事件；WARNING以上只要占用<Q即可接收。无抢占、采样或淘汰旧事件。每端最多Q×E编码字节；两端合计不超过2QE，UNKNOWN的在途缓冲直到实际I/O结束仍计占用。容器开销另有有限上界。保留并发规范化槽位P，其中至少一个仅供WARNING以上使用；低等级最多P−1个槽，高等级可用全部P个，耗尽立即返回ADMISSION_BUSY。单次输入遍历受字段数、保留值长度及E限制；不创建无界辅助缓冲或无限增长的logger／事件码／指标标签集合。模块自有编码缓冲总预算为最多2QE+PE+512×应急容量字节，包含入队前在途编码与备用编码；实现须将临时副本计入对应槽位上界，不能因复制另开无限预算。此预算不包含调用方原输入或操作系统缓存。
+
+emit不等待任何sink I/O、磁盘空间或队列腾位；仅作有界本地准入，不给普通调用链追加输出超时。同步处理和竞争必须有界，不作绝对硬实时承诺，仍须在后续真实一秒查询集成中测量开销。两端独立决定入队结果：文件阻塞不延迟控制台入队和写出，反之亦然；不能把两端串行调用挂在同一个会阻塞的输出执行上下文上。
+
+任一目标端对WARNING以上无法入队（满载、故障）时，整个事件最多尝试一次独立stderr应急摘要，只含event_id、level、固定reason和固定message“高等级诊断未完成常规投递。”，不携带context、attributes或原始输入。摘要不是完整事件已送达；即使摘要成功，目标端丢弃仍计数。规范化槽耗尽时尚未生成event_id，只能发不带ID的常量告警，不伪造原事件标识。应急通道也必须有独立容量、单条字节上限及频率限制；满载／限流／stderr阻塞均可失败，不在调用线程同步兜底写stderr。
+
+输出I/O超过配置时限或出现打开／写／flush／轮转错误时，端状态转FAULTED，故障端拒绝新目标投递，其他端继续。对尚未开始写的积压明确丢弃并计数；已经开始但结果未确认的目标列UNKNOWN。每端至多一个未完成I/O，不为卡死调用无限创建替代执行器。原调用结束后才能按配置探测间隔进行一次恢复探测；永久阻塞保持FAULTED而非虚报恢复。探测失败不重放旧事件、不循环递归记日志；文件端的探测成功必须同时满足§10.8.4文件恢复一致性条件，仅原调用结束或资源恢复可写不得转READY；相应端的全部恢复条件通过才恢复READY，并有界尝试一次DELIVERY_RECOVERED记录，attributes.count为自上次恢复以来该端新增的确定丢弃目标数（饱和规则同计数器）；UNKNOWN另由健康结果说明。恢复时累计丢弃／未知计数不清零；该恢复记录也可能被过滤或丢弃，健康查询仍是可观察依据。
+
+固定备用／应急通道不调用emit，不再记录自己的失败；按频率上限合并故障通知，累计emergency_suppressed／emergency_failed，避免递归死锁和日志风暴。普通console采用stderr时与应急仍须投递隔离：借用同一物理流失败时两者均可能不可用，不宣称独立物理故障域。不承诺资源耗尽、强杀或掉电下诊断零丢失。
+
+`get_sink_health()`返回深不可变内存视图：服务生命周期；按console、file固定顺序的DISABLED／READY／FAULTED／CLOSED状态及固定last_reason；解析后阈值；每端queued_events、in_flight_events、容量、最近完整成功写出的UTC时间（无成功为None）、written_events、flushed_events、unknown_events、`dropped_events{sink,level,reason}`；另有filtered_events、rejected_events、emergency_suppressed／emergency_failed、flush_deadline_exceeded及cleanup_pending。flush_deadline_exceeded按独立flush调用计数：到期时任一启用端仍未完成则增加一次，不按端重复增加，沿用饱和规则；仅等待到期不修改端last_reason或丢弃／未知计数。sink故障不隐含磁盘已满，磁盘告警为OK／LOW／UNKNOWN，仅在资源适配层能确认空间不足时LOW，探测不可用为UNKNOWN；不虚构余量。时间来自注入时钟，耗时／deadline用单调时钟。
+
+丢弃计数以每个目标端的每次未投递为一项，同事件两端失败可计两项；等级过滤／端禁用不计丢弃，非法输入只计rejected，UNKNOWN不重复计丢弃。成功入队后未开始写却被故障／关闭放弃也计丢弃；格式备用成功不计丢弃。计数仅本进程内有效，使用有界饱和计数器（2^63−1封顶并置counters_saturated=true），不要求落盘。标签限上述固定枚举，禁止请求ID、用户键、路径或异常文本成为指标标签。UNKNOWN是曾出现无法确认写入的累计诊断，不在迟到完成后改写旧回执或冒充确知丢失。报告对截点前曾成功入队的目标，在报告生成时分为written／dropped／unknown／pending_queued／pending_in_flight五个互斥类别；前三项按该截点累计，pending_queued表示尚未开始写、pending_in_flight表示已开始写但仍在正常I/O期限内等待结果，后二项只是当前未完成数量，不是终态或丢弃原因码。未饱和时五项之和等于该端截点内曾入队目标数。flushed另为written的子集，只计实际刷新已确认的目标；写出完成但刷新未确认时仍计written，不虚增flushed。入队前丢弃只在EmitReceipt和健康计数体现。UNKNOWN仅用于实际I/O故障／I/O超时或关闭放弃后无法确认的写入结果，不用于独立flush等待期限到达；被归为UNKNOWN的迟到完成不重新计入written／flushed，不重复增加unknown，最近成功写出时间仍可反映实际迟到成功。反之，pending目标随后正常完成时，健康queued_events／in_flight_events反映占用减少，written_events增加，实际刷新确认后flushed_events才增加；后续报告按新观察分类，已经返回的不可变报告不修改，也不为这次等待超时补记UNKNOWN或dropped。
+
+**独立flush等待期限（推荐，待批准）：** flush取调用截点，等待该点之前已入队目标完成并刷新两端，使用配置的总deadline，不因两端分别等待而翻倍；并发emit的后续事件不延长截点。deadline到达只结束本次等待，受影响端报告INCOMPLETE／DEADLINE_EXCEEDED（已记录故障仍按首错规则优先），服务保持READY，输出端不因等待到期从READY转FAULTED或CLOSED；原已故障／禁用端也不因此恢复。截点前尚未开始的目标留在有界队列，已开始且未发生独立I/O故障的目标继续在途，分别报告pending_queued／pending_in_flight，仍计容量；两者均不增加dropped／unknown／written。截点后新事件继续按原等级、健康和容量规则接收，可能正常入队或因满载／端故障被拒绝投递，不因flush到期使用SERVICE_CLOSED或SHUTDOWN_DROPPED。
+
+flush报告仅描述本次截点，不建立事件重试、关闭或持久化承诺。到期时未发出的本次缓冲刷新请求不另留后台任务；正常事件写出继续，已开始的刷新I/O则在既有单端I/O期限内继续，不为同一端开启第二个并行I/O。后续flush可以等待现有I/O后再刷新自己的截点，不积累每次超时调用专属的无界等待者；没有实际刷新确认时不能因写出迟到完成就宣称FLUSHED。单端I/O自身随后失败或达到io_timeout_ms，仍按前述故障规则转FAULTED并分类目标；这是独立故障，不是flush等待到期的隐含副作用。
+
+**close关闭期限：** close先原子停止新接收，再在一个总deadline内drain／flush及回收自有资源，应急也计入此deadline；重复close返回首个CloseReport，不重新执行写出或重复清理。在关闭处理中，close到期后不再启动新写出，实际放弃的未开始目标计SHUTDOWN_DROPPED，在途标UNKNOWN；不可取消的I/O可能迟到写出，CloseReport须含cleanup_pending=true，路径独占权直到实际资源回收才释放，不能承诺方法返回即所有资源已关闭。后台仅允许完成既有I/O与回收，不无限重试；健康视图可反映回收完成，原报告保持不变。宿主应在退出进程时处理永久阻塞资源，本切片不承诺杀死线程或进程级恢复。
+
+<a id="runtime-diagnostics-configuration"></a>
+
+#### 10.8.6 配置接入、待批准参数及前置缺口
+
+可信装配方通过统一配置模块注册完整定义、冻结并显式解析，取得原生EffectiveSnapshot后调用initialize；服务只用get_registry／get_entry／list_entries读取绑定的不可变内容，不读环境、文件、数据库，不自行resolve或建立defaults副本。资源能力（借用流、时钟、UUID源、目录访问与独占能力）由启动代码／基础设施注入，不携带可覆盖配置值的第二套参数。快照在服务生命周期内固定，无热替换、fallback、内容哈希ID或运行revision。缺项或能力不足时拒绝初始化，不默默补值。
+
+静态核对依据为[已批准解析子集](#configuration-resolution-support)及configuration的resolution.py、snapshots.py、resolution_results.py，与test_resolution_boundaries.py、test_snapshots.py相关断言。本轮只读文本，未运行或导入它们。当前解析器支持六类精确载体、required／nullable、单参数range／enum；整个冻结集合的validator和dependencies必须为空，scope仅instance、override_policy仅no_override、sensitivity仅public，拒绝兼容升级声明。对象内部没有字段Schema、长度约束或映射键规则；角色和生效字段只保存声明。public不是已脱敏或已授权证明。
+
+**存在实施前置缺口，不能拿现有解析成功冒充日志配置完整有效。** 模块覆写映射的模块名／等级／数量、路径隔离、R<Q、E≤B等需要附加或跨参数校验。定义方必须保留必要validator／dependencies；现有解析器将如实返回UNSUPPORTED_RESOLUTION_SEMANTICS（VALIDATOR_NOT_SUPPORTED优先于同定义的DEPENDENCIES_NOT_SUPPORTED），包括未提供值的定义。不能清空声明、删掉不支持定义、只截取可解析子集或通过日志私有校验器制造成功快照。
+
+最小补充建议是另行批准M15的受限、静态白名单验证能力：执行明确标识的纯内存validator、读取已声明dependencies完成本表约束、未知验证器或依赖语义拒绝、全部检查成功才产生原有形态的不可变快照；不开放任意回调／动态导入，不要求同时实现加载、热配置或权限系统。目录真实存在、可写、独占与符号链接等易变事实由日志资源准备再次核验，不能被纯内存校验替代。该补充的端口和错误协议须单独形成契约；本轮不改§11.9／§11.10或源码，不提前批准补充方案。生产路径若需非public敏感级别，也必须另补相应安全能力，不能为了适配解析器降级标签。完整生产配置接入在此缺口解决前不可宣称可实施通过。
+
+下表全部是**新增生产参数与默认值的待批准建议**，不是已注册参数，也不是合成测试值。共同元信息建议：owner／consumer为logging_service，作用域instance、无配置层级覆写（no_override），required=true、nullable=false，仅初始化生效（声明需重建实例），角色为可信运维读写；普通数值／枚举拟public，目录须部署安全审查。模块“覆写”是一个实例参数内的日志路由语义，不是配置解析器的多层override_policy。参数定义及唯一默认只能放M15；批准实现前仍须完整提供§11.9全部元信息，不能统一填空validator／dependencies或把待定当NotApplicable。
+
+| 候选键（logging.前缀） | 类型、默认建议及约束／理由 |
+| --- | --- |
+| instance_level、module_levels | string INFO；object {}，仅§10.8.2模块名→五等级或NOTSET，至多16项；控制默认采集与精确模块覆写，映射需validator |
+| console_enabled、file_enabled | boolean，各true；允许分别禁用，不影响审计／账本 |
+| console_level、file_level | string，分别INFO、DEBUG；枚举五等级及NOTSET |
+| console_stream | string stderr；枚举stderr／split；JSONL为固定子集，无格式／颜色可执行配置 |
+| file_directory | string，建议明确NoDefault且必填；绝对诊断专用目录，最长4096字符、不含控制字符／凭据；需路径validator，真实资源准备再次核验 |
+| event_max_bytes | integer，4096；512至65536字节，含LF；限制单条记录与备用记录 |
+| sink_capacity、warning_reserve | integer，分别1024、128；Q在2至65536，R在1至65535且R<Q；reserve声明依赖capacity，需validator |
+| preparation_capacity | integer，16；2至256；限制同时处理输入的槽位，包含一个高等级预留槽 |
+| rotation_bytes、retained_segments | integer，分别10485760、5；B在512至1073741824且B≥E，K在1至100；rotation声明依赖event_max_bytes，限制文件占用 |
+| io_timeout_ms、probe_interval_ms | integer，分别200、1000；各1至60000毫秒；单端I/O时限和恢复探测最小间隔 |
+| flush_timeout_ms、close_timeout_ms | integer，分别1000、2000；各1至60000毫秒；每次调用的总等待上限 |
+| emergency_capacity、emergency_interval_ms | integer，分别8、1000；分别1至64项、1至60000毫秒；应急单条固定上限512字节，每间隔最多一条，超额合并计数 |
+
+不将不变量（脱敏、审计隔离、无递归、禁止伪造版本）做成可关闭参数。私有执行器／队列数量如实现需调节，仍归M15声明，不新增局部默认；本契约不为选择某线程库另设审批项。
+
+<a id="runtime-diagnostics-results"></a>
+
+#### 10.8.7 最小公开接口、结果和错误（推荐）
+
+以下为语义签名；不要求类名机械照抄，但实现公开接口需完整表达这些行为。结果及嵌套记录均深不可变。LoggingOk／LoggingErr独立于配置模块原有结果协议；预期错误不抛携带输入的异常，不经日志再打印错误对象。签名缺少实参／未知关键字按语言规则拒绝；资源耗尽等无法完成结果构造的非预期故障不伪装成功。
+
+| 接口 | 结果及边界 |
+| --- | --- |
+| create_logging_service() → Service | NEW，无外部I/O、导入即注册或全局handler副作用；装配方持有生命周期端口 |
+| Service.initialize(snapshot, resources) → LoggingResult<Unit> | 全部准备后READY；没有部分可用成功。失败含cleanup_pending，不返回文件路径或底层异常 |
+| Service.get_logger(module) → LoggingResult<Logger> | 绑定已知模块的受限emit句柄；重复取得不增加输出资源，不要求对象身份相同 |
+| Logger.emit(event) → LoggingResult<EmitReceipt> | 准入成功即有event_id；按console、file固定顺序给出DISABLED／FILTERED／ENQUEUED／DROPPED及reason，并给emergency=NOT_NEEDED／SCHEDULED／SUPPRESSED／UNAVAILABLE；SCHEDULED仅为摘要入队。全部FILTERED／DISABLED仍是可解释回执，全部DROPPED也不伪装已写出 |
+| Service.get_sink_health() → HealthSnapshot | §10.8.5内存健康与安全计数；任何生命周期可查，NEW无成功时间、容量及阈值未装配时为None，公开C／S，不返回快照原值、路径或事件正文 |
+| Service.flush() → LoggingResult<FlushReport> | READY可调用；固定截点前每端给FLUSHED／INCOMPLETE／DISABLED，以及written、flushed、dropped、unknown、pending_queued、pending_in_flight计数和固定reason；FLUSHED要求该截点目标全部完整写出且flush成功，否则INCOMPLETE。总deadline只限制此次等待，不关闭服务、丢弃队列或把正常在途记为UNKNOWN；报告返回后固定，迟到完成通过健康和后续flush报告观察，不承诺持久化 |
+| Service.close() → CloseReport | 任意状态可调用；首调用停止接收，返回每端DRAINED／INCOMPLETE／DISABLED及同口径计数、reason、cleanup_pending；关闭完成分类后pending_queued／pending_in_flight均为0，实际放弃归dropped／unknown，资源可能仍在途并以cleanup_pending说明；DRAINED还要求flush及自有资源回收完成。服务进入CLOSED；重复返回首报告，不使旧logger恢复 |
+
+LoggingError恰含code、operation、field（单个固定字段标识）、reason、cleanup_pending；只有initialize清理未完成可将后者置true。无任意message、输入键／值、路径、异常或对象引用。EmitReceipt不含正文和关联字段。所有固定原因码如下，均为大写；报告的成功／无动作reason为NONE：
+
+| code或报告位置 | 固定reason与触发 |
+| --- | --- |
+| INVALID_STATE | NOT_INITIALIZED（NEW下取logger／emit／flush）、ALREADY_INITIALIZED（READY下initialize）、SERVICE_CLOSED（CLOSING／CLOSED）、SERVICE_FAULTED（FAULTED，仅健康及close可用） |
+| INVALID_CONFIGURATION | SNAPSHOT_REQUIRED（非原生快照）、CONFIGURATION_REQUIRED（必要键未注册／MissingValue）、CONFIGURATION_UNSUPPORTED（尚缺日志所需校验能力或声明不符）、CONFIGURATION_INVALID（安全可判定的值约束失败）；不改配置模块错误协议 |
+| INITIALIZATION_FAILED | RESOURCE_CONFLICT（无法独占）、RESOURCE_INVALID（路径／流／注入能力不符合资源契约）、RESOURCE_OPEN_FAILED（准备I/O失败）、IO_TIMEOUT（准备超时） |
+| INVALID_LOGGER | MODULE_NOT_ALLOWED；不回显模块输入 |
+| INVALID_EVENT | INVALID_SHAPE、INPUT_LIMIT_EXCEEDED、MISSING_FIELD、LEVEL_NOT_ALLOWED、EVENT_CODE_NOT_ALLOWED、FIELD_VALUE_INVALID、EVENT_TOO_LARGE、FORMAT_FAILED；按输入及编码步骤分别触发 |
+| ADMISSION_REJECTED | ADMISSION_BUSY：规范化槽位满，尚未取得事件所有权；EVENT_BUILD_FAILED：ID／时钟源失败或返回非法结果。二者均无事件回执；可信已核验等级可用于固定计数及高等级常量应急通知，不回显事件 |
+| FILTERED／DISABLED | MODULE_THRESHOLD、SINK_THRESHOLD、SINK_DISABLED；无日志损失计数 |
+| DROPPED及健康丢弃标签 | QUEUE_FULL、SINK_UNAVAILABLE、SHUTDOWN_DROPPED；分别为无容量、故障未开始写、实际关闭放弃的未开始写目标；独立flush期限到达不使用SHUTDOWN_DROPPED |
+| 健康last_reason／报告INCOMPLETE | WRITE_FAILED、FLUSH_FAILED、ROTATION_FAILED、RETENTION_FAILED、FILE_STATE_UNCONFIRMED、IO_TIMEOUT、DEADLINE_EXCEEDED、DELIVERY_LOSS、RESOURCE_CLOSE_FAILED；FILE_STATE_UNCONFIRMED表示文件恢复一致性未确认；DEADLINE_EXCEEDED用于报告等待未完成，独立flush到期不写入端last_reason；实际已开始写的故障计UNKNOWN，正常等待未完成使用pending计数 |
+| 应急／备用诊断 | EMERGENCY_LIMIT、EMERGENCY_UNAVAILABLE、FORMAT_FAILED；只用于固定通知或计数，绝不拼入原输入 |
+
+必要首错顺序固定：生命周期→载体／形状→字段合法性→资源／投递；失败不再执行依赖后续步骤。initialize在NEW先核验原生快照，再按候选完整键Unicode排序逐项检查必要定义及存在状态，再检查支持能力，再检查值约束，最后资源准备（console先file）；值约束问题按键排序返回首个。缺口未补时返回CONFIGURATION_UNSUPPORTED，不调用私有快照构造或文件准备；READY下即使传坏快照仍先ALREADY_INITIALIZED。
+
+get_logger先生命周期再模块精确准入。emit先生命周期，随后顶层dict载体／项数／全部键载体及长度；然后按level、event_code顺序检查存在及准入；再申请规范化槽位，满则ADMISSION_BUSY。取得槽位后按context、attributes顺序核验dict形状／项数／全部键，再按本节白名单列举顺序核验保留值；未知字段仅移除。之后生成ID／时间、格式化／大小检查，最后模块过滤、逐端判断。sink判断顺序为禁用→模块过滤→sink过滤→故障→容量，不因端故障把本来应FILTERED的事件计丢弃。未知码与非法context同时出现先EVENT_CODE_NOT_ALLOWED；非法输入即使等级会被过滤也先拒绝。检查键格式时不访问不支持键的哈希、比较或转换钩子。
+
+错误field只可为state、snapshot、configuration、resources、module、event、level、event_code、context、attributes，其他细节由固定reason表达；非白名单键名不进入错误路径。后台多个失败全部按固定端记录；单端报告只取首个障碍，顺序为已记录I/O故障→文件恢复一致性未确认→本次deadline→已有投递损失→资源回收失败，其他问题留健康计数，避免用较晚异常掩盖已知写入失败。flush／close不是无条件LoggingOk(Unit)；INCOMPLETE必须通过报告显式处理。
+
+<a id="runtime-diagnostics-examples"></a>
+
+#### 10.8.8 具体验收例子（合成，全部未执行）
+
+以下只定义输入和预期，不是现有测试或生产默认。共用合成场景：module=bootstrap；I=INFO、console=INFO、file=DEBUG、无模块覆写、两端启用、console_stream=stderr；E=4096、Q=4、R=1、P=2、B=8192、K=2；I/O时限20ms、探测间隔100ms、flush／close总时限50ms；应急容量2、间隔100ms。文件目录为隔离临时目录中显式准备的空目录，双流用可控资源替身，事件ID源在观察时记为e1／e2（不是实际UUID值），UTC时钟固定为2026-09-09T00:00:00.000000Z。其余必要值显式给出；需要完整初始化的例子以配置前置能力已另行批准并具备为前提，不通过删validator／dependencies构造假成功快照。
+
+| 输入／操作 | 预期可观察结果（未执行） |
+| --- | --- |
+| emit({level: DEBUG, event_code: OPERATION_COMPLETED}) | C=DEBUG；console FILTERED／SINK_THRESHOLD，file ENQUEUED；正常drain后仅文件一行DEBUG／10，不误丢DEBUG |
+| emit({level: INFO, event_code: OPERATION_COMPLETED, context: {request_id: request-7}, attributes: {count: 2}}) | 两端各一行，event_id都为同一个e1，时间／schema_version／message相同；重复emit得到不同e2，不去重 |
+| 独立实例将bootstrap覆写WARNING；再发DEBUG和INFO | 两端均FILTERED／MODULE_THRESHOLD，不计dropped；覆写NOTSET则回到C=DEBUG。将file_level改NOTSET的独立实例，其S=INFO，DEBUG两端过滤 |
+| 输入增加Authorization: Bearer secret-demo、message: 带签名URL、exception: 带Authorization文本的异常；context增加token，attributes增加嵌套prompt | 输入仍含合法必填项时成功，所有增加内容整项移除，redacted=true、exception_omitted=true；输出只含固定message，三条通道和所有错误均无secret-demo、URL或异常正文。移除字段中的对象即使str／repr会抛错也不调用 |
+| attributes.count=True，同时顶层含秘密字段；或context.request_id含换行／URL | INVALID_EVENT／FIELD_VALUE_INVALID，field分别attributes／context；错误不含原值。非法event_code与坏context并存先EVENT_CODE_NOT_ALLOWED；超过32顶层项先INPUT_LIMIT_EXCEEDED，无递归扫描 |
+| 增加config_snapshot_id: invented及runtime_policy_revision: 9 | 两字段移除，redacted=true；输出、回执、健康不生成替代配置ID；schema_version仍是事件格式1 |
+| INFO事件成功emit后将原context.request_id从request-7改为request-8，将attributes.count从2改为9 | 已入队两端仍为request-7、2；公开回执和健康嵌套结构不可改。两线程各发送一次合法事件不会共享可变上下文或重复安装handler |
+| 同Service initialize成功后，用同一快照再调用，或用坏快照再调用 | 均ALREADY_INITIALIZED，原端和配置不变；之后一个INFO仍每端一行。第二Service用同目录→RESOURCE_CONFLICT，原实例正常工作 |
+| file准备失败，而console已准备 | INITIALIZATION_FAILED／RESOURCE_OPEN_FAILED，无READY句柄，借用流仍打开；资源收回则NEW，可显式重试；若回收阻塞则FAULTED及cleanup_pending=true |
+| 冻结定义含logging.warning_reserve的非空validator和dependencies，再调用现有resolve_configuration | UNSUPPORTED_RESOLUTION_SEMANTICS／VALIDATOR_NOT_SUPPORTED，无快照；仅dependencies非空时DEPENDENCIES_NOT_SUPPORTED。不给日志初始化假快照；此例不以现有解析器“通过”作为预期 |
+| 两端均暂停写出；依次发3条INFO，再发1条INFO，再发1条WARNING | 前3条两端入队占用3；第4条INFO两端QUEUE_FULL，各计一次丢弃；WARNING占用预留后两端为4，ENQUEUED；再发ERROR则两端QUEUE_FULL，仅尝试一次同ID应急摘要，两端丢弃各增1 |
+| Q已满且stderr也阻塞／应急限流；再发CRITICAL | emit有界返回DROPPED；已知不可用／限流时emergency为UNAVAILABLE／SUPPRESSED，尚未知阻塞时可为SCHEDULED，随后健康标应急失败；不会同步等待stderr，不承诺该记录保留。P槽均被占时新请求ADMISSION_BUSY，无事件ID；低等级只占一个槽时WARNING仍可用第二槽 |
+| file写出挂起超过20ms，console可写 | file FAULTED／IO_TIMEOUT，在途UNKNOWN、未开始积压SINK_UNAVAILABLE计丢弃；console继续写；新DEBUG目标文件DROPPED且console仍FILTERED。挂起未结束不新增无限探测工作；结束后还须确认完整记录边界、段序及保留状态一致并探测通过才恢复，旧记录不重发，累计计数保留 |
+| 单次write只写前缀后报错；或格式化主记录失败 | 前者UNKNOWN／WRITE_FAILED，无重放；后者安全备用沿用同一ID、固定DIAGNOSTIC_FORMAT_FAILED且无异常正文，备用再失败为FORMAT_FAILED并走常量应急 |
+| 部分写入失败：e1仅写出JSON前缀、无LF后报错；原I/O结束，文件重新可写，探测发现残缺尾行；随后emit一条INFO事件e2（合成，未执行） | e1仍为UNKNOWN；file保持FAULTED、last_reason=FILE_STATE_UNCONFIRMED，不追加e2或DELIVERY_RECOVERED，不自动截断／删除／重放／修复。e2的file目标DROPPED／SINK_UNAVAILABLE，console正常ENQUEUED并写出e2；既有文件字节不因探测改变。轮转后若段序冲突或关闭段超过K，即使尾行完整且文件可写也同样不得恢复 |
+| B=8192，活动文件8191字节，下一条合法JSONL为512字节 | 先轮转后写入完整512字节记录；若已有两关闭段，则最旧段删除，最终仍两关闭段及一个活动文件。合成8191字节由若干合法完整行构成；活动恰8192也在下一条前轮转 |
+| 清理旧段权限失败；或目录中出现非服务文件／符号链接 | 前者file FAULTED／RETENTION_FAILED，不继续增长，活动文件不删除；后者初始化RESOURCE_INVALID或运行资源故障，无删除外部文件／业务blob副作用 |
+| 正常emit后flush，两端均完成；随后close再close，旧logger再emit | FlushReport两端FLUSHED；首次CloseReport DRAINED、cleanup_pending=false，借用流仍打开；重复close返回原报告，不重复输出；旧logger SERVICE_CLOSED |
+| 独立实例io_timeout_ms=100、flush_timeout_ms=10；先投递两条INFO（e1／e2），t=0调用flush，文件e1刚开始写、e2排队；t=10仍如此，console已写出并刷新两条。t=11再发INFO e3；文件e1在t=20完整写出，e2在t=21、e3在t=22完整写出；t=23再次flush并于t=24完成两端刷新（时间均为毫秒；合成，未执行） | 首次报告console FLUSHED；file INCOMPLETE／DEADLINE_EXCEEDED，written=flushed=dropped=unknown=0、pending_queued=1、pending_in_flight=1；服务和两端仍READY，健康flush_deadline_exceeded增1，file队列／在途占用各1，无SHUTDOWN_DROPPED或UNKNOWN。e3按容量正常入队但不进入首次截点；t=22文件健康written_events=3、queued_events=in_flight_events=0，仅已确认刷新才计flushed_events，首次报告不变。第二次报告file FLUSHED，written=flushed=3，其余四类目标计数为0；不因首次等待超时重复计数、重发或关闭资源 |
+| 独立实例io_timeout_ms=100；close时一端在途阻塞，另有一条未开始；到50ms仍未结束 | 总deadline内返回INCOMPLETE／DEADLINE_EXCEEDED（若截点前已有I/O故障则该故障优先），在途UNKNOWN、未开始SHUTDOWN_DROPPED；cleanup_pending=true，不释放尚占用路径；迟到写出可能发生，原报告不改为成功 |
+| 已入队事件因故障明确丢弃后调用flush；两端禁用后emit | 前者受影响端INCOMPLETE／已知故障或DELIVERY_LOSS，不能仅因队列空就FLUSHED；后者两端DISABLED，无dropped，诊断关闭不提供或关闭任何审计／账本能力 |
+
+这些例子未证明V57–V68整体通过：Web、SDK、完整审计及计量仍缺失；轮转只覆盖大小／份数子集。实际实现后须分别验证输入安全、并发、资源故障、时间边界和文件保留；文本审查不等于性能、持久化、崩溃恢复或业务验收。
+
+<a id="runtime-diagnostics-decisions"></a>
+
+#### 10.8.9 集中待批准决定与停止点
+
+| 待批准公开决定 | 审查焦点 |
+| --- | --- |
+| L1 事件与安全入口 | 固定模板和字段白名单；自由文本／原始异常整项移除，关联ID由可信调用方确认；一次生成同事件ID与时间，输入隔离、安全首错及固定大写原因码 |
+| L2 分端路由与最小输出 | C／S过滤公式及显式模块门槛；两端JSONL、stderr／split、大小轮转和关闭段份数保留、单写者目录边界 |
+| L3 投递与生命周期保障 | 逐端回执，WARNING以上预留与有限应急；故障隔离、丢弃／UNKNOWN计数、总deadline关闭及迟到I/O边界；重复初始化拒绝、重复关闭返回首报告 |
+| L4 配置接入与参数建议 | 固定快照装配、上表新增生产参数及默认建议；承认并另行处理M15校验前置缺口，不以本草案批准替代配置补充契约或既有行为 |
+
+上述四组是公开行为和保障，不要求批准某个线程数布局、队列库或锁实现。既有审计事务／权限要求无需重新审批，后续能力也不因批准此切片自动授权。交付本草案及文档检查后停止；等待用户审查，不自行定稿、修配置、编码、安装依赖、提交、推送或部署。
+
 <a id="section-11"></a>
 
 ## 11. 独立配置模块：统一参数、版本快照与安全热修改

@@ -1,12 +1,12 @@
 # 十五个逻辑模块、基础设施与依赖
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
-适用主题与局部定义：此处完整保留所有权表与依赖规则；M01—M15是原模块，I01—I02是原基础设施，不新增模块，也不将其解读为微服务。
+适用主题与局部定义：此处完整保留所有权表与依赖规则；M01—M15是逻辑模块，I01—I02是基础设施，不新增模块，也不将其解读为微服务。
 
-来源：[原文 L232–L285](../../companion_memory_module_design_provider_logging_config.md#section-05)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
-按关联工作联合阅读：[跨模块事务](persistence-and-transactions.md#section-07)；[数据分组草图](request-paths.md#source-line-955)；[代码规范](../../CODING_STANDARDS.md)。
+按关联工作联合阅读：[跨模块事务](persistence-and-transactions.md#section-07)；[数据分组草图](request-paths.md#source-line-955)；[代码规范](../CODING_STANDARDS.md)。
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
@@ -81,7 +81,7 @@ HTTP/Web入口 → 用例编排 → 领域模块公开端口 → Repository/Inde
 
 ## 模块契约阅读入口
 
-技术原文第6节的总标题在此索引；其十五个完整模块正文分别保留在下列文件。[原文第6节](../../companion_memory_module_design_provider_logging_config.md#section-06)。
+十五个模块的职责与端口分别在下列文件唯一维护；本表仅提供入口。详细公共契约与跨模块规则通过链接引用，不复制维护。
 
 | 原模块 | 完整契约入口 |
 | --- | --- |
@@ -101,4 +101,4 @@ HTTP/Web入口 → 用例编排 → 领域模块公开端口 → Repository/Inde
 | M14 | [日志与审计](../modules/logging.md#contract) |
 | M15 | [统一配置](../modules/configuration.md#contract) |
 
-基础设施仍为原文I01与I02，详细恢复边界见[持久化与事务](persistence-and-transactions.md)；不另建第三个基础设施模块。
+基础设施为I01与I02，详细恢复边界见[持久化与事务](persistence-and-transactions.md)；不另建第三个基础设施模块。

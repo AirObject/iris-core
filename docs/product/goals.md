@@ -1,10 +1,10 @@
 # 多目标、去重与提醒
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：目标是可并行的未来意图或待办，系统维护状态和提醒；外部负责实际执行及完成反馈。过期是时间条件。
 
-来源：[原文 L630–L691](../../companion_memory_cognition_system_design_integrated.md#section-14)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_cognition_system_design_integrated.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[目标时序待定项](decisions-and-delivery.md#source-line-1154)；[专注业务隔离](dream.md#source-line-780)；[目标模块](../modules/goals.md)；[管理事务](../architecture/persistence-and-transactions.md#t08)。
 

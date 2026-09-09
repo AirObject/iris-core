@@ -1,14 +1,14 @@
 # 统一配置注册表、快照与安全热修改
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：Schema描述参数，revision标识配置版本，snapshot是操作取得的完整不可变视图；生效计划负责让版本在指定边界启用。业务对象和已使用预算不是配置。
 
-来源：§11.1–11.8对应[原文基线 L815–L950](../../companion_memory_module_design_provider_logging_config.md#section-11)；§11.9对应[已批准注册表契约](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-contract)，§11.10对应[显式解析与快照已批准契约](../../companion_memory_module_design_provider_logging_config.md#configuration-resolution-contract)（待实现授权）。旧行号锚点保留整理基线含义；[增量覆盖记录](../work/ORGANIZATION_REPORT.md#configuration-contract-review)仅记录此前注册表整理历史，不代表本次新增章节的检查。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[配置模块契约](../modules/configuration.md)；[配置事务](persistence-and-transactions.md#t12)；[参数已定与未定](../product/decisions-and-delivery.md#section-23)；[模式与权限](../modules/runtime.md)；[日志参与者](logging.md#source-line-807)。
 
-已验收注册表：[有效契约](#configuration-registry-contract)、[依据](#configuration-registry-evidence)、[原批准范围](#configuration-registry-decisions)。本次仅契约定稿，待实现授权：[显式解析与快照已批准契约](#configuration-resolution-contract)、[输入与空值组合](#configuration-resolution-input)、[支持边界](#configuration-resolution-support)、[快照接口](#configuration-resolution-snapshot)、[错误优先级](#configuration-resolution-errors)、[合成验收例子（未执行）](#configuration-resolution-examples)、[集中已批准决定](#configuration-resolution-decisions)。
+已批准契约：[参数定义与只读注册表](#configuration-registry-contract)、[显式解析与不可变快照](#configuration-resolution-contract)。相关输入、支持边界、接口、错误和例子见各节；实现及验收进度只见[STATUS](../work/STATUS.md)。
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
@@ -370,7 +370,7 @@ D1–D7的公开表示、默认与静态校验、精确键和重复策略、深�
 
 ### 11.10 显式配置值解析与不可变有效快照：最小契约
 
-**状态：契约已批准，待实现授权；本轮仅授权契约定稿，不授权编码。** 用户已批准main／`d042e1a`工作区中本节现稿的完整条款，包括S1–S6、缺失组合表、支持子集、公开接口、所有权、错误优先级及合成验收条件，集中见[已批准决定表](#configuration-resolution-decisions)。§11.9及其注册表验收事实不变；其“本切片”仍指注册表切片。本节的“有效”仅指通过下述受限解析规则的完整内存结果，不表示配置值已批准、已持久化或已对运行任务激活。
+**状态：契约已批准。** 实现与验收进度见[STATUS](../work/STATUS.md)，本节不提供新的执行授权。 用户已批准main／`d042e1a`工作区中本节现稿的完整条款，包括S1–S6、缺失组合表、支持子集、公开接口、所有权、错误优先级及合成验收条件，集中见[已批准决定表](#configuration-resolution-decisions)。§11.9及其注册表验收事实不变；其“本切片”仍指注册表切片。本节的“有效”仅指通过下述受限解析规则的完整内存结果，不表示配置值已批准、已持久化或已对运行任务激活。
 
 <a id="configuration-resolution-evidence"></a>
 
@@ -384,9 +384,9 @@ D1–D7的公开表示、默认与静态校验、精确键和重复策略、深�
 | §11.4–11.5、T12：任务固定快照；激活、持久化与恢复另有承诺 | 新结果不改写旧结果，不更改任何当前有效指针 | 本地快照接口暂不提供持久标识或激活状态 |
 | §15.1：前期包含类型化Schema／快照，安全热发布与迁移后续开展 | 本契约作为注册表之后的独立小切片设计 | 不因此授权同阶段日志、Provider、I01或后续切片实现 |
 
-静态审查基线为main／`d042e1a`：现有configuration源码及相关测试提供定义、校验、注册／冻结和只读查询；没有配置值解析或快照接口。现有`Err`及`Result`限定于`RegistryError`，不能把新增错误直接当成既有注册表错误。源码中默认值已转为不可变载体，后续解析须区分可信冻结默认与外部原始输入，不能因默认对象已是只读映射而误拒绝它。
+契约形成时的静态审查基线为main／`d042e1a`（历史实现观察，当前进度见STATUS）：现有configuration源码及相关测试提供定义、校验、注册／冻结和只读查询；没有配置值解析或快照接口。现有`Err`及`Result`限定于`RegistryError`，不能把新增错误直接当成既有注册表错误。源码中默认值已转为不可变载体，后续解析须区分可信冻结默认与外部原始输入，不能因默认对象已是只读映射而误拒绝它。
 
-本节只依赖成功冻结的注册表和显式内存输入，不读取文件、环境、数据库、时间、随机源或网络；不调用validator、日志、Provider、秘密提供器或其他模块。没有生产参数、加载层、权限引擎、变更补丁、热发布、订阅、回退、迁移或恢复接口。以下规则已批准，仍须另有实现授权后才可实现。
+本节只依赖成功冻结的注册表和显式内存输入，不读取文件、环境、数据库、时间、随机源或网络；不调用validator、日志、Provider、秘密提供器或其他模块。没有生产参数、加载层、权限引擎、变更补丁、热发布、订阅、回退、迁移或恢复接口。以下规则已批准；后续实现工作仍须用户明确授权。
 
 <a id="configuration-resolution-input"></a>
 

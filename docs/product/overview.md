@@ -1,10 +1,10 @@
 # 角色、术语、信息对象与概念接口
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：用于明确系统和外部宿主的职责、术语、逻辑对象及接口状态；不作为普通任务的默认全读入口。
 
-来源：[原文 L1–L8](../../companion_memory_cognition_system_design_integrated.md)；[原文 L36–L67](../../companion_memory_cognition_system_design_integrated.md#section-01)；[原文 L68–L110](../../companion_memory_cognition_system_design_integrated.md#section-02)；[原文 L111–L138](../../companion_memory_cognition_system_design_integrated.md#section-03)；[原文 L903–L948](../../companion_memory_cognition_system_design_integrated.md#section-18)；[原文 L949–L981](../../companion_memory_cognition_system_design_integrated.md#section-19)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_cognition_system_design_integrated.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[接入与媒体](input-and-media.md)；[工程模块所有权](../architecture/ownership.md)；[外部信息获取](retrieval.md)。
 

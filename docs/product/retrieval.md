@@ -1,10 +1,10 @@
 # 回复准备、记忆查询与入口隔离
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：入口是具体交互场景；缓存尚未成为正式记忆。S2是目标段，S1是最新辅助，S3是历史辅助。persona、状态、目标是分开的返回区域。
 
-来源：[原文 L692–L751](../../companion_memory_cognition_system_design_integrated.md#section-15)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_cognition_system_design_integrated.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[双指标与反馈](lifecycle.md)；[来源访问](provenance-and-memory.md#source-line-383)；[专注门控](dream.md#source-line-780)；[时限与返回草图](../architecture/request-paths.md)；[检索模块](../modules/retrieval.md)。
 

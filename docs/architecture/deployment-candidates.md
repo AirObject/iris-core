@@ -1,10 +1,10 @@
 # 工程约束、规模与部署存储候选
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：已给定工程约束、容量推导与待验证候选在正文分别保留；一个逻辑模块不等于一个进程或容器。本文不能作为选型已获批准或性能已验证的证明。
 
-来源：[原文 L1–L6](../../companion_memory_module_design_provider_logging_config.md)；[原文 L26–L73](../../companion_memory_module_design_provider_logging_config.md#section-01)；[原文 L74–L142](../../companion_memory_module_design_provider_logging_config.md#section-02)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[持久化承诺](persistence-and-transactions.md)；[正式决定待批准](implementation-options.md#source-line-1216)；[参考标记](references.md)。
 
@@ -13,7 +13,7 @@
 # 独立陪伴角色记忆与认知系统：技术架构与模块设计草稿
 
 > 文档性质：模块与工程契约草稿，不是实现完成报告或最终技术栈批准记录。  
-> 需求依据：[`companion_memory_cognition_system_design_integrated.md`](../../companion_memory_cognition_system_design_integrated.md)，以及本文列出的部署、规模、时延、持久化和远程模型约束。  
+> 需求依据：[现行产品行为](../product/overview.md)，以及本文列出的部署、规模、时延、持久化和远程模型约束。
 > 标识约定：[M01](../modules/ingress.md#contract)—[M15](../modules/configuration.md#contract)为逻辑模块；[I01](ownership.md#i01)—[I02](ownership.md#i02)为基础设施；[T01](persistence-and-transactions.md#t01)—[T13](persistence-and-transactions.md#t13)为事务与恢复契约；[V01](acceptance.md#v01)—[V90](acceptance.md#v90)为工程验收。模块不等于进程、容器、仓库或独立agent。
 
 

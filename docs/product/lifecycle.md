@@ -1,10 +1,10 @@
 # 双指标、召回反馈、遗忘与删除
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：正式记忆是已加工保存的认知；相信程度评价命题接受程度，保留强度控制活跃与保留。实际使用由外部反馈。
 
-来源：[原文 L423–L494](../../companion_memory_cognition_system_design_integrated.md#section-10)；[原文 L495–L555](../../companion_memory_cognition_system_design_integrated.md#section-11)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_cognition_system_design_integrated.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[来源与对象边界](provenance-and-memory.md)；[外部获取](retrieval.md)；[梦境影响修复](dream.md#source-line-845)；[反馈事务](../architecture/persistence-and-transactions.md#t07)。
 

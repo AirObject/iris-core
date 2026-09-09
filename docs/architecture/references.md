@@ -1,12 +1,12 @@
-# 原文参考依据与资料标记
+# 技术参考依据与资料标记
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
-适用主题与局部定义：保留S01—S18的原资料名称、核对事项及地址；阅读视图中的标记定位到本文件。此次只核对标记与地址映射，不联网复核版本、供应商能力或页面可达性。
+适用主题与局部定义：保留S01—S18的原资料名称、核对事项及地址；现行技术正文中的资料标记定位到本文件。此次只核对标记与地址映射，不联网复核版本、供应商能力或页面可达性。
 
-来源：[原文 L1237–L1287](../../companion_memory_module_design_provider_logging_config.md#section-16)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
-按关联工作联合阅读：[原技术材料](../../companion_memory_module_design_provider_logging_config.md#section-16)；[产品原文](../../companion_memory_cognition_system_design_integrated.md)；[候选批准边界](implementation-options.md#source-line-1216)。
+按关联工作联合阅读：[产品正文入口](../product/overview.md)；[候选批准边界](implementation-options.md#source-line-1216)。
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
@@ -16,7 +16,7 @@
 
 ## 16. 参考依据
 
-需求引用以原系统设计章节为准：[第6节](../product/batches-and-learning.md#section-06)三段与终结；[第8节](../product/provenance-and-memory.md#section-08)来源；[第10节](../product/lifecycle.md#section-10)、[第11节](../product/lifecycle.md#section-11)双指标与生命周期；[第12节](../product/self-and-persona.md#section-12)、[第13节](../product/current-state.md#section-13)、[第14节](../product/goals.md#section-14)、[第15节](../product/retrieval.md#section-15)persona、状态、目标和召回；[第16节](../product/dream.md#section-16)梦境；[第17节](../product/operations-and-management.md#section-17)故障/审计；[第21节](../product/acceptance.md#section-21)[A01](../product/acceptance.md#a01)—[A108](../product/acceptance.md#a108)验收。当前工程约束来自用户明确给定的部署、规模、时延、持久化与模型API要求。
+需求引用指向现行产品正文：[第6节](../product/batches-and-learning.md#section-06)三段与终结；[第8节](../product/provenance-and-memory.md#section-08)来源；[第10节](../product/lifecycle.md#section-10)、[第11节](../product/lifecycle.md#section-11)双指标与生命周期；[第12节](../product/self-and-persona.md#section-12)、[第13节](../product/current-state.md#section-13)、[第14节](../product/goals.md#section-14)、[第15节](../product/retrieval.md#section-15)persona、状态、目标和召回；[第16节](../product/dream.md#section-16)梦境；[第17节](../product/operations-and-management.md#section-17)故障/审计；[第21节](../product/acceptance.md#section-21)[A01](../product/acceptance.md#a01)—[A108](../product/acceptance.md#a108)验收。当前工程约束来自用户明确给定的部署、规模、时延、持久化与模型API要求。
 
 以下官方资料用于核对具体技术性质；模块划分、热修改协议、统计账本、超时预算、表名、目录、恢复策略和阶段顺序是本文设计建议，不由这些资料自动保证。
 

@@ -1,10 +1,10 @@
 # 持久化、事务、检查点与恢复
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：Unit of Work（UoW）指应用编排层让相关模块加入同一次本地事务的工作单元。Provider是唯一模型出口；本地事务恢复、有限远程尝试和结果未知分别处理。
 
-来源：[原文 L182–L231](../../companion_memory_module_design_provider_logging_config.md#section-04)；[原文 L471–L533](../../companion_memory_module_design_provider_logging_config.md#section-07)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[队列语义](../product/batches-and-learning.md)；[数据所有者](ownership.md)；[Provider账本](provider.md)；[配置激活协议](configuration.md#source-line-895)。
 

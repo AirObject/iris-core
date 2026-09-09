@@ -1,10 +1,10 @@
 # 待细化契约、参数性质与实施组织
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：本文件集中保留待细化项目、参数表和实施建议。数量、阈值与阶段示例不能直接充当批准后的实现默认值或开发授权。
 
-来源：[原文 L1148–L1197](../../companion_memory_cognition_system_design_integrated.md#section-22)；[原文 L1198–L1239](../../companion_memory_cognition_system_design_integrated.md#section-23)；[原文 L1240–L1263](../../companion_memory_cognition_system_design_integrated.md#section-24)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_cognition_system_design_integrated.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[工程候选与冻结点](../architecture/implementation-options.md)；[统一配置细则](../architecture/configuration.md)；[当前待批准任务](../work/CURRENT_TASK.md)；[整理报告待确认项](../work/ORGANIZATION_REPORT.md#open-items)。
 

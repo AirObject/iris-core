@@ -1,32 +1,32 @@
 # 多目标与意图模块入口
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：目标是未来意图；过期不等于完成或放弃。目标提醒计划持久化，投递仍然有限尽力。
 
-来源：[原文 L405–L416](../../companion_memory_module_design_provider_logging_config.md#section-06)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
-按关联工作联合阅读：[全部实现表达规范](../../CODING_STANDARDS.md)；[产品：多目标、去重与提醒](../product/goals.md)。
+按关联工作联合阅读：[全部实现表达规范](../CODING_STANDARDS.md)；[产品：多目标、去重与提醒](../product/goals.md)。
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
 ## 按边界定位
 
-下表是阅读路线；完整模块原文在本文件后半部，共享事务和详细设计仅通过链接引用。
+下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
 | 关注点 | 阅读位置与边界 |
 | --- | --- |
-| 职责、非职责、数据所有权 | [模块所有权行](../architecture/ownership.md#m10)；[本模块完整契约](goals.md#contract) |
+| 职责、非职责、数据所有权 | [模块所有权行](../architecture/ownership.md#m10)；[模块职责与端口](goals.md#contract) |
 | 公开能力与依赖 | 本模块正文的“建议端口”仍为草名；[统一依赖与启动边界](../architecture/ownership.md#source-line-267) |
 | 状态、提交和恢复 | [接收承诺与允许损失](../architecture/persistence-and-transactions.md#section-04)；[T08](../architecture/persistence-and-transactions.md#t08)；[远程结果未知](../architecture/persistence-and-transactions.md#source-line-518)（仅涉及外部调用时） |
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-858)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A52](../product/acceptance.md#a52)、[A53](../product/acceptance.md#a53)、[A54](../product/acceptance.md#a54)、[A55](../product/acceptance.md#a55)、[A56](../product/acceptance.md#a56)、[A57](../product/acceptance.md#a57)、[A58](../product/acceptance.md#a58)、[A59](../product/acceptance.md#a59)、[A88](../product/acceptance.md#a88)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V28](../architecture/acceptance.md#v28)、[V29](../architecture/acceptance.md#v29)（预期行为，未执行） |
-| 尚未决定 | 去重字段合并、旧ID映射、时区、提醒路由和梦境跨期合并策略待批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[整理待确认项](../work/ORGANIZATION_REPORT.md#open-items) |
+| 尚未决定 | 去重字段合并、旧ID映射、时区、提醒路由和梦境跨期合并策略待批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 
-## 完整模块原文阅读视图
+## 模块职责与端口
 
 <a id="source-line-405"></a>
 

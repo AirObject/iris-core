@@ -1,10 +1,10 @@
 # 自我认知与稳定persona
 
-> 本文件是权威原文的阅读视图，不是独立需求。原文仍是权威依据；后续修改规则时，先更新对应原文，再同步受影响的视图与相对链接；[覆盖映射](../work/ORGANIZATION_REPORT.md#coverage)仅作整理历史保留，不要求持续更新。保留原文“已确定、建议、示例、待确认”的性质；下列导读不新增决策。正文含原有编号，仅限文档追踪。
+> 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：一个实例只有一个认知主体；自我认知本体属于记忆模块，persona是由其提炼的当前发布摘要。当前活动与情绪由外部状态通道管理。
 
-来源：[原文 L556–L595](../../companion_memory_cognition_system_design_integrated.md#section-12)。行号对应整理时的哈希基线。
+设计／审核参考：[冻结原始文档](../reference/companion_memory_cognition_system_design_integrated.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[当前状态](current-state.md)；[梦境发布](dream.md)；[persona模块](../modules/self-model.md)；[候选与监督待定项](decisions-and-delivery.md#source-line-1172)。
 

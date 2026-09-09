@@ -1,5 +1,7 @@
 # 文档整理报告
 
+> 本文仅记录历史整理过程，不提供现行约束。旧权威关系及旧路径均为历史描述；本次只适配迁移链接，现行入口见[INDEX](../INDEX.md)，冻结原始文档见[reference](../reference/README.md)。
+
 历史记录日期：2026-09-09。包含首次文档整理、收尾审查及配置详细契约设计的分段记录，不包含业务实现成果。本报告作为一次性整理的历史记录保留，不再要求每个代码任务重做逐节哈希、全文还原或全量覆盖映射。当前任务由[CURRENT_TASK.md](CURRENT_TASK.md)记录，STATUS.md在切片完成节点简短更新。
 
 下列起始状态、基线哈希、原覆盖映射和完整性结果记录首次整理时的事实；同日的收尾审查与本地基线范围见[收尾记录](#closeout-review)。配置契约归并时留存的哈希、行号与增量覆盖见[契约审查记录](#configuration-contract-review)。全文中的“本次／当前”、授权状态和检查结论均限于所记录的历史轮次；历史哈希、链接及正文校验结果不代表当前文件版本，不据此宣称当前检查通过。
@@ -18,9 +20,9 @@
 
 | 实际路径（仓库相对） | 标题／职责 | 字节数／行数 | 整理前SHA-256 | 整理后SHA-256 | 结果 |
 | --- | --- | --- | --- | --- | --- |
-| [companion_memory_cognition_system_design_integrated.md](../../companion_memory_cognition_system_design_integrated.md) | 独立陪伴角色记忆与认知系统设计／产品行为 | 100296／1263 | `ce997355992b359fcad08c62284b206db2d64dad46a165a457cd801646a41f62` | `ce997355992b359fcad08c62284b206db2d64dad46a165a457cd801646a41f62` | 一致 |
-| [companion_memory_module_design_provider_logging_config.md](../../companion_memory_module_design_provider_logging_config.md) | 独立陪伴角色记忆与认知系统：技术架构与模块设计草稿／工程及模块 | 116264／1287 | `fb15ef0eaa5e3429c9cac7ebdc8f0e6f1114c5a39d8b12fbaba72856d5c362ed` | `fb15ef0eaa5e3429c9cac7ebdc8f0e6f1114c5a39d8b12fbaba72856d5c362ed` | 一致 |
-| [CODING_STANDARDS.md](../../CODING_STANDARDS.md) | 代码规范：实现自描述与文档边界／实现表达 | 15538／235 | `be6a5909e936e4fab27d5343f67d81c774caedd150260095d09b399cfbc1af18` | `be6a5909e936e4fab27d5343f67d81c774caedd150260095d09b399cfbc1af18` | 一致 |
+| [companion_memory_cognition_system_design_integrated.md](../reference/companion_memory_cognition_system_design_integrated.md) | 独立陪伴角色记忆与认知系统设计／产品行为 | 100296／1263 | `ce997355992b359fcad08c62284b206db2d64dad46a165a457cd801646a41f62` | `ce997355992b359fcad08c62284b206db2d64dad46a165a457cd801646a41f62` | 一致 |
+| [companion_memory_module_design_provider_logging_config.md](../reference/companion_memory_module_design_provider_logging_config.md) | 独立陪伴角色记忆与认知系统：技术架构与模块设计草稿／工程及模块 | 116264／1287 | `fb15ef0eaa5e3429c9cac7ebdc8f0e6f1114c5a39d8b12fbaba72856d5c362ed` | `fb15ef0eaa5e3429c9cac7ebdc8f0e6f1114c5a39d8b12fbaba72856d5c362ed` | 一致 |
+| [CODING_STANDARDS.md](../reference/CODING_STANDARDS.md) | 代码规范：实现自描述与文档边界／实现表达 | 15538／235 | `be6a5909e936e4fab27d5343f67d81c774caedd150260095d09b399cfbc1af18` | `be6a5909e936e4fab27d5343f67d81c774caedd150260095d09b399cfbc1af18` | 一致 |
 
 ## 整理与同步方法
 
@@ -40,258 +42,258 @@
 
 | 原文章节／标题及行号 | 归属与保留原因 |
 | --- | --- |
-| [L1 · 独立陪伴角色记忆与认知系统设计](../../companion_memory_cognition_system_design_integrated.md#独立陪伴角色记忆与认知系统设计) | [product/overview.md](../product/overview.md#独立陪伴角色记忆与认知系统设计)；本节完整正文 |
-| [L3 · 文档定位](../../companion_memory_cognition_system_design_integrated.md#文档定位) | [product/overview.md](../product/overview.md#source-line-3)；本节完整正文 |
-| [L9 · 目录](../../companion_memory_cognition_system_design_integrated.md#目录) | [原文目录](../../companion_memory_cognition_system_design_integrated.md#目录)；保留原始导航，任务路线使用[INDEX](../INDEX.md) |
-| [L38 · 1. 系统定位与范围](../../companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-38)；本节完整正文 |
-| [L40 · 1.1 一个角色的统一认知系统](../../companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-40)；本节完整正文 |
-| [L48 · 1.2 自治与外部执行](../../companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-48)；本节完整正文 |
-| [L56 · 1.3 多入口支持与暂缓范围](../../companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-56)；本节完整正文 |
-| [L64 · 1.4 不纳入的职责](../../companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-64)；本节完整正文 |
-| [L70 · 2. 核心术语与职责](../../companion_memory_cognition_system_design_integrated.md#section-02) | [product/overview.md](../product/overview.md#source-line-70)；本节完整正文 |
-| [L113 · 3. 信息组织与逻辑对象](../../companion_memory_cognition_system_design_integrated.md#section-03) | [product/overview.md](../product/overview.md#source-line-113)；本节完整正文 |
-| [L141 · 4. 输入与接入规则](../../companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-141)；本节完整正文 |
-| [L143 · 4.1 保留原始语境](../../companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-143)；本节完整正文 |
-| [L151 · 4.2 自身输出和行动反馈](../../companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-151)；本节完整正文 |
-| [L157 · 4.3 输入与管理操作分离](../../companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-157)；本节完整正文 |
-| [L163 · 4.4 专注期的输入例外](../../companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-163)；本节完整正文 |
-| [L169 · 5. 多媒体理解、隔离存储与清理](../../companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-169)；本节完整正文 |
-| [L171 · 5.1 理解优先级](../../companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-171)；本节完整正文 |
-| [L177 · 5.2 媒体理解被拒绝](../../companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-177)；本节完整正文 |
-| [L187 · 5.3 文件与业务引用](../../companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-187)；本节完整正文 |
-| [L195 · 5.4 无引用清理](../../companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-195)；本节完整正文 |
-| [L205 · 6. 独立入口队列、三段式批次与终结规则](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-205)；本节完整正文 |
-| [L207 · 6.1 一个具体入口，一套缓存总结队列](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-207)；本节完整正文 |
-| [L215 · 6.2 三段的定义与方向](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-215)；本节完整正文 |
-| [L234 · 6.3 输入推进与批次冻结](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-234)；本节完整正文 |
-| [L244 · 6.4 学习指令中的范围约束](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-244)；本节完整正文 |
-| [L252 · 6.5 保护、容量与正式记忆的边界](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-252)；本节完整正文 |
-| [L260 · 6.6 成功终结：包括零记忆结果](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-260)；本节完整正文 |
-| [L268 · 6.7 普通学习失败：失败终结，但保留历史衔接](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-268)；本节完整正文 |
-| [L278 · 6.8 明确敏感拒学：终结并切断本轮历史衔接](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-278)；本节完整正文 |
-| [L290 · 6.9 三种终结结果对照](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-290)；本节完整正文 |
-| [L299 · 6.10 滚动示例](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-299)；本节完整正文 |
-| [L313 · 6.11 终态与提交完整性](../../companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-313)；本节完整正文 |
-| [L321 · 7. 学习与内部自治](../../companion_memory_cognition_system_design_integrated.md#section-07) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-321)；本节完整正文 |
-| [L323 · 7.1 触发事件](../../companion_memory_cognition_system_design_integrated.md#section-07) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-323)；本节完整正文 |
-| [L329 · 7.2 加工与分类](../../companion_memory_cognition_system_design_integrated.md#section-07) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-329)；本节完整正文 |
-| [L337 · 7.3 权限与持续反馈](../../companion_memory_cognition_system_design_integrated.md#section-07) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-337)；本节完整正文 |
-| [L347 · 8. 批次来源、窗口与对象级生命周期](../../companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-347)；本节完整正文 |
-| [L349 · 8.1 窗口只能来自冻结的本批次](../../companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-349)；本节完整正文 |
-| [L359 · 8.2 来源快照字段](../../companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-359)；本节完整正文 |
-| [L367 · 8.3 中段目标、上下文和派生依据分别记录](../../companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-367)；本节完整正文 |
-| [L375 · 8.4 遗忘和删除针对对象](../../companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-375)；本节完整正文 |
-| [L383 · 8.5 来源访问与外部缓存隔离](../../companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-383)；本节完整正文 |
-| [L391 · 9. 正式记忆与关系](../../companion_memory_cognition_system_design_integrated.md#section-09) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-391)；本节完整正文 |
-| [L393 · 9.1 记忆语义字段](../../companion_memory_cognition_system_design_integrated.md#section-09) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-393)；本节完整正文 |
-| [L411 · 9.2 主体联系](../../companion_memory_cognition_system_design_integrated.md#section-09) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-411)；本节完整正文 |
-| [L417 · 9.3 扮演与其他关系](../../companion_memory_cognition_system_design_integrated.md#section-09) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-417)；本节完整正文 |
-| [L425 · 10. 相信程度、保留强度与防乒乓](../../companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-425)；本节完整正文 |
-| [L427 · 10.1 相信程度的统一量表](../../companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-427)；本节完整正文 |
-| [L447 · 10.2 保留强度](../../companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-447)；本节完整正文 |
-| [L455 · 10.3 双指标如何共同参与](../../companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-455)；本节完整正文 |
-| [L463 · 10.4 双阈值滞回](../../companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-463)；本节完整正文 |
-| [L497 · 11. 召回、使用反馈与记忆生命周期](../../companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-497)；本节完整正文 |
-| [L499 · 11.1 有效记忆与纠正](../../companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-499)；本节完整正文 |
-| [L505 · 11.2 遗忘](../../companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-505)；本节完整正文 |
-| [L511 · 11.3 独立深度召回](../../companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-511)；本节完整正文 |
-| [L519 · 11.4 使用反馈和阈值恢复](../../companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-519)；本节完整正文 |
-| [L529 · 11.5 删除](../../companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-529)；本节完整正文 |
-| [L539 · 11.6 生命周期总览](../../companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-539)；本节完整正文 |
-| [L558 · 12. 自我认知与稳定 persona](../../companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-558)；本节完整正文 |
-| [L560 · 12.1 开放的自我认知](../../companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-560)；本节完整正文 |
-| [L568 · 12.2 初始化自我](../../companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-568)；本节完整正文 |
-| [L574 · 12.3 persona 的内容与监督](../../companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-574)；本节完整正文 |
-| [L580 · 12.4 更新时机](../../companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-580)；本节完整正文 |
-| [L588 · 12.5 来源变化与摘要滞后](../../companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-588)；本节完整正文 |
-| [L598 · 13. 当前状态：外部权威的现在](../../companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-598)；本节完整正文 |
-| [L600 · 13.1 定义](../../companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-600)；本节完整正文 |
-| [L606 · 13.2 管理权限](../../companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-606)；本节完整正文 |
-| [L614 · 13.3 持续时间](../../companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-614)；本节完整正文 |
-| [L624 · 13.4 与历史记忆、persona、目标的分界](../../companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-624)；本节完整正文 |
-| [L632 · 14. 多目标、待办与提醒](../../companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-632)；本节完整正文 |
-| [L634 · 14.1 多个未来目标并行](../../companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-634)；本节完整正文 |
-| [L640 · 14.2 两种来源](../../companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-640)；本节完整正文 |
-| [L648 · 14.3 相似去重](../../companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-648)；本节完整正文 |
-| [L656 · 14.4 状态](../../companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-656)；本节完整正文 |
-| [L664 · 14.5 截止时间和提醒提前量](../../companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-664)；本节完整正文 |
-| [L672 · 14.6 过期处理](../../companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-672)；本节完整正文 |
-| [L680 · 14.7 对外提供](../../companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-680)；本节完整正文 |
-| [L686 · 14.8 专注梦境对目标操作的影响](../../companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-686)；本节完整正文 |
-| [L694 · 15. 对外信息获取与入口边界](../../companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-694)；本节完整正文 |
-| [L696 · 15.1 两类获取请求](../../companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-696)；本节完整正文 |
-| [L702 · 15.2 第一类：回复准备](../../companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-702)；本节完整正文 |
-| [L718 · 15.3 其他入口的待处理提示](../../companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-718)；本节完整正文 |
-| [L730 · 15.4 缓存隔离与正式记忆共享](../../companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-730)；本节完整正文 |
-| [L738 · 15.5 第二类：定向记忆查询](../../companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-738)；本节完整正文 |
-| [L746 · 15.6 返回标识与使用路径](../../companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-746)；本节完整正文 |
-| [L754 · 16. 梦境、专注隔离与入口缓存回流](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-754)；本节完整正文 |
-| [L756 · 16.1 梦境职责](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-756)；本节完整正文 |
-| [L762 · 16.2 内部整理与发布](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-762)；本节完整正文 |
-| [L780 · 16.3 专注模式的入口门控](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-780)；本节完整正文 |
-| [L805 · 16.4 每入口独立的梦境缓存](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-805)；本节完整正文 |
-| [L815 · 16.5 梦境结束后按入口回流](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-815)；本节完整正文 |
-| [L827 · 16.6 清空的准确含义与业务恢复](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-827)；本节完整正文 |
-| [L837 · 16.7 模式切换与可观测性](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-837)；本节完整正文 |
-| [L845 · 16.8 来源支持、循环和恢复影响](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-845)；本节完整正文 |
-| [L853 · 16.9 非专注梦境与异常](../../companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-853)；本节完整正文 |
-| [L861 · 17. 故障、提醒与审计](../../companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-861)；本节完整正文 |
-| [L863 · 17.1 运作原则](../../companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-863)；本节完整正文 |
-| [L869 · 17.2 provider 长期故障](../../companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-869)；本节完整正文 |
-| [L877 · 17.3 传输与业务状态](../../companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-877)；本节完整正文 |
-| [L885 · 17.4 突然失忆风险](../../companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-885)；本节完整正文 |
-| [L891 · 17.5 审计隔离](../../companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-891)；本节完整正文 |
-| [L897 · 17.6 缺口、积压与恢复信息分别显示](../../companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-897)；本节完整正文 |
-| [L905 · 18. 逻辑架构](../../companion_memory_cognition_system_design_integrated.md#section-18) | [product/overview.md](../product/overview.md#source-line-905)；本节完整正文 |
-| [L926 · 18.1 主信息流](../../companion_memory_cognition_system_design_integrated.md#section-18) | [product/overview.md](../product/overview.md#source-line-926)；本节完整正文 |
-| [L951 · 19. 概念接口与不可混淆的状态](../../companion_memory_cognition_system_design_integrated.md#section-19) | [product/overview.md](../product/overview.md#source-line-951)；本节完整正文 |
-| [L984 · 20. Web 管理面板](../../companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-984)；本节完整正文 |
-| [L986 · 20.1 初始化引导](../../companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-986)；本节完整正文 |
-| [L992 · 20.2 图形解释](../../companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-992)；本节完整正文 |
-| [L1008 · 20.3 日常页面](../../companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-1008)；本节完整正文 |
-| [L1025 · 20.4 关键配置展示](../../companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-1025)；本节完整正文 |
-| [L1033 · 21. 验收场景](../../companion_memory_cognition_system_design_integrated.md#section-21) | [product/acceptance.md](../product/acceptance.md#source-line-1033)；本节完整正文 |
-| [L1150 · 22. 待细化的参数与异常契约](../../companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1150)；本节完整正文 |
-| [L1154 · P04. 目标去重和提醒时序](../../companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1154)；本节完整正文 |
-| [L1160 · P05. 当前状态的时间契约](../../companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1160)；本节完整正文 |
-| [L1166 · P06. 多媒体结果的有效性](../../companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1166)；本节完整正文 |
-| [L1172 · P07. 使用反馈、来源访问与persona发布细节](../../companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1172)；本节完整正文 |
-| [L1178 · P08. 短批次、最新辅助段和提前触发](../../companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1178)；本节完整正文 |
-| [L1184 · P09. 模式切换、回流开放时点与异常退出](../../companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1184)；本节完整正文 |
-| [L1192 · P10. 暂存介质、重启与物理资源故障](../../companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1192)；本节完整正文 |
-| [L1200 · 23. 参数与工程配置](../../companion_memory_cognition_system_design_integrated.md#section-23) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1200)；本节完整正文 |
-| [L1242 · 24. 实施与验收组织](../../companion_memory_cognition_system_design_integrated.md#section-24) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1242)；本节完整正文 |
+| [L1 · 独立陪伴角色记忆与认知系统设计](../reference/companion_memory_cognition_system_design_integrated.md#独立陪伴角色记忆与认知系统设计) | [product/overview.md](../product/overview.md#独立陪伴角色记忆与认知系统设计)；本节完整正文 |
+| [L3 · 文档定位](../reference/companion_memory_cognition_system_design_integrated.md#文档定位) | [product/overview.md](../product/overview.md#source-line-3)；本节完整正文 |
+| [L9 · 目录](../reference/companion_memory_cognition_system_design_integrated.md#目录) | [原文目录](../reference/companion_memory_cognition_system_design_integrated.md#目录)；保留原始导航，任务路线使用[INDEX](../INDEX.md) |
+| [L38 · 1. 系统定位与范围](../reference/companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-38)；本节完整正文 |
+| [L40 · 1.1 一个角色的统一认知系统](../reference/companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-40)；本节完整正文 |
+| [L48 · 1.2 自治与外部执行](../reference/companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-48)；本节完整正文 |
+| [L56 · 1.3 多入口支持与暂缓范围](../reference/companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-56)；本节完整正文 |
+| [L64 · 1.4 不纳入的职责](../reference/companion_memory_cognition_system_design_integrated.md#section-01) | [product/overview.md](../product/overview.md#source-line-64)；本节完整正文 |
+| [L70 · 2. 核心术语与职责](../reference/companion_memory_cognition_system_design_integrated.md#section-02) | [product/overview.md](../product/overview.md#source-line-70)；本节完整正文 |
+| [L113 · 3. 信息组织与逻辑对象](../reference/companion_memory_cognition_system_design_integrated.md#section-03) | [product/overview.md](../product/overview.md#source-line-113)；本节完整正文 |
+| [L141 · 4. 输入与接入规则](../reference/companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-141)；本节完整正文 |
+| [L143 · 4.1 保留原始语境](../reference/companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-143)；本节完整正文 |
+| [L151 · 4.2 自身输出和行动反馈](../reference/companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-151)；本节完整正文 |
+| [L157 · 4.3 输入与管理操作分离](../reference/companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-157)；本节完整正文 |
+| [L163 · 4.4 专注期的输入例外](../reference/companion_memory_cognition_system_design_integrated.md#section-04) | [product/input-and-media.md](../product/input-and-media.md#source-line-163)；本节完整正文 |
+| [L169 · 5. 多媒体理解、隔离存储与清理](../reference/companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-169)；本节完整正文 |
+| [L171 · 5.1 理解优先级](../reference/companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-171)；本节完整正文 |
+| [L177 · 5.2 媒体理解被拒绝](../reference/companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-177)；本节完整正文 |
+| [L187 · 5.3 文件与业务引用](../reference/companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-187)；本节完整正文 |
+| [L195 · 5.4 无引用清理](../reference/companion_memory_cognition_system_design_integrated.md#section-05) | [product/input-and-media.md](../product/input-and-media.md#source-line-195)；本节完整正文 |
+| [L205 · 6. 独立入口队列、三段式批次与终结规则](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-205)；本节完整正文 |
+| [L207 · 6.1 一个具体入口，一套缓存总结队列](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-207)；本节完整正文 |
+| [L215 · 6.2 三段的定义与方向](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-215)；本节完整正文 |
+| [L234 · 6.3 输入推进与批次冻结](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-234)；本节完整正文 |
+| [L244 · 6.4 学习指令中的范围约束](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-244)；本节完整正文 |
+| [L252 · 6.5 保护、容量与正式记忆的边界](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-252)；本节完整正文 |
+| [L260 · 6.6 成功终结：包括零记忆结果](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-260)；本节完整正文 |
+| [L268 · 6.7 普通学习失败：失败终结，但保留历史衔接](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-268)；本节完整正文 |
+| [L278 · 6.8 明确敏感拒学：终结并切断本轮历史衔接](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-278)；本节完整正文 |
+| [L290 · 6.9 三种终结结果对照](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-290)；本节完整正文 |
+| [L299 · 6.10 滚动示例](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-299)；本节完整正文 |
+| [L313 · 6.11 终态与提交完整性](../reference/companion_memory_cognition_system_design_integrated.md#section-06) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-313)；本节完整正文 |
+| [L321 · 7. 学习与内部自治](../reference/companion_memory_cognition_system_design_integrated.md#section-07) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-321)；本节完整正文 |
+| [L323 · 7.1 触发事件](../reference/companion_memory_cognition_system_design_integrated.md#section-07) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-323)；本节完整正文 |
+| [L329 · 7.2 加工与分类](../reference/companion_memory_cognition_system_design_integrated.md#section-07) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-329)；本节完整正文 |
+| [L337 · 7.3 权限与持续反馈](../reference/companion_memory_cognition_system_design_integrated.md#section-07) | [product/batches-and-learning.md](../product/batches-and-learning.md#source-line-337)；本节完整正文 |
+| [L347 · 8. 批次来源、窗口与对象级生命周期](../reference/companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-347)；本节完整正文 |
+| [L349 · 8.1 窗口只能来自冻结的本批次](../reference/companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-349)；本节完整正文 |
+| [L359 · 8.2 来源快照字段](../reference/companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-359)；本节完整正文 |
+| [L367 · 8.3 中段目标、上下文和派生依据分别记录](../reference/companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-367)；本节完整正文 |
+| [L375 · 8.4 遗忘和删除针对对象](../reference/companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-375)；本节完整正文 |
+| [L383 · 8.5 来源访问与外部缓存隔离](../reference/companion_memory_cognition_system_design_integrated.md#section-08) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-383)；本节完整正文 |
+| [L391 · 9. 正式记忆与关系](../reference/companion_memory_cognition_system_design_integrated.md#section-09) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-391)；本节完整正文 |
+| [L393 · 9.1 记忆语义字段](../reference/companion_memory_cognition_system_design_integrated.md#section-09) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-393)；本节完整正文 |
+| [L411 · 9.2 主体联系](../reference/companion_memory_cognition_system_design_integrated.md#section-09) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-411)；本节完整正文 |
+| [L417 · 9.3 扮演与其他关系](../reference/companion_memory_cognition_system_design_integrated.md#section-09) | [product/provenance-and-memory.md](../product/provenance-and-memory.md#source-line-417)；本节完整正文 |
+| [L425 · 10. 相信程度、保留强度与防乒乓](../reference/companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-425)；本节完整正文 |
+| [L427 · 10.1 相信程度的统一量表](../reference/companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-427)；本节完整正文 |
+| [L447 · 10.2 保留强度](../reference/companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-447)；本节完整正文 |
+| [L455 · 10.3 双指标如何共同参与](../reference/companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-455)；本节完整正文 |
+| [L463 · 10.4 双阈值滞回](../reference/companion_memory_cognition_system_design_integrated.md#section-10) | [product/lifecycle.md](../product/lifecycle.md#source-line-463)；本节完整正文 |
+| [L497 · 11. 召回、使用反馈与记忆生命周期](../reference/companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-497)；本节完整正文 |
+| [L499 · 11.1 有效记忆与纠正](../reference/companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-499)；本节完整正文 |
+| [L505 · 11.2 遗忘](../reference/companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-505)；本节完整正文 |
+| [L511 · 11.3 独立深度召回](../reference/companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-511)；本节完整正文 |
+| [L519 · 11.4 使用反馈和阈值恢复](../reference/companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-519)；本节完整正文 |
+| [L529 · 11.5 删除](../reference/companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-529)；本节完整正文 |
+| [L539 · 11.6 生命周期总览](../reference/companion_memory_cognition_system_design_integrated.md#section-11) | [product/lifecycle.md](../product/lifecycle.md#source-line-539)；本节完整正文 |
+| [L558 · 12. 自我认知与稳定 persona](../reference/companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-558)；本节完整正文 |
+| [L560 · 12.1 开放的自我认知](../reference/companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-560)；本节完整正文 |
+| [L568 · 12.2 初始化自我](../reference/companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-568)；本节完整正文 |
+| [L574 · 12.3 persona 的内容与监督](../reference/companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-574)；本节完整正文 |
+| [L580 · 12.4 更新时机](../reference/companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-580)；本节完整正文 |
+| [L588 · 12.5 来源变化与摘要滞后](../reference/companion_memory_cognition_system_design_integrated.md#section-12) | [product/self-and-persona.md](../product/self-and-persona.md#source-line-588)；本节完整正文 |
+| [L598 · 13. 当前状态：外部权威的现在](../reference/companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-598)；本节完整正文 |
+| [L600 · 13.1 定义](../reference/companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-600)；本节完整正文 |
+| [L606 · 13.2 管理权限](../reference/companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-606)；本节完整正文 |
+| [L614 · 13.3 持续时间](../reference/companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-614)；本节完整正文 |
+| [L624 · 13.4 与历史记忆、persona、目标的分界](../reference/companion_memory_cognition_system_design_integrated.md#section-13) | [product/current-state.md](../product/current-state.md#source-line-624)；本节完整正文 |
+| [L632 · 14. 多目标、待办与提醒](../reference/companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-632)；本节完整正文 |
+| [L634 · 14.1 多个未来目标并行](../reference/companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-634)；本节完整正文 |
+| [L640 · 14.2 两种来源](../reference/companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-640)；本节完整正文 |
+| [L648 · 14.3 相似去重](../reference/companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-648)；本节完整正文 |
+| [L656 · 14.4 状态](../reference/companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-656)；本节完整正文 |
+| [L664 · 14.5 截止时间和提醒提前量](../reference/companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-664)；本节完整正文 |
+| [L672 · 14.6 过期处理](../reference/companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-672)；本节完整正文 |
+| [L680 · 14.7 对外提供](../reference/companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-680)；本节完整正文 |
+| [L686 · 14.8 专注梦境对目标操作的影响](../reference/companion_memory_cognition_system_design_integrated.md#section-14) | [product/goals.md](../product/goals.md#source-line-686)；本节完整正文 |
+| [L694 · 15. 对外信息获取与入口边界](../reference/companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-694)；本节完整正文 |
+| [L696 · 15.1 两类获取请求](../reference/companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-696)；本节完整正文 |
+| [L702 · 15.2 第一类：回复准备](../reference/companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-702)；本节完整正文 |
+| [L718 · 15.3 其他入口的待处理提示](../reference/companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-718)；本节完整正文 |
+| [L730 · 15.4 缓存隔离与正式记忆共享](../reference/companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-730)；本节完整正文 |
+| [L738 · 15.5 第二类：定向记忆查询](../reference/companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-738)；本节完整正文 |
+| [L746 · 15.6 返回标识与使用路径](../reference/companion_memory_cognition_system_design_integrated.md#section-15) | [product/retrieval.md](../product/retrieval.md#source-line-746)；本节完整正文 |
+| [L754 · 16. 梦境、专注隔离与入口缓存回流](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-754)；本节完整正文 |
+| [L756 · 16.1 梦境职责](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-756)；本节完整正文 |
+| [L762 · 16.2 内部整理与发布](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-762)；本节完整正文 |
+| [L780 · 16.3 专注模式的入口门控](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-780)；本节完整正文 |
+| [L805 · 16.4 每入口独立的梦境缓存](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-805)；本节完整正文 |
+| [L815 · 16.5 梦境结束后按入口回流](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-815)；本节完整正文 |
+| [L827 · 16.6 清空的准确含义与业务恢复](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-827)；本节完整正文 |
+| [L837 · 16.7 模式切换与可观测性](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-837)；本节完整正文 |
+| [L845 · 16.8 来源支持、循环和恢复影响](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-845)；本节完整正文 |
+| [L853 · 16.9 非专注梦境与异常](../reference/companion_memory_cognition_system_design_integrated.md#section-16) | [product/dream.md](../product/dream.md#source-line-853)；本节完整正文 |
+| [L861 · 17. 故障、提醒与审计](../reference/companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-861)；本节完整正文 |
+| [L863 · 17.1 运作原则](../reference/companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-863)；本节完整正文 |
+| [L869 · 17.2 provider 长期故障](../reference/companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-869)；本节完整正文 |
+| [L877 · 17.3 传输与业务状态](../reference/companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-877)；本节完整正文 |
+| [L885 · 17.4 突然失忆风险](../reference/companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-885)；本节完整正文 |
+| [L891 · 17.5 审计隔离](../reference/companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-891)；本节完整正文 |
+| [L897 · 17.6 缺口、积压与恢复信息分别显示](../reference/companion_memory_cognition_system_design_integrated.md#section-17) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-897)；本节完整正文 |
+| [L905 · 18. 逻辑架构](../reference/companion_memory_cognition_system_design_integrated.md#section-18) | [product/overview.md](../product/overview.md#source-line-905)；本节完整正文 |
+| [L926 · 18.1 主信息流](../reference/companion_memory_cognition_system_design_integrated.md#section-18) | [product/overview.md](../product/overview.md#source-line-926)；本节完整正文 |
+| [L951 · 19. 概念接口与不可混淆的状态](../reference/companion_memory_cognition_system_design_integrated.md#section-19) | [product/overview.md](../product/overview.md#source-line-951)；本节完整正文 |
+| [L984 · 20. Web 管理面板](../reference/companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-984)；本节完整正文 |
+| [L986 · 20.1 初始化引导](../reference/companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-986)；本节完整正文 |
+| [L992 · 20.2 图形解释](../reference/companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-992)；本节完整正文 |
+| [L1008 · 20.3 日常页面](../reference/companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-1008)；本节完整正文 |
+| [L1025 · 20.4 关键配置展示](../reference/companion_memory_cognition_system_design_integrated.md#section-20) | [product/operations-and-management.md](../product/operations-and-management.md#source-line-1025)；本节完整正文 |
+| [L1033 · 21. 验收场景](../reference/companion_memory_cognition_system_design_integrated.md#section-21) | [product/acceptance.md](../product/acceptance.md#source-line-1033)；本节完整正文 |
+| [L1150 · 22. 待细化的参数与异常契约](../reference/companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1150)；本节完整正文 |
+| [L1154 · P04. 目标去重和提醒时序](../reference/companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1154)；本节完整正文 |
+| [L1160 · P05. 当前状态的时间契约](../reference/companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1160)；本节完整正文 |
+| [L1166 · P06. 多媒体结果的有效性](../reference/companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1166)；本节完整正文 |
+| [L1172 · P07. 使用反馈、来源访问与persona发布细节](../reference/companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1172)；本节完整正文 |
+| [L1178 · P08. 短批次、最新辅助段和提前触发](../reference/companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1178)；本节完整正文 |
+| [L1184 · P09. 模式切换、回流开放时点与异常退出](../reference/companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1184)；本节完整正文 |
+| [L1192 · P10. 暂存介质、重启与物理资源故障](../reference/companion_memory_cognition_system_design_integrated.md#section-22) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1192)；本节完整正文 |
+| [L1200 · 23. 参数与工程配置](../reference/companion_memory_cognition_system_design_integrated.md#section-23) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1200)；本节完整正文 |
+| [L1242 · 24. 实施与验收组织](../reference/companion_memory_cognition_system_design_integrated.md#section-24) | [product/decisions-and-delivery.md](../product/decisions-and-delivery.md#source-line-1242)；本节完整正文 |
 
 ### 独立陪伴角色记忆与认知系统：技术架构与模块设计草稿／工程及模块
 
 | 原文章节／标题及行号 | 归属与保留原因 |
 | --- | --- |
-| [L1 · 独立陪伴角色记忆与认知系统：技术架构与模块设计草稿](../../companion_memory_module_design_provider_logging_config.md#独立陪伴角色记忆与认知系统技术架构与模块设计草稿) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#独立陪伴角色记忆与认知系统技术架构与模块设计草稿)；本节完整正文 |
-| [L7 · 目录](../../companion_memory_module_design_provider_logging_config.md#目录) | [原文目录](../../companion_memory_module_design_provider_logging_config.md#目录)；保留原始导航，任务路线使用[INDEX](../INDEX.md) |
-| [L28 · 1. 架构结论与适用边界](../../companion_memory_module_design_provider_logging_config.md#section-01) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-28)；本节完整正文 |
-| [L42 · 1.1 已给定的工程约束](../../companion_memory_module_design_provider_logging_config.md#section-01) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-42)；本节完整正文 |
-| [L59 · 1.2 规模推导：用于设计，不是压测结论](../../companion_memory_module_design_provider_logging_config.md#section-01) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-59)；本节完整正文 |
-| [L76 · 2. 运行结构与部署候选](../../companion_memory_module_design_provider_logging_config.md#section-02) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-76)；本节完整正文 |
-| [L78 · 2.1 单容器内部结构](../../companion_memory_module_design_provider_logging_config.md#section-02) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-78)；本节完整正文 |
-| [L109 · 2.2 存储候选](../../companion_memory_module_design_provider_logging_config.md#section-02) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-109)；本节完整正文 |
-| [L123 · 2.3 持久化目录与网络](../../companion_memory_module_design_provider_logging_config.md#section-02) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-123)；本节完整正文 |
-| [L145 · 3. 同步时延与异步工作边界](../../companion_memory_module_design_provider_logging_config.md#section-03) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-145)；本节完整正文 |
-| [L147 · 3.1 一秒接口契约](../../companion_memory_module_design_provider_logging_config.md#section-03) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-147)；本节完整正文 |
-| [L155 · 3.2 回复准备路径](../../companion_memory_module_design_provider_logging_config.md#section-03) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-155)；本节完整正文 |
-| [L176 · 3.3 写入类请求](../../companion_memory_module_design_provider_logging_config.md#section-03) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-176)；本节完整正文 |
-| [L184 · 4. 持久化与允许损失范围](../../companion_memory_module_design_provider_logging_config.md#section-04) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-184)；本节完整正文 |
-| [L186 · 4.1 接收承诺](../../companion_memory_module_design_provider_logging_config.md#section-04) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-186)；本节完整正文 |
-| [L213 · 4.2 三种“重试”严格分开](../../companion_memory_module_design_provider_logging_config.md#section-04) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-213)；本节完整正文 |
-| [L226 · 4.3 备份与物理故障](../../companion_memory_module_design_provider_logging_config.md#section-04) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-226)；本节完整正文 |
-| [L234 · 5. 模块总览与数据所有权](../../companion_memory_module_design_provider_logging_config.md#section-05) | [architecture/ownership.md](../architecture/ownership.md#source-line-234)；本节完整正文 |
-| [L236 · 5.1 十五个逻辑模块](../../companion_memory_module_design_provider_logging_config.md#section-05) | [architecture/ownership.md](../architecture/ownership.md#source-line-236)；本节完整正文 |
-| [L258 · 5.2 基础设施](../../companion_memory_module_design_provider_logging_config.md#section-05) | [architecture/ownership.md](../architecture/ownership.md#source-line-258)；本节完整正文 |
-| [L267 · 5.3 依赖约束](../../companion_memory_module_design_provider_logging_config.md#section-05) | [architecture/ownership.md](../architecture/ownership.md#source-line-267)；本节完整正文 |
-| [L288 · 6. 模块契约草稿](../../companion_memory_module_design_provider_logging_config.md#section-06) | [十五个模块入口](../architecture/ownership.md#module-contracts)；总标题为索引，子节各自完整保留 |
-| [L290 · M01 接入与入口注册](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/ingress.md](../modules/ingress.md#source-line-290)；本节完整正文 |
-| [L303 · M02 运行模式与工作调度](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/runtime.md](../modules/runtime.md#source-line-303)；本节完整正文 |
-| [L317 · M03 入口缓存与批次](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/buffers.md](../modules/buffers.md#source-line-317)；本节完整正文 |
-| [L329 · M04 媒体](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/media.md](../modules/media.md#source-line-329)；本节完整正文 |
-| [L343 · M05 认知加工](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/cognition.md](../modules/cognition.md#source-line-343)；本节完整正文 |
-| [L357 · M06 记忆、来源与关系](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/memory.md](../modules/memory.md#source-line-357)；本节完整正文 |
-| [L371 · M07 自我与persona](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/self-model.md](../modules/self-model.md#source-line-371)；本节完整正文 |
-| [L381 · M08 检索与信息提供](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/retrieval.md](../modules/retrieval.md#source-line-381)；本节完整正文 |
-| [L395 · M09 当前状态](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/state.md](../modules/state.md#source-line-395)；本节完整正文 |
-| [L405 · M10 多目标与意图](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/goals.md](../modules/goals.md#source-line-405)；本节完整正文 |
-| [L417 · M11 梦境整理](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/dream.md](../modules/dream.md#source-line-417)；本节完整正文 |
-| [L429 · M12 Web与管理入口](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/management.md](../modules/management.md#source-line-429)；本节完整正文 |
-| [L439 · M13 模型Provider](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/provider.md](../modules/provider.md#source-line-439)；本节完整正文 |
-| [L451 · M14 日志与审计](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/logging.md](../modules/logging.md#source-line-451)；本节完整正文 |
-| [L461 · M15 统一配置](../../companion_memory_module_design_provider_logging_config.md#section-06) | [modules/configuration.md](../modules/configuration.md#source-line-461)；本节完整正文 |
-| [L473 · 7. 原子操作、检查点与恢复契约](../../companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-473)；本节完整正文 |
-| [L475 · 7.1 三层状态](../../companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-475)；本节完整正文 |
-| [L481 · 7.2 必须原子的业务操作](../../companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-481)；本节完整正文 |
-| [L501 · 7.3 学习提交的具体流程](../../companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-501)；本节完整正文 |
-| [L518 · 7.4 外部结果未知的限制](../../companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-518)；本节完整正文 |
-| [L526 · 7.5 索引一致性](../../companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-526)；本节完整正文 |
-| [L536 · 8. 模型能力接口与协议适配](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-536)；本节完整正文 |
-| [L538 · 8.1 能力接口，不是三个通用URL](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-538)；本节完整正文 |
-| [L555 · 8.2 ModelProfile与能力声明](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-555)；本节完整正文 |
-| [L565 · 8.3 规范化错误与重试归属](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-565)；本节完整正文 |
-| [L575 · 8.4 唯一入口、请求归因与执行流水线](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-575)；本节完整正文 |
-| [L608 · 8.5 逻辑请求、网络尝试与缓存命中分开计数](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-608)；本节完整正文 |
-| [L618 · 8.6 完整统计信息与统一口径](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-618)；本节完整正文 |
-| [L634 · 8.7 Usage规范化与费用计算](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-634)；本节完整正文 |
-| [L654 · 8.8 配额、预算与成本保护](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-654)；本节完整正文 |
-| [L664 · 8.9 持久化、统计恢复与故障](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-664)；本节完整正文 |
-| [L674 · 8.10 配置与安全边界](../../companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-674)；本节完整正文 |
-| [L684 · 9. 内部上下文与成本控制](../../companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-684)；本节完整正文 |
-| [L686 · 9.1 分离两个上下文构建器](../../companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-686)；本节完整正文 |
-| [L705 · 9.2 请求频率控制](../../companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-705)；本节完整正文 |
-| [L713 · 9.3 避免重复花费](../../companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-713)；本节完整正文 |
-| [L725 · 9.4 预算与吞吐观察](../../companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-725)；本节完整正文 |
-| [L737 · 10. 独立日志模块：等级、输出、审计与运行安全](../../companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-737)；本节完整正文 |
-| [L739 · 10.1 统一日志模型与三个记录类别](../../companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-739)；本节完整正文 |
-| [L751 · 10.2 标准等级与使用规则](../../companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-751)；本节完整正文 |
-| [L767 · 10.3 结构化字段与关联](../../companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-767)；本节完整正文 |
-| [L775 · 10.4 控制台、文件与Web三个输出端](../../companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-775)；本节完整正文 |
-| [L789 · 10.5 异步输出、背压与故障](../../companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-789)；本节完整正文 |
-| [L799 · 10.6 脱敏、权限与上下文隔离](../../companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-799)；本节完整正文 |
-| [L807 · 10.7 热配置与实现约束](../../companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-807)；本节完整正文 |
-| [L817 · 11. 独立配置模块：统一参数、版本快照与安全热修改](../../companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-817)；本节完整正文 |
-| [L819 · 11.1 一个权威配置源，不是各模块各读一份文件](../../companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-819)；本节完整正文 |
-| [L837 · 11.2 参数注册表](../../companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-837)；本节完整正文 |
-| [L858 · 11.3 配置命名空间与修改范围](../../companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-858)；本节完整正文 |
-| [L878 · 11.4 热修改的生效类型](../../companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-878)；本节完整正文 |
-| [L895 · 11.5 变更、准备、发布与恢复](../../companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-895)；本节完整正文 |
-| [L919 · 11.6 运行中修改的具体例子](../../companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-919)；本节完整正文 |
-| [L933 · 11.7 少魔法变量，不把系统规则全部变成开关](../../companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-933)；本节完整正文 |
-| [L941 · 11.8 安全、权限与Web展示](../../companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-941)；本节完整正文 |
-| [L953 · 12. 数据与接口草图](../../companion_memory_module_design_provider_logging_config.md#section-12) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-953)；本节完整正文 |
-| [L955 · 12.1 权威业务数据分组](../../companion_memory_module_design_provider_logging_config.md#section-12) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-955)；本节完整正文 |
-| [L980 · 12.2 外部能力接口](../../companion_memory_module_design_provider_logging_config.md#section-12) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-980)；本节完整正文 |
-| [L1004 · 12.3 回复准备的逻辑返回](../../companion_memory_module_design_provider_logging_config.md#section-12) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-1004)；本节完整正文 |
-| [L1024 · 13. 代码组织建议](../../companion_memory_module_design_provider_logging_config.md#section-13) | [architecture/implementation-options.md](../architecture/implementation-options.md#source-line-1024)；本节完整正文 |
-| [L1097 · 14. 工程验收与原需求映射](../../companion_memory_module_design_provider_logging_config.md#section-14) | [architecture/acceptance.md](../architecture/acceptance.md#source-line-1097)；本节完整正文 |
-| [L1200 · 15. 实施顺序与设计冻结点](../../companion_memory_module_design_provider_logging_config.md#section-15) | [architecture/implementation-options.md](../architecture/implementation-options.md#source-line-1200)；本节完整正文 |
-| [L1202 · 15.1 开发顺序](../../companion_memory_module_design_provider_logging_config.md#section-15) | [architecture/implementation-options.md](../architecture/implementation-options.md#source-line-1202)；本节完整正文 |
-| [L1216 · 15.2 需要形成ADR的决定](../../companion_memory_module_design_provider_logging_config.md#section-15) | [architecture/implementation-options.md](../architecture/implementation-options.md#source-line-1216)；本节完整正文 |
-| [L1239 · 16. 参考依据](../../companion_memory_module_design_provider_logging_config.md#section-16) | [architecture/references.md](../architecture/references.md#source-line-1239)；本节完整正文 |
+| [L1 · 独立陪伴角色记忆与认知系统：技术架构与模块设计草稿](../reference/companion_memory_module_design_provider_logging_config.md#独立陪伴角色记忆与认知系统技术架构与模块设计草稿) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#独立陪伴角色记忆与认知系统技术架构与模块设计草稿)；本节完整正文 |
+| [L7 · 目录](../reference/companion_memory_module_design_provider_logging_config.md#目录) | [原文目录](../reference/companion_memory_module_design_provider_logging_config.md#目录)；保留原始导航，任务路线使用[INDEX](../INDEX.md) |
+| [L28 · 1. 架构结论与适用边界](../reference/companion_memory_module_design_provider_logging_config.md#section-01) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-28)；本节完整正文 |
+| [L42 · 1.1 已给定的工程约束](../reference/companion_memory_module_design_provider_logging_config.md#section-01) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-42)；本节完整正文 |
+| [L59 · 1.2 规模推导：用于设计，不是压测结论](../reference/companion_memory_module_design_provider_logging_config.md#section-01) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-59)；本节完整正文 |
+| [L76 · 2. 运行结构与部署候选](../reference/companion_memory_module_design_provider_logging_config.md#section-02) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-76)；本节完整正文 |
+| [L78 · 2.1 单容器内部结构](../reference/companion_memory_module_design_provider_logging_config.md#section-02) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-78)；本节完整正文 |
+| [L109 · 2.2 存储候选](../reference/companion_memory_module_design_provider_logging_config.md#section-02) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-109)；本节完整正文 |
+| [L123 · 2.3 持久化目录与网络](../reference/companion_memory_module_design_provider_logging_config.md#section-02) | [architecture/deployment-candidates.md](../architecture/deployment-candidates.md#source-line-123)；本节完整正文 |
+| [L145 · 3. 同步时延与异步工作边界](../reference/companion_memory_module_design_provider_logging_config.md#section-03) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-145)；本节完整正文 |
+| [L147 · 3.1 一秒接口契约](../reference/companion_memory_module_design_provider_logging_config.md#section-03) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-147)；本节完整正文 |
+| [L155 · 3.2 回复准备路径](../reference/companion_memory_module_design_provider_logging_config.md#section-03) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-155)；本节完整正文 |
+| [L176 · 3.3 写入类请求](../reference/companion_memory_module_design_provider_logging_config.md#section-03) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-176)；本节完整正文 |
+| [L184 · 4. 持久化与允许损失范围](../reference/companion_memory_module_design_provider_logging_config.md#section-04) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-184)；本节完整正文 |
+| [L186 · 4.1 接收承诺](../reference/companion_memory_module_design_provider_logging_config.md#section-04) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-186)；本节完整正文 |
+| [L213 · 4.2 三种“重试”严格分开](../reference/companion_memory_module_design_provider_logging_config.md#section-04) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-213)；本节完整正文 |
+| [L226 · 4.3 备份与物理故障](../reference/companion_memory_module_design_provider_logging_config.md#section-04) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-226)；本节完整正文 |
+| [L234 · 5. 模块总览与数据所有权](../reference/companion_memory_module_design_provider_logging_config.md#section-05) | [architecture/ownership.md](../architecture/ownership.md#source-line-234)；本节完整正文 |
+| [L236 · 5.1 十五个逻辑模块](../reference/companion_memory_module_design_provider_logging_config.md#section-05) | [architecture/ownership.md](../architecture/ownership.md#source-line-236)；本节完整正文 |
+| [L258 · 5.2 基础设施](../reference/companion_memory_module_design_provider_logging_config.md#section-05) | [architecture/ownership.md](../architecture/ownership.md#source-line-258)；本节完整正文 |
+| [L267 · 5.3 依赖约束](../reference/companion_memory_module_design_provider_logging_config.md#section-05) | [architecture/ownership.md](../architecture/ownership.md#source-line-267)；本节完整正文 |
+| [L288 · 6. 模块契约草稿](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [十五个模块入口](../architecture/ownership.md#module-contracts)；总标题为索引，子节各自完整保留 |
+| [L290 · M01 接入与入口注册](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/ingress.md](../modules/ingress.md#source-line-290)；本节完整正文 |
+| [L303 · M02 运行模式与工作调度](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/runtime.md](../modules/runtime.md#source-line-303)；本节完整正文 |
+| [L317 · M03 入口缓存与批次](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/buffers.md](../modules/buffers.md#source-line-317)；本节完整正文 |
+| [L329 · M04 媒体](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/media.md](../modules/media.md#source-line-329)；本节完整正文 |
+| [L343 · M05 认知加工](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/cognition.md](../modules/cognition.md#source-line-343)；本节完整正文 |
+| [L357 · M06 记忆、来源与关系](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/memory.md](../modules/memory.md#source-line-357)；本节完整正文 |
+| [L371 · M07 自我与persona](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/self-model.md](../modules/self-model.md#source-line-371)；本节完整正文 |
+| [L381 · M08 检索与信息提供](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/retrieval.md](../modules/retrieval.md#source-line-381)；本节完整正文 |
+| [L395 · M09 当前状态](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/state.md](../modules/state.md#source-line-395)；本节完整正文 |
+| [L405 · M10 多目标与意图](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/goals.md](../modules/goals.md#source-line-405)；本节完整正文 |
+| [L417 · M11 梦境整理](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/dream.md](../modules/dream.md#source-line-417)；本节完整正文 |
+| [L429 · M12 Web与管理入口](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/management.md](../modules/management.md#source-line-429)；本节完整正文 |
+| [L439 · M13 模型Provider](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/provider.md](../modules/provider.md#source-line-439)；本节完整正文 |
+| [L451 · M14 日志与审计](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/logging.md](../modules/logging.md#source-line-451)；本节完整正文 |
+| [L461 · M15 统一配置](../reference/companion_memory_module_design_provider_logging_config.md#section-06) | [modules/configuration.md](../modules/configuration.md#source-line-461)；本节完整正文 |
+| [L473 · 7. 原子操作、检查点与恢复契约](../reference/companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-473)；本节完整正文 |
+| [L475 · 7.1 三层状态](../reference/companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-475)；本节完整正文 |
+| [L481 · 7.2 必须原子的业务操作](../reference/companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-481)；本节完整正文 |
+| [L501 · 7.3 学习提交的具体流程](../reference/companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-501)；本节完整正文 |
+| [L518 · 7.4 外部结果未知的限制](../reference/companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-518)；本节完整正文 |
+| [L526 · 7.5 索引一致性](../reference/companion_memory_module_design_provider_logging_config.md#section-07) | [architecture/persistence-and-transactions.md](../architecture/persistence-and-transactions.md#source-line-526)；本节完整正文 |
+| [L536 · 8. 模型能力接口与协议适配](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-536)；本节完整正文 |
+| [L538 · 8.1 能力接口，不是三个通用URL](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-538)；本节完整正文 |
+| [L555 · 8.2 ModelProfile与能力声明](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-555)；本节完整正文 |
+| [L565 · 8.3 规范化错误与重试归属](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-565)；本节完整正文 |
+| [L575 · 8.4 唯一入口、请求归因与执行流水线](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-575)；本节完整正文 |
+| [L608 · 8.5 逻辑请求、网络尝试与缓存命中分开计数](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-608)；本节完整正文 |
+| [L618 · 8.6 完整统计信息与统一口径](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-618)；本节完整正文 |
+| [L634 · 8.7 Usage规范化与费用计算](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-634)；本节完整正文 |
+| [L654 · 8.8 配额、预算与成本保护](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-654)；本节完整正文 |
+| [L664 · 8.9 持久化、统计恢复与故障](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-664)；本节完整正文 |
+| [L674 · 8.10 配置与安全边界](../reference/companion_memory_module_design_provider_logging_config.md#section-08) | [architecture/provider.md](../architecture/provider.md#source-line-674)；本节完整正文 |
+| [L684 · 9. 内部上下文与成本控制](../reference/companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-684)；本节完整正文 |
+| [L686 · 9.1 分离两个上下文构建器](../reference/companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-686)；本节完整正文 |
+| [L705 · 9.2 请求频率控制](../reference/companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-705)；本节完整正文 |
+| [L713 · 9.3 避免重复花费](../reference/companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-713)；本节完整正文 |
+| [L725 · 9.4 预算与吞吐观察](../reference/companion_memory_module_design_provider_logging_config.md#section-09) | [architecture/context-and-cost.md](../architecture/context-and-cost.md#source-line-725)；本节完整正文 |
+| [L737 · 10. 独立日志模块：等级、输出、审计与运行安全](../reference/companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-737)；本节完整正文 |
+| [L739 · 10.1 统一日志模型与三个记录类别](../reference/companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-739)；本节完整正文 |
+| [L751 · 10.2 标准等级与使用规则](../reference/companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-751)；本节完整正文 |
+| [L767 · 10.3 结构化字段与关联](../reference/companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-767)；本节完整正文 |
+| [L775 · 10.4 控制台、文件与Web三个输出端](../reference/companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-775)；本节完整正文 |
+| [L789 · 10.5 异步输出、背压与故障](../reference/companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-789)；本节完整正文 |
+| [L799 · 10.6 脱敏、权限与上下文隔离](../reference/companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-799)；本节完整正文 |
+| [L807 · 10.7 热配置与实现约束](../reference/companion_memory_module_design_provider_logging_config.md#section-10) | [architecture/logging.md](../architecture/logging.md#source-line-807)；本节完整正文 |
+| [L817 · 11. 独立配置模块：统一参数、版本快照与安全热修改](../reference/companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-817)；本节完整正文 |
+| [L819 · 11.1 一个权威配置源，不是各模块各读一份文件](../reference/companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-819)；本节完整正文 |
+| [L837 · 11.2 参数注册表](../reference/companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-837)；本节完整正文 |
+| [L858 · 11.3 配置命名空间与修改范围](../reference/companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-858)；本节完整正文 |
+| [L878 · 11.4 热修改的生效类型](../reference/companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-878)；本节完整正文 |
+| [L895 · 11.5 变更、准备、发布与恢复](../reference/companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-895)；本节完整正文 |
+| [L919 · 11.6 运行中修改的具体例子](../reference/companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-919)；本节完整正文 |
+| [L933 · 11.7 少魔法变量，不把系统规则全部变成开关](../reference/companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-933)；本节完整正文 |
+| [L941 · 11.8 安全、权限与Web展示](../reference/companion_memory_module_design_provider_logging_config.md#section-11) | [architecture/configuration.md](../architecture/configuration.md#source-line-941)；本节完整正文 |
+| [L953 · 12. 数据与接口草图](../reference/companion_memory_module_design_provider_logging_config.md#section-12) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-953)；本节完整正文 |
+| [L955 · 12.1 权威业务数据分组](../reference/companion_memory_module_design_provider_logging_config.md#section-12) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-955)；本节完整正文 |
+| [L980 · 12.2 外部能力接口](../reference/companion_memory_module_design_provider_logging_config.md#section-12) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-980)；本节完整正文 |
+| [L1004 · 12.3 回复准备的逻辑返回](../reference/companion_memory_module_design_provider_logging_config.md#section-12) | [architecture/request-paths.md](../architecture/request-paths.md#source-line-1004)；本节完整正文 |
+| [L1024 · 13. 代码组织建议](../reference/companion_memory_module_design_provider_logging_config.md#section-13) | [architecture/implementation-options.md](../architecture/implementation-options.md#source-line-1024)；本节完整正文 |
+| [L1097 · 14. 工程验收与原需求映射](../reference/companion_memory_module_design_provider_logging_config.md#section-14) | [architecture/acceptance.md](../architecture/acceptance.md#source-line-1097)；本节完整正文 |
+| [L1200 · 15. 实施顺序与设计冻结点](../reference/companion_memory_module_design_provider_logging_config.md#section-15) | [architecture/implementation-options.md](../architecture/implementation-options.md#source-line-1200)；本节完整正文 |
+| [L1202 · 15.1 开发顺序](../reference/companion_memory_module_design_provider_logging_config.md#section-15) | [architecture/implementation-options.md](../architecture/implementation-options.md#source-line-1202)；本节完整正文 |
+| [L1216 · 15.2 需要形成ADR的决定](../reference/companion_memory_module_design_provider_logging_config.md#section-15) | [architecture/implementation-options.md](../architecture/implementation-options.md#source-line-1216)；本节完整正文 |
+| [L1239 · 16. 参考依据](../reference/companion_memory_module_design_provider_logging_config.md#section-16) | [architecture/references.md](../architecture/references.md#source-line-1239)；本节完整正文 |
 
 ### 代码规范：实现自描述与文档边界／实现表达
 
 | 原文章节／标题及行号 | 归属与保留原因 |
 | --- | --- |
-| [L1 · 代码规范：实现自描述与文档边界](../../CODING_STANDARDS.md#代码规范实现自描述与文档边界) | [原文完整规范](../../CODING_STANDARDS.md#代码规范实现自描述与文档边界)；已有独立规范，不重复复制 |
-| [L3 · 适用范围](../../CODING_STANDARDS.md#适用范围) | [原文完整规范](../../CODING_STANDARDS.md#适用范围)；已有独立规范，不重复复制 |
-| [L9 · 核心原则](../../CODING_STANDARDS.md#核心原则) | [原文完整规范](../../CODING_STANDARDS.md#核心原则)；已有独立规范，不重复复制 |
-| [L17 · 禁止将规划信息写入实现](../../CODING_STANDARDS.md#禁止将规划信息写入实现) | [原文完整规范](../../CODING_STANDARDS.md#禁止将规划信息写入实现)；已有独立规范，不重复复制 |
-| [L19 · 禁止的内容](../../CODING_STANDARDS.md#禁止的内容) | [原文完整规范](../../CODING_STANDARDS.md#禁止的内容)；已有独立规范，不重复复制 |
-| [L37 · 不应误伤真实业务信息](../../CODING_STANDARDS.md#不应误伤真实业务信息) | [原文完整规范](../../CODING_STANDARDS.md#不应误伤真实业务信息)；已有独立规范，不重复复制 |
-| [L45 · 命名与目录](../../CODING_STANDARDS.md#命名与目录) | [原文完整规范](../../CODING_STANDARDS.md#命名与目录)；已有独立规范，不重复复制 |
-| [L62 · 每个文件的独立可读性](../../CODING_STANDARDS.md#每个文件的独立可读性) | [原文完整规范](../../CODING_STANDARDS.md#每个文件的独立可读性)；已有独立规范，不重复复制 |
-| [L64 · 文件级说明](../../CODING_STANDARDS.md#文件级说明) | [原文完整规范](../../CODING_STANDARDS.md#文件级说明)；已有独立规范，不重复复制 |
-| [L87 · 独立可读不等于复制全部代码](../../CODING_STANDARDS.md#独立可读不等于复制全部代码) | [原文完整规范](../../CODING_STANDARDS.md#独立可读不等于复制全部代码)；已有独立规范，不重复复制 |
-| [L95 · 注释与 docstring](../../CODING_STANDARDS.md#注释与-docstring) | [原文完整规范](../../CODING_STANDARDS.md#注释与-docstring)；已有独立规范，不重复复制 |
-| [L97 · 表达要求](../../CODING_STANDARDS.md#表达要求) | [原文完整规范](../../CODING_STANDARDS.md#表达要求)；已有独立规范，不重复复制 |
-| [L114 · 公共接口说明](../../CODING_STANDARDS.md#公共接口说明) | [原文完整规范](../../CODING_STANDARDS.md#公共接口说明)；已有独立规范，不重复复制 |
-| [L131 · 引用规范](../../CODING_STANDARDS.md#引用规范) | [原文完整规范](../../CODING_STANDARDS.md#引用规范)；已有独立规范，不重复复制 |
-| [L133 · 允许的引用](../../CODING_STANDARDS.md#允许的引用) | [原文完整规范](../../CODING_STANDARDS.md#允许的引用)；已有独立规范，不重复复制 |
-| [L141 · 禁止的引用](../../CODING_STANDARDS.md#禁止的引用) | [原文完整规范](../../CODING_STANDARDS.md#禁止的引用)；已有独立规范，不重复复制 |
-| [L151 · 文档与运行时的边界](../../CODING_STANDARDS.md#文档与运行时的边界) | [原文完整规范](../../CODING_STANDARDS.md#文档与运行时的边界)；已有独立规范，不重复复制 |
-| [L153 · 文档不参与运行时决策](../../CODING_STANDARDS.md#文档不参与运行时决策) | [原文完整规范](../../CODING_STANDARDS.md#文档不参与运行时决策)；已有独立规范，不重复复制 |
-| [L161 · 运行资源与设计文档不同](../../CODING_STANDARDS.md#运行资源与设计文档不同) | [原文完整规范](../../CODING_STANDARDS.md#运行资源与设计文档不同)；已有独立规范，不重复复制 |
-| [L169 · 测试、日志与错误信息](../../CODING_STANDARDS.md#测试日志与错误信息) | [原文完整规范](../../CODING_STANDARDS.md#测试日志与错误信息)；已有独立规范，不重复复制 |
-| [L171 · 测试](../../CODING_STANDARDS.md#测试) | [原文完整规范](../../CODING_STANDARDS.md#测试)；已有独立规范，不重复复制 |
-| [L181 · 日志与错误](../../CODING_STANDARDS.md#日志与错误) | [原文完整规范](../../CODING_STANDARDS.md#日志与错误)；已有独立规范，不重复复制 |
-| [L191 · 配置、常量与模块协作](../../CODING_STANDARDS.md#配置常量与模块协作) | [原文完整规范](../../CODING_STANDARDS.md#配置常量与模块协作)；已有独立规范，不重复复制 |
-| [L203 · 未完成能力与维护](../../CODING_STANDARDS.md#未完成能力与维护) | [原文完整规范](../../CODING_STANDARDS.md#未完成能力与维护)；已有独立规范，不重复复制 |
-| [L211 · 检查与合并门槛](../../CODING_STANDARDS.md#检查与合并门槛) | [原文完整规范](../../CODING_STANDARDS.md#检查与合并门槛)；已有独立规范，不重复复制 |
-| [L213 · 自动检查](../../CODING_STANDARDS.md#自动检查) | [原文完整规范](../../CODING_STANDARDS.md#自动检查)；已有独立规范，不重复复制 |
-| [L229 · 人工审查](../../CODING_STANDARDS.md#人工审查) | [原文完整规范](../../CODING_STANDARDS.md#人工审查)；已有独立规范，不重复复制 |
+| [L1 · 代码规范：实现自描述与文档边界](../reference/CODING_STANDARDS.md#代码规范实现自描述与文档边界) | [原文完整规范](../reference/CODING_STANDARDS.md#代码规范实现自描述与文档边界)；已有独立规范，不重复复制 |
+| [L3 · 适用范围](../reference/CODING_STANDARDS.md#适用范围) | [原文完整规范](../reference/CODING_STANDARDS.md#适用范围)；已有独立规范，不重复复制 |
+| [L9 · 核心原则](../reference/CODING_STANDARDS.md#核心原则) | [原文完整规范](../reference/CODING_STANDARDS.md#核心原则)；已有独立规范，不重复复制 |
+| [L17 · 禁止将规划信息写入实现](../reference/CODING_STANDARDS.md#禁止将规划信息写入实现) | [原文完整规范](../reference/CODING_STANDARDS.md#禁止将规划信息写入实现)；已有独立规范，不重复复制 |
+| [L19 · 禁止的内容](../reference/CODING_STANDARDS.md#禁止的内容) | [原文完整规范](../reference/CODING_STANDARDS.md#禁止的内容)；已有独立规范，不重复复制 |
+| [L37 · 不应误伤真实业务信息](../reference/CODING_STANDARDS.md#不应误伤真实业务信息) | [原文完整规范](../reference/CODING_STANDARDS.md#不应误伤真实业务信息)；已有独立规范，不重复复制 |
+| [L45 · 命名与目录](../reference/CODING_STANDARDS.md#命名与目录) | [原文完整规范](../reference/CODING_STANDARDS.md#命名与目录)；已有独立规范，不重复复制 |
+| [L62 · 每个文件的独立可读性](../reference/CODING_STANDARDS.md#每个文件的独立可读性) | [原文完整规范](../reference/CODING_STANDARDS.md#每个文件的独立可读性)；已有独立规范，不重复复制 |
+| [L64 · 文件级说明](../reference/CODING_STANDARDS.md#文件级说明) | [原文完整规范](../reference/CODING_STANDARDS.md#文件级说明)；已有独立规范，不重复复制 |
+| [L87 · 独立可读不等于复制全部代码](../reference/CODING_STANDARDS.md#独立可读不等于复制全部代码) | [原文完整规范](../reference/CODING_STANDARDS.md#独立可读不等于复制全部代码)；已有独立规范，不重复复制 |
+| [L95 · 注释与 docstring](../reference/CODING_STANDARDS.md#注释与-docstring) | [原文完整规范](../reference/CODING_STANDARDS.md#注释与-docstring)；已有独立规范，不重复复制 |
+| [L97 · 表达要求](../reference/CODING_STANDARDS.md#表达要求) | [原文完整规范](../reference/CODING_STANDARDS.md#表达要求)；已有独立规范，不重复复制 |
+| [L114 · 公共接口说明](../reference/CODING_STANDARDS.md#公共接口说明) | [原文完整规范](../reference/CODING_STANDARDS.md#公共接口说明)；已有独立规范，不重复复制 |
+| [L131 · 引用规范](../reference/CODING_STANDARDS.md#引用规范) | [原文完整规范](../reference/CODING_STANDARDS.md#引用规范)；已有独立规范，不重复复制 |
+| [L133 · 允许的引用](../reference/CODING_STANDARDS.md#允许的引用) | [原文完整规范](../reference/CODING_STANDARDS.md#允许的引用)；已有独立规范，不重复复制 |
+| [L141 · 禁止的引用](../reference/CODING_STANDARDS.md#禁止的引用) | [原文完整规范](../reference/CODING_STANDARDS.md#禁止的引用)；已有独立规范，不重复复制 |
+| [L151 · 文档与运行时的边界](../reference/CODING_STANDARDS.md#文档与运行时的边界) | [原文完整规范](../reference/CODING_STANDARDS.md#文档与运行时的边界)；已有独立规范，不重复复制 |
+| [L153 · 文档不参与运行时决策](../reference/CODING_STANDARDS.md#文档不参与运行时决策) | [原文完整规范](../reference/CODING_STANDARDS.md#文档不参与运行时决策)；已有独立规范，不重复复制 |
+| [L161 · 运行资源与设计文档不同](../reference/CODING_STANDARDS.md#运行资源与设计文档不同) | [原文完整规范](../reference/CODING_STANDARDS.md#运行资源与设计文档不同)；已有独立规范，不重复复制 |
+| [L169 · 测试、日志与错误信息](../reference/CODING_STANDARDS.md#测试日志与错误信息) | [原文完整规范](../reference/CODING_STANDARDS.md#测试日志与错误信息)；已有独立规范，不重复复制 |
+| [L171 · 测试](../reference/CODING_STANDARDS.md#测试) | [原文完整规范](../reference/CODING_STANDARDS.md#测试)；已有独立规范，不重复复制 |
+| [L181 · 日志与错误](../reference/CODING_STANDARDS.md#日志与错误) | [原文完整规范](../reference/CODING_STANDARDS.md#日志与错误)；已有独立规范，不重复复制 |
+| [L191 · 配置、常量与模块协作](../reference/CODING_STANDARDS.md#配置常量与模块协作) | [原文完整规范](../reference/CODING_STANDARDS.md#配置常量与模块协作)；已有独立规范，不重复复制 |
+| [L203 · 未完成能力与维护](../reference/CODING_STANDARDS.md#未完成能力与维护) | [原文完整规范](../reference/CODING_STANDARDS.md#未完成能力与维护)；已有独立规范，不重复复制 |
+| [L211 · 检查与合并门槛](../reference/CODING_STANDARDS.md#检查与合并门槛) | [原文完整规范](../reference/CODING_STANDARDS.md#检查与合并门槛)；已有独立规范，不重复复制 |
+| [L213 · 自动检查](../reference/CODING_STANDARDS.md#自动检查) | [原文完整规范](../reference/CODING_STANDARDS.md#自动检查)；已有独立规范，不重复复制 |
+| [L229 · 人工审查](../reference/CODING_STANDARDS.md#人工审查) | [原文完整规范](../reference/CODING_STANDARDS.md#人工审查)；已有独立规范，不重复复制 |
 
 ### 非标题正文区间及完整表格
 
 | 原文 | 精确提取／保留范围 | 完整表格检查 |
 | --- | --- | --- |
-| [companion_memory_cognition_system_design_integrated.md](../../companion_memory_cognition_system_design_integrated.md) | 1236行进入正文视图；L9–L35留在原文，仅原目录、目录周围空行与架构模块总标题留在原文／索引；无业务段落遗漏 | 16张完整表、287条数据行；逐表原序行内容比对一致 |
-| [companion_memory_module_design_provider_logging_config.md](../../companion_memory_module_design_provider_logging_config.md) | 1264行进入正文视图；L7–L25、L286–L289留在原文，仅原目录、目录周围空行与架构模块总标题留在原文／索引；无业务段落遗漏 | 22张完整表、280条数据行；逐表原序行内容比对一致 |
-| [CODING_STANDARDS.md](../../CODING_STANDARDS.md) | 0行进入正文视图；L1–L235留在原文，完整规范按需读取原文件 | 4张完整表、24条数据行；直接链接原文 |
+| [companion_memory_cognition_system_design_integrated.md](../reference/companion_memory_cognition_system_design_integrated.md) | 1236行进入正文视图；L9–L35留在原文，仅原目录、目录周围空行与架构模块总标题留在原文／索引；无业务段落遗漏 | 16张完整表、287条数据行；逐表原序行内容比对一致 |
+| [companion_memory_module_design_provider_logging_config.md](../reference/companion_memory_module_design_provider_logging_config.md) | 1264行进入正文视图；L7–L25、L286–L289留在原文，仅原目录、目录周围空行与架构模块总标题留在原文／索引；无业务段落遗漏 | 22张完整表、280条数据行；逐表原序行内容比对一致 |
+| [CODING_STANDARDS.md](../reference/CODING_STANDARDS.md) | 0行进入正文视图；L1–L235留在原文，完整规范按需读取原文件 | 4张完整表、24条数据行；直接链接原文 |
 
 共享完整表没有拆成散行摘要：产品验收A01—A108、工程验收V01—V90、事务T01—T13和参考S01—S18均保留完整表，增加行锚点便于按任务定位。模块中的验收链接是阅读选择，范围扩大时需回完整表核对，不声称一个短链接清单覆盖该模块未来全部实现。
 
@@ -320,19 +322,19 @@
 
 | 事项与性质 | 双方原文位置／具体依据 | 影响与本轮处理 |
 | --- | --- | --- |
-| 语言、部署、数据库、索引：候选与工程约束互补 | [系统§23](../../companion_memory_cognition_system_design_integrated.md#section-23)“语言、模型、数据库、暂存介质和协议未指定”；[架构§1.1、§2](../../companion_memory_module_design_provider_logging_config.md#section-01)给定Linux Docker、跨重启保留等约束，§2优先验证SQLite；[§13、§15.2](../../companion_memory_module_design_provider_logging_config.md#section-15)仍需批准Python候选和工程决定 | 不视为后文覆盖全部产品；未选HTTP框架、ORM、ANN、SDK或正式默认值，未开展验证 |
-| 持久化建议与必须跨重启保留：工程细化 | [系统§16.4、§22 P10](../../companion_memory_cognition_system_design_integrated.md#section-22)待工程确定介质与恢复；[架构§4、§7](../../companion_memory_module_design_provider_logging_config.md#section-04)明确持久化确认与本地原子操作 | 保存新增工程约束；本地恢复不等于重放失败学习，未选择介质或承诺硬件绝对不丢 |
-| 一秒范围与检索质量：需正式接口冻结 | [架构§1.1](../../companion_memory_module_design_provider_logging_config.md#section-01)基础响应目标1秒；[§3.1–3.3](../../companion_memory_module_design_provider_logging_config.md#section-03)查询完整基础时限及短事务写入；[§14 V28、§15.2](../../companion_memory_module_design_provider_logging_config.md#section-15)目标注入一秒、语义降级批准点 | 查询降级、各写接口具体预算须固定；700–800ms、200–300ms仍是试验起点，未测试 |
-| 梦境切换与恢复开放：明确待批准 | [系统§16.6–16.9、P09](../../companion_memory_cognition_system_design_integrated.md#section-16)“建议”发布后开放且异常流程待定；[架构M02、§15.2](../../companion_memory_module_design_provider_logging_config.md#section-15)同一建议需正式冻结 | 不自动批准开放时点、在途收尾和管理员中止／恢复权限；专注拒绝范围保持原规则 |
-| 三段与短批次参数：未固定数值 | [系统§6、§22 P08、§23](../../companion_memory_cognition_system_design_integrated.md#section-22)提前触发与安静入口尾部待定；[架构§9.2、§11.7](../../companion_memory_module_design_provider_logging_config.md#section-09)100/10消息是示例，未批准值不填代码 | 目标选择、超长输入与token预算在对应任务前决定；冻结后不得扩展来源或改目标 |
-| 使用反馈、生命周期和来源审查：待接口权限契约 | [系统§8.5、§11.4–11.5、P07](../../companion_memory_cognition_system_design_integrated.md#section-22)时效、修订匹配、删除竞态、外部完整来源未定；[架构M06/M08、T07](../../companion_memory_module_design_provider_logging_config.md#section-07)要求凭据与幂等 | 不从原文推导任意反馈期限或跨入口完整来源权限；20/35、增益8、30天均不作为默认值 |
-| 当前状态、目标及通知时序：待定 | [系统P04/P05](../../companion_memory_cognition_system_design_integrated.md#section-22)时间格式、合并字段、提醒路由和跨期策略；[架构M09/M10](../../companion_memory_module_design_provider_logging_config.md#section-06)仅建议醒来合并当前过期提示 | 不批准补发策略，不自动延期或结束目标，不从历史输入重建当前状态 |
-| 媒体有效性与文件管理参数：待定 | [系统§5、P06](../../companion_memory_cognition_system_design_integrated.md#section-22)空文本、部分结果与普通失败判定；[架构M04](../../companion_memory_module_design_provider_logging_config.md#section-06)字节hash、情境复用与阶段发布 | 保留完整规则；上传限制、GC保护、理解指纹等具体定义待实现任务批准 |
-| persona监督与非专注发布：需细化 | [系统§12.4–12.5、P07、§16.9](../../companion_memory_cognition_system_design_integrated.md#section-12)候选审查／失败与非专注协调；[架构M07/M11、T09](../../companion_memory_module_design_provider_logging_config.md#section-07)原子发布和步骤检查点 | 首次摘要、变化限制、审查格式及非专注协调未实现；保留候选不合格不得发布等约束 |
-| Provider未知结果、预算与保留：机制未批准 | [架构§4.2、§7.4](../../companion_memory_module_design_provider_logging_config.md#section-04)建议暂停待恢复决定；[§8.7–8.10、§15.2](../../companion_memory_module_design_provider_logging_config.md#section-08)未知费用、版本价格、准入和保留约束 | 不能记未知为零、自动退款或重放；真实协议兼容、费率、限额和保留值未核实 |
-| 日志、配置、秘密与管理权限：工程细节未定 | [架构§10–11](../../companion_memory_module_design_provider_logging_config.md#section-10)日志有界背压、配置apply_mode与激活流程为草稿细化；[M12、§15.2](../../companion_memory_module_design_provider_logging_config.md#section-15)管理与工程批准要求 | Provider、日志、配置独立约束保留；不批准库、SSE、handler布局、真实Schema、秘密保管、保留值或恢复按钮权限 |
-| 规划示例与实现表达：文档／代码职责互补 | [架构§9.1、§13](../../companion_memory_module_design_provider_logging_config.md#section-13)示意prompt与目录含模块编号和S段简称；[代码规范“禁止将规划信息写入实现”](../../CODING_STANDARDS.md#禁止将规划信息写入实现)禁止机械复制这些信息到实现 | 视图保留原示例用于阅读；未来须转换为语义化名称和独立说明，不能将示例当规范豁免 |
-| 外部资料与历史依据：本轮核验有限 | [架构文档定位](../../companion_memory_module_design_provider_logging_config.md)、[参考依据§16](../../companion_memory_module_design_provider_logging_config.md#section-16)包含“用户明确给定”等来源描述与官方地址 | 仅作为当前提供材料中的陈述保留，不依赖其他会话；没有核验供应商新版本、SQLite版本、实际价格或外链可用性 |
+| 语言、部署、数据库、索引：候选与工程约束互补 | [系统§23](../reference/companion_memory_cognition_system_design_integrated.md#section-23)“语言、模型、数据库、暂存介质和协议未指定”；[架构§1.1、§2](../reference/companion_memory_module_design_provider_logging_config.md#section-01)给定Linux Docker、跨重启保留等约束，§2优先验证SQLite；[§13、§15.2](../reference/companion_memory_module_design_provider_logging_config.md#section-15)仍需批准Python候选和工程决定 | 不视为后文覆盖全部产品；未选HTTP框架、ORM、ANN、SDK或正式默认值，未开展验证 |
+| 持久化建议与必须跨重启保留：工程细化 | [系统§16.4、§22 P10](../reference/companion_memory_cognition_system_design_integrated.md#section-22)待工程确定介质与恢复；[架构§4、§7](../reference/companion_memory_module_design_provider_logging_config.md#section-04)明确持久化确认与本地原子操作 | 保存新增工程约束；本地恢复不等于重放失败学习，未选择介质或承诺硬件绝对不丢 |
+| 一秒范围与检索质量：需正式接口冻结 | [架构§1.1](../reference/companion_memory_module_design_provider_logging_config.md#section-01)基础响应目标1秒；[§3.1–3.3](../reference/companion_memory_module_design_provider_logging_config.md#section-03)查询完整基础时限及短事务写入；[§14 V28、§15.2](../reference/companion_memory_module_design_provider_logging_config.md#section-15)目标注入一秒、语义降级批准点 | 查询降级、各写接口具体预算须固定；700–800ms、200–300ms仍是试验起点，未测试 |
+| 梦境切换与恢复开放：明确待批准 | [系统§16.6–16.9、P09](../reference/companion_memory_cognition_system_design_integrated.md#section-16)“建议”发布后开放且异常流程待定；[架构M02、§15.2](../reference/companion_memory_module_design_provider_logging_config.md#section-15)同一建议需正式冻结 | 不自动批准开放时点、在途收尾和管理员中止／恢复权限；专注拒绝范围保持原规则 |
+| 三段与短批次参数：未固定数值 | [系统§6、§22 P08、§23](../reference/companion_memory_cognition_system_design_integrated.md#section-22)提前触发与安静入口尾部待定；[架构§9.2、§11.7](../reference/companion_memory_module_design_provider_logging_config.md#section-09)100/10消息是示例，未批准值不填代码 | 目标选择、超长输入与token预算在对应任务前决定；冻结后不得扩展来源或改目标 |
+| 使用反馈、生命周期和来源审查：待接口权限契约 | [系统§8.5、§11.4–11.5、P07](../reference/companion_memory_cognition_system_design_integrated.md#section-22)时效、修订匹配、删除竞态、外部完整来源未定；[架构M06/M08、T07](../reference/companion_memory_module_design_provider_logging_config.md#section-07)要求凭据与幂等 | 不从原文推导任意反馈期限或跨入口完整来源权限；20/35、增益8、30天均不作为默认值 |
+| 当前状态、目标及通知时序：待定 | [系统P04/P05](../reference/companion_memory_cognition_system_design_integrated.md#section-22)时间格式、合并字段、提醒路由和跨期策略；[架构M09/M10](../reference/companion_memory_module_design_provider_logging_config.md#section-06)仅建议醒来合并当前过期提示 | 不批准补发策略，不自动延期或结束目标，不从历史输入重建当前状态 |
+| 媒体有效性与文件管理参数：待定 | [系统§5、P06](../reference/companion_memory_cognition_system_design_integrated.md#section-22)空文本、部分结果与普通失败判定；[架构M04](../reference/companion_memory_module_design_provider_logging_config.md#section-06)字节hash、情境复用与阶段发布 | 保留完整规则；上传限制、GC保护、理解指纹等具体定义待实现任务批准 |
+| persona监督与非专注发布：需细化 | [系统§12.4–12.5、P07、§16.9](../reference/companion_memory_cognition_system_design_integrated.md#section-12)候选审查／失败与非专注协调；[架构M07/M11、T09](../reference/companion_memory_module_design_provider_logging_config.md#section-07)原子发布和步骤检查点 | 首次摘要、变化限制、审查格式及非专注协调未实现；保留候选不合格不得发布等约束 |
+| Provider未知结果、预算与保留：机制未批准 | [架构§4.2、§7.4](../reference/companion_memory_module_design_provider_logging_config.md#section-04)建议暂停待恢复决定；[§8.7–8.10、§15.2](../reference/companion_memory_module_design_provider_logging_config.md#section-08)未知费用、版本价格、准入和保留约束 | 不能记未知为零、自动退款或重放；真实协议兼容、费率、限额和保留值未核实 |
+| 日志、配置、秘密与管理权限：工程细节未定 | [架构§10–11](../reference/companion_memory_module_design_provider_logging_config.md#section-10)日志有界背压、配置apply_mode与激活流程为草稿细化；[M12、§15.2](../reference/companion_memory_module_design_provider_logging_config.md#section-15)管理与工程批准要求 | Provider、日志、配置独立约束保留；不批准库、SSE、handler布局、真实Schema、秘密保管、保留值或恢复按钮权限 |
+| 规划示例与实现表达：文档／代码职责互补 | [架构§9.1、§13](../reference/companion_memory_module_design_provider_logging_config.md#section-13)示意prompt与目录含模块编号和S段简称；[代码规范“禁止将规划信息写入实现”](../reference/CODING_STANDARDS.md#禁止将规划信息写入实现)禁止机械复制这些信息到实现 | 视图保留原示例用于阅读；未来须转换为语义化名称和独立说明，不能将示例当规范豁免 |
+| 外部资料与历史依据：本轮核验有限 | [架构文档定位](../reference/companion_memory_module_design_provider_logging_config.md)、[参考依据§16](../reference/companion_memory_module_design_provider_logging_config.md#section-16)包含“用户明确给定”等来源描述与官方地址 | 仅作为当前提供材料中的陈述保留，不依赖其他会话；没有核验供应商新版本、SQLite版本、实际价格或外链可用性 |
 
 发生新的真实矛盾时，应补充双方准确位置、原始措辞和影响，停止受影响操作；其余工作可以继续。本次不修改受保护原文以消除未定项。
 
@@ -428,9 +430,9 @@
 
 | 原文 | 当时字节数／行数 | 当时SHA-256 | 相对基线变化 |
 | --- | --- | --- | --- |
-| [系统原文](../../companion_memory_cognition_system_design_integrated.md) | 100296／1263 | `ce997355992b359fcad08c62284b206db2d64dad46a165a457cd801646a41f62` | 字节不变 |
-| [架构原文](../../companion_memory_module_design_provider_logging_config.md) | 141270／1487 | `061c7e650c82d7b33ecb2bb5920004b52eed4b22c83f8c59eeac79ea770bf631` | 配置详细契约§11.9已归并批准修订 |
-| [代码规范](../../CODING_STANDARDS.md) | 15538／235 | `be6a5909e936e4fab27d5343f67d81c774caedd150260095d09b399cfbc1af18` | 字节不变 |
+| [系统原文](../reference/companion_memory_cognition_system_design_integrated.md) | 100296／1263 | `ce997355992b359fcad08c62284b206db2d64dad46a165a457cd801646a41f62` | 字节不变 |
+| [架构原文](../reference/companion_memory_module_design_provider_logging_config.md) | 141270／1487 | `061c7e650c82d7b33ecb2bb5920004b52eed4b22c83f8c59eeac79ea770bf631` | 配置详细契约§11.9已归并批准修订 |
+| [代码规范](../reference/CODING_STANDARDS.md) | 15538／235 | `be6a5909e936e4fab27d5343f67d81c774caedd150260095d09b399cfbc1af18` | 字节不变 |
 
 ### 增量覆盖映射
 
@@ -438,15 +440,15 @@
 
 | 当时原文章节及行号 | 完整阅读视图 |
 | --- | --- |
-| [L953 · 11.9 配置参数定义与只读注册表契约](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-contract) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-contract) |
-| [L959 · 11.9.1 依据、确定程度与范围](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-evidence) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-evidence) |
-| [L973 · 11.9.2 数据定义](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-data) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-data) |
-| [L1023 · 11.9.3 校验与依赖边界](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-validation) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-validation) |
-| [L1050 · 11.9.4 注册、所有权与冻结](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-lifecycle) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-lifecycle) |
-| [L1072 · 11.9.5 公开接口](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-ports) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-ports) |
-| [L1088 · 11.9.6 错误契约](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-errors) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-errors) |
-| [L1109 · 11.9.7 验收例子](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-examples) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-examples) |
-| [L1143 · 11.9.8 批准范围与停止点](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-decisions) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-decisions) |
+| [L953 · 11.9 配置参数定义与只读注册表契约](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-contract) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-contract) |
+| [L959 · 11.9.1 依据、确定程度与范围](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-evidence) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-evidence) |
+| [L973 · 11.9.2 数据定义](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-data) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-data) |
+| [L1023 · 11.9.3 校验与依赖边界](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-validation) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-validation) |
+| [L1050 · 11.9.4 注册、所有权与冻结](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-lifecycle) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-lifecycle) |
+| [L1072 · 11.9.5 公开接口](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-ports) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-ports) |
+| [L1088 · 11.9.6 错误契约](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-errors) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-errors) |
+| [L1109 · 11.9.7 验收例子](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-examples) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-examples) |
+| [L1143 · 11.9.8 批准范围与停止点](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-decisions) | [配置契约完整正文](../architecture/configuration.md#configuration-registry-decisions) |
 
 历史覆盖表和其他阅读视图中的`source-line-*`继续指向原始基线位置；架构原文原L1–L950仍在原位，原L951及之后均后移200行，原章节内容不变。例如原第12节标题L953现为L1153，原第16节标题L1239现为L1439。因此不批量改写历史锚点或无关视图；原映射加本增量表记录当时的完整覆盖。
 
@@ -466,6 +468,6 @@
 
 ### 历史待批准状态（已被后续审批替代）
 
-具体待批准决定见[权威D1–D7表](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-decisions)：数据表示、默认／校验深度、键与重复、深不可变、冻结与依赖、公开端口和错误形式。语言、运行库、真实参数默认值和技术栈继续未定。本次只有设计授权，不执行代码、迁移、依赖安装、提交、推送或部署；完成文档检查并报告后停止。
+具体待批准决定见[权威D1–D7表](../reference/companion_memory_module_design_provider_logging_config.md#configuration-registry-decisions)：数据表示、默认／校验深度、键与重复、深不可变、冻结与依赖、公开端口和错误形式。语言、运行库、真实参数默认值和技术栈继续未定。本次只有设计授权，不执行代码、迁移、依赖安装、提交、推送或部署；完成文档检查并报告后停止。
 
 后续审批记录：用户已批准契约及静态校验修订，随后明确Python 3.12和uv管理。旧的默认自洽排除条款及相关例子已移出有效正文，仅在上述历史记录保留。之后用户暂停实现并要求删除源码；当前任务和后续验证由CURRENT_TASK.md记录，切片完成节点简短更新STATUS.md，本报告不继续补记实现结果。
