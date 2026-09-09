@@ -4,11 +4,11 @@
 
 适用主题与局部定义：Schema描述参数，revision标识配置版本，snapshot是操作取得的完整不可变视图；生效计划负责让版本在指定边界启用。业务对象和已使用预算不是配置。
 
-来源：§11.1–11.8对应[原文基线 L815–L950](../../companion_memory_module_design_provider_logging_config.md#section-11)；新增§11.9对应[详细契约原文](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-contract)。旧行号锚点保留整理基线含义，新增章节、当前行号与哈希见[增量覆盖记录](../work/ORGANIZATION_REPORT.md#configuration-contract-review)。
+来源：§11.1–11.8对应[原文基线 L815–L950](../../companion_memory_module_design_provider_logging_config.md#section-11)；§11.9对应[已批准注册表契约](../../companion_memory_module_design_provider_logging_config.md#configuration-registry-contract)，§11.10对应[显式解析与快照已批准契约](../../companion_memory_module_design_provider_logging_config.md#configuration-resolution-contract)（待实现授权）。旧行号锚点保留整理基线含义；[增量覆盖记录](../work/ORGANIZATION_REPORT.md#configuration-contract-review)仅记录此前注册表整理历史，不代表本次新增章节的检查。
 
 按关联工作联合阅读：[配置模块契约](../modules/configuration.md)；[配置事务](persistence-and-transactions.md#t12)；[参数已定与未定](../product/decisions-and-delivery.md#section-23)；[模式与权限](../modules/runtime.md)；[日志参与者](logging.md#source-line-807)。
 
-本次切片：[当前有效契约](#configuration-registry-contract)、[已有要求／建议／缺失](#configuration-registry-evidence)、[批准范围](#configuration-registry-decisions)。
+已验收注册表：[有效契约](#configuration-registry-contract)、[依据](#configuration-registry-evidence)、[原批准范围](#configuration-registry-decisions)。本次仅契约定稿，待实现授权：[显式解析与快照已批准契约](#configuration-resolution-contract)、[输入与空值组合](#configuration-resolution-input)、[支持边界](#configuration-resolution-support)、[快照接口](#configuration-resolution-snapshot)、[错误优先级](#configuration-resolution-errors)、[合成验收例子（未执行）](#configuration-resolution-examples)、[集中已批准决定](#configuration-resolution-decisions)。
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
@@ -365,3 +365,188 @@ D1–D7的公开表示、默认与静态校验、精确键和重复策略、深�
 实现只位于companion_memory/configuration及相应tests目录，根包标记仅用于导入；uv项目不发布安装包，不引入第三方依赖。内部容器选择不改变类型语义、输入隔离和深不可变保证。真实生产配置项、配置解析、持久化、权限执行、热修改及其他模块不属于本次批准范围。
 
 完成实现与真实检查后，将当前任务标为“实现完成，待验收”，报告文件、公开接口、测试命令与结果和残余限制；不标记整个配置模块完成，不自动提交、推送、合并、部署或开始下一任务。
+
+<a id="configuration-resolution-contract"></a>
+
+### 11.10 显式配置值解析与不可变有效快照：最小契约
+
+**状态：契约已批准，待实现授权；本轮仅授权契约定稿，不授权编码。** 用户已批准main／`d042e1a`工作区中本节现稿的完整条款，包括S1–S6、缺失组合表、支持子集、公开接口、所有权、错误优先级及合成验收条件，集中见[已批准决定表](#configuration-resolution-decisions)。§11.9及其注册表验收事实不变；其“本切片”仍指注册表切片。本节的“有效”仅指通过下述受限解析规则的完整内存结果，不表示配置值已批准、已持久化或已对运行任务激活。
+
+<a id="configuration-resolution-evidence"></a>
+
+#### 11.10.1 已有依据与本次边界
+
+| 已有要求或事实 | 本契约如何承接 | 本次已批准的新增部分 |
+| --- | --- | --- |
+| §11.1、§11.7：统一配置入口、唯一默认来源、显式合成输入 | 只从冻结注册表取定义及默认值，只接收调用方显式提交的内存值 | 单层dict输入、逐键选择及结果表示 |
+| §11.9.2–11.9.3：required约束解析后存在性；nullable仅约束顶层；六种类型、精确载体、范围与枚举语义已批准 | 沿用这些值语义，不把required改为“必须显式填写”，不放宽注册表校验 | 将既有值规则应用到显式输入，以及缺失／失败的解析协议 |
+| §11.2、§11.9：未知键拒绝、精确键、定义深不可变；依赖冻结只检查引用存在 | 以原注册表为唯一完整定义集合；不重新注册或改写定义 | 解析支持子集、快照绑定、查询及错误顺序 |
+| §11.4–11.5、T12：任务固定快照；激活、持久化与恢复另有承诺 | 新结果不改写旧结果，不更改任何当前有效指针 | 本地快照接口暂不提供持久标识或激活状态 |
+| §15.1：前期包含类型化Schema／快照，安全热发布与迁移后续开展 | 本契约作为注册表之后的独立小切片设计 | 不因此授权同阶段日志、Provider、I01或后续切片实现 |
+
+静态审查基线为main／`d042e1a`：现有configuration源码及相关测试提供定义、校验、注册／冻结和只读查询；没有配置值解析或快照接口。现有`Err`及`Result`限定于`RegistryError`，不能把新增错误直接当成既有注册表错误。源码中默认值已转为不可变载体，后续解析须区分可信冻结默认与外部原始输入，不能因默认对象已是只读映射而误拒绝它。
+
+本节只依赖成功冻结的注册表和显式内存输入，不读取文件、环境、数据库、时间、随机源或网络；不调用validator、日志、Provider、秘密提供器或其他模块。没有生产参数、加载层、权限引擎、变更补丁、热发布、订阅、回退、迁移或恢复接口。以下规则已批准，仍须另有实现授权后才可实现。
+
+<a id="configuration-resolution-input"></a>
+
+#### 11.10.2 输入、取值与缺失组合（已批准）
+
+输入为`resolve_configuration(registry, explicit_values)`，两项均须显式提供。registry必须是§11.9成功冻结所得的原生`ReadOnlyRegistry`；构建器、鸭子类型对象及自定义子类均不接受，也不隐式调用freeze。explicit_values仅接受精确内建`dict`：键为§11.9的精确`Identifier`，值为原始`MetadataValue`。不接受通用Mapping、只读映射、键值对序列、JSON文本、惰性迭代器、回调或自定义子类；类型准入使用身份判断，不触发自定义类型的比较、哈希或转换钩子。
+
+该dict是一份完整提交的单层配置值集合，键中的点只是原键字符；不展开嵌套命名空间。object参数内部的dict是一个整体值，不是配置补丁。重复键在dict构造前若已被覆盖，接口无法追溯或承诺检测；本接口不接收含重复键的文本格式。未知顶层键全部拒绝；object内部没有字段Schema，其任意精确str键（包括空字符串）不按注册键检查。
+
+选择顺序唯一为：键存在时用显式值；键不存在且定义为LiteralDefault时用该默认；否则按required决定失败或保留缺失。显式输入不合法时整次失败，不以默认掩盖。None是显式空值，NoDefault及本节缺失标记均不是可提交的配置值；删除某键只表示本次未提供，该调用不继承上次结果。
+
+下表穷尽未提供键时的required × nullable × 默认形态。“非空”仅指不是None，包含合法空字符串和空容器；非空默认d须已满足注册表类型、范围与枚举规则。“注册即拒绝”不是本解析器的新错误。
+
+| required | nullable | NoDefault | LiteralDefault(d)，d非空 | LiteralDefault(None) |
+| --- | --- | --- | --- | --- |
+| false | false | MissingValue | PresentValue(d, DEFAULT) | 注册即拒绝，不能成为合法冻结输入 |
+| false | true | MissingValue | PresentValue(d, DEFAULT) | PresentValue(None, DEFAULT)，枚举须允许 |
+| true | false | REQUIRED_VALUE_MISSING | PresentValue(d, DEFAULT) | 注册即拒绝，不能成为合法冻结输入 |
+| true | true | REQUIRED_VALUE_MISSING | PresentValue(d, DEFAULT) | PresentValue(None, DEFAULT)，枚举须允许 |
+
+下表覆盖键已提供时的组合；required及默认的所有合法组合均不改变结果。
+
+| 显式值 | nullable=false | nullable=true |
+| --- | --- | --- |
+| None | NULL_NOT_ALLOWED | 枚举未启用或包含None时为PresentValue(None, EXPLICIT)，否则NOT_IN_ENUM；不比较数值范围 |
+| 合法非空值v | PresentValue(v, EXPLICIT) | PresentValue(v, EXPLICIT) |
+| 非空但类型／结构／范围／枚举非法 | 按§11.10.5失败 | 按§11.10.5失败 |
+
+因此required=true、nullable=true可由合法None满足；nullable=true不会自动补None。false、0、Decimal("0")、空字符串、纯空白字符串、空数组和空对象均是已提供的值，按各自类型与约束检查，不被当作缺失。数组／对象内部None不受顶层nullable限制。
+
+显式值沿用§11.9.3六种载体及类型敏感枚举相等规则：bool不充当int；decimal只收有限Decimal；不做字符串转数值、int转Decimal、float转换、单位换算、修剪、大小写处理、Unicode归一化、数组拼接或对象合并。保留Decimal精确数值，不按当前上下文舍入；不承诺序列化后的字节表示。唯一表示变化是所有权隔离后数组变tuple、对象变自有只读映射，逻辑类型不变。支持有限无环数据树及共享的无环子树；拒绝非有限Decimal、自定义对象、循环、非str映射键及所有未支持载体，不隐加长度、嵌套字段或生产数值约束。
+
+<a id="configuration-resolution-support"></a>
+
+#### 11.10.3 未实现语义的支持与拒绝边界（已批准）
+
+解析前检查**整个冻结集合**是否处于下表支持子集，包含本次未提供且可缺失的键；不剔除不支持的定义来取得部分成功。这是新解析器的能力限制，不改变§11.9允许注册的元信息或冻结规则。
+
+| 声明／能力 | 本切片处理 | 理由与后续边界 |
+| --- | --- | --- |
+| type、default、required、nullable、range、enum | 支持上述解析和单参数值校验 | 定义静态合法不等于显式输入合法 |
+| validator | 必须为空；非空一律拒绝 | 没有执行器，不能把跳过附加校验标为有效 |
+| dependencies | 必须为空；非空一律拒绝，包括自引用、前向引用及关系环 | 冻结只保证键存在；不臆定“依赖值须存在”或推导求值顺序 |
+| scope | 仅接受单项`("instance",)` | 本次只解析一份实例值集合；多作用域、其他标识或实例选择请求不支持 |
+| override_policy | 仅接受`"no_override"` | 只支持显式值与Schema默认的选择；不支持平台／角色／profile／sink继承、部署锁定及多来源覆写 |
+| sensitivity | 仅接受`"public"`，其他标识拒绝 | 本接口没有秘密解析或脱敏出口；public也不证明文本不含秘密，调用方不得提交秘密 |
+| deprecated、replacement、upgrade_rule | 分别须为false、NotApplicable、NotApplicable，否则拒绝 | 本次不解释历史版本、别名、替代或升级规则 |
+| unit、owner_module、schema_revision、consumers及说明性字段 | 保留定义，可查询；unit不作换算 | 标识和说明不证明权限、外部存在性或服务能力 |
+| read_roles、write_roles | 保留声明，不执行授权，也不因空列表授予公共访问 | 只供可信内部装配方及其显式交付的消费者使用；不得作为Web／agent配置读取入口 |
+| apply_mode、activation_group、cost_impact、migration_impact | 保留声明，不执行生效、协调、费用估算或迁移；即使声明需重启／迁移也只得到本地解析结果 | 解析无当前运行状态，不能回答何时可启用；§11.4–11.5与T12承诺仍全部在后续 |
+
+`instance`、`no_override`、`public`这三个精确标识是本节的解析准入约定，**已批准**，不是对注册表新增封闭枚举或生产Schema批准。任意其他标识（包括既有合成夹具的demo／sample标识）不得被猜测映射为这些语义；注册成功但解析不支持是明确可观察的失败。对真实业务需执行的跨字段约束，定义方仍须如实声明validator／dependencies；不可清空它们以绕过本子集限制。
+
+接口不接收scope选择器、分层来源、actor、秘密解析器、validator回调或expected_revision等额外参数；不提供返回空成功的占位端口。Python调用缺少实参或添加未知关键字属签名使用错误，按语言调用规则拒绝，不伪装领域成功。
+
+<a id="configuration-resolution-snapshot"></a>
+
+#### 11.10.4 输出、公开接口、所有权与标识（已批准）
+
+新增公开结果为`ResolutionResult<T> = ResolutionOk(value: T) | ResolutionErr(error: ResolutionError)`，均为深不可变记录；不改变已有Ok／Err／Result及RegistryError协议。新增记录、类型和下表接口由配置包公开入口导出；不存在公开构造有效快照、修改、刷新、补丁或回退的入口。
+
+| 公开类型／记录 | 字段与含义 |
+| --- | --- |
+| MissingValue | 无字段；仅表示已注册、非required、无默认且本次未提供；没有value或source字段 |
+| PresentValue | value为深不可变值（可为None）；source只为`EXPLICIT`或`DEFAULT`，是选择来源，不是权限或部署优先级 |
+| SnapshotEntry | definition为绑定注册表中的深不可变ParameterDefinition；state为MissingValue或PresentValue；由definition.key、type、schema_revision解释该值 |
+| EffectiveSnapshot | 只读绑定注册表与完整条目集合，经成功解析取得；每个注册键恰好一条，允许条目明确缺失，不存在未检查键 |
+
+| 公开接口 | 成功输出／保证 | 预期失败 |
+| --- | --- | --- |
+| `resolve_configuration(registry, explicit_values) → ResolutionResult<EffectiveSnapshot>` | 完整检查及隔离后一次返回新结果；不改变注册表、旧快照或任何全局指针 | §11.10.5定义的输入、能力或值错误；不返回部分快照 |
+| `EffectiveSnapshot.get_registry() → ReadOnlyRegistry` | 返回本次解析传入的同一个冻结注册表句柄；不另查最新Schema | 无领域错误 |
+| `EffectiveSnapshot.get_entry(key) → ResolutionResult<SnapshotEntry>` | 精确键查询；已注册但缺失时成功返回MissingValue条目；显式None是PresentValue | INVALID_PARAMETER_KEY或UNKNOWN_PARAMETER；不接受fallback/default参数 |
+| `EffectiveSnapshot.list_entries() → tuple[SnapshotEntry, ...]` | 按definition.key的Unicode码点字典序列出全体条目，包括MissingValue；空注册表配空dict可成功且返回空tuple | 无领域错误；无筛选、分页或动态求值 |
+
+每次resolve均从所传完整注册表与本次dict重新解析，两个独立注册表即使键及schema_revision相同也不混用；快照永久绑定其输入句柄。修改Schema仍须另建注册表，不能将旧快照重新绑定。重复相同输入的条目内容、来源与顺序相同；不承诺快照／条目对象身份、缓存命中、去重或对象哈希／相等运算协议。
+
+本切片**不新增snapshot_id、config_snapshot_id、effective_snapshot_id、配置值revision或registry_id字段，也不接受调用方自报这些ID**。schema_revision仍只是每项定义原有的不透明Schema标识，可不同、不可排序，不是整份注册表或配置内容的唯一身份。绑定可通过get_registry核对，定义修订可逐条读取；本地对象身份不能写入持久账本充当版本。§11.4–11.5要求的持久快照标识、各域配置版本清单、runtime_policy_revision及恢复解释能力需后续单独设计；本快照不能冒充该完整协议。已批准暂缓ID而不引入内容哈希规范、全局计数器、时钟、随机源或持久版本库。
+
+成功返回之前取得所有显式嵌套可变值的独立所有权；修改原dict、list或其任意深层对象不会改变结果。数组、对象、条目、状态、定义、查询／枚举结果及错误都不可经公开赋值或容器操作修改；不以“返回可变副本”代替输出不可变。可共享注册表已经自有且深不可变的默认与定义，无须把它们当外部dict再导入。共享输入子树不保证输出别名身份；不得残留调用方可变引用。拒绝修改使用语言不可变机制，不固定其异常类别。
+
+任何预期失败均只返回ResolutionErr；原输入、注册表及已有快照保持原样，无部分成功、外部写入、激活或补偿动作。修正输入后须显式再次调用。输入在一次调用期间由调用方保持稳定；不承诺与并发修改输入竞争。安全发布后的快照允许并发只读；不规定私有锁或容器实现，也不声称能防同进程恶意反射。内存耗尽等非预期运行故障不伪装领域错误或成功；无成功返回就没有取得快照的承诺。进程退出后不承诺保留或恢复本结果。
+
+<a id="configuration-resolution-errors"></a>
+
+#### 11.10.5 错误、优先级与安全路径（已批准）
+
+ResolutionError仅有code、operation、issues；operation为`resolve_configuration`或`get_entry`，issues为**恰含一项**ResolutionIssue的不可变tuple。ResolutionIssue仅有field_path（固定字段名及整数下标的tuple）与固定大写reason。按下述已批准顺序返回首个问题，修正后重试；本切片不做聚合诊断，避免跨阶段错误及级联解释。错误记录不含输入键文本、值、默认、原对象、异常、堆栈或任意对象表示；不为错误自行记录日志或加载诊断服务。
+
+| code | reason及触发条件 | field_path |
+| --- | --- | --- |
+| INVALID_RESOLUTION_INPUT | REGISTRY_REQUIRED：不是支持的冻结注册表；INVALID_SHAPE：explicit_values不是精确dict | 分别为`("registry",)`、`("explicit_values",)` |
+| INVALID_PARAMETER_KEY | INVALID_IDENTIFIER：输入键／查询键不满足Identifier | 输入为`("explicit_values", i, "key")`，查询为`("key",)` |
+| UNKNOWN_PARAMETER | UNKNOWN_KEY：有效格式的键未在绑定注册表中 | 同上，不回显该键 |
+| UNSUPPORTED_RESOLUTION_SEMANTICS | VALIDATOR_NOT_SUPPORTED、DEPENDENCIES_NOT_SUPPORTED、SCOPE_NOT_SUPPORTED、OVERRIDE_NOT_SUPPORTED、SENSITIVITY_NOT_SUPPORTED；COMPATIBILITY_NOT_SUPPORTED用于deprecated、replacement或upgrade_rule不满足支持表 | `("definitions", j, 字段名)`；一次只报告首个不支持字段，不枚举其内容 |
+| REQUIRED_VALUE_MISSING | MISSING_REQUIRED：required键未提供且无默认 | `("definitions", j, "value")` |
+| INVALID_CONFIGURATION_VALUE | UNSUPPORTED_VALUE、CYCLIC_VALUE、NON_FINITE_NUMBER、NULL_NOT_ALLOWED、TYPE_MISMATCH、OUT_OF_RANGE、NOT_IN_ENUM | `("definitions", j, "value", …)`，嵌套路径按下述规则 |
+
+resolve的阶段优先级固定为：
+
+1. 核验registry载体；失败不调用其方法。随后核验explicit_values载体。
+2. 按dict插入顺序检查**所有顶层键格式**；有非法键则返回首个，先于任何未知键、能力或值错误。仅核验键，不访问不受支持键的哈希／比较钩子。
+3. 键格式全合法后按同一插入顺序检查未知键，返回首个未知键；不遍历这些键对应的值。
+4. 按注册表键排序检查整个集合的支持边界。同一定义内顺序为validator、dependencies、scope、override_policy、sensitivity、deprecated、replacement、upgrade_rule。先遇到的问题立即失败，即使该键未提交或其他键有值错误。
+5. 按注册表键排序逐项选择值。无值且required时立即返回MISSING_REQUIRED；允许缺失则生成MissingValue。已冻结默认沿用其静态校验与不可变内容。显式值先检查完整数据树安全性，再检查顶层nullable／类型，再range，最后enum；任何失败停止，后续检查不运行。例如范围失败不追加NOT_IN_ENUM，非法显式值不转为缺失或默认。
+6. 全部成功才返回完整快照。get_entry单独按“键格式→键存在性”检查；可缺失的已注册键不属于错误。
+
+i为explicit_values插入顺序中的零基下标，j为绑定注册表list_definitions中的零基下标；改变输入插入顺序可能改变第2–3阶段首错，这属于本协议。显式值树按深度优先、序列下标升序及dict插入顺序检查：先判节点精确载体，再判环／有限性等；映射先检查全部键是否精确str，存在非法键则报该映射UNSUPPORTED_VALUE并停止其子树。序列子项追加下标；映射子值沿用所在映射路径，不追加用户键，可能多个位置共用安全路径。循环只检测当前祖先链，共享无环子树不报环。非有限Decimal及非法节点先于顶层类型错误；未支持节点不调用repr、序列化、深拷贝、迭代或比较钩子。
+
+字段名范围限定为registry、explicit_values、key、definitions、value及支持表列出的八个定义字段。新增错误与原因码属于解析接口，既有注册／冻结／查询的六类错误、原因码、聚合方式与优先级全部不变。
+
+<a id="configuration-resolution-examples"></a>
+
+#### 11.10.6 完整合成验收例子（已批准，未执行）
+
+下面是有限组可复现的契约预期，均为合成值，不是生产参数或已执行测试。为避免缺字段，先定义完整模板，再逐例列出全部差异；每例另建构建器，完整注册指定定义并确认freeze成功后才调用resolve。`NA`在本节例子中仅简写为`NotApplicable("合成例子不使用该能力")`，不是运行时新增标记。表内true／false／None及Decimal记法对应既有Python载体。解析成功统一指ResolutionOk(snapshot)，查询成功指ResolutionOk(entry)；错误统一指ResolutionErr(ResolutionError(code, operation, (ResolutionIssue(field_path, reason),)))，下文列出其具体载荷。
+
+| 完整模板字段组 | 显式内容 |
+| --- | --- |
+| 身份与类型 | key=`demo.label`；owner_module=`demo_owner`；schema_revision=`demo_schema`；type=`string` |
+| 默认与约束 | default=`NoDefault()`；required=true；nullable=false；unit=NA；range=NA；enum=`Declared(["alpha", "beta"])`；validator=[]；dependencies=[] |
+| 作用域与权限 | scope=["instance"]；override_policy="no_override"；sensitivity="public"；read_roles=["demo_reader"]；write_roles=[] |
+| 生效与影响 | apply_mode="demo_next_operation"；activation_group=NA；cost_impact="合成例子不发起调用"；migration_impact="合成例子不持久化" |
+| 说明与兼容 | description="合成标签"；deprecated=false；replacement=NA；upgrade_rule=NA |
+| 依据与使用 | rationale="验证显式解析及完整查询"；consumers=["demo_consumer"]；validation_method="比对条目状态、来源、安全错误与不可变性" |
+
+**例一：同一快照内同时有默认、显式空值与缺失。** 注册三项：模板原键改为default=LiteralDefault("alpha")；第二项从模板改key="demo.note"、nullable=true、enum=Declared([None, "beta"])；第三项从模板改key="demo.optional"、required=false。输入`{"demo.note": None}`。resolve成功；get_registry返回传入句柄；list_entries按label、note、optional排序，state依次为PresentValue("alpha", DEFAULT)、PresentValue(None, EXPLICIT)、MissingValue。各条目的definition与上述完整定义一致，schema_revision均为demo_schema。get_entry("demo.optional")成功，查询"demo.unknown"返回UNKNOWN_PARAMETER／UNKNOWN_KEY／`("key",)`，查询" "返回INVALID_PARAMETER_KEY／INVALID_IDENTIFIER／`("key",)`。再次输入`{"demo.label": "beta", "demo.note": None}`得到label的EXPLICIT值；旧快照label仍为alpha。去掉note而不更改定义，则REQUIRED_VALUE_MISSING／MISSING_REQUIRED／`("definitions", 1, "value")`；不得以nullable补空。
+
+**例二：默认不掩盖非法显式输入，空值与前置错误独立。** 只注册模板的以下完整变体：key="demo.amount"、type="decimal"、default=LiteralDefault(Decimal("1"))、nullable=true、range=Declared(RangeDescriptor(Bound(Decimal("0"), true), Bound(Decimal("2"), true)))、enum=Declared([None, Decimal("1")])，其他字段原样。逐次独立调用如下；错误operation均为resolve_configuration，单项路径均为`("definitions", 0, "value")`。
+
+| 本次explicit_values | 唯一预期 |
+| --- | --- |
+| {} | 成功，PresentValue(Decimal("1"), DEFAULT) |
+| {"demo.amount": None} | 成功，PresentValue(None, EXPLICIT)，required仍被满足 |
+| {"demo.amount": Decimal("1.00")} | 成功，EXPLICIT，精确值等于枚举中的1；不改写来源为DEFAULT |
+| {"demo.amount": "1"} 或 {"demo.amount": 1} | INVALID_CONFIGURATION_VALUE／TYPE_MISMATCH |
+| {"demo.amount": 1.0} | INVALID_CONFIGURATION_VALUE／UNSUPPORTED_VALUE |
+| {"demo.amount": Decimal("NaN")} | INVALID_CONFIGURATION_VALUE／NON_FINITE_NUMBER |
+| {"demo.amount": Decimal("3")} | INVALID_CONFIGURATION_VALUE／OUT_OF_RANGE，虽也不在枚举，不追加原因 |
+| {"demo.amount": Decimal("0")} | INVALID_CONFIGURATION_VALUE／NOT_IN_ENUM，0是已提供值 |
+
+再独立注册上述amount定义的两个变体：其一enum=Declared([Decimal("1")])、nullable仍为true，其二在其一基础上nullable=false；两者显式输入None分别返回NOT_IN_ENUM及NULL_NOT_ALLOWED。第三个独立变体令default=NoDefault()、required=false；空dict成功返回MissingValue，不自动补None。§11.10.2缺失矩阵的其余格按模板仅修改required／nullable／default并使enum显式允许相应默认即可构造；两个nullable=false配空默认的格应在注册失败，不送解析器。
+
+**例三：嵌套所有权与整体替换。** 只注册模板变体key="demo.payload"、type="object"、enum=NA、default=LiteralDefault({"kept": [1]})。提交`{"demo.payload": {"items": [None, {"label": "alpha"}]}}`。成功条目为EXPLICIT，value只有items键，其值为tuple，内部label映射只读；kept不与显式对象合并。调用完成后清空原dict、给原items追加值、修改原label均不改变快照。通过get_entry和list_entries修改任何层级必须被语言拒绝；随后以{}解析可取得DEFAULT的只读kept对象，旧快照仍不变。另次令cycle为空列表，再追加它自身，提交{"demo.payload": {"items": cycle}}，返回INVALID_CONFIGURATION_VALUE／CYCLIC_VALUE／`("definitions", 0, "value", 0)`；在该位置改放带抛错repr／迭代／深拷贝钩子的自定义对象，改报UNSUPPORTED_VALUE且不得调用钩子。两次失败均不影响先前结果；共享但不成环的子列表则允许。
+
+**例四：全集合能力拒绝、错误优先级与空集合。** 只注册模板变体validator=["demo_check"]、dependencies=["demo.label"]；该自引用允许注册并冻结。resolve输入`{"unknown": object(), "bad key": None}`先返回INVALID_PARAMETER_KEY／INVALID_IDENTIFIER／`("explicit_values", 1, "key")`；删除bad key后返回UNKNOWN_PARAMETER／UNKNOWN_KEY／`("explicit_values", 0, "key")`，均不得检查unknown值。输入{}或`{"demo.label": "gamma"}`均先返回UNSUPPORTED_RESOLUTION_SEMANTICS／VALIDATOR_NOT_SUPPORTED／`("definitions", 0, "validator")`；不执行验证器。另建定义仅清空validator后，同样输入返回DEPENDENCIES_NOT_SUPPORTED／`("definitions", 0, "dependencies")`，不把引用存在当作依赖校验完成。另建独立模板变体，逐一把scope改为["platform"]、override_policy改为"layered"、sensitivity改为"secret"、deprecated改为true、replacement改为Declared("demo.other")、upgrade_rule改为Declared("合成升级说明")，这些独立变体各自同时令required=false并输入{}，分别按支持表的原因及对应字段路径拒绝。多作用域及任意未知策略标识同样拒绝。未修改的完整模板配{"demo.label": "alpha"}可正常解析；空注册表配{}成功且list_entries为()，配{"unknown": None}仍拒绝未知键。以构建器代替registry并同时提交非dict输入，首错为INVALID_RESOLUTION_INPUT／REGISTRY_REQUIRED／`("registry",)`；冻结空注册表配[]则为INVALID_SHAPE／`("explicit_values",)`。
+
+未来验收还须用上述完整模板的单字段变体覆盖六种载体及所有合法假值、键精确匹配／Unicode差异、输入自定义子类与类型比较钩子、非str嵌套键、足够深的有限树及低精度Decimal上下文；核对首错顺序、所有公开输出深只读、修正重试、两个独立注册表绑定互不串用及无外部副作用。它们是已批准验收条件，尚未执行，不是本轮运行结果。
+
+<a id="configuration-resolution-decisions"></a>
+
+#### 11.10.7 集中已批准决定与停止点
+
+| 决定 | 已批准方案 | 理由 |
+| --- | --- | --- |
+| S1 缺失与默认 | 显式值→唯一Schema默认→required失败／MissingValue；合法None满足required；非法显式值不回退；采用两张完整组合表 | 承接已有required／nullable含义，区分缺失、空值和默认 |
+| S2 输入与值规则 | 精确dict及六类原始载体，精确键，未知键拒绝；无类型转换、分层合并或旧快照继承；沿用范围与类型敏感枚举 | 能由冻结定义与显式内存值独立验收，不引入加载或生产参数 |
+| S3 能力支持子集 | 全集合检查；非空validator／dependencies拒绝；仅instance／no_override／public；拒绝兼容升级声明；角色与激活信息仅保留元数据 | 未执行的语义不伪装通过；三个新标识只约束解析准入，不改注册表 |
+| S4 快照与公开查询 | ResolutionOk／ResolutionErr独立结果；MissingValue／PresentValue／SnapshotEntry；四项接口；绑定原冻结句柄，完整稳定枚举，缺失可查询且无fallback | 不改既有注册表协议，值的存在性、类型、定义与来源可明确检查 |
+| S5 标识与不可变边界 | 不新增快照／配置revision ID；schema_revision仅保留原义；深隔离、旧快照不变、失败无部分结果；仅本地内存承诺 | 避免假造T12持久身份与激活收据，保留后续恢复设计空间 |
+| S6 错误与验收 | 固定解析错误与大写reason、确定阶段顺序、仅首个安全问题；以上完整合成例子及边界条件作为后续验收预期 | 失败可识别且不泄漏输入，验收能区分支持、拒绝与缺失 |
+
+普通私有函数拆分、临时容器、遍历实现及是否共享既有不可变对象不单列审批项，只须满足公开行为。本轮到契约定稿及一致性检查为止；不实现、不运行项目代码、不增依赖、不提交或推送。本契约已批准，但不等于授权编码，下一步实现须由用户明确授权；更不授权后续激活、持久化、权限或完整配置模块。
