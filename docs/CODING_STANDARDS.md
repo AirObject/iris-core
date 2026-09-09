@@ -212,6 +212,31 @@ HTTP 状态码、协议版本、数据库迁移版本、模型名称、标准日
 
 ## 检查与合并门槛
 
+<a id="python-type-checking"></a>
+
+### Python 类型检查（Pylance / Pyright）
+
+Python 实现交付、验收和提交前必须执行静态类型检查，覆盖源码、测试以及新增和未跟踪的 Python 文件。单元测试、compileall、AST 或命名扫描均不能替代类型检查；只检查新增的几个文件不能宣称全项目通过。
+
+VS Code 使用 Microsoft Pylance（`ms-python.vscode-pylance`）；命令行使用项目开发依赖中锁定的 Pyright。两者共享[pyproject.toml](../pyproject.toml)中的`[tool.pyright]`配置：Python 3.12、`standard`模式，当前范围为`companion_memory/`和`tests/`。新增其他受维护的 Python 目录时应同步纳入范围，不重复维护另一份pyrightconfig.json。
+
+[VS Code工作区配置](../.vscode/settings.json)启用workspace诊断并提供`.venv`解释器默认位置；若编辑器已保存其他解释器，须通过“Python: Select Interpreter”选择项目`.venv`。不能因只打开少量文件或使用错误解释器而漏查。Pylance与命令行Pyright的版本、类型存根和编辑器附加诊断可能不同，结果须分别说明；没有实际查看Pylance诊断时，不得将Pyright通过写成“Pylance已确认无错误”。参考[官方差异说明](https://github.com/microsoft/pylance-release/blob/main/USING_WITH_PYRIGHT.md)。
+
+在已按锁文件准备开发依赖、且已有可用Node.js的环境中，从仓库根目录执行：
+
+```text
+uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync pyright --version
+uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync pyright --project pyproject.toml --pythonpath .venv/bin/python
+```
+
+新环境须先按授权使用`uv sync --locked --dev`准备开发依赖，并满足锁定Pyright的Node.js运行要求；不依赖个人缓存绝对路径、临时下载的最新版或全局同名工具。工具升级须同步开发依赖、锁文件并重新检查，不能以升级或降级隐藏既有诊断。
+
+类型检查通过要求全量检查退出码为0且error为0；warning须处理或说明原因。已有错误也属于未通过，不能因本次新增文件无错误而忽略。若修复超出本轮授权，记录文件、诊断类别和影响，交回用户决定下一步，不擅自扩大业务修改。检查记录只在CURRENT_TASK中简短记录对应代码版本、工具版本、范围、命令、退出码及诊断数量；不新增长期错误清单或报告。
+
+优先用准确注解、结果分支和有依据的类型收窄修复诊断。不得为消除报错关闭检查、排除受审源码／测试、把整段类型退化为Any，或使用无理由的整文件忽略。边界负向测试确需提交非法值时，允许最小范围、注明测试意图的显式cast或带具体规则名的局部忽略；不得借此掩盖业务类型缺陷。修复必须保留运行行为，尤其不得将安全边界的精确类型身份检查机械改成会接收子类或触发对象钩子的检查。
+
+本要求不扩大监督／只读会话权限。未获执行授权时由执行者运行；未执行、环境不足或仍有诊断时如实标明，不写检查通过。
+
 ### 自动检查
 
 建议在仓库检查流程中覆盖以下事项：

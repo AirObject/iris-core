@@ -8,11 +8,13 @@ the call. No files, environment, validators, permissions, or activation are used
 
 from decimal import Decimal
 from types import MappingProxyType
+from typing import cast
 
 from .definitions import (
     Declared, FrozenMetadataValue, Identifier, LiteralDefault, MetadataValue,
     NotApplicable, ParameterDefinition,
 )
+from .metadata_traversal import _MetadataDestination, _MetadataFrame, _store_metadata
 from .registry import ReadOnlyRegistry
 from .resolution_results import (
     ResolutionErr, ResolutionFieldPath, ResolutionOk, ResolutionReason,
@@ -30,6 +32,13 @@ def _unsupported_declaration(
         return "validator", "VALIDATOR_NOT_SUPPORTED"
     if definition.dependencies:
         return "dependencies", "DEPENDENCIES_NOT_SUPPORTED"
+    return _unsupported_common_declaration(definition)
+
+
+def _unsupported_common_declaration(
+    definition: ParameterDefinition,
+) -> tuple[str, ResolutionReason] | None:
+    """Check support boundaries shared by both explicit resolution entry points."""
     if definition.scope != ("instance",):
         return "scope", "SCOPE_NOT_SUPPORTED"
     if definition.override_policy != "no_override":
@@ -58,34 +67,39 @@ def _freeze_explicit(
     references are cycles; shared acyclic nodes are allowed. Mapping keys are
     checked before children and never copied into error paths. No user hooks run.
     """
-    result = [None]
-    pending = [("visit", value, path, result, 0)]
+    result: list[FrozenMetadataValue] = [None]
+    pending: list[_MetadataFrame] = [("visit", value, path, result, 0)]
     ancestors: set[int] = set()
     while pending:
-        action, node, node_path, destination, slot = pending.pop()
-        if action == "finish":
-            original, children = node
-            ancestors.remove(id(original))
-            destination[slot] = (MappingProxyType(children) if type(original) is dict
-                                 else tuple(children))
+        frame = pending.pop()
+        if frame[0] == "finish":
+            _, original_identity, children, destination, slot = frame
+            ancestors.remove(original_identity)
+            frozen = MappingProxyType(children) if type(children) is dict else tuple(children)
+            _store_metadata(destination, slot, frozen)
             continue
-        node_type = type(node)
+        _, node, node_path, destination, slot = frame
         # Exact type identity avoids custom metaclass equality and hash hooks.
-        if node is None or node_type is bool or node_type is int or node_type is str:
-            destination[slot] = node
-        elif node_type is Decimal:
+        if node is None or type(node) is bool or type(node) is int or type(node) is str:
+            _store_metadata(destination, slot, node)
+        elif type(node) is Decimal:
             if not node.is_finite():
                 return _value_failure(node_path, "NON_FINITE_NUMBER")
-            destination[slot] = node
-        elif node_type is list or node_type is tuple or node_type is dict:
+            _store_metadata(destination, slot, node)
+        elif type(node) is list or type(node) is tuple or type(node) is dict:
             if id(node) in ancestors:
                 return _value_failure(node_path, "CYCLIC_VALUE")
-            if node_type is dict and any(type(key) is not str for key in node):
+            if type(node) is dict and any(type(key) is not str for key in node):
                 return _value_failure(node_path, "UNSUPPORTED_VALUE")
             ancestors.add(id(node))
-            children = {} if node_type is dict else [None] * len(node)
-            pending.append(("finish", (node, children), node_path, destination, slot))
-            if node_type is dict:
+            children: _MetadataDestination
+            if type(node) is dict:
+                children = {}
+            else:
+                sequence: list[FrozenMetadataValue] = [None] * len(node)
+                children = sequence
+            pending.append(("finish", id(node), children, destination, slot))
+            if type(node) is dict:
                 pending.extend(("visit", child, node_path, children, key)
                                for key, child in reversed(node.items()))
             else:
@@ -106,8 +120,11 @@ def _constraint_failure(
     else:
         if type(value) is not _VALUE_TYPES[definition.type]:
             return _value_failure(path, "TYPE_MISMATCH")
-        if type(definition.range) is Declared and not _in_range(value, definition.range.value):
-            return _value_failure(path, "OUT_OF_RANGE")
+        if type(definition.range) is Declared:
+            # Registration permits ranges only on numeric definitions, whose
+            # exact value type has just passed the check above.
+            if not _in_range(cast(int | Decimal, value), definition.range.value):
+                return _value_failure(path, "OUT_OF_RANGE")
     if type(definition.enum) is Declared:
         if not any(_metadata_equal(value, member) for member in definition.enum.value):
             return _value_failure(path, "NOT_IN_ENUM")
@@ -133,6 +150,28 @@ def resolve_configuration(
     faults propagate. Repeated calls resolve independently with no old-value
     inheritance, cache, activation, persistent identity, or external side effects.
     """
+    prepared = _prepare_resolution(registry, explicit_values)
+    if isinstance(prepared, ResolutionErr):
+        return prepared
+    definitions = prepared.value
+    for index, definition in enumerate(definitions):
+        unsupported = _unsupported_declaration(definition)
+        if unsupported is not None:
+            field, reason = unsupported
+            return _resolution_failure(
+                "UNSUPPORTED_RESOLUTION_SEMANTICS", "resolve_configuration",
+                ("definitions", index, field), reason,
+            )
+    candidates = _resolve_entries(definitions, explicit_values)
+    if isinstance(candidates, ResolutionErr):
+        return candidates
+    return ResolutionOk(EffectiveSnapshot._from_entries(registry, candidates.value))
+
+
+def _prepare_resolution(
+    registry: ReadOnlyRegistry, explicit_values: dict[Identifier, MetadataValue],
+) -> ResolutionResult[tuple[ParameterDefinition, ...]]:
+    """Check exact carriers and all key formats before accessing submitted values."""
     if type(registry) is not ReadOnlyRegistry:
         return _resolution_failure(
             "INVALID_RESOLUTION_INPUT", "resolve_configuration", ("registry",), "REGISTRY_REQUIRED",
@@ -155,20 +194,24 @@ def resolve_configuration(
                 "UNKNOWN_PARAMETER", "resolve_configuration",
                 ("explicit_values", index, "key"), "UNKNOWN_KEY",
             )
-    for index, definition in enumerate(definitions):
-        unsupported = _unsupported_declaration(definition)
-        if unsupported is not None:
-            field, reason = unsupported
-            return _resolution_failure(
-                "UNSUPPORTED_RESOLUTION_SEMANTICS", "resolve_configuration",
-                ("definitions", index, field), reason,
-            )
+    return ResolutionOk(definitions)
+
+
+def _resolve_entries(
+    definitions: tuple[ParameterDefinition, ...],
+    explicit_values: dict[Identifier, MetadataValue],
+) -> ResolutionResult[tuple[SnapshotEntry, ...]]:
+    """Own all base candidates without constructing or publishing a snapshot.
+
+    Call only after input and capability checks. Frozen defaults retain their
+    registration checks; explicit trees are isolated before constraints run.
+    """
     entries = []
     for index, definition in enumerate(definitions):
         path = ("definitions", index, "value")
         if definition.key in explicit_values:
             checked = _freeze_explicit(explicit_values[definition.key], path)
-            if type(checked) is ResolutionErr:
+            if isinstance(checked, ResolutionErr):
                 return checked
             error = _constraint_failure(definition, checked.value, path)
             if error is not None:
@@ -183,4 +226,4 @@ def resolve_configuration(
         else:
             state = MissingValue()
         entries.append(SnapshotEntry(definition, state))
-    return ResolutionOk(EffectiveSnapshot._from_entries(registry, tuple(entries)))
+    return ResolutionOk(tuple(entries))

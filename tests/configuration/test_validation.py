@@ -1,13 +1,16 @@
 """Check exact metadata types, static constraints, safe errors, and prerequisite ordering."""
 
 from decimal import Decimal, Inexact, Rounded, localcontext
+from typing import cast
 
 from companion_memory.configuration import (
     Bound,
     Declared,
     LiteralDefault,
+    MetadataValue,
     NoDefault,
     NotApplicable,
+    ParameterDefinitionInput,
     RangeDescriptor,
     Unbounded,
     create_registry_builder,
@@ -36,7 +39,8 @@ class DefinitionStructureTests(RegistryTestCase):
         complete = definition()
         for name in complete:
             submitted = definition()
-            del submitted[name]
+            # Deliberately remove a required field from the complete fixture.
+            del cast(dict[str, object], submitted)[name]
             self.invalid(submitted, [((name,), "MISSING_FIELD")])
         self.invalid({"key": "sample.label"},
                      [((name,), "MISSING_FIELD") for name in complete if name != "key"])
@@ -85,16 +89,17 @@ class DefinitionStructureTests(RegistryTestCase):
         stored = self.registered(definition(unit=Declared("label"),
             activation_group=Declared("group"), replacement=Declared("unregistered.key"),
             upgrade_rule=Declared("  Preserve text exactly.  ")))
-        self.assertEqual(stored.replacement.value, "unregistered.key")
-        self.assertEqual(stored.upgrade_rule.value, "  Preserve text exactly.  ")
+        self.assertEqual(self.declared(stored.replacement), "unregistered.key")
+        self.assertEqual(self.declared(stored.upgrade_rule), "  Preserve text exactly.  ")
 
     def test_unknown_field_does_not_echo_its_name_or_value(self):
         submitted = definition()
-        submitted["secret-field"] = HostileValue()
+        # Unknown fields and non-string keys must reach validation unchanged.
+        cast(dict[str, object], submitted)["secret-field"] = HostileValue()
         error = self.invalid(submitted, [((), "UNKNOWN_FIELD")])
         self.assertNotIn("secret-field", repr(error))
         submitted = definition()
-        submitted[42] = "secret-value"
+        cast(dict[object, object], submitted)[42] = "secret-value"
         self.invalid(submitted, [((), "UNKNOWN_FIELD")])
 
     def test_custom_subclasses_are_rejected_without_coercion(self):
@@ -192,6 +197,7 @@ class ExactTypeIdentityTests(RegistryTestCase):
         class UnsupportedValue(metaclass=TypeComparisonTrap):
             pass
 
+        # The bound cast below deliberately admits this hostile object to validation.
         value = UnsupportedValue()
         cases = [
             (definition(default=LiteralDefault(value)), ("default", "value"), "UNSUPPORTED_VALUE"),
@@ -200,7 +206,8 @@ class ExactTypeIdentityTests(RegistryTestCase):
             (definition(enum=Declared([value])), ("enum", "value", 0), "UNSUPPORTED_VALUE"),
             (definition(enum=Declared(value)), ("enum", "value"), "INVALID_SHAPE"),
             (definition(scope=value), ("scope",), "INVALID_SHAPE"),
-            (definition(type="integer", range=Declared(RangeDescriptor(Bound(value, True), Unbounded())),
+            (definition(type="integer", range=Declared(RangeDescriptor(
+                Bound(cast(int | Decimal, value), True), Unbounded())),
                         enum=NotApplicable("No enumeration.")),
              ("range", "value", "lower", "value"), "UNSUPPORTED_VALUE"),
         ]
@@ -226,8 +233,8 @@ class ExactTypeIdentityTests(RegistryTestCase):
         self.success(builder.register(definition(key="retry", default=LiteralDefault("alpha"))))
         registry = self.success(builder.freeze())
         self.assertEqual([item.key for item in registry.list_definitions()], ["existing", "retry"])
-        self.assertEqual(self.success(registry.get_definition("existing")).default.value, "beta")
-        self.assertEqual(self.success(registry.get_definition("retry")).default.value, "alpha")
+        self.assertEqual(self.defaulted(self.success(registry.get_definition("existing")).default), "beta")
+        self.assertEqual(self.defaulted(self.success(registry.get_definition("retry")).default), "alpha")
 
 
 class DefaultAndValueTests(RegistryTestCase):
@@ -243,13 +250,14 @@ class DefaultAndValueTests(RegistryTestCase):
                         enum=NotApplicable("No enumeration."), default=LiteralDefault(literal)))
                     expected = tuple(literal) if type(literal) is list else literal
                     if declared_type != "object":
-                        self.assertEqual(stored.default.value, expected)
+                        self.assertEqual(self.defaulted(stored.default), expected)
                     if declared_type in ("boolean", "integer", "decimal", "string"):
-                        self.assertIs(type(stored.default.value), type(literal))
+                        self.assertIs(type(self.defaulted(stored.default)), type(literal))
 
     def test_absent_no_default_null_false_zero_and_empty_string_are_distinct(self):
         missing = definition()
-        del missing["default"]
+        # This missing required field is the invalid input under test.
+        del cast(dict[str, object], missing)["default"]
         self.invalid(missing, [(("default",), "MISSING_FIELD")])
         self.assertIsInstance(self.registered(definition()).default, NoDefault)
         self.invalid(definition(default=None), [(("default",), "INVALID_SHAPE")])
@@ -259,8 +267,8 @@ class DefaultAndValueTests(RegistryTestCase):
                                       ("string", None)):
             stored = self.registered(definition(type=declared_type, nullable=True,
                 default=LiteralDefault(literal), enum=Declared([literal])))
-            self.assertIs(type(stored.default.value), type(literal))
-            self.assertEqual(stored.default.value, literal)
+            self.assertIs(type(self.defaulted(stored.default)), type(literal))
+            self.assertEqual(self.defaulted(stored.default), literal)
 
     def test_nullable_applies_only_at_top_and_enumeration_must_include_null(self):
         for nullable in (True, False):
@@ -321,19 +329,20 @@ class DefaultAndValueTests(RegistryTestCase):
         shared = {"items": [None, 1]}
         stored = self.registered(definition(type="array", default=LiteralDefault([shared, shared]),
                                            enum=NotApplicable("No enumeration.")))
-        self.assertEqual(stored.default.value[0], stored.default.value[1])
+        default = self.sequence(self.defaulted(stored.default))
+        self.assertEqual(default[0], default[1])
 
     def test_deep_finite_metadata_is_checked_without_recursive_python_calls(self):
-        nested = {"leaf": Decimal("1.00")}
+        nested: MetadataValue = {"leaf": Decimal("1.00")}
         for _ in range(1500):
             nested = [nested]
         stored = self.registered(definition(type="array", default=LiteralDefault(nested),
                                            enum=Declared([nested])))
-        immutable = stored.default.value
+        immutable = self.defaulted(stored.default)
         for _ in range(1500):
             self.assertIsInstance(immutable, tuple)
-            immutable = immutable[0]
-        self.assertEqual(immutable["leaf"], Decimal("1"))
+            immutable = self.sequence(immutable)[0]
+        self.assertEqual(self.mapping(immutable)["leaf"], Decimal("1"))
 
     def test_invalid_mapping_node_stops_its_subtree_and_keeps_independent_issues(self):
         value = {1: HostileValue(), "cycle": None}
@@ -345,10 +354,14 @@ class DefaultAndValueTests(RegistryTestCase):
 
 
 class RangeTests(RegistryTestCase):
-    def numeric_definition(self, lower, upper, **changes):
+    def numeric_definition(
+        self, lower: object, upper: object, **changes: object,
+    ) -> ParameterDefinitionInput:
         submitted = definition(type="integer", enum=NotApplicable("No enumeration."),
-                               range=Declared(RangeDescriptor(lower, upper)))
-        submitted.update(changes)
+                               range=Declared(RangeDescriptor(
+                                   cast(Bound | Unbounded, lower), cast(Bound | Unbounded, upper))))
+        # Bounds and overrides may be intentionally malformed in this fixture.
+        cast(dict[str, object], submitted).update(changes)
         return submitted
 
     def test_range_shape_type_finiteness_and_applicability(self):
@@ -358,12 +371,13 @@ class RangeTests(RegistryTestCase):
                      [(("range", "value"), "INVALID_RANGE")])
         self.invalid(definition(range=Declared({"lower": 0})),
                      [(("range", "value"), "INVALID_SHAPE")])
+        # Non-boolean inclusivity is intentional; cast does not coerce the integer.
         for side in ("lower", "upper"):
             for invalid, path, reason in (
                 (None, (), "INVALID_SHAPE"),
                 (Bound(True, True), ("value",), "TYPE_MISMATCH"),
                 (Bound(Decimal("1"), True), ("value",), "TYPE_MISMATCH"),
-                (Bound(1, 1), ("inclusive",), "INVALID_SHAPE"),
+                (Bound(1, cast(bool, 1)), ("inclusive",), "INVALID_SHAPE"),
             ):
                 bounds = {"lower": Unbounded(), "upper": Unbounded(), side: invalid}
                 self.invalid(self.numeric_definition(**bounds),
@@ -432,7 +446,9 @@ class RangeTests(RegistryTestCase):
                 [(("range", "value"), "INVALID_RANGE")])
 
     def test_multiple_bad_bounds_keep_structural_order_and_skip_interval_comparison(self):
-        self.invalid(self.numeric_definition(Bound("secret", None), Bound(Decimal("NaN"), 1)), [
+        # Preserve all invalid carriers so independent bound errors can accumulate.
+        self.invalid(self.numeric_definition(
+            Bound(cast(int, "secret"), cast(bool, None)), Bound(Decimal("NaN"), cast(bool, 1))), [
             (("range", "value", "lower", "value"), "TYPE_MISMATCH"),
             (("range", "value", "lower", "inclusive"), "INVALID_SHAPE"),
             (("range", "value", "upper", "value"), "NON_FINITE_NUMBER"),
@@ -495,8 +511,9 @@ class EnumerationAndPriorityTests(RegistryTestCase):
             enum=Declared([False]), range=Declared(RangeDescriptor(Bound(1, True), Unbounded())),
             description=" "),
             [(("type",), "UNSUPPORTED_DECLARED_TYPE"), (("description",), "INVALID_SHAPE")])
+        # The string bound must fail before default or enum interval checks.
         self.invalid(definition(type="integer", default=LiteralDefault(100), enum=Declared([100]),
-            range=Declared(RangeDescriptor(Bound("bad", True), Bound(1, True)))),
+            range=Declared(RangeDescriptor(Bound(cast(int, "bad"), True), Bound(1, True)))),
             [(("range", "value", "lower", "value"), "TYPE_MISMATCH")])
         self.invalid(definition(type="integer", default=LiteralDefault("wrong"), enum=Declared([1]),
             range=Declared(RangeDescriptor(Bound(0, True), Bound(2, True)))),
@@ -527,7 +544,8 @@ class EnumerationAndPriorityTests(RegistryTestCase):
         submitted = definition(type="array", default=LiteralDefault([
             {"secret-map-key": HostileValue()}, Decimal("NaN"), lambda: None]),
             enum=NotApplicable("No enumeration."), description=" ")
-        submitted["secret-unknown-field"] = "secret-value"
+        # Deliberate unknown metadata must not leak into the error.
+        cast(dict[str, object], submitted)["secret-unknown-field"] = "secret-value"
         error = self.invalid(submitted, [
             (("default", "value", 0), "UNSUPPORTED_VALUE"),
             (("default", "value", 1), "NON_FINITE_NUMBER"),

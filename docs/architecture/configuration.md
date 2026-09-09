@@ -550,3 +550,94 @@ i为explicit_values插入顺序中的零基下标，j为绑定注册表list_defi
 | S6 错误与验收 | 固定解析错误与大写reason、确定阶段顺序、仅首个安全问题；以上完整合成例子及边界条件作为后续验收预期 | 失败可识别且不泄漏输入，验收能区分支持、拒绝与缺失 |
 
 普通私有函数拆分、临时容器、遍历实现及是否共享既有不可变对象不单列审批项，只须满足公开行为。本轮到契约定稿及一致性检查为止；不实现、不运行项目代码、不增依赖、不提交或推送。本契约已批准，但不等于授权编码，下一步实现须由用户明确授权；更不授权后续激活、持久化、权限或完整配置模块。
+
+<a id="configuration-additional-validation-contract"></a>
+
+### 11.11 日志所需附加与跨参数校验：最小补充契约
+
+**状态：C1–C4及G1表示／定义匹配规格均已批准。** 本轮仅授权日志所需纯内存配置校验，使用明确的完整合成Schema、五类目录清单及非秘密public路径验证；G2真实目录、路径敏感分级及资源核验仍是生产装配前置，不阻止合成验证。实现进度与实际检查见[CURRENT_TASK](../work/CURRENT_TASK.md)。本节仅补足[日志配置前置缺口](logging.md#runtime-diagnostics-configuration)；日志参数、默认值和数值范围仍以该处唯一参数表为准，不在此复制或补齐另一套生产定义。§11.9／§11.10正文、公开类型和既有拒绝语义保持不变。已批准决定集中见[末表](#configuration-additional-validation-decisions)。
+
+#### 11.11.1 显式扩展入口与兼容
+
+新增`resolve_configuration_with_logging_validation(registry, explicit_values, protected_directories) → CheckedResolutionResult<EffectiveSnapshot>`，三项均显式提供。前两项沿用§11.10的精确载体、全集合检查、唯一默认取值及输入稳定要求；第三项仅提供下述路径隔离事实，不提供配置覆写或验证器。成功为深不可变`CheckedResolutionOk(value)`，失败为独立的`CheckedResolutionErr(error)`；不扩充原ResolutionResult／RegistryError的码或operation枚举。成功快照沿用原生EffectiveSnapshot、原注册表绑定和三个查询接口；get_entry仍用原ResolutionResult，无新快照构造器、ID、能力证书或激活收据。
+
+原`resolve_configuration(registry, explicit_values)`仍按§11.10拒绝任何非空validator／dependencies，额外关键字仍按语言调用规则拒绝；不自动转调新入口，不先删除声明调用原入口再补校验。新入口核对完整日志参数集合及其定义符合日志表和本节所需声明，缺项或不符即拒绝；其余注册参数也完整保留、解析和检查。除下述validator／dependencies语义外，scope、override_policy、sensitivity及兼容升级等支持边界仍沿用§11.10；不因file_enabled=false或参数未显式提供跳过校验。日志initialize仍须核对必要定义与校验能力，不将一般解析成功当作日志适用性证明。
+
+#### 11.11.2 静态声明、查找与只读依赖
+
+validator仍是§11.9的标识序列；M15随程序发布固定白名单，精确查找以下四个标识及其绑定，定义仅存标识。没有调用方注册／替换验证器、插件发现、任意回调、动态导入、表达式或按名字反射执行的入口；扩充白名单须另审公开语义。基础类型／范围／枚举通过并取得独立所有权后，验证器只接收本项不可变候选值、已声明依赖的只读候选条目，以及路径验证器专用的已隔离目录输入；不能读取原始输入、未声明键、环境、文件、网络、时钟或日志，也不能改写值、补默认或返回派生值。
+
+| 静态验证器标识 | 绑定参数与必要声明 | 唯一附加检查 |
+| --- | --- | --- |
+| `logging_module_levels` | `logging.module_levels`，无必要依赖 | 按[日志事件入口](logging.md#runtime-diagnostics-events)的模块集合及[参数表](logging.md#runtime-diagnostics-configuration)核对映射项数、精确模块名与等级；拒绝未知模块、嵌套对象、空值、非文本等级，不转换或继承前缀 |
+| `logging_warning_reserve` | `logging.warning_reserve`，dependencies必须含`logging.sink_capacity` | 候选值满足R<Q；各自单参数上下界仍由参数表对应range检查 |
+| `logging_rotation_bytes` | `logging.rotation_bytes`，dependencies必须含`logging.event_max_bytes` | 候选值满足E≤B，等号允许；不将此关系误用于flush／I/O时限 |
+| `logging_file_directory` | `logging.file_directory`，无必要参数依赖；使用protected_directories | 按下节检查路径文本及目录隔离；不检查易变资源事实 |
+
+未知标识在能力检查阶段拒绝；已知标识绑定错误的键／类型、缺少本表必要验证器或必要依赖同样拒绝，不能静默跳过。固定验证器只返回通过或下表固定失败原因；意外抛出普通异常或返回非法结果时以VALIDATOR_FAILED安全失败，不保留异常／堆栈，不回退默认或发布结果。内存耗尽等无法完成结果构造的运行故障沿用§11.10边界，不伪装领域成功。
+
+dependencies**只声明从完整候选集合读取值，不定义求值或执行顺序**。所有参数先独立完成显式值／默认／缺失选择及基础校验，再检查依赖并执行验证器；无拓扑求值、递归解析、固定点迭代或计算引擎。允许额外的已注册依赖、无validator的依赖声明、前向引用、自引用及声明环；它们只要求所引用条目为PresentValue，不自动产生其他约束或额外执行。可选且无值的被依赖项报DEPENDENCY_VALUE_MISSING，不跳过、不填None；被依赖项required且无值先按基础解析报MISSING_REQUIRED。PresentValue(None)不算缺失，是否合法由基础约束及明确验证器决定；有validator的本项为MissingValue时报VALIDATED_VALUE_MISSING。依赖指向未知键仍在§11.9冻结时报UNRESOLVED_DEPENDENCY，不改变其允许声明环的行为；声明环与仍须拒绝的数据树循环是两回事。
+
+#### 11.11.3 路径输入来源与资源边界
+
+protected_directories为精确dict，恰含`media`、`database`、`audit`、`provider_usage`、`backup`五个固定键；每项是非空精确list／tuple，成员为精确str目录文本。同一目录可因共库存储出现在多个类别。可信启动装配方从本次部署已明确的媒体／blob、数据库、审计、账本及备份资源布局显式提供完整目录清单；数据库文件提供所属受保护目录。清单须覆盖本次装配全部对应资源，不得用空项、猜测路径或省略尚未知类别换取成功；来源尚未具备则前置条件未满足。本节不决定这些资源的生产配置键、默认路径或加载方式，不让日志模块自行扫描或读取环境补齐。
+
+logging.file_directory及上述目录文本都须满足日志参数表的路径长度、无控制字符及无凭据要求；纯内存语法限定为规范POSIX绝对目录文本：单个起始`/`，除根外无尾部`/`，无重复分隔符、`.`或`..`组件，不展开`~`、环境变量或URL，不隐式清洗或改写。日志目录不能为根；按精确路径组件比较，日志目录与任一受保护目录相同、为其祖先或后代均拒绝，不能仅用字符串前缀比较。无凭据仍由可信装配方保证，语法检查不能证明任意普通字符串不是秘密；public也不是安全审查证明。
+
+仅输入形状、语法及上述词法隔离通过不代表物理隔离成立：真实存在性、全部相关路径的符号链接／别名导致的实际重合、可写性、目标文件类型及独占所有权仍由[日志资源准备](logging.md#runtime-diagnostics-output)核验，无法确认则拒绝。配置阶段无stat、realpath、试写或资源打开；目录清单在本次调用内取得独立不可变所有权，只供检查，不存进配置值或公开快照。装配方须保证校验与日志资源准备针对同一部署布局；不能把一次内存结果当作以后资源状态的保证。非public路径支持、生产目录布局及部署安全审查仍是独立前置缺口。
+
+#### 11.11.4 一次发布与安全首错
+
+阶段顺序为：沿用§11.10的registry／explicit_values载体、全部键格式、未知键检查 → 整个注册集合的能力检查（按定义排序，字段顺序沿用§11.10；validator按声明顺序）→ 核对日志参数完整性与必需声明（按完整键排序）→ protected_directories形状、文本语法及隔离输入所有权 → 全集合基础值选择／校验／隔离 → 全集合依赖值存在性（定义排序、依赖声明顺序）→ 验证器（定义排序、声明顺序）→ 一次返回完整快照。目录输入按上节五键顺序及成员下标检查；文件目录自身的语法与隔离在其验证器内检查。前一阶段失败不运行后续阶段；默认值也须经过附加检查。所有中间候选只在M15内部可见，失败不交出部分快照，不修改注册表、原输入、旧快照或任何有效指针；公开结果、错误及快照均深不可变，成功后支持并发只读。
+
+CheckedResolutionError仅有code、operation、issues；operation固定为新入口名，issues恰含一个不可变问题（field_path、reason）。基础失败沿用§11.10对应code／reason／安全路径语义，但以新结果类型返回；新错误限定如下，不改变原接口错误集合：
+
+| 新code | 固定reason及触发 | 安全field_path |
+| --- | --- | --- |
+| UNSUPPORTED_VALIDATION_DECLARATION | UNKNOWN_VALIDATOR：非白名单；VALIDATOR_BINDING_INVALID：绑定键／类型不符；REQUIRED_VALIDATOR_MISSING、REQUIRED_DEPENDENCY_MISSING：漏必要声明 | `("definitions", j, "validator")`或`("definitions", j, "dependencies")`，未知标识／绑定错误追加其validator声明下标，缺少声明不追加下标 |
+| INVALID_LOGGING_SCHEMA | LOGGING_DEFINITION_MISSING、LOGGING_DEFINITION_MISMATCH：完整日志表所需定义缺失／其他元信息不符 | `("logging_definitions", k)`，k按日志表展开完整键的排序定位 |
+| INVALID_VALIDATION_CONTEXT | INVALID_SHAPE、PATH_SYNTAX_INVALID：目录输入形状／语法不合要求 | `("protected_directories",)`或追加上节固定类别名及成员下标 |
+| ADDITIONAL_VALIDATION_FAILED | DEPENDENCY_VALUE_MISSING、VALIDATED_VALUE_MISSING：前述值缺失；MODULE_LEVELS_INVALID、RESERVE_NOT_LESS_THAN_CAPACITY、EVENT_EXCEEDS_ROTATION、PATH_SYNTAX_INVALID、PATH_OVERLAP：相应检查不通过；VALIDATOR_FAILED：验证器异常或非法结果 | 依赖为`("definitions", j, "dependencies", d)`；其余为`("definitions", j, "value")` |
+
+j／d是注册表排序下标／依赖声明下标。所有路径只含上述固定字段及整数下标；不回显输入键、模块名、路径值、默认、异常、对象引用或任意表示，不调用输入对象钩子，也不为错误自行记日志。新增检查失败不得清空声明重试、降级敏感标签或以日志私有验证制造成功。
+
+<a id="configuration-logging-definition-match"></a>
+
+**LOGGING_DEFINITION_MISMATCH的比较边界（G1已批准）：** 只在既有“核对日志参数完整性与必需声明”阶段比较下表；不新增错误码、字段、检查阶段或运行时审批功能。所需键缺失仍为LOGGING_DEFINITION_MISSING；未知验证器、错误绑定及缺少必要声明仍使用原有专用原因。全集合能力拒绝先于本阶段，例如非public、兼容升级声明不支持时，不能改报MISMATCH。各定义按日志完整键排序，只报首个问题，路径仍为`("logging_definitions", k)`，不回显字段值。
+
+| 字段组 | 必须满足的行为／元信息约束与比较方式 |
+| --- | --- |
+| key、owner_module、type、default、required、nullable | key精确匹配参数表完整键；owner_module为logging_service；其余按[唯一参数表与字段规格](logging.md#runtime-diagnostics-schema)检查。default区分NoDefault与LiteralDefault，后者按§11.9类型敏感深度相等比较；不允许换默认，即使本次提交了显式值 |
+| unit、range、enum | unit采用字段规格指定标识，不换算；integer的上下界数值及闭合性必须与参数表相同，不能放宽、收窄或省略；其他类型range为NotApplicable。enum按类型敏感成员集合比较，顺序不影响允许值，不能增删成员；无枚举项须为NotApplicable，不以附加validator代替必需的range／enum |
+| validator、dependencies | 核对必要验证器及必要依赖，缺少者报原专用原因；已知验证器仍只能绑定其指定键／类型。**不要求dependencies等于生产定义建议中的最小列表**，§11.11.2已批准的额外已注册依赖、无validator依赖、自引用及声明环继续允许，并接受原有缺值检查；不能用MISMATCH撤销这些语义 |
+| scope、override_policy、sensitivity、deprecated、replacement、upgrade_rule | 沿用已批准支持边界；能到达本阶段的定义仍须满足字段规格中的既定要求。目录敏感级别未确认时不能生成假定为public的生产定义；这属于规格前置缺口，不是新增运行时“审批状态” |
+| consumers、read_roles、write_roles、apply_mode、activation_group | consumers必须包含logging_service，不以元信息声明授权额外消费者；角色按最终批准的可信运维标识集合比较，不按列表顺序判差异、不执行鉴权；apply_mode精确采用初始化生效标识，activation_group采用规定的NotApplicable标记。不从自由说明文字推断生效行为或角色权限 |
+| schema_revision及说明性内容 | schema_revision仅须满足§11.9的Identifier规则，保留各定义原标识，不与某个魔法版本串比较。description、rationale、validation_method、cost_impact、migration_impact及所有NotApplicable.reason须满足原有非空说明规则并保留；不逐字匹配本规格说明、不从文本求值。说明不得谎称已执行验收、持久化或权限落实，属文档／代码审查责任，不增设文本语义分析器 |
+
+说明文字完善不改变通过条件，也不逐条申请批准。既有行为的表示、角色绑定和比较口径已在[G1](logging.md#runtime-diagnostics-prerequisite-decisions)获批；§11.9／§11.10及本节原有错误优先级不改。比如仅改description或换合法schema_revision不应触发MISMATCH；改默认、改变范围端点或误标即时生效则应拒绝；这是已批准的匹配预期；具体执行结果只记录在CURRENT_TASK。
+
+#### 11.11.5 代表性验收例子（已批准）
+
+以下是契约预期，非当前测试结果；本轮合成测试的实际执行记录见[CURRENT_TASK](../work/CURRENT_TASK.md)。日志例子以完整Schema、表中所需声明、其余值合法、显式完整目录清单为前提；示例数值只用于边界说明，不另设默认。依赖声明例子可用§11.10.6完整合成模板构造额外参数。
+
+| 合成输入／操作 | 契约预期 |
+| --- | --- |
+| 同一完整日志注册表调用原入口；再调用新入口 | 原入口仍按原首错顺序报VALIDATOR_NOT_SUPPORTED／DEPENDENCIES_NOT_SUPPORTED；新入口全部检查通过才给原生完整快照，不删声明 |
+| module_levels={bootstrap: NOTSET}；另次改为未知模块或等级对象 | 前者通过；后者MODULE_LEVELS_INVALID，无模块名或值回显；若值是带repr钩子的自定义对象，先由基础安全检查拒绝且钩子不执行 |
+| 各次独立提交R=Q；E=B；E>B，其余值合法 | 分别RESERVE_NOT_LESS_THAN_CAPACITY、通过、EVENT_EXCEEDS_ROTATION；文件端禁用时仍检查；使用默认的候选也检查 |
+| 额外合成参数a、b互相依赖（另例a自依赖），无validator，两者均有合法文本值；互依例另次令可选b无默认且缺失 | 声明环不触发求值且可通过；缺失时报DEPENDENCY_VALUE_MISSING，无部分结果；未知依赖键在冻结时失败，未知validator在新入口能力阶段失败 |
+| 受保护media目录为/srv/media，日志目录分别为/srv/media/logs、/srv、/srv/media2、/srv/../logs，其余类别为互不重合的合成目录 | 前两项PATH_OVERLAP；第三项词法隔离可通过；第四项PATH_SYNTAX_INVALID。未提供完整目录类别则INVALID_VALIDATION_CONTEXT；符号链接等资源事实不由此例证明 |
+| 全部成功后修改原module_levels及目录清单；另次跨参数失败或固定验证器抛普通异常 | 已返回快照及旧快照不变、公开嵌套修改被拒绝；失败无快照，异常只报VALIDATOR_FAILED且不泄漏异常。日志资源准备仍独立核验真实目录 |
+
+<a id="configuration-additional-validation-decisions"></a>
+
+#### 11.11.6 集中已批准决定与前置缺口
+
+| 已批准决定 | 已批准方案 |
+| --- | --- |
+| C1 扩展入口及兼容 | 专用显式入口、独立结果／错误类型，复用原生快照；原resolve_configuration及§11.9／§11.10全部行为不变 |
+| C2 白名单与依赖 | 四项固定验证器及绑定，完整候选先形成；依赖只读、不求值，缺值失败，允许声明环；未知声明及验证器异常安全失败 |
+| C3 路径隔离输入 | 可信装配方提供五类完整目录清单；规范POSIX文本和组件隔离，真实资源核验仍归日志准备，不引入加载或秘密识别能力 |
+| C4 发布、错误与验收 | 上述确定首错顺序、独立安全错误、完整校验后一次发布、深不可变与输入隔离，以及上述合成验收预期 |
+
+日志完整字段的落点、目录来源核对及剩余决定见[日志实施前置规格](logging.md#runtime-diagnostics-schema)。本补充及G1表示／匹配细化已批准；真实目录布局、安全分级与资源核验仍按[G2待定事项](logging.md#runtime-diagnostics-prerequisite-decisions)处理，不能把候选布局或合成夹具当作真实部署；若路径需非public则另定对应支持。本轮仅授权本节纯内存实现，不自动注册参数、不选生产路径、不创建夹具目录；生产装配及日志服务仍须另行授权。本节不扩展加载、持久化、秘密解析、权限、热修改、配置计算引擎或后续日志能力。

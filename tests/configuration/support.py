@@ -1,19 +1,27 @@
 """Explicit synthetic definitions and assertions shared by registry tests."""
 
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import cast
 import unittest
 
 from companion_memory.configuration import (
     Declared,
     Err,
+    FrozenMetadataValue,
+    LiteralDefault,
+    MetadataValue,
     NoDefault,
     NotApplicable,
     Ok,
+    ParameterDefinition,
     ParameterDefinitionInput,
+    Result,
     create_registry_builder,
 )
 
 
-def definition(**changes) -> ParameterDefinitionInput:
+def definition(**changes: object) -> ParameterDefinitionInput:
     """Return a fresh, complete text parameter with explicit synthetic metadata."""
     fields = ParameterDefinitionInput(
         key="sample.label",
@@ -25,7 +33,7 @@ def definition(**changes) -> ParameterDefinitionInput:
         nullable=False,
         unit=NotApplicable("Text labels have no unit."),
         range=NotApplicable("Text labels have no numeric range."),
-        enum=Declared(["alpha", "beta"]),
+        enum=Declared[list[MetadataValue] | tuple[MetadataValue, ...]](["alpha", "beta"]),
         validator=[],
         dependencies=[],
         scope=["sample_instance"],
@@ -45,20 +53,21 @@ def definition(**changes) -> ParameterDefinitionInput:
         consumers=["sample_consumer"],
         validation_method="Compare declared metadata and read-only results.",
     )
-    fields.update(changes)
+    # Some callers deliberately corrupt complete metadata to exercise rejection.
+    cast(dict[str, object], fields).update(changes)
     return fields
 
 
 class RegistryTestCase(unittest.TestCase):
     """Assert tagged results without hiding unexpected registration failures."""
 
-    def success(self, result):
+    def success[T](self, result: Result[T]) -> T:
         self.assertIsInstance(result, Ok)
-        return result.value
+        return cast(Ok[T], result).value
 
     def failure(self, result, code, operation, issues):
         self.assertIsInstance(result, Err)
-        error = result.error
+        error = cast(Err, result).error
         self.assertEqual(error.code, code)
         self.assertEqual(error.operation, operation)
         self.assertIsInstance(error.issues, tuple)
@@ -67,16 +76,38 @@ class RegistryTestCase(unittest.TestCase):
         )
         return error
 
-    def invalid(self, fields, issues):
+    def invalid(self, fields: object, issues):
+        # Submit malformed carriers intact; the runtime registry must reject them.
         builder = create_registry_builder()
         error = self.failure(
-            builder.register(fields), "INVALID_DEFINITION", "register", issues
+            builder.register(cast(ParameterDefinitionInput, fields)),
+            "INVALID_DEFINITION", "register", issues
         )
         self.assertEqual(self.success(builder.freeze()).list_definitions(), ())
         return error
 
-    def registered(self, fields):
+    def registered(self, fields: ParameterDefinitionInput) -> ParameterDefinition:
         builder = create_registry_builder()
         self.assertIsNone(self.success(builder.register(fields)))
         registry = self.success(builder.freeze())
         return self.success(registry.get_definition(fields["key"]))
+
+    def declared[T](self, marker: Declared[T] | NotApplicable) -> T:
+        """Narrow a declared marker after checking the expected fixture branch."""
+        self.assertIs(type(marker), Declared)
+        return cast(Declared[T], marker).value
+
+    def defaulted[T](self, marker: LiteralDefault[T] | NoDefault) -> T:
+        """Narrow a literal default without changing its underlying value."""
+        self.assertIs(type(marker), LiteralDefault)
+        return cast(LiteralDefault[T], marker).value
+
+    def mapping(self, value: FrozenMetadataValue) -> Mapping[str, FrozenMetadataValue]:
+        """Inspect the same frozen mapping, preserving its identity for mutation tests."""
+        self.assertIs(type(value), MappingProxyType)
+        return cast(Mapping[str, FrozenMetadataValue], value)
+
+    def sequence(self, value: FrozenMetadataValue) -> tuple[FrozenMetadataValue, ...]:
+        """Inspect the same frozen sequence without copying or thawing it."""
+        self.assertIs(type(value), tuple)
+        return cast(tuple[FrozenMetadataValue, ...], value)

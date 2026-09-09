@@ -1,0 +1,5 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.autoSearchPaths": false
+}

@@ -6,12 +6,15 @@ Issues are collected by declaration field and sequence order; failed prerequisit
 disable dependent checks without discarding independent structural failures.
 """
 
+from collections.abc import Mapping
 from decimal import Decimal
 from types import MappingProxyType
+from typing import cast
 
 from .definitions import (
     Bound,
     Declared,
+    DeclaredType,
     FrozenMetadataValue,
     LiteralDefault,
     NoDefault,
@@ -21,6 +24,7 @@ from .definitions import (
     RangeDescriptor,
     Unbounded,
 )
+from .metadata_traversal import _MetadataDestination, _MetadataFrame, _store_metadata
 from .results import Err, FieldPath, Ok, Reason, RegistryError, RegistryIssue, Result
 
 _MISSING = object()
@@ -63,14 +67,17 @@ def _metadata_equal(left: FrozenMetadataValue, right: FrozenMetadataValue) -> bo
         first, second = pending.pop()
         if type(first) is not type(second):
             return False
+        # The exact type comparison above establishes both container shapes.
         if type(first) is tuple:
-            if len(first) != len(second):
+            second_sequence = cast(tuple[FrozenMetadataValue, ...], second)
+            if len(first) != len(second_sequence):
                 return False
-            pending.extend(zip(first, second))
+            pending.extend(zip(first, second_sequence))
         elif type(first) is MappingProxyType:
-            if first.keys() != second.keys():
+            second_mapping = cast(Mapping[str, FrozenMetadataValue], second)
+            if first.keys() != second_mapping.keys():
                 return False
-            pending.extend((value, second[key]) for key, value in first.items())
+            pending.extend((value, second_mapping[key]) for key, value in first.items())
         elif first != second:
             return False
     return True
@@ -97,7 +104,8 @@ class _DefinitionValidator:
         self.owned: dict[str, object] = {}
 
     def issue(self, path: FieldPath, reason: Reason) -> None:
-        self.issues[path[0]].append(RegistryIssue(path, reason))
+        # Internal definition paths always start with their fixed field name.
+        self.issues[cast(str, path[0])].append(RegistryIssue(path, reason))
 
     def validate(self) -> Result[ParameterDefinition]:
         for name in _FIELDS:
@@ -114,7 +122,38 @@ class _DefinitionValidator:
             ordered += (RegistryIssue((), "UNKNOWN_FIELD"),)
         if ordered:
             return Err(RegistryError("INVALID_DEFINITION", "register", ordered))
-        return Ok(ParameterDefinition(**self.owned))
+        # Every field and static constraint has passed. Narrow the heterogeneous
+        # owned storage only here, at the boundary that publishes the definition.
+        return Ok(ParameterDefinition(
+            key=cast(str, self.owned["key"]),
+            owner_module=cast(str, self.owned["owner_module"]),
+            schema_revision=cast(str, self.owned["schema_revision"]),
+            type=cast(DeclaredType, self.owned["type"]),
+            default=cast(NoDefault | LiteralDefault[FrozenMetadataValue], self.owned["default"]),
+            required=cast(bool, self.owned["required"]),
+            nullable=cast(bool, self.owned["nullable"]),
+            unit=cast(Declared[str] | NotApplicable, self.owned["unit"]),
+            range=cast(Declared[RangeDescriptor] | NotApplicable, self.owned["range"]),
+            enum=cast(Declared[tuple[FrozenMetadataValue, ...]] | NotApplicable, self.owned["enum"]),
+            validator=cast(tuple[str, ...], self.owned["validator"]),
+            dependencies=cast(tuple[str, ...], self.owned["dependencies"]),
+            scope=cast(tuple[str, ...], self.owned["scope"]),
+            override_policy=cast(str, self.owned["override_policy"]),
+            sensitivity=cast(str, self.owned["sensitivity"]),
+            read_roles=cast(tuple[str, ...], self.owned["read_roles"]),
+            write_roles=cast(tuple[str, ...], self.owned["write_roles"]),
+            apply_mode=cast(str, self.owned["apply_mode"]),
+            activation_group=cast(Declared[str] | NotApplicable, self.owned["activation_group"]),
+            cost_impact=cast(str, self.owned["cost_impact"]),
+            migration_impact=cast(str, self.owned["migration_impact"]),
+            description=cast(str, self.owned["description"]),
+            deprecated=cast(bool, self.owned["deprecated"]),
+            replacement=cast(Declared[str] | NotApplicable, self.owned["replacement"]),
+            upgrade_rule=cast(Declared[str] | NotApplicable, self.owned["upgrade_rule"]),
+            rationale=cast(str, self.owned["rationale"]),
+            consumers=cast(tuple[str, ...], self.owned["consumers"]),
+            validation_method=cast(str, self.owned["validation_method"]),
+        ))
 
     def field(self, name: str, value: object) -> object:
         path = (name,)
@@ -179,7 +218,7 @@ class _DefinitionValidator:
     def declaration(self, name: str, value: object, path: FieldPath) -> object:
         if type(value) is NotApplicable:
             reason = self.text(value.reason, path + ("reason",))
-            return NotApplicable(reason) if reason is not _INVALID else _INVALID
+            return NotApplicable(cast(str, reason)) if reason is not _INVALID else _INVALID
         if type(value) is not Declared:
             self.issue(path, "INVALID_SHAPE")
             return _INVALID
@@ -201,41 +240,46 @@ class _DefinitionValidator:
         otherwise valid finite metadata. A mapping's children retain its structural
         path so arbitrary keys never enter issues. Unsupported nodes are not visited.
         """
-        result = [None]
-        pending = [("visit", value, path, result, 0)]
+        result: list[FrozenMetadataValue] = [None]
+        pending: list[_MetadataFrame] = [("visit", value, path, result, 0)]
         ancestors: set[int] = set()
         valid = True
         while pending:
-            action, node, node_path, destination, slot = pending.pop()
-            if action == "finish":
-                original, children = node
-                ancestors.remove(id(original))
-                destination[slot] = (MappingProxyType(children) if type(original) is dict
-                                     else tuple(children))
+            frame = pending.pop()
+            if frame[0] == "finish":
+                _, original_identity, children, destination, slot = frame
+                ancestors.remove(original_identity)
+                frozen = MappingProxyType(children) if type(children) is dict else tuple(children)
+                _store_metadata(destination, slot, frozen)
                 continue
-            node_type = type(node)
+            _, node, node_path, destination, slot = frame
             # Type identity cannot invoke equality hooks on an input's metaclass.
-            if node is None or node_type is bool or node_type is int or node_type is str:
-                destination[slot] = node
-            elif node_type is Decimal:
+            if node is None or type(node) is bool or type(node) is int or type(node) is str:
+                _store_metadata(destination, slot, node)
+            elif type(node) is Decimal:
                 if node.is_finite():
-                    destination[slot] = node
+                    _store_metadata(destination, slot, node)
                 else:
                     self.issue(node_path, "NON_FINITE_NUMBER")
                     valid = False
-            elif node_type is list or node_type is tuple or node_type is dict:
+            elif type(node) is list or type(node) is tuple or type(node) is dict:
                 if id(node) in ancestors:
                     self.issue(node_path, "CYCLIC_VALUE")
                     valid = False
                     continue
-                if node_type is dict and any(type(key) is not str for key in node):
+                if type(node) is dict and any(type(key) is not str for key in node):
                     self.issue(node_path, "UNSUPPORTED_VALUE")
                     valid = False
                     continue
                 ancestors.add(id(node))
-                children = {} if node_type is dict else [None] * len(node)
-                pending.append(("finish", (node, children), node_path, destination, slot))
-                if node_type is dict:
+                children: _MetadataDestination
+                if type(node) is dict:
+                    children = {}
+                else:
+                    sequence: list[FrozenMetadataValue] = [None] * len(node)
+                    children = sequence
+                pending.append(("finish", id(node), children, destination, slot))
+                if type(node) is dict:
                     pending.extend(("visit", child, node_path, children, key)
                                    for key, child in reversed(node.items()))
                 else:
@@ -250,8 +294,9 @@ class _DefinitionValidator:
         if type(value) is not RangeDescriptor:
             self.issue(path, "INVALID_SHAPE")
             return _INVALID
-        declared_type = self.owned.get("type")
-        numeric_type = {"integer": int, "decimal": Decimal}.get(declared_type)
+        declared_type = cast(DeclaredType | None, self.owned.get("type"))
+        numeric_type = ({"integer": int, "decimal": Decimal}.get(declared_type)
+                        if declared_type is not None else None)
         bounds = []
         valid = True
         for name, bound in (("lower", value.lower), ("upper", value.upper)):
@@ -272,7 +317,8 @@ class _DefinitionValidator:
             if type(bound.inclusive) is not bool:
                 self.issue(bound_path + ("inclusive",), "INVALID_SHAPE")
                 valid = False
-            bounds.append(Bound(number, bound.inclusive))
+            # Only definitions with valid, precisely typed bounds can be published.
+            bounds.append(Bound(cast(int | Decimal, number), bound.inclusive))
         if not valid:
             return _INVALID
         if declared_type is not None and numeric_type is None:
@@ -299,7 +345,7 @@ class _DefinitionValidator:
         return descriptor
 
     def matches_constraints(self, value: FrozenMetadataValue, path: FieldPath) -> bool:
-        declared_type = self.owned.get("type")
+        declared_type = cast(DeclaredType | None, self.owned.get("type"))
         if declared_type is None:
             return False
         if value is None:
@@ -312,7 +358,7 @@ class _DefinitionValidator:
             return False
         limits = self.owned.get("range")
         if type(limits) is Declared and declared_type in ("integer", "decimal"):
-            if not _in_range(value, limits.value):
+            if not _in_range(cast(int | Decimal, value), limits.value):
                 self.issue(path, "OUT_OF_RANGE")
                 return False
         return True
@@ -332,6 +378,8 @@ class _DefinitionValidator:
             if member is _INVALID:
                 valid = False
                 continue
+            # metadata returns only an owned value after excluding its sentinel.
+            member = cast(FrozenMetadataValue, member)
             if not self.matches_constraints(member, member_path):
                 valid = False
                 continue

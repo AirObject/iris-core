@@ -3,7 +3,9 @@
 Create a builder, register complete ParameterDefinitionInput dictionaries, and
 freeze before querying. resolve_configuration accepts a full explicit in-memory
 dict and a supported frozen registry. It does not load, persist, activate, or
-authorize configuration; registry and resolution errors remain distinct.
+authorize configuration. The explicit logging-validation entry checks complete
+logging metadata, fixed validators, and supplied directory text in memory only;
+its checked results remain distinct from registry and ordinary resolution errors.
 """
 
 from .definitions import (
@@ -31,6 +33,12 @@ from .resolution_results import (
 )
 from .snapshots import EffectiveSnapshot, MissingValue, PresentValue, SnapshotEntry, ValueSource
 from .resolution import resolve_configuration
+from .checked_resolution import resolve_configuration_with_logging_validation
+from .checked_resolution_results import (
+    CheckedResolutionErr, CheckedResolutionError, CheckedResolutionErrorCode,
+    CheckedResolutionFieldPath, CheckedResolutionIssue, CheckedResolutionOk,
+    CheckedResolutionOperation, CheckedResolutionReason, CheckedResolutionResult,
+)
 
 __all__ = [
     "Bound", "Declared", "DeclaredType", "Err", "ErrorCode", "FieldPath",
@@ -43,4 +51,8 @@ __all__ = [
     "ResolutionErr", "ResolutionError", "ResolutionErrorCode", "ResolutionFieldPath",
     "ResolutionIssue", "ResolutionOk", "ResolutionOperation", "ResolutionReason",
     "ResolutionResult", "resolve_configuration",
+    "CheckedResolutionErr", "CheckedResolutionError", "CheckedResolutionErrorCode",
+    "CheckedResolutionFieldPath", "CheckedResolutionIssue", "CheckedResolutionOk",
+    "CheckedResolutionOperation", "CheckedResolutionReason", "CheckedResolutionResult",
+    "resolve_configuration_with_logging_validation",
 ]

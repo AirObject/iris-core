@@ -54,7 +54,7 @@ class SnapshotEntry:
 class EffectiveSnapshot:
     """A fully resolved in-memory collection with one entry per registered key.
 
-    Obtain instances from resolve_configuration. All reachable returned data is
+    Obtain instances from successful configuration resolution. All returned data is
     immutable and safely published instances support concurrent reads. Callers
     cannot refresh or rebind a snapshot; it is not a malicious-code sandbox.
     """

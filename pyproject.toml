@@ -7,3 +7,15 @@ dependencies = []
 
 [tool.uv]
 package = false
+
+[tool.pyright]
+include = ["companion_memory", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[dependency-groups]
+dev = [
+    "pyright==1.1.411",
+]

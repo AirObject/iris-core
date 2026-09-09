@@ -10,7 +10,7 @@
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
-待批准草案：[统一运行诊断日志：控制台与文件](#runtime-diagnostics-contract)；[集中决定](#runtime-diagnostics-decisions)；[配置前置缺口](#runtime-diagnostics-configuration)。本文件为唯一维护正文。
+已批准契约：[统一运行诊断日志：控制台与文件](#runtime-diagnostics-contract)；[集中决定](#runtime-diagnostics-decisions)。[配置补充契约](configuration.md#configuration-additional-validation-contract)已另行批准；实施前仍须落实[Schema与目录规格](#runtime-diagnostics-schema)，G1已批准，G2见[待定事项](#runtime-diagnostics-prerequisite-decisions)。本文件为唯一维护正文。
 
 <a id="section-10"></a>
 
@@ -110,18 +110,18 @@ Web只接受本系统类型化白名单配置，不直接加载用户提交的�
 
 <a id="runtime-diagnostics-contract"></a>
 
-### 10.8 统一运行诊断日志：控制台与文件输出最小契约草案
+### 10.8 统一运行诊断日志：控制台与文件输出最小契约
 
-**状态：待批准；仅授权编写契约，不授权实现。** 本节只细化运行诊断日志切片，不代表完整日志模块或§15.1第一行完成。§10.1–10.7、模块所有权和T13保持原样；§11.9、§11.10的已批准配置行为不变。以下“推荐”条款须经审查批准及另行实现授权后落实；例子全部未执行。
+**状态：日志服务契约已批准，日志服务未授权实现。** 用户已批准本节L1–L4四组决定、参数表中的具体建议，以及文件恢复一致性和独立flush等待期限两项修订；只转换批准状态，不改变行为或验收预期。本节只细化运行诊断日志切片，不代表完整日志模块或§15.1第一行完成。§10.1–10.7、模块所有权和T13保持原样；§11.9、§11.10的已批准配置行为不变。配置纯内存校验按[补充契约](configuration.md#configuration-additional-validation-contract)独立授权；后续能力和未定事项不随本节获准，日志服务实现仍须另行授权，服务例子全部未执行。
 
 <a id="runtime-diagnostics-scope"></a>
 
-#### 10.8.1 依据、推荐与后续边界
+#### 10.8.1 依据、批准范围与后续边界
 
 | 性质 | 内容 |
 | --- | --- |
 | 已有要求 | §5.3及M14：统一日志入口、可信启动装配、最小应急stderr；§10：五个标准等级、同事件同ID、分端过滤、入队前脱敏、有界背压、故障隔离；T13：审计同业务事务提交，诊断文件不能冒充该事务 |
-| 本次推荐 | 下述事件准入、过滤公式、JSONL子集、初始化／关闭、逐端投递回执、容量／故障保障和待批准参数。集中决定见本节末表 |
+| 本次已批准 | 下述事件准入、过滤公式、JSONL子集、初始化／关闭、逐端投递回执、容量／故障保障和参数表中的具体建议，含文件恢复与独立flush超时修订。集中决定见本节末表 |
 | 已有实现事实 | 配置注册表和显式值解析／不可变快照已验收并独立提交；快照只表示受限内存解析结果，没有快照ID、运行revision、权限执行或激活承诺 |
 | 后续能力，归属不变 | M14的Web订阅、历史查询、导出、SDK桥接、受控诊断正文捕获、更多格式／时间轮转／压缩、热切换及事务审计；M13的Provider与计量账本；M15的完整校验／加载／激活；I01数据库基础。此切片不提供这些接口或返回成功的占位实现 |
 
@@ -129,7 +129,7 @@ Web只接受本系统类型化白名单配置，不直接加载用户提交的�
 
 <a id="runtime-diagnostics-events"></a>
 
-#### 10.8.2 事件、输入和安全准入（推荐）
+#### 10.8.2 事件、输入和安全准入（已批准）
 
 只提供`runtime`事件入口。公开`emit(event)`接收精确内建dict；必填`level`、`event_code`，可选`context`、`attributes`，后二者仅收精确dict。等级仅接受精确str：DEBUG／INFO／WARNING／ERROR／CRITICAL，对应10／20／30／40／50；不接收数值、别名、NOTSET、AUDIT或USAGE作为事件等级。ERROR不终止进程。调用方不能提供event_id、时间、schema版本或logger身份；这些由服务生成。
 
@@ -157,7 +157,7 @@ Web只接受本系统类型化白名单配置，不直接加载用户提交的�
 
 <a id="runtime-diagnostics-filtering"></a>
 
-#### 10.8.3 等级确定顺序（推荐）
+#### 10.8.3 等级确定顺序（已批准）
 
 实例默认I必须是五个标准等级之一。sink阈值S可为五等级或NOTSET，NOTSET解析为I；禁用sink不参与最低阈值计算。无模块覆写或模块值为NOTSET时，采集阈值C取`min(I, 所有启用sink解析后阈值)`；没有启用端时只返回DISABLED。模块显式覆写为具体等级时，C直接取该等级，可有意过滤各端共同需要的低等级。模块精确匹配，不按名称父子前缀继承。
 
@@ -165,13 +165,13 @@ Web只接受本系统类型化白名单配置，不直接加载用户提交的�
 
 <a id="runtime-diagnostics-output"></a>
 
-#### 10.8.4 输出、资源与生命周期（推荐）
+#### 10.8.4 输出、资源与生命周期（已批准）
 
 两端只支持上述UTF-8 JSONL。控制台支持stderr（全部等级）或split（DEBUG／INFO到stdout，WARNING以上到stderr），流由可信装配方借出；服务不关闭宿主流、不改动宿主／根logger的handler。文件为经批准诊断专用目录下固定活动文件runtime.jsonl；只支持单进程独占写入、大小轮转和关闭段份数保留，不支持任意handler类、路径模板、时间轮转、压缩或外部logrotate共写。
 
 文件目录须预先存在、非符号链接、可写且由部署方授予本服务独占使用权；须与业务blob、审计、账本及备份目录隔离。每个打开／重命名／删除目标都需限制在该目录、拒绝符号链接和非普通文件；启动发现非本服务命名的条目或无法证明独占所有权时拒绝，绝不清空目录。已有合法日志段可恢复追加；活动文件有未完成尾行或段序异常时拒绝初始化，不擅自截断修复。受信部署方负责不在运行中替换目录；运行时仍检查目标，权限或路径校验失败令文件端故障。
 
-**文件恢复一致性条件（推荐，待批准）：** 短写、写入或轮转／保留故障之后，原I/O结束且文件重新可写只是恢复的必要条件。重新接收文件投递前，还须在独占访问下确认活动文件处于完整JSONL记录边界（空文件或每条记录完整且末尾为LF，无残缺尾行）、关闭段及活动文件归属明确、段序与下一段序号一致且无冲突、轮转没有未确认的中间状态，并满足本节关闭段份数、单段大小及稳定状态保留边界。不能仅检查最后一个字节、重新打开成功或一次可写探测就宣告一致；不得将下一条JSON或恢复通知直接追加到残缺尾行。检查只观察既有内容和资源状态，不通过试写业务记录证明可写；仍受既有有界I/O和探测约束，期限内无法确认也视为未通过。任一条件无法确认时文件端保持FAULTED，last_reason为FILE_STATE_UNCONFIRMED，不自动截断、删除、重放、重命名或修复既有内容；本切片不提供修复接口。其他输出端继续按原契约过滤、接收和写出。
+**文件恢复一致性条件（已批准）：** 短写、写入或轮转／保留故障之后，原I/O结束且文件重新可写只是恢复的必要条件。重新接收文件投递前，还须在独占访问下确认活动文件处于完整JSONL记录边界（空文件或每条记录完整且末尾为LF，无残缺尾行）、关闭段及活动文件归属明确、段序与下一段序号一致且无冲突、轮转没有未确认的中间状态，并满足本节关闭段份数、单段大小及稳定状态保留边界。不能仅检查最后一个字节、重新打开成功或一次可写探测就宣告一致；不得将下一条JSON或恢复通知直接追加到残缺尾行。检查只观察既有内容和资源状态，不通过试写业务记录证明可写；仍受既有有界I/O和探测约束，期限内无法确认也视为未通过。任一条件无法确认时文件端保持FAULTED，last_reason为FILE_STATE_UNCONFIRMED，不自动截断、删除、重放、重命名或修复既有内容；本切片不提供修复接口。其他输出端继续按原契约过滤、接收和写出。
 
 设轮转大小B，关闭段上限K，必须E≤B。下一条完整编码记录长L，活动文件非空且当前字节数+L>B时先轮转，等于B可写；禁止拆分事件。关闭段用单调递增段序命名`runtime.<正整数>.jsonl`，启动从已有合法段恢复下一序号，不使用墙钟决定先后。轮转按段序删除最旧关闭段至最多K份，保留不足或删除失败则停用文件端，不继续无界产生新段。当前活动文件、其他目录或未识别条目永不作为清理候选。稳定状态总内容字节≤(K+1)B；一次轮转允许最多额外B的临时空间，磁盘不足进入故障。合法既有段超过B、K或临时空间边界时初始化失败，由管理方处理，不在启动时悄悄执行超范围清理。
 
@@ -183,7 +183,7 @@ initialize先检查快照、配置适用性及资源，再准备全部启用端�
 
 <a id="runtime-diagnostics-delivery"></a>
 
-#### 10.8.5 有界投递、故障与健康（推荐）
+#### 10.8.5 有界投递、故障与健康（已批准）
 
 每端配置总容量Q及WARNING以上预留R，约束0<R<Q；计入待写及正在写的记录，不能把在途记录移出容量统计。DEBUG／INFO只在该端总占用<Q−R时接收，否则丢弃新到低等级事件；WARNING以上只要占用<Q即可接收。无抢占、采样或淘汰旧事件。每端最多Q×E编码字节；两端合计不超过2QE，UNKNOWN的在途缓冲直到实际I/O结束仍计占用。容器开销另有有限上界。保留并发规范化槽位P，其中至少一个仅供WARNING以上使用；低等级最多P−1个槽，高等级可用全部P个，耗尽立即返回ADMISSION_BUSY。单次输入遍历受字段数、保留值长度及E限制；不创建无界辅助缓冲或无限增长的logger／事件码／指标标签集合。模块自有编码缓冲总预算为最多2QE+PE+512×应急容量字节，包含入队前在途编码与备用编码；实现须将临时副本计入对应槽位上界，不能因复制另开无限预算。此预算不包含调用方原输入或操作系统缓存。
 
@@ -199,7 +199,7 @@ emit不等待任何sink I/O、磁盘空间或队列腾位；仅作有界本地�
 
 丢弃计数以每个目标端的每次未投递为一项，同事件两端失败可计两项；等级过滤／端禁用不计丢弃，非法输入只计rejected，UNKNOWN不重复计丢弃。成功入队后未开始写却被故障／关闭放弃也计丢弃；格式备用成功不计丢弃。计数仅本进程内有效，使用有界饱和计数器（2^63−1封顶并置counters_saturated=true），不要求落盘。标签限上述固定枚举，禁止请求ID、用户键、路径或异常文本成为指标标签。UNKNOWN是曾出现无法确认写入的累计诊断，不在迟到完成后改写旧回执或冒充确知丢失。报告对截点前曾成功入队的目标，在报告生成时分为written／dropped／unknown／pending_queued／pending_in_flight五个互斥类别；前三项按该截点累计，pending_queued表示尚未开始写、pending_in_flight表示已开始写但仍在正常I/O期限内等待结果，后二项只是当前未完成数量，不是终态或丢弃原因码。未饱和时五项之和等于该端截点内曾入队目标数。flushed另为written的子集，只计实际刷新已确认的目标；写出完成但刷新未确认时仍计written，不虚增flushed。入队前丢弃只在EmitReceipt和健康计数体现。UNKNOWN仅用于实际I/O故障／I/O超时或关闭放弃后无法确认的写入结果，不用于独立flush等待期限到达；被归为UNKNOWN的迟到完成不重新计入written／flushed，不重复增加unknown，最近成功写出时间仍可反映实际迟到成功。反之，pending目标随后正常完成时，健康queued_events／in_flight_events反映占用减少，written_events增加，实际刷新确认后flushed_events才增加；后续报告按新观察分类，已经返回的不可变报告不修改，也不为这次等待超时补记UNKNOWN或dropped。
 
-**独立flush等待期限（推荐，待批准）：** flush取调用截点，等待该点之前已入队目标完成并刷新两端，使用配置的总deadline，不因两端分别等待而翻倍；并发emit的后续事件不延长截点。deadline到达只结束本次等待，受影响端报告INCOMPLETE／DEADLINE_EXCEEDED（已记录故障仍按首错规则优先），服务保持READY，输出端不因等待到期从READY转FAULTED或CLOSED；原已故障／禁用端也不因此恢复。截点前尚未开始的目标留在有界队列，已开始且未发生独立I/O故障的目标继续在途，分别报告pending_queued／pending_in_flight，仍计容量；两者均不增加dropped／unknown／written。截点后新事件继续按原等级、健康和容量规则接收，可能正常入队或因满载／端故障被拒绝投递，不因flush到期使用SERVICE_CLOSED或SHUTDOWN_DROPPED。
+**独立flush等待期限（已批准）：** flush取调用截点，等待该点之前已入队目标完成并刷新两端，使用配置的总deadline，不因两端分别等待而翻倍；并发emit的后续事件不延长截点。deadline到达只结束本次等待，受影响端报告INCOMPLETE／DEADLINE_EXCEEDED（已记录故障仍按首错规则优先），服务保持READY，输出端不因等待到期从READY转FAULTED或CLOSED；原已故障／禁用端也不因此恢复。截点前尚未开始的目标留在有界队列，已开始且未发生独立I/O故障的目标继续在途，分别报告pending_queued／pending_in_flight，仍计容量；两者均不增加dropped／unknown／written。截点后新事件继续按原等级、健康和容量规则接收，可能正常入队或因满载／端故障被拒绝投递，不因flush到期使用SERVICE_CLOSED或SHUTDOWN_DROPPED。
 
 flush报告仅描述本次截点，不建立事件重试、关闭或持久化承诺。到期时未发出的本次缓冲刷新请求不另留后台任务；正常事件写出继续，已开始的刷新I/O则在既有单端I/O期限内继续，不为同一端开启第二个并行I/O。后续flush可以等待现有I/O后再刷新自己的截点，不积累每次超时调用专属的无界等待者；没有实际刷新确认时不能因写出迟到完成就宣称FLUSHED。单端I/O自身随后失败或达到io_timeout_ms，仍按前述故障规则转FAULTED并分类目标；这是独立故障，不是flush等待到期的隐含副作用。
 
@@ -207,25 +207,25 @@ flush报告仅描述本次截点，不建立事件重试、关闭或持久化承
 
 <a id="runtime-diagnostics-configuration"></a>
 
-#### 10.8.6 配置接入、待批准参数及前置缺口
+#### 10.8.6 配置接入、已批准参数及前置缺口
 
 可信装配方通过统一配置模块注册完整定义、冻结并显式解析，取得原生EffectiveSnapshot后调用initialize；服务只用get_registry／get_entry／list_entries读取绑定的不可变内容，不读环境、文件、数据库，不自行resolve或建立defaults副本。资源能力（借用流、时钟、UUID源、目录访问与独占能力）由启动代码／基础设施注入，不携带可覆盖配置值的第二套参数。快照在服务生命周期内固定，无热替换、fallback、内容哈希ID或运行revision。缺项或能力不足时拒绝初始化，不默默补值。
 
-静态核对依据为[已批准解析子集](configuration.md#configuration-resolution-support)及configuration的resolution.py、snapshots.py、resolution_results.py，与test_resolution_boundaries.py、test_snapshots.py相关断言。本轮只读文本，未运行或导入它们。当前解析器支持六类精确载体、required／nullable、单参数range／enum；整个冻结集合的validator和dependencies必须为空，scope仅instance、override_policy仅no_override、sensitivity仅public，拒绝兼容升级声明。对象内部没有字段Schema、长度约束或映射键规则；角色和生效字段只保存声明。public不是已脱敏或已授权证明。
+静态核对依据为[已批准解析子集](configuration.md#configuration-resolution-support)及configuration的resolution.py、snapshots.py、resolution_results.py，与test_resolution_boundaries.py、test_snapshots.py相关断言。对应版本的文本检查与执行记录见[CURRENT_TASK](../work/CURRENT_TASK.md)。原resolve_configuration入口支持六类精确载体、required／nullable、单参数range／enum；整个冻结集合的validator和dependencies必须为空，scope仅instance、override_policy仅no_override、sensitivity仅public，拒绝兼容升级声明。对象内部没有字段Schema、长度约束或映射键规则；角色和生效字段只保存声明。public不是已脱敏或已授权证明。
 
-**存在实施前置缺口，不能拿现有解析成功冒充日志配置完整有效。** 模块覆写映射的模块名／等级／数量、路径隔离、R<Q、E≤B等需要附加或跨参数校验。定义方必须保留必要validator／dependencies；现有解析器将如实返回UNSUPPORTED_RESOLUTION_SEMANTICS（VALIDATOR_NOT_SUPPORTED优先于同定义的DEPENDENCIES_NOT_SUPPORTED），包括未提供值的定义。不能清空声明、删掉不支持定义、只截取可解析子集或通过日志私有校验器制造成功快照。
+**原解析入口不能证明日志配置完整有效；生产装配仍有独立前置缺口。** 模块覆写映射的模块名／等级／数量、路径隔离、R<Q、E≤B等需要附加或跨参数校验。定义方必须保留必要validator／dependencies；原resolve_configuration入口将如实返回UNSUPPORTED_RESOLUTION_SEMANTICS（VALIDATOR_NOT_SUPPORTED优先于同定义的DEPENDENCIES_NOT_SUPPORTED），包括未提供值的定义。不能清空声明、删掉不支持定义、只截取可解析子集或通过日志私有校验器制造成功快照。
 
-最小补充建议是另行批准M15的受限、静态白名单验证能力：执行明确标识的纯内存validator、读取已声明dependencies完成本表约束、未知验证器或依赖语义拒绝、全部检查成功才产生原有形态的不可变快照；不开放任意回调／动态导入，不要求同时实现加载、热配置或权限系统。目录真实存在、可写、独占与符号链接等易变事实由日志资源准备再次核验，不能被纯内存校验替代。该补充的端口和错误协议须单独形成契约；本轮不改§11.9／§11.10或源码，不提前批准补充方案。生产路径若需非public敏感级别，也必须另补相应安全能力，不能为了适配解析器降级标签。完整生产配置接入在此缺口解决前不可宣称可实施通过。
+M15的受限、静态白名单验证能力已另行获批：执行明确标识的纯内存validator、读取已声明dependencies完成本表约束、未知验证器或依赖语义拒绝、全部检查成功才产生原有形态的不可变快照；不开放任意回调／动态导入，不要求同时实现加载、热配置或权限系统。目录真实存在、可写、独占与符号链接等易变事实由日志资源准备再次核验，不能被纯内存校验替代。该补充的端口和错误协议见[最小配置校验补充契约](configuration.md#configuration-additional-validation-contract)；§11.9／§11.10的既有行为不变。本轮仅授权该显式扩展入口的纯内存实现及合成测试，实际进度和验证见[CURRENT_TASK](../work/CURRENT_TASK.md)。生产路径若需非public敏感级别，也必须另补相应安全能力，不能为了适配解析器降级标签。完整生产配置接入在此缺口解决前不可宣称可实施通过。
 
-下表全部是**新增生产参数与默认值的待批准建议**，不是已注册参数，也不是合成测试值。共同元信息建议：owner／consumer为logging_service，作用域instance、无配置层级覆写（no_override），required=true、nullable=false，仅初始化生效（声明需重建实例），角色为可信运维读写；普通数值／枚举拟public，目录须部署安全审查。模块“覆写”是一个实例参数内的日志路由语义，不是配置解析器的多层override_policy。参数定义及唯一默认只能放M15；批准实现前仍须完整提供§11.9全部元信息，不能统一填空validator／dependencies或把待定当NotApplicable。
+下表的**新增生产参数、具体默认建议及约束已批准**，尚不表示参数已注册，也不是合成测试值。共同元信息中的具体建议同获批准，明确未定项仍待决定：owner／consumer为logging_service，作用域instance、无配置层级覆写（no_override），required=true、nullable=false，仅初始化生效（声明需重建实例），角色为可信运维读写；普通数值／枚举为public，目录须部署安全审查。模块“覆写”是一个实例参数内的日志路由语义，不是配置解析器的多层override_policy。参数定义及唯一默认只能放M15；下方[共同元信息与逐项差异](#runtime-diagnostics-schema)给出§11.9全部字段落点，尚未决定的内容明确标出，不能统一填空validator／dependencies或把待定当NotApplicable。
 
-| 候选键（logging.前缀） | 类型、默认建议及约束／理由 |
+| 已批准键（logging.前缀） | 类型、已批准默认方案及约束／理由 |
 | --- | --- |
 | instance_level、module_levels | string INFO；object {}，仅§10.8.2模块名→五等级或NOTSET，至多16项；控制默认采集与精确模块覆写，映射需validator |
 | console_enabled、file_enabled | boolean，各true；允许分别禁用，不影响审计／账本 |
 | console_level、file_level | string，分别INFO、DEBUG；枚举五等级及NOTSET |
 | console_stream | string stderr；枚举stderr／split；JSONL为固定子集，无格式／颜色可执行配置 |
-| file_directory | string，建议明确NoDefault且必填；绝对诊断专用目录，最长4096字符、不含控制字符／凭据；需路径validator，真实资源准备再次核验 |
+| file_directory | string，明确NoDefault且必填；绝对诊断专用目录，最长4096字符、不含控制字符／凭据；需路径validator，真实资源准备再次核验 |
 | event_max_bytes | integer，4096；512至65536字节，含LF；限制单条记录与备用记录 |
 | sink_capacity、warning_reserve | integer，分别1024、128；Q在2至65536，R在1至65535且R<Q；reserve声明依赖capacity，需validator |
 | preparation_capacity | integer，16；2至256；限制同时处理输入的槽位，包含一个高等级预留槽 |
@@ -236,9 +236,81 @@ flush报告仅描述本次截点，不建立事件重试、关闭或持久化承
 
 不将不变量（脱敏、审计隔离、无递归、禁止伪造版本）做成可关闭参数。私有执行器／队列数量如实现需调节，仍归M15声明，不新增局部默认；本契约不为选择某线程库另设审批项。
 
+<a id="runtime-diagnostics-schema"></a>
+
+**日志实施前置规格：共同Schema元信息与逐项差异。** 上表20个完整键、类型、默认值、范围和日志行为已批准，配置§11.11的C1–C4也已另行批准；本段不改它们。下列具体表示及定义匹配细节已作为G1成组批准；目录事实、分级与资源核验仍归待定G2，不阻止明确合成夹具的纯内存验证。说明性文字已在本轮补齐，不作为逐项审批清单。每项定义由上表对应键、下列共同元信息及差异行组成，字段没有隐含省略；存在待定字段不等于可注册完整生产Schema，不能将文档中的“待定”传入注册表。
+
+| §11.9字段 | 共同定义及逐项取值位置 | 依据／状态 |
+| --- | --- | --- |
+| key、type、default | key为`logging.`加上表单个后缀；type取对应类型。default只从上表取值：无默认项为NoDefault()，其余为LiteralDefault(上表对应原值)，保留精确bool／int／str／dict载体，不另存默认表 | 已批准内容的结构化表达 |
+| owner_module、consumers | 分别为`logging_service`和`["logging_service"]` | 既有owner／consumer；列表是完整生产定义建议，消费权限并不由自报声明授予 |
+| schema_revision | 建议统一`runtime_logging`，仅作不透明Schema标识；不含任务编号，不代表配置值、快照或激活revision | G1已批准该表示；匹配不依赖这个具体字符串 |
+| required、nullable、scope、override_policy | 分别为true、false、`["instance"]`、`no_override` | 已批准；file_enabled=false也不豁免必需值 |
+| sensitivity | 除file_directory外统一`public`，其中module_levels仅含已限定的模块名与等级，不接收任意对象字段；file_directory须经G2确认，不预填public | 普通数值／枚举public及G1完整逐类型表示已批准；目录分级仍待定 |
+| read_roles、write_roles | 两者均为`["trusted_operator"]`，仅表示既定“可信运维读写”；G1已批准该标识，不声明成员、不建立角色继承或权限实现 | 角色范围及G1具体绑定标识已批准；不可用空列表冒充决定 |
+| apply_mode、activation_group | 采用`INITIALIZE_ONLY`及NotApplicable("日志服务仅在初始化时取得完整配置，不参与在线激活分组。")；前者表示重建日志服务实例后方可采用新值，不要求或声称执行进程重启 | 初始化生效行为及G1表示已批准，不扩充全局apply_mode封闭枚举 |
+| unit | 差异表有单位者用Declared(对应标识)；其余为NotApplicable("该参数为开关或文本选择，不使用计量单位。") | 量纲承接已批准行为，G1标识拼写已批准 |
+| range | 所有integer用Declared(RangeDescriptor(Bound(上表该键下界,true), Bound(上表该键上界,true)))；非integer为NotApplicable("该参数不是数值范围参数。")。R<Q、E≤B是附加检查，不能变成从其他值计算range | 只引用原闭区间，不复制数值或引入求值 |
+| enum | instance_level用Declared(五个标准等级按严重性升序排列的列表)；console_level、file_level在该列表末尾追加NOTSET；console_stream用Declared(["stderr","split"])；其余为NotApplicable("此参数不使用整值枚举；其他约束由类型、范围及必要验证器执行。") | 枚举成员已批准；生产列表顺序仅为表示，不限制语义相同的成员顺序 |
+| validator、dependencies | 四项必需验证器及两项必需依赖按[配置白名单契约](configuration.md#configuration-additional-validation-contract)绑定：module_levels、file_directory、warning_reserve、rotation_bytes各使用唯一对应标识；warning_reserve引用logging.sink_capacity，rotation_bytes引用logging.event_max_bytes。其余生产定义建议为[]；目录清单是显式上下文，不伪造为配置依赖键 | 必需声明已批准；最小列表不收紧C2允许的额外依赖，详见[匹配边界](configuration.md#configuration-logging-definition-match) |
+| deprecated、replacement、upgrade_rule | false；NotApplicable("本参数未废弃，无替代键。")；NotApplicable("本定义不提供历史配置值升级规则。") | 承接已批准解析支持边界；不实施兼容升级 |
+| cost_impact | "该参数只影响本地运行诊断资源开销，不发起付费模型调用或计量结算；不执行费用估算。" | 本轮说明文字，不改变计费或Provider所有权 |
+| migration_impact | "配置只在新建日志服务时采用，不自动搬迁或修复既有日志，不迁移业务数据库、审计或账本；既有文件不符合初始化条件时须由管理方处理。" | 本轮说明文字，承接初始化与文件恢复边界 |
+| description、rationale、validation_method | 逐项取下表三列完整文本；validation_method前加共同文本“使用显式合成输入核对边界、安全错误和不可变性；” | 本轮普通说明；描述预期验证方式，不声称执行过 |
+
+下表只列单位及说明差异；类型、默认与数值范围继续取上方唯一参数表。“无”按共同unit规则生成NotApplicable，不是新增运行时标记。bytes／events／slots／segments／milliseconds分别表示字节、事件项、规范化槽位、关闭文件段及毫秒，不提供单位换算。
+
+| 键后缀 | unit标识 | description | rationale | validation_method差异文本 |
+| --- | --- | --- | --- | --- |
+| instance_level | 无 | 实例默认诊断等级。 | 提供统一的等级继承基准。 | 核对标准等级准入及启用输出端的最低采集阈值。 |
+| module_levels | 无 | 各模块的精确等级覆写映射。 | 允许按模块控制采集范围。 | 核对模块白名单、项数、等级及NOTSET继承。 |
+| console_enabled | 无 | 是否启用常规控制台输出。 | 允许独立控制控制台诊断。 | 核对禁用回执、独立应急通道及文件端不受影响。 |
+| file_enabled | 无 | 是否启用常规文件输出。 | 允许独立控制文件诊断。 | 核对禁用端无常规投递，配置约束仍完整检查。 |
+| console_level | 无 | 控制台输出的最低诊断等级。 | 控制控制台记录量。 | 核对分端阈值及NOTSET取实例默认等级。 |
+| file_level | 无 | 文件输出的最低诊断等级。 | 控制持有的诊断等级范围。 | 核对低等级文件记录不被其他端提前过滤。 |
+| console_stream | 无 | 控制台等级与标准流的路由方式。 | 适配宿主的标准流接收方式。 | 核对stderr和split路由且不关闭宿主借出流。 |
+| file_directory | 无 | 诊断日志的独占输出目录。 | 隔离日志轮转与业务数据。 | 核对路径语法、目录隔离及独立资源准备失败。 |
+| event_max_bytes | bytes | 单条编码记录含换行的最大字节数。 | 限制事件编码和队列内存占用。 | 核对UTF-8字节边界、超限拒绝及与轮转大小的关系。 |
+| sink_capacity | events | 每个输出端的事件总容量。 | 限制排队与在途记录的总占用。 | 核对排队和在途共同计容量且达到上限拒绝新投递。 |
+| warning_reserve | events | 每个输出端为高等级保留的容量。 | 在低等级拥塞时保留告警接收空间。 | 核对预留小于总容量及高低等级各自准入边界。 |
+| preparation_capacity | slots | 同时进行事件规范化的槽位总数。 | 限制入队前的并发处理与编码内存。 | 核对高等级预留槽及耗尽时立即拒绝。 |
+| rotation_bytes | bytes | 活动文件按大小轮转的字节阈值。 | 限制单段大小且避免拆分事件。 | 核对等于阈值可写、超过前轮转及不小于事件上限。 |
+| retained_segments | segments | 保留的关闭文件段最大份数。 | 限制既有诊断文件占用。 | 核对按段序删除最旧关闭段及删除失败停用文件端。 |
+| io_timeout_ms | milliseconds | 单次输出I/O的等待时限。 | 隔离阻塞或故障输出端。 | 核对I/O超时故障、UNKNOWN计数及每端至多一个在途I/O。 |
+| probe_interval_ms | milliseconds | 输出端恢复探测的最小间隔。 | 限制故障探测频率。 | 核对原I/O结束后才探测且间隔不小于配置值。 |
+| flush_timeout_ms | milliseconds | 一次独立flush的总等待期限。 | 限制调用方等待时间。 | 核对到期仅结束等待，不关闭服务或丢弃正常在途目标。 |
+| close_timeout_ms | milliseconds | 一次关闭操作的总等待期限。 | 限制排空、刷新与回收的总耗时。 | 核对关闭截点、期限内回收及未完成资源的占用标记。 |
+| emergency_capacity | events | 应急摘要通道的容量。 | 限制常规输出故障时的额外内存。 | 核对容量耗尽、独立投递和常量摘要上限。 |
+| emergency_interval_ms | milliseconds | 应急摘要发送的最小间隔。 | 抑制重复故障通知。 | 核对限频、合并计数及不会递归记录应急失败。 |
+
+<a id="runtime-diagnostics-directory-sources"></a>
+
+**五类受保护目录的来源核对。** [现行部署候选§2.3](deployment-candidates.md#source-line-123)是一份候选容器布局，并非真实挂载清单或目录存在性证明；下表路径仅复述候选，不成为默认值。资源持久化归[I01](ownership.md#i01)，可信启动装配方须从最终确认的同一部署布局提供§11.11的完整清单；不从日志参数推算或反向发现业务路径。
+
+| 输入类别 | 现行来源及可知内容 | 缺少的信息与最小建议（待确认G2） |
+| --- | --- | --- |
+| media | 候选有`/data/blobs/sha256/`及`/data/upload_staging/`；前者为原始媒体，后者为未提交上传 | 实际媒体根、暂存及其他媒体落地目录未确认；建议同时覆盖正式blob与上传暂存，不能只保护hash叶目录 |
+| database | 候选`/data/db/`容纳权威库及WAL等伴随文件，SQLite仍为候选 | 实际库所在目录与其他伴随／临时落地位置未确认；建议由基础设施给出完整受保护目录，不要求本轮选择数据库实现 |
+| audit | [审计事务](persistence-and-transactions.md#t13)要求同业务事务保存；I01承载审计持久化，候选另有可选`/data/audit_exports/` | 实际审计存放目录及是否启用导出未确认；若同库则复用已确认database目录，并加入实际启用的导出目录，不能只填导出目录代替审计正文所在目录 |
+| provider_usage | [Provider拥有持久账本](../modules/provider.md#contract)，I01承载其持久化；候选没有独立账本目录 | 实际是否同库及其他账本落地目录未确认；若同库可重复列入database目录，不凭空创建usage专属路径 |
+| backup | [备份边界](persistence-and-transactions.md#source-line-226)要求覆盖数据库、媒体与必要配置；候选目录树未列备份目的地 | 备份目的目录、暂存／导出位置及是否只有远端存储均未知；建议明确提供所有本地备份落地目录。仅远端或尚无布局不能伪填空列表，须先解决与已批准非空目录输入的衔接 |
+
+此外，日志自己的候选位置为`/data/logs/runtime/`，仍不是file_directory的默认或已选生产值。最终清单须提供日志服务实际使用的同一文件系统命名空间中的绝对目录；候选的尾部斜线只是目录展示，不直接当作§11.11的规范输入。宿主挂载、真实存在性、符号链接／别名、可写与独占均未在本轮核验；原有资源准备检查不减免。不能将整个共同数据父目录填作某一类别来掩盖未知布局，否则可能与合法兄弟目录的日志位置产生祖先重合。
+
+<a id="runtime-diagnostics-prerequisite-decisions"></a>
+
+**前置事项状态（G1已批准，G2待定）：**
+
+| 事项 | 最小建议与界限 |
+| --- | --- |
+| G1 Schema表示与定义匹配（已批准） | 已成组批准上述标识表示、非路径字段分级和可信运维角色绑定，以及[LOGGING_DEFINITION_MISMATCH比较口径](configuration.md#configuration-logging-definition-match)。采用runtime_logging、INITIALIZE_ONLY、trusted_operator及差异表单位标识；不逐条批准普通说明文字，不将不透明schema_revision变成准入版本号，不收紧已批准依赖语义 |
+| G2 部署目录与路径安全分级（待定） | 由部署方提供日志目录及五类受保护目录的真实清单，确认同库关系、可选导出、备份／暂存和同一命名空间；候选可供选择但本轮不选生产路径。确认file_directory是否确属可按public处理的非秘密路径；若需非public，保持真实分级并另补能力，不降低标签通过解析 |
+
+G1已批准；G2真实目录、路径敏感分级及真实资源核验仍是生产装配前置。本轮授权范围仅为配置模块的纯内存校验，可用明确非秘密的public合成路径、完整合成Schema与五类目录清单验证，不创建这些目录，不把夹具变为生产默认或真实安全分级。已批准默认及匹配依据在配置模块内统一维护，不从文档读取运行规则、不建日志私有配置副本、不自动注册参数。未授权日志服务、真实资源准备、生产装配、加载、持久化、权限或热修改；日志服务验收例子仍不代表已执行。
+
 <a id="runtime-diagnostics-results"></a>
 
-#### 10.8.7 最小公开接口、结果和错误（推荐）
+#### 10.8.7 最小公开接口、结果和错误（已批准）
 
 以下为语义签名；不要求类名机械照抄，但实现公开接口需完整表达这些行为。结果及嵌套记录均深不可变。LoggingOk／LoggingErr独立于配置模块原有结果协议；预期错误不抛携带输入的异常，不经日志再打印错误对象。签名缺少实参／未知关键字按语言规则拒绝；资源耗尽等无法完成结果构造的非预期故障不伪装成功。
 
@@ -267,7 +339,7 @@ LoggingError恰含code、operation、field（单个固定字段标识）、reaso
 | 健康last_reason／报告INCOMPLETE | WRITE_FAILED、FLUSH_FAILED、ROTATION_FAILED、RETENTION_FAILED、FILE_STATE_UNCONFIRMED、IO_TIMEOUT、DEADLINE_EXCEEDED、DELIVERY_LOSS、RESOURCE_CLOSE_FAILED；FILE_STATE_UNCONFIRMED表示文件恢复一致性未确认；DEADLINE_EXCEEDED用于报告等待未完成，独立flush到期不写入端last_reason；实际已开始写的故障计UNKNOWN，正常等待未完成使用pending计数 |
 | 应急／备用诊断 | EMERGENCY_LIMIT、EMERGENCY_UNAVAILABLE、FORMAT_FAILED；只用于固定通知或计数，绝不拼入原输入 |
 
-必要首错顺序固定：生命周期→载体／形状→字段合法性→资源／投递；失败不再执行依赖后续步骤。initialize在NEW先核验原生快照，再按候选完整键Unicode排序逐项检查必要定义及存在状态，再检查支持能力，再检查值约束，最后资源准备（console先file）；值约束问题按键排序返回首个。缺口未补时返回CONFIGURATION_UNSUPPORTED，不调用私有快照构造或文件准备；READY下即使传坏快照仍先ALREADY_INITIALIZED。
+必要首错顺序固定：生命周期→载体／形状→字段合法性→资源／投递；失败不再执行依赖后续步骤。initialize在NEW先核验原生快照，再按参数表完整键Unicode排序逐项检查必要定义及存在状态，再检查支持能力，再检查值约束，最后资源准备（console先file）；值约束问题按键排序返回首个。缺口未补时返回CONFIGURATION_UNSUPPORTED，不调用私有快照构造或文件准备；READY下即使传坏快照仍先ALREADY_INITIALIZED。
 
 get_logger先生命周期再模块精确准入。emit先生命周期，随后顶层dict载体／项数／全部键载体及长度；然后按level、event_code顺序检查存在及准入；再申请规范化槽位，满则ADMISSION_BUSY。取得槽位后按context、attributes顺序核验dict形状／项数／全部键，再按本节白名单列举顺序核验保留值；未知字段仅移除。之后生成ID／时间、格式化／大小检查，最后模块过滤、逐端判断。sink判断顺序为禁用→模块过滤→sink过滤→故障→容量，不因端故障把本来应FILTERED的事件计丢弃。未知码与非法context同时出现先EVENT_CODE_NOT_ALLOWED；非法输入即使等级会被过滤也先拒绝。检查键格式时不访问不支持键的哈希、比较或转换钩子。
 
@@ -307,13 +379,13 @@ get_logger先生命周期再模块精确准入。emit先生命周期，随后顶
 
 <a id="runtime-diagnostics-decisions"></a>
 
-#### 10.8.9 集中待批准决定与停止点
+#### 10.8.9 集中已批准决定与授权边界
 
-| 待批准公开决定 | 审查焦点 |
+| 已批准公开决定 | 批准内容 |
 | --- | --- |
 | L1 事件与安全入口 | 固定模板和字段白名单；自由文本／原始异常整项移除，关联ID由可信调用方确认；一次生成同事件ID与时间，输入隔离、安全首错及固定大写原因码 |
 | L2 分端路由与最小输出 | C／S过滤公式及显式模块门槛；两端JSONL、stderr／split、大小轮转和关闭段份数保留、单写者目录边界 |
 | L3 投递与生命周期保障 | 逐端回执，WARNING以上预留与有限应急；故障隔离、丢弃／UNKNOWN计数、总deadline关闭及迟到I/O边界；重复初始化拒绝、重复关闭返回首报告 |
-| L4 配置接入与参数建议 | 固定快照装配、上表新增生产参数及默认建议；承认并另行处理M15校验前置缺口，不以本草案批准替代配置补充契约或既有行为 |
+| L4 配置接入与参数 | 固定快照装配、上表新增生产参数及具体默认建议已批准；承认并另行处理M15校验前置缺口，不以本契约批准替代配置补充契约或既有行为 |
 
-上述四组是公开行为和保障，不要求批准某个线程数布局、队列库或锁实现。既有审计事务／权限要求无需重新审批，后续能力也不因批准此切片自动授权。交付本草案及文档检查后停止；等待用户审查，不自行定稿、修配置、编码、安装依赖、提交、推送或部署。
+上述四组及文件恢复一致性、独立flush等待期限修订均已批准，不要求批准某个线程数布局、队列库或锁实现。既有审计事务／权限要求无需重新审批；配置补充C1–C4已[另行批准](configuration.md#configuration-additional-validation-decisions)，本轮新增规格的[待定事项](#runtime-diagnostics-prerequisite-decisions)、后续能力和其他未定事项不因此自动获准。契约批准不等于编码、安装依赖、提交、推送或部署授权；当前目标、检查和停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)。

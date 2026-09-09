@@ -2,15 +2,18 @@
 
 Unsupported declarations remain registrable but cannot silently pass resolution.
 Hostile inputs raise if inspected through user hooks, making unsafe coercion visible.
+Casts at negative API calls preserve deliberately invalid carriers and leaves;
+they neither convert inputs nor bypass the runtime assertions.
 """
 
 from dataclasses import fields
 from decimal import Decimal
 from types import MappingProxyType
+from typing import cast
 from unittest.mock import patch
 
 from companion_memory.configuration import (
-    Declared, EffectiveSnapshot, NotApplicable, ReadOnlyRegistry, ResolutionErr,
+    Declared, EffectiveSnapshot, MetadataValue, NotApplicable, ReadOnlyRegistry,
     create_registry_builder, resolve_configuration,
 )
 from tests.configuration.resolution_support import ResolutionTestCase, resolution_definition
@@ -23,12 +26,13 @@ class ResolutionBoundaryTests(ResolutionTestCase):
     def test_registry_then_input_carrier_errors_precede_all_content(self):
         builder = create_registry_builder()
         for registry in (builder, None, {}, HostileValue()):
-            self.resolution_failure(resolve_configuration(registry, []), "INVALID_RESOLUTION_INPUT",
+            self.resolution_failure(resolve_configuration(cast(ReadOnlyRegistry, registry),
+                cast(dict[str, MetadataValue], [])), "INVALID_RESOLUTION_INPUT",
                                     "REGISTRY_REQUIRED", ("registry",))
         registry = self.registry()
         for values in ([], (), "{}", None, MappingProxyType({}), iter(()), HostileValue()):
-            self.resolution_failure(resolve_configuration(registry, values), "INVALID_RESOLUTION_INPUT",
-                                    "INVALID_SHAPE", ("explicit_values",))
+            self.resolution_failure(resolve_configuration(registry, cast(dict[str, MetadataValue], values)),
+                "INVALID_RESOLUTION_INPUT", "INVALID_SHAPE", ("explicit_values",))
         self.assertIsNone(self.success(builder.register(resolution_definition())))
 
     def test_all_key_formats_precede_unknown_keys_then_unsupported_semantics(self):
@@ -40,12 +44,14 @@ class ResolutionBoundaryTests(ResolutionTestCase):
         del values["bad key"]
         self.resolution_failure(resolve_configuration(registry, values), "UNKNOWN_PARAMETER",
                                 "UNKNOWN_KEY", ("explicit_values", 0, "key"))
-        for values in ({}, {"demo.label": "gamma"}):
+        cases: tuple[dict[str, MetadataValue], ...] = ({}, {"demo.label": "gamma"})
+        for values in cases:
             self.resolution_failure(resolve_configuration(registry, values),
                 "UNSUPPORTED_RESOLUTION_SEMANTICS", "VALIDATOR_NOT_SUPPORTED",
                 ("definitions", 0, "validator"))
         registry = self.registry(resolution_definition(dependencies=["demo.label"]))
-        for values in ({}, {"demo.label": "gamma"}):
+        cases = ({}, {"demo.label": "gamma"})
+        for values in cases:
             self.resolution_failure(resolve_configuration(registry, values),
                 "UNSUPPORTED_RESOLUTION_SEMANTICS", "DEPENDENCIES_NOT_SUPPORTED",
                 ("definitions", 0, "dependencies"))
@@ -56,7 +62,8 @@ class ResolutionBoundaryTests(ResolutionTestCase):
                               ({"unknown": None, "demo.label": HostileValue()}, 0)):
             self.resolution_failure(resolve_configuration(registry, values), "UNKNOWN_PARAMETER",
                                     "UNKNOWN_KEY", ("explicit_values", index, "key"))
-        self.resolution_failure(resolve_configuration(registry, {"z": None, "": None, 7: None}),
+        self.resolution_failure(resolve_configuration(
+            registry, cast(dict[str, MetadataValue], {"z": None, "": None, 7: None})),
             "INVALID_PARAMETER_KEY", "INVALID_IDENTIFIER", ("explicit_values", 1, "key"))
         self.resolution_failure(resolve_configuration(registry, {"z": None, "a": None}),
             "UNKNOWN_PARAMETER", "UNKNOWN_KEY", ("explicit_values", 0, "key"))
@@ -65,7 +72,7 @@ class ResolutionBoundaryTests(ResolutionTestCase):
         registry = self.registry(resolution_definition(key="z", required=False, validator=["check"]),
                                  resolution_definition(key="a"))
         for values in ({}, {"a": HostileValue()}):
-            self.resolution_failure(resolve_configuration(registry, values),
+            self.resolution_failure(resolve_configuration(registry, cast(dict[str, MetadataValue], values)),
                 "UNSUPPORTED_RESOLUTION_SEMANTICS", "VALIDATOR_NOT_SUPPORTED",
                 ("definitions", 1, "validator"))
 
@@ -84,7 +91,7 @@ class ResolutionBoundaryTests(ResolutionTestCase):
             # Remove each earlier failure and verify the next independently observable one.
             registry = self.registry(resolution_definition(required=False, **changes))
             for values in ({}, {"demo.label": HostileValue()}):
-                self.resolution_failure(resolve_configuration(registry, values),
+                self.resolution_failure(resolve_configuration(registry, cast(dict[str, MetadataValue], values)),
                     "UNSUPPORTED_RESOLUTION_SEMANTICS", reason, ("definitions", 0, field))
             only = self.registry(resolution_definition(required=False, **{field: changes[field]}))
             self.resolution_failure(resolve_configuration(only, {}), "UNSUPPORTED_RESOLUTION_SEMANTICS",
@@ -126,7 +133,7 @@ class ResolutionBoundaryTests(ResolutionTestCase):
         registry = self.registry(resolution_definition(key="z"), resolution_definition(key="a"))
         self.resolution_failure(resolve_configuration(registry, {"z": None, "a": "gamma"}),
             "INVALID_CONFIGURATION_VALUE", "NOT_IN_ENUM", ("definitions", 0, "value"))
-        self.resolution_failure(resolve_configuration(registry, {"z": HostileValue()}),
+        self.resolution_failure(resolve_configuration(registry, {"z": cast(MetadataValue, HostileValue())}),
             "REQUIRED_VALUE_MISSING", "MISSING_REQUIRED", ("definitions", 0, "value"))
         self.resolution_failure(resolve_configuration(registry, {"a": "alpha"}),
             "REQUIRED_VALUE_MISSING", "MISSING_REQUIRED", ("definitions", 1, "value"))
@@ -135,7 +142,7 @@ class ResolutionBoundaryTests(ResolutionTestCase):
         registry = self.registry(resolution_definition())
         for value, reason, suffix in (([Decimal("NaN")], "NON_FINITE_NUMBER", (0,)),
                                       ({"private": HostileValue()}, "UNSUPPORTED_VALUE", ())):
-            self.resolution_failure(resolve_configuration(registry, {"demo.label": value}),
+            self.resolution_failure(resolve_configuration(registry, {"demo.label": cast(MetadataValue, value)}),
                 "INVALID_CONFIGURATION_VALUE", reason, ("definitions", 0, "value") + suffix)
 
     def test_nonfinite_unsupported_and_cycle_errors_follow_tree_order(self):
@@ -149,14 +156,14 @@ class ResolutionBoundaryTests(ResolutionTestCase):
                  ([{"a": Decimal("NaN"), "b": [HostileValue()]}], "NON_FINITE_NUMBER", (0,)),
                  ([{"bad": Decimal("NaN"), 7: HostileValue()}], "UNSUPPORTED_VALUE", (0,))]
         for value, reason, suffix in cases:
-            self.resolution_failure(resolve_configuration(registry, {"demo.label": value}),
+            self.resolution_failure(resolve_configuration(registry, {"demo.label": cast(MetadataValue, value)}),
                 "INVALID_CONFIGURATION_VALUE", reason, ("definitions", 0, "value") + suffix)
 
     def test_errors_retain_only_safe_fields_and_exactly_one_issue(self):
         registry = self.registry(resolution_definition(key="private.parameter", type="object",
                                                        enum=NotApplicable("No enum.")))
         result = resolve_configuration(registry, {"private.parameter": {
-            "private.nested": [HostileValue(), Decimal("NaN")],
+            "private.nested": [cast(MetadataValue, HostileValue()), Decimal("NaN")],
         }})
         error = self.resolution_failure(result, "INVALID_CONFIGURATION_VALUE", "UNSUPPORTED_VALUE",
                                         ("definitions", 0, "value", 0))
@@ -183,13 +190,13 @@ class ResolutionBoundaryTests(ResolutionTestCase):
             entry = self.present(snapshot, "demo.label", "alpha", "EXPLICIT")
             self.assertEqual(entry.definition.apply_mode, apply_mode)
             self.assertEqual(entry.definition.read_roles, ())
-            self.assertEqual(entry.definition.activation_group.value, "synthetic_group")
-            self.assertEqual(entry.definition.unit.value, "synthetic_unit")
+            self.assertEqual(self.declared(entry.definition.activation_group), "synthetic_group")
+            self.assertEqual(self.declared(entry.definition.unit), "synthetic_unit")
 
     def test_unexpected_runtime_fault_propagates_without_mutating_existing_snapshot(self):
         registry = self.registry(resolution_definition())
         snapshot = self.resolved(registry, {"demo.label": "alpha"})
-        values = {"demo.label": "beta"}
+        values: dict[str, MetadataValue] = {"demo.label": "beta"}
         with patch.object(EffectiveSnapshot, "_from_entries", side_effect=MemoryError("Allocation failed")):
             with self.assertRaises(MemoryError):
                 resolve_configuration(registry, values)
@@ -212,11 +219,11 @@ class HostileCarrierTests(ResolutionTestCase):
 
         value = MutableValue()
         registry = self.registry(resolution_definition(type="object", enum=NotApplicable("No enum.")))
-        self.resolution_failure(resolve_configuration(value, {}), "INVALID_RESOLUTION_INPUT",
+        self.resolution_failure(resolve_configuration(cast(ReadOnlyRegistry, value), {}), "INVALID_RESOLUTION_INPUT",
                                 "REGISTRY_REQUIRED", ("registry",))
-        self.resolution_failure(resolve_configuration(registry, value), "INVALID_RESOLUTION_INPUT",
-                                "INVALID_SHAPE", ("explicit_values",))
-        self.resolution_failure(resolve_configuration(registry, {"demo.label": {"nested": [value]}}),
+        self.resolution_failure(resolve_configuration(registry, cast(dict[str, MetadataValue], value)),
+            "INVALID_RESOLUTION_INPUT", "INVALID_SHAPE", ("explicit_values",))
+        self.resolution_failure(resolve_configuration(registry, {"demo.label": {"nested": [cast(MetadataValue, value)]}}),
             "INVALID_CONFIGURATION_VALUE", "UNSUPPORTED_VALUE", ("definitions", 0, "value", 0))
         self.assertEqual(value.items, [])
 
@@ -238,10 +245,10 @@ class HostileCarrierTests(ResolutionTestCase):
         value = Trap()
         registry = self.registry(resolution_definition(type="array", enum=NotApplicable("No enum.")))
         for values in (value,):
-            self.resolution_failure(resolve_configuration(registry, values), "INVALID_RESOLUTION_INPUT",
-                                    "INVALID_SHAPE", ("explicit_values",))
+            self.resolution_failure(resolve_configuration(registry, cast(dict[str, MetadataValue], values)),
+                "INVALID_RESOLUTION_INPUT", "INVALID_SHAPE", ("explicit_values",))
         for values, suffix in ((value, ()), ([value], (0,)), ({"nested": value}, ())):
-            self.resolution_failure(resolve_configuration(registry, {"demo.label": values}),
+            self.resolution_failure(resolve_configuration(registry, {"demo.label": cast(MetadataValue, values)}),
                 "INVALID_CONFIGURATION_VALUE", "UNSUPPORTED_VALUE", ("definitions", 0, "value") + suffix)
 
     def test_builtin_subclasses_and_read_only_mapping_inputs_are_rejected(self):
@@ -249,13 +256,13 @@ class HostileCarrierTests(ResolutionTestCase):
         for carrier in (int, str, list, tuple, dict, Decimal):
             subclass = type("CustomCarrier", (carrier,), {})
             value = subclass("1") if carrier in (str, Decimal) else subclass()
-            self.resolution_failure(resolve_configuration(registry, {"demo.label": [value]}),
+            self.resolution_failure(resolve_configuration(registry, {"demo.label": [cast(MetadataValue, value)]}),
                 "INVALID_CONFIGURATION_VALUE", "UNSUPPORTED_VALUE", ("definitions", 0, "value", 0))
         subclass = type("CustomDict", (dict,), {})
         self.resolution_failure(resolve_configuration(registry, subclass()), "INVALID_RESOLUTION_INPUT",
                                 "INVALID_SHAPE", ("explicit_values",))
         for value in (MappingProxyType({}), {1}, b"bytes", lambda: None, iter([1])):
-            self.resolution_failure(resolve_configuration(registry, {"demo.label": value}),
+            self.resolution_failure(resolve_configuration(registry, {"demo.label": cast(MetadataValue, value)}),
                 "INVALID_CONFIGURATION_VALUE", "UNSUPPORTED_VALUE", ("definitions", 0, "value"))
         subclass = type("CustomRegistry", (ReadOnlyRegistry,), {})
         self.resolution_failure(resolve_configuration(object.__new__(subclass), {}),
@@ -271,9 +278,9 @@ class HostileCarrierTests(ResolutionTestCase):
 
         registry = self.registry(resolution_definition(type="object", enum=NotApplicable("No enum.")))
         key = ForeignKey("demo.label")
-        self.resolution_failure(resolve_configuration(registry, {key: HostileValue()}),
+        self.resolution_failure(resolve_configuration(registry, {key: cast(MetadataValue, HostileValue())}),
             "INVALID_PARAMETER_KEY", "INVALID_IDENTIFIER", ("explicit_values", 0, "key"))
-        self.resolution_failure(resolve_configuration(registry, {"demo.label": {key: HostileValue()}}),
+        self.resolution_failure(resolve_configuration(registry, {"demo.label": {key: cast(MetadataValue, HostileValue())}}),
             "INVALID_CONFIGURATION_VALUE", "UNSUPPORTED_VALUE", ("definitions", 0, "value"))
         snapshot = self.resolved(registry, {"demo.label": {}})
         self.resolution_failure(snapshot.get_entry(key), "INVALID_PARAMETER_KEY", "INVALID_IDENTIFIER",
@@ -282,7 +289,9 @@ class HostileCarrierTests(ResolutionTestCase):
     def test_every_nonfinite_decimal_is_rejected_at_any_depth(self):
         registry = self.registry(resolution_definition(type="array", enum=NotApplicable("No enum.")))
         for text in ("NaN", "sNaN", "Infinity", "-Infinity"):
-            for value, suffix in ((Decimal(text), ()), ([{"nested": Decimal(text)}], (0,))):
+            cases: tuple[tuple[MetadataValue, tuple[int, ...]], ...] = (
+                (Decimal(text), ()), ([{"nested": Decimal(text)}], (0,)))
+            for value, suffix in cases:
                 self.resolution_failure(resolve_configuration(registry, {"demo.label": value}),
                     "INVALID_CONFIGURATION_VALUE", "NON_FINITE_NUMBER",
                     ("definitions", 0, "value") + suffix)

@@ -6,10 +6,11 @@ results and ensure invalid explicit values never borrow a default or prior value
 
 from decimal import Decimal, Inexact, Rounded, localcontext
 from itertools import product
+from typing import cast
 
 from companion_memory.configuration import (
-    Bound, Declared, LiteralDefault, MissingValue, NoDefault, NotApplicable,
-    RangeDescriptor, Unbounded, create_registry_builder, resolve_configuration,
+    Bound, Declared, DeclaredType, LiteralDefault, MetadataValue, MissingValue, NoDefault,
+    NotApplicable, RangeDescriptor, Unbounded, create_registry_builder, resolve_configuration,
 )
 from tests.configuration.resolution_support import ResolutionTestCase, resolution_definition
 
@@ -65,7 +66,7 @@ class ValueSelectionTests(ResolutionTestCase):
                     self.assertIs(type(snapshot.list_entries()[0].state), MissingValue)
                 else:
                     self.present(self.resolution_success(result), "demo.label",
-                                 default.value, "DEFAULT")
+                                 self.defaulted(default), "DEFAULT")
 
     def test_explicit_matrix_ignores_defaults_and_never_falls_back(self):
         for required, nullable, kind in product((False, True), (False, True), ("none", "text", "null")):
@@ -90,7 +91,7 @@ class ValueSelectionTests(ResolutionTestCase):
                         "INVALID_CONFIGURATION_VALUE", reason, ("definitions", 0, "value"))
 
     def test_all_six_types_accept_falsy_values_as_explicit_and_default(self):
-        cases = [("boolean", False), ("boolean", True), ("integer", 0),
+        cases: list[tuple[DeclaredType, MetadataValue]] = [("boolean", False), ("boolean", True), ("integer", 0),
                  ("integer", -(10 ** 300)), ("decimal", Decimal("0")),
                  ("string", ""), ("string", " \t\n"), ("array", []),
                  ("array", ()), ("object", {}), ("object", {"": [None, False, 0]})]
@@ -99,20 +100,25 @@ class ValueSelectionTests(ResolutionTestCase):
                 registry = self.registry(resolution_definition(type=declared_type,
                     enum=NotApplicable("No enumeration."), default=LiteralDefault(value)))
                 for values, source in (({}, "DEFAULT"), ({"demo.label": value}, "EXPLICIT")):
-                    state = self.resolved(registry, values).list_entries()[0].state
+                    state = self.present_state(self.resolved(registry, values).list_entries()[0].state)
                     self.assertEqual(state.source, source)
                     if declared_type == "array":
                         self.assertIs(type(state.value), tuple)
-                        self.assertEqual(state.value, tuple(value))
+                        self.assertIsInstance(value, (list, tuple))
+                        expected = tuple(cast(list[MetadataValue] | tuple[MetadataValue, ...], value))
+                        self.assertEqual(state.value, expected)
                     elif declared_type == "object":
-                        self.assertEqual(tuple(state.value), tuple(value))
+                        self.assertIs(type(value), dict)
+                        expected_keys = tuple(cast(dict[str, MetadataValue], value))
+                        self.assertEqual(tuple(self.mapping(state.value)), expected_keys)
                         if value:
-                            self.assertEqual(state.value[""], (None, False, 0))
+                            self.assertEqual(self.mapping(state.value)[""], (None, False, 0))
                     else:
                         self.assertIs(type(state.value), type(value))
                         self.assertEqual(state.value, value)
 
     def test_exact_types_do_not_coerce_or_accept_missing_markers(self):
+        # Keep unsupported float and marker objects intact at the typed API boundary.
         for declared_type, value, reason in (
             ("boolean", 1, "TYPE_MISMATCH"), ("integer", True, "TYPE_MISMATCH"),
             ("decimal", 1, "TYPE_MISMATCH"), ("decimal", "1", "TYPE_MISMATCH"),
@@ -124,7 +130,7 @@ class ValueSelectionTests(ResolutionTestCase):
         ):
             registry = self.registry(resolution_definition(type=declared_type,
                 enum=NotApplicable("No enumeration.")))
-            self.resolution_failure(resolve_configuration(registry, {"demo.label": value}),
+            self.resolution_failure(resolve_configuration(registry, {"demo.label": cast(MetadataValue, value)}),
                 "INVALID_CONFIGURATION_VALUE", reason, ("definitions", 0, "value"))
 
     def test_absence_does_not_inherit_a_previous_explicit_value(self):
@@ -136,8 +142,9 @@ class ValueSelectionTests(ResolutionTestCase):
 
     def test_nested_null_is_independent_of_top_level_nullable(self):
         for nullable in (False, True):
-            for declared_type, value in (("array", [None, {"nested": None}]),
-                                         ("object", {"nested": [None]})):
+            cases: tuple[tuple[DeclaredType, MetadataValue], ...] = (
+                ("array", [None, {"nested": None}]), ("object", {"nested": [None]}))
+            for declared_type, value in cases:
                 registry = self.registry(resolution_definition(type=declared_type,
                     nullable=nullable, enum=NotApplicable("No enumeration.")))
                 self.resolved(registry, {"demo.label": value})
@@ -151,17 +158,22 @@ class NumericAndEnumerationTests(ResolutionTestCase):
             default=LiteralDefault(Decimal("1")), enum=Declared([None, Decimal("1")]),
             range=Declared(RangeDescriptor(Bound(Decimal("0"), True), Bound(Decimal("2"), True))))
         registry = self.registry(definition)
-        for values, expected, source in (({}, Decimal("1"), "DEFAULT"),
+        cases: tuple[tuple[dict[str, MetadataValue], MetadataValue, str], ...] = (
+            ({}, Decimal("1"), "DEFAULT"),
             ({"demo.amount": None}, None, "EXPLICIT"),
-            ({"demo.amount": Decimal("1.00")}, Decimal("1.00"), "EXPLICIT")):
+            ({"demo.amount": Decimal("1.00")}, Decimal("1.00"), "EXPLICIT"))
+        for values, expected, source in cases:
             self.present(self.resolved(registry, values), "demo.amount", expected, source)
+        # The float remains a raw unsupported input; it must not be converted.
         for value, reason in (("1", "TYPE_MISMATCH"), (1, "TYPE_MISMATCH"),
             (1.0, "UNSUPPORTED_VALUE"), (Decimal("NaN"), "NON_FINITE_NUMBER"),
             (Decimal("3"), "OUT_OF_RANGE"), (Decimal("0"), "NOT_IN_ENUM")):
-            self.resolution_failure(resolve_configuration(registry, {"demo.amount": value}),
+            self.resolution_failure(resolve_configuration(registry, {"demo.amount": cast(MetadataValue, value)}),
                 "INVALID_CONFIGURATION_VALUE", reason, ("definitions", 0, "value"))
         for nullable, reason in ((True, "NOT_IN_ENUM"), (False, "NULL_NOT_ALLOWED")):
-            variant = dict(definition, nullable=nullable, enum=Declared([Decimal("1")]))
+            variant = definition.copy()
+            variant["nullable"] = nullable
+            variant["enum"] = Declared[list[MetadataValue] | tuple[MetadataValue, ...]]([Decimal("1")])
             self.resolution_failure(resolve_configuration(self.registry(variant), {"demo.amount": None}),
                 "INVALID_CONFIGURATION_VALUE", reason, ("definitions", 0, "value"))
 
