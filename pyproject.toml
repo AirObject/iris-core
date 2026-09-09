@@ -1,0 +1,9 @@
+[project]
+name = "iris-memory-core"
+version = "0.1.0"
+description = "Configuration parameter definitions and an immutable registry."
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[tool.uv]
+package = false

@@ -42,7 +42,7 @@
 
 ## 当前工作与异常处理
 
-- [CURRENT_TASK.md](work/CURRENT_TASK.md)：记录当前任务；配置参数定义与只读注册表为“契约已批准，待实现”，业务代码尚未开始，等待下一次代码实现授权。
+- [CURRENT_TASK.md](work/CURRENT_TASK.md)：记录当前任务、批准状态与检查结果；实际完成情况见[STATUS.md](work/STATUS.md)。
 - [STATUS.md](work/STATUS.md)：在切片完成节点简短更新实际完成情况及限制。
 - [TASK_TEMPLATE.md](work/TASK_TEMPLATE.md)：后续小任务模板。
 - [ORGANIZATION_REPORT.md](work/ORGANIZATION_REPORT.md)：一次性整理的历史记录，保留当时的哈希、逐节归属与校验结果，不作为后续代码任务的持续维护清单。
