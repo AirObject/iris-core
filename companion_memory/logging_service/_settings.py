@@ -29,6 +29,9 @@ class _Settings:
     file_level: str
     console_stream: str
     event_max_bytes: int
+    sink_capacity: int
+    warning_reserve: int
+    preparation_capacity: int
 
 
 def _read_settings(checked: CheckedResolutionOk[EffectiveSnapshot]) -> _Settings:
@@ -55,4 +58,6 @@ the provenance of a success wrapper against malicious same-process code.
         cast(bool, value("console_enabled")), cast(bool, value("file_enabled")),
         cast(str, value("console_level")), cast(str, value("file_level")),
         cast(str, value("console_stream")), cast(int, value("event_max_bytes")),
+        cast(int, value("sink_capacity")), cast(int, value("warning_reserve")),
+        cast(int, value("preparation_capacity")),
     )

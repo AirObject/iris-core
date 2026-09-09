@@ -7,11 +7,12 @@ input, exception, traceback, partial event, or delivery acknowledgement.
 from dataclasses import dataclass
 from typing import Literal
 
-type _Code = Literal["INVALID_EVENT", "ADMISSION_REJECTED", "INVALID_LOGGER"]
-type _Field = Literal["event", "level", "event_code", "context", "attributes", "module"]
+type _Code = Literal["INVALID_EVENT", "ADMISSION_REJECTED", "INVALID_LOGGER", "INVALID_STATE"]
+type _Field = Literal["event", "level", "event_code", "context", "attributes", "module", "state"]
 type _Reason = Literal[
     "INVALID_SHAPE", "INPUT_LIMIT_EXCEEDED", "MISSING_FIELD", "LEVEL_NOT_ALLOWED",
     "EVENT_CODE_NOT_ALLOWED", "FIELD_VALUE_INVALID", "EVENT_TOO_LARGE",
+    "ADMISSION_BUSY", "SERVICE_CLOSED",
     "FORMAT_FAILED", "EVENT_BUILD_FAILED", "MODULE_NOT_ALLOWED",
 ]
 

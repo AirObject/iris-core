@@ -29,6 +29,8 @@ class SettingsAndRoutingTests(EventTestCase):
             "logging.console_level": "CRITICAL", "logging.file_level": "NOTSET",
             "logging.console_enabled": False, "logging.file_enabled": True,
             "logging.console_stream": "split", "logging.event_max_bytes": 777,
+            "logging.sink_capacity": 7, "logging.warning_reserve": 2,
+            "logging.preparation_capacity": 3,
         }
         checked = self.checked(self.logging_registry(), values)
         if not isinstance(checked, CheckedResolutionOk):
@@ -48,6 +50,8 @@ class SettingsAndRoutingTests(EventTestCase):
         self.assertEqual((settings.console_level, settings.file_level), ("CRITICAL", "NOTSET"))
         self.assertEqual((settings.console_enabled, settings.file_enabled), (False, True))
         self.assertEqual((settings.console_stream, settings.event_max_bytes), ("split", 777))
+        self.assertEqual((settings.sink_capacity, settings.warning_reserve,
+                          settings.preparation_capacity), (7, 2, 3))
         self.assertFalse(hasattr(settings, "file_directory"))
 
     def test_schema_defaults_are_obtained_through_the_snapshot(self):
@@ -56,7 +60,8 @@ class SettingsAndRoutingTests(EventTestCase):
             self.fail("Complete synthetic configuration must validate.")
         settings = _read_settings(checked)
         for suffix in ("instance_level", "console_enabled", "file_enabled", "console_level",
-                       "file_level", "console_stream", "event_max_bytes"):
+                       "file_level", "console_stream", "event_max_bytes", "sink_capacity",
+                       "warning_reserve", "preparation_capacity"):
             entry = self.resolution_success(checked.value.get_entry("logging." + suffix))
             state = self.present_state(entry.state)
             self.assertEqual(state.source, "DEFAULT")
