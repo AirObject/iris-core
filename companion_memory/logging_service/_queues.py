@@ -38,6 +38,7 @@ class _Pending:
     work: _Work
     tracked: bool = False
     unknown: bool = False
+    written: bool = False
 
 
 class _Sink:
@@ -67,7 +68,7 @@ class _Sink:
             self.terminal(pending, "dropped")
 
     def mark_unknown(self) -> None:
-        if self.in_flight is not None and not self.in_flight.unknown:
+        if self.in_flight is not None and not self.in_flight.unknown and not self.in_flight.written:
             self.in_flight.unknown = True
             self.terminal(self.in_flight, "unknown")
 
@@ -80,8 +81,9 @@ class _QueueController:
     work item for a trusted external consumer; finish must be called only when
     that operation has actually ended. stop_accepting closes admission only:
     queued work may still begin, and no drain, resource release or flush is
-    promised. No method performs IO, schedules emergency delivery or recovers a
-    faulted sink. READY here means queue eligibility, not initialized resources.
+    promised. No method performs IO or schedules emergency delivery. Recovery
+    only resets queue eligibility after its resource owner confirms consistency.
+    READY here means queue eligibility, not initialized resources.
     """
 
     def __init__(
@@ -296,12 +298,46 @@ class _QueueController:
             if succeeded:
                 if timestamp is not None:
                     sink.last_success_at = timestamp
-                if not pending.unknown:
+                if not pending.unknown and not pending.written:
                     sink.terminal(pending, "written")
+                    pending.written = True
             else:
                 self._fault(sink, "WRITE_FAILED")
             sink.in_flight = None
             return True
+
+    def publish_written(self, work: _Work) -> None:
+        """Account a published full write without releasing its borrowed buffer.
+
+        A worker may still be returning through completion bookkeeping. Close
+        must see the confirmed category while physical ownership stays bounded.
+        """
+        with self._lock:
+            sink = self._sink(work.sink)
+            pending = sink.in_flight
+            if (pending is not None and pending.work is work
+                    and not pending.unknown and not pending.written):
+                sink.terminal(pending, "written")
+                pending.written = True
+
+    def abandon(self) -> None:
+        """Classify actual close abandonment without fabricating an I/O fault."""
+        self.stop_accepting()
+        with self._lock:
+            for sink in self._sinks:
+                sink.mark_unknown()
+                sink.discard_queued("SHUTDOWN_DROPPED")
+
+    def recover(self, name: _SinkName) -> int:
+        """Reenable admission only after the owner confirms full resource recovery."""
+        with self._lock:
+            sink = self._sink(name)
+            if sink.in_flight is not None:
+                raise RuntimeError("Recovery requires completed I/O ownership.")
+            sink.fault_reason = None
+            losses = sink.counts.values["recovery_dropped"]
+            sink.counts.values["recovery_dropped"] = 0
+            return losses
 
     def fault(self, name: _SinkName, reason: _FaultReason) -> None:
         """Record an externally established IO fault, without declaring IO ended.
@@ -375,7 +411,7 @@ class _QueueController:
         pending = sink.in_flight
         return _TargetCounts(values["accepted"], values["written"], values["dropped"], values["unknown"],
                              sum(item.tracked for item in sink.queue),
-                             int(pending is not None and pending.tracked and not pending.unknown))
+                             int(pending is not None and pending.tracked and not pending.unknown and not pending.written))
 
     def observe(self) -> _QueueView:
         """Copy fixed-size immutable accounting; excludes event text and paths."""

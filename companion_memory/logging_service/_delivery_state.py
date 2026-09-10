@@ -23,13 +23,13 @@ type _DeliveryReason = Literal[
     "NONE", "SINK_DISABLED", "MODULE_THRESHOLD", "SINK_THRESHOLD",
     "QUEUE_FULL", "SINK_UNAVAILABLE", "SHUTDOWN_DROPPED",
 ]
-type _CountName = Literal["accepted", "written", "dropped", "unknown", "filtered", "rejected"]
+type _CountName = Literal["accepted", "written", "dropped", "unknown", "filtered", "rejected", "recovery_dropped"]
 _DROP_REASONS: tuple[_DropReason, ...] = ("QUEUE_FULL", "SINK_UNAVAILABLE", "SHUTDOWN_DROPPED")
 _FAULT_REASONS: tuple[_FaultReason, ...] = (
     "WRITE_FAILED", "FLUSH_FAILED", "ROTATION_FAILED", "RETENTION_FAILED", "IO_TIMEOUT",
     "FILE_STATE_UNCONFIRMED", "RESOURCE_CLOSE_FAILED",
 )
-_COUNT_NAMES: tuple[_CountName, ...] = ("accepted", "written", "dropped", "unknown", "filtered", "rejected")
+_COUNT_NAMES: tuple[_CountName, ...] = ("accepted", "written", "dropped", "unknown", "filtered", "rejected", "recovery_dropped")
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +44,7 @@ class _DeliveryDecision:
 
 @dataclass(frozen=True, slots=True)
 class _EmergencyNeed:
-    """Safe input for a future single emergency attempt, never a sent receipt."""
+    """Safe input for a single emergency attempt, never a sent receipt."""
 
     event_id: str
     level_name: str
@@ -68,6 +68,14 @@ class _ConstantEmergencyNeed:
 
     level_name: str
     reason: Literal["ADMISSION_BUSY", "EVENT_BUILD_FAILED", "FORMAT_FAILED"]
+
+
+@dataclass(frozen=True, slots=True)
+class _FaultEmergencyNeed:
+    """Constant background fault notice, with no event identity or resource text."""
+
+    reason: _FaultReason
+    level_name: str = "ERROR"
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +190,7 @@ class _Counters:
         """Increment an existing fixed label; never insert caller-controlled keys."""
         key = (level, reason)
         self.drops[key] = self._next(self.drops[key])
+        self.add("recovery_dropped")
 
     def _next(self, value: int) -> int:
         if value >= _MAX_INTEGER - 1:

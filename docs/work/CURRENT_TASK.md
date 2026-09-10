@@ -1,23 +1,24 @@
 # 当前任务
 
-任务：**日志双端异步写出与 I/O 超时控制：用户已验收；独立本地提交归档**。
+任务：**控制台与文件运行诊断服务：用户已验收；独立本地提交归档。**
 
 ## 基线与授权
 
-2026-09-10，用户确认验收本切片及完成发布／超时仲裁修复，授权仅更新本文件和 STATUS，并创建独立本地提交。实际目录及 Git 根均为 `/Users/cassia/Local/Code/iris_memory_core`，分支 `main`，提交前 HEAD 为 `f090d534d1a299aaf5346bcc58c92fe956071344`；起点暂存区为空，5 份已跟踪修改及 4 份未跟踪文件均为既有实现，没有额外差异。已读取 AGENTS、INDEX、CURRENT_TASK 和 STATUS；本次不修改源码或测试。
+2026-09-10 用户确认验收完整服务及截点报告、饱和计数、临时目录修复，授权仅更新本文件和 STATUS，并创建独立本地提交。目录及 Git 根均为 `/Users/cassia/Local/Code/iris_memory_core`，分支 `main`，提交前 HEAD 为 `8189d33c3104240346979d0952f83a085a8d81a9`；起点已有 6 项受跟踪修改及 12 个未跟踪文件，暂存区为空，已有实现全部保留。本次已读取 AGENTS、INDEX、CURRENT_TASK 和 STATUS，不修改源码或测试。依据为[日志模块](../modules/logging.md)、[运行诊断契约](../architecture/logging.md#runtime-diagnostics-contract)、[配置日志校验及目录边界](../architecture/configuration.md#configuration-additional-validation-contract)与[代码规范](../CODING_STANDARDS.md)。
 
-提交严格包含 logging_service 下的 `__init__.py`、`_async_writer.py`、`_queues.py`、`_settings.py`，tests/logging_service 下的 `async_support.py`、`test_async_writes.py`、`test_io_deadlines.py`、`test_settings_and_routing.py`，以及本文件和 STATUS，共 10 份文件。提交标题为 `feat(logging): 增加双端异步写出与 I/O 超时控制`。
+提交严格包含用户清单中的 9 份 logging_service 源码、8 份 logging_service 测试／夹具，以及本文件和 STATUS，共 19 份文件；标题为 `feat(logging): 完成控制台与文件运行诊断服务`。
 
 ## 已验收行为与限制
 
-- console／file 独立后台写出，每端一个工作线程和未完成 I/O，共用一个监测线程；逐端 FIFO，写出不持有准入锁。io_timeout_ms 只从统一配置已校验快照的公开接口取得。
-- 每端固定完成记录和短互斥锁统一结束时刻发布／超时仲裁，避免期限内完成因记账延迟被误判。确定性回归先复现 19ms 成功、20ms 监测导致 UNKNOWN 和丢弃积压；修复后保持 READY，第二条继续写出。期限前短写／异常为 WRITE_FAILED，实际超时为 IO_TIMEOUT，保留首个故障。
-- UNKNOWN 保留缓冲及容量直至实际结束；迟到完成不重计、不重放、不恢复。沿用共享 bytes 和编码预算，无逐事件线程、Future 或历史任务；内部退休／join 管理工作者，未结束调用仍明确占用，借用端口不关闭。
-- 验证仅覆盖内存替身下的并发、故障、回收和引用释放，不证明真实 I/O、性能或持久化。没有完整公开 Service、initialize／flush／close、真实资源准备、轮转、应急投递、恢复或生产装配，G2 仍待定；内部工作者退休不等于完整 close。
+- 完整公开服务、公开配置快照接入、不可变结果、双端投递与健康查询、flush／close、独立有界应急、受控恢复、借用控制台及真实文件写出／轮转／保留已验收；保留输入安全、共享缓冲预算、准入一致性、完成发布仲裁、UNKNOWN 所有权及饱和统计。
+- 修复轮先运行 3 项确定性回归，实际复现截点外故障改写已完成报告、饱和 flush_count 导致空队列 flush／close 误报等待到期。修复以固定大小的当前请求状态及首个适用障碍控制完成，保留真实健康故障及迟到 I/O 所有权；原 313 项覆盖保留，新增 7 项测试方法后通过。
+- 测试使用系统临时目录，创建后解析真实绝对路径，统一供配置及完整合成目录清单使用；别名路径的真实文件集成通过。仅操作测试自有资源，未访问用户日志或业务数据。
 
-## 验证依据与本次复用
+检查区分可控时钟／事件下的内存故障注入与本机真实临时文件；后者覆盖写出、轮转、保留、重新打开、残缺记录、异常条目及目录独占。未在 Linux 验证目录锁、路径／文件权限、符号链接／别名和资源回收等平台行为；未验证 Docker 部署、性能目标、强杀／掉电或持久化承诺。永久阻塞的资源仍可在 close 返回后占用线程／目录，健康继续如实报告 cleanup_pending。
 
-来源为 2026-09-10 完成发布竞争修复后的实际检查，版本为上述父提交加本次提交的源码／测试。环境：Python 3.12.13、uv 0.12.9、Pyright 1.1.411。**270 项 unittest 通过（原 267 项正文保留＋新增 3 项）；全量 Pyright 0 errors／0 warnings／0 informations；编译及离线锁文件检查通过。** 当时实际执行且最终退出码均为 0：
+## 验证来源与本次复用
+
+来源为 2026-09-10 上述修复完成后的实际检查，版本为提交前 HEAD 加本次归档的源码／测试；Python 3.12.13、Pyright 1.1.411，平台 Darwin 25.6.0 arm64。全量 **320 项 unittest 通过**，全量 **Pyright 0 errors／0 warnings／0 informations**；compileall、离线锁文件核验及含全部新增／未跟踪文件的差异检查通过。当时实际执行下列命令，退出码均为 0：
 
 ```text
 uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync pyright --version
@@ -28,10 +29,8 @@ uv --cache-dir /tmp/iris-memory-core-uv-cache lock --check --offline
 git diff --check
 ```
 
-本次重新计算 49 份 Python 及 `pyproject.toml`、`uv.lock`、`.vscode/settings.json` 共 52 份文件的排序路径→SHA-256 映射，以紧凑排序 JSON 编码后的摘要为 `b4c458565c6f283b8fd2a524892cfad81dbef27e3bc6ab5494d4b276bb776c7f`，与已测版本完全一致，因此按用户授权复用以上有效结果，不重复运行。未查看编辑器 Pylance 诊断。
-
-收尾按明确清单暂存，核对暂存恰好 10 份文件、与工作区及 52 份已测文件一致；执行 `git diff --check` 和 `git diff --cached --check`，不夹带其他修改。
+本次重新核对 `companion_memory/`、`tests/` 下全部 61 份 Python，加 `pyproject.toml`、`uv.lock`、`.vscode/settings.json`，共 64 份文件。按路径排序的路径→SHA256 映射以紧凑排序 JSON 编码后再次取 SHA256，结果为 `83429454e3bf8aa98510636e5b8cbdf57f12fff4a5a6ff3838d89eb3e7774fdb`，与已测版本一致；按用户授权复用以上有效结果，不重复运行。本次提交收尾另核对暂存恰好 19 份文件及其内容与已核验版本一致，并执行 `git diff --check` 和 `git diff --cached --check`。**未查看编辑器 Pylance 诊断，不将命令行结果视为 Pylance 确认。**
 
 ## 停止点
 
-**用户已验收，本记录随授权的独立本地提交归档；提交后停止。** 不安装依赖、不推送、不合并、不部署或开始下一切片。
+无未解决实现阻塞。验收不包含 Linux、Docker、性能目标、生产装配或 G2；Web、历史查询／导出、SDK 桥接、事务审计、Provider、数据库、热配置及持久化亦不在范围内。**用户已验收，本记录随授权的独立本地提交归档，提交后停止。** 不安装依赖、不推送、不合并、不部署或开始下一任务。

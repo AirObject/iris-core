@@ -1,4 +1,4 @@
-"""Confirm internal composition has no service facade or external side effects.
+"""Confirm pure internal composition and public creation have no external side effects.
 
 The checks guard both successful pure preparation and safe failures. They do not
 test lifecycle, queue accounting, emergency delivery, or physical resources.
@@ -18,9 +18,11 @@ from tests.logging_service.support import EventTestCase
 class ComponentBoundaryTests(EventTestCase):
     """Use rejecting IO probes around purely internal processing."""
 
-    def test_package_exposes_no_service_or_successful_lifecycle_placeholders(self):
-        self.assertEqual(logging_service.__all__, [])
-        for name in ("Service", "Logger", "create_logging_service", "emit", "flush", "close"):
+    def test_package_exposes_service_and_creation_is_only_new_state(self):
+        for name in ("Service", "Logger", "create_logging_service", "LoggingOk", "LoggingErr"):
+            self.assertIn(name, logging_service.__all__)
+        self.assertEqual(logging_service.create_logging_service().get_sink_health().lifecycle, "NEW")
+        for name in ("append_audit", "query_runtime_logs", "subscribe_runtime_logs", "export_logs"):
             self.assertFalse(hasattr(logging_service, name))
 
     def test_success_and_failures_never_start_workers_or_touch_output_resources(self):

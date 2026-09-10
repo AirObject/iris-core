@@ -348,7 +348,7 @@ class QueueCompletionTests(QueueTestCase):
             self.complete(owner, self.start(owner, sink))
         self.assert_partition(owner, token)
         self.assertEqual(tuple(counts.written for counts in owner.observe_cutpoint(token).targets), (1, 1))
-        for name in ("flush", "close", "recover", "initialize"):
+        for name in ("flush", "close", "initialize"):
             self.assertFalse(hasattr(owner, name))
 
 
