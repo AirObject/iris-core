@@ -15,7 +15,7 @@ from companion_memory.logging_service.audit_records import AuditRecord, audit_ma
 from .definitions import CommandDefinition, LocalCommand, RepositoryDefinition
 from .results import OperationIdentity, Receipt, RecoveryHandle
 from .schema import (
-    InvalidValue, RecordSchema, ScalarSchema, SequenceSchema, Value,
+    BoundedTextSchema, InvalidValue, RecordSchema, ScalarSchema, SequenceSchema, Value,
     decode_value, encode_value, freeze_value, utc_text, valid_identifier,
 )
 
@@ -37,8 +37,10 @@ def valid_utc(value: object) -> bool:
         return False
 
 
-def schema_value(schema: ScalarSchema | RecordSchema | SequenceSchema) -> Value:
+def schema_value(schema: ScalarSchema | BoundedTextSchema | RecordSchema | SequenceSchema) -> Value:
     """A finite trusted schema is part of the command's durable interpretation."""
+    if type(schema) is BoundedTextSchema:
+        return MappingProxyType({"bounded_text": schema.max_utf8_bytes})
     if type(schema) is ScalarSchema:
         return MappingProxyType({"kind": schema.kind, "minimum": schema.minimum,
                                  "maximum": schema.maximum, "choices": schema.choices})

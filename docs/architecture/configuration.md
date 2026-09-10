@@ -750,3 +750,97 @@ i／j／d及原日志k的下标含义沿用所属既有表；新增persistence_d
 | 固定验证器抛普通异常；成功后调用方修改原输入和目录清单 | 前者仅VALIDATOR_FAILED且旧快照不变；后者已发布快照及嵌套数据不变。两者均不读取环境或资源 |
 
 本节补充契约已批准、尚未实现，现有[配置公开入口](../../companion_memory/configuration/__init__.py)、[普通解析](../../companion_memory/configuration/resolution.py)、[日志附加解析](../../companion_memory/configuration/checked_resolution.py)尚无此能力；以上接口静态核对不代表执行通过。当前授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)，不开始实现或自动注册参数。
+
+<a id="configuration-provider-validation-contract"></a>
+
+### 11.13 Provider基础服务所需配置校验：已批准契约
+
+**状态：契约已批准。** 本节随[Provider整体F5](provider.md#provider-foundation-decisions)由主会话按用户授权审查批准，不表示用户亲自验收或实现通过。本节是新配置的唯一详细规格；不改§11.9–11.12已批准正文、现有三个解析入口或旧错误枚举。本次只有纯内存校验及消费者适用性检查，没有加载、激活、配置版本库、secret引用解析或生产默认。这里的SIMULATED／TEST明确为模拟协议和合成金额；真实HTTP／价格／凭据的配置不符合本子集，不能静默退回模拟执行。
+
+#### 11.13.1 独立入口与适用性
+
+已批准新增`resolve_configuration_with_provider_validation(registry, explicit_values, protected_directories) → ProviderResolutionResult<EffectiveSnapshot>`，三项均显式传入；成功为ProviderResolutionOk，失败为ProviderResolutionErr。输入精确载体、完整集合、未知键／深不可变／输入稳定要求沿用[§11.10.2](#configuration-resolution-input)。始终要求本节Provider完整10键和§11.12完整storage／audit10键；任一logging.注册键触发原完整日志组和目录上下文，否则第三项恰为None。日志目录清单中的provider_usage须覆盖本次同库账本所属目录，资源真实性仍由可信装配负责。
+
+普通入口仍拒绝非空validator／dependencies；日志入口仍只接受原四项验证器且要求完整日志组；持久化入口仍只接受原五项且按原顺序检查。均不得转调新入口、扩大白名单、剪掉Provider声明后解析，或因provider未启用而跳过其定义。新入口保留和检查所有额外注册参数，只增本节固定能力。
+
+同时新增只读`provider_snapshot_issue(snapshot)`供Provider初始化：结果None表示本子集适用，或固定SNAPSHOT_REQUIRED／DEFINITION_MISMATCH／CAPABILITY_MISSING／VALUE_INVALID。先核验原生EffectiveSnapshot，再全部必要定义（Provider和storage／audit，触发时含日志），再必要能力及依赖声明，最后完整有效值和跨参数关系。实现仅用配置公开快照查询及模块内共享固定验证逻辑；不重新解析／发布快照，不返回ID、证书、默认或资源授权。目录上下文不保存在快照，适用性检查不能重造它或证明物理安全；日志／存储各自资源绑定继续核验。
+
+<a id="configuration-provider-definitions"></a>
+
+#### 11.13.2 完整定义、嵌套字段和匹配
+
+Provider十项均required=true、nullable=false、default=NoDefault()，owner_module=provider、consumers至少含provider；scope=[instance]、override_policy=no_override、sensitivity=public、read_roles/write_roles=[trusted_operator]、apply_mode=INITIALIZE_ONLY、activation_group=NotApplicable，deprecated=false、replacement/upgrade_rule=NotApplicable。schema_revision只校验合法Identifier，不当配置值版本；说明字段及NotApplicable.reason按原非空Text规则，不逐字匹配，不从说明文字执行逻辑。所有值仅为明确无秘密的内部标识、有限数量和合成价格，不能存URL、凭据或文件路径。
+
+| key | type／unit | 完整range或验证器／必要dependencies |
+| --- | --- | --- |
+| provider.max_in_flight | integer／requests | 闭区间1–8；provider_resource_limits；依赖provider.result_max_bytes、storage.command_max_bytes、storage.receipt_max_bytes |
+| provider.request_timeout_ms | integer／milliseconds | 闭区间1–60000 |
+| provider.close_timeout_ms | integer／milliseconds | 闭区间1–60000 |
+| provider.retry_delay_ms | integer／milliseconds | 闭区间0–60000 |
+| provider.request_max_bytes | integer／bytes | 闭区间256–1048576 |
+| provider.result_max_bytes | integer／bytes | 闭区间256–8192 |
+| provider.query_row_limit | integer／rows | 闭区间1–1000 |
+| provider.accounts | array／NotApplicable | provider_accounts；依赖provider.max_in_flight |
+| provider.profiles | array／NotApplicable | provider_profiles；依赖provider.accounts、provider.request_timeout_ms |
+| provider.role_profiles | object／NotApplicable | provider_role_profiles；依赖provider.profiles |
+
+全部enum为NotApplicable；array／object的range为NotApplicable，由固定验证器验证嵌套结构。元信息比较按§11.12.2相同规则：必需键按排序核验，缺必要validator／dependency用专用原因，其余key／type／owner／单位／范围／默认／角色／生效模式精确匹配，consumers只要求包含必要消费者。dependencies允许额外已注册项、自引用、前向和声明环；仍检查值存在，不强制等于最小列表。定义不能用相近范围或本次显式值掩盖错误默认。
+
+嵌套结构如下；所有列均必填，None只在明确列出的条件允许，未知字段拒绝。标识统一为精确Identifier，整数是精确int且不得用bool代替，枚举是精确str。解析前数组接受原精确list／tuple，隔离后tuple；对象接受精确dict，隔离后自有只读映射。固定验证器不接受任意参数名或动态协议字段。
+
+| 值 | 完整字段与规则 |
+| --- | --- |
+| accounts | 1–4项，account_id唯一；每项恰含account_id、window_id（真实合成业务标识）、currency（仅TEST）、max_in_flight（1–8且≤实例上限）、attempt_limit（1–1000000）、cost_limit_atoms（0–10^12）。无自动周期／重置／真实账单功能 |
+| profiles共同字段 | 1–16项，profile_id唯一；每项恰含profile_id、account_id、model_id、wire_protocol（仅SIMULATED）、capability（GENERATION／EMBEDDING／RERANK／MEDIA_UNDERSTANDING）、max_attempts（1–4，含首attempt）、attempt_timeout_ms（1–60000且≤总请求配置期限）、max_input_units（1–1048576）、max_output_units（见下）、max_items（1–64）、input_price_atoms（0–10^6）、output_price_atoms（0–10^6）、dimensions、space_id、media_tasks。account_id须引用accounts中实际项；不自动建账户、不因多个profile复制额度 |
+| generation特定值 | max_output_units=1–1048576；dimensions／space_id=None，media_tasks为空tuple；max_items限定消息数，max_input_units的模拟字节口径见[请求协议](provider.md#provider-foundation-ports) |
+| embedding特定值 | max_output_units=0、output_price_atoms=0；dimensions为1–1024，space_id为非空Identifier，media_tasks为空tuple；max_items限定文本条数，max_input_units也须≥max_items。空间和维度显式固定，不做跨空间降级 |
+| rerank特定值 | max_output_units=0、output_price_atoms=0、dimensions／space_id=None、media_tasks为空tuple；max_items限定候选数，max_input_units须≥max_items |
+| media特定值 | max_output_units=0、output_price_atoms=0、dimensions／space_id=None、max_items=1；media_tasks为1–3项互不重复的固定记录，每项恰含modality和task，允许组合仅IMAGE＋DESCRIBE、AUDIO＋TRANSCRIBE、VIDEO＋DESCRIBE；max_input_units限定bytes |
+| role_profiles | 1–8个成员，键仅LEARNING／DREAM／PERSONA／MEDIA／EMBEDDING／RERANK／GOAL／DIAGNOSTIC；值为1–16个互不重复的已注册profile_id。映射仅是可选profile配置，不签发角色或权限；工作句柄允许集合与本映射取交集，调用方不能靠添加键获得授权 |
+
+金额乘法`max_input_units × input_price_atoms + max_output_units × output_price_atoms`必须≤2^63−1，不能float转换或隐式舍入；TEST/atoms表示只在[Provider预算契约](provider.md#provider-foundation-gates)解释。上述上界是本地支持范围，没有生产推荐值。配置明确不提供config_snapshot_id/profile_revision/price_revision；缺失与实际字段证据按[Provider身份契约](provider.md#provider-foundation-identity)分别表达，不能通过合法schema_revision冒充配置持久版本。
+
+#### 11.13.3 固定验证器与存储容量衔接
+
+新入口白名单恰为原五项加下列四项；精确绑定，不动态注册、替换、执行表达式或调用用户回调。执行只读已隔离候选值及显式依赖，无文件／环境／时钟／网络／日志访问，无派生配置或默认补全。
+
+| 标识／唯一绑定 | 检查及固定失败原因 |
+| --- | --- |
+| provider_accounts／provider.accounts(array) | 完整accounts结构、唯一ID、范围／币种及并发关系；失败ACCOUNTS_INVALID |
+| provider_profiles／provider.profiles(array) | 完整profiles结构、引用／能力专属字段、金额乘法和时限关系；失败PROFILES_INVALID |
+| provider_role_profiles／provider.role_profiles(object) | 完整角色集合、非空已注册profile映射、无重复；失败ROLE_PROFILES_INVALID |
+| provider_resource_limits／provider.max_in_flight(integer) | storage.command_max_bytes与storage.receipt_max_bytes都须≥57344，且`6 × provider.result_max_bytes + 8192 ≤ storage.receipt_max_bytes`；失败STORAGE_CAPACITY_INSUFFICIENT |
+
+容量下限为有界文本最坏JSON转义及固定信封预留空间的保守接口条件：执行配置证据上限8192 UTF-8字节，单次结果payload上限取result_max_bytes；回执仅保存引用，查询含正文时仍受持久化行编码限额。实现须对完整编码再验证，不以估算放行超限数据；文本上限不赋予审计正文权限。请求文本不写通用命令，语义指纹在Provider隔离后生成；超大输入拒绝而非截断。格式字段和Provider编码需保证固定信封≤8192字节，否则归为实现错误并安全失败，不能隐式提高配置限额。
+
+每个Provider验证器在依赖值存在且自身基础校验成功后执行；依赖结构本身不合法时安全报当前固定失败，不读未知字段或解释不受支持对象，错误顺序不靠配置字典输入顺序碰运气。原日志／持久化验证器行为和路径清单保持各自原规则。非预期普通异常／非法返回统一VALIDATOR_FAILED；原资源耗尽和进程控制边界不变。
+
+<a id="configuration-provider-errors"></a>
+
+#### 11.13.4 全集合顺序与固定错误
+
+严格顺序：registry及explicit_values精确载体 → 全部顶层键格式 → 全部未知键 → 全注册集合按排序检查九项白名单／精确绑定及原支持边界 → storage／audit完整匹配 → Provider十键完整匹配／必要依赖 → 触发时原日志组完整匹配 → 原条件目录上下文 → 全集合值选择／树安全／类型／range／enum与隔离 → 全集合依赖存在性 → 按定义排序和validator声明顺序执行验证器 → 一次发布原生EffectiveSnapshot。前一步失败不访问后续输入；无部分快照、注册表／旧值／全局状态变化。
+
+ProviderResolutionError仅含code、operation、issues；operation固定resolve_configuration_with_provider_validation，issues恰含一个不可变(field_path, reason)。独立于原配置结果和Provider运行错误，不嵌套原错误或输入引用。允许集合封闭如下，引用只复用现有固定项，不向未来枚举自动开放：
+
+| code来源／新增code | 固定reason与安全路径 |
+| --- | --- |
+| [§11.12.5](#configuration-persistence-errors)完整配置错误并集 | 复用其固定原因和路径，operation换新入口；validator白名单按本节扩充但旧入口不变。签名和get_entry仍用原协议 |
+| INVALID_PROVIDER_SCHEMA | PROVIDER_DEFINITION_MISSING、PROVIDER_DEFINITION_MISMATCH；`("provider_definitions", k)`，k为本节十键排序下标。缺必要validator／dependency仍优先REQUIRED_VALIDATOR_MISSING／REQUIRED_DEPENDENCY_MISSING及原definitions路径 |
+| ADDITIONAL_VALIDATION_FAILED新增原因 | ACCOUNTS_INVALID、PROFILES_INVALID、ROLE_PROFILES_INVALID、STORAGE_CAPACITY_INSUFFICIENT；`("definitions", j, "value")`，不追加嵌套用户字段／profile／账户ID。VALIDATOR_FAILED和缺依赖值继续复用原表 |
+
+精确载体失败不调用repr、比较、迭代、转换或自定义哈希钩子；路径仅含固定字段名和整数下标，不含原键、值、默认、异常、路径、账户、模型或原对象。完整深不可变及并发只读沿用原快照契约；配置角色字段只保存声明，没有鉴权副作用。
+
+#### 11.13.5 合成检查预期
+
+共用Provider示例见[整体矩阵](provider.md#provider-foundation-acceptance)；storage.command_max_bytes显式65536、storage.receipt_max_bytes显式65536，其他storage／audit和可选日志值按既有完整规格显式提供，路径仅自有合成资源。这些例子保持验收预期，实际执行覆盖和结果见[CURRENT_TASK](../work/CURRENT_TASK.md)。
+
+| 组合 | 预期首个结果 |
+| --- | --- |
+| Provider＋storage／audit完整、无日志、None上下文；另加完整日志及真实布局对应合成目录 | 全集合通过才完整快照；无假版本／秘密／资源就绪声明 |
+| 额外参数未知validator、三组同时缺定义且上下文非法 | 先UNKNOWN_VALIDATOR；修复后依次按storage／audit、Provider、日志组顺序报缺项，再到目录，不省略未使用定义 |
+| accounts重复ID／错误币种、profile未知账户／错误能力字段／欠缺必填None字段、role映射未知profile | 各固定附加错误；无自动账户生成／协议降级／默认配置 |
+| 将金额传bool／float、改元信息范围／默认、storage回执容量不足、关闭输出但日志组残缺 | 分别安全树／固定附加校验、定义不符、STORAGE_CAPACITY_INSUFFICIENT、原日志缺定义；无不完整成功 |
+| 额外依赖值缺失、实际嵌套值也非法；旧三个入口提交新的声明；成功后深层修改源容器 | 缺值优先附加验证；旧入口各维持原UNKNOWN_VALIDATOR或既有不支持原因；新快照稳定不可变 |
+
+新增配置入口和纯内存适用性检查属于已批准整体契约的实现内容；不把生产版本／G2等范围外设施作为伪造配置字段的理由。

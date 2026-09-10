@@ -100,7 +100,7 @@ repository/
 
 | 阶段 | 交付范围 | 通过后再进入 |
 | --- | --- | --- |
-| 0 | [M15](../modules/configuration.md#contract)类型化Schema/快照、[M14](../modules/logging.md#contract)控制台+文件/事务审计、[M13](../modules/provider.md#contract)统一假Provider与调用账本、[I01](ownership.md#i01)基础 | 所有后续模块从开始就没有请求/日志/配置旁路 |
+| 0 | [M15](../modules/configuration.md#contract)类型化Schema/快照、[M14](../modules/logging.md#contract)控制台+文件/事务审计、[M13基础服务与模拟适配器](provider.md#provider-foundation-contract)及真实调用账本（契约已批准）、[I01](ownership.md#i01)基础 | 所有后续模块从开始就没有请求/日志/配置旁路 |
 | 1 | [M01](../modules/ingress.md#contract)/[M02](../modules/runtime.md#contract)/[M03](../modules/buffers.md#contract)：持久接收、三段、三终态、幂等、重启；Web日志与模式只读页面 | 基础状态不会丢失、误删或重放 |
 | 2 | [M04](../modules/media.md#contract)/[M06](../modules/memory.md#contract)：hash媒体、来源、对象关系、引用与统一事务 | 正式认知与来源/文件一致，审计可解释 |
 | 3 | [M08](../modules/retrieval.md#contract)/[M09](../modules/state.md#contract)/[M10](../modules/goals.md#contract)本地路径：一秒查询、反馈、当前状态、目标注入及Provider统计页面 | 无生成LLM的查询边界与诊断开销可验证 |

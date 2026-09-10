@@ -387,3 +387,19 @@ operation是被调用的语义端口，不是SQL语句或下游私有函数名�
 真实前置缺口分开处理：整体实现尚待用户授权；配置所需显式校验及审计／事务公开能力尚不存在；本机实际SQLite链接库及目标Linux能力未核验，是否需要运行时准备未知。生产建库身份保留仍须落实[可信装配责任](#persistence-foundation-initialization)。生产路径、路径敏感分级与完整部署资源清单仍归[G2](logging.md#runtime-diagnostics-prerequisite-decisions)，不是可用合成夹具替代的事实；这些生产缺口不要求本轮选择路径，也不阻止日后获准的自有临时资源验证。
 
 当前授权仅完成文档定稿。工作记录和停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)；契约已批准，待实现授权，不表示实现通过或验收完成。
+
+<a id="provider-persistence-bridge"></a>
+
+## 9. Provider有界文本持久化衔接契约
+
+**状态：契约已批准。** 本节随[Provider整体F3](provider.md#provider-foundation-decisions)由主会话按用户授权审查批准，不表示用户亲自验收或实现通过。上文已批准§8、既有结果／安全错误、同事务审计值集合和旧格式行为保持不变。本节仅补充新Provider静态仓储的有界结果交接和非秘密执行配置证据；不建立其他业务模块，不新增SQL、裸连接、任意序列化或事务控制旁路。
+
+静态源码核对：现有[ScalarSchema及编码](../../companion_memory/persistence/schema.py)仅接受boolean、integer、enum、identifier，Value已含str；[描述编码](../../companion_memory/persistence/_codec.py)将Schema语义纳入装配／命令指纹；[StatementPort](../../companion_memory/persistence/service.py)受限点读受回执字节预算约束。已批准增加独立`BoundedTextSchema(max_utf8_bytes)`，而不放宽identifier／enum或把正文拆成假ID。max_utf8_bytes须为精确int、闭区间1–65536；新字段仍通过Field明确缺失／null，新标量仅接精确str，UTF-8严格编码、拒绝孤立surrogate，接受正常Unicode和需转义的控制字符，不修剪／规范化／截断。先核对字符数≤字节上限，再在有界内严格编码核验字节数；内存与工作量受显式上限约束。
+
+Value载体仍是str，不新增bytes、Decimal或任意对象。Provider自己的类型化payload／向量编码和业务格式校验由[Provider仓储契约](provider.md#provider-foundation-storage)拥有；基础设施仅验证静态文本边界及既有总命令／回执大小。execute／participate输入非法载体或UTF-8继续用现有INVALID_INPUT／INVALID_SHAPE，文本或总编码超限用现有LIMIT_EXCEEDED；受限点读中的存储／解码失败沿用既有STORAGE_UNAVAILABLE／IO_FAILED，不伪造不存在。Provider在自己的完整性核验中发现已存Schema／payload坏数据则映射LEDGER_INCONSISTENT并停止新尝试；通用回执损坏仍按原INTEGRITY_FAILURE／DATA_INCONSISTENT。均不透传原文或编码异常、不增加任意message或错误码，不覆盖既有首错；读取失败不能变成NotFound。
+
+新Schema描述使用独立tag和max_utf8_bytes；旧Scalar／Record／Sequence所有描述、序列化字节、指纹版本与回执格式保持逐字兼容，无全局format_version升级。只在包含新Provider定义的新装配使用新tag；旧测试／旧装配仍可用旧库原样OPEN_EXISTING，旧程序或没有匹配新装配的服务继续按已有格式规则拒绝Provider库。不为新模块对旧库补表或迁移；若无法在此约束下保持兼容，停止受影响实现并提交具体差异，不自行改版本协议。
+
+**审计限制单独保持：** AuditRequirement.change_schema仍只允许[日志§10.9.1](logging.md#transactional-audit-record)的布尔、受限整数、枚举、ID及有界记录／序列。可信装配时必须递归拒绝其中任何BoundedTextSchema，不能因复用freeze_value而自动把正文加入审计；原审计输入／错误／读取／总字节限制全部保留。通用提交回执仍只接受模块声明的安全结果；Provider命令结果Schema只含状态／稳定引用，不含新文本正文。
+
+将新增描述与旧描述的逐字兼容、精确类型／UTF-8边界、控制字符／surrogate、文本超限、恶意子类钩子、嵌套审计文本拒绝、旧装配重新打开及新Provider库真实交接恢复纳入[整体合成矩阵](provider.md#provider-foundation-acceptance)。实际执行覆盖和结果见[CURRENT_TASK](../work/CURRENT_TASK.md)。此扩展不改变存储生命周期、已确认发送前置、审计必要清单、UNKNOWN确认和无自动迁移保障。

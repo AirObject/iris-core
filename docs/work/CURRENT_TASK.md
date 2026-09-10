@@ -1,31 +1,29 @@
 # 当前任务
 
-任务：**持久化事务基础与同事务审计：用户已验收，按授权完成独立本地提交后停止。**
+任务：**Provider基础服务与模拟适配器：用户已审核通过，按明确授权完成一次独立本地提交后停止。**
 
-## 基线、授权与范围
+## 基线、授权与交付
 
-2026-09-10，目录及Git根为`/Users/cassia/Local/Code/iris_memory_core`，`main`，父提交`fdbf7a99a307b39b15764a6622b64af9a095b1e2`。本阶段独立提交由本记录所属提交定位。收尾前核对原34份改动及受测88文件指纹完全一致；configuration、deployment-candidates、logging、persistence-and-transactions四份架构正文保留已验收版本。
+2026-09-10，目录与Git根为`/Users/cassia/Local/Code/iris_memory_core`，`main`，父提交为`6a99353c6035629bcff866e8367d6fd69fa93113`。本阶段由本记录所属提交定位；提交前已核对44份已验收改动及119份受测文件指纹，保留全部授权内容。历史已验收里程碑及提交定位见[STATUS](STATUS.md)。
 
-用户已授权唯一执行子代理更新运行时、采用最新兼容依赖并完成[整体契约](../architecture/persistence-and-transactions.md#persistence-foundation-contract)：[配置§11.12](../architecture/configuration.md#configuration-persistence-validation-contract)、事务§8、[审计§10.9](../architecture/logging.md#transactional-audit-contract)和整体验证。配置独立入口、有限仓储/UoW能力、原子回执与幂等恢复、同事务审计及全部范围内审查修复已完成。用户现已明确“我已审查，验收并提交”。本次只更新CURRENT_TASK／STATUS验收记录，并将原34份已验收改动加STATUS共35文件显式暂存、核验后创建一次独立本地提交；不推送或启动下一阶段。下一步方向仅由主会话规划，不交执行子代理操作。
+用户授权唯一新子代理推进整体阶段；主会话按用户委托完成草案审查、F1–F5及配置／有界文本衔接批准、定稿核对、实现派发及最终技术验收。**用户现已明确“审核通过，提交commit”，授权本阶段一次独立本地提交。** 主会话只做静态审查与独立文件指纹核对，未运行项目代码；实现、故障修复和下列实际运行由执行子代理完成。当前未发现阻塞或需用户裁决的契约冲突。
 
-## 环境与准入证据
+交付正文分别见[Provider契约](../architecture/provider.md#provider-foundation-contract)、[配置契约](../architecture/configuration.md#configuration-provider-validation-contract)及[持久化衔接](../architecture/persistence-and-transactions.md#provider-persistence-bridge)：四能力规范化及显式模拟适配器、真实本地SQLite账本／费用／共享预算／交接、登记确认后发送、同事务审计、有限尝试／总期限／取消／UNKNOWN、受限查询、独立完整配置校验及旧格式兼容。旧三个配置入口及审计文本限制保持。
 
-- uv 0.12.9将CPython 3.12.14隔离安装在`/Users/cassia/.local/share/iris-memory-core/python/`，未安装公共bin，旧共享运行时保留。项目`.venv`使用新解释器，Python范围仍为3.12。来源：[Python发布页](https://www.python.org/downloads/release/python-31214/)、[Astral构建20260901](https://github.com/astral-sh/python-build-standalone/releases/tag/20260901)。现有开发依赖采用[Pyright 1.1.413](https://github.com/microsoft/pyright/releases/tag/1.1.413)，锁定nodeenv 1.10.0、typing-extensions 4.16.0。
-- 实际解释器`3.12.14 (main, Sep 1 2026, 14:09:38) [Clang 22.1.3]`，macOS 26.6.2／arm64；SQLite `3.53.1`、threadsafety=3。source_id为`2026-05-05 10:34:17 c88b22011a54b4f6fbd149e9f8e4de77658ce58143a1af0e3785e4e6475127e9`。46项compile_options含THREADSAFE=1、MUTEX_PTHREADS；排序换行连接无尾换行SHA-256为`054a2945f636bf3b8f648d6abe8ed75a02c74ce6d54dbad67d7ad1777b58d606`。
-- 自有临时准入探针退出0：WAL、FULL、foreign_keys=1、read_uncommitted=0、busy_timeout=50、wal_autocheckpoint=100回读及显式DDL提交／回滚、数据回滚、外键拒绝通过，连接关闭且临时目录清理。上述数值为探针输入。原执行者的3.12.13／SQLite 3.50.4结果不用于代表新环境。
-- 核对[CPython 3.12.14 BytesIO源码](https://github.com/python/cpython/blob/v3.12.14/Modules/_io/bytesio.c)：精确bytes的初始化共享、无共享时getbuffer、等长且无export时getvalue共用原缓冲。新环境重新通过E=512、302／511／512／513地址边界、超限前无分配及主／回退单缓冲峰值512的既有测试。
+## 最近有效验证
 
-## 有效验证与收尾核对
+受测集合为companion_memory／tests全部`.py`及`.python-version`、`pyproject.toml`、`uv.lock`，共119份。按相对路径排序，逐项拼接路径、NUL、文件SHA256十六进制、LF，再计算总SHA256：`4c69b3f4e9fef825b02fad7fe575ad8934f67e85c8c90b2f2e415b0e8315a2f9`。主会话已独立核对该指纹与最终受测源码／测试一致；本次收尾代码未变，不重跑测试。
 
-下列为实现轮最终有效结果，验收收尾确认源码／测试／工程文件与受测指纹一致后复用，未重复运行测试。原检查使用本项目解释器，运行前缀为`uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync`，均退出0：
+执行环境为CPython 3.12.14、实际SQLite 3.53.1、Pyright 1.1.413、uv 0.12.9；未安装或更新依赖。以下结果来自执行子代理最终修复轮实际命令；Python工具共用`uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync`前缀：
 
-- `pyright --version`为1.1.413；`pyright --project pyproject.toml --pythonpath .venv/bin/python`为0错误／警告／信息。
-- `python -m unittest discover -s tests -t . -v`：412项通过，4.961秒；保留原320项行为覆盖，新增92项。
-- `python -m compileall -q companion_memory tests`；另`uv --cache-dir /tmp/iris-memory-core-uv-cache lock --check --offline`通过。
-- `git diff --check`及24份新增文件逐份`git diff --no-index --check`无空白错误；实现轮完整已跟踪／未跟踪差异已审查。验收收尾另核对35文件清单、记录差异、暂存内容及`git diff --cached --check`；不修改实现。未查看编辑器，不声称Pylance通过。
+- `python -m unittest discover -s tests -t . -v`：479项通过，9.164秒（原412＋新增67）；`pyright --project pyproject.toml --pythonpath .venv/bin/python`：0错误／0警告／0信息；`pyright --version`：1.1.413；`python -m compileall -q companion_memory tests`退出0。
+- `uv --cache-dir /tmp/iris-memory-core-uv-cache lock --check --offline`退出0；`git diff --check`及31份未跟踪文本逐份差异空白检查通过；受影响链接／锚点有效，三份架构原已批准正文与HEAD前缀逐字一致。
+- 真实自有临时SQLite及受控屏障覆盖关键提交／审计原子性、35→50迟到差额与冲突、共享预算及超额风险、完整性／隔离拒绝、单快照汇总、实际Logger、完成时间两侧仲裁、有限恢复和清理所有权。父进程在五类窗口SIGKILL子进程并等待退出，再由全新解释器同库恢复；模拟器调用证据与真实提交证据分开。父提交旧源码建库后的当前实现打开／原键回放／继续事务实验通过，未迁移或补表。
 
-受测集合为`companion_memory/**/*.py`、`tests/**/*.py`、`.python-version`、`pyproject.toml`、`uv.lock`共88文件。按相对路径排序，将每项编码为`路径 + NUL + 文件SHA-256十六进制 + LF`后计算SHA-256，集合指纹为`9a919f1110699723dfc5dfa21d3fb62fa8d4b76f8da43463c48b47e67d1c1ff2`。此记录更新不改变受测集合。
+最后所有权修复已由主会话核对：明确NotCommitted、已提交结果和仍在途清理分别保留；存储故障后不新发模型，清理结束前不释放槽位或owner；等待方保留原执行任务。实际覆盖不等于矩阵中每个变体全部通过，验收预期正文保持。
 
-测试仅使用自有临时目录、两组合成仓储、独立连接及受控子进程。临时文件位于本机APFS；父目录FD承担服务生命周期所有权锁，与SQLite事务锁分开。已覆盖COMMIT前／后屏障由父进程kill并等待结束、新解释器核验全无／全有、子进程写锁、旧快照与新鲜确认、幂等原结果、审计/诊断隔离、首错和迟到清理证据。建库身份由可信测试装配在任何数据库副作用前持有并保留。
+## 边界与停止点
 
-生产路径／G2、生产建库身份存储、实际业务模块、Provider调用、Linux／Docker、性能目标和介质掉电保证仍范围外；受控故障注入、进程终止及本机普通重启不代表这些保障已验证。
+仅模拟适配器执行模型侧行为，本地SQLite记账真实。真实配置快照／profile／价格版本仍缺失，不伪造；生产G2／路径、真实模型／供应商／HTTP／计费／凭据、Linux／Docker、Web、运行模式／梦境／业务模块、热激活及完整生产预算仍范围外。未做性能压测、介质掉电或编辑器Pylance验证；测试门控不代表生产鉴权，进程终止恢复不外推其他平台或掉电保证。
+
+本次仅更新CURRENT_TASK／STATUS收尾表述，显式暂存44份授权文件，核对暂存清单、差异、受测指纹及`git diff --cached --check`后创建一次本地提交；不推送、合并或amend。提交后停止，下一阶段未授权。后续由用户手动转交并维护一个只读监督会话与一个执行会话，不再通过子代理推进；本次不创建新会话或任务。

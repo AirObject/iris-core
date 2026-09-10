@@ -56,6 +56,19 @@ class AuditRequirement:
     change_schema: RecordSchema
     target_limit: int = 16
 
+    def __post_init__(self) -> None:
+        # Audit values intentionally remain narrower than repository text values.
+        def permitted(schema: object) -> bool:
+            if type(schema) is ScalarSchema:
+                return schema.kind in ("boolean", "integer", "enum", "identifier")
+            if type(schema) is SequenceSchema:
+                return permitted(schema.item)
+            if type(schema) is RecordSchema:
+                return all(type(field) is Field and permitted(field.schema) for field in schema.fields)
+            return False
+        if not permitted(self.change_schema):
+            raise ValueError("Audit changes require bounded non-text structured fields.")
+
 
 @dataclass(frozen=True, slots=True)
 class AuditRecord:

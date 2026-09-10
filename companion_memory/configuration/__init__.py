@@ -68,3 +68,16 @@ __all__ = [
     "resolve_configuration_with_persistence_validation",
     "PersistenceApplicabilityIssue", "persistence_snapshot_issue",
 ]
+
+from .provider_resolution import resolve_configuration_with_provider_validation
+from .provider_applicability import provider_snapshot_issue
+from .provider_resolution_results import (
+    ProviderResolutionErr, ProviderResolutionError, ProviderResolutionIssue,
+    ProviderResolutionOk, ProviderResolutionResult,
+)
+
+__all__ += [
+    "resolve_configuration_with_provider_validation", "provider_snapshot_issue",
+    "ProviderResolutionErr", "ProviderResolutionError", "ProviderResolutionIssue",
+    "ProviderResolutionOk", "ProviderResolutionResult",
+]

@@ -42,11 +42,22 @@ class ScalarSchema:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedTextSchema:
+    """Exact Unicode text with a strict, finite UTF-8 storage bound."""
+
+    max_utf8_bytes: int
+
+    def __post_init__(self) -> None:
+        if type(self.max_utf8_bytes) is not int or not 1 <= self.max_utf8_bytes <= 65536:
+            raise ValueError("A finite UTF-8 byte bound is required.")
+
+
+@dataclass(frozen=True, slots=True)
 class Field:
     """One named typed field, with explicit missing/null allowances."""
 
     name: str
-    schema: ScalarSchema | RecordSchema | SequenceSchema
+    schema: ScalarSchema | BoundedTextSchema | RecordSchema | SequenceSchema
     nullable: bool = False
     optional: bool = False
 
@@ -62,7 +73,7 @@ class RecordSchema:
 class SequenceSchema:
     """A bounded homogeneous native list/tuple of typed items."""
 
-    item: ScalarSchema | RecordSchema
+    item: ScalarSchema | BoundedTextSchema | RecordSchema
     minimum: int
     maximum: int
 
@@ -74,12 +85,24 @@ def utc_text(value: object) -> str:
     return value.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
-def freeze_value(schema: ScalarSchema | RecordSchema | SequenceSchema, value: object, *, owned: bool = False) -> Value:
+def freeze_value(schema: ScalarSchema | BoundedTextSchema | RecordSchema | SequenceSchema, value: object, *, owned: bool = False) -> Value:
     """Validate and own one bounded tree without executing submitted hooks.
 
     The finite static schema bounds recursion. Native owned maps are accepted
     only by trusted callers rechecking an earlier isolated or decoded record.
     """
+    if type(schema) is BoundedTextSchema:
+        if type(value) is not str:
+            raise InvalidValue()
+        if len(value) > schema.max_utf8_bytes:
+            raise ValueTooLarge()
+        try:
+            size = len(value.encode("utf-8", errors="strict"))
+        except UnicodeError:
+            raise InvalidValue() from None
+        if size > schema.max_utf8_bytes:
+            raise ValueTooLarge()
+        return value
     if type(schema) is ScalarSchema:
         if schema.kind == "boolean" and type(value) is bool:
             return value

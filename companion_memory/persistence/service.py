@@ -250,6 +250,9 @@ class AuditStorageBinding(_SealedPort):
                     await self._service._read(self, identity, "read_receipt", audit=True))
 
 
+from .ownership import ModuleOwnerLease, _release_global
+
+
 class PersistenceService:
     """Trusted lifecycle owner; construction performs no filesystem or database I/O.
 
@@ -291,6 +294,7 @@ class PersistenceService:
         self._close_report: CloseReport | None = None
         self._close_job: _Job | None = None
         self._ports: dict[int, object] = {}
+        self._module_owners: dict[str, ModuleOwnerLease] = {}
 
     def get_health(self) -> Health:
         """Observe only current in-memory ownership; never perform storage I/O."""
@@ -299,6 +303,39 @@ class PersistenceService:
                        or any(job.cleanup_pending for job in (*self._reads, *((self._writer,) if self._writer else ()))))
             return Health(self._lifecycle, self._reason, int(self._writer is not None), len(self._reads),
                           pending, self._checkpoint_pending, len(self._unresolved))
+
+    def claim_module_owner(self, repository: RepositoryDefinition) -> ModuleOwnerLease | None:
+        """Exclusively bind a ready repository owner; no automatic lease stealing."""
+        with self._lock:
+            if (self._lifecycle != "READY" or not any(repository is item for item in self._repositories)
+                    or repository.owner_module in self._module_owners):
+                return None
+            assert self._settings is not None and self._resources is not None
+            key = (self._resources.expected_database_id, self._settings.database_file, repository.owner_module)
+            lease = ModuleOwnerLease._create(self, repository.owner_module, object(), key)
+            if lease is None:
+                return None
+            self._module_owners[repository.owner_module] = lease
+            return lease
+
+    def _owner_valid(self, lease: object) -> bool:
+        with self._lock:
+            return (type(lease) is ModuleOwnerLease and lease._service is self
+                    and self._module_owners.get(lease._owner) is lease)
+
+    def _release_owner(self, lease: object) -> bool:
+        with self._lock:
+            if type(lease) is not ModuleOwnerLease or lease._service is not self or self._module_owners.get(lease._owner) is not lease:
+                return False
+            _release_global(lease)
+            del self._module_owners[lease._owner]
+            return True
+
+    def _owner_database(self, lease: object) -> str | None:
+        with self._lock:
+            if not self._owner_valid(lease) or self._resources is None:
+                return None
+            return self._resources.expected_database_id
 
     def bind_operation(self, definition: CommandDefinition, scope_id: str) -> OperationPort:
         """Issue a scope-bound port from an exact statically registered definition."""
