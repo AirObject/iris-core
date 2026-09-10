@@ -2,7 +2,7 @@
 
 > 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
-适用主题与局部定义：已给定工程约束、容量推导与待验证候选在正文分别保留；一个逻辑模块不等于一个进程或容器。本文不能作为选型已获批准或性能已验证的证明。
+适用主题与局部定义：已给定工程约束、容量推导与待验证候选在正文分别保留；一个逻辑模块不等于一个进程或容器。本文不能作为生产选型已获批准或性能已验证的证明；本阶段SQLite验证采用的批准范围见[验证采用契约](#sqlite-validation-candidate)。
 
 设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
@@ -121,11 +121,27 @@ SQLite WAL可让读取与写入并行，但同时仍只有一个写者，并要�
 
 需要严格的提交持久性时，候选配置采用`journal_mode=WAL`、`synchronous=FULL`、开启外键约束，并验证底层存储同步行为。官方文档区分了WAL下FULL与NORMAL的掉电持久性，不能为获得时延数字而悄悄调低持久性。[S02](references.md#s02)
 
-使用经过验证的SQLite运行库版本。官方记录了WAL-reset问题，其修复包含3.51.3及后续版本，以及部分旧版本回补；镜像验收检查实际链接的SQLite库，而不只检查Python包版本。[S01](references.md#s01)
+使用经过验证的SQLite运行库版本；本次验证采用的已批准准入要求和实际链接库核验要求集中在[下节](#sqlite-validation-candidate)，不以Python包版本代替运行库证据。
 
 FTS5提供tokenizer扩展能力。中文昵称、两字词、连续中文和中英混排需要独立检索测试；不把默认英文式分词效果当成中文效果已经达标。词法索引可以采用中文分词、字符索引和别名精确索引的组合，具体方案通过测试选定。[S03](references.md#s03)
 
 向量索引只能返回候选ID，不能独自决定一条记忆是否仍有效。正式内容、修订与生命周期始终回权威数据库核对。来源关系先用带索引的关系表表达；受限关联展开不要求首期引入图数据库。
+
+<a id="sqlite-validation-candidate"></a>
+
+#### 持久化事务基础的SQLite验证采用（契约已批准）
+
+已批准在[整体事务契约](persistence-and-transactions.md#persistence-foundation-contract)范围内验证采用Python标准库`sqlite3`适配器：同主机本地文件系统、一份数据库保存参与仓储、审计和提交回执，一个应用进程受控写入，独立连接用于受控短读取。验证仅使用测试自有临时资源与合成仓储；不批准生产选型、生产路径、G2或多实例部署，不包含FTS5、向量扩展、媒体和备份实现。此验证采用契约已随[集中决定P1](persistence-and-transactions.md#persistence-foundation-decisions)获批，待实现授权，不另设技术选型批准表；不表示Linux就绪、性能达标或掉电保证获准。
+
+**运行库前置：** 官方已记录WAL-reset问题及修复：3.51.3及后续版本，另有3.44.6、3.50.7回补。已批准的验证准入下限为`3.51.3`，不默认接纳旧分支或无法核实补丁的定制构建；确需回补分支时须提出明确构建证据和准入修订。版本下限只排除已知问题，不表示后续版本均已验证。[SQLite官方WAL-reset说明](https://sqlite.org/wal.html)
+
+后续获准执行时，先在实际项目解释器、再在目标Linux镜像记录Python版本、`sqlite3.sqlite_version_info`、`sqlite3.threadsafety`；用自有探针库读取`sqlite_version()`、`sqlite_source_id()`和`PRAGMA compile_options`，核验线程安全模式、WAL、外键及适配器使用的能力。Python的`sqlite3.sqlite_version_info`指向实际运行库；不得用命令行sqlite3、Python版本或锁文件替代该证据。禁止单线程构建进入并发服务。[Python sqlite3运行库与线程安全说明](https://docs.python.org/3.12/library/sqlite3.html#sqlite3.sqlite_version_info)
+
+本阶段验证采用的已批准同步要求为上方WAL／FULL／外键组合；每个实际连接须在事务外显式设置适用项并回读，WAL返回值不符或能力不支持即拒绝初始化，不退回NORMAL、DELETE或内存库。外键开关在事务内设置不会生效，不能只检查发过设置语句。[SQLite PRAGMA说明](https://sqlite.org/pragma.html#pragma_foreign_keys) 持久性依赖操作系统、文件系统和设备正确履行同步请求，FULL不构成已执行掉电测试的证明。[同步级别说明](https://sqlite.org/pragma.html#pragma_synchronous)
+
+连接上的SQL调用采用同步执行；服务的等待、并发和资源所有权按[事务生命周期](persistence-and-transactions.md#persistence-foundation-lifecycle)约束。Python适配器必须明确选择事务控制方式，确保显式BEGIN／COMMIT／ROLLBACK实际生效，不依赖会随Python变化的隐式默认；验证DDL、提交和回滚的实际边界。[Python事务控制说明](https://docs.python.org/3.12/library/sqlite3.html#transaction-control) 不共享同一连接并发执行，不开放shared-cache、ATTACH多库事务或网络文件系统；这些不属于本次能力。
+
+后续重新打开、进程中断及平台证据要求唯一维护于[整体验收](persistence-and-transactions.md#persistence-foundation-acceptance)。当前未核验本机实际链接库，未运行上述探针、数据库操作、Linux或性能验证；运行库不足时报告前置缺口，依赖／运行时变更须另获授权，不自行安装或降低准入标准。给定容量与一秒响应仍是待验证目标。
 
 <a id="source-line-123"></a>
 

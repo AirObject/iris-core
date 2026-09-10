@@ -12,6 +12,8 @@
 
 已批准契约：[统一运行诊断日志：控制台与文件](#runtime-diagnostics-contract)；[集中决定](#runtime-diagnostics-decisions)。[配置补充契约](configuration.md#configuration-additional-validation-contract)已另行批准；实施前仍须落实[Schema与目录规格](#runtime-diagnostics-schema)，G1已批准，G2见[待定事项](#runtime-diagnostics-prerequisite-decisions)。本文件为唯一维护正文。
 
+已批准契约：[同事务审计详细契约](#transactional-audit-contract)，已随[持久化事务基础整体决定](persistence-and-transactions.md#persistence-foundation-decisions)获批，待实现授权；运行诊断L1–L4的批准范围不变。
+
 <a id="section-10"></a>
 
 <a id="source-line-737"></a>
@@ -84,7 +86,7 @@ Python提供队列式handler/listener和轮转handler，适合把慢输出从请
 
 诊断队列饱和时按已配置策略优先丢弃/采样DEBUG与INFO，并持有可观察的`dropped_events{sink,level}`计数；WARNING以上使用预留容量和有界应急通道。无通道可写时仍可能丢诊断记录，必须通过健康状态和后续恢复记录说明，不能承诺资源耗尽时绝对零丢失。不能为了保日志无限等待或无限占用内存。
 
-审计不走可丢的诊断队列：受审计业务操作须把审计行与其变更同事务提交。审计/Provider账本存储失败时，对应写入或新付费调用按系统故障处理；单纯控制台或运行日志文件失败则可降级，不撤销已提交认知。
+审计不走可丢的诊断队列：受审计业务操作须把审计行与其变更同事务提交，具体参与与失败协议见[同事务审计契约](#transactional-audit-contract)。审计/Provider账本存储失败时，对应写入或新付费调用按系统故障处理；单纯控制台或运行日志文件失败则可降级，不撤销已提交认知。
 
 支持sink故障状态、最近成功写入、排队长度、丢弃数和磁盘告警；日志模块自身故障走最小stderr应急记录，不经同一故障sink反复记录自己。关闭时有界drain/flush；强制kill或掉电可能丢尚未刷出的诊断尾部，业务审计和已提交计量仍遵守数据库持久化保证。
 
@@ -389,3 +391,92 @@ get_logger先生命周期再模块精确准入。emit先生命周期，随后顶
 | L4 配置接入与参数 | 固定快照装配、上表新增生产参数及具体默认建议已批准；承认并另行处理M15校验前置缺口，不以本契约批准替代配置补充契约或既有行为 |
 
 上述四组及文件恢复一致性、独立flush等待期限修订均已批准，不要求批准某个线程数布局、队列库或锁实现。既有审计事务／权限要求无需重新审批；配置补充C1–C4已[另行批准](configuration.md#configuration-additional-validation-decisions)，本轮新增规格的[待定事项](#runtime-diagnostics-prerequisite-decisions)、后续能力和其他未定事项不因此自动获准。契约批准不等于编码、安装依赖、提交、推送或部署授权；当前目标、检查和停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)。
+
+<a id="transactional-audit-contract"></a>
+
+### 10.9 同事务审计详细契约
+
+**状态：契约已批准，待实现授权。** 本节是[持久化事务基础整体交付](persistence-and-transactions.md#persistence-foundation-contract)的审计正文，已批准决定集中在其[P4](persistence-and-transactions.md#persistence-foundation-decisions)行，包含本节固定失败协议，不新建独立批准表。既有§10.1、§10.5、§10.6和[模块所有权](../modules/logging.md#contract)继续有效；运行诊断已批准行为不改变。此范围只有同库追加审计与最小按操作读取，不含审计导出、Web、历史全文搜索、内容捕获、保留清理或Provider账本实现。
+
+日志模块拥有审计记录Schema、事件准入、输入安全、追加及查询边界；各业务模块拥有本模块事件的业务含义、必要性、对象引用和合法变更。基础设施仅承载受限审计仓储，将其加入同一UoW；不由业务仓储直接写审计表，也不让日志模块获得业务表通用读写能力。实际表／索引名称与编码实现属于私有细节。
+
+<a id="transactional-audit-record"></a>
+
+#### 10.9.1 最小记录与必要事件
+
+每条持久审计记录至少包含下列信息；大小与每操作行数由[统一配置定义](configuration.md#configuration-persistence-definitions)中的audit参数约束。
+
+| 字段组 | 语义与来源 |
+| --- | --- |
+| schema_version、audit_id | 固定支持的审计格式版本和唯一记录ID；日志模块验证格式、生成ID，已提交后不变 |
+| database_id、commit_id、operation_identity、event_slot | 库与提交关联由UoW提供，operation_identity沿用[操作身份协议](persistence-and-transactions.md#persistence-foundation-idempotency)，不再另定义幂等范围；event_slot为该操作内模块绑定的必要事件位置，不取调用方自由文本 |
+| recorded_at | 注入UTC时钟生成的记录时间，不充当事务提交证据或严格顺序；按操作读取使用稳定event_slot次序 |
+| owner_module、event_code、event_version | 由可信装配绑定的模块、允许事件种类和其语义版本；不是诊断日志level，不接受动态注册、通配或未知版本 |
+| actor_kind、actor_ref、reason_code | 经可信编排核验的操作者类别（SYSTEM或OPERATOR）、不透明主体引用及固定理由码；系统执行也须明确来源，不能默认匿名；不是认证凭据或自由理由正文 |
+| target_refs、change | 模块核验的有界目标ID／修订引用及版本化类型化变更摘要；没有旧对象时前修订可明确为空；不复制整行业务对象或任意kwargs |
+
+同库约束须保证审计关联到本次有效回执，`operation_identity + event_slot`唯一，所有必要事件位置齐全；检查在COMMIT前完成。必要事件清单（模块、位置、事件种类／版本）作为日志模块拥有的受保护元数据随该事务保存，用于重新打开及读取时核验，不能只保留内存声明。不能仅凭“有至少一条审计”批准含多个必要事件的事务。回执自身的字段和结果恢复规则只在[事务正文](persistence-and-transactions.md#persistence-foundation-idempotency)维护；日志模块不生成第二份业务结果或计费真相。
+
+每个受审计模块命令在受控端口登记其必要事件位置与Schema，随UoW收集为必须完成的集合；调用方不能以`audit=false`、空事件列表、日志等级或捕获错误将其取消。只有模块合法变更才能填充对应位置，每个位置恰好一次；重复追加、缺失、额外未知位置或跨模块冒填使UoW失败。提交前日志模块验证必要集合已完整写入，基础设施才允许结束事务。此结构不自行决定哪些未来业务需审计；后续模块按自己的契约登记，本阶段只由测试合成命令声明两条必要事件。
+
+本阶段change只接收事件Schema明确列出的非秘密结构化字段，支持的值为精确bool、有限范围整数、受限枚举文本、不透明ID、修订和这些值的有界记录／序列；缺失／空值须由对应字段显式允许，不自动转换类型。只有合成测试事件使用source／target的旧值、新值和转移数量。没有任意message、原始异常、聊天／记忆全文、prompt／response、媒体二进制、凭据或路径字段；未来确需敏感历史正文时另定义内容Schema和权限，本最小Schema不冒充已支持该能力。
+
+输入须在调用期间稳定，日志模块先验证精确载体、版本、字段和限制，再取得独立不可变所有权；未知字段拒绝，不能静默丢掉审计必需内容。超限整体失败，不截断、摘要替换或退到运行日志。拒绝自定义序列化钩子、循环容器和惰性输入；不通过repr、异常拼接或深拷贝钩子处理非法对象。时间／ID源或编码失败同样不能生成“内容不详”的成功审计。
+
+<a id="transactional-audit-ports"></a>
+
+#### 10.9.2 写入与最小受控读取
+
+审计能力独立于现有运行诊断服务装配，使用同一日志模块所有权；诊断禁用、尚未初始化或已关闭不取消必需审计。审计句柄的有效期受其存储绑定控制，过期后须重新绑定已验证的新存储服务和配置快照；不能通过EmitReceipt、flush或文件sink完成审计。
+
+| 语义端口 | 所需能力及行为 |
+| --- | --- |
+| bind_audit(snapshot, storage_binding) → BOUND(受限审计能力)或安全错误 | 可信装配绑定已就绪存储及原生快照，核验必要audit定义和值；只作内存绑定与公开快照查询，不创建数据库、文件或运行诊断服务，不自行resolve配置 |
+| append_audit(uow, event) → STAGED或安全错误 | 对应模块的绑定写能力＋同库活动UoW；校验并在原事务内追加。STAGED只含稳定事件位置／审计ID，绝不表示已持久提交；无自开连接或独立commit，无后台诊断队列 |
+| check_required_audits(uow) → COMPLETE或安全错误／只交给事务协调端口 | 核对§10.9.1的集合、唯一性和完整性；缺失／失败阻止提交。COMPLETE仍是事务内核验结果，不是COMMITTED；模块参加不要求模块知道审计物理表布局 |
+| read_audit(operation_identity) → FOUND(records)／NOT_FOUND／安全错误 | 可信装配绑定的开发者审计读取能力，限定库与scope；仅按一次完整操作点查，在一个短读快照中读取其回执与审计。无通用SQL、任意文件、筛选表达式、全历史列表或跨操作分页 |
+
+开发者身份由受信任管理／启动装配验证后授予读取能力，不能靠调用方传`role="developer"`或知道operation_key取得权限。此范围用明确测试能力验证授权边界，不实现登录、角色继承或完整权限引擎。业务恢复端口只返回原提交回执及必要业务引用，不附审计历史；普通模块点读和agent工具均无审计读取能力，也不能通过当前对象接口或错误响应间接取得历史。
+
+read_audit有回执时返回该操作完整、有界、按event_slot稳定排序的深不可变记录；没有回执返回NOT_FOUND，存储／权限／完整性错误分别失败，不以空序列冒充不可读。回执存在但必需记录不齐返回AUDIT_INCONSISTENT并要求存储停止写入；没有回执的孤立审计也是完整性故障，不能作为成功操作展示。NOT_FOUND同样只为观察值，不授予重放权限。历史记录上限遵守[原结果读取规则](persistence-and-transactions.md#persistence-foundation-idempotency)，读等待、连接回收和结果确认采用[事务资源协议](persistence-and-transactions.md#persistence-foundation-lifecycle)，不另建超时默认。
+
+本阶段无更新、删除、到期清理或导出端口，审计行随验证数据库保留；后续审计保留策略仍由统一配置定义且须保护恢复引用。追加约束不等于防篡改证明：没有签名、哈希链、外部见证或抵抗宿主管理员修改数据库的承诺。
+
+<a id="transactional-audit-failure"></a>
+
+#### 10.9.3 失败与诊断隔离
+
+AuditError恰含code、operation、field、reason、cleanup_pending，字段只为state、capability、configuration、event、transaction、query；结果及嵌套字段深不可变，无输入内容、路径、SQL、异常或对象引用。operation固定为bind_audit、append_audit、check_required_audits、read_audit之一；没有私有函数名、任意事件码或“audit”通用字符串替代。BOUND／STAGED／COMPLETE／FOUND／NOT_FOUND不带error；安全失败为AuditErr(error)，不是业务COMMITTED／NOT_COMMITTED的别名。签名错误按语言规则拒绝，无法构造安全结果的非预期故障不伪装成功。
+
+以下为**完整code→reason及端口映射**，不扩充现有LoggingError枚举，不透传底层异常或未知码：
+
+| code | 全部允许reason、触发及field | 适用operation |
+| --- | --- | --- |
+| INVALID_INPUT | AUDIT_INPUT_INVALID：事件／查询载体、字段或事件版本非法，field为event或query；AUDIT_LIMIT_EXCEEDED：新事件大小／操作行数超限，field=event | 前者append_audit／read_audit；后者append_audit／check_required_audits |
+| ACCESS_DENIED | AUDIT_ACCESS_DENIED：绑定能力、调用方、scope／库／UoW执行归属不符，field=capability | 全部四端口 |
+| INVALID_STATE | AUDIT_STATE_INVALID：存储未就绪／故障／关闭、审计绑定过期或UoW非活动，field=state | 全部四端口 |
+| CONFIGURATION_UNSUPPORTED | AUDIT_CONFIGURATION_UNSUPPORTED：快照非原生，或按[配置定义](configuration.md#configuration-persistence-definitions)核验audit必需定义、支持能力和值不通过，field=configuration | bind_audit |
+| AUDIT_CONFLICT | AUDIT_EVENT_CONFLICT：重复事件位置、额外未知位置或与登记事件语义不符，field=event | append_audit／check_required_audits |
+| AUDIT_INCOMPLETE | AUDIT_REQUIRED：必要事件未完整追加，field=transaction | check_required_audits |
+| AUDIT_FAILED | AUDIT_WRITE_FAILED：追加或提交前核验的资源／时钟／ID／编码故障，field=transaction；AUDIT_READ_FAILED：受控读取的准入、锁等待、总期限或资源故障，field=query | 前者append_audit／check_required_audits；后者read_audit |
+| INTEGRITY_FAILURE | AUDIT_INCONSISTENT：已有记录、回执或必要事件清单关联损坏，field=transaction（事务内）或query（读取） | append_audit／check_required_audits／read_audit |
+
+已绑定端口先检查绑定生命周期、再检查调用方／UoW能力、再检查载体／Schema／限额、事件位置冲突，最后执行存储操作或完整性核验。bind_audit尚无现成生命周期，先核验storage_binding的精确能力，再检查其就绪状态，最后快照；伪造能力不能触发方法／比较钩子。权限失败不查库、不透露操作是否存在。缺必要事件在确认清单可正常读取后报告AUDIT_REQUIRED；无法读取清单只能AUDIT_WRITE_FAILED，不能猜测为空集合。
+
+审计端对下层安全失败固定映射：能力／状态分别映射AUDIT_ACCESS_DENIED／AUDIT_STATE_INVALID；有效输入下存储完整性故障映射AUDIT_INCONSISTENT；其余准入／锁／时限／I/O／资源释放故障按当前端口映射AUDIT_WRITE_FAILED或AUDIT_READ_FAILED，保留真实cleanup_pending。事件校验和集合检查按上表直接产生原因，不借底层错误替换。没有更早故障的普通时钟／ID／编码异常使用AUDIT_WRITE_FAILED；不输出异常文本。只读审计失败不生成新的失败审计记录。
+
+事务协调端口的映射也固定：check_required_audits的AUDIT_REQUIRED → PersistenceError(TRANSACTION_FAILED, execute, audit, AUDIT_REQUIRED, cleanup_pending)；其余必要追加／核验的AuditErr → 同结构的AUDIT_FAILED。已确认持久数据损坏的AUDIT_INCONSISTENT还须使存储FAULTED；不会因外层使用AUDIT_FAILED而降为可继续写入的普通业务拒绝。bind_audit／read_audit不属于受审计事务，不作此execute映射。
+
+首个审计失败的code／reason／field在本次调用中保留；后续清理只更新cleanup_pending，不覆盖首错。事务结果及是否允许重试由[持久化证据协议](persistence-and-transactions.md#persistence-foundation-errors)决定：同一个AUDIT_FAILED在确认回滚后可对应NOT_COMMITTED，在回滚／迟到提交无法排除时必须UNCONFIRMED；不能只用AuditError推断全无。跨模块映射后保留的是外层已确定的首个映射原因，内部原始错误不作为嵌套负载返回。
+
+组合例子（全部未执行）：无读取能力且查询身份也非法时，先ACCESS_DENIED／AUDIT_ACCESS_DENIED、operation=read_audit，不查库；有效写能力下，事件Schema非法且位置重复时，先INVALID_INPUT／AUDIT_INPUT_INVALID、operation=append_audit，不以重复位置掩盖输入错误；全部已写事件合法但缺一条必要事件、同时诊断关闭时，为AUDIT_INCOMPLETE／AUDIT_REQUIRED、operation=check_required_audits，外层映射TRANSACTION_FAILED／AUDIT_REQUIRED。审计失败加回滚／清理失败的结果提升例子唯一见[事务组合表](persistence-and-transactions.md#persistence-foundation-errors)。
+
+必要审计验证、编码、大小检查或数据库写入失败均使受审计UoW不可提交，不提供内存缓存成功、事后补写、独立数据库或诊断文件兜底。失败事务不会留下“成功审计”或成功回执；无法证明回滚完成时保持结果未知，不能声称全无。失败尝试只能作为安全诊断观察，并不自动成为另一个已持久审计事件；未来需要独立安全事件时须单独定义事务。
+
+运行诊断在事务外通过现有公开Logger记录允许的固定事件码及白名单内错误分类／计数摘要；不能把audit事件对象、change、完整回执、输入指纹或恢复句柄传给emit。统一日志的白名单、等级、队列、轮转和flush只控制诊断；诊断关闭或故障不改变审计准入、提交和查询，不能撤销已获COMMITTED证据的业务。反之，运行日志成功写出也不能替代缺失的审计事实。
+
+审计故障不会通过同一失败路径递归审计自身；诊断也不可用时仍保留安全错误返回和存储健康观察，不承诺一定能落下另一条故障记录。审计记录不进入agent上下文、记忆学习、embedding或persona，开发者读取不触发记忆使用强化。Provider usage继续由Provider拥有，任何审计关联均不复制一份费用账本。
+
+#### 10.9.4 验收与停止边界
+
+本节与存储基础一起按[整体验收矩阵](persistence-and-transactions.md#persistence-foundation-acceptance)验证必要事件完整性、全有或全无、重复与重新打开、审计故障、诊断隔离和受控读取；例子全部未执行，不再复制一份验收表。参数及当前配置缺口见[配置唯一补充正文](configuration.md#configuration-persistence-validation-contract)。本轮仅完成已批准契约的文档定稿，不新增审计实现、测试或数据库，实现授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)。

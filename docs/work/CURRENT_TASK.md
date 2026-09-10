@@ -1,36 +1,31 @@
 # 当前任务
 
-任务：**控制台与文件运行诊断服务：用户已验收；独立本地提交归档。**
+任务：**持久化事务基础与同事务审计：用户已验收，按授权完成独立本地提交后停止。**
 
-## 基线与授权
+## 基线、授权与范围
 
-2026-09-10 用户确认验收完整服务及截点报告、饱和计数、临时目录修复，授权仅更新本文件和 STATUS，并创建独立本地提交。目录及 Git 根均为 `/Users/cassia/Local/Code/iris_memory_core`，分支 `main`，提交前 HEAD 为 `8189d33c3104240346979d0952f83a085a8d81a9`；起点已有 6 项受跟踪修改及 12 个未跟踪文件，暂存区为空，已有实现全部保留。本次已读取 AGENTS、INDEX、CURRENT_TASK 和 STATUS，不修改源码或测试。依据为[日志模块](../modules/logging.md)、[运行诊断契约](../architecture/logging.md#runtime-diagnostics-contract)、[配置日志校验及目录边界](../architecture/configuration.md#configuration-additional-validation-contract)与[代码规范](../CODING_STANDARDS.md)。
+2026-09-10，目录及Git根为`/Users/cassia/Local/Code/iris_memory_core`，`main`，父提交`fdbf7a99a307b39b15764a6622b64af9a095b1e2`。本阶段独立提交由本记录所属提交定位。收尾前核对原34份改动及受测88文件指纹完全一致；configuration、deployment-candidates、logging、persistence-and-transactions四份架构正文保留已验收版本。
 
-提交严格包含用户清单中的 9 份 logging_service 源码、8 份 logging_service 测试／夹具，以及本文件和 STATUS，共 19 份文件；标题为 `feat(logging): 完成控制台与文件运行诊断服务`。
+用户已授权唯一执行子代理更新运行时、采用最新兼容依赖并完成[整体契约](../architecture/persistence-and-transactions.md#persistence-foundation-contract)：[配置§11.12](../architecture/configuration.md#configuration-persistence-validation-contract)、事务§8、[审计§10.9](../architecture/logging.md#transactional-audit-contract)和整体验证。配置独立入口、有限仓储/UoW能力、原子回执与幂等恢复、同事务审计及全部范围内审查修复已完成。用户现已明确“我已审查，验收并提交”。本次只更新CURRENT_TASK／STATUS验收记录，并将原34份已验收改动加STATUS共35文件显式暂存、核验后创建一次独立本地提交；不推送或启动下一阶段。下一步方向仅由主会话规划，不交执行子代理操作。
 
-## 已验收行为与限制
+## 环境与准入证据
 
-- 完整公开服务、公开配置快照接入、不可变结果、双端投递与健康查询、flush／close、独立有界应急、受控恢复、借用控制台及真实文件写出／轮转／保留已验收；保留输入安全、共享缓冲预算、准入一致性、完成发布仲裁、UNKNOWN 所有权及饱和统计。
-- 修复轮先运行 3 项确定性回归，实际复现截点外故障改写已完成报告、饱和 flush_count 导致空队列 flush／close 误报等待到期。修复以固定大小的当前请求状态及首个适用障碍控制完成，保留真实健康故障及迟到 I/O 所有权；原 313 项覆盖保留，新增 7 项测试方法后通过。
-- 测试使用系统临时目录，创建后解析真实绝对路径，统一供配置及完整合成目录清单使用；别名路径的真实文件集成通过。仅操作测试自有资源，未访问用户日志或业务数据。
+- uv 0.12.9将CPython 3.12.14隔离安装在`/Users/cassia/.local/share/iris-memory-core/python/`，未安装公共bin，旧共享运行时保留。项目`.venv`使用新解释器，Python范围仍为3.12。来源：[Python发布页](https://www.python.org/downloads/release/python-31214/)、[Astral构建20260901](https://github.com/astral-sh/python-build-standalone/releases/tag/20260901)。现有开发依赖采用[Pyright 1.1.413](https://github.com/microsoft/pyright/releases/tag/1.1.413)，锁定nodeenv 1.10.0、typing-extensions 4.16.0。
+- 实际解释器`3.12.14 (main, Sep 1 2026, 14:09:38) [Clang 22.1.3]`，macOS 26.6.2／arm64；SQLite `3.53.1`、threadsafety=3。source_id为`2026-05-05 10:34:17 c88b22011a54b4f6fbd149e9f8e4de77658ce58143a1af0e3785e4e6475127e9`。46项compile_options含THREADSAFE=1、MUTEX_PTHREADS；排序换行连接无尾换行SHA-256为`054a2945f636bf3b8f648d6abe8ed75a02c74ce6d54dbad67d7ad1777b58d606`。
+- 自有临时准入探针退出0：WAL、FULL、foreign_keys=1、read_uncommitted=0、busy_timeout=50、wal_autocheckpoint=100回读及显式DDL提交／回滚、数据回滚、外键拒绝通过，连接关闭且临时目录清理。上述数值为探针输入。原执行者的3.12.13／SQLite 3.50.4结果不用于代表新环境。
+- 核对[CPython 3.12.14 BytesIO源码](https://github.com/python/cpython/blob/v3.12.14/Modules/_io/bytesio.c)：精确bytes的初始化共享、无共享时getbuffer、等长且无export时getvalue共用原缓冲。新环境重新通过E=512、302／511／512／513地址边界、超限前无分配及主／回退单缓冲峰值512的既有测试。
 
-检查区分可控时钟／事件下的内存故障注入与本机真实临时文件；后者覆盖写出、轮转、保留、重新打开、残缺记录、异常条目及目录独占。未在 Linux 验证目录锁、路径／文件权限、符号链接／别名和资源回收等平台行为；未验证 Docker 部署、性能目标、强杀／掉电或持久化承诺。永久阻塞的资源仍可在 close 返回后占用线程／目录，健康继续如实报告 cleanup_pending。
+## 有效验证与收尾核对
 
-## 验证来源与本次复用
+下列为实现轮最终有效结果，验收收尾确认源码／测试／工程文件与受测指纹一致后复用，未重复运行测试。原检查使用本项目解释器，运行前缀为`uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync`，均退出0：
 
-来源为 2026-09-10 上述修复完成后的实际检查，版本为提交前 HEAD 加本次归档的源码／测试；Python 3.12.13、Pyright 1.1.411，平台 Darwin 25.6.0 arm64。全量 **320 项 unittest 通过**，全量 **Pyright 0 errors／0 warnings／0 informations**；compileall、离线锁文件核验及含全部新增／未跟踪文件的差异检查通过。当时实际执行下列命令，退出码均为 0：
+- `pyright --version`为1.1.413；`pyright --project pyproject.toml --pythonpath .venv/bin/python`为0错误／警告／信息。
+- `python -m unittest discover -s tests -t . -v`：412项通过，4.961秒；保留原320项行为覆盖，新增92项。
+- `python -m compileall -q companion_memory tests`；另`uv --cache-dir /tmp/iris-memory-core-uv-cache lock --check --offline`通过。
+- `git diff --check`及24份新增文件逐份`git diff --no-index --check`无空白错误；实现轮完整已跟踪／未跟踪差异已审查。验收收尾另核对35文件清单、记录差异、暂存内容及`git diff --cached --check`；不修改实现。未查看编辑器，不声称Pylance通过。
 
-```text
-uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync pyright --version
-uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync pyright --project pyproject.toml --pythonpath .venv/bin/python
-uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync python -m unittest discover -s tests -t . -v
-uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync python -m compileall -q companion_memory tests
-uv --cache-dir /tmp/iris-memory-core-uv-cache lock --check --offline
-git diff --check
-```
+受测集合为`companion_memory/**/*.py`、`tests/**/*.py`、`.python-version`、`pyproject.toml`、`uv.lock`共88文件。按相对路径排序，将每项编码为`路径 + NUL + 文件SHA-256十六进制 + LF`后计算SHA-256，集合指纹为`9a919f1110699723dfc5dfa21d3fb62fa8d4b76f8da43463c48b47e67d1c1ff2`。此记录更新不改变受测集合。
 
-本次重新核对 `companion_memory/`、`tests/` 下全部 61 份 Python，加 `pyproject.toml`、`uv.lock`、`.vscode/settings.json`，共 64 份文件。按路径排序的路径→SHA256 映射以紧凑排序 JSON 编码后再次取 SHA256，结果为 `83429454e3bf8aa98510636e5b8cbdf57f12fff4a5a6ff3838d89eb3e7774fdb`，与已测版本一致；按用户授权复用以上有效结果，不重复运行。本次提交收尾另核对暂存恰好 19 份文件及其内容与已核验版本一致，并执行 `git diff --check` 和 `git diff --cached --check`。**未查看编辑器 Pylance 诊断，不将命令行结果视为 Pylance 确认。**
+测试仅使用自有临时目录、两组合成仓储、独立连接及受控子进程。临时文件位于本机APFS；父目录FD承担服务生命周期所有权锁，与SQLite事务锁分开。已覆盖COMMIT前／后屏障由父进程kill并等待结束、新解释器核验全无／全有、子进程写锁、旧快照与新鲜确认、幂等原结果、审计/诊断隔离、首错和迟到清理证据。建库身份由可信测试装配在任何数据库副作用前持有并保留。
 
-## 停止点
-
-无未解决实现阻塞。验收不包含 Linux、Docker、性能目标、生产装配或 G2；Web、历史查询／导出、SDK 桥接、事务审计、Provider、数据库、热配置及持久化亦不在范围内。**用户已验收，本记录随授权的独立本地提交归档，提交后停止。** 不安装依赖、不推送、不合并、不部署或开始下一任务。
+生产路径／G2、生产建库身份存储、实际业务模块、Provider调用、Linux／Docker、性能目标和介质掉电保证仍范围外；受控故障注入、进程终止及本机普通重启不代表这些保障已验证。

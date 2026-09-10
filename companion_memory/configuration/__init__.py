@@ -39,6 +39,13 @@ from .checked_resolution_results import (
     CheckedResolutionFieldPath, CheckedResolutionIssue, CheckedResolutionOk,
     CheckedResolutionOperation, CheckedResolutionReason, CheckedResolutionResult,
 )
+from .persistence_resolution import resolve_configuration_with_persistence_validation
+from .persistence_applicability import PersistenceApplicabilityIssue, persistence_snapshot_issue
+from .persistence_resolution_results import (
+    PersistenceResolutionErr, PersistenceResolutionError, PersistenceResolutionErrorCode,
+    PersistenceResolutionIssue, PersistenceResolutionOk, PersistenceResolutionOperation,
+    PersistenceResolutionReason, PersistenceResolutionResult,
+)
 
 __all__ = [
     "Bound", "Declared", "DeclaredType", "Err", "ErrorCode", "FieldPath",
@@ -55,4 +62,9 @@ __all__ = [
     "CheckedResolutionFieldPath", "CheckedResolutionIssue", "CheckedResolutionOk",
     "CheckedResolutionOperation", "CheckedResolutionReason", "CheckedResolutionResult",
     "resolve_configuration_with_logging_validation",
+    "PersistenceResolutionErr", "PersistenceResolutionError", "PersistenceResolutionErrorCode",
+    "PersistenceResolutionIssue", "PersistenceResolutionOk", "PersistenceResolutionOperation",
+    "PersistenceResolutionReason", "PersistenceResolutionResult",
+    "resolve_configuration_with_persistence_validation",
+    "PersistenceApplicabilityIssue", "persistence_snapshot_issue",
 ]

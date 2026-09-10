@@ -12,10 +12,17 @@ from .results import (
     Operation, SinkHealth, SinkReport, Thresholds,
 )
 from .service import Logger, Service, create_logging_service
+from .audit import AuditAccess, AuditBound, bind_audit
+from .audit_records import (
+    AuditComplete, AuditErr, AuditError, AuditFound, AuditNotFound, AuditRecord,
+    AuditRequirement, AuditStaged,
+)
 
 __all__ = [
     "BinaryOutput", "LoggingResources", "CloseReport", "DeliveryDecision", "EmergencyDisposition",
     "EmitReceipt", "FlushReport", "HealthSnapshot", "Lifecycle", "LoggingErr", "LoggingError",
     "LoggingOk", "LoggingResult", "Operation", "SinkHealth", "SinkReport", "Thresholds",
     "Logger", "Service", "create_logging_service",
+    "AuditAccess", "AuditBound", "AuditComplete", "AuditErr", "AuditError", "AuditFound",
+    "AuditNotFound", "AuditRecord", "AuditRequirement", "AuditStaged", "bind_audit",
 ]

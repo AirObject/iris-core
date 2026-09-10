@@ -8,7 +8,7 @@
 
 按关联工作联合阅读：[配置模块契约](../modules/configuration.md)；[配置事务](persistence-and-transactions.md#t12)；[参数已定与未定](../product/decisions-and-delivery.md#section-23)；[模式与权限](../modules/runtime.md)；[日志参与者](logging.md#source-line-807)。
 
-已批准契约：[参数定义与只读注册表](#configuration-registry-contract)、[显式解析与不可变快照](#configuration-resolution-contract)。相关输入、支持边界、接口、错误和例子见各节；实现及验收进度只见[STATUS](../work/STATUS.md)。
+已批准契约：[参数定义与只读注册表](#configuration-registry-contract)、[显式解析与不可变快照](#configuration-resolution-contract)、[持久化与审计所需配置校验](#configuration-persistence-validation-contract)。相关输入、支持边界、接口、错误和例子见各节；实现及验收进度只见[STATUS](../work/STATUS.md)。
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
@@ -641,3 +641,112 @@ j／d是注册表排序下标／依赖声明下标。所有路径只含上述固
 | C4 发布、错误与验收 | 上述确定首错顺序、独立安全错误、完整校验后一次发布、深不可变与输入隔离，以及上述合成验收预期 |
 
 日志完整字段的落点、目录来源核对及剩余决定见[日志实施前置规格](logging.md#runtime-diagnostics-schema)。本补充及G1表示／匹配细化已批准；真实目录布局、安全分级与资源核验仍按[G2待定事项](logging.md#runtime-diagnostics-prerequisite-decisions)处理，不能把候选布局或合成夹具当作真实部署；若路径需非public则另定对应支持。本轮仅授权本节纯内存实现，不自动注册参数、不选生产路径、不创建夹具目录；生产装配及日志服务仍须另行授权。本节不扩展加载、持久化、秘密解析、权限、热修改、配置计算引擎或后续日志能力。
+
+<a id="configuration-persistence-validation-contract"></a>
+
+### 11.12 持久化与审计所需配置校验：已批准契约
+
+**状态：契约已批准，待实现授权。** 本节是[持久化事务基础整体契约](persistence-and-transactions.md#persistence-foundation-contract)的配置唯一正文，已随其[集中决定P6](persistence-and-transactions.md#persistence-foundation-decisions)获批；不扩大整体交付范围。§11.9–11.11及现有两个解析入口、公开类型、日志定义匹配和拒绝语义均不改变，不自动转调本入口，不新增实现授权。
+
+#### 11.12.1 显式入口、载体与日志组
+
+已批准新增`resolve_configuration_with_persistence_validation(registry, explicit_values, protected_directories) → PersistenceResolutionResult<EffectiveSnapshot>`。三项都须显式提供，无默认实参；不接受额外的actor、validator、回调、路径发现、加载、scope、快照ID或激活参数。缺少实参／未知关键字按语言签名拒绝，不包装为领域成功。
+
+registry和explicit_values完整沿用[§11.10.2](#configuration-resolution-input)的原生冻结ReadOnlyRegistry、精确内建dict、Identifier／MetadataValue、精确类型身份、输入稳定及禁止对象钩子的要求；不能传构建器、鸭子类型、子类、通用Mapping或JSON文本。第三项是下表规定的精确None或目录dict，不携带配置覆写或验证器。
+
+| 日志组判定 | protected_directories与检查责任 |
+| --- | --- |
+| 冻结注册表没有任何键以精确前缀`logging.`开头 | 明确传None；任何其他载体均为CONTEXT_NOT_APPLICABLE，不遍历它。检查完整storage／audit组及所有额外注册定义；不虚设日志参数或五类目录，不声称检查了日志目录隔离 |
+| 冻结注册表至少有一个键以`logging.`开头 | 必须具备[日志唯一参数表](logging.md#runtime-diagnostics-configuration)中的完整20项定义，再按已批准[日志匹配](#configuration-logging-definition-match)检查；第三项必须为§11.11.3规定的完整精确dict。None为CONTEXT_REQUIRED；其他形状／内容仍按该节检查 |
+
+触发只取决于注册表键，不取决于显式值是否提供、输出端是否禁用、consumer或schema_revision。仅注册logging自定义键也触发完整日志组检查；缺任一必需定义都不能按“无日志组”通过。点仍是原键字符，不展开嵌套对象，不改大小写；显式提交未注册的logging键先按原未知键规则拒绝。完整必需组不排除其他已注册参数：它们全部保留并检查，不能截取子集生成快照。
+
+有日志组时，目录上下文的固定类别、非空成员、规范文本、组件隔离及所有权隔离只按[§11.11.3–11.11.4](#configuration-additional-validation-contract)执行；其真实完整性仍由可信装配方保证，须描述本次storage.database_file及同库审计的实际所属目录，不能以无关目录充数。本入口不扫描、推算或补齐部署清单，不将目录上下文存入快照。无日志组不豁免[存储资源准备](persistence-and-transactions.md#persistence-foundation-configuration)的物理安全核验。生产目录分级／G2保持待定。
+
+<a id="configuration-persistence-definitions"></a>
+
+#### 11.12.2 完整storage／audit定义与匹配
+
+以下10项为本入口始终必需的完整集合；参数用途在[事务正文](persistence-and-transactions.md#persistence-foundation-configuration)导航，类型、约束、默认及匹配只在本节维护。全部required=true、nullable=false、default=NoDefault()，无生产默认；下界／上界均含端点，integer使用精确整数Bound。所有enum为NotApplicable，非数值range为NotApplicable；不换算单位。
+
+| key | type | unit | range／必需validator |
+| --- | --- | --- | --- |
+| storage.database_file | string | NotApplicable | range不适用；validator必须含storage_database_file |
+| storage.operation_timeout_ms | integer | milliseconds | 1–60000 |
+| storage.lock_wait_ms | integer | milliseconds | 0–60000 |
+| storage.close_timeout_ms | integer | milliseconds | 1–60000 |
+| storage.read_capacity | integer | connections | 1–16 |
+| storage.command_max_bytes | integer | bytes | 256–1048576 |
+| storage.receipt_max_bytes | integer | bytes | 256–65536 |
+| storage.wal_checkpoint_pages | integer | pages | 1–65536 |
+| audit.event_max_bytes | integer | bytes | 256–65536 |
+| audit.events_per_operation | integer | events | 1–256 |
+
+storage项owner_module=persistence，consumers的最小声明为[persistence]；audit项owner_module=logging_service，consumers的最小声明为[logging_service]。每个consumer集合必须包含相应消费者，额外声明不授予权限。共同scope=[instance]、override_policy=no_override、read_roles／write_roles均为[trusted_operator]、apply_mode=INITIALIZE_ONLY、activation_group=NotApplicable；deprecated=false，replacement／upgrade_rule均为NotApplicable。数值sensitivity=public；路径只对明确非秘密合成值按public声明，生产分级未定时不能伪造完整生产定义。
+
+schema_revision的建议标识仍为persistence_audit，但匹配只检查原Identifier合法性，不与该字符串比较。description／rationale据参数用途完整说明，validation_method说明精确载体、范围及固定验证器检查；cost_impact说明仅影响本地资源、不执行付费模型调用，migration_impact说明重建服务采用、不迁移数据库或改写既有事实。所有说明和NotApplicable.reason只按§11.9的非空Text条件保存，不逐字匹配或求值，不把未决定的字段填成NotApplicable。
+
+匹配时依次检查每个必需键存在、必需validator声明，然后检查其余元信息；任一不符即停止。key／owner_module／type／required／nullable／apply_mode精确匹配上述规格；NoDefault与LiteralDefault严格区分，显式值存在也不能换默认。unit、数值range的数值与闭合性须完全一致；非数值range及全部enum须用NotApplicable，不允许用validator替代范围。角色按上述标识集合比较，consumers按必要成员检查；其余元信息按本节共同要求和§11.9标记载体判断。支持边界先于匹配，例如非public或兼容升级声明仍先报原不支持原因，不改为DEFINITION_MISMATCH。
+
+storage.database_file以外的9项不需要附加validator；五项白名单各自的精确绑定使它们不能借用别的参数的validator。10项均无必需dependencies，推荐最小声明为空；**额外已注册依赖继续按§11.11.2检查存在值**，不强制等于空列表、不排除前向／自引用／声明环。日志组仍严格使用其已有匹配正文，不能套用本节storage／audit的默认或角色规格覆盖日志规则。
+
+#### 11.12.3 固定验证能力
+
+本入口的validator白名单恰为§11.11.2的四项日志验证器，加`storage_database_file`；前四项绑定和行为不变，新项只能绑定同名storage.database_file键且type=string。未知标识、错误绑定和漏必需声明安全拒绝，不能动态注册或把声明清空后调用旧入口。
+
+新路径验证器只接收已隔离的本项值，纯内存检查：精确str，长度1–4096字符，规范POSIX绝对文件文本；单个起始`/`、非根、无尾部`/`、无重复分隔符、`.`或`..`组件，不含U+0000–U+001F或U+007F，不接受URI或`:memory:`，不展开`~`或环境变量，不修剪／归一化。不含凭据仍须可信调用方保证，解析器不声称识别秘密。只返回通过或PATH_SYNTAX_INVALID；普通异常／非法返回为VALIDATOR_FAILED，无原始异常泄漏。它不读取目录上下文、其他参数、文件、环境、网络、时钟、日志或数据库。
+
+其余依赖和日志验证器完全复用§11.11.2的只读候选、依赖存在性、已声明键访问及禁止求值规则；没有计算引擎、派生值或回调注入。内存耗尽／进程控制等非预期故障不伪装为领域成功。
+
+<a id="configuration-persistence-order"></a>
+
+#### 11.12.4 全集合顺序与失败原子性
+
+严格按下列顺序执行，先失败即停止；日志组判定本身只查看已经核验的注册表键，不提前检查第三项输入。
+
+1. 先registry、再explicit_values载体；再按dict插入顺序检查全部键格式，全部合法后才按同序找首个未知键。此时不访问值或目录上下文。
+2. 整个注册集合按完整键Unicode排序检查能力，包含未显式提供或可缺失的定义。同一定义先按声明顺序检查五项validator白名单和键／类型绑定，再沿用§11.10的其余支持字段顺序；dependencies在此仅接受§11.11.2语义，其候选值不在此求值。
+3. 先按storage／audit必需10键排序核对完整性、必需声明和上述定义匹配，再在触发日志组时按原日志20键排序执行§11.11的完整性、必需声明及G1匹配。两组同时残缺先报告storage／audit；不合并改变日志组内优先级。
+4. 无日志组检查第三项为None；有日志组先拒绝None，再执行原目录形状、语法和所有权隔离顺序。形状在顶层定位，固定类别按media、database、audit、provider_usage、backup及成员下标检查。
+5. 全注册集合按键排序选择值、检查完整树安全性、nullable／类型、range、enum并隔离。缺失／默认／空值、错误优先级和安全路径复用§11.10.2、§11.10.5；值非法不回退默认，不省略额外参数。
+6. 对全体候选按定义排序、依赖声明顺序检查PresentValue；缺失和已显式空值按§11.11.2区分，无拓扑求值。
+7. 按定义排序、validator声明顺序执行固定验证器；含validator但本项MissingValue先报VALIDATED_VALUE_MISSING。日志目录的词法隔离仍在其原验证器执行；新存储路径只作§11.12.3的纯文本检查。
+8. 全部成功才一次生成绑定原注册表的原生EffectiveSnapshot，包含每个注册键及原EXPLICIT／DEFAULT来源。任何失败无部分快照，无注册表、输入、旧快照或有效指针变化。
+
+结果、issues、快照及嵌套数据均深不可变；目录只作本次检查输入，不随快照发布。新结果不会赋予快照ID、持久性、权限或资源就绪证明。服务只通过现有三个快照公开查询读取并核对必要定义；不得调用私有构造器或清空validator绕过本入口。失败后只有调用方显式修正并重调，没有清理声明重试或外部补偿动作。
+
+<a id="configuration-persistence-errors"></a>
+
+#### 11.12.5 固定错误与安全路径
+
+`PersistenceResolutionResult<T> = PersistenceResolutionOk(value) | PersistenceResolutionErr(error)`；其error恰含code、operation、issues，operation固定为`resolve_configuration_with_persistence_validation`，issues恰含一个不可变`(field_path, reason)`问题。该类型与事务PersistenceError、RegistryError、ResolutionError、CheckedResolutionError分别独立；转换已有规则的失败时只保留已核验code／reason／安全路径，operation换为本入口名，不保留嵌套原错误或输入引用。
+
+允许code／reason／路径集合**封闭为下表并集**；被引用的既有表只用于复用已列明规则，不为其他未来原因开放通配。不复制维护既有错误全文，不改变原入口operation或枚举。
+
+| 来源／code | 固定原因与路径规则 |
+| --- | --- |
+| §11.10.5的六类基础code | 只采用该[错误表](#configuration-resolution-errors)中解析调用的原因及路径，排除VALIDATOR_NOT_SUPPORTED、DEPENDENCIES_NOT_SUPPORTED；这两类声明在本入口按§11.12.3及步骤6处理。get_entry保持原ResolutionResult，不产生本入口operation |
+| §11.11.4的四类附加code | 采用[原错误表](#configuration-additional-validation-contract)已列出的全部code／reason／路径；日志Schema专用错误只在日志组触发时产生，新路径验证器复用ADDITIONAL_VALIDATION_FAILED／PATH_SYNTAX_INVALID，定位`("definitions", j, "value")`。未知／绑定错误和漏声明同样复用该表的definitions路径 |
+| INVALID_PERSISTENCE_SCHEMA | PERSISTENCE_DEFINITION_MISSING、PERSISTENCE_DEFINITION_MISMATCH；路径恰为`("persistence_definitions", k)`，k为本节10个必需完整键的排序下标。缺必需validator仍优先使用既有REQUIRED_VALIDATOR_MISSING及definitions路径 |
+| INVALID_VALIDATION_CONTEXT的两项补充 | CONTEXT_REQUIRED：有日志组却传None；CONTEXT_NOT_APPLICABLE：无日志组却传非None。路径恰为`("protected_directories",)`；不回显或遍历不适用的对象 |
+
+i／j／d及原日志k的下标含义沿用所属既有表；新增persistence_definitions的k只定位本节必需键清单，不是注册表j。目录错误路径最多为`("protected_directories", 固定类别, 成员下标)`；顶层或类别形状错误分别止于顶层／类别，不输出未知类别名。其余只包含被引用表的固定字段名及整数下标，不含提交键、默认、路径值、模块名、异常、栈或对象表示，不调用其哈希／比较／转换钩子，也不自行记录诊断。无法构造安全错误的非预期运行故障按既有边界处理，不交付快照。
+
+#### 11.12.6 组合验收例子（全部未执行）
+
+前提为完整合成storage／audit定义，参数值取[整体合成场景](persistence-and-transactions.md#persistence-foundation-acceptance)，路径仅用非秘密合成文本；有日志组时追加完整已批准日志定义、合法显式值和五类目录文本。不创建目录或数据库；以下仅列后续测试预期。
+
+| 组合输入 | 首个结果与边界 |
+| --- | --- |
+| 无日志组，protected_directories=None | 全集合通过才返回原生快照；含10项和所有额外注册参数，无日志定义或目录发现动作 |
+| 完整日志组，console_enabled和file_enabled均false，完整合法目录上下文 | 仍执行日志全部匹配／值／路径校验；成功快照包含完整两组和额外参数，不因关闭输出免检 |
+| 仅缺logging.file_directory定义，未提交该显式键，且上下文为None | 第3步INVALID_LOGGING_SCHEMA／LOGGING_DEFINITION_MISSING，先于CONTEXT_REQUIRED；不能当作无日志组 |
+| storage／audit及日志各缺一个必需定义，未显式提交缺项，目录亦非法 | 先报按10键排序的PERSISTENCE_DEFINITION_MISSING；补齐后才可能报日志缺项，再后才检查目录 |
+| 完整组但额外定义有未知validator，另有缺少的必要storage定义及非法值 | 第2步UNKNOWN_VALIDATOR先于第3步缺定义及第5步值错误；即使额外项可缺失仍拒绝 |
+| 非原生registry＋非dict值＋非法上下文；另次合法registry但显式dict同时有非法键和未知键 | 分别先REGISTRY_REQUIRED、INVALID_IDENTIFIER；不访问后续对象或值 |
+| 无日志组传{}且某必需值缺失；有完整日志组传None且某值越界；有日志组传残缺目录dict且某值越界 | 分别CONTEXT_NOT_APPLICABLE、CONTEXT_REQUIRED、原INVALID_SHAPE，均先于第5步值错误 |
+| storage.database_file缺必需validator且default换为LiteralDefault；另次只换默认或数值闭区间端点 | 分别先REQUIRED_VALIDATOR_MISSING、PERSISTENCE_DEFINITION_MISMATCH；路径仍不回显定义或值 |
+| 额外可选依赖缺值，同时存储路径非法；补齐依赖后重调 | 先DEPENDENCY_VALUE_MISSING，后PATH_SYNTAX_INVALID；无部分成功，不靠清空dependencies通过 |
+| 固定验证器抛普通异常；成功后调用方修改原输入和目录清单 | 前者仅VALIDATOR_FAILED且旧快照不变；后者已发布快照及嵌套数据不变。两者均不读取环境或资源 |
+
+本节补充契约已批准、尚未实现，现有[配置公开入口](../../companion_memory/configuration/__init__.py)、[普通解析](../../companion_memory/configuration/resolution.py)、[日志附加解析](../../companion_memory/configuration/checked_resolution.py)尚无此能力；以上接口静态核对不代表执行通过。当前授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)，不开始实现或自动注册参数。
