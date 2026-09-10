@@ -1,4 +1,4 @@
-"""Read event and routing settings from configuration's checked public result.
+"""Read event, routing and I/O settings from configuration's checked public result.
 
 The caller must pass the successful result of
 resolve_configuration_with_logging_validation, with its native snapshot intact.
@@ -32,6 +32,7 @@ class _Settings:
     sink_capacity: int
     warning_reserve: int
     preparation_capacity: int
+    io_timeout_ms: int
 
 
 def _read_settings(checked: CheckedResolutionOk[EffectiveSnapshot]) -> _Settings:
@@ -60,4 +61,5 @@ the provenance of a success wrapper against malicious same-process code.
         cast(str, value("console_stream")), cast(int, value("event_max_bytes")),
         cast(int, value("sink_capacity")), cast(int, value("warning_reserve")),
         cast(int, value("preparation_capacity")),
+        cast(int, value("io_timeout_ms")),
     )

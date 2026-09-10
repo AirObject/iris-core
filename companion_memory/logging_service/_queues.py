@@ -1,7 +1,7 @@
 """Coordinate bounded normalization and independent console/file target queues.
 
 A short memory-only lock serializes admission, faults, completion and cutpoints.
-No injected callback or output operation runs under it. Both target decisions
+No event source callback or output operation runs under it. Both target decisions
 commit before stop_accepting can take its boundary. Preparation owns at most one
 E-byte encoding; targets share that immutable allocation without copying it.
 Each sink holds at most Q targets, including its sole in-flight UNKNOWN target.
@@ -10,6 +10,7 @@ no completed-event ledger, replay queue, executor, timer, flush or close facade.
 """
 
 from collections import deque
+from _thread import RLock
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -86,12 +87,15 @@ class _QueueController:
     def __init__(
         self, settings: _Settings, id_source: Callable[[], object],
         utc_clock: Callable[[], object],
+        *, coordination_lock: RLock | None = None,
     ):
         self._settings = settings
         self._id_source = id_source
         self._utc_clock = utc_clock
         self._thresholds = _resolve_thresholds(settings)
-        self._lock = Lock()
+        # An asynchronous owner can share this memory-only lock so releasing a
+        # borrowed work reference and its queue capacity is one transaction.
+        self._lock = Lock() if coordination_lock is None else coordination_lock
         self._accepting = True
         self._preparing = 0
         self._preparing_low = 0
@@ -275,13 +279,23 @@ class _QueueController:
             if type(completed_at) is not datetime or completed_at.tzinfo is not timezone.utc:
                 raise TypeError("Successful completion requires an exact UTC datetime.")
             timestamp = completed_at.isoformat(timespec="microseconds").removesuffix("+00:00") + "Z"
+        return self._finish(work, succeeded=succeeded, timestamp=timestamp)
+
+    def _finish(self, work: _Work, *, succeeded: bool, timestamp: str | None) -> bool:
+        """Apply actual completion, optionally lacking a UTC observation.
+
+        The asynchronous consumer can confirm a full write even if its trusted
+        UTC source failed. An absent time preserves the last known observation;
+        it does not invent a timestamp or change the physical write outcome.
+        """
         with self._lock:
             sink = self._sink(work.sink)
             pending = sink.in_flight
             if pending is None or pending.work is not work:
                 return False
             if succeeded:
-                sink.last_success_at = timestamp
+                if timestamp is not None:
+                    sink.last_success_at = timestamp
                 if not pending.unknown:
                     sink.terminal(pending, "written")
             else:

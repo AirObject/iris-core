@@ -1,4 +1,4 @@
-"""Internal runtime-event safety, encoding, routing and bounded queue components.
+"""Internal runtime-event safety, bounded queues and asynchronous write components.
 
 No public service or delivery API is exposed. Importing this package allocates no
 output resources and installs no handlers, workers, or global logging context.
