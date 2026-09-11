@@ -403,3 +403,105 @@ Value载体仍是str，不新增bytes、Decimal或任意对象。Provider自己�
 **审计限制单独保持：** AuditRequirement.change_schema仍只允许[日志§10.9.1](logging.md#transactional-audit-record)的布尔、受限整数、枚举、ID及有界记录／序列。可信装配时必须递归拒绝其中任何BoundedTextSchema，不能因复用freeze_value而自动把正文加入审计；原审计输入／错误／读取／总字节限制全部保留。通用提交回执仍只接受模块声明的安全结果；Provider命令结果Schema只含状态／稳定引用，不含新文本正文。
 
 将新增描述与旧描述的逐字兼容、精确类型／UTF-8边界、控制字符／surrogate、文本超限、恶意子类钩子、嵌套审计文本拒绝、旧装配重新打开及新Provider库真实交接恢复纳入[整体合成矩阵](provider.md#provider-foundation-acceptance)。实际执行覆盖和结果见[CURRENT_TASK](../work/CURRENT_TASK.md)。此扩展不改变存储生命周期、已确认发送前置、审计必要清单、UNKNOWN确认和无自动迁移保障。
+
+<a id="ingress-runtime-storage-draft"></a>
+
+## 10. 持久接入与批次运行的存储装配和兼容（已批准）
+
+**状态：本节新装配、结果绑定审计及兼容方案已获用户批准；§10.4生产方案仍待批准。** 属于[整体契约](durable-ingress-and-batch-runtime.md)；§4、§7、已批准§8／§9的确认、唯一提交、资源占用、格式拒绝及审计保证不变。仅在自有测试资源执行验证，不实现迁移；执行授权及证据见CURRENT_TASK。整体状态、行为和验收在主契约；本节只维护新装配、类型化事务参与、命令／回执兼容和生产资源边界；事务派生审计所需的精确增量见下文，未将其写入已批准§8／§9。
+
+### 10.1 可复用端口与新增模块仓储
+
+静态查看[持久化公开入口](../../companion_memory/persistence/__init__.py)、[声明类型](../../companion_memory/persistence/definitions.py)和[OperationPort／StatementPort](../../companion_memory/persistence/service.py)：现有公开能力支持静态RepositoryDefinition／CommandDefinition、有界记录／序列／文本、同UoW参与及按原键确认。已有[Provider仓储](../../companion_memory/persistence/provider_repository.py)使用固定SQL及只读投影；这证明有可复用的装配形状，不证明新的业务仓储已实现。公开端口不向领域调用者交出SQL、连接或任意表名；新增固定查询由基础设施承载。
+
+拟议新完整装配包括原回执／审计／Provider，加如下独立模块Schema。模块所有权不因同库而变化，合成仓储只由测试装配增加：
+
+| 所有者 | 逻辑持久内容及必要约束 |
+| --- | --- |
+| ingress | 入口注册、原始不可变事件、客户端身份／语义指纹；入口外部绑定唯一，入口内事件身份唯一；message_id原身份复核，禁止同键覆写 |
+| buffers | 每入口序列计数、正常位置／历史引用／专注位置、三段冻结成员及原文引用、批次终结、目标占有、移交cursor／计数；同入口序列唯一、目标不得被两个活跃批次占有、终结至多一次 |
+| runtime | 模式／epoch、唯一调度owner代次、工作／claim／转换／恢复检查点、受限准入代次、梦境发布引用；expected revision更新和当前owner约束 |
+| configuration | [§11.14持久配置](configuration.md#runtime-configuration-identity)的域、版本、完整值／定义、组合快照和有效指针；不可变版本、精确引用，不存业务私有配置 |
+| 受控学习结果所有者 | 对应批次候选、稳定对象ID／变更集及Provider交接引用；候选对单批次／run／owner绑定；正式认知未实现时用测试仓储 |
+| 合成来源／媒体／发布参与者 | 同库合成对象、完整来源保护引用、媒体出现引用、梦境检查点／合成发布指针；仅验证事务及所有权，不发布正式业务能力 |
+
+原始大文本使用已有BoundedTextSchema承载；事件、候选、配置等各有**领域**版本化确定性编码和硬上限，严格UTF-8、固定字段、未知字段／重复键／非法类型拒绝。通用回执仍只保存稳定ID／状态／修订，不能放入原始正文；审计change继续禁止BoundedTextSchema。不能把ID字段放宽成任意文本、序列化可执行对象、加通用blob表绕过类型和所有权。
+
+复合唯一键、外键和状态CHECK在静态Schema中表达；终结和模式前置在同写事务重查。跨模块命令只能使各所属参与仓储在同一个UoW内操作，域仓储没有commit。只读视图通过固定参数与索引投影取得单次短快照；多行页有总编码上限，不能暴露游标／惰性迭代器。分页仅减少单次数据量，不能让缺失引用被当成无数据或让全库状态检查变成未经验证的就绪。
+
+### 10.2 本地事务及稳定重建输入
+
+完整操作沿用T01–T06、T09和必要审计，不改变T10／T11由Provider拥有。批次／候选／模式／页命令在首执行前固定身份、语义输入及预期修订，未知后不能换键或取当前最新材料重建“原命令”。冻结及候选不要求一次读回全部原文；成员与引用持久、按固定页／点读还原材料，最终摘要核验完整性。若完整有界变更集超过command限额，先用模块事务保存不可变受保护候选，最终事务只使用经确认的引用；候选保存自身仍有上限，不能靠拆分终结或无限分片规避原子性与容量。
+
+<a id="runtime-result-bound-audit"></a>
+
+#### 10.2.1 事务派生审计的最小增量（已批准）
+
+静态基线的[prepare_command](../../companion_memory/persistence/_codec.py)在execute前冻结完整LocalCommand.audit_events，并连同定义、输入计算fingerprint_version=1；[服务](../../companion_memory/persistence/service.py)的_stage_audit要求实际事件与该冻结事件逐值相等。现有OperationPort.recovery_handle也须从同一完整命令重建指纹。因此“锁内生成entry_seq／mode、锁外预先填好完整审计”不能用现有接口直接同时满足；锁外预读下一序号、占位后覆写事件、去掉审计指纹字段或仅按键跳过内容校验均不可用。配置事务分配revision／snapshot_id同样受此限制。
+
+推荐增量是**显式选择的结果绑定命令**，不是放宽旧命令检查。以下为已批准语义签名与固定行为：
+
+| 新声明／载体 | 完整要求 |
+| --- | --- |
+| ResultBoundCommandDefinition | 保留原定义的owner、kind、command_version、输入／结果Schema、参与模块、required_audits及本地handler；另显式声明audit_intent_schema和版本化audit_bindings。只供新命令种类，旧CommandDefinition不隐式转换 |
+| ResultBoundCommand(version, values, audit_intents) | 精确载体；values是全部稳定业务输入，audit_intents是按必要slot的完整稳定意图。actor_kind／actor_ref／reason_code必须来自已验证、可保留的意图；任何事务派生字段不得由调用方提供或用null占位 |
+| audit_bindings | 每个必要事件的每个业务字段恰有一个静态来源：声明中的定值、意图中固定路径或最终类型化结果中固定路径；允许取一个有界完整子树，不允许表达式、回调、运行时字段名、SQL或读当前业务行。目标与change仍满足日志安全Schema；事件码／版本／slot由原AuditRequirement绑定 |
+
+调用方须在首次execute前保留key、原values、audit_intents及绑定命令版本；接收方的稳定内部主体引用不因重投时凭据／网络追踪变化而改变，当前权限仍独立核验。prepare阶段一次深冻结上述全部输入，完整静态描述（含意图Schema、来源映射、必要事件及语义版本）一并进入类型敏感指纹；新命令使用fingerprint_version=2。该指纹承诺完整的“输入＋审计生成规则”，并不把尚未生成的事务结果当作请求内容。不得让任意旧事件缺字段后自动采用版本2。
+
+执行仍先取得写所有权、BEGIN IMMEDIATE、按完整原身份／指纹去重。命中直接验证并返回原回执，handler、ID／时钟源及审计生成均不再执行。仅首次执行运行一次handler：各模块通过受限仓储实际变更，handler返回包含所需派生事实的安全结果；协调端口先冻结并核验结果，再由日志能力按静态映射物化完整审计事件，逐事件使用同UoW追加、核验必要集合，最后保存同一结果的原回执并唯一COMMIT。每个slot仍须有对应模块合法变更，不得靠handler返回一个声称发生过的事实绕过仓储前置和受信任模块责任。
+
+结果Schema须包含恢复和审计投影所需的全部非秘密事实，例如接收序列／原路由、转换前后epoch、配置版本引用；不得把审计正文或完整命令藏进业务回执。接收时间只记录首次事务取得值，不能在恢复时重算。尚未提交的重新尝试可重新分配事务序列；任何已提交的结果标识只从原回执恢复，仍受§8.3“不重新生成”约束。
+
+结果绑定slot由协调端口在结果冻结后使用日志写能力完成；模块不能在handler内自行提前填充或替换它。日志侧的物化、追加和错误边界唯一见[日志增量](logging.md#runtime-derived-audit-draft)。即使调用者捕获任何审计拒绝，该UoW仍不可提交；不以事后审计补齐。
+
+<a id="runtime-audit-proof-compatibility"></a>
+
+#### 10.2.2 持久证据、确认与版本兼容（已批准）
+
+推荐保留基础表布局、外层库格式号及旧记录解释；仅新完整装配声明结果绑定命令及其新描述。新回执沿用原有字段和结果Schema版本，但明确fingerprint_version=2。必要审计元数据新增带显式materialization_version=1的结果绑定封套，保存原必要清单、静态映射描述身份、冻结的安全audit_intents、操作指纹版本／值和commit关联。此为日志所有的审计证据，不写入通用回执结果，也不保存完整业务values；它与业务、审计行及回执同事务发布。新写该封套受storage.receipt_max_bytes约束，历史读取受原格式65536字节上限约束，超限拒绝，不引入私有默认值。
+
+提交前、OPEN_EXISTING全回执校验、去重、read_receipt、resolve_operation及read_audit均须核验：命令描述与记录版本匹配，证据与原回执指纹／commit一致，必要slot完整唯一，按“持久意图＋原回执结果＋静态映射”重建的事件业务字段与实际审计逐值相等，原审计ID／时间／库关联继续通过既有核验。不得从当前接收行、当前模式或当前active配置重算；这些可能合法变化或正文已合法释放。破坏任一派生值或证据关联均为完整性故障，不返回历史成功。这是新增关联保障，不承诺防宿主管理员篡改。
+
+OperationPort的execute、recovery_handle、resolve_operation和read_receipt保留原职责；增量只使显式新命令接受上述载体／指纹2。recovery_handle(key, 原ResultBoundCommand)纯内存重建，不要求收到任何返回、知道原entry_seq／mode／snapshot_id或读取审计历史。调用方在可信存储就绪后用它resolve_operation：匹配返回原COMMITTED／EXISTING；不同原输入或意图为CONTENT_MISMATCH；可靠证实不存在才可同键重新execute；其余UNCONFIRMED保持不重放。read_receipt未命中仍不是不存在证据。
+
+旧CommandDefinition／LocalCommand的描述编码、fingerprint_version=1、RecoveryHandle、回执及原必要审计清单字节解释全部保持，旧_stage_audit逐值相等要求不变。新读取器仅按装配中声明的命令类型选择1或2，不按“失败后试另一版本”降级；不重新解释既有operation_kind来绕过旧键。包含旧Provider命令与新命令的组合库同时保留两条明确路径，Provider记录仍用旧协议。旧程序／旧装配不识别新完整装配时按原格式／Schema拒绝，不自动补表、升级或改写旧回执。
+
+新载体非法／未知版本／超限在执行前分别使用原INVALID_INPUT的INVALID_SHAPE／UNSUPPORTED_COMMAND／LIMIT_EXCEEDED，原同键内容冲突仍CONTENT_MISMATCH；读取新证据损坏映射原INTEGRITY_FAILURE／DATA_INCONSISTENT并FAULTED，审计端仍用AUDIT_INCONSISTENT，审计故障与结果证据映射见日志正文。无新错误自由文本、重放许可或诊断字段。跨能力、首错、回滚不确定性和cleanup_pending规则不变。
+
+<a id="runtime-storage-startup-boundary"></a>
+
+#### 10.2.3 存储启动能力边界
+
+本范围推荐**不扩展存储initialize为可续进度扫描**。[现有initialize／_check_all_receipts](../../companion_memory/persistence/service.py)先验证目标／格式／Schema／一致性，再在受控读取事务内遍历全部回执及必要审计，完成才READY；没有可持久传递的扫描cursor。其一次storage.operation_timeout_ms预算不会因运行层分页而延长，也不会被runtime.recovery_timeout_ms覆盖。
+
+存储启动超时／清理／确认结果继续按[§8.4](#persistence-foundation-errors)返回Rejected或InitializationUnconfirmed及首错，不映射成“已完成若干运行层检查点”。任何未完成初始化的服务均不给运行层仓储就绪能力。旧所有者仍在I/O时保留连接、槽位及路径，由健康／close观察释放或由可信进程隔离；只有实际结束后，才可在允许NEW状态重新初始化或显式新建服务OPEN_EXISTING，均从头执行完整校验。原建库确认丢失只用预先保留身份打开；未完成建库仍拒绝、不修复。
+
+回执／审计随库增长，若完整校验长期超出已配置存储预算，重复启动仍可长期不能READY；运行层或Provider检查点不能解除它。受本契约“初始化后配置不可改且bootstrap须匹配”约束，同库也不能临时调高持久storage值来绕开；完整性损坏更不能靠增加期限忽略。若产品必须支持这类大库启动，须另审可跨调用的存储校验能力及其一致性快照、扫描期间写入隔离、版本绑定、资源和故障协议，或明确的配置／迁移方案；本契约不包含该扩展。分层启动与下一次合法操作只在[整体恢复表](durable-ingress-and-batch-runtime.md#runtime-startup-layers)维护。
+
+### 10.3 新库、旧库与格式兼容
+
+推荐继续在**自有临时本地资源**上使用[已批准SQLite验证采用](deployment-candidates.md#sqlite-validation-candidate)的运行库准入及WAL／FULL／外键等要求；这是本组合能力的已批准验证装配，不能将既有基础实验的批准扩大成生产选型。新业务只在明确CREATE_NEW的完整新装配中建表，之后以相同完整模块／命令清单OPEN_EXISTING。
+
+基础库表布局、旧Scalar／BoundedText／Record／Sequence描述、旧命令／回执指纹、原ProviderSchema和旧错误字节解释保持不变；新结果绑定协议按[精确版本增量](#runtime-audit-proof-compatibility)区分，不能将“旧格式保持”写成没有任何新记录解释。新增模块有独立schema_version和固定声明，其新库的完整装配指纹自然不同；不通过全局格式号升级让旧库自动获新表。旧装配打开旧库应保持原键、回执及恢复行为；带新模块的装配打开缺表旧库必须拒绝，旧装配打开新组合库也拒绝不匹配。拒绝不得补表、清空、删除WAL／SHM、改身份或迁移。
+
+新文本／事件等领域格式在静态声明中可区分，读取旧持久记录采用原格式硬上限和版本解释，不因新运行限额降低截断数据。无法解释的格式、缺配置域、破坏引用／终结唯一性、必要审计损坏均安全拒绝并停止受影响写入；不能把存量损坏归成Provider普通失败。未在上述结果绑定增量中定义的其他基础格式变更仍须先给出具体不兼容字段／旧记录影响，停止该受影响部分，不自行修复或恢复旧参考规则。
+
+建库前可信装配先保留expected_database_id及资源目标绑定，至少跨执行进程退出可恢复；CREATE_NEW回执未送达也能用原身份OPEN_EXISTING。测试由父进程或测试专属受控记录持有该事实，不能从重新打开的实际库读取身份后反向当作“期望身份”。初始化配置尚未完成时的模式保持RECOVERING，参见[配置初始化恢复](configuration.md#runtime-configuration-identity)。
+
+格式兼容测试须以基线旧程序／旧装配创建真实临时库，再用未来实现的对应旧装配打开、原键读取及继续原操作；另验新组合库重启。源码级比对和同进程内存结果不足以替代。该实验只使用自有测试库，不对用户存量数据库演练迁移。
+
+<a id="runtime-production-prerequisites"></a>
+
+### 10.4 自有验证资源与生产前置方案
+
+以下是如果生产资源成为必要前置时提交用户的具体方案，**均待批准**；推荐本组合验收先限定自有临时资源，不让这些生产事项被夹具隐含决定。
+
+| 前置 | 具体推荐方案 | 替代与影响 |
+| --- | --- | --- |
+| 生产路径与G2 | 部署方提交同一命名空间下日志目录、数据库及WAL／SHM／临时位置、媒体／上传暂存、同库审计／Provider、备份／导出全部实际绝对目录；说明同库复用和禁用能力。逐项确认路径敏感分级，再按真实资源身份、符号链接／别名、可写性及独占关系核验 | 本范围不选任何`/data`候选作默认。若路径属非public，新增统一配置敏感路径能力并批准后再接生产，不降低标签；五类目录未实存或只有远端时不能伪填空清单通过旧校验 |
+| 建库身份与启动配置保留 | 在任何CREATE_NEW副作用前，由受控部署装配记录持久保留目标database_id、启动配置版本来源与明确资源绑定；文件如采用则用访问受限的原子写／同步方案，存储位置和恢复责任一并批准 | 独立可信外部配置／密钥管理系统可替代本地记录；仅进程内变量、读目标库反推或路径hash均不足。此方案不恢复／替代BOOTSTRAP_GUIDE |
+| 生产观察鉴权 | 推荐交由已有受信任反向代理／身份服务认证，服务仅在明确私有监听上接受受验证的短期主体证明，映射runtime.observe／diagnostics.observe及入口集合；批准TLS终止、代理来源白名单、过期／撤权及秘密保管方式 | 独立本地账号／会话服务需额外登录、口令／会话保护与运维契约；测试会话、loopback或用户自报角色不替代生产鉴权。无既有身份服务时保留未就绪，不匿名开放 |
+| 沿用生产存量库 | 先只读列明原database_id／完整装配版本和实际数据范围，批准维护窗口与一致备份；用独立离线迁移工具在备份副本构造明确新模块Schema，保留原回执／Provider记录及身份，验证引用／审计／恢复后再批准切换；迁移产生独立审计／报告 | 推荐新建空的新资源用于本能力验证，旧库保持可由旧装配读取；不自动迁移或补表。切换前原库仍为权威，回退须说明切换后新接收数据如何保全，不承诺复制旧备份即可无损回退 |
+
+实际临时资源验证须记录目录所有权及测试范围，避免访问生产目录、填满宿主磁盘或变更系统权限。可通过自有临时SQLite页上限、独立子进程锁、只读打开及受控文件失败验证真实错误路径；模拟异常／线程阻塞另标证据。进程终止恢复不等于掉电、磁盘损坏恢复、备份有效、Linux或生产性能已验收。全部新增验证在取得实际证据前仍标未执行，见[整体矩阵](durable-ingress-and-batch-runtime.md#acceptance)。

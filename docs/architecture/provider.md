@@ -225,6 +225,10 @@ Generation的本地输入计量取所有消息text的UTF-8字节数作为模拟i
 
 <a id="provider-foundation-identity"></a>
 
+新增已批准的`WorkPort.lookup_request(operation, original_request)`只读确认端口：operation恰为generate／embed／rerank／understand_media，原请求复用对应工作入口的完整输入及归属校验；deadline与cancellation仅约束本次确认等待，不进入原内容指纹。先核验原生WorkPort、当前归属权限、能力及profile允许集合，再按caller_module／caller_scope／extension_id／operation_key查原记录，并用原记录的execution_evidence核对完整原语义指纹。匹配返回与get_request相同的Found元信息（包括原request_id、状态及交接存在性）；未命中返回NotFound，不登记、不生成request_id、不发送模型、不取得执行所有权，也不授予重放许可。同键不同内容返回Failed(IDEMPOTENCY_CONFLICT, lookup_request, request, CONTENT_MISMATCH)，不放宽旧指纹协议。不向观察句柄或结果所有者句柄开放此能力；结果正文仍经原ResultOwnerPort的明确request_id授权读取。运行层须在首次Provider副作用前持久保留能重建完整原请求的冻结工作及原操作键，确认不依赖任何首次返回已送达。
+
+该增量的固定错误复用§9.4：lookup_request属于“读”；另允许IDEMPOTENCY_CONFLICT／CONTENT_MISMATCH、CANCELLED／CANCEL_REQUESTED和RESOURCE_FAILED／RESOURCE_FAILURE，分别用于原内容冲突、本次等待取消和可信时钟等资源故障。能力、归属及输入失败优先于读库；查不到不转换为提交未发生。增量验收预期（执行证据见[CURRENT_TASK](../work/CURRENT_TASK.md)）：任何返回前退出后原键查回、原键异内容冲突、撤销／跨能力拒绝、未命中零登记零发送及原结果隔离。
+
 ### 9.2 身份、配置证据与幂等范围
 
 工作句柄绑定真实的caller_module、可空extension_id、caller_scope、task_role、允许capability／profile集合和结果所有者。caller_module使用现行模块语义名；task_role取LEARNING／DREAM／PERSONA／MEDIA／EMBEDDING／RERANK／GOAL／DIAGNOSTIC。请求不能覆盖这些绑定。run_id必须为已分配的不透明ID；可选parent_request_id、trace_id、entry_ids（去重有序集合）、batch_id、dream_run_id、prompt_revision无值用None／空集合表达，不能捏造业务来源。绑定能力负责检查这些引用属于调用scope；测试来源明确合成。
@@ -270,7 +274,7 @@ attempt按request_id及从1开始的序号唯一，状态为PREPARED、COMPLETED
 | Rejected(error) | 当前输入、绑定、生命周期、容量、冲突或无法登记等失败；不声称同键历史不存在，不含部分成功结果 |
 | Found(value)／NotFound／Failed(error) | 只读端口结果；NotFound仅该次短快照观察，不允许重发。recover_result还可返回Pending；它不能返回未持久结果 |
 
-ProviderError恰含`code、operation、field、reason、cleanup_pending`，深不可变，不包含message、原异常、栈、SQL、路径、输入片段、URL、任意响应或嵌套下层错误。operation为initialize、generate、embed、rerank、understand_media、get_request、query_usage、get_budget_state、recover_result、close之一；inspect_capabilities/get_health无预期I/O失败。field仅state、capability、configuration、request、payload、gate、budget、adapter、ledger、query。签名错误按Python规则拒绝；无法构造安全结果的资源耗尽和进程控制不伪装成功。
+ProviderError恰含`code、operation、field、reason、cleanup_pending`，深不可变，不包含message、原异常、栈、SQL、路径、输入片段、URL、任意响应或嵌套下层错误。operation为initialize、generate、embed、rerank、understand_media、get_request、lookup_request、query_usage、get_budget_state、recover_result、close之一；inspect_capabilities/get_health无预期I/O失败。field仅state、capability、configuration、request、payload、gate、budget、adapter、ledger、query。签名错误按Python规则拒绝；无法构造安全结果的资源耗尽和进程控制不伪装成功。
 
 | code | 完整reason集合／field及触发 |
 | --- | --- |
@@ -290,7 +294,7 @@ ProviderError恰含`code、operation、field、reason、cleanup_pending`，深�
 | PERSISTENCE_FAILED | LEDGER_REJECTED、LEDGER_NOT_COMMITTED、LEDGER_UNCONFIRMED、LEDGER_READ_FAILED、LEDGER_INCONSISTENT：ledger或只读query；按下一段证据映射 |
 | RESOURCE_FAILED | RESOURCE_INVALID、RESOURCE_FAILURE：capability或state；可信资源／时钟／ID异常；CLOSE_INCOMPLETE：state，仅close |
 
-端口适用集合固定：以下“工作”恰指四个能力调用，“读”恰指get_request／query_usage／get_budget_state／recover_result。INVALID_INPUT用于工作和读；ACCESS_DENIED用于initialize、工作和读；INVALID_STATE用于initialize、工作和读，其中NOT_INITIALIZED／SERVICE_FAULTED／SERVICE_CLOSED按实际生命周期，ALREADY_INITIALIZED仅initialize。CONFIGURATION_UNSUPPORTED仅initialize。UNSUPPORTED_CAPABILITY、MODE_BLOCKED、PAUSED_BUDGET、IDEMPOTENCY_CONFLICT、CANCELLED、ADAPTER_FAILED、MODEL_REFUSAL仅工作；RESOURCE_BUSY用于工作和读；TIMEOUT用于initialize、工作和读，ATTEMPT_TIMEOUT仅工作。PERSISTENCE_FAILED用于initialize、工作和读，其中LEDGER_NOT_COMMITTED／LEDGER_UNCONFIRMED仅initialize和工作，LEDGER_READ_FAILED／LEDGER_REJECTED／LEDGER_INCONSISTENT三者均可；工作端口内部历史查询失败也用LEDGER_READ_FAILED并归因于该工作operation，不改报不存在或写入失败。RESOURCE_FAILED用于initialize、工作和close，RESOURCE_INVALID仅initialize，CLOSE_INCOMPLETE仅close。持久记录中的失败类别不受查询端口限制，查询只是返回原事实而非产生一次该错误。
+端口适用集合固定：以下“工作”恰指四个能力调用，“读”恰指get_request／lookup_request／query_usage／get_budget_state／recover_result。INVALID_INPUT用于工作和读；ACCESS_DENIED用于initialize、工作和读；INVALID_STATE用于initialize、工作和读，其中NOT_INITIALIZED／SERVICE_FAULTED／SERVICE_CLOSED按实际生命周期，ALREADY_INITIALIZED仅initialize。CONFIGURATION_UNSUPPORTED仅initialize。UNSUPPORTED_CAPABILITY、MODE_BLOCKED、PAUSED_BUDGET、ADAPTER_FAILED、MODEL_REFUSAL仅工作；IDEMPOTENCY_CONFLICT、CANCELLED用于工作和lookup_request；RESOURCE_BUSY用于工作和读；TIMEOUT用于initialize、工作和读，ATTEMPT_TIMEOUT仅工作。PERSISTENCE_FAILED用于initialize、工作和读，其中LEDGER_NOT_COMMITTED／LEDGER_UNCONFIRMED仅initialize和工作，LEDGER_READ_FAILED／LEDGER_REJECTED／LEDGER_INCONSISTENT三者均可；工作端口内部历史查询失败也用LEDGER_READ_FAILED并归因于该工作operation，不改报不存在或写入失败。RESOURCE_FAILED用于initialize、工作、lookup_request和close，RESOURCE_INVALID仅initialize，CLOSE_INCOMPLETE仅close。持久记录中的失败类别不受查询端口限制，查询只是返回原事实而非产生一次该错误。
 
 已绑定调用顺序固定：精确句柄类型及签发身份 → 服务生命周期 → 当前主体工作／读取权限 → 输入精确载体／ID／安全完整树和**格式硬上限** → 按逻辑键查历史及原证据匹配／冲突 → 仅新请求检查当前profile可用性、角色配置映射、能力和**当前新写限额** → 初始模式及预算 → 登记 → 发送前门控 → 适配器 → 结算／交接 → 事务外诊断。只读调用完成前四项后执行固定查询，不经过新工作准入。initialize没有工作句柄，顺序为资源／storage_binding精确签发身份 → Provider生命周期 → 存储READY → 原生快照 → 必要定义 → 必要能力 → 值 → 持久策略核对／恢复。不得通过错误查看无权限键是否存在。安全树检查先于语义判断，未知字段／非原生对象不遍历其值；同一序列按下标、固定记录按声明顺序报首错。
 

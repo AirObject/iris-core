@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from threading import RLock
 from typing import cast
 
+from .runtime_window import RuntimeLogWindow
 from ._delivery_state import _RejectedAdmission
 from ._execution import _Execution
 from ._results import _Failure
@@ -43,7 +44,10 @@ class Logger:
 class Service:
     """Serial lifecycle owner with thread-safe logger and health publication."""
 
-    def __init__(self):
+    def __init__(self, *, observation_window: RuntimeLogWindow | None = None):
+        if observation_window is not None and type(observation_window) is not RuntimeLogWindow:
+            raise TypeError("A native optional diagnostic observation output is required.")
+        self._observation_window = observation_window
         self._lock = RLock()
         self._state: Lifecycle = "NEW"
         self._execution: _Execution | None = None
@@ -79,6 +83,7 @@ class Service:
         supplied = cast(LoggingResources, resources)
         console, file, emergency = self._make_ports(settings, supplied)
         execution = _Execution(settings, supplied, console, file, emergency)
+        execution.queues.observation_window = self._observation_window
         with self._lock:
             self._execution = execution
             self._settings = settings
@@ -228,6 +233,6 @@ class Service:
             )
 
 
-def create_logging_service() -> Service:
+def create_logging_service(*, observation_window: RuntimeLogWindow | None = None) -> Service:
     """Create NEW with no I/O, worker, handler installation or ambient configuration."""
-    return Service()
+    return Service(observation_window=observation_window)

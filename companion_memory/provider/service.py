@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import hashlib
 import math
 import threading
+from weakref import WeakKeyDictionary
 from types import MappingProxyType
 from typing import cast
 
@@ -104,9 +105,10 @@ class ProviderService:
         self._settings: Record = MappingProxyType({})
         self._profiles: dict[str, Record] = {}
         self._accounts: dict[str, Record] = {}
-        self._ports: dict[object, WorkGrant | ObserverGrant | ResultGrant] = {}
+        self._ports: WeakKeyDictionary[object, WorkGrant | ObserverGrant | ResultGrant] = WeakKeyDictionary()
         self._media: dict[object, AuthorizedMedia] = {}
         self._jobs: set[_Job] = set()
+        self._lookup_tasks: set[asyncio.Task] = set()
         self._serial = asyncio.Lock()
         self._init_task: asyncio.Task | None = None
         self._initialization_cleanup: asyncio.Task | None = None
@@ -1038,11 +1040,11 @@ class ProviderService:
 
     def get_health(self) -> Health:
         """Observe current owned work without waiting or repairing durable state."""
-        pending = bool(self._jobs) or (self._init_task is not None and not self._init_task.done()) or (self._initialization_cleanup is not None and not self._initialization_cleanup.done())
+        pending = bool(self._jobs) or bool(self._lookup_tasks) or (self._init_task is not None and not self._init_task.done()) or (self._initialization_cleanup is not None and not self._initialization_cleanup.done())
         return Health(self._state, len(self._jobs), self._unknown, pending, self._ledger_faulted, self._reason)
 
     def _finish_close(self) -> None:
-        if (self._state == "CLOSING" and not self._jobs and (self._init_task is None or self._init_task.done())
+        if (self._state == "CLOSING" and not self._jobs and not self._lookup_tasks and (self._init_task is None or self._init_task.done())
                 and (self._initialization_cleanup is None or self._initialization_cleanup.done())):
             if self._binding is not None:
                 self._binding.release()
@@ -1055,7 +1057,7 @@ class ProviderService:
         self._state = "CLOSING"
         for job in self._jobs:
             job.stop.set()
-        tasks = [job.task for job in self._jobs if job.task is not None]
+        tasks = [job.task for job in self._jobs if job.task is not None]+list(self._lookup_tasks)
         if self._init_task is not None and not self._init_task.done():
             tasks.append(self._init_task)
         if self._initialization_cleanup is not None and not self._initialization_cleanup.done():
@@ -1072,6 +1074,90 @@ class ProviderService:
         if inconsistent:
             self._fault("LEDGER_INCONSISTENT")
         return Failed(error("PERSISTENCE_FAILED", operation, "query", "LEDGER_INCONSISTENT" if inconsistent else "LEDGER_READ_FAILED"))
+
+    async def _lookup_request(self, port: object, action: object, raw: object):
+        operation = "lookup_request"
+        if (issue := self._access(port, operation, (WorkPort,))) is not None:
+            return Failed(issue)
+        grant = cast(WorkGrant, self._ports[port])
+        if type(action) is not str or action not in CAPABILITIES:
+            return Failed(error("INVALID_INPUT", operation, "query", "INVALID_SHAPE"))
+        if CAPABILITIES[action] not in grant.capabilities:
+            return Failed(error("ACCESS_DENIED", operation, "capability", "CAPABILITY_MISMATCH"))
+        try:
+            request, token, deadline = self._normalize(raw, grant, action, self._now())
+            if request["profile_id"] not in grant.profiles:
+                return Failed(error("ACCESS_DENIED", operation, "capability", "CAPABILITY_MISMATCH"))
+        except _AdmissionStopped as failure:
+            cause = failure.cause
+            return Failed(error(cause.code, operation, cause.field, cause.reason))
+        except PermissionError:
+            return Failed(error("ACCESS_DENIED", operation, "capability", "CAPABILITY_MISMATCH"))
+        except InvalidData as failure:
+            return Failed(error("INVALID_INPUT", operation, "request", "LIMIT_EXCEEDED" if type(failure) is DataLimit else "INVALID_SHAPE"))
+        except MemoryError:
+            raise
+        except Exception:
+            return Failed(error("RESOURCE_FAILED", operation, "state", "RESOURCE_FAILURE"))
+        if len(self._lookup_tasks)>=self._number("max_in_flight"):
+            return Failed(error("RESOURCE_BUSY", operation, "state", "ADMISSION_BUSY"))
+        task=asyncio.create_task(self._lookup_original(port,action,request,token,deadline))
+        self._lookup_tasks.add(task);task.add_done_callback(self._lookup_finished)
+        while not task.done():
+            issue=self._lookup_wait_issue(port,token,deadline)
+            if issue is not None:return Failed(issue)
+            try:
+                remaining=max(0,deadline-self._now())
+            except MemoryError:raise
+            except Exception:return Failed(error("RESOURCE_FAILED",operation,"state","RESOURCE_FAILURE",True))
+            await asyncio.wait((task,),timeout=min(0.01,remaining))
+        result=task.result()
+        if type(result) is Found or type(result) is NotFound:
+            issue=self._lookup_wait_issue(port,token,deadline)
+            if issue is not None:return Failed(issue)
+        return result
+
+    def _lookup_wait_issue(self,port:object,token:CancellationToken,deadline:float) -> ProviderError | None:
+        operation="lookup_request"
+        if (issue:=self._access(port,operation,(WorkPort,))) is not None:return issue
+        try:
+            if self._now()>=deadline:return error("TIMEOUT",operation,"request","DEADLINE_EXCEEDED",bool(self._lookup_tasks))
+            if token.cancelled:return error("CANCELLED",operation,"request","CANCEL_REQUESTED",bool(self._lookup_tasks))
+        except MemoryError:raise
+        except Exception:return error("RESOURCE_FAILED",operation,"state","RESOURCE_FAILURE",bool(self._lookup_tasks))
+        return None
+
+    def _lookup_finished(self,task:asyncio.Task) -> None:
+        if not task.cancelled():task.exception()
+        self._lookup_tasks.discard(task)
+        if self._binding is not None and self._binding.storage.get_health().reads_in_flight:
+            retained=asyncio.create_task(self._retain_lookup_reader())
+            self._lookup_tasks.add(retained);retained.add_done_callback(self._lookup_finished)
+        self._finish_close()
+
+    async def _retain_lookup_reader(self) -> None:
+        # A lower timeout cannot release this module while its SQLite reader runs.
+        while self._ledger.storage.get_health().reads_in_flight:await asyncio.sleep(0.01)
+
+    async def _lookup_original(self,port:object,action:str,request:Record,token:CancellationToken,deadline:float):
+        operation="lookup_request"
+        grant=cast(WorkGrant,self._ports[port])
+        try:
+            rows = await self._ledger.read("requests_find", {
+                "caller_scope": grant.caller_scope, "caller_module": grant.caller_module,
+                "extension_id": grant.extension_id or "", "operation_key": request["operation_key"],
+            })
+            if (issue:=self._lookup_wait_issue(port,token,deadline)) is not None:return Failed(issue)
+            if not rows:
+                return NotFound()
+            stored = rows[0]
+            job = _Job(action, grant, request, token, deadline, cast(str, stored["object_id"]))
+            if stored["fingerprint"] != self._semantic(job, stored["execution_evidence"]):
+                return Failed(error("IDEMPOTENCY_CONFLICT", operation, "request", "CONTENT_MISMATCH"))
+            attempts = await self._ledger.read("attempts_for_request", {"request_id": stored["object_id"]})
+            return Found(MappingProxyType({"request": stored, "attempts": attempts, "handoff_present": stored["handoff_id"] is not None}))
+        except (LedgerFailure, InvalidData) as failure:
+            return self._read_failure(operation, failure)
 
     async def _get_request(self, port: object, request_id: object):
         operation = "get_request"

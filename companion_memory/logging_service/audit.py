@@ -19,6 +19,8 @@ from .audit_records import (
     AuditOperation, AuditReason, AuditStaged, freeze_audit_event,
 )
 
+_NO_RESULT = object()
+
 if TYPE_CHECKING:
     from companion_memory.persistence.service import AuditStorageBinding
 
@@ -96,7 +98,7 @@ class AuditAccess:
         result = self._binding.stage(uow, owned)  # type: ignore[arg-type] -- permits checked the exact active unit-of-work capability.
         return self._storage_failure("append_audit", result) if isinstance(result, Failed) else result
 
-    def check_required_audits(self, uow: object) -> AuditComplete | AuditErr:
+    def check_required_audits(self, uow: object, *, frozen_result: object = _NO_RESULT) -> AuditComplete | AuditErr:
         """Coordinator-only check of persisted mandatory metadata and every slot."""
         if not self._binding.state_valid():
             return self._failure("check_required_audits", "INVALID_STATE", "AUDIT_STATE_INVALID", "state")
@@ -104,6 +106,17 @@ class AuditAccess:
             return self._failure("check_required_audits", "INVALID_STATE", "AUDIT_STATE_INVALID", "state")
         if not self._binding.permits(uow, coordinator=True):
             return self._failure("check_required_audits", "ACCESS_DENIED", "AUDIT_ACCESS_DENIED", "capability")
+        if frozen_result is not _NO_RESULT:
+            try:
+                materialized = self._binding.materialize(uow, frozen_result)
+            except InvalidValue:
+                return self._failure("check_required_audits", "INVALID_INPUT", "AUDIT_INPUT_INVALID", "event")
+            except MemoryError:
+                raise
+            except Exception:
+                return self._failure("check_required_audits", "AUDIT_FAILED", "AUDIT_WRITE_FAILED", "transaction")
+            if type(materialized) is Failed:
+                return self._storage_failure("check_required_audits", materialized)
         result = self._binding.required(uow)  # type: ignore[arg-type] -- permits checked the exact active unit-of-work capability.
         if isinstance(result, Failed):
             return self._storage_failure("check_required_audits", result)

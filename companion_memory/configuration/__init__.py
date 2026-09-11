@@ -81,3 +81,14 @@ __all__ += [
     "ProviderResolutionErr", "ProviderResolutionError", "ProviderResolutionIssue",
     "ProviderResolutionOk", "ProviderResolutionResult",
 ]
+
+from .material_contracts import MaterialContract, bind_synthetic_material
+from .runtime_resolution import (
+    ConfigurationCandidate, PlatformSettingsSnapshot, RuntimeConfigurationError,
+    RuntimeConfigurationErr, RuntimeConfigurationOk, RuntimeSettingsSnapshot,
+    resolve_runtime_configuration, runtime_snapshot_issue,
+)
+__all__ += ['MaterialContract', 'bind_synthetic_material', 'ConfigurationCandidate',
+            'PlatformSettingsSnapshot', 'RuntimeSettingsSnapshot', 'RuntimeConfigurationError',
+            'RuntimeConfigurationErr', 'RuntimeConfigurationOk', 'resolve_runtime_configuration',
+            'runtime_snapshot_issue']

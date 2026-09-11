@@ -6,6 +6,7 @@ success. No production storage layout, business tables or model calls are added.
 """
 
 from .definitions import CommandDefinition, LocalCommand, RepositoryDefinition, StatementDefinition, TableDefinition
+from .definitions import AuditFieldBinding, AuditResultBinding, CommandSpec, ResultBoundCommand, ResultBoundCommandDefinition
 from .resources import ConnectionFactory, DatabaseResources
 from .results import (
     CloseReport, Committed, ExecutionResult, Failed, Found, Health, InitializationResult,
@@ -16,6 +17,7 @@ from .schema import BoundedTextSchema, Field, RecordSchema, ScalarSchema, Sequen
 from .service import AuditStorageBinding, OperationPort, PersistenceService, StatementPort, UnitOfWork
 
 __all__ = [
+    "AuditFieldBinding", "AuditResultBinding", "CommandSpec", "ResultBoundCommand", "ResultBoundCommandDefinition",
     "BoundedTextSchema", "AuditStorageBinding", "CloseReport", "CommandDefinition", "Committed", "ConnectionFactory", "DatabaseResources",
     "ExecutionResult", "Failed", "Field", "Found", "Health", "InitializationResult", "InitializationUnconfirmed",
     "LocalCommand", "NotCommitted", "NotFound", "OperationIdentity", "OperationPort", "PersistenceError",
@@ -28,3 +30,6 @@ from .ownership import ModuleOwnerLease
 from .provider_repository import ProviderRepository, create_provider_repository
 
 __all__ += ["ModuleOwnerLease", "ProviderRepository", "create_provider_repository"]
+
+from ._codec import valid_utc
+__all__ += ['valid_utc']

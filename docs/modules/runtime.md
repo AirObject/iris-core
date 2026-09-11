@@ -12,6 +12,8 @@
 
 ## 按边界定位
 
+本次模式、发送竞争和恢复细节见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#modes)（五组推荐已批准，实施已授权；验证状态见CURRENT_TASK）；本模块原职责和既有批准状态不变。
+
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
 | 关注点 | 阅读位置与边界 |
@@ -22,7 +24,7 @@
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A67](../product/acceptance.md#a67)、[A93](../product/acceptance.md#a93)、[A94](../product/acceptance.md#a94)、[A106](../product/acceptance.md#a106)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V02](../architecture/acceptance.md#v02)、[V24](../architecture/acceptance.md#v24)、[V30](../architecture/acceptance.md#v30)、[V49](../architecture/acceptance.md#v49)、[V81](../architecture/acceptance.md#v81)（预期行为，未执行） |
-| 尚未决定 | 入梦在途收尾、发布后开放点和异常恢复管理操作仍待批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 尚未决定 | 在途收尾及发布后开放点已在[整体契约](../architecture/durable-ingress-and-batch-runtime.md#modes)批准；故障解除和UNKNOWN人工结案仍未批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

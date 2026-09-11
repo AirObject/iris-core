@@ -12,6 +12,8 @@
 
 ## 按边界定位
 
+本次冻结、三终态和回流细节见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#batch)（五组推荐已批准，实施已授权；验证状态见CURRENT_TASK）；本模块原职责和既有批准状态不变。
+
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
 | 关注点 | 阅读位置与边界 |
@@ -22,7 +24,7 @@
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-919)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A07](../product/acceptance.md#a07)、[A08](../product/acceptance.md#a08)、[A10](../product/acceptance.md#a10)、[A69](../product/acceptance.md#a69)、[A71](../product/acceptance.md#a71)、[A75](../product/acceptance.md#a75)、[A76](../product/acceptance.md#a76)、[A77](../product/acceptance.md#a77)、[A80](../product/acceptance.md#a80)、[A82](../product/acceptance.md#a82)、[A95](../product/acceptance.md#a95)、[A103](../product/acceptance.md#a103)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V01](../architecture/acceptance.md#v01)、[V02](../architecture/acceptance.md#v02)、[V04](../architecture/acceptance.md#v04)、[V05](../architecture/acceptance.md#v05)、[V08](../architecture/acceptance.md#v08)、[V25](../architecture/acceptance.md#v25)、[V79](../architecture/acceptance.md#v79)（预期行为，未执行） |
-| 尚未决定 | 短批次、空闲尾部、长度和token预算尚待参数契约；持久化后端尚未批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 尚未决定 | 短批／空闲尾部关闭及固定窗口预算见[已批准配置](../architecture/configuration.md#runtime-compatible-budget-candidate)；本机SQLite验证采用已批准，生产存储及未采纳切分策略仍未批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

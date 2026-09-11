@@ -26,3 +26,6 @@ __all__ = [
     "AuditAccess", "AuditBound", "AuditComplete", "AuditErr", "AuditError", "AuditFound",
     "AuditNotFound", "AuditRecord", "AuditRequirement", "AuditStaged", "bind_audit",
 ]
+
+from .runtime_window import RuntimeLogWindow, RuntimeLogReader, ObservationGrant, LogPage, LogGap, LogReadFailed
+__all__ += ['RuntimeLogWindow','RuntimeLogReader','ObservationGrant','LogPage','LogGap','LogReadFailed']

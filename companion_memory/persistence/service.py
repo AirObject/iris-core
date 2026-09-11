@@ -9,6 +9,8 @@ Unknown completion faults the service and requires explicit result confirmation.
 
 from __future__ import annotations
 
+import hashlib
+
 import asyncio
 from collections.abc import Callable
 from dataclasses import replace
@@ -20,6 +22,7 @@ import stat
 import threading
 from types import MappingProxyType
 from typing import Literal, cast
+from weakref import WeakValueDictionary
 
 from companion_memory.configuration import EffectiveSnapshot
 from companion_memory.logging_service.audit_records import (
@@ -31,7 +34,7 @@ from ._codec import (
     receipt_value, valid_identity,
 )
 from ._settings import Settings, read_settings
-from .definitions import CommandDefinition, LocalCommand, RepositoryDefinition, StatementDefinition
+from .definitions import CommandSpec, CommandDefinition, LocalCommand, RepositoryDefinition, StatementDefinition, ResultBoundCommand, ResultBoundCommandDefinition
 from .resources import DatabaseResources
 from .results import (
     CloseReport, Committed, ErrorCode, ErrorField, ExecutionResult, Failed, Found,
@@ -39,7 +42,7 @@ from .results import (
     NotFound, Operation, OperationIdentity, PersistenceError, ReadResult, Ready,
     Reason, Receipt, RecoveryHandle, Rejected, Staged, Unconfirmed,
 )
-from .schema import InvalidValue, Value, ValueTooLarge, encode_value, freeze_value, utc_text, valid_identifier
+from .schema import InvalidValue, Value, ValueTooLarge, decode_value, encode_value, freeze_value, utc_text, valid_identifier
 
 _APPLICATION_ID = 0x49524953
 _FORMAT_VERSION = 1
@@ -87,25 +90,27 @@ class _Job:
 class UnitOfWork:
     """Opaque temporary participant authority; has no commit, SQL or connection API."""
 
-    __slots__ = ("_service", "_job", "_definition", "_identity", "_commit_id", "_events", "_active", "_changed")
+    __slots__ = ("_service", "_job", "_definition", "_identity", "_commit_id", "_events", "_active", "_changed", "_materializing", "_result")
 
     def __new__(cls):
         raise TypeError("Unit-of-work authority is issued only by storage.")
 
     @classmethod
-    def _create(cls, service: PersistenceService, job: _Job, definition: CommandDefinition,
+    def _create(cls, service: PersistenceService, job: _Job, definition: CommandSpec,
                 identity: OperationIdentity, commit_id: str, events: MappingProxyType[str, Value]) -> UnitOfWork:
         self = object.__new__(cls)
         self._service, self._job, self._definition = service, job, definition
         self._identity, self._commit_id, self._events = identity, commit_id, events
         self._active, self._changed = True, set()
+        self._materializing = False
+        self._result = None
         return self
 
 
 class _SealedPort:
     """Prevent supported callers from mutating an already-bound capability field."""
 
-    __slots__ = ()
+    __slots__ = ("__weakref__",)
     _service: PersistenceService
 
     def _service_issue(self, operation: Operation) -> PersistenceError | None:
@@ -128,7 +133,7 @@ class OperationPort(_SealedPort):
 
     __slots__ = ("_service", "_definition", "_scope")
 
-    def __init__(self, service: PersistenceService, definition: CommandDefinition, scope: str):
+    def __init__(self, service: PersistenceService, definition: CommandSpec, scope: str):
         self._service, self._definition, self._scope = service, definition, scope
 
     async def execute(self, operation_key: object, local_command: object) -> ExecutionResult:
@@ -245,6 +250,36 @@ class AuditStorageBinding(_SealedPort):
     def required(self, uow: UnitOfWork) -> tuple[tuple[AuditRequirement, ...], tuple[AuditRecord, ...]] | Failed:
         return self._service._required_audits(self, uow)
 
+    def materialize(self, uow: object, result: object) -> Failed | None:
+        """Coordinator-only result sealing and same-transaction audit materialization."""
+        if not self.permits(uow, coordinator=True):
+            return Failed(self._service._error("participate", "ACCESS_DENIED", "CAPABILITY_MISMATCH", "operation"))
+        assert type(uow) is UnitOfWork
+        definition = uow._definition
+        if type(definition) is not ResultBoundCommandDefinition or type(result) is not MappingProxyType or uow._materializing:
+            raise InvalidValue()
+        from companion_memory.logging_service.audit_materialization import materialize_events, evidence_value
+        from ._codec import command_descriptor
+        frozen = freeze_value(definition.result_schema, result, owned=True)
+        intentions = uow._events
+        events = materialize_events(definition, intentions, frozen)
+        assert self._service._settings is not None and uow._job.handle is not None
+        digest = hashlib.sha256(encode_value(command_descriptor(definition), 1048576)).hexdigest()
+        proof = encode_value(evidence_value(definition, intentions, uow._job.handle.fingerprint, uow._commit_id, digest), self._service._settings.receipt_max_bytes)
+        uow._events, uow._result, uow._materializing = events, frozen, True
+        try:
+            self._service._sql(uow._job, "INSERT INTO required_audit_events VALUES(?, ?)", (uow._commit_id, proof))
+            for requirement in definition.required_audits:
+                writer = self._service.bind_audit_writer(requirement, self._scope)
+                # The projection is already isolated; append takes a native outer map.
+                event = cast(MappingProxyType[str, Value], events[requirement.event_slot])
+                staged = self._service._stage_audit(writer, uow, event)
+                if type(staged) is Failed:
+                    return staged
+            return None
+        except _StorageFault as fault:
+            return Failed(fault.error)
+
     async def read(self, identity: object) -> Found[tuple[AuditRecord, ...]] | NotFound | Failed:
         return cast(Found[tuple[AuditRecord, ...]] | NotFound | Failed,
                     await self._service._read(self, identity, "read_receipt", audit=True))
@@ -262,9 +297,13 @@ class PersistenceService:
     inferred. Reopening requires a new instance and the retained expected ID.
     """
 
-    def __init__(self, repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandDefinition, ...]):
+    def __init__(self, repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...]):
         self._repositories, self._commands = repositories, commands
         self._command_map = {(item.owner_namespace, item.operation_kind): item for item in commands}
+        from companion_memory.logging_service.audit_materialization import validate_bindings
+        for definition in commands:
+            if type(definition) is ResultBoundCommandDefinition:
+                validate_bindings(definition)
         self._assembly = assembly_value(repositories, commands)
         self._schema = _BASE_SCHEMA + tuple((table.name, table.sql.strip().rstrip(";")) for repo in repositories for table in repo.tables)
         if (len({name for name, _ in self._schema}) != len(self._schema)
@@ -293,7 +332,7 @@ class PersistenceService:
         self._checkpoint_pending = False
         self._close_report: CloseReport | None = None
         self._close_job: _Job | None = None
-        self._ports: dict[int, object] = {}
+        self._ports: WeakValueDictionary[int, _SealedPort] = WeakValueDictionary()
         self._module_owners: dict[str, ModuleOwnerLease] = {}
 
     def get_health(self) -> Health:
@@ -337,7 +376,7 @@ class PersistenceService:
                 return None
             return self._resources.expected_database_id
 
-    def bind_operation(self, definition: CommandDefinition, scope_id: str) -> OperationPort:
+    def bind_operation(self, definition: CommandSpec, scope_id: str) -> OperationPort:
         """Issue a scope-bound port from an exact statically registered definition."""
         if not any(definition is item for item in self._commands) or not valid_identifier(scope_id):
             raise ValueError("A registered command and explicit valid scope are required.")
@@ -824,10 +863,23 @@ class PersistenceService:
         if orphan or missing:
             raise _StorageFault(self._error(job.operation, "INTEGRITY_FAILURE", "DATA_INCONSISTENT", "receipt"))
 
-    def _stored_audits(self, job: _Job, definition: CommandDefinition, receipt: Receipt, *, require_complete: bool = True) -> tuple[AuditRecord, ...]:
+    def _stored_audits(self, job: _Job, definition: CommandSpec, receipt: Receipt, *, require_complete: bool = True) -> tuple[AuditRecord, ...]:
         manifest = self._sql(job, "SELECT length(manifest), CASE WHEN length(manifest)<=65536 THEN manifest END FROM required_audit_events WHERE commit_id=?", (receipt.commit_id,)).fetchone()
         expected = encode_value(audit_manifest(definition.required_audits), 65536)
-        if manifest is None or manifest[0] > 65536 or manifest[1] != expected:
+        projected = None
+        if manifest is None or manifest[0] > 65536:
+            raise InvalidValue()
+        if type(definition) is ResultBoundCommandDefinition:
+            from companion_memory.logging_service.audit_materialization import freeze_intents, materialize_events, evidence_value
+            from ._codec import command_descriptor
+            raw = decode_value(manifest[1], 65536)
+            if type(raw) is not dict or "intentions" not in raw:
+                raise InvalidValue()
+            intentions = freeze_intents(definition, raw["intentions"])
+            digest = hashlib.sha256(encode_value(command_descriptor(definition), 1048576)).hexdigest()
+            expected = encode_value(evidence_value(definition, intentions, receipt.fingerprint, receipt.commit_id, digest), 65536)
+            projected = materialize_events(definition, intentions, receipt.result)
+        if manifest[1] != expected:
             raise InvalidValue()
         rows = self._sql(job, "SELECT event_slot, audit_id, length(record), CASE WHEN length(record)<=65536 THEN record END FROM audit_records WHERE commit_id=? ORDER BY event_slot LIMIT 257", (receipt.commit_id,)).fetchall()
         requirements = {item.event_slot: item for item in definition.required_audits}
@@ -845,6 +897,8 @@ class PersistenceService:
                 "actor_ref": record.actor_ref, "reason_code": record.reason_code,
                 "target_refs": record.target_refs, "change": record.change,
             })
+            if projected is not None and event != projected[slot]:
+                raise InvalidValue()
             record = replace(record, target_refs=event["target_refs"], change=event["change"])
             if validate_audit_record(record, requirements[slot], receipt.identity, receipt.commit_id) != encoded:
                 raise InvalidValue()
@@ -891,7 +945,7 @@ class PersistenceService:
         identity = self._bound_identity(port, key, operation)
         if isinstance(identity, PersistenceError):
             return Rejected(identity)
-        if type(command) is not LocalCommand or type(command.version) is not int:
+        if type(command) is not (ResultBoundCommand if type(port._definition) is ResultBoundCommandDefinition else LocalCommand) or type(command.version) is not int:
             return Rejected(self._error(operation, "INVALID_INPUT", "INVALID_SHAPE", "operation"))
         if command.version != port._definition.command_version:
             return Rejected(self._error(operation, "INVALID_INPUT", "UNSUPPORTED_COMMAND", "operation"))
@@ -996,6 +1050,8 @@ class PersistenceService:
         assert requirement is not None and self._settings is not None and self._resources is not None
         try:
             self._check_deadline(uow._job)
+            if type(uow._definition) is ResultBoundCommandDefinition and not uow._materializing:
+                return Failed(self._error("participate", "TRANSACTION_FAILED", "CONSTRAINT_FAILED", "audit"))
             if requirement.owner_module not in uow._changed:
                 return Failed(self._error("participate", "ACCESS_DENIED", "CAPABILITY_MISMATCH", "operation"))
             record = create_audit_record(requirement, uow._identity, uow._commit_id, event,
@@ -1023,8 +1079,10 @@ class PersistenceService:
         try:
             # A temporary receipt carries associations only; no result is published
             # or stored until the complete mandatory set has been checked.
-            receipt = Receipt(1, uow._identity, uow._definition.command_version, 1, "0" * 64,
-                              uow._commit_id, "", uow._definition.result_schema_version, None)
+            receipt = Receipt(1, uow._identity, uow._definition.command_version,
+                              uow._job.handle.fingerprint_version if uow._job.handle is not None else 1,
+                              uow._job.handle.fingerprint if uow._job.handle is not None else "0" * 64,
+                              uow._commit_id, "", uow._definition.result_schema_version, uow._result)
             records = self._stored_audits(uow._job, uow._definition, receipt, require_complete=False)
             return uow._definition.required_audits, records
         except InvalidValue:
@@ -1086,7 +1144,8 @@ class PersistenceService:
                     job.uow = uow
                     manifest = encode_value(audit_manifest(port._definition.required_audits), 65536)
                     try:
-                        self._sql(job, "INSERT INTO required_audit_events VALUES(?, ?)", (commit_id, manifest))
+                        if type(port._definition) is not ResultBoundCommandDefinition:
+                            self._sql(job, "INSERT INTO required_audit_events VALUES(?, ?)", (commit_id, manifest))
                     except _StorageFault:
                         raise _StorageFault(self._error("execute", "TRANSACTION_FAILED", "AUDIT_FAILED", "audit")) from None
                     try:
@@ -1102,13 +1161,21 @@ class PersistenceService:
                     from companion_memory.logging_service.audit import AuditAccess
                     job.coordinator = AuditStorageBinding(self, port._scope, None, coordinator=True)
                     audit = AuditAccess.for_coordinator(job.coordinator, self._settings.events_per_operation)
-                    checked = audit.check_required_audits(uow)
+                    if type(port._definition) is ResultBoundCommandDefinition:
+                        try:
+                            frozen = freeze_value(port._definition.result_schema, result, owned=True)
+                            encode_value(frozen, self._settings.receipt_max_bytes)
+                        except InvalidValue:
+                            raise _StorageFault(self._error("execute", "TRANSACTION_FAILED", "RECEIPT_FAILED", "receipt")) from None
+                        checked = audit.check_required_audits(uow, frozen_result=frozen)
+                    else:
+                        checked = audit.check_required_audits(uow)
                     if type(checked) is AuditErr:
                         assert job.first_error is not None
                         raise _StorageFault(job.first_error)
                     try:
-                        frozen = freeze_value(port._definition.result_schema, result, owned=True)
-                        receipt = Receipt(1, handle.identity, handle.command_version, 1, handle.fingerprint,
+                        frozen = uow._result if type(port._definition) is ResultBoundCommandDefinition else freeze_value(port._definition.result_schema, result, owned=True)
+                        receipt = Receipt(1, handle.identity, handle.command_version, handle.fingerprint_version, handle.fingerprint,
                                           cast(str, commit_id), utc_text(self._resources.utc_now()),
                                           port._definition.result_schema_version, frozen)
                         encoded = encode_value(receipt_value(receipt), self._settings.receipt_max_bytes)
@@ -1271,7 +1338,7 @@ class PersistenceService:
                     or handle.identity.owner_namespace != port._definition.owner_namespace
                     or handle.identity.operation_kind != port._definition.operation_kind):
                 return Rejected(self._error("resolve_operation", "ACCESS_DENIED", "CAPABILITY_MISMATCH", "operation"))
-            if handle.command_version != port._definition.command_version or handle.fingerprint_version != 1:
+            if handle.command_version != port._definition.command_version or handle.fingerprint_version != (2 if type(port._definition) is ResultBoundCommandDefinition else 1):
                 return Rejected(self._error("resolve_operation", "INVALID_INPUT", "UNSUPPORTED_COMMAND", "operation"))
             if self._writer is not None:
                 return Unconfirmed(handle, self._error("resolve_operation", "RESULT_UNCONFIRMED", "RECOVERY_UNAVAILABLE", "transaction", pending=True))

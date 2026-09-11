@@ -1,29 +1,30 @@
 # 当前任务
 
-任务：**Provider基础服务与模拟适配器：用户已审核通过，按明确授权完成一次独立本地提交后停止。**
+**持久接入、三段批次、专注门控与恢复及最小只读观察：用户审核通过，已授权本地提交。** 用户于2026-09-11明确“审核通过提交commit”。本记录所属提交包含整体实现、已完成修复及验收记录；提交后停止，不推送、不进入下一阶段。
 
-## 基线、授权与交付
+## 基线与实际范围
 
-2026-09-10，目录与Git根为`/Users/cassia/Local/Code/iris_memory_core`，`main`，父提交为`6a99353c6035629bcff866e8367d6fd69fa93113`。本阶段由本记录所属提交定位；提交前已核对44份已验收改动及119份受测文件指纹，保留全部授权内容。历史已验收里程碑及提交定位见[STATUS](STATUS.md)。
+目录／Git根 `/Users/cassia/Local/Code/iris_memory_core`，`main`，父提交 `128f908e8d780da647949dfe3f6c21980b31fcf2`。提交前核对89份已审改动（22修改、67新增）及空暂存区；全部187份受测文件与最终验证指纹一致，复用有效检查，无源码／测试或环境变化。本次只更新CURRENT_TASK与STATUS的用户验收记录，共提交90份文件（23修改、67新增）：44份源码、33份测试／夹具、13份文档。保留所有已审内容，AGENTS、工程配置、锁文件及冻结资料不变；无子代理／其他会话、安装或部署。
 
-用户授权唯一新子代理推进整体阶段；主会话按用户委托完成草案审查、F1–F5及配置／有界文本衔接批准、定稿核对、实现派发及最终技术验收。**用户现已明确“审核通过，提交commit”，授权本阶段一次独立本地提交。** 主会话只做静态审查与独立文件指纹核对，未运行项目代码；实现、故障修复和下列实际运行由执行子代理完成。当前未发现阻塞或需用户裁决的契约冲突。
+## 修复与定向证据
 
-交付正文分别见[Provider契约](../architecture/provider.md#provider-foundation-contract)、[配置契约](../architecture/configuration.md#configuration-provider-validation-contract)及[持久化衔接](../architecture/persistence-and-transactions.md#provider-persistence-bridge)：四能力规范化及显式模拟适配器、真实本地SQLite账本／费用／共享预算／交接、登记确认后发送、同事务审计、有限尝试／总期限／取消／UNKNOWN、受限查询、独立完整配置校验及旧格式兼容。旧三个配置入口及审计文本限制保持。
+- **有限保留与读取：** `Observations.started/trim_operations/local_evidence` 将已结束的全部确认尝试（含UNCONFIRMED）统一限容，不保留完成Task；仍在途任务不因淘汰而释放。设L为 `management.observation_row_limit`、A为 `runtime.max_active_entries`，登记最多L＋A条，任务引用最多A个；单次局部投影最多扫描／点读L＋A条，一页最坏L×(L＋A)，观察并发及等待另受现有配置约束。每个在途观察只持有限快照，不另建无界身份表。`CURRENT_PROCESS_RETAINED`只表示有限当前进程观察，缺失记录不表示已确认；原输入、协调端恢复责任、持久回执和真实存储所有者不由此窗口清理。
+- **证据与所有权合并：** 完整库／模块／操作／scope／key、命令版本、指纹版本和值共同作为键。相同命令共享事实并合并所有在途任务，原完成回调继续生效；已知COMMITTED不被超时、拒绝、取消或迟到失败读取降级。同键异内容独立记录拒绝，不将合法原回执当损坏。超时更新原登记对象，不再按部分身份寻找并覆盖它。
+- **清理独立：** 同一命令任一任务仍运行即保持占用；存储也可能在返回COMMITTED后继续关闭连接，此时结合公开存储健康保留清理观察。确认遇到已有writer而立即返回RECOVERY_UNAVAILABLE，不为每个查询虚构新的清理所有者。已有清理事实不被另一查询抹除；底层FAULTED时路径等所有权可保留到实际关闭。
+- **新增7项回归：** 合法A=2、L=4配置中，真实临时SQLite writer屏障下连续三轮各12个不同原键确认，登记≤6、Task引用受限且可回收、每次观察点读≤6；解除屏障后继续12次确认，登记≤4，淘汰后仍能凭原输入查回原回执。COMMIT前／后重叠同身份确认、调用超时／原任务迟到、已提交连接关闭超过存储等待期限、回执SQL读取故障注入、反向完成顺序、读取期间提交、拒绝／取消和版本／内容冲突均有具体断言。保留入口／批次／实例权限投影，观察不输出指纹或恢复句柄、不执行模型或写恢复。
 
-## 最近有效验证
+## 最近有效验证与文件对应
 
-受测集合为companion_memory／tests全部`.py`及`.python-version`、`pyproject.toml`、`uv.lock`，共119份。按相对路径排序，逐项拼接路径、NUL、文件SHA256十六进制、LF，再计算总SHA256：`4c69b3f4e9fef825b02fad7fe575ad8934f67e85c8c90b2f2e415b0e8315a2f9`。主会话已独立核对该指纹与最终受测源码／测试一致；本次收尾代码未变，不重跑测试。
+实际CPython **3.12.14**（`.venv/bin/python3`）、SQLite **3.53.1**／threadsafety=3、macOS **26.6.2 arm64**、uv **0.12.9**、Pyright **1.1.413**、nodeenv **1.10.0**、Node **26.8.1**；无新增依赖。以下 `U` 为 `uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync`，检查均退出0：
 
-执行环境为CPython 3.12.14、实际SQLite 3.53.1、Pyright 1.1.413、uv 0.12.9；未安装或更新依赖。以下结果来自执行子代理最终修复轮实际命令；Python工具共用`uv --cache-dir /tmp/iris-memory-core-uv-cache run --offline --no-sync`前缀：
+- `U python -m unittest tests.runtime.test_confirmation_retention -v`：新增7项通过；修复前真实屏障复现登记17条超界、同身份确认提前显示清理完成，以及成功返回后仍在关闭线程的漏报。
+- `U python -m unittest discover -s tests -t . -v`：**569项，48.619秒，全部通过**，保留原562项。日志 `/tmp/iris-confirmation-final-unittest.log`；其中既有真实文件、跨进程恢复、回环HTTP及普通／优化解释器回归也已重新执行。
+- `U pyright --version`；`U pyright --project pyproject.toml --pythonpath .venv/bin/python`：全量源码／测试／新增文件，0 errors／warnings／informations。
+- `U python -m compileall -q companion_memory tests`；`uv --cache-dir /tmp/iris-memory-core-uv-cache lock --check --offline`（4 packages）；`node --check /tmp/iris-confirmation-status.js`（从当前http.py的SCRIPT逐字节提取）。
+- 修复轮 `git diff --check`、全部67份新增文件UTF-8／AST／语义命名检查通过；提交收尾另核对90份暂存文件、`git diff --cached --check`及13份文档的路径／锚点，均通过。暂存和提交的受测文件与上述实际测试版本一致。
 
-- `python -m unittest discover -s tests -t . -v`：479项通过，9.164秒（原412＋新增67）；`pyright --project pyproject.toml --pythonpath .venv/bin/python`：0错误／0警告／0信息；`pyright --version`：1.1.413；`python -m compileall -q companion_memory tests`退出0。
-- `uv --cache-dir /tmp/iris-memory-core-uv-cache lock --check --offline`退出0；`git diff --check`及31份未跟踪文本逐份差异空白检查通过；受影响链接／锚点有效，三份架构原已批准正文与HEAD前缀逐字一致。
-- 真实自有临时SQLite及受控屏障覆盖关键提交／审计原子性、35→50迟到差额与冲突、共享预算及超额风险、完整性／隔离拒绝、单快照汇总、实际Logger、完成时间两侧仲裁、有限恢复和清理所有权。父进程在五类窗口SIGKILL子进程并等待退出，再由全新解释器同库恢复；模拟器调用证据与真实提交证据分开。父提交旧源码建库后的当前实现打开／原键回放／继续事务实验通过，未迁移或补表。
+最终受测**187份文件**（182 Python＋5工程文件，含未跟踪文件及内嵌Web资源），清单 `/tmp/iris-runtime-tested-files.sha256`。原算法：Git已跟踪及未跟踪的companion_memory、tests、.gitignore、.python-version、.vscode、pyproject.toml、uv.lock去重排序；每项UTF-8路径＋NUL＋文件SHA256小写十六进制＋LF，对完整清单再取SHA256：**`954804a6bb62235e1dd6997121d7bd76979728f5ef8ff81018ecd6929cb0da43`**。验收记录收尾后核对暂存版本及提交版本与该受测指纹一致；仅文档变化，未机械重跑测试。
 
-最后所有权修复已由主会话核对：明确NotCommitted、已提交结果和仍在途清理分别保留；存储故障后不新发模型，清理结束前不释放槽位或owner；等待方保留原执行任务。实际覆盖不等于矩阵中每个变体全部通过，验收预期正文保持。
+## 限制与停止点
 
-## 边界与停止点
-
-仅模拟适配器执行模型侧行为，本地SQLite记账真实。真实配置快照／profile／价格版本仍缺失，不伪造；生产G2／路径、真实模型／供应商／HTTP／计费／凭据、Linux／Docker、Web、运行模式／梦境／业务模块、热激活及完整生产预算仍范围外。未做性能压测、介质掉电或编辑器Pylance验证；测试门控不代表生产鉴权，进程终止恢复不外推其他平台或掉电保证。
-
-本次仅更新CURRENT_TASK／STATUS收尾表述，显式暂存44份授权文件，核对暂存清单、差异、受测指纹及`git diff --cached --check`后创建一次本地提交；不推送、合并或amend。提交后停止，下一阶段未授权。后续由用户手动转交并维护一个只读监督会话与一个执行会话，不再通过子代理推进；本次不创建新会话或任务。
+新增证据为真实自有临时SQLite、线程屏障、SQL故障注入及受控完成顺序；模拟适配器与合成参与者仍只证明对应调用／事务语义。当前进程观察不替代持久原键确认或完整历史；不新增恢复写入、模型重试、配置编辑、FAULTED／UNKNOWN解除或生产能力。既有配置容量限制保持：64个平台仅为结构上限；原测试audit=2048、actor=bootstrap时12平台可持久、13平台审计超限回滚，另显式audit=8192的目录边界为短ID24／长ID17平台，均非通用容量保证。检查点仍随业务恢复代次线性保留，存储全检可能超时。**Pylance未验证**；未新增浏览器交互、Linux／Docker、性能或掉电证据。用户已审核通过；本地提交后停止，无推送或下一阶段授权。

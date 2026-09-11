@@ -12,7 +12,7 @@ from types import MappingProxyType
 from typing import cast
 
 from companion_memory.logging_service.audit_records import AuditRecord, audit_manifest, freeze_audit_event
-from .definitions import CommandDefinition, LocalCommand, RepositoryDefinition
+from .definitions import CommandSpec, CommandDefinition, LocalCommand, RepositoryDefinition, ResultBoundCommand, ResultBoundCommandDefinition
 from .results import OperationIdentity, Receipt, RecoveryHandle
 from .schema import (
     BoundedTextSchema, InvalidValue, RecordSchema, ScalarSchema, SequenceSchema, Value,
@@ -51,8 +51,8 @@ def schema_value(schema: ScalarSchema | BoundedTextSchema | RecordSchema | Seque
                                   "nullable": field.nullable, "optional": field.optional}) for field in schema.fields)
 
 
-def command_descriptor(definition: CommandDefinition) -> Value:
-    return MappingProxyType({
+def command_descriptor(definition: CommandSpec) -> Value:
+    result: dict[str, Value] = {
         "owner": definition.owner_namespace, "kind": definition.operation_kind,
         "version": definition.command_version, "input": schema_value(definition.input_schema),
         "result_version": definition.result_schema_version, "result": schema_value(definition.result_schema),
@@ -61,10 +61,14 @@ def command_descriptor(definition: CommandDefinition) -> Value:
         "audit_schemas": tuple(MappingProxyType({"slot": item.event_slot, "change": schema_value(item.change_schema),
                                                 "reasons": item.reason_codes, "targets": item.target_limit})
                                for item in sorted(definition.required_audits, key=lambda item: item.event_slot)),
-    })
+    }
+    if type(definition) is ResultBoundCommandDefinition:
+        from companion_memory.logging_service.audit_materialization import binding_value
+        result.update({"intent_schema": schema_value(definition.audit_intent_schema), "audit_bindings": binding_value(definition), "fingerprint_version": 2})
+    return MappingProxyType(result)
 
 
-def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandDefinition, ...]) -> bytes:
+def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...]) -> bytes:
     value = MappingProxyType({
         "repositories": tuple(MappingProxyType({"owner": item.owner_module, "version": item.schema_version,
                                                "tables": tuple(MappingProxyType({"name": table.name, "sql": table.sql.strip().rstrip(";")})
@@ -75,8 +79,17 @@ def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tup
     return encode_value(value, 1048576)
 
 
-def prepare_command(definition: CommandDefinition, identity: OperationIdentity, command: LocalCommand, limit: int) -> tuple[RecoveryHandle, MappingProxyType[str, Value], MappingProxyType[str, Value]]:
+def prepare_command(definition: CommandSpec, identity: OperationIdentity, command: LocalCommand | ResultBoundCommand, limit: int) -> tuple[RecoveryHandle, MappingProxyType[str, Value], MappingProxyType[str, Value]]:
     values = cast(MappingProxyType[str, Value], freeze_value(definition.input_schema, command.values))
+    if type(definition) is ResultBoundCommandDefinition:
+        from companion_memory.logging_service.audit_materialization import freeze_intents
+        if type(command) is not ResultBoundCommand:
+            raise InvalidValue()
+        intentions = freeze_intents(definition, command.audit_intents)
+        encoded = encode_value(MappingProxyType({"definition": command_descriptor(definition), "values": values, "intentions": intentions}), limit)
+        return RecoveryHandle(identity, definition.command_version, 2, hashlib.sha256(encoded).hexdigest()), values, intentions
+    if type(command) is not LocalCommand:
+        raise InvalidValue()
     events = command.audit_events
     if type(events) is not dict or any(type(key) is not str for key in events):
         raise InvalidValue()
@@ -96,7 +109,7 @@ def receipt_value(receipt: Receipt) -> Value:
     })
 
 
-def decode_receipt(data: bytes, definition: CommandDefinition) -> Receipt:
+def decode_receipt(data: bytes, definition: CommandSpec) -> Receipt:
     raw = decode_value(data, 65536)
     if type(raw) is not dict or set(raw) != {field.name for field in fields(Receipt)}:
         raise InvalidValue()
@@ -105,7 +118,7 @@ def decode_receipt(data: bytes, definition: CommandDefinition) -> Receipt:
         raise InvalidValue()
     identity = OperationIdentity(**identity)
     if (not valid_identity(identity) or type(raw["schema_version"]) is not int or raw["schema_version"] != 1
-            or type(raw["fingerprint_version"]) is not int or raw["fingerprint_version"] != 1
+            or type(raw["fingerprint_version"]) is not int or raw["fingerprint_version"] != (2 if type(definition) is ResultBoundCommandDefinition else 1)
             or type(raw["command_version"]) is not int or raw["command_version"] != definition.command_version
             or type(raw["result_schema_version"]) is not int or raw["result_schema_version"] != definition.result_schema_version
             or type(raw["fingerprint"]) is not str or len(raw["fingerprint"]) != 64
@@ -113,7 +126,7 @@ def decode_receipt(data: bytes, definition: CommandDefinition) -> Receipt:
             or not valid_identifier(raw["commit_id"]) or not valid_utc(raw["recorded_at"])):
         raise InvalidValue()
     result = freeze_value(definition.result_schema, raw["result"])
-    return Receipt(1, identity, raw["command_version"], 1, raw["fingerprint"], raw["commit_id"],
+    return Receipt(1, identity, raw["command_version"], raw["fingerprint_version"], raw["fingerprint"], raw["commit_id"],
                    raw["recorded_at"], raw["result_schema_version"], result)
 
 

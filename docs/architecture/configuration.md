@@ -844,3 +844,175 @@ ProviderResolutionError仅含code、operation、issues；operation固定resolve_
 | 额外依赖值缺失、实际嵌套值也非法；旧三个入口提交新的声明；成功后深层修改源容器 | 缺值优先附加验证；旧入口各维持原UNKNOWN_VALIDATOR或既有不支持原因；新快照稳定不可变 |
 
 新增配置入口和纯内存适用性检查属于已批准整体契约的实现内容；不把生产版本／G2等范围外设施作为伪造配置字段的理由。
+
+<a id="ingress-runtime-configuration-draft"></a>
+
+### 11.14 持久接入与批次运行所需配置补充（已批准）
+
+**状态：本节推荐方案及完整显式参数集已获用户批准。** 本节属于[持久接入与批次运行整体契约](durable-ingress-and-batch-runtime.md)，不修改§11.9–11.13批准内容或现有四个解析入口。参数、作用域和持久配置身份只在本节维护；集中决定见[整体批准表](durable-ingress-and-batch-runtime.md#decisions)。所有选定数字均为显式合成配置，非生产默认；新参数一律`NoDefault()`。执行授权及验证进度见CURRENT_TASK。
+
+#### 11.14.1 能力缺口与独立组合入口
+
+现有普通解析只支持instance／no_override／public并拒绝validator／dependencies；三个独立增强入口分别增加日志、持久化及Provider固定校验，仍不执行平台作用域、持久版本或热激活。EffectiveSnapshot是可信配置模块签发的内存结果，没有可持久身份；`schema_revision`、Python对象身份、内容摘要或随机ID不能替代配置版本。
+
+新增独立入口`resolve_runtime_configuration(foundation, runtime, platforms, protected_directories, material_contracts)`，只作完整纯内存校验，返回`RuntimeConfigurationOk(ConfigurationCandidate)`或`RuntimeConfigurationErr(error)`。五项均须显式传入，不读文件／环境／数据库，不做权限检查或联网；material_contracts是推荐预算相容方案所需的已批准输入增量，不修改既有四个解析入口。仅运行时超限方案未采纳，不能以None绕过此输入及相容保障。输入分组是实际配置域的边界，由调用方明确提交，不能从一个不支持的注册表中剔除字段取得成功：
+
+| 输入域 | 载体与范围 |
+| --- | --- |
+| foundation | 精确记录，含原生冻结registry和精确explicit_values；完整保留§11.13的Provider、storage／audit及条件日志组，按原Provider校验解析为原生EffectiveSnapshot |
+| runtime | 同样含冻结registry及explicit_values；仅本节实例级接入／调度／观察定义及受支持额外定义；新原生RuntimeSettingsSnapshot包含全部条目，不冒充EffectiveSnapshot |
+| platforms | 非空有界列表，每项含内部platform_id、该平台冻结registry及explicit_values；平台集合由可信接入装配登记，唯一、不按输入消息动态添加。生成PlatformSettingsSnapshot，绑定精确platform_id |
+| protected_directories | 原条件目录上下文；日志组启用时完整非空五类清单；只用于foundation解析和跨域资源描述核对，不变成另一份路径配置 |
+| material_contracts | 推荐相容方案下为与platforms一一匹配的可信原生、不可变材料能力声明集合，绑定参与者／格式、模板及有限上界规则版本；无额外／缺失平台，不从消息或动态插件取得。声明仅有受支持的固定有限规则及有界参数，不含可执行回调或模板正文；相容性检查见§11.14.4 |
+
+输出ConfigurationCandidate包含上述完整不可变结果及域／定义格式清单，尚无生效指针、持久revision或snapshot_id；不能直接作为可恢复批次配置。三个域有独立所有者和显式结构，无同名键跨域覆写。新组合入口核验**整个**输入集合后一次交付，任何一域失败不发布其他域；旧入口不转调新入口，旧错误／拒绝语义保持。内部可复用已有固定校验器，但不得清空真实validator／dependencies、伪造scope或构造私有快照。
+
+平台键模板为`platforms.<platform_id>.buffer.<name>`，在可信注册时展开为有限确定键，平台ID仍作为快照作用域绑定；不是用户提供字符串的动态查找规则。scope精确为[platform]，override_policy=no_override，无实例继承、入口覆写或部署强制覆写。不同平台可明确提交不同值；一个平台值集只适用于其入口。缺平台域就拒绝相关入口启动，不能借另一个平台的值补齐。完整层级合并和运行中编辑平台参数不在本子能力内。
+
+新RuntimeSettingsSnapshot／PlatformSettingsSnapshot只由该入口签发，具有`get_entry`、`list_entries`、`get_registry`及平台绑定只读访问；精确值、缺失、null、深不可变和拒绝对象钩子沿用原解析原则。旧基础服务只接原foundation EffectiveSnapshot；运行／缓存使用新配置模块签发的绑定视图，不向旧服务塞入新validator的注册表。三个域由统一配置所有者统一管理，不是业务模块私有副本。
+
+<a id="runtime-envelope-parameters"></a>
+
+#### 11.14.2 完整新参数及推荐显式值
+
+以下全部required=true、nullable=false、default=NoDefault()，sensitivity=public仅用于非秘密测试值；read_roles／write_roles=[trusted_operator]，deprecated=false，replacement／upgrade_rule=NotApplicable。标识／说明载体和精确类型匹配沿用§11.9；说明文字不作为执行表达式。range均闭区间，integer拒绝bool；boolean的range／enum为NotApplicable。平台参数apply_mode=NEXT_BATCH（本子能力无热改入口），其他参数INITIALIZE_ONLY；activation_group=NotApplicable，override_policy=no_override。schema_revision只验证定义标识，不能当值版本。consumers至少包含所列使用者，附加声明不授予权限。
+
+| 键（平台行省略`platforms.<id>.`前缀） | 类型／单位／合法范围 | 推荐显式值（已批准） | owner／最小消费者 |
+| --- | --- | --- | --- |
+| ingress.event_max_bytes | integer／bytes／256–8192 | 1024 | ingress／ingress |
+| runtime.max_active_entries | integer／entries／1–8 | 1 | runtime／runtime |
+| runtime.operation_timeout_ms | integer／milliseconds／1–60000 | 5000 | runtime／runtime、ingress、buffers |
+| runtime.recovery_timeout_ms | integer／milliseconds／1–60000 | 30000 | runtime／runtime |
+| runtime.close_timeout_ms | integer／milliseconds／1–60000 | 5000 | runtime／runtime |
+| runtime.focus_drain_timeout_ms | integer／milliseconds／1–60000 | 30000 | runtime／runtime |
+| runtime.claim_lease_ms | integer／milliseconds／1–60000 | 15000 | runtime／runtime；只检测失联，不自动夺权 |
+| runtime.local_retry_limit | integer／attempts／0–1 | 1 | runtime／runtime、ingress、buffers；额外本地尝试次数 |
+| runtime.read_page_size | integer／rows／1–128 | 16 | runtime／runtime、buffers |
+| runtime.transfer_page_size | integer／rows／1–128 | 16 | buffers／buffers |
+| learning.material_max_bytes | integer／bytes／256–8192 | 8192 | cognition／runtime、buffers、cognition |
+| learning.input_units_limit | integer／simulated_input_units／256–1048576 | 8192 | cognition／cognition、runtime |
+| learning.output_units_limit | integer／simulated_output_units／1–8192 | 1024 | cognition／cognition、runtime |
+| buffer.history_context_count | integer／messages／0–128 | 1 | buffers／buffers |
+| buffer.recent_context_count | integer／messages／0–128 | 1 | buffers／buffers |
+| buffer.target_count | integer／messages／1–128 | 2 | buffers／buffers |
+| buffer.normal_soft_limit | integer／messages／1–1000000 | 1000 | buffers／buffers、runtime；只作软水位，无自动删除 |
+| buffer.explicit_short_enabled | boolean | false | buffers／buffers、runtime |
+| buffer.idle_tail_enabled | boolean | false | buffers／buffers、runtime |
+| buffer.idle_timeout_ms | integer／milliseconds／0–86400000 | 0 | buffers／buffers、runtime；关闭时恰为0，开启时正值 |
+
+本表推荐候选现取E=1024、H/T/R=1/2/1、材料限额8192，其他本表值保持；这是用户明确选定的合成配置，不是解析时自动调整旧值。格式依据及完整代入见[§11.14.6](#runtime-compatible-budget-candidate)。原E=4096、H/T/R=2/8/2、材料限额6144仅保留为[超限反例](../product/decisions-and-delivery.md#runtime-context-overflow-options)，不再与推荐列混用。本节推荐候选已批准，静态相容不代表实际初始化或执行通过。
+
+学习输入／输出单位与[当前Provider模拟计量](provider.md#provider-foundation-ports)一致，不能称为真实token估算。计量取Provider消息text的UTF-8字节总和；模板及三段原文、参与者渲染进text的角色标签都计入，不能将独立role枚举冒称为已计量文本。发送前与选定GENERATION profile的能力和上限核对。真实tokenizer、真实模型预算及更大的输出格式须另行扩充，不通过忽略token限制来宣称支持生产。这里只提出合成材料／模板及相关模拟profile的完整容量候选，定义见[材料唯一正文](durable-ingress-and-batch-runtime.md#synthetic-window-material)及[参数代入](#runtime-compatible-budget-candidate)；不指定真实模型、生产价格或真实认知模板。
+
+新接收事件版本的拟议**格式硬上限**为：外部标识／显示名各512 UTF-8字节；单事件引用和媒体各至多16项；extensions至多16个已登记字段、容器深度至多4层，值只限布尔、64位整数、有界字符串及声明的有限数组／记录；事件完整确定性编码不超过8192字节。内部ID沿用Provider安全ID规则。三段总成员至多128；平台域数至多64；每项配置参数的定义／有效值／来源持久编码至多8192字节，域版本保存条目计数及内容摘要，逐项保存完整记录；组合目录只存域版本引用不塞全部值。硬上限用于格式兼容和历史有界读取，也是本契约已批准内容；不是可由消息覆盖的参数，不代表生产容量承诺。事件当前新写限额取event_max_bytes，旧原事实读取取其格式上限。
+
+<a id="runtime-observation-parameters"></a>
+
+#### 11.14.3 观察参数
+
+共同元信息同上，scope=[instance]、INITIALIZE_ONLY；观察不会因Schema中read_roles声明就自动获权，实际端口按[管理边界](durable-ingress-and-batch-runtime.md#observation)执行。
+
+| 键 | 类型／单位／合法范围 | 推荐显式值（已批准） | owner／消费者 |
+| --- | --- | --- | --- |
+| management.observation_row_limit | integer／rows／1–128 | 32 | management／management、runtime |
+| management.observation_max_bytes | integer／bytes／1024–65536 | 32768 | management／management、runtime |
+| management.observation_timeout_ms | integer／milliseconds／1–60000 | 2000 | management／management、runtime |
+| management.observation_concurrency | integer／requests／1–16 | 2 | management／management |
+| management.refresh_min_interval_ms | integer／milliseconds／100–60000 | 1000 | management／management |
+| logging.web_window_events | integer／events／1–65536 | 512 | logging_service／logging_service |
+| logging.web_query_row_limit | integer／rows／1–128 | 32 | logging_service／logging_service、management |
+| logging.web_query_max_bytes | integer／bytes／1024–65536 | 32768 | logging_service／logging_service |
+| logging.web_query_timeout_ms | integer／milliseconds／1–60000 | 1000 | logging_service／logging_service |
+
+本节logging.web_*归新runtime配置域，不能单独送进旧日志解析入口；foundation域仍按原规则保留完整日志组。新组合入口要求foundation存在完整且启用的实际日志服务配置，才可启用本次Web窗口；不减免旧日志组检查。Web等级直接继承该日志服务的已批准模块采集阈值，最小窗口不另提供等级热编辑或事件正文捕获开关。
+
+窗口最大内存以`web_window_events × 原日志event_max_bytes`加固定有界索引计，不动态无限增长；JSON／HTTP响应必须再校验完整编码字节。窗口容量和返回行数分别约束存留与一次读取，不能把一次查询上限当诊断丢弃策略。客户端速率限制按认证会话执行，连接总并发由同一观察服务限制；无客户端通过重连绕过实例容量的承诺，生产反滥用另定。
+
+<a id="runtime-batch-validation"></a>
+
+#### 11.14.4 固定校验、容量与错误
+
+新runtime及platform域的固定验证器白名单为`runtime_limits`、`batch_windows`、`batch_triggers`、`observation_limits`，分别绑定runtime.max_active_entries、各平台buffer.target_count、各平台buffer.idle_tail_enabled、management.observation_max_bytes；必需依赖声明覆盖各自表内读取的新参数。foundation跨域依赖由组合入口显式校验，不伪造为另一个registry中已注册的普通依赖。额外注册依赖仍按原“必须有值”语义核验，不擅自改变自引用／前向／声明环规则；未知验证器、错误scope、错误绑定或缺必要定义拒绝，无运行时回调。
+
+| 校验 | 拟议固定规则 |
+| --- | --- |
+| 批次窗口 | H、R非负、T正，H＋T＋R≤128；normal_soft_limit≥T＋R。H大于实际目标时只保留实际尾部，不制造消息。按已批准预算相容方案，还须通过每平台完整窗口的最坏材料／单位校验；结构合法不等于可发送 |
+| 触发 | idle关闭时timeout=0；开启须timeout>0；显式短批与空闲尾部独立。策略的具体切分在产品正文唯一维护 |
+| 工作及期限 | runtime.max_active_entries≤provider.max_in_flight；持久化操作与Provider保留原各自期限，外层等待取剩余时间，不修改旧端口或把timeout当取消底层I/O |
+| 事件／材料 | 完整事件新写≤event_max_bytes；完整三段引用及读取有格式上限；实际模型材料≤material_max_bytes，输入单位总量≤input_units_limit，输出单位≤output_units_limit，均不得超过所绑定profile限制 |
+| 存储容量 | 原Provider容量条件必须同时满足。事件点读／文本域读取按最坏JSON转义：`6 × max(event_max_bytes, material_max_bytes, 8192) + 8192 ≤ storage.receipt_max_bytes`及storage.command_max_bytes。当前域、清单、元信息页与所有审计／回执在完整编码后再次核验，不靠估算放行 |
+| 分页 | 状态／回流页只含内部ID、修订及计数，逐条原文点读，不在一页内返回page_size份最大原文。每个固定查询有结果Schema和总编码上限；超限明确LIMIT_EXCEEDED，可按原授权减少页大小再读，不裁断单条原事实 |
+| 观察 | log row_limit≤management row_limit；log query_max_bytes≤management max_bytes；两个timeout≤对应外层观察总期限。完整结果装不下即明确超限，不显示伪完整截断页 |
+| 来源及版本 | 批次必须绑定配置模块签发的已持久快照；域版本缺失、格式／内容不一致拒绝，不退回默认。无本地能力时拒绝真实模型单位／secret／生产路径解读 |
+
+三段／预算匹配在冻结前及发送前分别核验：冻结不能为了凑上限删掉原始输入、减少已固定辅助范围或跨过最旧目标；过大的单条／窗口阻止该入口并显示CONTEXT_LIMIT，下一入口仍可调度。完整来源引用不因模型预算而截断。本次采用以下初始化准入约束；持续阻塞反例及未采纳替代仍在[产品选项](../product/decisions-and-delivery.md#runtime-context-overflow-options)维护。
+
+推荐的**接收限额与窗口预算相容校验（已批准）**：每个平台令E为event_max_bytes、N为H＋T＋R；可信装配中固定版本的材料格式／合成参与者须给出并可验证单事件在完整材料中的最坏贡献W(E)、固定模板等开销B，以及相应Provider模拟输入单位上界Q(N,E)。W须覆盖允许的正文、引用、角色标记和编码展开，不能直接假设W(E)=E；不支持的媒体仍按能力拒绝。要求B＋N×W(E)≤learning.material_max_bytes，Q(N,E)≤learning.input_units_limit≤绑定GENERATION profile.max_input_units，输出限额与profile匹配，消息项数同时不超过profile.max_items。满历史为最坏窗口，首次空历史不能代替此校验。
+
+B／W／Q是受信任且版本化的材料协议能力描述，不是用户事件、自报hash、可执行配置或另一套默认参数。ConfigurationCandidate及持久组合快照元数据须保存material_contract_ref，明确参与者／格式、模板和上界规则版本；声明由可信静态装配重新提供，恢复时逐项匹配并重验，不持久化可执行对象。描述须绑定批次模板／参与者版本并随配置引用可恢复；无描述、版本不支持、无法证明有限上界或关系不成立，使用现有草案错误VALUE_INVALID／BUDGET_INVALID、operation=resolve_runtime_configuration、field=platforms，整组失败原子。它作为新域固定／跨域关系检查的一项，沿既有同层稳定顺序执行，不改变原四解析入口。
+
+该约束会拒绝保留的原超限反例；本次提交[确定候选](#runtime-compatible-budget-candidate)作为已批准合成配置，不再只给“以后调小参数”的建议。其他组合仍可在现有合法范围内明确提出并核算，但不得自动降低接收限额或改窗口。本范围材料硬上限仍8192字节，不能为了让原数值通过就私自升限。允许超限的替代方案未采纳，不提供关闭最坏预算准入的入口；反例仅用于说明持续阻塞与拒绝场景。
+
+现有已持久配置没有更新入口。跨进程恢复必须恢复原值与原策略版本；新增相容规则不反向改写旧配置，也不把重新解析成功当作原阻塞输入已处理。按旧策略建立而已发生阻塞的同库输入，需另有批准的配置／业务处置或迁移方案才能改变条件；本范围不提供该解除操作。
+
+错误是新RuntimeConfigurationError，恰含code、operation、field、reason；不扩充旧错误枚举。operation为resolve_runtime_configuration、persist_initial_configuration、load_configuration_snapshot或runtime_snapshot_issue。field限foundation/runtime/platforms/definition/value/context/storage/identity。code／reason集合：INVALID_INPUT（INVALID_SHAPE、UNKNOWN_KEY、DUPLICATE_PLATFORM、LIMIT_EXCEEDED）、UNSUPPORTED_CAPABILITY（SCOPE_UNSUPPORTED、VALIDATOR_UNSUPPORTED、FOUNDATION_UNSUPPORTED）、DEFINITION_MISMATCH（REQUIRED_DEFINITION、METADATA_MISMATCH、DEPENDENCY_REQUIRED）、VALUE_INVALID（RANGE_INVALID、DEPENDENCY_MISSING、WINDOW_INVALID、TRIGGER_INVALID、BUDGET_INVALID、CAPACITY_INSUFFICIENT）、PERSISTENCE_FAILED（NOT_COMMITTED、UNCONFIRMED、READ_FAILED）、INTEGRITY_FAILURE（VERSION_MISSING、CONTENT_MISMATCH、FORMAT_UNSUPPORTED）、ACCESS_DENIED（BINDING_MISMATCH）。持久端口仍须配原提交证据，错误不单独证明事务全无。
+
+固定顺序为：全部精确载体／键安全 → 域身份和未知键（含材料能力平台集合一一匹配）→ 全域声明／支持边界 → 必需完整定义 → foundation原校验（失败映射FOUNDATION_UNSUPPORTED或VALUE_INVALID，保留固定类别不携带原值）→ 新域完整值选择和深隔离 → 全部依赖存在性 → 新域固定校验及跨域关系 → 一次返回候选。同层按域kind、platform_id、key排序；字段使用固定标签，不回显外部平台名、路径和非法键。只读适用性`runtime_snapshot_issue`验证原生身份、全定义／值及可恢复引用，不重做配置解析或资源授权。
+
+<a id="runtime-configuration-identity"></a>
+
+#### 11.14.5 配置所有者的持久版本与恢复
+
+推荐增加配置模块专属仓储，沿用受限UoW，不另开配置数据库。它持久保存：`configuration_domains(kind, scope_id)`、每域不可变`revision`及完整有界定义／有效值／值来源、组合`configuration_snapshots`及域版本清单、`active_configuration`指针和必要审计。scope为实例或明确平台ID；foundation、runtime、platform分别是不同kind。revision为该库该域事务分配的递增整数；首次为1，后续版本协议可解释但本子能力不开放更新。`config_snapshot_id`由配置仓储以持久序列分配并同清单提交；其意义来自可查回的完整版本映射，不能由调用方传入随机ID占位。
+
+每域版本的参数子记录包含独立值格式版本、该项完整定义、完整解析后值和EXPLICIT／DEFAULT来源，按域／revision／key唯一；域元数据保存完整清单计数和按key排序的内容校验摘要。摘要仅校验损坏，schema_revision仅解释定义，二者均不是revision。必要定义、值、来源及组合映射必须能在新解释器恢复；不能只持久摘要或给每批保存一份业务私有配置。全配置初始化命令的完整编码仍须小于storage.command_max_bytes，超过则整组拒绝，不分多个独立有效提交或静默提高限额。日志目录上下文／资源授权、认证凭据、ID源和文件句柄不进入配置值；它们由可信装配另行重建和核验，见[存储装配补充](persistence-and-transactions.md#ingress-runtime-storage-draft)。
+
+`persist_initial_configuration(operation_key, candidate)`只交可信初始化者，且仅完整新装配、尚无active指针时允许。一次UoW保存全部域、组合快照、有效指针和脱敏审计；无一半有效的平台列表。revision和config_snapshot_id均为事务派生值：初始化前冻结完整候选、域清单、操作者／固定理由和规则版本，使用[结果绑定命令增量](persistence-and-transactions.md#runtime-result-bound-audit)，不得预读序列来填旧audit_events。结果中保存该次域revision列表、snapshot_id和active引用，必要审计由同一结果投影；不把配置正文／路径写入审计。返回COMMITTED后配置模块才签发`StoredRuntimeConfiguration`，其中foundation为经该模块恢复的原生EffectiveSnapshot，runtime／platforms为原生绑定视图，并可按具体入口取得`BatchConfiguration`。批次只持该只读视图及真实config_snapshot_id／域revision引用。
+
+在任何初始化副作用前，可信调用方保留原operation_key、完整候选及稳定审计意图。建库后配置COMMIT已成功而任何返回／句柄未送达时，先完成原存储OPEN_EXISTING全校验，再以这些原材料调用recovery_handle／resolve_operation查回原revision／snapshot_id；无需先知道这些派生值。确认后按原引用加载、完整校验并签发视图。可靠未提交时才同键补齐，未知保持RECOVERING；修改候选或操作者／理由但复用原键仍冲突，不能把“active存在”当成省略内容检查的捷径。
+
+已存在active时同键同内容返回原初始化回执；其他新键不能再初始化覆盖配置。没有在线patch、热发布、回退、默认重导入或批次中途换值接口。NEXT_BATCH元信息的长期含义保持；本子能力生命周期内配置不变，不能把“没有实现热改”描述成已实现下一批激活。测试可在不同新库中使用不同明确配置，不直接改活跃库来伪造热切换证据。
+
+OPEN_EXISTING中`load_configuration_snapshot(snapshot_id)`只按可信绑定库及受限配置身份读取。检查组合清单、域版本和摘要、受支持定义格式，重建相同注册表及有效值／来源并重新验证，匹配后才签发原生视图；定义旧版本不受当前实现支持则CONFIGURATION_UNRECOVERABLE，不能偷偷改按新默认解释。引用中的snapshot不存在或域缺行是完整性故障。配置版本、在用快照和对应定义随验证库保留，无清理／压缩端口。
+
+建库前必须先取得foundation中存储打开所需的最小已校验输入，解决配置库尚未打开的启动依赖：这些仍由统一配置入口解析，可信装配只保留该目标绑定及expected_database_id。首次建库后提交完整配置；若基础格式已完整建成且本次存储初始化已返回READY，但配置初始化未提交，保持RECOVERING，由原操作键与原输入确认／补齐初始化，不把空配置当默认NORMAL。若存储自身initialize仍失败／未知，必须先按[分层恢复](durable-ingress-and-batch-runtime.md#runtime-startup-layers)处理；配置补齐和运行检查点均不能让未完成的存储校验继续或跳过。重启打开后，bootstrap实际存储目标及影响资源的foundation值必须与已持久版本相符；不符拒绝，不拿启动参数覆盖active。生产保留这种启动身份／路径信息的方式另按生产前置批准。
+
+Provider当前已批准服务仅支持无版本模拟装配，因此本子能力不修改其`configuration_origin=UNVERSIONED_CONFIGURATION`、`config_snapshot_id/profile_revision/price_revision=None`及原执行证据协议。新的**批次**真实配置身份属于运行／配置关联，记录在批次及配置仓储；通过Provider既有batch_id／run_id可定位，Provider接收的foundation值由配置模块从该持久域恢复。不能把这些新ID硬填到未支持字段，不能将None解释为“批次也无版本”，也不能反过来宣称Provider已支持持久profile／价格版本。若未来要求Provider端直接携带版本，须独立扩展其配置契约及兼容，而不是在本次草案暗改。
+
+本节的纯内存解析、实际配置仓储、同事务初始化／确认和跨进程恢复均须随[整体矩阵](durable-ingress-and-batch-runtime.md#acceptance)验证；推荐值与产品策略已批准；实际验证及执行状态见CURRENT_TASK。
+
+<a id="runtime-compatible-budget-candidate"></a>
+
+#### 11.14.6 接收与完整窗口相容的确定候选（已批准合成配置；代入为静态证据）
+
+本候选针对一个受控合成平台的固定阈值学习，材料声明精确使用[合成协议及上界依据](durable-ingress-and-batch-runtime.md#synthetic-window-material)。材料／模板文字、事件编码、B／W／Q公式只在该处维护，不能由这里的参数任意替换。其他平台须一一绑定声明并独立检查；不以单平台计算证明64个平台全部配置内容都装得下。
+
+| 候选范围 | 确定值／沿用来源 |
+| --- | --- |
+| 接收与三段 | §11.14.2推荐列：E=1024，H=1、T=2、R=1；T仍是正常阈值固定目标数，N=4 |
+| 学习容量 | material_max_bytes=8192，input_units_limit=8192，output_units_limit=1024；前两者分别为材料bytes及模拟输入units，输出仍是Provider既有模拟输出预算，不声称真实token保证 |
+| LEARNING生成profile | profile_id=sample_learning、account_id=sample_account、model_id=sample_generation、wire_protocol=SIMULATED、capability=GENERATION；max_input_units=8192、max_output_units=1024、max_items=2；dimensions／space_id=None，media_tasks=空tuple。LEARNING候选映射仅此profile，不授予工作权限；其他角色／能力不因本候选改写 |
+| Provider外层容量 | provider.request_max_bytes=16384，provider.result_max_bytes=4096；覆盖原Provider合成例中的request_max_bytes=4096，不能继续沿用会装不下本材料的旧请求限额 |
+| 持久化容量 | storage.command_max_bytes=1048576，storage.receipt_max_bytes=65536；覆盖旧合成例中较小的两值。上限仍在原批准范围内，实际完整命令／回执／审计及配置初始化编码仍须逐项校验 |
+| 其他新参数 | §11.14.2余下全部推荐值及§11.14.3完整观察表原样沿用，包括短批false、空闲尾部false／timeout=0、normal_soft_limit=1000；无遗漏补默认 |
+| 其他Provider数值 | 明确沿用[Provider共用合成例](provider.md#provider-foundation-acceptance)：实例并发2、账户并发1、max_attempts=2、attempt_timeout_ms=100、request_timeout_ms=1000、retry_delay_ms=10、close_timeout_ms=1000、query_row_limit=100；sample_account／sample_window、TEST、attempt_limit=20、cost_limit_atoms=1000000，生成价格input=2／output=3 atoms/unit。profile除上行特定字段外使用本行max_attempts／attempt_timeout及价格 |
+| 其他存储／审计数值 | 明确沿用[持久化共用合成例](persistence-and-transactions.md#persistence-foundation-acceptance)：operation_timeout_ms=1000、lock_wait_ms=50、close_timeout_ms=1000、read_capacity=2、wal_checkpoint_pages=100、audit.event_max_bytes=2048、audit.events_per_operation=8；只覆盖上行两项存储容量 |
+
+foundation日志仍须按原规则提交完整合法配置；其候选与目录资源条件不因材料计算改写。生产真实路径、身份保留与鉴权仍待批准；已修订审计及分层恢复已获批准，本节不把数字候选伪装成已装配资源。固定模板／边界声明来自受控参与者能力，所有可调参数仍经统一配置显式注册与解析。
+
+**满历史窗口的静态代入：**
+
+| 检查 | 静态代入与结论 |
+| --- | --- |
+| 事件展开 | E=1024时Base64上界4×ceil(1024/3)=1368；加入材料协议逐项角色／引用180，单项上界1548 |
+| 完整材料 | 满历史N=1＋2＋1=4；固定1057＋4×1548=7249 bytes ≤8192，余量943；已包含SYSTEM模板、7个最长ID头、所有段标签、序列／时间、完整事件及尾标 |
+| 模拟输入计量 | 两项text总上界为7249 units ≤请求input_units_limit 8192=profile.max_input_units；Provider外层role枚举不冒充文本，段角色已计在逐项180中 |
+| 输出与消息数 | output_units_limit 1024=profile.max_output_units；messages恰2项≤max_items 2≤既有格式64；不把4条来源事件误算成4个Provider消息 |
+| 请求完整编码 | 本候选entry_ids仅当前入口；最多8个标量归因／操作／profile ID加1个entry ID，每个≤128字节。归一化请求的顶层键／对象标点146，8个带引号ID值1040，单entry数组132，含两项空text的固定payload结构／角色／限额119；材料只有LF需在外层JSON额外转义，满窗共14个LF。总上界146＋1040＋132＋119＋7249＋14=8700 bytes ≤request_max_bytes 16384；deadline／取消能力按既有Provider协议不属于该持久语义请求编码 |
+| 存储容量约束 | 6×max(1024,8192,8192)＋8192=57344 ≤receipt_max_bytes 65536且≤command_max_bytes 1048576；原Provider最低57344同时满足。6×result_max_bytes 4096＋8192=32768≤65536。保守六倍转义仍保留，不用Base64字母表另降旧基础门槛 |
+| 并发／窗口／费用 | runtime.max_active_entries 1≤provider.max_in_flight 2，账户并发1≤2；normal_soft_limit 1000≥T＋R=3；H＋T＋R=4≤128。单attempt最大声明费用8192×2＋1024×3=19456 atoms≤账户1000000且≤2^63−1；账户窗口有限，不能据此保证积压永远获准发送 |
+| 最小事件空间 | 材料正文的空body账目245，加入x后246≤E；只含不需JSON转义ASCII正文时可用1024−245=779字节。若正文全为3字节UTF-8汉字则最多259字，全部为六字节转义控制字符则最多129个；额外身份／引用占用须从同一E扣减，不将这些数当通用字符配额 |
+
+请求编码账目按[现有Provider精确请求字段](provider.md#provider-foundation-identity)和[模拟计量／规范化](../../companion_memory/provider/normalization.py)静态核对；材料公式对输入的引号／Unicode／引用成立，是因为它们先进入C≤E的完整事件编码，再整体Base64，不能把未经转义的原始正文当C。输出计量、规范化结果和候选产物仍独立受原result_max_bytes及语义校验约束，以上不证明任意模拟响应都合法。运行／Provider／存储期限也没有性能证明；晚完成和故障恢复边界不变。
+
+这组数值及固定格式已获批准。静态字面量计数与代入不是编码器、配置解析、数据库或模型执行结果；材料边界、最小事件、满历史、请求编码及整体验收的对应版本证据只在[CURRENT_TASK](../work/CURRENT_TASK.md)记录。静态核算不能替代实际验证。

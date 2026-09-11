@@ -480,3 +480,94 @@ AuditError恰含code、operation、field、reason、cleanup_pending，字段只�
 #### 10.9.4 验收与停止边界
 
 本节与存储基础一起按[整体验收矩阵](persistence-and-transactions.md#persistence-foundation-acceptance)验证必要事件完整性、全有或全无、重复与重新打开、审计故障、诊断隔离和受控读取；例子全部未执行，不再复制一份验收表。参数及当前配置缺口见[配置唯一补充正文](configuration.md#configuration-persistence-validation-contract)。本轮仅完成已批准契约的文档定稿，不新增审计实现、测试或数据库，实现授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)。
+
+<a id="runtime-web-observation-draft"></a>
+
+### 10.10 接入与批次运行的最小Web诊断观察（已批准）
+
+**状态：本节推荐的观察权限及结果绑定审计增量已获用户批准。** 属于[持久接入与批次运行整体契约](durable-ingress-and-batch-runtime.md)；§10.8双端服务、§10.9必要审计及其已批准错误协议保持。这里新增有界当前进程日志窗口及受控查询，不把§10.4所列完整历史／导出／实时订阅一次全部实现。参数只在[配置§11.14.3](configuration.md#runtime-observation-parameters)维护，权限及HTTP只在[整体§9](durable-ingress-and-batch-runtime.md#observation)维护。
+
+#### 10.10.1 接入统一日志及输出所有权
+
+新增日志模块拥有的`RuntimeLogWindow`，在可信装配时作为显式可选观察输出接入统一规范化路径。事件只生成一次event_id／timestamp，先完成§10.8的安全处理和有界编码，再以同一不可变安全记录分别交既有输出和窗口。旧console／file准入、FIFO、饱和、flush／close报告及EmitReceipt两端字段不变；没有装配窗口的旧服务行为不变。窗口状态从自己的健康端口观察，不把旧EmitReceipt改成持久业务回执。
+
+窗口继承模块采集过滤；文件关闭／故障不阻止窗口接收已合法采集的安全事件，窗口满或查询慢也不阻止console／file。窗口保留最新有界事件，覆盖最旧者并计`evicted_events`；这是短诊断保留策略，不能用于业务梦境积压、审计、Provider结果交接或已接收输入。所有序号／计数饱和时标saturated，不回绕为零。
+
+实现只能共享已隔离安全记录或有界复制，不能把调用方原event、异常对象或格式化回调保存给Web。查询不执行用户代码，不重新格式化原异常，也不从任意文件回填。窗口引入的索引、锁、复制和查询执行都有限；慢读者不长期钉住环形区或阻止写出。取得一页不可变记录后释放短锁，HTTP传输在锁外；无单客户端无界队列。
+
+<a id="runtime-log-cursor-privacy"></a>
+
+#### 10.10.2 最小公开读取、游标与缺口
+
+| 端口 | 行为及结果 |
+| --- | --- |
+| bind_runtime_log_reader(observation_grant) | 仅可信管理装配签发，绑定实例、入口集合、是否可看实例级事件及diagnostics.observe；另有独立diagnostics.window_metadata授权位。无日志写、审计或文件能力 |
+| query_runtime_logs(query) | 异步有界读取当前进程窗口；返回LogPage、LogGap或LogReadFailed，不触发业务恢复、flush或文件扫描 |
+| read_window_health() | 无I/O、受限只读；按下表投影，不把内部全局健康对象交给部分入口观察者 |
+
+query为精确记录：cursor可空、limit、可空UTC开始／结束时间、可空最低标准等级、有限模块／事件码集合、可空entry_id／run_id／request_id／attempt_id。仅允许既有安全ID／固定码精确匹配，无正则、子串全文、任意排序或表达式。一次过滤至多检查一个当前有界窗口；按窗口内部接收顺序升序，墙钟倒退不倒序。先核验授权，再按授权可见集合和查询过滤；无权entry过滤直接拒绝，不以空结果泄露其存在。
+
+内部仍可使用全局generation、固定as_of_sequence和最后扫描位置实现有界分页；这些值默认仅在**不透明cursor**内使用。cursor须绑定签发代次、库外窗口身份、权限及过滤指纹、分页轮次水位和到期边界，防伪造／篡改／跨能力复用，并不得从令牌正文、长度或相邻令牌差值解出全局序号。仅对明文offset签名或base64编码不满足“不透明”；可用受控密封令牌或有界服务端映射，具体机制由实现者选择，不能无界保留会话状态。
+
+两类观察者的**全部响应字段边界**如下；是否具有全局元信息权不能由scope大小推断。独立元信息权不扩大events的入口或正文权限，instance_diagnostics也不隐含此权。
+
+| 响应 | 仅作用域观察者（含部分入口） | 额外获diagnostics.window_metadata者 |
+| --- | --- | --- |
+| LogPage | events、next_cursor、has_more、observed_at、coverage=CURRENT_PROCESS_WINDOW；事件投影移除内部全局位置，不返回generation／as_of_sequence／oldest_available_sequence、全局保留／覆盖计数 | 相同受控events及分页字段；另返回window_metadata={generation, as_of_sequence, oldest_available_sequence}，明确是全局窗口信息 |
+| read_window_health | observed_at、availability、该能力自身query_pending、coverage；未获全局计数权的字段直接不存在，不填0或unknown占位计数 | 另有window_metadata={generation, oldest_sequence, latest_sequence, retained_events, capacity, evicted_events, query_occupancy, saturated} |
+| LogGap | reason=CONTINUITY_UNCONFIRMED、observed_at、coverage、restart_cursor、lost_authorized_events=UNKNOWN；无全局缺口原因、序号范围、覆盖量、当前代次或未授权事件ID | 同时可有global_gap={reason=WINDOW_EVICTED/PROCESS_RESTARTED/CURSOR_EXPIRED, generation, available_range, lost_count或UNKNOWN}；global丢失数只在可证明时给出，不称为授权过滤集合的丢失数 |
+
+两类LogPage的has_more都只表示固定分页水位内还有**授权且匹配过滤的记录**，不是“还有全局位置未扫描”。须在当前有界窗口内确认这一事实，不能用全局最新序号比较代替。空授权页可推进内部扫描位置，但只交回不透明next_cursor及has_more=false；它不因另一入口有大量事件而变true。新刷新从上次扫描截点续查，跨页允许覆盖，不保证连续历史导出。
+
+旧cursor无法再证明原分页范围可读时须显式返回LogGap，不能静默跳到最新并声称无缺口。对仅作用域观察者，CONTINUITY_UNCONFIRMED只表示该读取能力无法确认连续性，不断言授权记录确实遗失；不得给出由全局覆盖差值计算的授权丢失数或未授权范围。可证明仅覆盖无权记录、授权分页仍完整时不报授权缺口；不能证明时保守返回上述未知连续性。首次无cursor只承诺当前窗口；scope／过滤与cursor不符为ACCESS_DENIED／INVALID_QUERY，无有效权限时不透露gap。重查须使用新的受控cursor，重新核验当前授权。
+
+窗口不持久化；最小查询不回填已有文件sink。页面显示“仅本次进程窗口，历史文件查询未提供”，完整历史索引、SSE、导出、诊断正文捕获仍为后续能力。该权限方案隔离显式内容和元信息，不承诺消除共享窗口覆盖或响应时延的一切侧信道，也不把无权记录诱发的未知连续性解释为已知授权缺口。
+
+LogReadFailed恰含code、operation=query_runtime_logs、field、reason、cleanup_pending；code／reason为ACCESS_DENIED（GRANT_INVALID/SCOPE_DENIED）、INVALID_QUERY（INVALID_SHAPE/FILTER_UNSUPPORTED/CURSOR_MISMATCH/LIMIT_EXCEEDED）、RESOURCE_BUSY（QUERY_CAPACITY）、TIMEOUT（QUERY_DEADLINE）、UNAVAILABLE（WINDOW_CLOSED/RESOURCE_FAILURE）。field限capability/query/state，错误无输入值、秘密、路径、异常或原cursor。关闭后拒绝新查询；超时只结束等待，仍工作的读取保留槽位直到实际结束。read_window_health权限在绑定及当前授权核验中执行，不能绕过此投影读取全局健康。
+
+#### 10.10.3 脱敏、权限与必要事务审计
+
+Web事件仅取§10.8的安全字段与固定message模板。entry／run等关联ID仍是非秘密内部ID；不暴露原始平台标识、用户名、IP／cookie／Authorization、聊天／prompt／response、完整来源、媒体内容或审计change。普通用户文本即使碰巧通过ID字符集也不得放入关联字段。浏览器渲染纯文本，控制字符转义，不能执行HTML／脚本。当前config_snapshot_id不在旧诊断白名单中仍保持不输出；批次配置关联由运行元信息视图提供，不为了展示版本扩大所有日志正文。
+
+无entry_id的实例级事件仅对明确获得instance_diagnostics权限的观察者显示；不能把“字段缺失”解释成对所有入口用户公开。认证／过滤在受控查询层执行，Web不能取得全量窗口后在浏览器中删掉无权项。查看行为不形成学习输入、embedding、使用反馈或恢复依据；agent不获得本读取能力。敏感审计及Provider详情仍为独立能力，本文不新增它们的Web路由。
+
+新增领域事务应登记以下**必需审计语义槽位**；字段继续使用§10.9安全Schema，不增加任意正文或自由理由。凡含事务分配的seq／epoch／配置身份等值，须使用下方[结果绑定审计增量](#runtime-derived-audit-draft)，不能声称现有完整预冻结事件接口已支持：
+
+| 完整操作 | 必记事实（同一业务UoW） |
+| --- | --- |
+| 入口登记／接收 | 绑定内部入口／宿主，原事件内部ID、entry_seq、位置、接收模式epoch；不记录外部ID、原文、内容hash或正文 |
+| 冻结／工作claim／候选交接 | batch／run、入口、目标／辅助数量和范围、配置快照引用、owner_generation、候选／交接内部引用；不复制材料 |
+| 成功／普通失败／敏感拒学终结 | 明确终态、目标范围、结果数、尾部数／历史清空、独占引用变化计数、失败／突然失忆风险及时间范围；合成结果须带来源类型 |
+| 模式切换／恢复检查点 | 前后模式／epoch、dream_run、转换操作、收尾／恢复固定原因、有效发布引用；不冒填persona正文 |
+| 回流页 | 入口、原／新cursor、移交范围及条数、剩余状态；不附消息正文 |
+| 配置初始化 | 配置域／revision、组合snapshot_id、有效指针、SYSTEM／OPERATOR内部身份和固定理由；不记录路径和配置内容 |
+
+时间范围使用声明的有界整数UTC微秒，空值明确允许；内部修订／序列不得以字符串塞入正文。每个模块只有自己事件槽位的写权，跨模块终结至少核验缓存终结、运行工作和结果／引用参与者各自必要槽位。动态数量用有界摘要，不以超长目标列表使审计绕过上限；需要逐对象引用时由声明的有界序列承载，超过范围拒绝整次事务。必要清单随回执持久化，原键命中不追加审计。
+
+候选暂存或claim有自己的本地事务审计，不等于最终成功审计；终结回滚不得留下一份“成功学习”的审计。观察查询不写业务审计；失败尝试只经事务外安全诊断，不以独立事后审计补偿缺失的必需事件。诊断窗口／文件不可用不撤销已提交结果；必要审计失败阻止业务提交、新模型登记仍按Provider规则停止。
+
+<a id="runtime-derived-audit-draft"></a>
+
+#### 10.10.4 结果绑定必要审计（已批准精确增量）
+
+命令、指纹及新旧持久证据的完整协议唯一见[持久化增量](persistence-and-transactions.md#runtime-result-bound-audit)。日志模块继续拥有AuditRequirement、安全事件Schema、必要清单、审计ID／时间及读取权；接收seq／路由由缓存／运行所有者负责，配置revision／snapshot_id由配置所有者负责，不由日志推测或生成。
+
+只给事务协调能力的check_required_audits增加显式关键字frozen_result：旧命令保持原无参数调用及检查行为；显式结果绑定命令必须在handler完成、结果Schema及字节限额通过后提供同一个原生深不可变结果。日志先按已冻结意图和静态路径映射物化每个完整事件，再通过绑定追加能力写入，并检查必要清单；返回COMPLETE仍不等于提交。协调者随后不得替换结果或改动参与仓储，回执保存的必须是该结果。模块调用者无此物化权；提前向结果绑定slot调用append_audit或替换事件为AUDIT_EVENT_CONFLICT并毒化UoW，不能成为任意动态审计入口。
+
+新增关键字的精确载体不符映射INVALID_INPUT／AUDIT_INPUT_INVALID、operation=check_required_audits、field=event（仅这一新增调用形态扩展该原因的适用范围）；非协调能力先AUDIT_ACCESS_DENIED。绑定字段须在可信静态装配时全部可类型校验；运行时映射缺值／不符也为该AUDIT_INPUT_INVALID，不用空值补齐。物化后事件仍经原append_audit校验与限额；缺slot为AUDIT_REQUIRED，重复／额外slot为AUDIT_EVENT_CONFLICT，时钟／ID／写入／编码故障为AUDIT_WRITE_FAILED，持久证据不符为AUDIT_INCONSISTENT。各结果按§10.9.3既有事务映射与首错规则处理，不削弱回滚不确定性提升。
+
+日志拥有的新结果绑定证据封套与必要清单、审计行同事务写入；其字段和版本只在持久化补充维护。重开、回执确认和审计读取必须按原回执结果重建并逐值比对完整事件，不能仅验证Schema和“有一条审计”。read_audit仍只返回经授权的一次操作记录，不暴露封套中的指纹／意图或授予Web／agent历史权。现有预冻结完整事件逐值检查和旧记录格式保持不变。
+
+新增验收场景（对应版本的实际覆盖和未执行变体见[CURRENT_TASK](../work/CURRENT_TASK.md)）：
+
+| 触发 | 断言 |
+| --- | --- |
+| 两条命令先冻结相同规则／不同事件身份，之后按两种顺序接收；中间切模式 | 每次已提交业务行、原回执与审计中的seq／位置／epoch一致；原事件指纹不受竞争改变，审计槽位各一次 |
+| handler内试填派生slot并捕获拒绝，或物化时超限／写入失败 | 捕获不能恢复UoW可提交性；无成功业务／审计／回执，回滚不明则未知 |
+| 配置初始化事务生成身份后提交但任何返回前退出 | 原意图能重建恢复输入，查回相同revision／snapshot及对应审计；不预读或重造身份 |
+| 修改新证据的意图、映射身份、派生序列或原回执结果之一 | 重开及各受控确认／读取报完整性故障；不按当前行重算出“成功” |
+| 部分入口观察者查询；仅改变其他入口记录且授权可用范围不变 | events／has_more及可见健康一致，无全局计数／水位／位置；opaque cursor不暴露差值，过滤无匹配即has_more=false |
+| 同一过滤分别使用两类观察能力，覆盖授权记录／重启／游标失效 | 部分入口仅得到未知连续性和受控重查游标；额外权限才见全局原因／范围；全局丢失数不伪装成授权丢失数 |
+| 无权entry过滤且旧cursor也失效，或拿别的scope cursor重用 | 先权限拒绝，不以LogGap／空页泄露对象、全局覆盖或有效游标信息 |
+
+整体实现须以[统一矩阵](durable-ingress-and-batch-runtime.md#acceptance)覆盖旧双端及旧审计兼容、第三观察输出隔离、元信息授权、有界性和新审计关联完整性。实际执行证据及未执行变体见[CURRENT_TASK](../work/CURRENT_TASK.md)。

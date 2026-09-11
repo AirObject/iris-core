@@ -73,6 +73,9 @@ class _Sink:
             self.terminal(self.in_flight, "unknown")
 
 
+from .runtime_window import RuntimeLogWindow
+
+
 class _QueueController:
     """Internal in-memory owner, constructed from already checked settings.
 
@@ -91,6 +94,7 @@ class _QueueController:
         utc_clock: Callable[[], object],
         *, coordination_lock: RLock | None = None,
     ):
+        self.observation_window: RuntimeLogWindow | None = None
         self._settings = settings
         self._id_source = id_source
         self._utc_clock = utc_clock
@@ -165,7 +169,17 @@ class _QueueController:
         if isinstance(encoded, _Failure):
             return self._rejected(encoded, header.level_name)
         try:
-            return self._admit(encoded)
+            result = self._admit(encoded)
+            window = self.observation_window
+            if window is not None and encoded.record.level_number >= dict(self._thresholds.modules)[module]:
+                try:
+                    window.offer_encoded(encoded)
+                except MemoryError:
+                    raise
+                except Exception:
+                    # Independent observation cannot undo a diagnostic sink decision.
+                    window.mark_unavailable()
+            return result
         finally:
             # An escaping exception's traceback must not retain the byte buffer
             # after offer releases its preparation slot.

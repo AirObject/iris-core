@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class _Port:
-    __slots__ = ("_service",)
+    __slots__ = ("_service", "__weakref__")
     _service: ProviderService
     def __new__(cls):
         raise TypeError("Obtain a native capability from trusted provider assembly.")
@@ -60,6 +60,10 @@ class WorkPort(_Port):
         """Read only the calling identity's own request, without a result body."""
         service = self._native()
         return self._read_denied("get_request") if service is None else await service._get_request(self, request_id)
+    async def lookup_request(self, operation: object, original_request: object):
+        """Confirm an original scoped request; a miss never grants replay authority."""
+        service = _Port._native(self)
+        return _Port._read_denied(self,"lookup_request") if service is None else await service._lookup_request(self, operation, original_request)
 
 
 @dataclass(frozen=True, slots=True)

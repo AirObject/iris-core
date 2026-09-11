@@ -41,6 +41,10 @@
 | 存储、部署与选型 | [部署候选](architecture/deployment-candidates.md)、[基础设施](architecture/ownership.md#i01) | [事务恢复](architecture/persistence-and-transactions.md)、[实施顺序与决定](architecture/implementation-options.md) |
 | 验收与技术资料 | [产品验收](product/acceptance.md)、[工程验收](architecture/acceptance.md) | [技术参考](architecture/references.md)；外部资料不自动批准工程方案 |
 
+## 当前跨模块契约
+
+[持久接入、三段批次、专注门控与恢复及最小只读观察](architecture/durable-ingress-and-batch-runtime.md)：五组推荐已获用户批准，包含公开端口、状态与事务、配置身份、受控参与者、存储装配、观察边界及整体验收矩阵；实施授权、验证及技术审查进度见[CURRENT_TASK](work/CURRENT_TASK.md)。参数／日志／持久化／产品补充通过该契约导航到各自唯一正文。
+
 ## 工作记录
 
 [CURRENT_TASK](work/CURRENT_TASK.md)只保留当前目标、授权、契约链接、阻塞、最近验证及停止点；使用[简短模板](work/TASK_TEMPLATE.md)更新，不追加历史全文。[STATUS](work/STATUS.md)仅记录已验收里程碑及版本证据。已提交历史通过提交号和原路径读取；未提交且独有的信息须保留。[ORGANIZATION_REPORT](work/ORGANIZATION_REPORT.md)保持历史用途，不持续重算全文哈希或覆盖映射。

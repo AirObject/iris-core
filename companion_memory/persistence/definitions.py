@@ -74,3 +74,59 @@ class LocalCommand:
     version: int
     values: object
     audit_events: object
+
+
+@dataclass(frozen=True, slots=True)
+class AuditFieldBinding:
+    """One entire audit field comes from a constant or a fixed record path.
+
+    Paths traverse declared records only, never expressions or live repositories.
+    The event version is supplied by its mandatory requirement.
+    """
+
+    field: str
+    source: str
+    path: tuple[str, ...] = ()
+    constant: Value = None
+
+
+@dataclass(frozen=True, slots=True)
+class AuditResultBinding:
+    """Versioned projection for one mandatory event slot."""
+
+    event_slot: str
+    version: int
+    fields: tuple[AuditFieldBinding, ...]
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class ResultBoundCommandDefinition:
+    """Explicit command whose mandatory audits derive from its frozen result.
+
+    Stable input and per-slot intentions are frozen before execution. Only the
+    coordinator materializes audit records after the handler has finished.
+    """
+
+    owner_namespace: str
+    operation_kind: str
+    command_version: int
+    input_schema: RecordSchema
+    result_schema_version: int
+    result_schema: RecordSchema
+    participants: tuple[RepositoryDefinition, ...]
+    required_audits: tuple[AuditRequirement, ...]
+    handler: Callable[[UnitOfWork, MappingProxyType[str, Value]], object]
+    audit_intent_schema: RecordSchema
+    audit_bindings: tuple[AuditResultBinding, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ResultBoundCommand:
+    """Original input and stable slot intentions retained before any side effect."""
+
+    version: int
+    values: object
+    audit_intents: object
+
+
+type CommandSpec = CommandDefinition | ResultBoundCommandDefinition
