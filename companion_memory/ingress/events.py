@@ -40,7 +40,7 @@ def canonical_event(value: Value) -> bytes:
         raise InvalidValue() from None
 
 
-def _own(value: object, depth: int = 0, ancestors: frozenset[int] = frozenset()) -> Value:
+def _own(value: object, depth: int = 0, ancestors: frozenset[int] = frozenset(), *, size_error: type[InvalidValue] = InvalidValue) -> Value:
     if value is None or type(value) is bool:
         return value
     if type(value) is int:
@@ -49,18 +49,18 @@ def _own(value: object, depth: int = 0, ancestors: frozenset[int] = frozenset())
         raise InvalidValue()
     if type(value) is str:
         if len(value) > EVENT_FORMAT_MAX_BYTES or len(value.encode('utf-8',errors='strict')) > EVENT_FORMAT_MAX_BYTES:
-            raise InvalidValue()
+            raise size_error()
         return value
     if depth > 8 or id(value) in ancestors:
         raise InvalidValue()
     if type(value) is dict:
         if len(value) > 32 or any(type(k) is not str for k in value):
             raise InvalidValue()
-        return MappingProxyType({k:_own(v,depth+1,ancestors|{id(value)}) for k,v in value.items()})
+        return MappingProxyType({k:_own(v,depth+1,ancestors|{id(value)},size_error=size_error) for k,v in value.items()})
     if type(value) is list or type(value) is tuple:
         if len(value) > 16:
-            raise InvalidValue()
-        return tuple(_own(v,depth+1,ancestors|{id(value)}) for v in value)
+            raise size_error()
+        return tuple(_own(v,depth+1,ancestors|{id(value)},size_error=size_error) for v in value)
     raise InvalidValue()
 
 

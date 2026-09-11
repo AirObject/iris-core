@@ -1016,3 +1016,82 @@ foundation日志仍须按原规则提交完整合法配置；其候选与目录�
 请求编码账目按[现有Provider精确请求字段](provider.md#provider-foundation-identity)和[模拟计量／规范化](../../companion_memory/provider/normalization.py)静态核对；材料公式对输入的引号／Unicode／引用成立，是因为它们先进入C≤E的完整事件编码，再整体Base64，不能把未经转义的原始正文当C。输出计量、规范化结果和候选产物仍独立受原result_max_bytes及语义校验约束，以上不证明任意模拟响应都合法。运行／Provider／存储期限也没有性能证明；晚完成和故障恢复边界不变。
 
 这组数值及固定格式已获批准。静态字面量计数与代入不是编码器、配置解析、数据库或模型执行结果；材料边界、最小事件、满历史、请求编码及整体验收的对应版本证据只在[CURRENT_TASK](../work/CURRENT_TASK.md)记录。静态核算不能替代实际验证。
+
+<a id="formal-memory-media-configuration"></a>
+
+### 11.15 正式记忆、来源与媒体的配置补充（推荐已批准）
+
+本节是[集中契约](formal-memory-source-media.md)的参数唯一正文；推荐方案已与主契约一并获用户批准，未采纳替代及范围外事项不随之批准。旧入口、旧定义、旧材料硬上限及已存快照解释保持。新增独立`resolve_content_configuration(foundation, runtime, platforms, content, protected_directories, material_contracts)`及对应只读适用性／持久初始化／加载能力，采用新的组合类型，不能把新值送入旧解析器或剔除字段绕过校验。它仍由configuration唯一拥有，不读文件／环境／数据库来解析，不提供编辑／激活接口。
+
+新content域为实例作用域；foundation保留原全部定义及原生EffectiveSnapshot，runtime／platform延续原身份和窗口语义，新组合仅显式支持下表的材料范围增量。content域和新材料声明随一次完整配置初始化、同事务审计和真实snapshot映射提交，旧组合记录格式不重解释。新组合共foundation、runtime、content及每平台一域；推荐单平台共4域。可调字段都须完整注册并显式供值，`required=true, nullable=false, default=NoDefault(), scope=[instance], override_policy=no_override, sensitivity=public（仅非秘密验证资源）, read_roles/write_roles=[trusted_operator], apply_mode=INITIALIZE_ONLY, activation_group=NotApplicable`，无废弃／替代／升级默认。平台参数沿原NEXT_BATCH声明，但仍无在线改值能力。字段说明按原规范填写，不能省略定义或用说明文字求值。
+
+整数均精确int、闭区间，拒绝bool；字符串路径只允许明确非秘密测试绝对路径，值由授权测试自有临时目录实际提供，不选生产目录。下列max_bytes类在新写和完整编码后同时核验，降低限额不截断旧记录。
+
+| 新键 | 类型／单位／范围 | 推荐显式值 | owner／必要消费者 |
+| --- | --- | --- | --- |
+| memory.current_max_bytes | integer／bytes／1024–4096 | 4096 | memory／memory、cognition |
+| memory.forget_below | integer／score／0–99 | 20 | memory／memory |
+| memory.restore_at | integer／score／1–100 | 35 | memory／memory |
+| memory.initial_retention | integer／score／0–100 | 50 | memory／memory、cognition |
+| memory.read_timeout_ms | integer／milliseconds／1–60000 | 2000 | memory／memory |
+| memory.read_concurrency | integer／requests／1–16 | 2 | memory／memory |
+| memory.read_page_size | integer／rows／1–16 | 16 | memory／memory |
+| cognition.candidate_item_limit | integer／items／1–8 | 8 | cognition／cognition、memory |
+| cognition.candidate_item_max_bytes | integer／bytes／1024–8192 | 8192 | cognition／cognition、memory |
+| cognition.candidate_max_bytes | integer／bytes／4096–73728 | 73728 | cognition／cognition、memory |
+| media.root_directory | string／NotApplicable／media_resource_paths | 测试自有独占绝对目录 | media／media |
+| media.staging_directory | string／NotApplicable／media_resource_paths | 上述根下独立staging子目录 | media／media |
+| media.blob_max_bytes | integer／bytes／1–1048576 | 1048576 | media／media、ingress |
+| media.event_occurrence_limit | integer／items／1–2 | 2 | media／media、ingress、cognition |
+| media.upload_chunk_bytes | integer／bytes／4096–65536 | 65536 | media／media |
+| media.upload_concurrency | integer／uploads／1–4 | 2 | media／media |
+| media.processing_concurrency | integer／jobs／1–2 | 1 | media／media、runtime |
+| media.file_worker_capacity | integer／workers／1–8 | 5 | media／media |
+| media.read_concurrency | integer／reads／1–4 | 2 | media／media |
+| media.read_chunk_bytes | integer／bytes／4096–65536 | 65536 | media／media |
+| media.interpretation_text_max_bytes | integer／bytes／0–512 | 512 | media／media |
+| media.interpretation_record_max_bytes | integer／bytes／1331–2048 | 2048 | media／media、cognition |
+| media.operation_timeout_ms | integer／milliseconds／1–60000 | 10000 | media／media、ingress |
+| media.upload_total_timeout_ms | integer／milliseconds／1–60000 | 60000 | media／media |
+| media.occurrence_total_timeout_ms | integer／milliseconds／1–600000 | 60000 | media／media、runtime |
+| media.preparation_total_timeout_ms | integer／milliseconds／1–3600000 | 600000 | runtime／runtime、media |
+| media.io_timeout_ms | integer／milliseconds／1–60000 | 5000 | media／media |
+| media.close_timeout_ms | integer／milliseconds／1–60000 | 10000 | media／media |
+| media.recovery_timeout_ms | integer／milliseconds／1–60000 | 60000 | media／media、runtime |
+| media.processing_suspect_after_ms | integer／milliseconds／1000–3600000 | 120000 | media／media、runtime |
+| media.unbound_upload_retention_ms | integer／milliseconds／60000–86400000 | 3600000 | media／media |
+| media.gc_interval_ms | integer／milliseconds／1000–86400000 | 600000 | media／media |
+| media.gc_unreferenced_grace_ms | integer／milliseconds／0–86400000 | 600000 | media／media |
+| media.gc_page_size | integer／blobs／1–64 | 16 | media／media |
+| audit.history_item_max_bytes | integer／bytes／1024–8192 | 8192 | logging_service／logging_service、memory |
+| audit.history_items_per_operation | integer／items／1–8 | 8 | logging_service／logging_service、memory |
+
+每个数值条目的validator由唯一组入口绑定：`memory_object_limits`绑定memory.current_max_bytes，检查本组memory／cognition容量、F<H及初值；`media_resource_limits`绑定media.blob_max_bytes，检查全部media数值与Provider／执行预算；`media_resource_paths`绑定两个路径，只校验文本及完整保护目录上下文，物理同文件系统／隔离／身份另由资源初始化证明；`content_audit_limits`绑定audit.history_item_max_bytes，检查历史件数、逐件及汇总。必要dependencies须显式覆盖各组读取的同域键；跨foundation/runtime/platform关系由新组合入口检查，不能伪造跨registry依赖。extra已注册依赖仍按原存在性规则；无动态验证器、回调或忽略开关。
+
+| 原有键／配置组在新组合中的推荐选择 | 明确增量或沿用 |
+| --- | --- |
+| ingress.event_max_bytes=2048；H/T/R=1/2/1；normal_soft_limit=1000；短批false／空闲false／idle_timeout=0 | 原合法范围内的新库显式值，不改变固定目标及安静尾部的产品限制；event_version=2媒体限制由新声明核验 |
+| learning.material_max_bytes=49152、input_units_limit=49152、output_units_limit=2048 | **只有新组合**将material范围改为256–49152，旧范围256–8192保持；新硬格式／分叶重建与上界绑定是同一已批准增量，不能旧接口直接升限 |
+| runtime.max_active_entries=1，其余runtime／management／logging.web_* | 原§11.14推荐值全部沿用；媒体发送／处理另有持久work与配额，不假称是普通学习槽 |
+| provider.request_max_bytes=65536、result_max_bytes=8192；max_in_flight=2；request_timeout_ms=30000；close_timeout_ms=10000；retry_delay_ms=10；query_row_limit=100 | 均在原范围内；新库显式值。Provider输入／结果／原查询格式不扩容 |
+| 同一模拟账户sample_account／sample_window | currency=TEST、max_in_flight=1、attempt_limit=10000、cost_limit_atoms=1000000000；无自动重置或真实收费含义 |
+| LEARNING的sample_learning profile | SIMULATED／GENERATION，model_id=sample_generation，max_input_units=49152、max_output_units=2048、max_items=2、max_attempts=2、attempt_timeout_ms=5000、input_price_atoms=2、output_price_atoms=3；dimensions／space_id=null、media_tasks空；role映射LEARNING只此profile |
+| MEDIA的sample_media profile | SIMULATED／MEDIA_UNDERSTANDING，model_id=sample_media_model，max_input_units=1048576、max_output_units=0、max_items=1、max_attempts=2、attempt_timeout_ms=5000、input_price_atoms=1、output_price_atoms=0；dimensions／space_id=null，media_tasks为IMAGE/DESCRIBE、AUDIO/TRANSCRIBE、VIDEO/DESCRIBE；role映射MEDIA只此profile |
+| Provider其他角色 | 新推荐包不配置未使用角色；需要既有梦境门控兼容场景时显式增加原模拟DREAM profile并重新核算配置总量，不借此批准梦境业务 |
+| storage.command_max_bytes=1048576、receipt_max_bytes=65536、operation_timeout_ms=30000、lock_wait_ms=50、close_timeout_ms=10000、read_capacity=2、wal_checkpoint_pages=100 | 原范围内；更长存储期限不代表读取可续进度或性能承诺 |
+| audit.event_max_bytes=8192、events_per_operation=16 | 原范围内；实际新命令必要slot≤8、每slot摘要格式≤4096，完整读取另计封套，不能把16×8192视作单页可读 |
+| foundation日志组及目录上下文 | 完整沿用§11.14启用日志服务的要求、旧日志推荐显式数值和精确元信息；增加真实自有媒体／暂存目录到保护清单，不能以空路径／空清单通过。此处不复制其默认声明 |
+
+跨参数必须同时满足：F<H；初始R仍经滞回；blob限额≤所选媒体profile字节上限；理解／学习并发之和≤provider.max_in_flight，账户并发另按Provider裁决；`file_worker_capacity≥upload_concurrency+read_concurrency+processing_concurrency`（推荐5）。GC借用已有文件槽，不能另建无限队列；同一理解槽同时最多一份文件读取和一个Provider任务。块大小≤blob_max_bytes，read_chunk同理。各I/O等待取本次剩余与io_timeout较小者，upload总期与单次operation不反复重置；超时仍在途时不释放槽。processing_suspect_after大于新Provider总期，但只是失联告警，绝不作为夺权／释放条件；无主上传到期和GC宽限同样须满足所有权前置。
+
+理解准入按[精确封套](formal-memory-source-media.md#interpretation-envelope)同时验证各来源／状态：I必须覆盖1331字节固定拒绝和1327字节最大失败元信息，不能仅用一个成功样例证明；text限额0–512只管可变成功／部分正文，EMPTY和固定REFUSED不随它缩减。绑定的原请求ID／scope／profile策略必须在发送前可无损映射到固定元信息界，不能依赖结果超限后的截断。I=1330在resolve_content_configuration返回VALUE_INVALID/RANGE_INVALID、field=value；值在范围内但材料关系不成立为VALUE_INVALID/BUDGET_INVALID、field=platforms；完整存储／配置容量或装配绑定无法满足为VALUE_INVALID/CAPACITY_INSUFFICIENT、field=content。服务装配层映射为CONFIGURATION_UNSUPPORTED/CAPACITY_INSUFFICIENT；均不得开始新接收／发送。外部事件超限及内部结果超限的不同处置只见该封套正文。
+
+准备总期按选定成员最大数N和每事件媒体上限A校验`preparation_total_timeout_ms ≥ N×A×occurrence_total_timeout_ms + 4×storage.operation_timeout_ms`，单出现总期≥provider.request_timeout_ms；推荐`4×2×60000+4×30000=600000`。四个存储等待预留覆盖准备登记／领取／核验／冻结，不给每个逐出现步骤额外重置总期；逐出现原请求登记、I/O、Provider、保存及确认共享自己的剩余。所有下层deadline取剩余最小值，这只是时间预算相容性，不保证各下层同时耗尽自身最大时间后仍能成功。停放、重启、窗口变化与未发送的新准入代次仅按[准备协议](formal-memory-source-media.md#media-preparation)处理，配置不能授权TTL夺权或自动重发。
+
+新材料上界、候选分叶、完整请求和配置初始化账目见[集中容量表](formal-memory-source-media.md#capacity)。新组合必须逐平台验B/W/Q并固定完整版本；继续原Provider的`57344`及`6×result_max_bytes+8192`基础下限。旧`6×max(event,material,8192)+8192`仅用于旧整材料文本装配；新组合精确改为对**每个实际持久叶**取该关系，另核验重建材料总量和完整命令。这不是取消总容量检查，49152材料不得持久为单个正文行。旧组合不得选择这条新规则。
+
+新组合准入还限制：全域条目数≤128、每条编码≤8192、条目编码总和≤262144、参数键≤128字节、目录编码≤8192、域数≤4；推荐因此只承诺单平台包。新组合参数持久编码版本2在完整保留值／定义／来源的前提下，将U+0000–001F及U+007F均转成六字节JSON转义，其他合法Unicode直接UTF-8；不修改旧encode_entry版本1字节或其读取解释。这样条目body无这些字面控制字符，嵌入原基础ensure_ascii命令编码至多3倍；须专门验证DEL、两字节Unicode和补充平面边界，不能把普通encode_entry版本1未经核验套入此证明。这项局部证明不改变任意正文的原6倍保守界。旧平台结构上限64保持旧含义，新包若要多平台应另给完整值／定义及目录编码账目，并集中批准所需范围；不自动放宽或拆分配置初始化。编码预检在建库副作用前完成，重新打开按原记录版本及格式硬限校验。
+
+新ContentConfigurationError恰含code、operation、field、reason：operation为resolve_content_configuration／persist_content_configuration／load_content_configuration／content_snapshot_issue，field为foundation/runtime/platforms/content/definition/value/context/storage/identity。code／reason闭合集合沿§11.14的分类及枚举，新预算／目录／域总量失败用VALUE_INVALID/BUDGET_INVALID或CAPACITY_INSUFFICIENT，不新增自由原因；不透传路径／非法键。顺序：精确载体→域身份／未知键→全部声明／支持→完整定义→foundation原校验→全部值隔离→依赖→固定及跨域／完整编码→一次候选。旧错误类／旧首错不变。持久初始化错误另配真实提交证据，纯解析没有I/O成功含义。
+
+没有自动衰减率、使用反馈增益／有效期、自动删除保留天数、在线配置或解除保护参数；那些是后续模块未实现职责，不用占位值伪装已支持。新参数推荐及路径能力已批准，全包核算须以实际验证证明，验收统一见[整体矩阵](formal-memory-source-media.md#acceptance)。

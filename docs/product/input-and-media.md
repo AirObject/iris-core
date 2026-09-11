@@ -94,3 +94,5 @@
 仅被审计日志引用的多媒体，对业务引用检查视为没有引用。日志不保护该文件，也不向 agent 暴露这份审计引用。开发者日志中的媒体指针因此可能失效，不承诺审计附件永久可播放。
 
 学习成功但未生成记忆的缓存，没有独立的媒体长期保留规则；其引用随正常缓存流程释放，再由统一清理处理。
+
+本轮已批准细化见[集中契约：媒体状态、复用与新明确事件](../architecture/formal-memory-source-media.md#interpretation)、[上传／发布／GC](../architecture/formal-memory-source-media.md#files-gc)及[集中决定](../architecture/formal-memory-source-media.md#scope)；本文件既有正文不变。

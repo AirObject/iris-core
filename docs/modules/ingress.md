@@ -12,6 +12,8 @@
 
 ## 按边界定位
 
+本轮已批准依赖：[媒体出现与输入状态](../architecture/formal-memory-source-media.md#interpretation)、[真实上传及接收承诺](../architecture/formal-memory-source-media.md#files-gc)、[权限投影](../architecture/formal-memory-source-media.md#ports-permissions)；旧事件／装配兼容见同一集中契约。
+
 本次详细接口及联合验收见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#ingress)（五组推荐已批准，实施已授权；验证状态见CURRENT_TASK）；本模块原职责和既有批准状态不变。
 
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。

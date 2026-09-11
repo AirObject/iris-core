@@ -108,3 +108,5 @@ Web 面板分别配置历史辅助条数与最新辅助条数，并显示对应�
 “小林—扮演—游戏角色甲”与主体同一联系分开。检索小林可提供其扮演信息，但必须明确虚构角色及其所属场景，不能将角色经历不加区分地归到现实主体。
 
 内容相关、同一人物、支持关系和派生关系不是同一类边。梦境降低失去支持的认知强度时，应判断真正的依赖，而不是对所有同名或相似标签记忆统一惩罚。
+
+本轮已批准Schema与接口见[集中契约：对象与关系](../architecture/formal-memory-source-media.md#objects)、[完整来源与候选](../architecture/formal-memory-source-media.md#sources-candidates)及[读取权限](../architecture/formal-memory-source-media.md#ports-permissions)；未采纳替代与范围外事项不随之批准。

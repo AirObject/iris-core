@@ -450,3 +450,29 @@ Provider受审计命令各声明一个必需位置provider_change，事件码为
 | F5 配置与整体验证 | [配置§11.13](configuration.md#configuration-provider-validation-contract)、[§9.11](#provider-foundation-acceptance)：新显式完整校验入口及保留旧语义、真实临时数据库的完整合成矩阵 |
 
 本次未发现需要以现行正文互相覆盖解决的产品冲突。ProviderSchema／服务／配置新入口属于已批准契约的实现内容。真实持久配置版本、价格版本、生产门控／秘密／路径／预算周期、存量格式迁移及UNKNOWN管理恢复决定仍是范围外前置；模拟测试不将它们批准或宣称完成。实际冲突、降低持久性／权限／隔离／有界性、改变敏感拒绝或UNKNOWN责任、新供应商／真实支出、生产路径或技术栈／Python主次版本改变须交用户，不由本表代决。实际授权和停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)；全程不暂存或创建提交。
+
+<a id="stored-media-provider-bridge"></a>
+
+### 9.13 真实媒体字节与模拟Provider桥接（推荐已批准）
+
+本节仅补齐[正式记忆／来源／媒体集中契约](formal-memory-source-media.md)所需的真实媒体授权桥接，推荐方案已随主契约获用户批准。模型仍用SimulationAdapter，四能力、账本／费用、UNKNOWN、结果交接及原配置证据协议保持；不新增真实SDK、URL抓取、解码、流式供应商或价格版本。真实文件只证明媒体所有者保存了实际字节，不能标成真实模型理解。
+
+基线`ProviderService.authorize_media`仅声明合成bytes且上限1048576，生成的AuthorizedMedia是进程内能力，不是可持久blob授权。推荐新增可信装配专属`bind_stored_media_authority`及该能力的`authorize_stored_media`／`release_media_authorization`：先验证原生媒体服务、同库／caller_scope、结果所有者、实际occurrence和READY generation、已建立的PROCESSING／READ保护，再接收媒体所有者读回并核验的精确不可变bytes。输入包含稳定artifact_id、modality及来源绑定；不从调用者自报hash签发，不交Provider路径或删除权。
+
+新能力只能由media服务的可信桥接获得，普通WorkPort、外部宿主、合成事件字段均不能生成它。Provider的规范化媒体请求继续采用原scope／owner／artifact_id／byte_count／sha256及模态／task，原请求指纹字节格式不变；物理generation、授权出现、处理策略／prompt、真实配置snapshot及原操作键在媒体工作所有者中完整持久保存，并由稳定artifact_id关联。artifact_id不可跨不同字节重用；重新授权恢复时须验证同一实际字节，不用新文件替换旧请求的内容。
+
+旧合成入口／旧AuthorizedMedia读取按原协议保持，新真实授权加入独立签发类别和有限生命周期：每个在途媒体处理工作最多一个字节能力及一个底层任务；原件暂按1 MiB界限全部读入，文件读取和校验在受限执行器中完成。Provider及模拟适配器不另保存无界字节副本；迟到响应／本地确认结束之前不可撤销仍在使用的能力或释放文件保护。等待超时仍保留原任务和槽，release只在无在途消费者时清除对应登记及强引用；重复release幂等，不影响其他工作。旧合成兼容测试也须保留其原公开语义，不能靠全清Provider能力表释放新资源。
+
+媒体工作在首次Provider登记之前保存原请求所需身份／字节摘要／generation／策略和operation_key；原件由持久保护保留到Provider查询／本地结果落盘可以不再依赖它为止。跨进程恢复先按原权限重新签发有限字节能力，调用既有`lookup_request(understand_media, original_request)`，再按原request_id授予结果所有者`recover_result`。媒体临时能力不进入通用回执、审计、运行日志或Web；查不到、字节缺失／损坏或结果未知均不能新发模型。已明确完成且本地解释已保存的复用不再调用Provider、不重复计费。
+
+原生结果所有者核验终态时，除恢复有正文交接，还须通过原请求受限状态读取确认持久outcome及明确reason。只有原MEDIA_UNDERSTANDING请求的`SENSITIVE_REFUSAL/SENSITIVE_INFORMATION`匹配库／owner／artifact／scope／任务及字节绑定，才可交给media构造内部拒绝证据；失败／拒绝没有正文交接时引用原request，不伪造handoff。普通事件的status、source_ref或正文没有这项权力。保护scope、跨事件优先级及竞争结果唯一见[媒体拒绝协议](formal-memory-source-media.md#interpretation)，本桥接不授予外部签发／解除保护权。
+
+每次媒体dispatch除原epoch／owner外，须在共用短门控串行区重查该内容的已发布拒绝保护修订；保护持久化期间先关闭对应新发送，COMMITTED后发布缓存视图，未知保持关闭。若保护原事务可靠未提交、无其他故障且原owner结束，才可撤此保守阻止；跨进程先关闭发送并恢复保护，不能漏读保护后使用旧成功缓存。已经消费许可的调用按原Provider协议收尾，任何下一attempt仍重查。该桥接不改变Provider账本或原请求指纹格式。
+
+媒体准备／逐出现领取／原请求关联的持久状态及期限只见[准备协议](formal-memory-source-media.md#media-preparation)。Provider能力的artifact及owner由该唯一工作确定；新窗口只是消费者，不签发第二份请求。media在调用前核验原请求元信息能无损映射到[理解记录封套](formal-memory-source-media.md#interpretation-envelope)。内部成功的业务结果超限只影响media本地FAILED记录，不重写Provider已确认结果；敏感终态先独立核验，固定占位及证据不受可变结果正文限额影响。
+
+运行门控须将MEDIA工作及其owner／epoch纳入现有GateBinding，不能由`task_role=MEDIA`字符串自行获得权限。PREPARING／FOCUSED禁止新的补充理解；已消费许可的请求仅按既有收尾规则落本地结果，无下一attempt或补充学习。恢复与只读观察不调用适配器。
+
+桥接失败使用独立MediaError的安全分类，Provider内部请求仍返回原ProviderError；不扩大旧错误枚举或透传文件异常。源绑定非法为BINDING_MISMATCH，超限为LIMIT_EXCEEDED，未READY／退役为BLOB_NOT_READY／BLOB_RETIRING，实际字节不符为CONTENT_CORRUPT，其他映射见[集中错误表](formal-memory-source-media.md#ports-permissions)。结果source仍SIMULATED，实际存储／候选来源由媒体和记忆观察分别声明。
+
+必要验证为真实临时文件→媒体授权→原Provider模拟请求→真实SQLite交接→媒体结果持久复用，包含跨进程原键查询、字节损坏、授权隔离、敏感拒绝、门控竞争、等待取消、强引用回收和旧模拟端口兼容；实际验证状态见CURRENT_TASK，统一纳入[整体验收](formal-memory-source-media.md#acceptance)。

@@ -571,3 +571,44 @@ Web事件仅取§10.8的安全字段与固定message模板。entry／run等关�
 | 无权entry过滤且旧cursor也失效，或拿别的scope cursor重用 | 先权限拒绝，不以LogGap／空页泄露对象、全局覆盖或有效游标信息 |
 
 整体实现须以[统一矩阵](durable-ingress-and-batch-runtime.md#acceptance)覆盖旧双端及旧审计兼容、第三观察输出隔离、元信息授权、有界性和新审计关联完整性。实际执行证据及未执行变体见[CURRENT_TASK](../work/CURRENT_TASK.md)。
+
+<a id="memory-history-audit"></a>
+
+### 10.11 正式对象修订历史与必要审计补充（推荐已批准）
+
+本节仅为[正式记忆／来源／媒体集中契约](formal-memory-source-media.md)补齐修订历史及新操作必要审计，推荐方案已随主契约获用户批准。旧AuditRequirement.change仍递归禁止BoundedTextSchema；旧审计输入、指纹、结果绑定证据和读取格式不改。不能把“旧正文仅供开发者审计”解释成现有审计已经支持正文。
+
+推荐在logging_service所有权下新增专属不可变`ObjectHistoryRecord`，同库受限仓储、同一原对象变更UoW追加。它不是运行日志、第二份memory当前值或通用内容捕获：只接受固定类型MEMORY／RELATION的旧当前快照及原关联，或SUBJECT旧标签／身份记录；不接聊天窗口、模型请求／响应、媒体二进制、凭据或任意附加数据。创建对象不产生虚构“旧正文”。对实际正文／关系／分数修订和删除，必要历史记录必须存在；没有语义变化不产生历史版本。
+
+记录恰含`history_version=1, history_id, object_id, object_kind, previous_revision, resulting_revision, action=REPLACE/SCORE_CHANGE/DELETE/SUBJECT_CHANGE, previous_value, previous_links, recorded_at_us, operation_identity, commit_id`。previous_value是对应对象的完整旧Schema，previous_links为旧source／依据ID、目标／辅助锚点的有界集合；前后修订及所属对象必须与memory参与者实际读到的旧值一致。旧值≤4096、旧关联合计≤2048，历史外层固定身份／键／整数／时间开销≤2048，嵌套按结构编码而非再次转成字符串，所以每件≤8192、件数≤8；这保证合法当前对象能完整归档。超限在任何对象变更前拒绝整组，不能丢部分历史或把全文截成摘要。媒体指针只作历史解释，不建立业务blob保护。
+
+新增`append_object_history(uow, approved_record)`只交日志专属写参与者，memory通过类型化旧值交接提出必要记录，不能直接操作日志表。新增`read_object_history(operation_identity, history_id)`只给独立开发者history.inspect能力，限定库／scope／对象范围，按一次操作明确ID点读一个有界记录；无历史列表、全文搜索、导出、文件读取、agent工具或Web路由。普通`read_audit`仍返回安全摘要及不透明历史ID，不能因有ID就自动返回正文。旧接口无正文规则保持。
+
+每条历史通过唯一`operation_identity + object_id + previous_revision`关联该次变更的必要slot；历史ID／旧值摘要／对应修订写入日志私有证据（不是通用业务回执），与历史正文、摘要、原回执同事务提交。新历史关联格式为独立`history_evidence_version=1`，不改变旧materialization_version=1解释。提交前和每次回执／审计确认须核验：本次必要历史集合恰好完整、与实际前修订／动作一致、历史内容Schema及摘要正确、commit／库／操作关联一致。重开同样全检；缺件或篡改为完整性故障，不能只凭一行摘要返回原成功。
+
+当前正文删除或修改后记忆服务只留当前值／墓碑；历史读取不向记忆agent、检索、embedding、学习、persona或Provider结果所有者开放，不得从历史“恢复对象”。内部合法来源可以含相似内容，仍与日志历史访问分离。历史正文和必要证据随验证库保留，本次无删除／过期／压缩接口；未来保留政策须另定恢复与审计完整性，不自动将验证库保留解释为生产永久保留。
+
+新必要审计slot按操作固定声明，结果绑定只包含安全ID、revision、状态和有界计数，不复制旧runtime的整份change到每个owner：
+
+| 操作 | 必需语义及所属slot |
+| --- | --- |
+| 上传意图／READY／放弃／GC | media的原操作、blob内部ID／generation、状态、长度、出现／引用变动计数；无内容hash、路径或原件 |
+| 接收含媒体 | ingress原接收身份事实、buffers序列／位置、media出现／引用事实；同T01、无事后补绑定 |
+| 理解准备／结果持久／复用 | runtime的实际准备登记／领取／停放／失效／冻结转交，以及ingress／media的实际保护变化，按固定命令选择；media记录逐出现工作／解释／request／原结果引用、状态、origin及授权scope内部ID、是否复用。外部REFUSED标EXTERNAL_REPORT且guard_created=false；已核验Provider敏感终态的保护创建标PROVIDER_CONFIRMED及原终态证据引用；复用保护不造新拒绝／费用。Provider计量仍只归原Providerslot |
+| 候选保存 | cognition的候选清单／叶数／拟议终态、runtime工作身份、必要保护owner的计数；不是正式发布 |
+| 终结 | ingress消费／原文释放、buffers目标／历史、runtime终态、cognition候选处置、memory对象／来源／待办、media引用转交；修改删除含logging_service历史关联，最多8slot |
+| 释放计划保存／替换 | 计划所属memory或runtime记录root／plan_ordinal／计划身份、固定分支、预期效果计数及前计划已确认未提交的关联；这是实际计划变更，不记对象已删除／批次已终结。计划保存与业务提交分别有原回执 |
+| 独立对象修改／删除 | memory当前前后revision／状态、source holder／退役及待办计数、logging_service必要旧值；最后source释放还包括ingress的引用释放／payload删除或保留计数，及media的实际OBJECT／SOURCE／EVENT／理解引用变化。buffer没有队列变化时不得加slot |
+| source最后释放／本地恢复 | memory来源处置、ingress原文寿命引用／payload处置、media出现／解释／blob引用的真实变更及原操作身份；理解保留计数与blob文件删除区分。仅恢复已提交结果不重复这些事件；纯只读确认不新增业务成功审计 |
+
+固定分支、事务内重查及竞争后如何选新执行键只在[持久化分支协议](persistence-and-transactions.md#release-command-branches)维护。审计完整性须核验root、plan及实际owner变更向量匹配：无媒体的最后source释放不能漏ingress；有其他H保护而payload未删除仍须记录实际SOURCE引用减少；没有memory对象变更的准备处置不得写对象成功slot。OWNERSHIP_CHANGED的业务事务全无，不追加对象历史或虚假失败后的成功审计；已提交的独立计划审计仍存在且标其本来含义。未知执行计划不能由后来一条审计“说明未提交”代替原键确认。
+
+理解超限的必要摘要仅记录media原工作／request、固定RESULT_LIMIT_EXCEEDED／RESULT_INVALID、最终FAILED和原结果来源；不保存超限文本、长度之外的自由错误或响应。已核验敏感终态只能记录固定REFUSED及保护事实，不能因输出超限改为普通失败。保底记录／保护／选择／必要摘要同UoW；写失败时全无，确认未知保留原工作，不产生一条假RESULT_STORED审计。
+
+每slot实际摘要格式≤4096字节，新audit.event_max_bytes推荐8192只是外层上限，不能据此产生8份最大8192再放进一个读取响应。必要摘要最多8×4096＋8192完整操作封套=40960≤底层65536；历史件逐件点读≤6×8192＋8192=57344。必要证据总编码≤32768，历史正文完整值及关联再受每件8192／命令总量核验。带正文的slot元信息仅含历史ID／修订，不在安全change保存摘要hash。新增固定格式超出预留是实现不符，须调整方案再审，不能隐式截断。
+
+新独立HistoryAuditError仍为五字段安全封套，operation仅append_object_history／read_object_history／check_object_history，field限capability/state/record/transaction/query；code／reason完整集合为INVALID_INPUT(HISTORY_INPUT_INVALID、HISTORY_LIMIT_EXCEEDED)、ACCESS_DENIED(HISTORY_ACCESS_DENIED)、INVALID_STATE(HISTORY_STATE_INVALID)、HISTORY_CONFLICT(HISTORY_EVENT_CONFLICT)、HISTORY_INCOMPLETE(HISTORY_REQUIRED)、HISTORY_FAILED(HISTORY_WRITE_FAILED、HISTORY_READ_FAILED)、INTEGRITY_FAILURE(HISTORY_INCONSISTENT)。先绑定／权限、后生命周期、载体／版本／限额、必要位置、资源；查询权限先于是否存在。只读失败不写失败审计，文本／底层异常不回显。
+
+必要历史追加／校验失败按原事务协调映射为TRANSACTION_FAILED／AUDIT_FAILED（缺必要件为AUDIT_REQUIRED），完整性损坏另使存储FAULTED；保持首错及cleanup_pending，回滚不明仍UNCONFIRMED。历史成功STAGED不是COMMITTED，诊断关闭／错误不改变必要历史；COMMITTED后日志诊断失败不能撤销对象变更。
+
+运行诊断继续使用原Logger白名单，推荐只复用已允许的模块事件及固定安全错误分类，不增加正文捕获、任意reason或新日志等级；旧白名单放不下的详细状态由memory／media安全观察端口表达。运行观察仍不具有历史正文权。验证包括旧摘要文本拒绝、新历史全有／全无及篡改核验、删除后权限隔离、仅审计不保护媒体、重复命令不重复历史；统一纳入[整体矩阵](formal-memory-source-media.md#acceptance)，验证结果见CURRENT_TASK。

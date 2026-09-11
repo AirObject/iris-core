@@ -12,6 +12,8 @@
 
 ## 按边界定位
 
+本轮已批准依赖：[真实记忆／来源终结参与](../architecture/formal-memory-source-media.md#sources-candidates)、[媒体门控与恢复](../architecture/formal-memory-source-media.md#interpretation)、[新装配恢复](../architecture/formal-memory-source-media.md#assembly-recovery)；已批准，不改变既有门控。
+
 本次模式、发送竞争和恢复细节见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#modes)（五组推荐已批准，实施已授权；验证状态见CURRENT_TASK）；本模块原职责和既有批准状态不变。
 
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。

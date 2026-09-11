@@ -92,3 +92,46 @@ class OriginalKeyLookupTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(fixture.service.get_health().lifecycle,'CLOSED')
                     self.assertEqual(len(fixture.adapter.calls),0)
                 finally:release.set();fixture.hooks.before=lambda sql:None;await fixture.close()
+
+    async def test_consumers_ended_is_scoped_to_the_original_capability(self):
+        import asyncio
+        import threading
+        with TemporaryDirectory(prefix='iris-local-consumers-') as directory:
+            fixture = Fixture(Path(directory), (success(),), changes={'provider.max_in_flight': 2})
+            await fixture.initialize()
+            started = threading.Event(); release = threading.Event(); waiting = None
+            def block(sql):
+                if 'FROM provider_requests' in sql and not started.is_set():
+                    started.set(); release.wait()
+            try:
+                other = fixture.service.bind_work(replace(fixture.grant, caller_module='other_owner'))
+                fixture.hooks.before = block
+                waiting = asyncio.create_task(other.lookup_request('generate', fixture.request('other')))
+                self.assertTrue(await asyncio.to_thread(started.wait, 2))
+                self.assertFalse(other.consumers_ended())
+                own = await fixture.work.lookup_request('generate', fixture.request('own'))
+                self.assertIs(type(own), NotFound)
+                self.assertTrue(fixture.work.consumers_ended())
+                self.assertFalse(other.consumers_ended())
+                self.assertFalse(waiting.done()); self.assertEqual(len(fixture.adapter.calls), 0)
+                from unittest.mock import patch
+                from companion_memory.provider import CancellationSource
+                cancellation = CancellationSource()
+                request = fixture.request('ended-cancelled'); request['cancellation'] = cancellation.token
+                ended = fixture.service._lookup_finished
+                def cancel_after_actual_end(task):
+                    if fixture.service._lookup_owners.get(task) is fixture.work: cancellation.cancel()
+                    ended(task)
+                with patch.object(fixture.service, '_lookup_finished', side_effect=cancel_after_actual_end):
+                    cancelled = await fixture.work.lookup_request('generate', request)
+                assert type(cancelled) is Failed
+                self.assertEqual(cancelled.error.reason, 'CANCEL_REQUESTED')
+                self.assertFalse(cancelled.error.cleanup_pending)
+                self.assertFalse(other.consumers_ended())
+                release.set(); await waiting
+                self.assertTrue(other.consumers_ended())
+                self.assertFalse(fixture.service._lookup_owners)
+            finally:
+                release.set(); fixture.hooks.before = lambda sql: None
+                if waiting is not None: await waiting
+                await fixture.close()

@@ -90,7 +90,7 @@ class _Job:
 class UnitOfWork:
     """Opaque temporary participant authority; has no commit, SQL or connection API."""
 
-    __slots__ = ("_service", "_job", "_definition", "_identity", "_commit_id", "_events", "_active", "_changed", "_materializing", "_result")
+    __slots__ = ("_service", "_job", "_definition", "_identity", "_commit_id", "_events", "_active", "_changed", "_materializing", "_result", "_history", "_row_changes")
 
     def __new__(cls):
         raise TypeError("Unit-of-work authority is issued only by storage.")
@@ -104,6 +104,8 @@ class UnitOfWork:
         self._active, self._changed = True, set()
         self._materializing = False
         self._result = None
+        self._history = []
+        self._row_changes = {}
         return self
 
 
@@ -304,6 +306,7 @@ class PersistenceService:
         for definition in commands:
             if type(definition) is ResultBoundCommandDefinition:
                 validate_bindings(definition)
+        self._history_enabled = any(repo.owner_module == "logging_service" and any(t.name == "logging_object_history" for t in repo.tables) for repo in repositories)
         self._assembly = assembly_value(repositories, commands)
         self._schema = _BASE_SCHEMA + tuple((table.name, table.sql.strip().rstrip(";")) for repo in repositories for table in repo.tables)
         if (len({name for name, _ in self._schema}) != len(self._schema)
@@ -326,6 +329,9 @@ class PersistenceService:
         self._writer: _Job | None = None
         self._reads: set[_Job] = set()
         self._connections: set[sqlite3.Connection] = set()
+        self._connection_notifications: dict[sqlite3.Connection, tuple[asyncio.AbstractEventLoop, Callable[[], None]]] = {}
+        self._cleanup_changed = threading.Condition(self._lock)
+        self._cleanup_job: _Job | None = None
         self._owner_fd: int | None = None
         self._file_identity: tuple[int, int] | None = None
         self._unresolved: set[OperationIdentity] = set()
@@ -334,6 +340,89 @@ class PersistenceService:
         self._close_job: _Job | None = None
         self._ports: WeakValueDictionary[int, _SealedPort] = WeakValueDictionary()
         self._module_owners: dict[str, ModuleOwnerLease] = {}
+
+    def confirm_prior_operation(self, uow: UnitOfWork, definition: CommandSpec, key: str) -> Receipt | None:
+        """Confirm one saved prior operation under the current exclusive writer.
+
+        A miss here follows BEGIN IMMEDIATE and the process owner isolation. It
+        is not a point-read NotFound and cannot race an unfinished older writer.
+        This trusted coordinator port grants no replay or command editing rights.
+        """
+        if (type(uow) is not UnitOfWork or uow._service is not self or not uow._active
+                or uow._job is not self._writer or uow._job.phase != 'transaction'
+                or not any(definition is d for d in self._commands) or not valid_identifier(key)):
+            self._poison(self._error('participate', 'ACCESS_DENIED', 'CAPABILITY_MISMATCH', 'operation'))
+            raise InvalidValue()
+        identity = OperationIdentity(uow._identity.database_id, definition.owner_namespace,
+            definition.operation_kind, uow._identity.scope_id, key)
+        return self._receipt(uow._job, identity)
+
+    def transaction_row_changes(self, uow: UnitOfWork) -> MappingProxyType[str, int]:
+        """Coordinator-only actual owner row counts before receipt/audit insertion."""
+        if type(uow) is not UnitOfWork or not self._valid_uow(uow, uow._identity.scope_id):
+            raise InvalidValue()
+        return MappingProxyType(dict(uow._row_changes))
+
+    def transaction_audit_owners(self, uow: UnitOfWork) -> tuple[str, ...]:
+        """Read only the command's fixed owner mask from a currently active UoW."""
+        self.transaction_row_changes(uow)
+        return tuple(requirement.owner_module for requirement in uow._definition.required_audits)
+
+    def object_history_context(self, uow: UnitOfWork, repository: RepositoryDefinition) -> tuple[OperationIdentity, str]:
+        """Issue operation association only to the declared history participant.
+
+        The caller receives no connection or SQL privilege. The live transaction
+        must include the logging owner and its fixed necessary history slot.
+        """
+        if (type(uow) is not UnitOfWork or uow._service is not self or not uow._active
+                or not self._history_enabled or repository.owner_module != 'logging_service'
+                or not any(repository is r for r in uow._definition.participants)
+                or not any(a.owner_module == 'logging_service' and a.event_slot == 'object_history'
+                           for a in uow._definition.required_audits)):
+            self._poison(self._error('participate', 'ACCESS_DENIED', 'CAPABILITY_MISMATCH', 'audit'))
+            raise InvalidValue()
+        return uow._identity, uow._commit_id
+
+    def require_object_history(self, uow: UnitOfWork, reference: object, limit: int) -> None:
+        """Retain the actual previous-value set until receipt materialization."""
+        from companion_memory.logging_service.object_history import HISTORY_REF
+        if type(uow) is not UnitOfWork or uow._service is not self or not uow._active:
+            self._poison(self._error('participate', 'ACCESS_DENIED', 'CAPABILITY_MISMATCH', 'audit'))
+            raise InvalidValue()
+        value = freeze_value(HISTORY_REF, reference, owned=True)
+        if not 1 <= limit <= 8 or len(uow._history) >= limit or value in uow._history:
+            self._poison(self._error('participate', 'TRANSACTION_FAILED', 'AUDIT_FAILED', 'audit'))
+            raise InvalidValue()
+        uow._history.append(value)
+
+    async def read_object_history_receipt(self, identity: OperationIdentity) -> ReadResult[Receipt]:
+        """Trusted logging inspection confirms the original audited operation."""
+        if (type(identity) is not OperationIdentity or self._resources is None
+                or identity.database_id != self._resources.expected_database_id
+                or (identity.owner_namespace, identity.operation_kind) not in self._command_map):
+            return Failed(self._error('read_receipt', 'ACCESS_DENIED', 'CAPABILITY_MISMATCH', 'query'))
+        definition = self._command_map[(identity.owner_namespace, identity.operation_kind)]
+        return await self.bind_operation(definition, identity.scope_id).read_receipt(identity.operation_key)
+
+    def _check_object_history(self, job: _Job, definition: CommandSpec, receipt: Receipt) -> None:
+        """Validate private history without widening the original audit codec."""
+        if not self._history_enabled:
+            return
+        from companion_memory.logging_service.object_history import check_bundle
+        needed = any(a.owner_module == 'logging_service' and a.event_slot == 'object_history'
+                     for a in definition.required_audits)
+        expected = ()
+        if needed:
+            if type(receipt.result) is not MappingProxyType or 'history' not in receipt.result:
+                raise InvalidValue()
+            expected = receipt.result['history']
+            if not expected:
+                raise InvalidValue()
+        rows = self._sql(job, "SELECT scope_id,history_id,previous_revision,object_id,commit_id,"
+            "CASE WHEN length(CAST(body AS BLOB))<=8192 THEN body END,"
+            "CASE WHEN length(CAST(evidence AS BLOB))<=2048 THEN evidence END "
+            "FROM logging_object_history WHERE commit_id=? ORDER BY history_id LIMIT 9", (receipt.commit_id,)).fetchall()
+        check_bundle(receipt, expected, tuple(rows))
 
     def get_health(self) -> Health:
         """Observe only current in-memory ownership; never perform storage I/O."""
@@ -452,6 +541,8 @@ class PersistenceService:
     async def _run(self, job: _Job, work: Callable[[], object], *, writer: bool = False) -> object:
         loop = asyncio.get_running_loop()
         completion = loop.create_future()
+        from .completion import retain_completion
+        retain_completion(completion)
 
         def notify() -> None:
             if not completion.done():
@@ -473,14 +564,21 @@ class PersistenceService:
                 self._fault("IO_FAILED")
             finally:
                 with self._lock:
+                    # Publish the retained connection before making the worker
+                    # joinable or removing its admission record. Both shutdown
+                    # consumers use this same lock to observe the handoff.
+                    if job.connection is not None:
+                        self._connection_notifications[job.connection] = (loop, notify)
                     if writer and self._writer is job:
                         self._writer = None
                     self._reads.discard(job)
                     if job.operation == "close" and self._close_report is None and type(job.result) is CloseReport:
                         self._close_report = job.result
                     job.done.set()
+                    self._cleanup_changed.notify_all()
                 try:
-                    loop.call_soon_threadsafe(notify)
+                    if job.connection is None:
+                        loop.call_soon_threadsafe(notify)
                 except RuntimeError:
                     pass  # The caller loop may end while owned cleanup continues.
 
@@ -860,7 +958,8 @@ class PersistenceService:
             self._receipt(job, OperationIdentity(self._resources.expected_database_id, *row))
         orphan = self._sql(job, "SELECT 1 FROM audit_records a LEFT JOIN operation_receipts r USING(commit_id) WHERE r.commit_id IS NULL LIMIT 1").fetchone()
         missing = self._sql(job, "SELECT 1 FROM required_audit_events a LEFT JOIN operation_receipts r USING(commit_id) WHERE r.commit_id IS NULL LIMIT 1").fetchone()
-        if orphan or missing:
+        history_orphan = self._history_enabled and self._sql(job, "SELECT 1 FROM logging_object_history h LEFT JOIN operation_receipts r USING(commit_id) WHERE r.commit_id IS NULL LIMIT 1").fetchone()
+        if orphan or missing or history_orphan:
             raise _StorageFault(self._error(job.operation, "INTEGRITY_FAILURE", "DATA_INCONSISTENT", "receipt"))
 
     def _stored_audits(self, job: _Job, definition: CommandSpec, receipt: Receipt, *, require_complete: bool = True) -> tuple[AuditRecord, ...]:
@@ -903,6 +1002,7 @@ class PersistenceService:
             if validate_audit_record(record, requirements[slot], receipt.identity, receipt.commit_id) != encoded:
                 raise InvalidValue()
             records.append(record)
+        self._check_object_history(job, definition, receipt)
         return tuple(records)
 
     def _receipt(self, job: _Job, identity: OperationIdentity) -> Receipt | None:
@@ -1029,9 +1129,13 @@ class PersistenceService:
             self._check_deadline(uow._job)
             if uow._job.first_error is not None:
                 return Failed(replace(uow._job.first_error, operation="participate"))
+            assert uow._job.connection is not None
+            before_changes = uow._job.connection.total_changes
             result = self._statement(uow._job, port, values)
             if port._definition.writes:
-                uow._changed.add(port._repository.owner_module)
+                owner = port._repository.owner_module
+                uow._changed.add(owner)
+                uow._row_changes[owner] = uow._row_changes.get(owner, 0) + uow._job.connection.total_changes - before_changes
             return Staged(result)
         except ValueTooLarge:
             error = self._error("participate", "INVALID_INPUT", "LIMIT_EXCEEDED", "operation")
@@ -1165,6 +1269,10 @@ class PersistenceService:
                         try:
                             frozen = freeze_value(port._definition.result_schema, result, owned=True)
                             encode_value(frozen, self._settings.receipt_max_bytes)
+                            has_history = any(a.owner_module == 'logging_service' and a.event_slot == 'object_history' for a in port._definition.required_audits)
+                            if uow._history or has_history:
+                                if type(frozen) is not MappingProxyType or frozen.get('history') != tuple(item['history_id'] for item in uow._history):
+                                    raise InvalidValue()
                         except InvalidValue:
                             raise _StorageFault(self._error("execute", "TRANSACTION_FAILED", "RECEIPT_FAILED", "receipt")) from None
                         checked = audit.check_required_audits(uow, frozen_result=frozen)
@@ -1396,6 +1504,95 @@ class PersistenceService:
             return Unconfirmed(handle, result.error)
         return cast(ExecutionResult, result)
 
+    def _close_retired_connection(self, connection: sqlite3.Connection) -> bool:
+        """Close only a connection handed off by an ended exclusive worker.
+
+        The lifecycle cleanup worker is exclusive with final storage close.
+        Failed releases retain both the connection and its original notification.
+        """
+        try:
+            connection.set_authorizer(None)
+            connection.set_progress_handler(None, 0)
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            connection.close()
+        except MemoryError:
+            raise
+        except Exception:
+            return False
+        with self._lock:
+            self._connections.discard(connection)
+            notification = self._connection_notifications.pop(connection, None)
+        if notification is not None:
+            try:
+                notification[0].call_soon_threadsafe(notification[1])
+            except RuntimeError:
+                pass  # Resource release remains true after the caller loop ends.
+        return True
+
+    async def coordinate_owner_shutdown[T](self, owners: asyncio.Task[T]) -> T:
+        """Join trusted owner shutdown while releasing its retired connections.
+
+        The host must stop new business admission first. Existing owners may
+        still perform legal final writes; this port neither closes storage
+        admission nor releases its root. One retained cleanup worker consumes
+        only atomically handed-off connections, once each per invocation. The
+        host bounds its caller's wait and retains this coordination task if a
+        close blocks. Final storage close joins the same actual worker.
+        """
+        loop = asyncio.get_running_loop()
+        completed: asyncio.Future[None] = loop.create_future()
+        from .completion import retain_completion
+        with self._lock:
+            if self._cleanup_job is not None or self._close_job is not None:
+                raise RuntimeError("Storage shutdown already has a cleanup owner.")
+            assert self._resources is not None and self._settings is not None
+            job = _Job("close", self._resources.monotonic() + self._settings.close_timeout_ms / 1000)
+            self._cleanup_job = job
+        retain_completion(completed)
+        owners_ended = False
+
+        def owner_ended(_: asyncio.Task[T]) -> None:
+            nonlocal owners_ended
+            with self._cleanup_changed:
+                owners_ended = True
+                self._cleanup_changed.notify_all()
+
+        owners.add_done_callback(owner_ended)
+
+        def notify() -> None:
+            if not completed.done():
+                if isinstance(job.result, BaseException): completed.set_exception(job.result)
+                else: completed.set_result(None)
+
+        def cleanup() -> None:
+            attempted: set[sqlite3.Connection] = set()
+            try:
+                while True:
+                    with self._cleanup_changed:
+                        eligible = tuple(c for c in self._connection_notifications if c not in attempted)
+                        if not eligible:
+                            if owners_ended: break
+                            self._cleanup_changed.wait()
+                            continue
+                    for connection in eligible:
+                        attempted.add(connection)
+                        if self._close_retired_connection(connection): attempted.discard(connection)
+            except BaseException as failure:
+                job.result = failure
+            finally:
+                with self._lock:
+                    self._cleanup_job = None
+                    job.done.set()
+                try: loop.call_soon_threadsafe(notify)
+                except RuntimeError: pass
+
+        threading.Thread(target=cleanup, name="persistence-cleanup-owner", daemon=True).start()
+        await asyncio.wait((owners, completed))
+        owners.remove_done_callback(owner_ended)
+        completed.result()
+        return owners.result()
+
     async def close(self) -> CloseReport:
         """Stop admission and wait once within the configured total close deadline.
 
@@ -1418,7 +1615,7 @@ class PersistenceService:
                 close_job = _Job("close", self._resources.monotonic() + self._settings.close_timeout_ms / 1000)
                 self._close_job = close_job
                 self._lifecycle = "CLOSING"
-                owned = tuple(self._reads) + ((self._writer,) if self._writer else ())
+                owned = tuple(self._reads) + ((self._writer,) if self._writer else ()) + ((self._cleanup_job,) if self._cleanup_job else ())
                 for job in owned:
                     job.cancelled.set()
                 already_closing = False
@@ -1432,19 +1629,10 @@ class PersistenceService:
             for job in owned:
                 job.done.wait()
             failed = False
-            for connection in tuple(self._connections):
-                try:
-                    connection.set_authorizer(None)
-                    connection.set_progress_handler(None, 0)
-                    if connection.in_transaction:
-                        connection.execute("ROLLBACK")
-                    connection.close()
-                    with self._lock:
-                        self._connections.discard(connection)
-                except MemoryError:
-                    raise
-                except Exception:
-                    failed = True
+            with self._lock:
+                connections = tuple(self._connections)
+            for connection in connections:
+                if not self._close_retired_connection(connection): failed = True
             if not self._connections:
                 failed = not self._release_target() or failed
             with self._lock:

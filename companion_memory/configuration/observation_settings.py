@@ -21,3 +21,17 @@ def observation_settings(candidate:ConfigurationCandidate) -> ObservationSetting
         'timeout_seconds':s.integer('management.observation_timeout_ms')/1000,'concurrency':s.integer('management.observation_concurrency'),
         'refresh_seconds':s.integer('management.refresh_min_interval_ms')/1000}.items():object.__setattr__(value,key,item)
     return value
+
+
+def content_observation_settings(candidate) -> ObservationSettings:
+    """Project only observation limits from a complete native content candidate."""
+    from .content_resolution import content_snapshot_issue
+    if content_snapshot_issue(candidate) is not None: raise ValueError('Complete native content configuration required.')
+    value = object.__new__(ObservationSettings)
+    settings = candidate.runtime
+    for key, item in {'log_row_limit': settings.integer('logging.web_query_row_limit'),
+        'row_limit': settings.integer('management.observation_row_limit'), 'byte_limit': settings.integer('management.observation_max_bytes'),
+        'timeout_seconds': settings.integer('management.observation_timeout_ms') / 1000,
+        'concurrency': settings.integer('management.observation_concurrency'), 'refresh_seconds': settings.integer('management.refresh_min_interval_ms') / 1000}.items():
+        object.__setattr__(value, key, item)
+    return value

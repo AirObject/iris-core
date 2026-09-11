@@ -37,6 +37,11 @@ class _Port:
 class WorkPort(_Port):
     """One caller's bounded model work and its own request observations."""
     __slots__ = ()
+    def consumers_ended(self) -> bool:
+        """Whether this exact native work capability has no actual consumers remaining."""
+        service = self._native()
+        return service is not None and service.work_consumers_ended(self)
+
     async def generate(self, request: object):
         """Generate nonstreaming text under one durable logical operation key."""
         service = self._native()
@@ -64,6 +69,13 @@ class WorkPort(_Port):
         """Confirm an original scoped request; a miss never grants replay authority."""
         service = _Port._native(self)
         return _Port._read_denied(self,"lookup_request") if service is None else await service._lookup_request(self, operation, original_request)
+
+    async def verify_unsent(self, operation: object, original_request: object):
+        """Prove isolated no-dispatch status; lookup absence alone is insufficient."""
+        service = _Port._native(self)
+        if service is None: return _Port._read_denied(self, 'lookup_request')
+        from .unsent_evidence import verify_unsent
+        return await verify_unsent(service, self, operation, original_request)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +111,11 @@ class ObserverPort(_Port):
 class ResultOwnerPort(_Port):
     """Exact request allowlist for recovering committed owner-bound handoffs."""
     __slots__ = ()
+    async def verify_terminal(self, request_id: object, original_request: object = None):
+        """Obtain native evidence for this owner's audited durable terminal, without sending."""
+        service = self._native()
+        return self._read_denied('recover_result') if service is None else await service._verify_terminal(self, request_id, original_request)
+
     async def recover_result(self, request_id: object):
         service = self._native()
         return self._read_denied("recover_result") if service is None else await service._recover_result(self, request_id)

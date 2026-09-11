@@ -12,6 +12,8 @@
 
 ## 按边界定位
 
+本轮已批准细化：[对象／关系／修订／状态](../architecture/formal-memory-source-media.md#objects)、[完整来源与候选终结](../architecture/formal-memory-source-media.md#sources-candidates)、[公开读取及权限](../architecture/formal-memory-source-media.md#ports-permissions)。集中决定与验收均见该契约，实施已获授权。
+
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
 | 关注点 | 阅读位置与边界 |
@@ -22,7 +24,7 @@
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A23](../product/acceptance.md#a23)、[A24](../product/acceptance.md#a24)、[A26](../product/acceptance.md#a26)、[A27](../product/acceptance.md#a27)、[A29](../product/acceptance.md#a29)、[A30](../product/acceptance.md#a30)、[A31](../product/acceptance.md#a31)、[A32](../product/acceptance.md#a32)、[A34](../product/acceptance.md#a34)、[A39](../product/acceptance.md#a39)、[A42](../product/acceptance.md#a42)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V07](../architecture/acceptance.md#v07)、[V08](../architecture/acceptance.md#v08)、[V18](../architecture/acceptance.md#v18)、[V19](../architecture/acceptance.md#v19)、[V20](../architecture/acceptance.md#v20)（预期行为，未执行） |
-| 尚未决定 | 类别Schema、反馈有效期、修订匹配、临近删除反馈和外部完整来源权限待固定。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 尚未决定 | 类别Schema、修订匹配及受控读取已在[集中契约](../architecture/formal-memory-source-media.md#objects)批准；反馈有效期、临近删除反馈仍待固定，外部完整来源未开放。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

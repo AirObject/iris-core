@@ -12,6 +12,8 @@
 
 ## 按边界定位
 
+本轮已批准细化：[集中契约的媒体状态与复用](../architecture/formal-memory-source-media.md#interpretation)、[真实字节发布／引用／GC](../architecture/formal-memory-source-media.md#files-gc)、[容量与整体验收](../architecture/formal-memory-source-media.md#capacity)。实施已获授权，既有职责不变。
+
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
 | 关注点 | 阅读位置与边界 |
@@ -22,7 +24,7 @@
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A04](../product/acceptance.md#a04)、[A05](../product/acceptance.md#a05)、[A06](../product/acceptance.md#a06)、[A13](../product/acceptance.md#a13)、[A63](../product/acceptance.md#a63)、[A64](../product/acceptance.md#a64)、[A65](../product/acceptance.md#a65)、[A91](../product/acceptance.md#a91)、[A103](../product/acceptance.md#a103)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V10](../architecture/acceptance.md#v10)、[V11](../architecture/acceptance.md#v11)、[V12](../architecture/acceptance.md#v12)、[V13](../architecture/acceptance.md#v13)、[V14](../architecture/acceptance.md#v14)、[V15](../architecture/acceptance.md#v15)（预期行为，未执行） |
-| 尚未决定 | 空文本、部分理解、普通失败后的新事件处理、上传限制与GC保护参数待固定。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 尚未决定 | 理解状态、新事件处理、上传限制与GC保护参数已在[集中契约](../architecture/formal-memory-source-media.md#interpretation)批准；内部部分结果生产路径和保护解除仍未开放。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

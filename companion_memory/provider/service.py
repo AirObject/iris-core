@@ -5,6 +5,7 @@ Caller timeouts never release a live adapter or local transaction. Startup turns
 unresolved preparations into conservative unknowns and never repeats a model call.
 """
 from __future__ import annotations
+from companion_memory.persistence.completion import finish_owned, CompletionScope
 import asyncio
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -13,7 +14,10 @@ import math
 import threading
 from weakref import WeakKeyDictionary
 from types import MappingProxyType
-from typing import cast
+from typing import cast, TYPE_CHECKING
+if TYPE_CHECKING:
+    from .stored_media import StoredMediaAuthority, StoredMediaAuthorized
+    from companion_memory.media.service import MediaError
 
 from companion_memory.configuration import EffectiveSnapshot, PresentValue, provider_snapshot_issue
 from companion_memory.logging_service import Logger
@@ -68,9 +72,11 @@ class _Job:
     worker_failure: BaseException | None = None
     reserved: int = 0
     port: object = None
+    media_authorization: object = None
     partial_response: AdapterResponse | None = None
     local_read_pending: bool = False
     local_write_pending: bool = False
+    completion: CompletionScope = field(default_factory=CompletionScope)
 
 
 class _EvidenceConflict(Exception):
@@ -106,11 +112,22 @@ class ProviderService:
         self._profiles: dict[str, Record] = {}
         self._accounts: dict[str, Record] = {}
         self._ports: WeakKeyDictionary[object, WorkGrant | ObserverGrant | ResultGrant] = WeakKeyDictionary()
-        self._media: dict[object, AuthorizedMedia] = {}
+        self._media: WeakKeyDictionary[object, None] = WeakKeyDictionary()
+        self._registration_limit: int | None = None
+        from weakref import WeakValueDictionary
+        self._terminal_evidence = WeakValueDictionary()
+        self._unsent_evidence = WeakValueDictionary()
+        self._stored_authorities: WeakValueDictionary[int, StoredMediaAuthority] = WeakValueDictionary()
+        self._stored_media: dict[AuthorizedMedia, tuple[StoredMediaAuthority, str, str]] = {}
+        self._stored_pending: set[tuple[int, str, str]] = set()
+
         self._jobs: set[_Job] = set()
         self._lookup_tasks: set[asyncio.Task] = set()
+        self._lookup_consumers: dict[asyncio.Task, AuthorizedMedia] = {}
+        self._lookup_owners: dict[asyncio.Task, object] = {}
         self._serial = asyncio.Lock()
         self._init_task: asyncio.Task | None = None
+        self._init_completion = CompletionScope()
         self._initialization_cleanup: asyncio.Task | None = None
         self._recovery = None
         self._close_report: CloseReport | None = None
@@ -197,7 +214,7 @@ class ProviderService:
         try:
             self._execution_owner = self._execution_owner or self._id()
             deadline = self._now()+self._number("request_timeout_ms")/1000
-            self._init_task = asyncio.create_task(self._bootstrap(deadline))
+            self._init_task = asyncio.create_task(self._bootstrap_owned(deadline))
             self._init_task.add_done_callback(lambda task: self._finish_close())
             return await asyncio.wait_for(asyncio.shield(self._init_task), max(0, deadline-self._now()))
         except TimeoutError:
@@ -219,6 +236,10 @@ class ProviderService:
                 break
             after = cast(str, rows[-1]["object_id"])
 
+    async def _bootstrap_owned(self, deadline: float):
+        with self._init_completion:
+            return await self._bootstrap(deadline)
+
     async def _bootstrap(self, deadline: float):
         if self._recovery is None:
             self._recovery = self._recovery_steps()
@@ -235,7 +256,7 @@ class ProviderService:
             if self._ledger_faulted:
                 if self._reason == "RESOURCE_FAILURE":
                     return RecoveryPending(error("RESOURCE_FAILED", "initialize", "state", "RESOURCE_FAILURE",
-                                                 bool(self._ledger.storage.get_health().writes_in_flight)))
+                                                 self._init_completion.pending))
                 return RecoveryPending(error("PERSISTENCE_FAILED", "initialize", "ledger", "LEDGER_UNCONFIRMED"))
             return RecoveryPending(error("TIMEOUT", "initialize", "request", "DEADLINE_EXCEEDED"))
         except _StoredPolicyMismatch:
@@ -248,8 +269,7 @@ class ProviderService:
             return RecoveryPending(error("PERSISTENCE_FAILED", "initialize", "ledger", failure.reason, failure.cleanup_pending))
         except LedgerFailure:
             self._recovery = None
-            while self._ledger.storage.get_health().writes_in_flight or self._ledger.storage.get_health().reads_in_flight:
-                await asyncio.sleep(0.01)
+            await self._init_completion.wait()
             self._fault("LEDGER_READ_FAILED")
             return RecoveryPending(error("PERSISTENCE_FAILED", "initialize", "ledger", "LEDGER_READ_FAILED"))
         except InvalidData:
@@ -350,6 +370,8 @@ class ProviderService:
                 yield None
 
     def _issue(self, kind: type, grant: WorkGrant | ObserverGrant | ResultGrant):
+        if self._registration_limit is not None and len(self._ports) >= self._registration_limit:
+            raise ValueError('Native Provider capability capacity is occupied.')
         port = object.__new__(kind)
         object.__setattr__(port, "_service", self)
         self._ports[port] = grant
@@ -386,15 +408,74 @@ class ProviderService:
         if type(port) in (WorkPort, ObserverPort, ResultOwnerPort):
             self._ports.pop(port, None)
 
+    def work_consumers_ended(self, port: WorkPort) -> bool:
+        """Report only this issued capability's actual tasks; no commit inference."""
+        if type(port) is not WorkPort or port not in self._ports: return False
+        return not any(job.port is port for job in self._jobs) and not any(owner is port for owner in self._lookup_owners.values())
+
+    def bind_stored_media_authority(self, media: object, caller_scope: str, result_owner: str) -> StoredMediaAuthority:
+        """Trusted assembly binds the actual same-database media owner exclusively."""
+        from companion_memory.media.service import MediaService
+        from .stored_media import StoredMediaAuthority
+        if (self._state != 'READY' or type(media) is not MediaService or self._binding is None
+                or not media.matches_provider(self._ledger.storage, self._ledger.database_id, caller_scope) or result_owner != 'media'
+                or len(self._stored_authorities) >= media.settings.integer('media.processing_concurrency')):
+            raise ValueError('The native media owner, database, scope and result owner must match.')
+        authority = object.__new__(StoredMediaAuthority)
+        for name, value in (('_provider', self), ('_media', media), ('_scope', caller_scope), ('_owner', result_owner)):
+            object.__setattr__(authority, name, value)
+        self._stored_authorities[id(authority)] = authority
+        return authority
+
+    async def _authorize_stored(self, authority: StoredMediaAuthority, work_id: object, occurrence_id: object) -> StoredMediaAuthorized | MediaError:
+        from companion_memory.media.processing_bytes import read_processing_bytes, ProcessingBytes
+        from companion_memory.media.service import MediaError
+        from .stored_media import StoredMediaAuthorized
+        if self._state != 'READY': return MediaError('INVALID_STATE', 'authorize_stored_media', 'state', 'NOT_READY')
+        if not is_identifier(work_id) or not is_identifier(occurrence_id):
+            return MediaError('ACCESS_DENIED', 'authorize_stored_media', 'capability', 'BINDING_MISMATCH')
+        for handle, (binding, work, occurrence) in self._stored_media.items():
+            if binding is authority and work == work_id and occurrence == occurrence_id:
+                return StoredMediaAuthorized(handle, handle._artifact)
+        pending_key = (id(authority), cast(str, work_id), cast(str, occurrence_id))
+        if pending_key in self._stored_pending or len(self._stored_media) + len(self._stored_pending) >= authority._media.settings.integer('media.processing_concurrency'):
+            return MediaError('RESOURCE_BUSY', 'authorize_stored_media', 'state', 'ADMISSION_FULL')
+        self._stored_pending.add(pending_key)
+        completion = CompletionScope()
+        def ended() -> None:
+            self._stored_pending.discard(pending_key)
+            self._finish_close()
+        try:
+            with completion:
+                read = await authority._media.read_processing(work_id, occurrence_id)
+        finally:
+            # Caller cancellation can precede the logical read result. Its native
+            # descendants still notify this owner after their actual completion.
+            completion.when_ended(ended)
+        data = read.result
+        if type(data) is MediaError: return data
+        assert type(data) is ProcessingBytes
+        if self._state != 'READY' or self._stored_authorities.get(id(authority)) is not authority:
+            return MediaError('INVALID_STATE', 'authorize_stored_media', 'state', 'SERVICE_CLOSED')
+        handle = object.__new__(AuthorizedMedia)
+        for name, value in (('_issuer', self), ('_scope', authority._scope), ('_owner', authority._owner),
+                ('_artifact', data.artifact_id), ('_content', data.content), ('_modality', data.modality)):
+            object.__setattr__(handle, name, value)
+        self._media[handle] = None
+        self._stored_media[handle] = authority, cast(str, work_id), cast(str, occurrence_id)
+        return StoredMediaAuthorized(handle, data.artifact_id)
+
     def authorize_media(self, caller_scope: str, owner_id: str, artifact_id: str, content: bytes, modality: str) -> AuthorizedMedia:
         """Issue one exact synthetic byte source; no paths, URLs or blob-store writes."""
         if (any(not is_identifier(item) for item in (caller_scope, owner_id, artifact_id)) or type(content) is not bytes
                 or not 1 <= len(content) <= 1048576 or type(modality) is not str or modality not in ("IMAGE", "AUDIO", "VIDEO")):
             raise ValueError("A bounded native synthetic media source is required.")
+        if not self._settings or len(self._media) >= self._number('max_in_flight'):
+            raise ValueError('Native media authorization capacity is occupied.')
         media = object.__new__(AuthorizedMedia)
         for name, value in (("_issuer", self), ("_scope", caller_scope), ("_owner", owner_id), ("_artifact", artifact_id), ("_content", content), ("_modality", modality)):
             object.__setattr__(media, name, value)
-        self._media[media] = media
+        self._media[media] = None
         return media
 
     def _access(self, port: object, operation: str, allowed: tuple[type, ...]) -> ProviderError | None:
@@ -492,6 +573,9 @@ class ProviderService:
             return Rejected(error("RESOURCE_FAILED", operation, "state", "RESOURCE_FAILURE"))
         if request["profile_id"] not in grant.profiles:
             return Rejected(error("ACCESS_DENIED", operation, "capability", "CAPABILITY_MISMATCH"))
+        from .unsent_evidence import request_key
+        if request_key(grant, request) in self._unsent_evidence:
+            return Rejected(error('MODE_BLOCKED', operation, 'state', 'ORIGINAL_ADMISSION_CLOSED'))
         if len(self._jobs) >= self._number("max_in_flight"):
             return Rejected(error("RESOURCE_BUSY", operation, "state", "ADMISSION_BUSY"))
         deadline = min(requested_deadline, start+self._number("request_timeout_ms")/1000)
@@ -512,9 +596,13 @@ class ProviderService:
         except Exception:
             return Rejected(error("RESOURCE_FAILED", operation, "state", "RESOURCE_FAILURE"))
         job.port = port
+        if operation == 'understand_media' and type(raw) is dict:
+            submitted = raw.get('payload')
+            if type(submitted) is dict and submitted.get('media') in self._stored_media:
+                job.media_authorization = submitted['media']
         job.publication = asyncio.get_running_loop().create_future()
         self._jobs.add(job)
-        job.task = asyncio.create_task(self._drive(job))
+        job.task = asyncio.create_task(self._drive_owned(job))
         job.task.add_done_callback(lambda task: self._job_finished(job, task))
         execution = job.task
         try:
@@ -549,20 +637,16 @@ class ProviderService:
         self._finish_close()
 
     def _owns_work(self, job: _Job) -> bool:
-        health = self._ledger.storage.get_health()
-        return ((job.worker is not None and job.worker.is_alive())
-                or job.local_write_pending and bool(health.writes_in_flight)
-                or job.local_read_pending and bool(health.reads_in_flight))
+        return (job.worker is not None and job.worker.is_alive()) or job.completion.pending
 
     async def _retain_initialization_cleanup(self) -> None:
-        while self._ledger.storage.get_health().writes_in_flight:
-            await asyncio.sleep(0.01)
+        await self._init_completion.wait()
 
     def _observe_write_cleanup(self, result: object, owner: _Job | None) -> bool:
         """Retain local ownership independently of committed/absent evidence."""
         health = self._ledger.storage.get_health()
-        pending = getattr(getattr(result, "error", None), "cleanup_pending", False) is True or bool(health.writes_in_flight)
-        if health.writes_in_flight:
+        pending = getattr(getattr(result, "error", None), "cleanup_pending", False) is True or (owner.completion.pending if owner is not None else self._init_completion.pending)
+        if pending:
             if owner is not None:
                 owner.local_write_pending = True
             elif self._initialization_cleanup is None or self._initialization_cleanup.done():
@@ -597,15 +681,28 @@ class ProviderService:
             raise _WriteFailure("LEDGER_UNCONFIRMED", True)
         key = derived_id(kind,key)
         result, command = await self._ledger.mutate(kind, key, changes, actor, request_id, attempt_id, before, after, complete)
+        from companion_memory.persistence import Rejected as StorageRejected
+        admission_deadline = owner.deadline if owner is not None else self._now() + self._number('request_timeout_ms') / 1000
+        while (type(result) is StorageRejected and result.error.code == 'RESOURCE_BUSY'
+                and result.error.reason == 'ADMISSION_BUSY' and self._now() < admission_deadline):
+            # This native rejection occurs before the writer is admitted. Keep
+            # the bounded owner and retry only the unchanged local command.
+            await asyncio.sleep(min(0.01, max(0, admission_deadline - self._now())))
+            if self._now() >= admission_deadline: break
+            result = await self._ledger.operations[kind].execute(key, command)
         cleanup_pending = self._observe_write_cleanup(result, owner)
+        if (type(result) is StorageRejected and result.error.code == 'RESOURCE_BUSY'
+                and result.error.reason == 'ADMISSION_BUSY'):
+            raise _WriteFailure('LEDGER_ADMISSION_BUSY', cleanup_pending=cleanup_pending)
         if type(result) is Committed:
             return result
         if type(result) is Unconfirmed:
             self._fault("LEDGER_UNCONFIRMED")
             # Confirmation never invokes the handler. It cannot authorize a new
             # execution owner, and a failed confirmation never becomes a resend.
-            while self._ledger.storage.get_health().writes_in_flight or self._ledger.storage.get_health().reads_in_flight:
-                await asyncio.sleep(0.01)
+            if owner is not None: await owner.completion.wait()
+            elif self._initialization_cleanup is not None: await asyncio.shield(self._initialization_cleanup)
+
             confirmed = await self._ledger.operations[kind].resolve_operation(result.recovery_handle)
             cleanup_pending = self._observe_write_cleanup(confirmed, owner)
             if type(confirmed) is Committed:
@@ -614,6 +711,10 @@ class ProviderService:
                 raise _WriteFailure("LEDGER_NOT_COMMITTED", cleanup_pending=cleanup_pending)
             raise _WriteFailure("LEDGER_UNCONFIRMED", True, cleanup_pending)
         raise _WriteFailure("LEDGER_NOT_COMMITTED" if type(result) is NotCommitted else "LEDGER_REJECTED", cleanup_pending=cleanup_pending)
+
+    async def _drive_owned(self, job: _Job):
+        with job.completion:
+            return await self._drive(job)
 
     async def _drive(self, job: _Job):
         try:
@@ -712,6 +813,8 @@ class ProviderService:
             cause = job.first_error or error("PERSISTENCE_FAILED", job.operation, "ledger", "LEDGER_READ_FAILED")
             return Rejected(cause) if job.stored is None else Pending(self._reference(job.request_id, job.request["operation_key"]), "LOCAL_COMMIT_UNCONFIRMED", cause)
         except _WriteFailure as failure:
+            if failure.reason == 'LEDGER_ADMISSION_BUSY' and job.stored is None and job.worker is None:
+                return Rejected(error('RESOURCE_BUSY', job.operation, 'ledger', 'ADMISSION_BUSY', failure.cleanup_pending))
             self._fault(failure.reason)
             job.first_error = job.first_error or error("PERSISTENCE_FAILED", job.operation, "ledger", failure.reason, failure.cleanup_pending)
             if failure.cleanup_pending:
@@ -1040,14 +1143,16 @@ class ProviderService:
 
     def get_health(self) -> Health:
         """Observe current owned work without waiting or repairing durable state."""
-        pending = bool(self._jobs) or bool(self._lookup_tasks) or (self._init_task is not None and not self._init_task.done()) or (self._initialization_cleanup is not None and not self._initialization_cleanup.done())
+        pending = bool(self._jobs) or bool(self._lookup_tasks) or bool(self._stored_pending) or (self._init_task is not None and not self._init_task.done()) or (self._initialization_cleanup is not None and not self._initialization_cleanup.done())
         return Health(self._state, len(self._jobs), self._unknown, pending, self._ledger_faulted, self._reason)
 
     def _finish_close(self) -> None:
-        if (self._state == "CLOSING" and not self._jobs and not self._lookup_tasks and (self._init_task is None or self._init_task.done())
+        if (self._state == "CLOSING" and not self._jobs and not self._lookup_tasks and not self._stored_pending and (self._init_task is None or self._init_task.done())
                 and (self._initialization_cleanup is None or self._initialization_cleanup.done())):
             if self._binding is not None:
                 self._binding.release()
+            for handle in tuple(self._media): object.__setattr__(handle, '_content', b'')
+            self._stored_media.clear(); self._media.clear()
             self._state = "CLOSED"
 
     async def close(self) -> CloseReport:
@@ -1101,10 +1206,13 @@ class ProviderService:
             return Failed(error("RESOURCE_FAILED", operation, "state", "RESOURCE_FAILURE"))
         if len(self._lookup_tasks)>=self._number("max_in_flight"):
             return Failed(error("RESOURCE_BUSY", operation, "state", "ADMISSION_BUSY"))
-        task=asyncio.create_task(self._lookup_original(port,action,request,token,deadline))
+        task=asyncio.create_task(finish_owned(self._lookup_original(port,action,request,token,deadline)))
+        if action == "understand_media":
+            self._lookup_consumers[task] = cast(dict, cast(dict, raw)["payload"])["media"]
+        self._lookup_owners[task] = port
         self._lookup_tasks.add(task);task.add_done_callback(self._lookup_finished)
         while not task.done():
-            issue=self._lookup_wait_issue(port,token,deadline)
+            issue=self._lookup_wait_issue(port,token,deadline, cleanup_pending=not task.done())
             if issue is not None:return Failed(issue)
             try:
                 remaining=max(0,deadline-self._now())
@@ -1113,31 +1221,26 @@ class ProviderService:
             await asyncio.wait((task,),timeout=min(0.01,remaining))
         result=task.result()
         if type(result) is Found or type(result) is NotFound:
-            issue=self._lookup_wait_issue(port,token,deadline)
+            issue=self._lookup_wait_issue(port,token,deadline, cleanup_pending=not task.done())
             if issue is not None:return Failed(issue)
         return result
 
-    def _lookup_wait_issue(self,port:object,token:CancellationToken,deadline:float) -> ProviderError | None:
+    def _lookup_wait_issue(self, port: object, token: CancellationToken, deadline: float, *, cleanup_pending: bool = False) -> ProviderError | None:
         operation="lookup_request"
-        if (issue:=self._access(port,operation,(WorkPort,))) is not None:return issue
+        if (issue:=self._access(port,operation,(WorkPort,))) is not None:return replace(issue, cleanup_pending=cleanup_pending or issue.cleanup_pending)
         try:
-            if self._now()>=deadline:return error("TIMEOUT",operation,"request","DEADLINE_EXCEEDED",bool(self._lookup_tasks))
-            if token.cancelled:return error("CANCELLED",operation,"request","CANCEL_REQUESTED",bool(self._lookup_tasks))
+            if self._now()>=deadline:return error("TIMEOUT",operation,"request","DEADLINE_EXCEEDED",cleanup_pending)
+            if token.cancelled:return error("CANCELLED",operation,"request","CANCEL_REQUESTED",cleanup_pending)
         except MemoryError:raise
-        except Exception:return error("RESOURCE_FAILED",operation,"state","RESOURCE_FAILURE",bool(self._lookup_tasks))
+        except Exception:return error("RESOURCE_FAILED",operation,"state","RESOURCE_FAILURE",cleanup_pending)
         return None
 
     def _lookup_finished(self,task:asyncio.Task) -> None:
         if not task.cancelled():task.exception()
         self._lookup_tasks.discard(task)
-        if self._binding is not None and self._binding.storage.get_health().reads_in_flight:
-            retained=asyncio.create_task(self._retain_lookup_reader())
-            self._lookup_tasks.add(retained);retained.add_done_callback(self._lookup_finished)
+        self._lookup_consumers.pop(task, None)
+        self._lookup_owners.pop(task, None)
         self._finish_close()
-
-    async def _retain_lookup_reader(self) -> None:
-        # A lower timeout cannot release this module while its SQLite reader runs.
-        while self._ledger.storage.get_health().reads_in_flight:await asyncio.sleep(0.01)
 
     async def _lookup_original(self,port:object,action:str,request:Record,token:CancellationToken,deadline:float):
         operation="lookup_request"
@@ -1176,6 +1279,62 @@ class ProviderService:
             request = visible[0]
             attempts = await self._ledger.read("attempts_for_request", {"request_id": request_id})
             return Found(MappingProxyType({"request": request, "attempts": attempts, "handoff_present": request["handoff_id"] is not None}))
+        except (LedgerFailure, InvalidData) as failure:
+            return self._read_failure(operation, failure)
+
+    async def _verify_terminal(self, port: object, request_id: object, original_request: object = None):
+        """Bound the whole attestation and retain unfinished lower readers on timeout."""
+        operation = 'recover_result'
+        denied = self._access(port, operation, (ResultOwnerPort,))
+        if denied is not None: return Failed(denied)
+        if len(self._lookup_tasks) >= self._number('max_in_flight'):
+            return Failed(error('RESOURCE_BUSY', operation, 'state', 'ADMISSION_BUSY'))
+        task = asyncio.create_task(finish_owned(self._verify_terminal_owned(port, request_id, original_request)))
+        self._lookup_tasks.add(task); task.add_done_callback(self._lookup_finished)
+        done, _ = await asyncio.wait((task,), timeout=self._number('request_timeout_ms') / 1000)
+        if not done: return Failed(error('TIMEOUT', operation, 'request', 'DEADLINE_EXCEEDED', True))
+        denied = self._access(port, operation, (ResultOwnerPort,))
+        if denied is not None: return Failed(denied)
+        return task.result()
+
+    async def _verify_terminal_owned(self, port: object, request_id: object, original_request: object = None):
+        """Attest only this result owner's complete audited original terminal."""
+        operation = 'recover_result'
+        denied = self._access(port, operation, (ResultOwnerPort,))
+        if denied is not None:
+            return Failed(denied)
+        grant = self._ports[port]
+        if type(grant) is not ResultGrant or not is_identifier(request_id) or request_id not in grant.request_ids:
+            return Failed(error('ACCESS_DENIED', operation, 'capability', 'CAPABILITY_MISMATCH'))
+        result = await self._recover_result(port, request_id)
+        if type(result) is not Found:
+            return result
+        try:
+            request = await self._ledger.get('requests', cast(str, request_id))
+            if request is None or request['phase'] != 'TERMINAL' or request['result_owner'] != grant.owner_id:
+                return Failed(error('ACCESS_DENIED', operation, 'capability', 'CAPABILITY_MISMATCH'))
+            if len(self._terminal_evidence) >= self._number('max_in_flight'):
+                return Failed(error('RESOURCE_BUSY', operation, 'state', 'ADMISSION_BUSY'))
+            normalized = None
+            if original_request is not None:
+                normalized = as_record(freeze(original_request, 65536, owned=True))
+                expected = fingerprint(MappingProxyType({'request': normalized, 'capability': request['capability'],
+                    'caller_module': request['caller_module'], 'caller_scope': request['caller_scope'], 'extension_id': request['extension_id'],
+                    'task_role': request['task_role'], 'result_owner': request['result_owner'], 'execution_evidence': request['execution_evidence']}), 2097152)
+                if expected != request['fingerprint']:
+                    return Failed(error('ACCESS_DENIED', operation, 'capability', 'CAPABILITY_MISMATCH'))
+            from .terminal_evidence import VerifiedTerminal, TerminalVerified
+            evidence = object.__new__(VerifiedTerminal)
+            object.__setattr__(evidence, '_provider', self)
+            object.__setattr__(evidence, 'database_id', self._ledger.database_id)
+            object.__setattr__(evidence, 'request', request)
+            object.__setattr__(evidence, 'result', as_record(result.value)['result'])
+            object.__setattr__(evidence, 'original_request', normalized)
+            attempts = await self._ledger.read('attempts_for_request', {'request_id': request['object_id']})
+            object.__setattr__(evidence, 'confirmed_sent', any(a['confirmed_started'] is True for a in attempts))
+            object.__setattr__(evidence, 'terminal_reason', 'SENSITIVE_INFORMATION' if request['outcome'] == 'SENSITIVE_REFUSAL' else None)
+            self._terminal_evidence[id(evidence)] = evidence
+            return TerminalVerified(evidence)
         except (LedgerFailure, InvalidData) as failure:
             return self._read_failure(operation, failure)
 

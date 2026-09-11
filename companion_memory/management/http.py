@@ -14,6 +14,7 @@ from types import MappingProxyType
 from urllib.parse import parse_qs,urlsplit
 from companion_memory.configuration.observation_settings import ObservationSettings
 from companion_memory.runtime import RuntimeObserver
+from companion_memory.runtime.content_observation import ContentObserver
 from companion_memory.runtime.results import Found,Failed
 from companion_memory.logging_service import RuntimeLogReader,LogPage,LogGap,LogReadFailed
 
@@ -37,6 +38,11 @@ for(const kind of ["runtime","entries","batches","logs"]){
 '''
 
 
+CONTENT_PAGE = PAGE.replace(b'Actual local services; simulated model; synthetic results.',
+    b'Storage: actual. Model adapter: simulated. Candidate input: synthetic.')
+CONTENT_SCRIPT = SCRIPT.replace(b'["runtime","entries","batches","logs"]', b'["runtime","entries","batches","memory","media","logs"]')
+
+
 def plain(value):
     if type(value) in (dict,MappingProxyType):return {key:plain(item) for key,item in value.items()}
     if type(value) in (list,tuple):return [plain(item) for item in value]
@@ -46,7 +52,7 @@ def plain(value):
 
 @dataclass(slots=True)
 class _Session:
-    runtime:RuntimeObserver | None
+    runtime:RuntimeObserver | ContentObserver | None
     logs:RuntimeLogReader | None
     expires:float
     reads:dict[str,float]
@@ -58,8 +64,8 @@ class ReadOnlyHTTP:
         if type(settings) is not ObservationSettings:raise TypeError('Native observation settings are required.')
         self.settings=settings;self.sessions:dict[str,_Session]={};self.server:asyncio.Server | None=None
         self.tasks:set[asyncio.Task]=set();self.writers:set[asyncio.StreamWriter]=set();self.closed=False
-    def issue_test_session(self,runtime:RuntimeObserver | None,logs:RuntimeLogReader | None,expires_at:float) -> str:
-        if (runtime is not None and type(runtime) is not RuntimeObserver or logs is not None and type(logs) is not RuntimeLogReader
+    def issue_test_session(self,runtime:RuntimeObserver | ContentObserver | None,logs:RuntimeLogReader | None,expires_at:float) -> str:
+        if (runtime is not None and type(runtime) not in (RuntimeObserver, ContentObserver) or logs is not None and type(logs) is not RuntimeLogReader
                 or type(expires_at) is not float or not time.monotonic()<expires_at<float('inf') or len(self.sessions)>=self.settings.row_limit):raise ValueError('Finite native observation session capabilities are required.')
         token=secrets.token_urlsafe(32);self.sessions[token]=_Session(runtime,logs,expires_at,{})
         return token
@@ -107,8 +113,8 @@ class ReadOnlyHTTP:
             if session is None or session.expires<=time.monotonic():await self.send(writer,401,{'error':'AUTHENTICATION_REQUIRED'});return
             if parsed.path in ('/status','/status.js'):
                 if session.runtime is None and session.logs is None:await self.send(writer,403,{'error':'ACCESS_DENIED'});return
-                await self.send(writer,200,PAGE if parsed.path=='/status' else SCRIPT,'text/html; charset=utf-8' if parsed.path=='/status' else 'text/javascript; charset=utf-8');return
-            if parsed.path not in ('/api/observe/runtime','/api/observe/entries','/api/observe/batches','/api/observe/logs'):await self.send(writer,404,{'error':'NOT_FOUND'});return
+                await self.send(writer,200,(CONTENT_PAGE if type(session.runtime) is ContentObserver else PAGE) if parsed.path=='/status' else (CONTENT_SCRIPT if type(session.runtime) is ContentObserver else SCRIPT),'text/html; charset=utf-8' if parsed.path=='/status' else 'text/javascript; charset=utf-8');return
+            if parsed.path not in ('/api/observe/runtime','/api/observe/entries','/api/observe/batches','/api/observe/logs','/api/observe/memory','/api/observe/media'):await self.send(writer,404,{'error':'NOT_FOUND'});return
             kind=parsed.path.rsplit('/',1)[1]
             if kind=='logs' and session.logs is None or kind!='logs' and session.runtime is None:await self.send(writer,403,{'error':'ACCESS_DENIED'});return
             now=time.monotonic()
@@ -134,7 +140,11 @@ class ReadOnlyHTTP:
                 result=await session.logs.query_runtime_logs(query)
             else:
                 assert session.runtime is not None
-                result=await {'runtime':session.runtime.read_runtime_view,'entries':session.runtime.read_entry_status,'batches':session.runtime.read_batch_status}[kind](query)
+                if kind in ('memory','media'):
+                    if type(session.runtime) is not ContentObserver:await self.send(writer,403,{'error':'ACCESS_DENIED'});return
+                    result=await (session.runtime.read_memory_status if kind=='memory' else session.runtime.read_media_status)(query)
+                else:
+                    result=await {'runtime':session.runtime.read_runtime_view,'entries':session.runtime.read_entry_status,'batches':session.runtime.read_batch_status}[kind](query)
             if self.sessions.get(token) is not session:await self.send(writer,403,{'error':'ACCESS_DENIED'});return
             if type(result) is Found or type(result) is LogPage:
                 value=result.value

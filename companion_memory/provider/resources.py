@@ -190,7 +190,7 @@ class ProviderResources:
 
 class AuthorizedMedia:
     """Opaque in-memory media reference issued only by trusted provider assembly."""
-    __slots__ = ("_issuer", "_scope", "_owner", "_artifact", "_content", "_modality")
+    __slots__ = ("_issuer", "_scope", "_owner", "_artifact", "_content", "_modality", "__weakref__")
     def __new__(cls):
         raise TypeError("Media access is issued by trusted assembly.")
     def __setattr__(self, name: str, value: object) -> None:

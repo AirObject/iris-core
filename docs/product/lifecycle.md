@@ -167,3 +167,5 @@ F <= R < H             → 保持原状态
 共享来源与其他记忆：不即时级联抹除，由梦境审查影响
 审计日志：只供开发者；没有返回记忆agent的读取通道
 ```
+
+本轮仅维护对象状态的已批准细化见[集中契约：当前修订、分数、墓碑与依赖待办](../architecture/formal-memory-source-media.md#objects)，[参数推荐](../architecture/configuration.md#formal-memory-media-configuration)及[历史正文隔离](../architecture/logging.md#memory-history-audit)；自动衰减、使用反馈、检索及梦境职责的边界见[集中范围](../architecture/formal-memory-source-media.md#scope)。
