@@ -96,6 +96,22 @@ def reference(value: MappingProxyType[str, Value]) -> MappingProxyType[str, Valu
     return record(freeze_value(HISTORY_REF, {f.name: value[f.name] for f in HISTORY_REF.fields}, owned=True))
 
 
+def result_history_ids(namespace: str, kind: str, result: Value) -> tuple[Value, ...]:
+    """Read the fixed original or usage result location without dropping evidence.
+
+    Usage commands bind the unchanged logging owner fact inside their compact
+    result. Every other command retains its original top-level history member.
+    Storage calls this at commit, reopen and confirmation; private history access
+    uses the same selection and still verifies every bound piece.
+    """
+    root = record(result)
+    if namespace == 'information' and kind in ('usage_change', 'usage_restore'):
+        expected = record(record(root['facts'])['logging_service'])['history_ids']
+    else:
+        expected = root['history']
+    return sequence(freeze_value(SequenceSchema(ID, 0, 8), expected, owned=True))
+
+
 def check_bundle(receipt: Receipt, expected: object,
                  stored: tuple[tuple[str, str, int, str, str, str, str], ...]) -> None:
     """Storage invokes this for commit, reopen and every original confirmation.
@@ -243,7 +259,7 @@ class HistoryBinding:
                 return NotFound()
             row = rows[0]
             value = validate_history(decode_content(cast(str, row['body']).encode(), 8192))
-            if value['history_id'] not in sequence(record(confirmed.value.result)['history']): raise InvalidValue()
+            if value['history_id'] not in result_history_ids(confirmed.value.identity.owner_namespace, confirmed.value.identity.operation_kind, confirmed.value.result): raise InvalidValue()
             check_bundle(confirmed.value, (value['history_id'],), ((self._scope, cast(str, row['history_id']),
                 cast(int, row['previous_revision']), cast(str, row['object_id']), cast(str, row['commit_id']),
                 cast(str, row['body']), cast(str, row['evidence'])),))

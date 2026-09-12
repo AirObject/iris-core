@@ -1,29 +1,13 @@
 # 当前任务
 
-**正式记忆、完整来源与媒体持久化闭环：本轮完成通知与宿主关闭两项定点修复完成，待监督技术复核。** 沿用用户对五组推荐、所属补充及整阶段实现、自查、测试和范围内修复的授权；尚无提交授权，不自行宣布验收通过。
+本地信息获取与使用反馈闭环已按批准F口径获监督技术验收，用户已审核并授权本地提交。本记录随该次提交收尾；父提交为`f89cbbe773b119a7e683367410f17eda4538739a`，标题为`feat(information): 实现本地信息获取与使用反馈闭环`。
 
-## 基线与完成范围
+提交包括已审核源码、测试／夹具、[集中契约](../architecture/local-information-feedback.md)、[配置§11.16](../architecture/configuration.md#local-information-configuration-draft)及对应导航／记录。不含后续文本学习草案与导航、本地Provider准备忽略规则、配置、密钥或临时证据。
 
-仓库 `/Users/cassia/Local/Code/iris_memory_core`，`main`，HEAD `6a41859fdfc8c0f80305e792221e19fdab2a9fa2`。交接162份变更、空暂存区及375份文件指纹 `9b1ad68ee2bcbd94f3c4902f7dd75622ea894ef2079b27a51cc75c4a04571cd6` 核对一致，保留全部已有改动。当前164份变更：79份源码、68份测试／夹具、17份文档；本轮增量仅6份：存储服务、内容宿主、媒体服务、两份关闭回归测试及本文件。
+445项当前快照`a69e151d10ff11d71a66805511ff1d3386975b6fafe8a21bf9b1dd2e149fa029`与指定清单逐文件一致；相对原受测`6c7c30243327775381a4040084815eb15386b37f888ccbf312777be1bb8b3fa3`仅未暂存的.gitignore不同，其余444项一致。提交树使用原.gitignore，源码、测试及资源未变；仅文档收尾，复用有效验证，不称为新全量。
 
-依据[主契约](../architecture/formal-memory-source-media.md#ports-permissions)及[存储生命周期](../architecture/persistence-and-transactions.md#persistence-foundation-lifecycle)完成：
+验证链：[435文件两平台780项全量](/private/tmp/iris-close-recovery-roizxp0d/report.md) → [443文件两平台关联回归／2237词项F／全量Pyright](/private/tmp/iris-lexical-qualification-ogol92tv/report.md) → [445文件指标／全量Pyright](/private/tmp/iris-confirmed-relevance-7hd78kj8/report.md)。[四边界更正](/private/tmp/iris-boundary-correction-cmdf82y4/report.md)保留原标签和正式指标；历史报告各自状态不改写。
 
-- 残留连接通知登记、原工作结束公布及清理消费使用同一锁边界；清理成功只发送本次完成通知，不撤销原回执。
-- 宿主先停止新业务／媒体准入，保留合法提交和发布收尾；存储以单个保留工作者清理已结束所有者交出的连接，解除上层等待环。最终存储关闭加入已有清理工作者，根目录只在实际释放后交还。
-- 真实SQLite屏障覆盖通知先登记／关闭先等待、COMMIT后首次关闭抛错、原工作者或清理工作者持续阻塞、重复关闭、首份INCOMPLETE不变及重开原键回执一致；相关阻断窗口零模型调用。
+CPython3.12.14，macOS SQLite3.53.1／Linux3.53.4，Pyright1.1.413；上述命令、退出码、原始输出及版本来源均在对应报告。ACTUAL本地存储／回环HTTP／跨进程恢复，模型SIMULATED，业务材料SYNTHETIC，相关性标签USER_CONFIRMED。最大合法词项／4096可达性、P/X、24小时负载仍缺资格；Pylance未验证。
 
-未改设计正文、AGENTS、STATUS、冻结资料、历史整理报告、工程配置或锁文件；未使用子代理、其他会话或调度。
-
-## 最近有效验证
-
-证据目录：`/private/tmp/iris-shutdown-validation-iybs3qfe`。`commands.json`保存实际命令、退出码和原始输出位置；`repair-assertions.json`定位本轮两项及前轮五组回归断言；`matrix-assertions.json`保留30组矩阵映射；`changed-files.json`分类全部差异及本轮增量。
-
-定点unittest **11项通过**；最终全量unittest **680项通过，186.217秒，退出0**；全量Pyright **1.1.413，覆盖320份Python文件，零诊断，退出0**。编译、离线锁文件、JavaScript、全部差异／新增文件及文档链接／锚点检查见最终命令记录。首次全量运行因沙箱禁止回环端口产生7项权限错误，原始日志保留为 `interim-sandbox-*`；随后在允许本机回环端口的执行权限下完整重跑，未跳过测试。
-
-实际环境：CPython 3.12.14、SQLite 3.53.1、uv 0.12.9、Node 26.8.1、macOS 26.6.2 arm64。**Pylance未验证**。最终377份受测清单、逐项SHA256和聚合指纹见 `tested-files.manifest`、`tested-files.json`、`tested-files.sha256`；算法为排序路径＋NUL＋文件SHA256＋LF。文档收尾后核对受测源码／测试／配置／资源未变，最终一致性证据见 `final-recheck.json`。
-
-## 限制与停止点
-
-存储／文件为ACTUAL，Provider适配器为SIMULATED，候选及G1参与者为显式SYNTHETIC。完整回归保留此前八项与五组修复、真实回环HTTP、跨进程恢复及旧装配兼容；不宣称真实供应商、生产鉴权或硬件断电已验证。持续阻塞以明确屏障保持，测试收尾后才允许其结束；不承诺能够终止真正永久阻塞的系统调用，仍保留实际占用。
-
-无已知本轮范围内阻塞。监督重点为通知原子交接、清理工作者唯一性、上层合法收尾及根目录释放顺序。停在监督技术复核，由用户手动转交；不暂存、提交、推送、合并、部署或启动下一阶段，STATUS保持不变。
+提交前范围、完整暂存差异、文件指纹、链接及空白核对与实际提交／父提交／文件清单见[执行证据](/private/tmp/iris-text-implementation-b5ln8em2/report.md)。不amend、不推送；保留后续工作区差异。后续任务按用户已给的独立授权继续，不要求工作区清空。

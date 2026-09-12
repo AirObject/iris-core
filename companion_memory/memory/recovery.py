@@ -1,7 +1,8 @@
 """Read-only integrity checks before admission of a newly isolated content owner.
 
-Metadata pages contain only identities. Bodies, links and immutable source
-members are verified as bounded point reads, without model or repair writes.
+Legacy metadata pages use complete point checks. Information owners expose
+finite combined reads of current bodies, links and immutable source members;
+all identities, canonical bodies and protections remain checked without writes.
 """
 import hashlib
 import time
@@ -32,6 +33,11 @@ class MemoryRecovery:
             if phase != self.phase: continue
             while True:
                 if time.monotonic() >= deadline: return Found(MappingProxyType({'state': 'RECOVERY_PENDING', 'owner': 'memory'}))
+                if phase == 'objects' and memory.information is not None:
+                    objects = await memory.information.recovery_objects(self.after)
+                    if not objects: break
+                    self.after = objects[-1]['object_id']
+                    continue
                 rows = await memory.rows.read(phase + '_recovery_page', {'after': self.after, 'limit': limit})
                 if not rows: break
                 for metadata in rows:
@@ -77,28 +83,40 @@ class MemoryRecovery:
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         if member_count != len(sequence(source['ordered_members'])):
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
+        from .source_records import split_manifest
+        stored_header = split_manifest(value['body'])[0] if memory.information is not None else None
         while not self.holders_complete:
             if time.monotonic() >= deadline: return False
-            holders = await memory.rows.read('source_holders_page', {'source_id': sid, 'after': self.holder_after, 'limit': limit})
+            holders = await memory.information.recovery_source_holders(sid, self.holder_after) if memory.information is not None else await memory.rows.read('source_holders_page', {'source_id': sid, 'after': self.holder_after, 'limit': limit})
             if not holders:
                 self.holders_complete = True
                 break
             for holder in holders:
                 if time.monotonic() >= deadline: return False
                 if holder['owner_kind'] != 'OBJECT': raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
-                observed = await memory.rows.read('review_manifest', {'object_id': holder['owner_id'], 'source_id': sid})
-                if not observed or observed[0]['body'] != value['body']: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
+                if memory.information is not None:
+                    if holder['source_body'] != stored_header: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
+                else:
+                    observed = await memory.rows.read('review_manifest', {'object_id': holder['owner_id'], 'source_id': sid})
+                    if not observed or observed[0]['body'] != value['body']: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
                 self.holder_after = holder['owner_id']
         ingress = memory.sources
         if type(ingress) is not ContentIngressTransactions: raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'source', 'OWNER_MISSING')
+        stored_members = {item['ordinal']: item for item in await memory.information.recovery_source_members(sid)} if memory.information is not None else None
+        payloads = {item['message_id']: item for item in await ingress.recovery_source_payloads(sid, tuple(cast(str, record(item)['message_id']) for item in sequence(source['ordered_members'])))} if memory.information is not None else None
         for ordinal, member in enumerate(sequence(source['ordered_members'])):
             if ordinal < self.member_ordinal: continue
             if time.monotonic() >= deadline: return False
             member = record(member)
-            stored = await memory.rows.read('source_members_get', {'source_id': sid, 'ordinal': ordinal})
+            stored = (stored_members[ordinal],) if stored_members is not None and ordinal in stored_members else () if stored_members is not None else await memory.rows.read('source_members_get', {'source_id': sid, 'ordinal': ordinal})
             if not stored or stored[0]['body'] != encode_content(member, 2048).decode(): raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
-            payload = await ingress.rows.read('payload', {'message_id': member['message_id']})
-            protected = await ingress.rows.read('holder', {'message_id': member['message_id'], 'owner_kind': 'SOURCE', 'owner_id': sid})
+            if payloads is not None:
+                selected_payload = payloads.get(cast(str, member['message_id']))
+                payload = (selected_payload,) if selected_payload is not None else ()
+                protected = selected_payload is not None and selected_payload['source_holder'] == sid
+            else:
+                payload = await ingress.rows.read('payload', {'message_id': member['message_id']})
+                protected = await ingress.rows.read('holder', {'message_id': member['message_id'], 'owner_kind': 'SOURCE', 'owner_id': sid})
             if not payload or not protected: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
             body = cast(str, payload[0]['body']).encode()
             decode_media_event(body, memory.configuration.candidate.runtime.integer('ingress.event_max_bytes'), occurrence_limit=memory.configuration.candidate.content.integer('media.event_occurrence_limit'),

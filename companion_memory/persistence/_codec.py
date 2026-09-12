@@ -9,7 +9,7 @@ from dataclasses import fields
 from datetime import datetime
 import hashlib
 from types import MappingProxyType
-from typing import cast
+from typing import Literal, cast
 
 from companion_memory.logging_service.audit_records import AuditRecord, audit_manifest, freeze_audit_event
 from .definitions import CommandSpec, CommandDefinition, LocalCommand, RepositoryDefinition, ResultBoundCommand, ResultBoundCommandDefinition
@@ -68,15 +68,57 @@ def command_descriptor(definition: CommandSpec) -> Value:
     return MappingProxyType(result)
 
 
-def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...]) -> bytes:
-    value = MappingProxyType({
+type AssemblyFormat = Literal['LEGACY', 'LOCAL_INFORMATION_V1']
+
+
+def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...],
+                   *, assembly_format: AssemblyFormat = 'LEGACY') -> bytes:
+    """Encode an explicitly selected static format without changing command limits.
+
+    Legacy bytes remain identical. The information format carries its own marker
+    and enforces independent descriptor, repository and enclosing byte budgets.
+    Readers compare this complete canonical value when opening an existing file.
+    """
+    if type(assembly_format) is not str or assembly_format not in ('LEGACY', 'LOCAL_INFORMATION_V1'):
+        raise InvalidValue()
+    contents: dict[str, Value] = {
         "repositories": tuple(MappingProxyType({"owner": item.owner_module, "version": item.schema_version,
                                                "tables": tuple(MappingProxyType({"name": table.name, "sql": table.sql.strip().rstrip(";")})
                                                                for table in item.tables)})
                               for item in sorted(repositories, key=lambda item: item.owner_module)),
         "commands": tuple(command_descriptor(item) for item in sorted(commands, key=lambda item: (item.owner_namespace, item.operation_kind))),
-    })
-    return encode_value(value, 1048576)
+    }
+    if assembly_format == 'LEGACY':
+        return encode_value(MappingProxyType(contents), 1048576)
+    contents['static_format'] = 'LOCAL_INFORMATION_V1'
+    encoded = encode_value(MappingProxyType(contents), 3145728)
+    descriptors = sum(len(encode_value(command_descriptor(command), 1048576)) for command in commands)
+    repository_size = len(encode_value(contents['repositories'], 131072))
+    envelope = len(encoded) - descriptors - repository_size
+    if descriptors > 2621440 or envelope > 8192 or len(encoded) > 2760704:
+        raise InvalidValue()
+    return encoded
+
+
+def valid_assembly_encoding(data: object, assembly_format: AssemblyFormat) -> bool:
+    """Validate the chosen bounded canonical carrier before identity comparison."""
+    if type(data) is not bytes:
+        return False
+    limit = 3145728 if assembly_format == 'LOCAL_INFORMATION_V1' else 1048576
+    try:
+        value = decode_value(data, limit)
+        keys = {'repositories', 'commands'}
+        if assembly_format == 'LOCAL_INFORMATION_V1':
+            keys.add('static_format')
+        if type(value) is not dict or set(value) != keys:
+            return False
+        if assembly_format == 'LOCAL_INFORMATION_V1' and value['static_format'] != 'LOCAL_INFORMATION_V1':
+            return False
+        # The stored blob is compared with the trusted canonical declaration by
+        # the caller; decoding here additionally bounds and rejects malformed JSON.
+        return True
+    except (InvalidValue, ValueError, TypeError):
+        return False
 
 
 def prepare_command(definition: CommandSpec, identity: OperationIdentity, command: LocalCommand | ResultBoundCommand, limit: int) -> tuple[RecoveryHandle, MappingProxyType[str, Value], MappingProxyType[str, Value]]:

@@ -221,7 +221,7 @@ class ContentFocus:
                                 parked_all = False; break
                             return parked
                 if not parked_all: break
-            pending = not parked_all or bool(r._jobs or r.provider.get_health().in_flight or r.provider.get_health().cleanup_pending or r.assembly.storage.get_health().writes_in_flight)
+            pending = not parked_all or bool(r.external_work_pending or r._jobs or r.provider.get_health().in_flight or r.provider.get_health().cleanup_pending or r.assembly.storage.get_health().writes_in_flight)
             if not pending:
                 await self.settle_media(deadline)
                 await self.settle_learning(deadline)

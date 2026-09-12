@@ -36,6 +36,7 @@ from ._codec import (
 from ._settings import Settings, read_settings
 from .definitions import CommandSpec, CommandDefinition, LocalCommand, RepositoryDefinition, StatementDefinition, ResultBoundCommand, ResultBoundCommandDefinition
 from .resources import DatabaseResources
+from .deadlines import bounded_deadline
 from .results import (
     CloseReport, Committed, ErrorCode, ErrorField, ExecutionResult, Failed, Found,
     Health, InitializationResult, InitializationUnconfirmed, Lifecycle, NotCommitted,
@@ -90,7 +91,9 @@ class _Job:
 class UnitOfWork:
     """Opaque temporary participant authority; has no commit, SQL or connection API."""
 
-    __slots__ = ("_service", "_job", "_definition", "_identity", "_commit_id", "_events", "_active", "_changed", "_materializing", "_result", "_history", "_row_changes")
+    _commit_permissions: list[Callable[[], bool]]
+
+    __slots__ = ("_service", "_job", "_definition", "_identity", "_commit_id", "_events", "_active", "_changed", "_materializing", "_result", "_history", "_row_changes", "_commit_permissions")
 
     def __new__(cls):
         raise TypeError("Unit-of-work authority is issued only by storage.")
@@ -106,7 +109,19 @@ class UnitOfWork:
         self._result = None
         self._history = []
         self._row_changes = {}
+        self._commit_permissions = []
         return self
+
+    def require_commit_permission(self, check: Callable[[], bool]) -> None:
+        """Register a finite synchronous final permission check; grant no commit right.
+
+        Trusted participants register before returning their result. Storage runs
+        every check after materializing audits and receipts, immediately before
+        commit. A denial rolls back the entire command. Checks must not do I/O.
+        """
+        if type(self) is not UnitOfWork or not self._active or not callable(check) or len(self._commit_permissions) >= 8:
+            raise ValueError('An active unit of work and bounded permission check are required.')
+        self._commit_permissions.append(check)
 
 
 class _SealedPort:
@@ -161,6 +176,18 @@ class OperationPort(_SealedPort):
         if (issue := self._service_issue("read_receipt")) is not None:
             return Failed(issue)
         return cast(ReadResult[Receipt], await self._service._read(self, operation_key, "read_receipt"))
+
+    async def read_receipt_page(self, after_operation_key: str = '') -> ReadResult[tuple[Receipt, ...]]:
+        """Read at most sixteen retained receipts in actual commit insertion order.
+
+        The cursor is the last receipt's operation key in this exact bound scope
+        and kind. Every receipt includes the normal audit/binding validation.
+        Missing cursors fail closed; this read never executes a handler.
+        """
+        if (issue := self._service_issue("read_receipt")) is not None:
+            return Failed(issue)
+        return cast(ReadResult[tuple[Receipt, ...]], await self._service._read(
+            self, after_operation_key, "read_receipt", receipt_page=True))
 
     async def resolve_operation(self, recovery_handle: object) -> ExecutionResult:
         """Confirm a retained operation without invoking its business handler."""
@@ -299,7 +326,8 @@ class PersistenceService:
     inferred. Reopening requires a new instance and the retained expected ID.
     """
 
-    def __init__(self, repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...]):
+    def __init__(self, repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...],
+                 *, assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1'] = 'LEGACY'):
         self._repositories, self._commands = repositories, commands
         self._command_map = {(item.owner_namespace, item.operation_kind): item for item in commands}
         from companion_memory.logging_service.audit_materialization import validate_bindings
@@ -307,7 +335,8 @@ class PersistenceService:
             if type(definition) is ResultBoundCommandDefinition:
                 validate_bindings(definition)
         self._history_enabled = any(repo.owner_module == "logging_service" and any(t.name == "logging_object_history" for t in repo.tables) for repo in repositories)
-        self._assembly = assembly_value(repositories, commands)
+        self._assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1'] = assembly_format
+        self._assembly = assembly_value(repositories, commands, assembly_format=assembly_format)
         self._schema = _BASE_SCHEMA + tuple((table.name, table.sql.strip().rstrip(";")) for repo in repositories for table in repo.tables)
         if (len({name for name, _ in self._schema}) != len(self._schema)
                 or len(self._command_map) != len(commands)
@@ -408,14 +437,12 @@ class PersistenceService:
         """Validate private history without widening the original audit codec."""
         if not self._history_enabled:
             return
-        from companion_memory.logging_service.object_history import check_bundle
+        from companion_memory.logging_service.object_history import check_bundle, result_history_ids
         needed = any(a.owner_module == 'logging_service' and a.event_slot == 'object_history'
                      for a in definition.required_audits)
         expected = ()
         if needed:
-            if type(receipt.result) is not MappingProxyType or 'history' not in receipt.result:
-                raise InvalidValue()
-            expected = receipt.result['history']
+            expected = result_history_ids(definition.owner_namespace, definition.operation_kind, receipt.result)
             if not expected:
                 raise InvalidValue()
         rows = self._sql(job, "SELECT scope_id,history_id,previous_revision,object_id,commit_id,"
@@ -934,13 +961,16 @@ class PersistenceService:
         metadata_columns = self._sql(job, "PRAGMA table_info(application_metadata)").fetchall()
         if {row[1] for row in metadata_columns} != {"singleton", "database_id", "format_version", "assembly"}:
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))
-        rows = self._sql(job, "SELECT database_id, format_version, assembly FROM application_metadata WHERE singleton=1").fetchall()
+        assembly_limit = 3145728 if self._assembly_format == 'LOCAL_INFORMATION_V1' else 1048576
+        rows = self._sql(job, "SELECT database_id, format_version, CASE WHEN typeof(assembly)='blob' AND length(assembly)<=? THEN assembly ELSE NULL END FROM application_metadata WHERE singleton=1", (assembly_limit,)).fetchall()
         if len(rows) != 1 or not valid_identifier(rows[0][0]):
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))
         identity, version, assembly = rows[0]
         if identity != self._resources.expected_database_id:
             raise _StorageFault(self._error(job.operation, "INTEGRITY_FAILURE", "DATABASE_ID_MISMATCH"))
-        if type(version) is not int or version != _FORMAT_VERSION or assembly != self._assembly:
+        from ._codec import valid_assembly_encoding
+        if (type(version) is not int or version != _FORMAT_VERSION
+                or not valid_assembly_encoding(assembly, self._assembly_format) or assembly != self._assembly):
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "SCHEMA_VERSION_UNSUPPORTED", "format"))
         actual = self._sql(job, "SELECT name, sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name").fetchall()
         if actual != sorted(self._schema):
@@ -1209,7 +1239,7 @@ class PersistenceService:
             assert self._resources is not None and self._settings is not None
             if self._writer is not None:
                 return Rejected(self._error("execute", "RESOURCE_BUSY", "ADMISSION_BUSY"))
-            job = _Job("execute", started + self._settings.operation_timeout_ms / 1000)
+            job = _Job("execute", bounded_deadline(started, self._settings.operation_timeout_ms / 1000))
             job.handle = handle
             self._writer = job
 
@@ -1271,7 +1301,8 @@ class PersistenceService:
                             encode_value(frozen, self._settings.receipt_max_bytes)
                             has_history = any(a.owner_module == 'logging_service' and a.event_slot == 'object_history' for a in port._definition.required_audits)
                             if uow._history or has_history:
-                                if type(frozen) is not MappingProxyType or frozen.get('history') != tuple(item['history_id'] for item in uow._history):
+                                from companion_memory.logging_service.object_history import result_history_ids
+                                if result_history_ids(port._definition.owner_namespace, port._definition.operation_kind, frozen) != tuple(item['history_id'] for item in uow._history):
                                     raise InvalidValue()
                         except InvalidValue:
                             raise _StorageFault(self._error("execute", "TRANSACTION_FAILED", "RECEIPT_FAILED", "receipt")) from None
@@ -1295,6 +1326,8 @@ class PersistenceService:
                     except Exception:
                         raise _StorageFault(self._error("execute", "TRANSACTION_FAILED", "RECEIPT_FAILED", "receipt")) from None
                     self._check_deadline(job)
+                    if any(check() is not True for check in uow._commit_permissions):
+                        raise _StorageFault(self._error("execute", "TRANSACTION_FAILED", "PARTICIPANT_REJECTED", "transaction"))
                     job.phase = "commit"
                     self._sql(job, "COMMIT")
                     job.commit_confirmed = True
@@ -1351,7 +1384,7 @@ class PersistenceService:
         return cast(ExecutionResult, result)
 
     async def _read(self, port: OperationPort | StatementPort | AuditStorageBinding, query: object,
-                    operation: Operation, *, audit: bool = False) -> ReadResult[object]:
+                    operation: Operation, *, audit: bool = False, receipt_page: bool = False) -> ReadResult[object]:
         started = self._resources.monotonic() if self._resources is not None else 0.0
         with self._lock:
             error = self._state_error(operation)
@@ -1361,7 +1394,9 @@ class PersistenceService:
             identity: OperationIdentity | None = None
             parameters: Value = None
             if type(port) is OperationPort:
-                checked = self._bound_identity(port, query, operation)
+                if receipt_page and (type(query) is not str or query != '' and not valid_identifier(query)):
+                    return Failed(self._error(operation, "INVALID_INPUT", "INVALID_SHAPE", "query"))
+                checked = self._bound_identity(port, 'receipt_page_start' if receipt_page and query == '' else query, operation)
                 if isinstance(checked, PersistenceError):
                     return Failed(checked)
                 identity = checked
@@ -1387,7 +1422,7 @@ class PersistenceService:
                 return Failed(self._error(operation, "ACCESS_DENIED", "CAPABILITY_MISMATCH", "operation"))
             if len(self._reads) >= self._settings.read_capacity:
                 return Failed(self._error(operation, "RESOURCE_BUSY", "ADMISSION_BUSY"))
-            job = _Job(operation, started + self._settings.operation_timeout_ms / 1000)
+            job = _Job(operation, bounded_deadline(started, self._settings.operation_timeout_ms / 1000))
             self._reads.add(job)
 
         def read_owned() -> ReadResult[object]:
@@ -1399,6 +1434,22 @@ class PersistenceService:
                 if type(port) is StatementPort:
                     value = self._statement(job, port, parameters)
                     result = Found(value) if value else NotFound()
+                elif receipt_page and type(port) is OperationPort and identity is not None:
+                    scope = (identity.owner_namespace, identity.operation_kind, identity.scope_id)
+                    after_row = 0
+                    if query != '':
+                        previous = self._sql(job, "SELECT rowid FROM operation_receipts WHERE owner_namespace=? AND operation_kind=? AND scope_id=? AND operation_key=?", (*scope, query)).fetchone()
+                        if previous is None:
+                            raise _StorageFault(self._error(operation, "INVALID_INPUT", "INVALID_SHAPE", "query"))
+                        after_row = previous[0]
+                    keys = self._sql(job, "SELECT operation_key FROM operation_receipts WHERE owner_namespace=? AND operation_kind=? AND scope_id=? AND rowid>? ORDER BY rowid LIMIT 16", (*scope, after_row)).fetchall()
+                    receipts: list[Receipt] = []
+                    for (key,) in keys:
+                        receipt = self._receipt(job, replace(identity, operation_key=key))
+                        if receipt is None:
+                            raise _StorageFault(self._error(operation, "INTEGRITY_FAILURE", "DATA_INCONSISTENT", "receipt"))
+                        receipts.append(receipt)
+                    result = Found(tuple(receipts)) if receipts else NotFound()
                 else:
                     assert identity is not None
                     receipt = self._receipt(job, identity)
@@ -1450,7 +1501,7 @@ class PersistenceService:
                 return Rejected(self._error("resolve_operation", "INVALID_INPUT", "UNSUPPORTED_COMMAND", "operation"))
             if self._writer is not None:
                 return Unconfirmed(handle, self._error("resolve_operation", "RESULT_UNCONFIRMED", "RECOVERY_UNAVAILABLE", "transaction", pending=True))
-            job = _Job("resolve_operation", self._resources.monotonic() + self._settings.operation_timeout_ms / 1000)
+            job = _Job("resolve_operation", bounded_deadline(self._resources.monotonic(), self._settings.operation_timeout_ms / 1000))
             job.handle = handle
             self._writer = job
 

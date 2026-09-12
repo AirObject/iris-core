@@ -88,7 +88,21 @@ def ingress_content_catalog() -> StatementCatalog:
         RecordSchema((Field('message_id', ID), Field('batch_id', ID))), mid, True)
     add('transfer', 'UPDATE ingress_content_events SET transferred_at_us=:transferred_at_us WHERE scope_id=:scope_id AND message_id=:message_id AND transferred_at_us IS NULL RETURNING message_id',
         RecordSchema((Field('message_id', ID), Field('transferred_at_us', INT))), mid, True)
+    add('other_pending_times', 'SELECT count(*) AS messages,min(received_at_us) AS earliest,max(received_at_us) AS latest FROM ingress_content_events WHERE scope_id=:scope_id AND entry_id!=:entry_id AND terminal_batch_id IS NULL',
+        eid, RecordSchema((Field('messages', INT), Field('earliest', INT, nullable=True), Field('latest', INT, nullable=True))), False)
     return StatementCatalog(RepositoryDefinition('ingress', 2, (entries, events, payloads, refs), tuple(s for _, s in statements)), tuple(statements))
+
+
+def information_ingress_catalog() -> StatementCatalog:
+    """Extend only the explicit information assembly with a bounded recovery read."""
+    from dataclasses import replace
+    original = ingress_content_catalog()
+    ids = ','.join("json_extract(:message_ids,'$[" + str(index) + "]')" for index in range(2))
+    statement = StatementDefinition("SELECT p.message_id,p.body,h.owner_id AS source_holder FROM ingress_content_payloads p LEFT JOIN ingress_payload_holders h ON h.scope_id=p.scope_id AND h.message_id=p.message_id AND h.owner_kind='SOURCE' AND h.owner_id=:source_id WHERE p.scope_id=:scope_id AND p.message_id IN (" + ids + ') ORDER BY p.message_id LIMIT 2',
+        RecordSchema((Field('source_id', ID), Field('message_ids', BoundedTextSchema(1024)))),
+        RecordSchema((Field('message_id', ID), Field('body', BoundedTextSchema(8192)), Field('source_holder', ID, nullable=True))), False)
+    statements = original.statements + (('information_source_payloads', statement),)
+    return StatementCatalog(replace(original.definition, statements=tuple(value for _, value in statements)), statements)
 
 
 class ContentIngressTransactions:
@@ -99,6 +113,50 @@ class ContentIngressTransactions:
         self.configuration, self.instance_id, self.media = configuration, instance_id, media
         self._lease = storage.claim_module_owner(catalog.definition)
         if self._lease is None: raise ValueError('Ingress owner is unavailable.')
+
+    async def recovery_source_payloads(self, source_id: str, message_ids: tuple[str, ...]) -> tuple[MappingProxyType[str, Value], ...]:
+        """Information-only recovery of at most four payloads and their real holder."""
+        from companion_memory.persistence import SequenceSchema
+        from companion_memory.persistence.schema import freeze_value
+        try: selected = freeze_value(SequenceSchema(ID, 1, 4), message_ids)
+        except InvalidValue:
+            raise OwnerFailure('INVALID_INPUT', 'source', 'INVALID_SHAPE') from None
+        members = sequence(selected)
+        result: list[MappingProxyType[str, Value]] = []
+        for offset in range(0, len(members), 2):
+            result.extend(await self.rows.read('information_source_payloads', {'source_id': source_id,
+                'message_ids': encode_content(members[offset:offset + 2], 1024).decode()}))
+        return tuple(result)
+
+    async def verify_host_entry(self, entry_id: str, host_id: str) -> bool:
+        """Verify a registered local binding without exposing events or payloads."""
+        rows = await self.rows.read('entry', {'entry_id': entry_id})
+        return len(rows) == 1 and rows[0]['host_id'] == host_id
+
+    async def reply_platform(self, entry_id: str, host_id: str) -> str:
+        """Resolve the trusted entry's platform without releasing its external ID."""
+        rows = await self.rows.read('entry', {'entry_id': entry_id})
+        if len(rows) != 1 or rows[0]['host_id'] != host_id:
+            raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
+        return cast(str, rows[0]['platform_id'])
+
+    async def reply_event(self, entry_id: str, message_id: str) -> MappingProxyType[str, Value]:
+        """Read one still-pending event for a verified current-entry projection."""
+        from companion_memory.ingress.media_events import decode_media_event
+        events = await self.rows.read('event', {'message_id': message_id})
+        if not events or events[0]['entry_id'] != entry_id or events[0]['terminal_batch_id'] is not None:
+            raise OwnerFailure('PRECONDITION_FAILED', 'revision', 'REVISION_CONFLICT')
+        payloads = await self.rows.read('payload', {'message_id': message_id})
+        if not payloads: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
+        body = cast(str, payloads[0]['body']).encode()
+        event = decode_media_event(body, 8192, occurrence_limit=2, text_limit=512)
+        if hashlib.sha256(body).hexdigest() != events[0]['digest'] or canonical_event(event) != body:
+            raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
+        return MappingProxyType({'event': event, 'message_id': message_id, 'received_at_us': events[0]['received_at_us'], 'entry_seq': events[0]['entry_seq']})
+
+    async def other_pending_times(self, entry_id: str) -> MappingProxyType[str, Value]:
+        """Return receipt times only, excluding every target that reached a terminal."""
+        return (await self.rows.read('other_pending_times', {'entry_id': entry_id}))[0]
 
     def register(self, uow: UnitOfWork, entry_id: str, host_id: str, platform_id: str, external_entry_id: str) -> None:
         """Register an explicit binding without granting public capabilities."""

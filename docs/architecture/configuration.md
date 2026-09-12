@@ -1095,3 +1095,169 @@ foundation日志仍须按原规则提交完整合法配置；其候选与目录�
 新ContentConfigurationError恰含code、operation、field、reason：operation为resolve_content_configuration／persist_content_configuration／load_content_configuration／content_snapshot_issue，field为foundation/runtime/platforms/content/definition/value/context/storage/identity。code／reason闭合集合沿§11.14的分类及枚举，新预算／目录／域总量失败用VALUE_INVALID/BUDGET_INVALID或CAPACITY_INSUFFICIENT，不新增自由原因；不透传路径／非法键。顺序：精确载体→域身份／未知键→全部声明／支持→完整定义→foundation原校验→全部值隔离→依赖→固定及跨域／完整编码→一次候选。旧错误类／旧首错不变。持久初始化错误另配真实提交证据，纯解析没有I/O成功含义。
 
 没有自动衰减率、使用反馈增益／有效期、自动删除保留天数、在线配置或解除保护参数；那些是后续模块未实现职责，不用占位值伪装已支持。新参数推荐及路径能力已批准，全包核算须以实际验证证明，验收统一见[整体矩阵](formal-memory-source-media.md#acceptance)。
+
+<a id="local-information-configuration-draft"></a>
+
+### 11.16 面向宿主的本地信息与反馈：配置补充（推荐已批准）
+
+本节是[集中契约](local-information-feedback.md)的配置唯一补充，**新增定义、数值、完整组合及持久层工程增量已随五组推荐获用户批准**；旧§11.15及其他已批准定义不变。已授权注册参数、实现配置与装配及范围内验证；不批准未采纳替代、热改或存量迁移。推荐新独立`resolve_information_configuration`、对应persist/load及只读适用性端口，输入为完整foundation/runtime/platforms/content/information、受保护目录及材料声明；旧resolve_content_configuration继续拒绝新域，不能删除新键或读环境补齐。
+
+#### 完整显式组合及旧值来源
+
+采用§11.15全部推荐值／版本2材料／单平台组合，增加information域；一个平台可绑定3入口，不增平台域。foundation/runtime/content各一域、platform一域、information一域，合计5；**仅新组合**将完整域数上限从4改5，总条目128、旧单条8192、目录8192和完整普通命令1 MiB保持；新增8项单条≤4096，新body总限改294912。仅Information静态装配改为描述2621440、仓储131072、外层8192、合计2760704和载体3145728；旧装配预算保持。按基线声明静态计数，旧包105条（foundation40＋runtime22＋platform7＋content36），加8条得113≤128；该计数不证明定义编码容量。新增8个封闭object参数，不是8个任意扩展包；每个字段都是Schema规定的可调值，不接受未知字段／缺失值／动态表达式。若未来更改嵌套结构，须改相应固定Schema版本及重新核算，不能绕过注册表。
+
+| 全集组成 | 本候选的取值来源与精确增量 |
+| --- | --- |
+| content全部36项 | 原样取本文件§11.15推荐列，包括两资源目录、F=20/H=35、初始R=50、memory读取2并发／2000ms、媒体与候选的全部限额；新本地包不修改旧值或旧正文量表 |
+| runtime及平台全部项 | §11.15对§11.14的明确覆盖：E=2048、材料／input=49152、output=2048；其余§11.14.2和§11.14.3推荐列，包括H/T/R=1/2/1、短批／空闲关闭、1活跃入口、恢复30秒、关闭5秒、模式收尾30秒、观察32768字节／2并发；平台身份由可信测试绑定sample_platform |
+| foundation存储／审计10项及Provider10项 | 原样采用§11.15旧组推荐表：命令1048576、回执65536、storage读并发2／操作30000ms／锁50ms／关闭10000ms／checkpoint100页；审计8192／16。Provider请求65536／结果8192／并发2／总期30000ms／关闭10000ms／retry10ms／查询100；单TEST账户和LEARNING／MEDIA两个模拟profile及其完整值仍由§11.15声明，无检索或目标语义profile |
+| foundation日志20项 | 取[日志已批准数值定义](logging.md#runtime-diagnostics-configuration)的既有推荐：INFO、module_levels={}、console/file启用、console_level=INFO、file_level=DEBUG、stderr、event4096、sink1024、reserve128、preparation16、rotation10485760、retained5、I/O200ms、probe1000ms、flush1000ms、close2000ms、emergency8／1000ms；file_directory取实际自有目录。本行是本包明确选值，旧唯一默认声明不变 |
+| 新域8项 | 下表全部字段显式供值；profile不存在用受支持能力枚举表达，不能用虚假成功或省略必填字段 |
+| 资源／身份 | 未来测试用实际独占临时root，database、logs、media及media/staging、backup分别绑定；audit／provider_usage明确共享database，目录上下文仍全覆盖。路径、database_id、instance_id、configuration_key、宿主／入口／principal／route及有期测试会话由可信测试父进程保留；它们不是可用假值、生产默认目录或本文生成的秘密 |
+
+静态核对取值时可对照[既有content夹具声明](../../tests/configuration/content_support.py)、[runtime夹具声明](../../tests/runtime/configuration_support.py)、[Provider夹具声明](../../tests/configuration/provider_support.py)及[日志声明](../../tests/configuration/logging_support.py)，这些夹具仅在自有隔离资源中运行，实际定义和值须核对正文。配置正文与夹具如有真实差异应列明并停止受影响选值，不以夹具默认覆盖正文。
+
+#### 新参数完整定义与字段
+
+八项共用元信息：`type=object, required=true, nullable=false, default=NoDefault(), scope=[instance], override_policy=no_override, sensitivity=public, read_roles/write_roles=[trusted_operator], apply_mode=INITIALIZE_ONLY, schema_revision=local_information_v1, deprecated=false`。unit/range/enum为NotApplicable并说明“完整封闭记录无单一单位／范围／整值枚举”；逐字段规则如下，不能因此跳过内层校验。activation_group/replacement/upgrade_rule为NotApplicable且分别说明无热激活／替代／自动迁移。每项description、rationale、validation_method及cost_impact/migration_impact采用下方完整定义模板的固定文本；行中职责说明为人读说明，不在运行时解析或自由拼入定义。
+
+| key／owner；消费者；唯一固定validator | 完整字段与推荐显式值 |
+| --- | --- |
+| retrieval.local／retrieval；retrieval,memory,runtime；local_retrieval_limits | mode=LOCAL_LEXICAL_V1；query_max_bytes=512；normalized_max_bytes=8192；tokens_per_object=4096；posting_visit_limit=4096；candidate_limit=128；dirty_overlay_limit=128；relation_expansion_limit=0；index_page_size=16；index_workers=1；rebuild_generations=2；index_step_timeout_ms=5000；index_recovery_timeout_ms=30000；close_timeout_ms=10000 |
+| retrieval.reply／retrieval；retrieval,management；reply_partition_limits | base_deadline_ms=1000；concurrency=2；queue_capacity=0；memory_limit=8；recent_limit=4；goal_limit=8；persona_max_bytes=8192；state_max_bytes=4096；response_max_bytes=131072；persona_policy=ALLOW_EXPLICIT_PARTIAL；rerank_enabled=false；require_complete_index=false |
+| retrieval.tickets／retrieval；retrieval,memory；recall_ticket_limits | ttl_seconds=86400；live_limit=10000；root_max_bytes=2048；member_max_bytes=512；consumption_max_bytes=1024；member_limit=8；cleanup_page_size=16；cleanup_interval_ms=60000 |
+| memory.usage／memory；memory,retrieval,runtime；memory_usage_limits | gain=8；forgotten_retention_seconds=2592000；expiry_scan_enabled=true；expiry_scan_interval_ms=60000；expiry_scan_page_size=16；existing_object_limit=100000；feedback_member_limit=8；operation_timeout_ms=5000 |
+| state.external／state；state,retrieval；external_state_limits | record_max_bytes=4096；field_text_max_bytes=512；stale_after_seconds=300；future_tolerance_seconds=60；writer_policy=SINGLE_BOUND_HOST；operation_timeout_ms=5000 |
+| goals.lifecycle／goals；goals,retrieval,runtime；goal_lifecycle_limits | record_max_bytes=4096；content_max_bytes=2048；open_goal_limit=1000；source_limit=8；aliases_per_goal=64；list_page_size=8；dedup_candidate_limit=32；dedup_workers=1；dedup_wait_timeout_ms=5000；operation_timeout_ms=5000；dedup_mode=EXACT_ONLY；semantic_policy=MARK_UNAVAILABLE |
+| goals.delivery／goals；goals,runtime,management；goal_delivery_limits | sink_mode=DISABLED；workers=1；scan_page_size=16；scan_interval_ms=1000；request_max_bytes=2048；response_max_bytes=1024；attempt_limit=2；attempt_timeout_ms=1000；total_timeout_ms=2500；retry_delay_ms=10；overdue_policy=COALESCE_ONCE；repeat_expired=false |
+| management.host／management；management,retrieval,state,goals；host_interface_limits | request_max_bytes=16384；header_max_bytes=8192；response_max_bytes=131072；connections=4；body_timeout_ms=2000；write_timeout_ms=2000；session_limit=16；session_ttl_seconds=3600；command_concurrency=1；command_queue_capacity=0 |
+
+内层值均精确类型。bytes字段为整数1至本行推荐值，query／normalized／record／root／member／consumption须同时满足集中草案的完整记录预算；其余未单列的数量型整数（含tokens_per_object、aliases_per_goal）为1至本行推荐值；queue_capacity、command_queue_capacity、relation_expansion_limit只支持0，rebuild_generations只支持2。各毫秒字段1–60000；seconds字段：ttl 60–86400、forgotten_retention 86400–31536000、stale 1–86400、future_tolerance 0–300、session_ttl 1–86400；gain为1–100。布尔只支持表内推荐值。枚举只支持表内值，唯sink_mode可另显式选择TEST_HTTP以验证真实本地接收；该选择已获隔离测试授权，且必需可信已绑定测试接收器。字符串无自由回调、URL或供应商名。
+
+首包支持组合明确限定为下方完整推荐向量，或只把sink_mode改为TEST_HTTP且提供真实绑定的替代向量；上面的类型／范围只是定义边界，其他数值组合需另给完整核算并获批准，不能因为逐字段落入范围就宣称可运行。本候选通过缩小字段值并不保证仍相容；下列跨参数及固定记录编码规则会进一步拒绝。record／payload完整上限仍检查全部元信息和转义；合法取值范围不等于所有字段极大值可同时使用。模式和方案枚举只声明支持，不在运行时读取本草案判断批准状态。
+
+同information域dependencies按下方完整映射声明。这些是存在性／一次全值校验关系，不按拓扑执行或进行递归求值；其余为空。跨旧域关系由新组合固定校验，不伪造同registry依赖。
+
+#### 新八项的完整定义模板、持久载体及上界
+
+本模板给出28个元信息字段的精确值，逐行替入上表key、owner_module、consumers、validator及下述dependencies；没有省略的默认字段。说明字符串固定ASCII（不从中文说明生成），标识符≤32字节、owner≤16、schema_revision≤24；各说明≤96字节、NotApplicable.reason≤64。继承105项仍保留其原定义／default／来源，不能用本模板批量重定义。列表转不可变结构、Declared／NotApplicable／NoDefault等标记均经现有配置v2类型包装，不把下列人读记法直接当持久JSON。
+
+```text
+key=<该行key>; owner_module=<该行owner>; schema_revision="local_information_v1"
+type="object"; default=NoDefault(); required=true; nullable=false
+unit=NotApplicable("The complete record has no single unit.")
+range=NotApplicable("The fixed validator checks each field and cross-field bound.")
+enum=NotApplicable("There is no whole-record enumeration.")
+validator=[<该行唯一validator>]; dependencies=<下述对应key数组>
+scope=["instance"]; override_policy="no_override"; sensitivity="public"
+read_roles=["trusted_operator"]; write_roles=["trusted_operator"]
+apply_mode="INITIALIZE_ONLY"; activation_group=NotApplicable("No live activation.")
+cost_impact="Local CPU and storage only; no query model calls."
+migration_impact="New assembly and new database; existing formats remain unchanged."
+description="Explicit bounded local information settings."
+deprecated=false; replacement=NotApplicable("No replacement.")
+upgrade_rule=NotApplicable("No automatic migration.")
+rationale="Preserve bounded work, ownership and durable feedback evidence."
+consumers=<该行消费者数组>
+validation_method="Check exact fields, finite values, complete encoding and assembly bounds."
+```
+
+dependencies完整闭合映射：`retrieval.local=[]; retrieval.reply=[retrieval.local,retrieval.tickets,state.external,goals.lifecycle,management.host]; retrieval.tickets=[retrieval.reply,memory.usage]; memory.usage=[retrieval.tickets]; state.external=[]; goals.lifecycle=[goals.delivery]; goals.delivery=[goals.lifecycle,management.host]; management.host=[retrieval.reply]`。集合按稳定key顺序冻结，不改变依赖的存在性语义。
+
+新每项输入值恰上表所列字段（至多16字段，字段名≤32字节；枚举文本≤32，其余有限int/bool），缺失／未知字段拒绝。新增单条v2持久对象恰`version=2, definition=<上述28字段经_encode>, state=PRESENT, value=<record类型包装>, source=EXPLICIT`；原105项允许其原来的EXPLICIT/DEFAULT来源，不能把显式示例反向改原default。完整定义编码保守分账：28键／标点≤800；12个标量文本含引号≤640；3布尔≤15；NoDefault包装≤32；6份NotApplicable含包装各≤112计672；6组列表（validator/dependencies/scope/read_roles/write_roles/consumers，元素总≤12，每ID带引号≤34，包装总≤192）≤600；definition≤2759。value的16字段、类型包装及分隔≤1184；entry封套≤128；合计≤4071≤4096。模板实际说明和表内值都在上述ASCII范围内；该上界不是编码器实测。
+
+原105项沿原已批准有效包body≤262144；不能从历史551815命令描述倒推出配置body大小。8×4096＋262144＝294912，在新的初始化3倍嵌套证明中保守覆盖全部定义、类型标记和值。命令仍采用catalog及每域domain_id/digest/entries数组，域ID≤128、digest固定64，113≤128条；catalog恰version、5域revision清单及原单平台材料声明，总≤8192；存储快照和活跃指针同事务，必要configuration_initialized审计不变。配置对象不含HTTP密钥、真实API key或任意callback。
+
+#### 完整推荐值示例（文档数据，未解析／未运行）
+
+以下一次列出105个继承值和8个新object的全部值。`<TEST_ROOT>`是将来授权测试创建并绑定的实际独占临时绝对目录，本文没有创建它；方括号中的平台仅一个，三入口身份及有期Bearer由可信父进程另行保留。所有目录须满足原有效配置body及保护目录约束，不能将这个符号作为字面路径运行。旧105项registry定义严格使用§11.15所引用的完整批准定义；新8项使用上面精确模板，二者都随快照保存。此处的JSON只展示值，不是新增工程配置文件或替代启动指南。
+
+```json
+{
+  "foundation": {
+    "storage.database_file": "<TEST_ROOT>/database/runtime.sqlite3",
+    "storage.operation_timeout_ms": 30000, "storage.lock_wait_ms": 50,
+    "storage.close_timeout_ms": 10000, "storage.read_capacity": 2,
+    "storage.command_max_bytes": 1048576, "storage.receipt_max_bytes": 65536,
+    "storage.wal_checkpoint_pages": 100, "audit.event_max_bytes": 8192,
+    "audit.events_per_operation": 16,
+    "provider.max_in_flight": 2, "provider.request_timeout_ms": 30000,
+    "provider.close_timeout_ms": 10000, "provider.retry_delay_ms": 10,
+    "provider.request_max_bytes": 65536, "provider.result_max_bytes": 8192,
+    "provider.query_row_limit": 100,
+    "provider.accounts": [{"account_id":"sample_account","window_id":"sample_window","currency":"TEST","max_in_flight":1,"attempt_limit":10000,"cost_limit_atoms":1000000000}],
+    "provider.profiles": [
+      {"profile_id":"sample_learning","account_id":"sample_account","model_id":"sample_generation","wire_protocol":"SIMULATED","capability":"GENERATION","max_attempts":2,"attempt_timeout_ms":5000,"max_input_units":49152,"max_output_units":2048,"max_items":2,"input_price_atoms":2,"output_price_atoms":3,"dimensions":null,"space_id":null,"media_tasks":[]},
+      {"profile_id":"sample_media","account_id":"sample_account","model_id":"sample_media_model","wire_protocol":"SIMULATED","capability":"MEDIA_UNDERSTANDING","max_attempts":2,"attempt_timeout_ms":5000,"max_input_units":1048576,"max_output_units":0,"max_items":1,"input_price_atoms":1,"output_price_atoms":0,"dimensions":null,"space_id":null,"media_tasks":[{"modality":"IMAGE","task":"DESCRIBE"},{"modality":"AUDIO","task":"TRANSCRIBE"},{"modality":"VIDEO","task":"DESCRIBE"}]}
+    ],
+    "provider.role_profiles": {"LEARNING":["sample_learning"],"MEDIA":["sample_media"]},
+    "logging.instance_level":"INFO", "logging.module_levels":{},
+    "logging.console_enabled":true, "logging.file_enabled":true,
+    "logging.console_level":"INFO", "logging.file_level":"DEBUG", "logging.console_stream":"stderr",
+    "logging.file_directory":"<TEST_ROOT>/logs", "logging.event_max_bytes":4096,
+    "logging.sink_capacity":1024, "logging.warning_reserve":128, "logging.preparation_capacity":16,
+    "logging.rotation_bytes":10485760, "logging.retained_segments":5,
+    "logging.io_timeout_ms":200, "logging.probe_interval_ms":1000, "logging.flush_timeout_ms":1000,
+    "logging.close_timeout_ms":2000, "logging.emergency_capacity":8, "logging.emergency_interval_ms":1000
+  },
+  "runtime": {
+    "ingress.event_max_bytes":2048, "runtime.max_active_entries":1, "runtime.operation_timeout_ms":5000,
+    "runtime.recovery_timeout_ms":30000, "runtime.close_timeout_ms":5000, "runtime.focus_drain_timeout_ms":30000,
+    "runtime.claim_lease_ms":15000, "runtime.local_retry_limit":1, "runtime.read_page_size":16, "runtime.transfer_page_size":16,
+    "learning.material_max_bytes":49152, "learning.input_units_limit":49152, "learning.output_units_limit":2048,
+    "management.observation_row_limit":32, "management.observation_max_bytes":32768, "management.observation_timeout_ms":2000,
+    "management.observation_concurrency":2, "management.refresh_min_interval_ms":1000,
+    "logging.web_window_events":512, "logging.web_query_row_limit":32, "logging.web_query_max_bytes":32768, "logging.web_query_timeout_ms":1000
+  },
+  "platforms": [{"platform_id":"sample_platform", "values":{
+    "platforms.sample_platform.buffer.history_context_count":1,
+    "platforms.sample_platform.buffer.recent_context_count":1,
+    "platforms.sample_platform.buffer.target_count":2,
+    "platforms.sample_platform.buffer.normal_soft_limit":1000,
+    "platforms.sample_platform.buffer.explicit_short_enabled":false,
+    "platforms.sample_platform.buffer.idle_tail_enabled":false,
+    "platforms.sample_platform.buffer.idle_timeout_ms":0
+  }}],
+  "content": {
+    "memory.current_max_bytes":4096, "memory.forget_below":20, "memory.restore_at":35,
+    "memory.initial_retention":50, "memory.read_timeout_ms":2000, "memory.read_concurrency":2, "memory.read_page_size":16,
+    "cognition.candidate_item_limit":8, "cognition.candidate_item_max_bytes":8192, "cognition.candidate_max_bytes":73728,
+    "media.root_directory":"<TEST_ROOT>/media", "media.staging_directory":"<TEST_ROOT>/media/staging",
+    "media.blob_max_bytes":1048576, "media.event_occurrence_limit":2, "media.upload_chunk_bytes":65536,
+    "media.upload_concurrency":2, "media.processing_concurrency":1, "media.file_worker_capacity":5,
+    "media.read_concurrency":2, "media.read_chunk_bytes":65536,
+    "media.interpretation_text_max_bytes":512, "media.interpretation_record_max_bytes":2048,
+    "media.operation_timeout_ms":10000, "media.upload_total_timeout_ms":60000,
+    "media.occurrence_total_timeout_ms":60000, "media.preparation_total_timeout_ms":600000,
+    "media.io_timeout_ms":5000, "media.close_timeout_ms":10000, "media.recovery_timeout_ms":60000,
+    "media.processing_suspect_after_ms":120000, "media.unbound_upload_retention_ms":3600000,
+    "media.gc_interval_ms":600000, "media.gc_unreferenced_grace_ms":600000, "media.gc_page_size":16,
+    "audit.history_item_max_bytes":8192, "audit.history_items_per_operation":8
+  },
+  "information": {
+    "retrieval.local":{"mode":"LOCAL_LEXICAL_V1","query_max_bytes":512,"normalized_max_bytes":8192,"tokens_per_object":4096,"posting_visit_limit":4096,"candidate_limit":128,"dirty_overlay_limit":128,"relation_expansion_limit":0,"index_page_size":16,"index_workers":1,"rebuild_generations":2,"index_step_timeout_ms":5000,"index_recovery_timeout_ms":30000,"close_timeout_ms":10000},
+    "retrieval.reply":{"base_deadline_ms":1000,"concurrency":2,"queue_capacity":0,"memory_limit":8,"recent_limit":4,"goal_limit":8,"persona_max_bytes":8192,"state_max_bytes":4096,"response_max_bytes":131072,"persona_policy":"ALLOW_EXPLICIT_PARTIAL","rerank_enabled":false,"require_complete_index":false},
+    "retrieval.tickets":{"ttl_seconds":86400,"live_limit":10000,"root_max_bytes":2048,"member_max_bytes":512,"consumption_max_bytes":1024,"member_limit":8,"cleanup_page_size":16,"cleanup_interval_ms":60000},
+    "memory.usage":{"gain":8,"forgotten_retention_seconds":2592000,"expiry_scan_enabled":true,"expiry_scan_interval_ms":60000,"expiry_scan_page_size":16,"existing_object_limit":100000,"feedback_member_limit":8,"operation_timeout_ms":5000},
+    "state.external":{"record_max_bytes":4096,"field_text_max_bytes":512,"stale_after_seconds":300,"future_tolerance_seconds":60,"writer_policy":"SINGLE_BOUND_HOST","operation_timeout_ms":5000},
+    "goals.lifecycle":{"record_max_bytes":4096,"content_max_bytes":2048,"open_goal_limit":1000,"source_limit":8,"aliases_per_goal":64,"list_page_size":8,"dedup_candidate_limit":32,"dedup_workers":1,"dedup_wait_timeout_ms":5000,"operation_timeout_ms":5000,"dedup_mode":"EXACT_ONLY","semantic_policy":"MARK_UNAVAILABLE"},
+    "goals.delivery":{"sink_mode":"DISABLED","workers":1,"scan_page_size":16,"scan_interval_ms":1000,"request_max_bytes":2048,"response_max_bytes":1024,"attempt_limit":2,"attempt_timeout_ms":1000,"total_timeout_ms":2500,"retry_delay_ms":10,"overdue_policy":"COALESCE_ONCE","repeat_expired":false},
+    "management.host":{"request_max_bytes":16384,"header_max_bytes":8192,"response_max_bytes":131072,"connections":4,"body_timeout_ms":2000,"write_timeout_ms":2000,"session_limit":16,"session_ttl_seconds":3600,"command_concurrency":1,"command_queue_capacity":0}
+  }
+}
+```
+
+资源上下文另外恰`media=[<TEST_ROOT>/media,<TEST_ROOT>/media/staging], database=[<TEST_ROOT>/database], audit=[<TEST_ROOT>/database], provider_usage=[<TEST_ROOT>/database], backup=[<TEST_ROOT>/backup]`；日志目录是显式参数且与保护上下文一起核验；材料声明为原content单平台版本2可信绑定，原B/W/Q规则不复制或修改。registry、实际目录、材料能力和database/instance身份必须全部实际装配，值示例本身不能签发身份或证明环境就绪。
+
+#### 跨层相容性、错误与未实测项目
+
+- 全包先按精确载体／键／声明、旧组元信息与值、内层隔离、dependencies存在性、固定预算和完整编码依序校验，再一次签发不可变候选；不接受半份可运行配置。旧组公开解析及首错语义保持。
+- memory_limit≤ticket.member_limit=feedback_member_limit≤8；K×(memory.current_max_bytes+1024)＋recent_limit×(event_max_bytes+512)＋persona_max_bytes＋state_max_bytes＋goal_limit×goal_record_max_bytes＋8192≤reply.response_max_bytes≤management.host.response_max_bytes。persona区包含全部发布元信息；单独text必须留封套余量。
+- live_limit为有效票及过期但尚未安全处置票的总占槽上限，consumption_max_bytes=1024同时约束retrieval消费叶及memory效果收据；16票/分钟清理不删除有效反馈或未决证据。≤0.08票/s持续与4/s十分钟峰值的负载／空间条件及731槽示例余量只在[票据容量账目](local-information-feedback.md#capacity)维护，不是新的隐含速率参数；改TTL/容量/清理参数须重验该关系。
+- 新信息检索／状态／目标点读使用原最大8192叶及65536回执限；票据完整根、成员、命令和审计按[容量账目](local-information-feedback.md#capacity)预检。F/H继续取content原已批准值且F<H，增益单独取本节；feedback总期不改变票据有效期或连续遗忘时长。
+- query／dirty候选有界，不持完整库在内存；query并发≤memory.read_concurrency且≤storage.read_capacity，后台读竞争仍计入剩余deadline，无“每路各占2连接”的旁路。索引／去重工作者各1，单库写仍串行；HTTP连接4不等于能同时执行4个查询。
+- 基础deadline≤1000ms；下层等待取调用剩余和其原配置上限的最小值，内层超时不夺走实际owner。HTTP读体和排空单列，不能扩大成功基础deadline。提醒total≥attempt_limit×attempt_timeout＋(attempt_limit−1)×retry_delay，推荐2500≥2010；只有明确未发送才可进行第二次尝试。
+- 所有新object参数的**定义和值**都进入持久body，单项≤8192、总条数仍128。新8项单项完整body另限4096，原105项完整body≤262144，新合计≤294912；全113项而非8个裸值都持久化。完整初始化含descriptor/values/intentions的保守上界1007616≤1048576；94命令的完整新静态装配推导2694098≤2760704，分别核对描述2621440、仓储131072、外层8192。该修订与3 MiB静态格式通路在[集中装配决定](local-information-feedback.md#capacity)统一获批准，旧794624／旧格式1 MiB不变。未来实际描述／DDL须符合构造预算；初始化拒绝是失败协议，不是相容证明，不能删slot或隐藏定义。
+- 新InformationConfigurationError恰`code, operation, field, reason`；操作限resolve/persist/load_information_configuration及information_snapshot_issue；field限foundation/runtime/platforms/content/information/definition/value/context/storage/identity。沿原组合错误分类及安全首错，新增预算失败用VALUE_INVALID/BUDGET_INVALID或CAPACITY_INSUFFICIENT，装配映射CONFIGURATION_UNSUPPORTED；不回显路径、非法键、秘密或底层异常。持久成功／未知仍配原四分支，纯解析没有存储成功含义。
+
+本节不新增真实embedding/rerank模型／维度参数、persona监管参数、目标语义prompt、生产route URL／凭据或自动审计保留配置；这些能力未支持，缺失须按[独立依赖](local-information-feedback.md#baseline)明确返回，而非配置空值后假成功。完整最大包、跨进程、真实HTTP、中文质量、门控竞争、资源及获准Linux验证见[验收矩阵](local-information-feedback.md#validation)。

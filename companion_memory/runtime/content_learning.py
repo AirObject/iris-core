@@ -72,14 +72,17 @@ async def _learn_batch(runtime: ContentRuntimeService, source: MappingProxyType[
                 if blobs: await r.media.media.integrity.verify_metadata(blobs[0])
     if work['phase'] in ('CANDIDATE_STORED', 'TERMINAL'):
         header = (await assembly.cognition._rows.read('get', {'candidate_id': work['candidate_id']}))[0]
-        manifest = isolate(MANIFEST, decode_content(cast(str, header['manifest']).encode(), 4096), 4096)
+        manifest = assembly.cognition.manifest(decode_content(cast(str, header['manifest']).encode(), 4096))
         if any(record(ref)['action'] in ('REPLACE_CURRENT', 'SET_SCORES', 'DELETE_OBJECT') for ref in sequence(manifest['ordered_change_refs'])):
             from .candidate_application import apply_candidate
             return await apply_candidate(r, bid, work['candidate_id'], allow_replan=fresh)
         terminal = manifest['terminal_proposal']
         branch = 'published' if sequence(manifest['ordered_change_refs']) else 'without_objects'
         kind = 'commit_content_' + branch + ('_with_media' if has_media else '')
-        return await r.execute(kind, stable('finish', bid), {'batch_id': bid, 'candidate_id': work['candidate_id'],
+        # A persisted terminal in the information assembly must confirm its
+        # original result. Absence cannot authorize a second application.
+        finish = r.confirm_command if assembly.information_format and work['phase'] == 'TERMINAL' else r.execute
+        return await finish(kind, stable('finish', bid), {'batch_id': bid, 'candidate_id': work['candidate_id'],
             'expected_revision': cast(int, work['revision']) - (1 if work['phase'] == 'TERMINAL' else 0),
             'generation': work['generation'], 'readable_objects': [], 'readable_subjects': []})
     if work['phase'] == 'WAITING_ADMISSION':
@@ -105,7 +108,9 @@ async def _learn_batch(runtime: ContentRuntimeService, source: MappingProxyType[
         'transform_version': r.candidates.transform_version, 'candidate_source_fingerprint': r.candidates.fingerprint, 'request_digest': descriptor_digest(request)})
     from companion_memory.cognition.synthetic_mutations import SyntheticMutationInput
     from companion_memory.cognition.synthetic_mixed import SyntheticMixedInput
-    if type(r.candidates) is SyntheticMutationInput or type(r.candidates) is SyntheticMixedInput: binding = MappingProxyType({**binding, 'mutation_authority': r.candidates.authority})
+    from companion_memory.cognition.goal_proposals import SyntheticGoalInput
+    if type(r.candidates) is SyntheticMutationInput or type(r.candidates) is SyntheticMixedInput or type(r.candidates) is SyntheticGoalInput: binding = MappingProxyType({**binding, 'mutation_authority': r.candidates.authority})
+    if type(r.candidates) is SyntheticGoalInput: binding = MappingProxyType({**binding, 'goal_route_ids': r.candidates.route_ids})
     if fresh and not r.remaining_request(): return Found(MappingProxyType({'state': 'WAITING_ADMISSION'}))
     if work['phase'] not in ('FROZEN', 'PARKED'): fresh = False
     if work['phase'] in ('FROZEN', 'PARKED'):

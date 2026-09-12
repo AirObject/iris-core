@@ -74,7 +74,7 @@ class MaintenanceAssembly:
                 previous, _ = read_plan(memory, uow, cast(str, v['previous_plan']))
                 if previous['root_id'] != root_id or previous['ordinal'] != root['last_ordinal']:
                     raise OwnerFailure('PRECONDITION_FAILED', 'source', 'OWNERSHIP_CHANGED')
-                definition = next(d for d in self.commands if d.operation_kind == previous['command_kind'])
+                definition = self.content.command_definition(cast(str, previous['command_kind']))
                 confirmed = content.storage.confirm_prior_operation(uow, definition, cast(str, previous['execution_key']))
                 if confirmed is not None:
                     raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')

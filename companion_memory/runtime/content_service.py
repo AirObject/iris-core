@@ -18,6 +18,7 @@ from companion_memory.cognition.synthetic_input import SyntheticCandidateInput
 from companion_memory.cognition.synthetic_graph import SyntheticGraphInput
 from companion_memory.cognition.synthetic_mutations import SyntheticMutationInput
 from companion_memory.cognition.synthetic_mixed import SyntheticMixedInput
+from companion_memory.cognition.goal_proposals import SyntheticGoalInput
 from companion_memory.ingress.events import canonical_event
 from companion_memory.ingress.media_events import isolate_media_event, InvalidStateCombination
 from companion_memory.persistence.schema import ValueTooLarge
@@ -61,8 +62,8 @@ async def _entry_call(port, operation, key, argument):
 class ContentRuntimeService:
     """Trusted orchestration with bounded actual jobs and independent read services."""
     def __init__(self, assembly: ContentAssembly, provider: ProviderService,
-                 candidates: SyntheticCandidateInput | SyntheticGraphInput | SyntheticMutationInput | SyntheticMixedInput, learning_profile: str, media_policy: MediaPolicy | None):
-        if type(assembly) is not ContentAssembly or not assembly._bound or type(provider) is not ProviderService or type(candidates) not in (SyntheticCandidateInput, SyntheticGraphInput, SyntheticMutationInput, SyntheticMixedInput) or not valid_identifier(learning_profile):
+                 candidates: SyntheticCandidateInput | SyntheticGraphInput | SyntheticMutationInput | SyntheticMixedInput | SyntheticGoalInput, learning_profile: str, media_policy: MediaPolicy | None):
+        if type(assembly) is not ContentAssembly or not assembly._bound or type(provider) is not ProviderService or type(candidates) not in (SyntheticCandidateInput, SyntheticGraphInput, SyntheticMutationInput, SyntheticMixedInput, SyntheticGoalInput) or not valid_identifier(learning_profile) or type(candidates) is SyntheticGoalInput and not assembly.information_format:
             raise ValueError('Bound actual owners and explicit model/candidate inputs are required.')
         self.assembly = assembly; self.provider = provider; self.candidates = candidates; self.learning_profile = learning_profile
         self.settings = assembly.configuration.candidate.runtime
@@ -73,6 +74,7 @@ class ContentRuntimeService:
         self.media_policy = media_policy; self.media: ContentMedia | None = None
         self._entries: WeakValueDictionary[int, ContentEntryPort] = WeakValueDictionary()
         self._jobs: dict[tuple[str, str, str], asyncio.Task] = {}; self._commands: set[asyncio.Task] = set()
+        self._external_jobs: set[asyncio.Task[object]] = set()
         self._evidence_jobs: dict[asyncio.Task, tuple[str, str]] = {}
         self._learning_held = {}
         self._request_deadline: ContextVar[float | None] = ContextVar('content_request_deadline', default=None)
@@ -90,6 +92,19 @@ class ContentRuntimeService:
         self._memory_recovery = MemoryRecovery(assembly.memory, assembly.media)
         self.sources = SourceAccess(assembly.memory, cast(MediaService, assembly.media) if type(assembly.media) is MediaService else None)
         self.memory = MemoryService(assembly.memory, lambda: None if self.state == 'READY' and self.gate.state in ('NORMAL', 'DRAINING') else 'DREAMING')
+
+    def retain_external_work(self, task: asyncio.Task[object]) -> None:
+        """Include admitted local business work in mode and shutdown cutoffs.
+
+        The caller supplies its own actual completion task. Only its completion
+        releases this registry; a logical result or global I/O count cannot.
+        """
+        self._external_jobs.add(task)
+        task.add_done_callback(self._external_jobs.discard)
+
+    @property
+    def external_work_pending(self) -> bool:
+        return bool(self._external_jobs)
 
     async def initialize(self):
         """Recover original local work before exposing admission; repeated calls join."""
@@ -141,6 +156,14 @@ class ContentRuntimeService:
         """Run a typed original command, retaining only its actual completion."""
         return await self._command(kind, key, values, confirm_only=False)
 
+    async def reply_entry_status(self, entry_id: str, host_id: str) -> MappingProxyType[str, Value]:
+        """Bounded current-entry terminal counts; never returns failed/history bodies."""
+        if not await self.assembly.ingress.verify_host_entry(entry_id, host_id):
+            raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
+        rows = await self.assembly.rows.read('observe_entry', {'entry_id': entry_id})
+        if len(rows) != 1: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
+        return rows[0]
+
     async def confirm_command(self, kind: str, key: str, values: dict[str, object]) -> object:
         """Confirm original identity and receipt without entering a business handler."""
         return await self._command(kind, key, values, confirm_only=True)
@@ -155,7 +178,7 @@ class ContentRuntimeService:
             if media is not None:
                 registry = media.work.evidence if evidence_owner[0] == 'terminal' else media.work.unsent_evidence
                 registry.pop(evidence_owner[1], None)
-        definition = next(d for d in self.assembly.commands if d.operation_kind == kind)
+        definition = self.assembly.command_definition(kind)
         try: owned = freeze_value(definition.input_schema, {'operation_id': key, **values})
         except InvalidValue:
             if on_ended is not None: on_ended()
@@ -169,7 +192,11 @@ class ContentRuntimeService:
             if on_ended is not None: on_ended()
             return Rejected(RuntimeError('RESOURCE_BUSY', kind, 'state', 'ADMISSION_FULL'))
         cause_key, slot = self.assembly.causes.watch(kind, owned)
+        information_change = any(a.owner_module in ('memory', 'buffers') for a in definition.required_audits) and self.assembly.memory.information is not None
+        resolved_change = False
+        change_key = stable('information_mutation', kind, key)
         async def execute():
+            nonlocal resolved_change
             if confirm_only:
                 original_receipt = await port.read_receipt(key)
                 if type(original_receipt) is Found:
@@ -181,7 +208,9 @@ class ContentRuntimeService:
             original = await port.resolve_operation(handle)
             if type(original) is NotCommitted and not self.remaining_request():
                 return Rejected(RuntimeError('TIMEOUT', kind, 'state', 'DEADLINE_EXCEEDED'))
+            if type(original) is NotCommitted and information_change: self.gate.begin_information_change(change_key)
             result = await port.execute(key, command) if type(original) is NotCommitted else original
+            resolved_change = type(result) in (Committed, NotCommitted)
             return result
         task, outcome = start_owned(execute()); self._commands.add(task)
         retain_completion(task)
@@ -189,6 +218,7 @@ class ContentRuntimeService:
         def ended(job):
             if not job.cancelled(): job.exception()
             self._commands.discard(job); self.assembly.causes.release(cause_key)
+            if information_change and resolved_change: self.gate.finish_information_change(change_key)
             on_ended(job)
             if not self._commands: self.assembly._verified_terminals.clear()
         task.add_done_callback(ended)
@@ -340,9 +370,9 @@ class ContentRuntimeService:
     async def close(self) -> bool:
         """Revoke admission and keep the runtime alive until its actual jobs end."""
         self.state = 'CLOSING'; self.gate.close(); self._entries.clear(); self.observations.close(); self.maintenance.close(); self.sources.close(); self.focus.close()
-        tasks = tuple(self.focus.jobs) + tuple(self._jobs.values()) + tuple(self.maintenance.jobs.values()) + tuple(self._commands) + ((self._recovery_job,) if self._recovery_job is not None and not self._recovery_job.done() else ())
+        tasks = tuple(self._external_jobs) + tuple(self.focus.jobs) + tuple(self._jobs.values()) + tuple(self.maintenance.jobs.values()) + tuple(self._commands) + ((self._recovery_job,) if self._recovery_job is not None and not self._recovery_job.done() else ())
         if tasks: await asyncio.wait(tasks, timeout=self.settings.integer('runtime.close_timeout_ms') / 1000)
-        if any(not task.done() for task in tasks) or self._jobs or self._commands or self.maintenance.jobs or self.sources._active or self.memory._active or self.observations.jobs or self.provider.get_health().cleanup_pending: return False
+        if any(not task.done() for task in tasks) or self._external_jobs or self._jobs or self._commands or self.maintenance.jobs or self.sources._active or self.memory._active or self.observations.jobs or self.provider.get_health().cleanup_pending: return False
         self.release_ended_capabilities()
         if not self.memory.close(): return False
         self.state = 'CLOSED'

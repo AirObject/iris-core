@@ -9,7 +9,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 from types import MappingProxyType
-from typing import Protocol, cast
+from typing import Protocol, cast, TYPE_CHECKING
+if TYPE_CHECKING:
+    from .information_tracking import MemoryInformation
+    from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
 from companion_memory.logging_service.object_history import HistoryBinding
 from companion_memory.persistence import UnitOfWork, PersistenceService, Value
@@ -83,6 +86,16 @@ class MemoryTransactions:
         self.configuration, self.instance_id = configuration, instance_id
         self.history, self.sources = history, sources
         self._settings = configuration.candidate.content
+        self._information_catalog = catalog
+        self.information: MemoryInformation | None = None
+
+    def bind_information(self, configuration: StoredInformationConfiguration) -> MemoryInformation:
+        """Select change tracking only for the explicit independent memory format."""
+        from .information_tracking import MemoryInformation
+        if self.information is not None or self._information_catalog.definition.schema_version != 2 or configuration.database_id != self.configuration.database_id or configuration.snapshot_id != self.configuration.snapshot_id:
+            raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')
+        self.information = MemoryInformation(self._information_catalog, self.storage, configuration, self.instance_id, self)
+        return self.information
 
     def current(self, uow: UnitOfWork, oid: str) -> MappingProxyType[str, Value] | None:
         """Read and verify the current row inside the coordinator's transaction."""
@@ -390,6 +403,8 @@ class MemoryTransactions:
             self.rows.stage('index_dirty_delete', uow, {'object_id': oid})
             self.rows.stage('index_dirty_insert', uow, {'object_id': oid, 'revision': revision,
                 'action': 'REMOVE' if value is None or value['lifecycle'] == 'FORGOTTEN' else 'UPSERT'})
+            if self.information is not None:
+                self.information.changed(uow, oid, revision, value is None)
             reasons = ['DELETED'] if value is None else ['CONTENT_CHANGED']
             if value is not None and old is not None and value['lifecycle'] != old['lifecycle']:
                 reasons.append('FORGOTTEN' if value['lifecycle'] == 'FORGOTTEN' else 'RESTORED')

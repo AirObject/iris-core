@@ -48,13 +48,14 @@ class CandidateApplication:
             if work['phase'] != 'CANDIDATE_STORED' or work['candidate_id'] != v['candidate_id']:
                 raise OwnerFailure('PRECONDITION_FAILED', 'candidate', 'WORK_FENCED')
             candidate = a.cognition.load(uow, cast(str, v['candidate_id']))
+            memory_leaves = tuple(leaf for leaf in candidate.leaves if leaf['action'] != 'CREATE_GOAL')
             if not any(leaf['action'] in ('REPLACE_CURRENT', 'SET_SCORES', 'DELETE_OBJECT') for leaf in candidate.leaves):
                 raise OwnerFailure('PRECONDITION_FAILED', 'candidate', 'WORK_FENCED')
             binding = decode_content(cast(str, work['model_binding']).encode(), 8192)
             from companion_memory.cognition.synthetic_mutations import AUTHORITY
             authority = record(freeze_value(AUTHORITY, cast(dict, binding)['mutation_authority']))
             if any(leaf['target_id'] not in sequence(authority['writable_objects'])
-                    and not (authority['allow_creations'] and leaf['action'] in ('CREATE_MEMORY', 'CREATE_RELATION', 'REGISTER_SUBJECT')) for leaf in candidate.leaves):
+                    and not (authority['allow_creations'] and leaf['action'] in ('CREATE_MEMORY', 'CREATE_RELATION', 'REGISTER_SUBJECT')) for leaf in memory_leaves):
                 raise OwnerFailure('ACCESS_DENIED', 'candidate', 'OPERATION_NOT_GRANTED')
             semantic = digest((candidate.manifest['manifest_digest'], authority), 8192)
             root_id = stable('candidate_root', v['batch_id'], v['candidate_id'])
@@ -66,17 +67,18 @@ class CandidateApplication:
                 previous, _ = read_plan(memory, uow, cast(str, v['previous_plan']))
                 if previous['root_id'] != root_id or previous['ordinal'] != root['last_ordinal']:
                     raise OwnerFailure('PRECONDITION_FAILED', 'source', 'OWNERSHIP_CHANGED')
-                definition = next(d for d in self.commands if d.operation_kind == previous['command_kind'])
+                definition = self.content.command_definition(cast(str, previous['command_kind']))
                 if a.storage.confirm_prior_operation(uow, definition, cast(str, previous['execution_key'])) is not None:
                     raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
                 ordinal = cast(int, root['last_ordinal']) + 1
             elif v['previous_plan'] is not None: raise OwnerFailure('PRECONDITION_FAILED', 'source', 'OWNERSHIP_CHANGED')
-            leaves = observe_change_set_release(memory, uow, candidate.leaves)
+            leaves = observe_change_set_release(memory, uow, memory_leaves)
             if any(leaf['source_id'] not in sequence(authority['source_ids']) for leaf in leaves):
                 raise OwnerFailure('ACCESS_DENIED', 'source', 'OPERATION_NOT_GRANTED')
             source = decode_source(cast(str, batch['manifest']))
             has_media = any(sequence(record(m)['media']) for m in sequence(source['ordered_members'])) or any(leaf['has_media'] for leaf in leaves)
             name = 'apply_candidate_changes' + ('_with_media' if has_media else '')
+            if any(leaf['action'] == 'CREATE_GOAL' for leaf in candidate.leaves): name += '_and_goals' if has_media else '_with_goals'
             mask = '_'.join(part for part, present in (('INGRESS', any(sequence(leaf['payloads']) for leaf in leaves)), ('MEDIA', any(leaf['has_media'] for leaf in leaves))) if present) or 'NONE'
             checksums = tuple(digest(leaf, 8192) for leaf in leaves)
             plan_id = stable('candidate_release_plan', root_id, ordinal, semantic, checksums)
@@ -105,7 +107,7 @@ class CandidateApplication:
         authority = record(freeze_value(AUTHORITY, decode_content(cast(str, intent['authority']).encode(), 8192)))
         if digest((candidate.manifest['manifest_digest'], authority), 8192) != plan['semantic_digest']:
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
-        if observe_change_set_release(memory, uow, candidate.leaves) != leaves:
+        if observe_change_set_release(memory, uow, tuple(leaf for leaf in candidate.leaves if leaf['action'] != 'CREATE_GOAL')) != leaves:
             raise OwnerFailure('PRECONDITION_FAILED', 'source', 'OWNERSHIP_CHANGED')
         scope = ApplyScope(a.instance_id, cast(str, intent['candidate_id']), cast(str, intent['batch_id']),
             frozenset(cast(tuple[str, ...], authority['readable_objects'])), frozenset(cast(tuple[str, ...], authority['readable_subjects'])),

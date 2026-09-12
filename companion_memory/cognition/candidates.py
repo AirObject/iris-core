@@ -29,6 +29,13 @@ MANIFEST = RecordSchema((Field('candidate_version', VERSION), Field('candidate_i
     Field('ordered_change_refs', SequenceSchema(CHANGE_REF, 0, 8)),
     Field('origin', RecordSchema((Field('storage_execution', enum('ACTUAL')), Field('model_adapter', enum('SIMULATED')),
         Field('candidate_origin', enum('SYNTHETIC')), Field('database_id', ID))))))
+INFORMATION_MANIFEST = RecordSchema(tuple(Field('candidate_version', ScalarSchema('integer', 2, 2)) if f.name == 'candidate_version' else f for f in MANIFEST.fields))
+
+
+def isolate_manifest(manifest: object, *, allow_goals: bool = False) -> MappingProxyType[str, Value]:
+    """The independently bound format alone accepts typed goal proposal leaves."""
+    extended = allow_goals and type(manifest) in (dict, MappingProxyType) and cast(dict, manifest).get('candidate_version') == 2
+    return isolate(INFORMATION_MANIFEST if extended else MANIFEST, manifest, 4096)
 
 
 def stable_identity(kind: str, database: str, batch: str, handoff: str,
@@ -38,7 +45,7 @@ def stable_identity(kind: str, database: str, batch: str, handoff: str,
         Field('transform', ID), Field('ordinal', ScalarSchema('integer', 0, 8)), Field('kind', ID)))
     value = isolate(fields, {'database': database, 'batch': batch, 'handoff': handoff,
         'transform': transform, 'ordinal': ordinal, 'kind': object_kind}, 1024)
-    if kind not in ('candidate', 'object', 'subject'):
+    if kind not in ('candidate', 'object', 'subject', 'goal'):
         raise InvalidValue()
     return kind + ':' + hashlib.sha256(encode_content(value, 1024)).hexdigest()
 
@@ -61,7 +68,9 @@ def check_manifest_identity(value: MappingProxyType[str, Value]) -> None:
     elif refs or value['handoff_ref'] is not None: raise InvalidValue()
     for ordinal, ref in enumerate(refs):
         action = ref['action']
-        if ref['ordinal'] != ordinal or action not in ('CREATE_MEMORY', 'CREATE_RELATION', 'REGISTER_SUBJECT', 'REPLACE_CURRENT', 'SET_SCORES', 'DELETE_OBJECT'):
+        if ref['ordinal'] != ordinal or action not in ('CREATE_MEMORY', 'CREATE_RELATION', 'REGISTER_SUBJECT', 'REPLACE_CURRENT', 'SET_SCORES', 'DELETE_OBJECT') + (('CREATE_GOAL',) if value['candidate_version'] == 2 else ()):
+            raise InvalidValue()
+        if action == 'CREATE_GOAL' and ref['target_id'] != stable_identity('goal', database, batch, handoff, transform, ordinal, 'GOAL'):
             raise InvalidValue()
         if action in ('CREATE_MEMORY', 'CREATE_RELATION', 'REGISTER_SUBJECT'):
             kind = 'subject' if action == 'REGISTER_SUBJECT' else 'object'
@@ -77,13 +86,15 @@ class Candidate:
 
 
 def isolate_candidate(manifest: object, leaves: object, *, item_limit: int,
-                      item_bytes: int, total_bytes: int) -> Candidate:
+                      item_bytes: int, total_bytes: int, allow_goals: bool = False) -> Candidate:
     """Validate the complete manifest, original identities and all leaves at once."""
-    value = isolate(MANIFEST, manifest, 4096)
+    value = isolate_manifest(manifest, allow_goals=allow_goals)
     check_manifest_identity(value)
     if type(leaves) not in (tuple, list) or not 0 <= len(cast(tuple, leaves)) <= item_limit:
         raise InvalidValue()
-    items = tuple(isolate_change(v, item_bytes) for v in cast(tuple, leaves))
+    from .goal_proposals import isolate_goal_change
+    items = tuple(isolate_goal_change(v, item_bytes) if value['candidate_version'] == 2 and type(v) in (dict, MappingProxyType)
+        and cast(dict, v).get('action') == 'CREATE_GOAL' else isolate_change(v, item_bytes) for v in cast(tuple, leaves))
     refs = tuple(record(r) for r in sequence(value['ordered_change_refs']))
     if len(refs) != len(items) or len({cast(str, v['target_id']) for v in items}) != len(items):
         raise InvalidValue()
@@ -113,7 +124,7 @@ def isolate_candidate(manifest: object, leaves: object, *, item_limit: int,
     return Candidate(value, items)
 
 
-def candidate_catalog() -> StatementCatalog:
+def candidate_catalog(*, information_format: bool = False) -> StatementCatalog:
     """Declare complete candidates and leaf storage, separate from formal objects."""
     tables = (
         TableDefinition('cognition_candidates', 'CREATE TABLE cognition_candidates (scope_id TEXT NOT NULL,candidate_id TEXT NOT NULL,'
@@ -137,20 +148,29 @@ def candidate_catalog() -> StatementCatalog:
         ('dispose', StatementDefinition("UPDATE cognition_candidates SET state='DISPOSED' WHERE scope_id=:scope_id AND candidate_id=:candidate_id AND state='STORED' RETURNING candidate_id", cid, cid, True)),
         ('release_leaves', StatementDefinition('DELETE FROM cognition_candidate_leaves WHERE scope_id=:scope_id AND candidate_id=:candidate_id RETURNING ordinal', cid, RecordSchema((Field('ordinal', INT),)), True)),
     )
-    return StatementCatalog(RepositoryDefinition('cognition', 1, tables, tuple(d for _, d in declarations)), declarations)
+    return StatementCatalog(RepositoryDefinition('cognition', 2 if information_format else 1, tables, tuple(d for _, d in declarations)), declarations)
 
 
 class CandidateBinding:
     """Cognition's typed same-UoW proposal participant; it has no commit method."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService, scope: str,
-                 database_id: str, item_limit: int, item_bytes: int, total_bytes: int):
+                 database_id: str, item_limit: int, item_bytes: int, total_bytes: int, *, allow_goals: bool = False):
         self._rows = BoundStatements(catalog, storage, scope)
         self._lease = storage.claim_module_owner(catalog.definition)
         if self._lease is None:
             raise ValueError('Candidate owner is unavailable.')
         self._recovery_after = ''; self._recovered = False
         self.database_id = database_id
+        self.allow_goals = allow_goals
         self._limits = {'item_limit': item_limit, 'item_bytes': item_bytes, 'total_bytes': total_bytes}
+
+    def isolate(self, manifest: object, leaves: object) -> Candidate:
+        return isolate_candidate(manifest, leaves, **self._limits, allow_goals=self.allow_goals)
+
+    def manifest(self, raw: object) -> MappingProxyType[str, Value]:
+        value = isolate_manifest(raw, allow_goals=self.allow_goals)
+        check_manifest_identity(value)
+        return value
 
     async def verify_stored(self, page_limit: int, deadline: float) -> bool:
         """Point-verify immutable candidates and disposed leaves without any model call."""
@@ -165,7 +185,7 @@ class CandidateBinding:
                 if time.monotonic() >= deadline: return False
                 cid = metadata['candidate_id']
                 header = (await self._rows.read('get', {'candidate_id': cid}))[0]
-                manifest = isolate(MANIFEST, decode_content(cast(str, header['manifest']).encode(), 4096), 4096)
+                manifest = self.manifest(decode_content(cast(str, header['manifest']).encode(), 4096))
                 if (encode_content(manifest, 4096).decode() != header['manifest'] or manifest_digest(manifest) != manifest['manifest_digest']
                         or any(manifest[k] != header[k] for k in ('candidate_id', 'batch_id', 'provider_request_id', 'handoff_ref'))
                         or record(manifest['origin'])['database_id'] != self.database_id):
@@ -181,8 +201,8 @@ class CandidateBinding:
                     for ordinal in range(len(refs)):
                         leaf = await self._rows.read('leaf', {'candidate_id': cid, 'ordinal': ordinal})
                         if not leaf: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
-                        leaves.append(decode_change(cast(str, leaf[0]['body']), self._limits['item_bytes']))
-                    isolate_candidate(manifest, tuple(leaves), **self._limits)
+                        leaves.append(decode_content(cast(str, leaf[0]['body']).encode(), self._limits['item_bytes']))
+                    self.isolate(manifest, tuple(leaves))
                 self._recovery_after = cast(str, cid)
         return False
 
@@ -191,7 +211,7 @@ class CandidateBinding:
         """Persist every leaf with the manifest after original runtime association checks."""
         if type(candidate) is not Candidate:
             raise InvalidValue()
-        candidate = isolate_candidate(candidate.manifest, candidate.leaves, **self._limits)
+        candidate = self.isolate(candidate.manifest, candidate.leaves)
         m = candidate.manifest
         if (m['batch_id'], m['run_id'], m['work_generation'], m['provider_request_id'], m['handoff_ref'], record(m['origin'])['database_id']) != (batch_id, run_id, work_generation, request_id, handoff_ref, self.database_id):
             raise OwnerFailure('ACCESS_DENIED', 'candidate', 'BINDING_MISMATCH')
@@ -208,7 +228,7 @@ class CandidateBinding:
         if not rows or rows[0]['state'] != 'STORED':
             raise OwnerFailure('PRECONDITION_FAILED', 'candidate', 'SOURCE_CHANGED')
         row = rows[0]
-        manifest = isolate(MANIFEST, decode_content(cast(str, row['manifest']).encode(), 4096), 4096)
+        manifest = self.manifest(decode_content(cast(str, row['manifest']).encode(), 4096))
         if any(row[k] != manifest[k] for k in ('candidate_id', 'batch_id', 'provider_request_id', 'handoff_ref')) or encode_content(manifest, 4096).decode() != row['manifest']:
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         leaves = []
@@ -216,8 +236,8 @@ class CandidateBinding:
             rows = self._rows.stage('leaf', uow, {'candidate_id': candidate_id, 'ordinal': ordinal})
             if not rows:
                 raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
-            leaves.append(decode_change(cast(str, rows[0]['body']), self._limits['item_bytes']))
-        return isolate_candidate(manifest, tuple(leaves), **self._limits)
+            leaves.append(decode_content(cast(str, rows[0]['body']).encode(), self._limits['item_bytes']))
+        return self.isolate(manifest, tuple(leaves))
 
     def dispose(self, uow: UnitOfWork, candidate: Candidate) -> None:
         """Release proposal text only in the transaction completing the original work."""
@@ -226,6 +246,33 @@ class CandidateBinding:
             raise OwnerFailure('PRECONDITION_FAILED', 'candidate', 'WORK_FENCED')
         if len(self._rows.stage('release_leaves', uow, {'candidate_id': cid})) != len(candidate.leaves):
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
+
+    def published_goal_basis(self, uow: UnitOfWork, candidate_id: str, object_id: str, snapshot_id: str) -> MappingProxyType[str, Value]:
+        """Verify a real committed candidate's retained basis within a goal UoW.
+
+        Disposed proposals retain their canonical manifest. This port returns
+        only provenance identity; it never recreates a leaf or grants memory
+        access. The memory owner must independently validate the current basis.
+        """
+        if not self.allow_goals:
+            raise OwnerFailure('ACCESS_DENIED', 'capability', 'OPERATION_NOT_GRANTED')
+        rows = self._rows.stage('get', uow, {'candidate_id': candidate_id})
+        if not rows or rows[0]['state'] != 'DISPOSED':
+            raise OwnerFailure('ACCESS_DENIED', 'goal', 'BINDING_MISMATCH')
+        row = rows[0]
+        try:
+            manifest = self.manifest(decode_content(cast(str, row['manifest']).encode(), 4096))
+            if (encode_content(manifest, 4096).decode() != row['manifest']
+                    or any(manifest[name] != row[name] for name in ('candidate_id', 'batch_id', 'provider_request_id', 'handoff_ref'))
+                    or record(manifest['origin'])['database_id'] != self.database_id):
+                raise InvalidValue()
+        except (InvalidValue, ValueError, UnicodeError):
+            raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE') from None
+        references = tuple(record(item) for item in sequence(manifest['ordered_change_refs']))
+        if (manifest['terminal_proposal'] != 'SUCCEEDED' or manifest['config_snapshot_id'] != snapshot_id
+                or not any(item['target_id'] == object_id and item['action'] in ('CREATE_MEMORY', 'CREATE_RELATION', 'REPLACE_CURRENT', 'SET_SCORES') for item in references)):
+            raise OwnerFailure('ACCESS_DENIED', 'goal', 'BINDING_MISMATCH')
+        return manifest
 
     def close(self) -> bool:
         """Release this module only after all underlying storage jobs end."""

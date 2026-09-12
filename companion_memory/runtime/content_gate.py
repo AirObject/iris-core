@@ -19,6 +19,8 @@ class ContentGate:
         self._grants: dict[int, tuple[WorkGrant, int, str | None, bool]] = {}
         self._guard_writers: set[str] = set()
         self._mode_cutoff = False
+        self._information_revision = 0
+        self._information_writers: set[str] = set()
         self.integrity_pending: Callable[[], bool] = lambda: False
         self.binding = bind_gate(self.check, self.dispatch, self.authorized)
 
@@ -100,3 +102,40 @@ class ContentGate:
             self.protection_revision += 1
             for identity, (grant, epoch, guard, blocked) in tuple(self._grants.items()):
                 self._grants[identity] = grant, epoch, guard, True
+
+    def begin_information_change(self, key: str) -> None:
+        """Fence unstarted local deliveries before a current-object write begins."""
+        with self.lock:
+            if key not in self._information_writers:
+                if len(self._information_writers) >= self.capacity:
+                    raise ValueError('Information mutation capacity is occupied.')
+                self._information_writers.add(key)
+                self._information_revision += 1
+
+    def finish_information_change(self, key: str) -> None:
+        """Release only a resolved mutation after its actual owned work ended."""
+        with self.lock: self._information_writers.discard(key)
+
+    def information_checkpoint(self) -> tuple[int, int] | None:
+        with self.lock:
+            if self._information_writers or self._mode_cutoff or self.state not in ('NORMAL', 'DRAINING') or self.integrity_pending(): return None
+            return self.epoch, self._information_revision
+
+    def information_operation_reason(self) -> str | None:
+        """Expose the existing publication opening without leaking mutable flags."""
+        with self.lock:
+            if self._mode_cutoff or self.state in ('DREAM_PREPARING', 'DREAM_FOCUSED'): return 'DREAMING'
+            if self.integrity_pending() or self.state == 'FAULTED': return 'RUNTIME_FAULTED'
+            if self.state not in ('NORMAL', 'DRAINING'): return 'RECOVERING'
+            return None
+
+    def start_information_delivery(self, checkpoint: tuple[int, int], authorized: Callable[[], bool], start: Callable[[], None]) -> bool:
+        """Check mode, authority and mutations before the single delivery start.
+
+        The callback only schedules bounded I/O or publishes an immutable native
+        value. It must never wait for SQLite, a socket or any external service.
+        """
+        with self.lock:
+            if self.information_checkpoint() != checkpoint or not authorized(): return False
+            start()
+            return True

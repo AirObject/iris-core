@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
 from weakref import WeakValueDictionary
-from companion_memory.persistence import Found, NotFound, Value
+from companion_memory.persistence import Found, NotFound, Value, UnitOfWork
 from companion_memory.persistence.schema import InvalidValue, valid_identifier
 from companion_memory.persistence.owned_statements import OwnerFailure
 from .transactions import MemoryTransactions
@@ -32,7 +32,7 @@ class MemoryError:
 class MemoryReadPort:
     """Native finite object authority, independent of raw-input entry permission."""
     _service: MemoryService
-    _objects: frozenset[str]
+    _objects: frozenset[str] | None
     _operations: frozenset[str]
 
     def __init__(self):
@@ -101,9 +101,38 @@ class MemoryService:
         self._grants[id(port)] = port
         return port
 
+    def bind_query_scope(self, *, include_forgotten: bool, object_ids: tuple[str, ...] | None = None) -> MemoryReadPort:
+        """Trusted setup explicitly grants a whole-instance or finite query scope.
+
+        Candidate and response work remains bounded separately. A whole-instance
+        read grant supplies no write, source, history, media or Provider authority.
+        Existing finite bind_read handles retain their original behavior.
+        """
+        if self._owner.information is None or self._closed:
+            raise OwnerFailure('INVALID_STATE', 'memory', 'NOT_READY')
+        if len(self._grants) >= self._page:
+            raise OwnerFailure('RESOURCE_BUSY', 'memory', 'ADMISSION_FULL')
+        if (type(include_forgotten) is not bool
+                or object_ids is not None and (type(object_ids) is not tuple or not 1 <= len(object_ids) <= 128 or any(not valid_identifier(v) for v in object_ids))):
+            raise OwnerFailure('INVALID_INPUT', 'input', 'INVALID_SHAPE')
+        port = object.__new__(MemoryReadPort)
+        object.__setattr__(port, '_service', self)
+        object.__setattr__(port, '_objects', None if object_ids is None else frozenset(object_ids))
+        object.__setattr__(port, '_operations', frozenset(('get_current', 'read_subject', 'get_for_deep_read') if include_forgotten else ('get_current', 'read_subject')))
+        self._grants[id(port)] = port
+        return port
+
+    def release_query_scope(self, port: MemoryReadPort) -> None:
+        """Withdraw this handle without releasing work already owned by the service."""
+        if self._grants.get(id(port)) is port: self._grants.pop(id(port))
+
+    def query_allowed(self, port: MemoryReadPort, object_id: str, *, deep: bool) -> bool:
+        """Filter candidate identities without releasing body or source information."""
+        return self._authorize(port, object_id, 'get_for_deep_read' if deep else 'get_current') is None
+
     def _authorize(self, port: object, oid: object, operation: str) -> MemoryError | None:
         if (type(port) is not MemoryReadPort or self._grants.get(id(port)) is not port
-                or operation not in port._operations or type(oid) is not str or oid not in port._objects):
+                or operation not in port._operations or type(oid) is not str or port._objects is not None and oid not in port._objects):
             return MemoryError('ACCESS_DENIED', operation, 'capability', 'OPERATION_NOT_GRANTED')
         if self._closed:
             return MemoryError('INVALID_STATE', operation, 'state', 'SERVICE_CLOSED')
@@ -113,6 +142,86 @@ class MemoryService:
         if reason is not None:
             return MemoryError('MODE_BLOCKED', operation, 'state', reason)
         return None
+
+    def usage_current(self, port: MemoryReadPort, uow: UnitOfWork, object_id: str, *, deep: bool) -> MappingProxyType[str, Value] | None:
+        """Check feedback authority without confusing a changed lifecycle with deletion."""
+        error = self._authorize(port, object_id, 'get_for_deep_read' if deep else 'get_current')
+        if error is not None: raise OwnerFailure(error.code, 'capability', error.reason)
+        return self._owner.current(uow, object_id)
+
+    async def usage_preview(self, port: MemoryReadPort, object_id: str, *, deep: bool, at_us: int) -> tuple[MappingProxyType[str, Value], tuple[int, str, int, bool]] | None:
+        """Read-only branch selection; the write UoW rechecks every used revision."""
+        operation = 'get_for_deep_read' if deep else 'get_current'
+        error = self._authorize(port, object_id, operation)
+        if error is not None: raise OwnerFailure(error.code, 'capability', error.reason)
+        rows = await self._owner.rows.read('objects_get', {'object_id': object_id})
+        if not rows: return None
+        current = self._owner.decode_current(rows[0])
+        information = self._owner.information
+        if information is None: raise OwnerFailure('INVALID_STATE', 'state', 'NOT_READY')
+        preview = await information.read_usage_preview(current, at_us)
+        error = self._authorize(port, object_id, operation)
+        if error is not None: raise OwnerFailure(error.code, 'capability', error.reason)
+        return current, preview
+
+    def retrieval_current(self, port: MemoryReadPort, uow: UnitOfWork, object_id: str, *, deep: bool) -> MappingProxyType[str, Value] | None:
+        """Authorize and read within retrieval's declared final transaction.
+
+        A relation grants neither endpoint. The same independent read mode is
+        required for both endpoints before its assertion can leave this owner.
+        """
+        operation = 'get_for_deep_read' if deep else 'get_current'
+        error = self._authorize(port, object_id, operation)
+        if error is not None:
+            raise OwnerFailure(error.code, 'capability', error.reason)
+        current = self._owner.current(uow, object_id)
+        if current is None or not deep and current['lifecycle'] != 'ACTIVE': return None
+        if current['kind'] == 'RELATION':
+            from .formats import record
+            content = record(current['content'])
+            for name in ('from_ref', 'to_ref'):
+                endpoint = record(content[name])
+                endpoint_operation = 'read_subject' if endpoint['type'] == 'SUBJECT' else operation
+                error = self._authorize(port, endpoint['id'], endpoint_operation)
+                if error is not None: raise OwnerFailure(error.code, 'capability', error.reason)
+                value = self._owner.subject(uow, cast(str, endpoint['id'])) if endpoint['type'] == 'SUBJECT' else self._owner.current(uow, cast(str, endpoint['id']))
+                if value is None or endpoint['type'] == 'OBJECT' and not deep and value['lifecycle'] != 'ACTIVE': return None
+        return current
+
+    def retrieval_projection(self, port: MemoryReadPort, uow: UnitOfWork, object_id: str, *, deep: bool) -> MappingProxyType[str, Value] | None:
+        """Full current object plus bounded metadata; grants no source-body port."""
+        current = self.retrieval_current(port, uow, object_id, deep=deep)
+        if current is None: return None
+        information = self._owner.information
+        if information is None: raise OwnerFailure('INVALID_STATE', 'state', 'NOT_READY')
+        refs = information.source_metadata(uow, object_id, cast(int, current['revision']))
+        return MappingProxyType(dict(current) | {'source_refs': refs})
+
+    def verify_goal_basis(self, port: MemoryReadPort, uow: UnitOfWork, object_id: str, source_id: str, subject_ids: tuple[str, ...]) -> bool:
+        """Independently check current basis, retained source and finite subject reads."""
+        from .formats import record
+        current = self.retrieval_projection(port, uow, object_id, deep=False)
+        if current is None: return False
+        sources = current['source_refs']
+        if type(sources) is not tuple or not any(record(source)['source_id'] == source_id for source in sources): return False
+        for subject_id in subject_ids:
+            issue = self._authorize(port, subject_id, 'read_subject')
+            if issue is not None: raise OwnerFailure('ACCESS_DENIED', 'capability', 'OPERATION_NOT_GRANTED')
+            if self._owner.subject(uow, subject_id) is None: return False
+        return True
+
+    async def query_projection(self, port: MemoryReadPort, current: MappingProxyType[str, Value], *, deep: bool) -> MappingProxyType[str, Value]:
+        """Add only metadata for this authorized current revision during ranking."""
+        oid = cast(str, current['object_id'])
+        operation = 'get_for_deep_read' if deep else 'get_current'
+        error = self._authorize(port, oid, operation)
+        if error is not None: raise OwnerFailure(error.code, 'capability', error.reason)
+        information = self._owner.information
+        if information is None: raise OwnerFailure('INVALID_STATE', 'state', 'NOT_READY')
+        refs = await information.read_source_metadata(oid, cast(int, current['revision']))
+        error = self._authorize(port, oid, operation)
+        if error is not None: raise OwnerFailure(error.code, 'capability', error.reason)
+        return MappingProxyType(dict(current) | {'source_refs': refs})
 
     async def _bounded(self, operation, work):
         if self._active >= self._limit: return MemoryError('RESOURCE_BUSY', operation, 'state', 'ADMISSION_FULL')

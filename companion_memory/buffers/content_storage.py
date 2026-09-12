@@ -49,6 +49,11 @@ def buffer_content_catalog() -> StatementCatalog:
         ('page', StatementDefinition('SELECT ' + fields + ' FROM buffers_content_entries WHERE scope_id=:scope_id AND entry_id>:after ORDER BY entry_id LIMIT :limit',
             RecordSchema((Field('after', BoundedTextSchema(128)), Field('limit', ScalarSchema('integer', 1, 16)))), state, False)),
     )
+    statements += (
+        ('reply_tail', StatementDefinition("SELECT entry_id,message_id,entry_seq,state FROM (SELECT entry_id,message_id,entry_seq,state FROM buffers_content_positions WHERE scope_id=:scope_id AND entry_id=:entry_id AND state='NORMAL' ORDER BY entry_seq DESC LIMIT 4) ORDER BY entry_seq", eid, position, False)),
+        ('other_pending', StatementDefinition('SELECT count(DISTINCT entry_id) AS entries,count(*) AS messages FROM buffers_content_positions WHERE scope_id=:scope_id AND entry_id!=:entry_id', eid,
+            RecordSchema((Field('entries', INT), Field('messages', INT))), False)),
+    )
     return StatementCatalog(RepositoryDefinition('buffers', 2, tables, tuple(s for _, s in statements)), statements)
 
 
@@ -147,6 +152,23 @@ class ContentBufferTransactions:
             deleted += self.ingress.release_payload(uow, mid, 'BATCH', batch_id, cast(int, row['references_revision']))
         self.update(uow, previous, history_id=new_history, reservation_id=None, reservation_kind=None)
         return int(new_history is not None), deleted
+
+    async def reply_references(self, entry_id: str, recent_count: int, target_count: int) -> MappingProxyType[str, Value]:
+        """Return only this entry's normal tail and true frozen target identities."""
+        state_rows = await self.rows.read('get', {'entry_id': entry_id})
+        if not state_rows: raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
+        state = state_rows[0]
+        tail = await self.rows.read('reply_tail', {'entry_id': entry_id})
+        total = (await self.rows.read('state_count', {'entry_id': entry_id, 'state': 'NORMAL'}))[0]['count']
+        first = await self.rows.read('fifo', {'entry_id': entry_id, 'state': 'NORMAL', 'limit': max(1, target_count)}) if state['reservation_id'] is not None else ()
+        frozen = {cast(str, r['message_id']) for r in first}
+        refs = tuple(MappingProxyType(dict(row) | {'role': 'AUXILIARY' if len(tail) - index <= recent_count else 'TARGET_CANDIDATE',
+            'frozen': row['message_id'] in frozen}) for index, row in enumerate(tail))
+        return MappingProxyType({'revision': state['revision'], 'members': refs, 'has_more': cast(int, total) > len(tail), 'omitted_count': max(0, cast(int, total) - len(tail))})
+
+    async def other_pending(self, entry_id: str) -> MappingProxyType[str, Value]:
+        """Only aggregate other-entry counts leave this projection; no identities."""
+        return (await self.rows.read('other_pending', {'entry_id': entry_id}))[0]
 
     def close(self) -> bool:
         """Release ownership after actual storage work ends."""

@@ -10,6 +10,8 @@
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
+已批准的使用反馈、覆盖序列及发布事实端口见[本地信息闭环主契约](../architecture/local-information-feedback.md)；发布与恢复规则只在该正文维护。
+
 ## 按边界定位
 
 本轮已批准细化：[对象／关系／修订／状态](../architecture/formal-memory-source-media.md#objects)、[完整来源与候选终结](../architecture/formal-memory-source-media.md#sources-candidates)、[公开读取及权限](../architecture/formal-memory-source-media.md#ports-permissions)。集中决定与验收均见该契约，实施已获授权。
