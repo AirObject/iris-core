@@ -6,8 +6,11 @@ before persistence; uncertainty keeps those sends closed until owner resolution.
 """
 from __future__ import annotations
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 import threading
 from companion_memory.provider import WorkGrant, bind_gate
+if TYPE_CHECKING:
+    from companion_memory.self_model.focused_work import InitialPersonaWork
 
 
 class ContentGate:
@@ -19,6 +22,7 @@ class ContentGate:
         self._grants: dict[int, tuple[WorkGrant, int, str | None, bool]] = {}
         self._guard_writers: set[str] = set()
         self._mode_cutoff = False
+        self._initial_persona: InitialPersonaWork | None = None
         self._information_revision = 0
         self._information_writers: set[str] = set()
         self.integrity_pending: Callable[[], bool] = lambda: False
@@ -53,8 +57,16 @@ class ContentGate:
     def check(self, grant: WorkGrant) -> bool:
         with self.lock:
             entry = self._grants.get(id(grant))
-            return (entry is not None and entry[0] is grant and entry[1] == self.epoch and not entry[3]
-                and not self.integrity_pending() and not self._mode_cutoff and self.state in ('NORMAL', 'DRAINING') and entry[2] not in self._guard_writers)
+            if (entry is None or entry[0] is not grant or entry[1] != self.epoch or entry[3]
+                    or self.integrity_pending() or self._mode_cutoff or entry[2] in self._guard_writers): return False
+            if self.state in ('NORMAL', 'DRAINING'):
+                # Initial internal authority never becomes ordinary authority
+                # when a later publication changes the persisted mode.
+                return self._initial_persona is None or not self._initial_persona.owns(grant)
+            if self.state == 'DREAM_FOCUSED':
+                from companion_memory.self_model.focused_work import InitialPersonaWork
+                return type(self._initial_persona) is InitialPersonaWork and self._initial_persona.allowed(grant)
+            return False
 
     def dispatch(self, grant: WorkGrant, start: Callable[[], None]) -> bool:
         """Consume a current permit in the same serialization boundary as closure."""
@@ -105,12 +117,16 @@ class ContentGate:
 
     def begin_information_change(self, key: str) -> None:
         """Fence unstarted local deliveries before a current-object write begins."""
+        if not self.try_begin_information_change(key):raise ValueError('Information mutation capacity is occupied.')
+
+    def try_begin_information_change(self,key: str) -> bool:
+        """Arbitrate the existing slot without throwing through an async owner."""
         with self.lock:
             if key not in self._information_writers:
-                if len(self._information_writers) >= self.capacity:
-                    raise ValueError('Information mutation capacity is occupied.')
+                if len(self._information_writers) >= self.capacity:return False
                 self._information_writers.add(key)
                 self._information_revision += 1
+            return True
 
     def finish_information_change(self, key: str) -> None:
         """Release only a resolved mutation after its actual owned work ended."""

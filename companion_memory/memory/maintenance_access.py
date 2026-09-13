@@ -78,7 +78,7 @@ class MemoryMaintenance:
         if type(raw.get('target_id')) is not str or raw.get('target_id') not in port._objects: return MemoryError('ACCESS_DENIED', 'maintain_memory', 'capability', 'OPERATION_NOT_GRANTED')
         try:
             if not valid_identifier(key): raise InvalidValue()
-            change = isolate_change(raw, r.assembly.configuration.candidate.content.integer('cognition.candidate_item_max_bytes'))
+            change = isolate_change(raw, r.assembly.configuration.candidate.content.integer('cognition.candidate_item_max_bytes'), text_format=r.assembly.memory.text_format)
             if change['action'] != action: raise InvalidValue()
         except InvalidValue: return MemoryError('INVALID_INPUT', 'maintain_memory', 'input', 'INVALID_SHAPE')
         root = stable('memory_root', r.assembly.configuration.database_id, change['target_id'], key)

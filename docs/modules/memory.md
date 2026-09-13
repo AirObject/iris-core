@@ -12,6 +12,8 @@
 
 已批准的使用反馈、覆盖序列及发布事实端口见[本地信息闭环主契约](../architecture/local-information-feedback.md)；发布与恢复规则只在该正文维护。
 
+[真实模型驱动的文本学习集中契约](../architecture/model-driven-text-learning.md)：六组推荐及明确例外已批准，含本模块必要端口增量；规则在集中正文唯一维护，实现与验证状态见CURRENT_TASK。
+
 ## 按边界定位
 
 本轮已批准细化：[对象／关系／修订／状态](../architecture/formal-memory-source-media.md#objects)、[完整来源与候选终结](../architecture/formal-memory-source-media.md#sources-candidates)、[公开读取及权限](../architecture/formal-memory-source-media.md#ports-permissions)。集中决定与验收均见该契约，实施已获授权。

@@ -31,9 +31,19 @@ MANIFEST = RecordSchema((Field('candidate_version', VERSION), Field('candidate_i
         Field('candidate_origin', enum('SYNTHETIC')), Field('database_id', ID))))))
 INFORMATION_MANIFEST = RecordSchema(tuple(Field('candidate_version', ScalarSchema('integer', 2, 2)) if f.name == 'candidate_version' else f for f in MANIFEST.fields))
 
+TEXT_MANIFEST = RecordSchema(tuple(
+    Field('candidate_version', ScalarSchema('integer',3,3)) if field.name=='candidate_version' else
+    Field('origin',RecordSchema((Field('storage_execution',enum('ACTUAL')),Field('model_adapter',enum('REMOTE_PROVIDER')),
+        Field('candidate_origin',enum('MODEL_VALIDATED')),Field('database_id',ID)))) if field.name=='origin' else field
+    for field in MANIFEST.fields)+(Field('context_id',ID),Field('context_digest',BoundedTextSchema(64)),Field('output_schema_revision',ID)))
 
-def isolate_manifest(manifest: object, *, allow_goals: bool = False) -> MappingProxyType[str, Value]:
+
+def isolate_manifest(manifest: object, *, allow_goals: bool = False, text_format: bool = False) -> MappingProxyType[str, Value]:
     """The independently bound format alone accepts typed goal proposal leaves."""
+    if type(text_format) is not bool or text_format and allow_goals:raise InvalidValue()
+    if text_format:
+        from companion_memory.persistence.text_records import isolate_record
+        return isolate_record(TEXT_MANIFEST,manifest,4096)
     extended = allow_goals and type(manifest) in (dict, MappingProxyType) and cast(dict, manifest).get('candidate_version') == 2
     return isolate(INFORMATION_MANIFEST if extended else MANIFEST, manifest, 4096)
 
@@ -68,6 +78,7 @@ def check_manifest_identity(value: MappingProxyType[str, Value]) -> None:
     elif refs or value['handoff_ref'] is not None: raise InvalidValue()
     for ordinal, ref in enumerate(refs):
         action = ref['action']
+        if value['candidate_version']==3 and action!='CREATE_MEMORY':raise InvalidValue()
         if ref['ordinal'] != ordinal or action not in ('CREATE_MEMORY', 'CREATE_RELATION', 'REGISTER_SUBJECT', 'REPLACE_CURRENT', 'SET_SCORES', 'DELETE_OBJECT') + (('CREATE_GOAL',) if value['candidate_version'] == 2 else ()):
             raise InvalidValue()
         if action == 'CREATE_GOAL' and ref['target_id'] != stable_identity('goal', database, batch, handoff, transform, ordinal, 'GOAL'):
@@ -86,15 +97,15 @@ class Candidate:
 
 
 def isolate_candidate(manifest: object, leaves: object, *, item_limit: int,
-                      item_bytes: int, total_bytes: int, allow_goals: bool = False) -> Candidate:
+                      item_bytes: int, total_bytes: int, allow_goals: bool = False, text_format: bool = False) -> Candidate:
     """Validate the complete manifest, original identities and all leaves at once."""
-    value = isolate_manifest(manifest, allow_goals=allow_goals)
+    value = isolate_manifest(manifest, allow_goals=allow_goals, text_format=text_format)
     check_manifest_identity(value)
     if type(leaves) not in (tuple, list) or not 0 <= len(cast(tuple, leaves)) <= item_limit:
         raise InvalidValue()
     from .goal_proposals import isolate_goal_change
     items = tuple(isolate_goal_change(v, item_bytes) if value['candidate_version'] == 2 and type(v) in (dict, MappingProxyType)
-        and cast(dict, v).get('action') == 'CREATE_GOAL' else isolate_change(v, item_bytes) for v in cast(tuple, leaves))
+        and cast(dict, v).get('action') == 'CREATE_GOAL' else isolate_change(v, item_bytes, text_format=text_format) for v in cast(tuple, leaves))
     refs = tuple(record(r) for r in sequence(value['ordered_change_refs']))
     if len(refs) != len(items) or len({cast(str, v['target_id']) for v in items}) != len(items):
         raise InvalidValue()
@@ -108,6 +119,15 @@ def isolate_candidate(manifest: object, leaves: object, *, item_limit: int,
             handoff, cast(str, value['transform_version']), 0, 'CANDIDATE'):
         raise InvalidValue()
     for ordinal, (ref, item) in enumerate(zip(refs, items)):
+        if text_format:
+            obj=record(item['proposed_value']);source=record(obj['origin'])
+            if (item['action']!='CREATE_MEMORY' or source['kind']!='DIRECT_LEARNING'
+                    or source['model_origin']!='REMOTE_PROVIDER' or source['candidate_origin']!='MODEL_VALIDATED'
+                    or source['candidate_id']!=value['candidate_id'] or source['batch_id']!=value['batch_id']):raise InvalidValue()
+            for raw_link in sequence(record(item['links'])['sources']):
+                for raw_anchor in sequence(record(raw_link)['target_anchors']):
+                    anchor=record(raw_anchor)
+                    if anchor['part']=='MEDIA' or anchor['occurrence_id'] is not None or anchor['interpretation_id'] is not None:raise InvalidValue()
         if ref != MappingProxyType({'ordinal': ordinal, 'target_id': item['target_id'], 'action': item['action'],
                 'digest': hashlib.sha256(encode_content(item, item_bytes)).hexdigest()}):
             raise InvalidValue()
@@ -154,7 +174,7 @@ def candidate_catalog(*, information_format: bool = False) -> StatementCatalog:
 class CandidateBinding:
     """Cognition's typed same-UoW proposal participant; it has no commit method."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService, scope: str,
-                 database_id: str, item_limit: int, item_bytes: int, total_bytes: int, *, allow_goals: bool = False):
+                 database_id: str, item_limit: int, item_bytes: int, total_bytes: int, *, allow_goals: bool = False, text_format: bool = False):
         self._rows = BoundStatements(catalog, storage, scope)
         self._lease = storage.claim_module_owner(catalog.definition)
         if self._lease is None:
@@ -162,13 +182,14 @@ class CandidateBinding:
         self._recovery_after = ''; self._recovered = False
         self.database_id = database_id
         self.allow_goals = allow_goals
+        self.text_format = text_format
         self._limits = {'item_limit': item_limit, 'item_bytes': item_bytes, 'total_bytes': total_bytes}
 
     def isolate(self, manifest: object, leaves: object) -> Candidate:
-        return isolate_candidate(manifest, leaves, **self._limits, allow_goals=self.allow_goals)
+        return isolate_candidate(manifest, leaves, **self._limits, allow_goals=self.allow_goals, text_format=self.text_format)
 
     def manifest(self, raw: object) -> MappingProxyType[str, Value]:
-        value = isolate_manifest(raw, allow_goals=self.allow_goals)
+        value = isolate_manifest(raw, allow_goals=self.allow_goals, text_format=self.text_format)
         check_manifest_identity(value)
         return value
 

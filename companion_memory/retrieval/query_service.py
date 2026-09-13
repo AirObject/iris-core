@@ -14,6 +14,9 @@ import time
 from types import MappingProxyType
 from typing import cast
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
+from companion_memory.configuration.text_persistence import StoredTextConfiguration
+from companion_memory.self_model.current import CurrentPersonaPort,Available
+from companion_memory.self_model.results import Failed as PersonaFailed
 from companion_memory.persistence import Found, Committed, NotFound, Value
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.completion import start_owned
@@ -85,12 +88,17 @@ class QueryPort:
 
 class QueryService:
     """Two admitted queries, zero waiting queue, and one inherited I/O deadline."""
-    def __init__(self, configuration: StoredInformationConfiguration, runtime: ContentRuntimeService, management: ManagementAssembly,
-                 index: LocalIndex, state: StateOwner, goals: GoalsService, *, test_persona: TestPersona | None = None):
+    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration, runtime: ContentRuntimeService, management: ManagementAssembly,
+                 index: LocalIndex, state: StateOwner, goals: GoalsService, *, test_persona: TestPersona | None = None,current_persona: CurrentPersonaPort | None = None):
         if test_persona is not None and type(test_persona) is not TestPersona:
             raise ValueError('Only explicitly identified test persona material is supported.')
+        if type(configuration) is StoredTextConfiguration:
+            if test_persona is not None or type(current_persona) is not CurrentPersonaPort or current_persona._owner.transactions.assembly is not runtime.assembly:
+                raise ValueError('Text queries require their actual native current-persona owner.')
+        elif current_persona is not None:raise ValueError('A native text persona requires the independent text configuration.')
         self.configuration, self.runtime, self.management, self.index, self.state, self.goals = configuration, runtime, management, index, state, goals
         self.test_persona = test_persona
+        self.current_persona=current_persona
         self._ports: dict[int, QueryPort] = {}
         self.jobs: set[asyncio.Task[object]] = set()
 
@@ -184,7 +192,7 @@ class QueryService:
                                 'member_count': original['member_count'], 'intent_digest': intent}))
                         if operation == 'resolve_recall': return NotFound()
                         checkpoint = self.check_mode()
-                        if prepare and self.test_persona is None and (query['require_complete'] or not query['allow_partial']):
+                        if prepare and self.test_persona is None and self.current_persona is None and (query['require_complete'] or not query['allow_partial']):
                             raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'state', 'PUBLICATION_MISSING')
                         for attempt in range(2):
                             objects, coverage, reasons = await self._candidates(port, query, selected, mode == 'DEEP')
@@ -210,7 +218,8 @@ class QueryService:
                                 'config_snapshot_id': self.configuration.snapshot_id, 'retrieval_mode': 'LOCAL_LEXICAL_V1',
                                 'sections': sections, 'coverage': coverage, 'truncation': MappingProxyType({'reasons': reasons, 'omitted_memories': omitted_memories}),
                                 'capabilities': MappingProxyType({'generative_query': False, 'embedding': False, 'rerank': False,
-                                    'semantic_equivalence': False, 'real_persona': False, 'persona_origin': 'SYNTHETIC' if self.test_persona else 'UNAVAILABLE'})})
+                                    'semantic_equivalence': False, 'real_persona': 'persona' in sections and record(sections['persona']).get('origin')=='REMOTE_PROVIDER',
+                                    'persona_origin': record(sections['persona']).get('origin','UNAVAILABLE') if 'persona' in sections else 'SYNTHETIC' if self.test_persona else 'UNAVAILABLE'})})
                             encode_content(response, 131072)
                             if objects:
                                 root = MappingProxyType(dict(binding) | {'recall_id': recall_id, 'version': 1, 'query_mode': mode,
@@ -335,13 +344,27 @@ class QueryService:
             if goal_page['has_more']: reasons.append('SECTION_LIMIT')
         if prepare:
             persona = self.test_persona
-            sections['persona'], limited = bounded_single(MappingProxyType({'availability': 'AVAILABLE' if persona else 'UNAVAILABLE', 'text': persona.text if persona else None,
-                'revision': persona.revision if persona else None, 'generated_at': persona.generated_at if persona else None,
-                'review_status': 'TEST_ONLY' if persona else 'PUBLICATION_MISSING', 'origin': 'SYNTHETIC' if persona else 'UNAVAILABLE'}), integer(settings['persona_max_bytes']), now)
+            current=await self.current_persona.read_current(bounded_deadline(time.monotonic(),self.runtime.remaining_request())) if self.current_persona is not None else None
+            if type(current) is PersonaFailed:
+                error=current.error;pending=current.cleanup_pending
+                if error.code=='RESOURCE_BUSY':raise OwnerFailure('RESOURCE_BUSY','state','ADMISSION_FULL',pending)
+                if error.code=='ACCESS_DENIED':raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH',pending)
+                if error.code=='PRECONDITION_FAILED':
+                    self.check_mode()
+                    if error.reason=='REVISION_CONFLICT':raise OwnerFailure('PRECONDITION_FAILED','revision','REVISION_CONFLICT',pending)
+                    raise OwnerFailure('INVALID_STATE','state','NOT_READY',pending)
+                raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE',pending)
+            if type(current) is Available:
+                from companion_memory.self_model.formats import query_projection
+                sections['persona'],limited=bounded_single(query_projection(current.value),integer(settings['persona_max_bytes']),now)
+            else:
+                sections['persona'], limited = bounded_single(MappingProxyType({'availability': 'AVAILABLE' if persona else 'UNAVAILABLE', 'text': persona.text if persona else None,
+                    'revision': persona.revision if persona else None, 'generated_at': persona.generated_at if persona else None,
+                    'review_status': 'TEST_ONLY' if persona else 'PUBLICATION_MISSING', 'origin': 'SYNTHETIC' if persona else 'UNAVAILABLE'}), integer(settings['persona_max_bytes']), now)
             if limited: reasons.append('SECTION_LIMIT')
-            if persona is None: reasons.append('PUBLICATION_MISSING')
+            if persona is None and type(current) is not Available: reasons.append('PUBLICATION_MISSING')
             platform_id = await self.runtime.assembly.ingress.reply_platform(port._entry_id, port._authority.host_id)
-            platform = self.configuration.content_view().candidate.platform(platform_id)
+            platform = self.configuration.candidate.platform(platform_id)
             refs = await self.runtime.assembly.buffers.reply_references(port._entry_id, platform.count('recent_context_count'), platform.count('target_count'))
             members = refs['members']; recent: list[Record] = []
             if type(members) is not tuple: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
@@ -363,5 +386,6 @@ class QueryService:
                 'latest_received_at': times['latest'], 'observed_at': now, 'coverage': 'PERSISTED_ACCEPTANCE_ONLY'})
             sections['runtime'] = MappingProxyType({'mode': self.runtime.gate.state, 'mode_epoch': self.runtime.gate.epoch, 'observed_at': now,
                 'entry_terminals': await self.runtime.reply_entry_status(port._entry_id, port._authority.host_id),
-                'storage_execution': 'ACTUAL', 'model_adapter': 'SIMULATED', 'candidate_origin': 'SYNTHETIC'})
+                'storage_execution': 'ACTUAL', 'model_adapter': 'REMOTE_PROVIDER' if self.current_persona is not None else 'SIMULATED',
+                'candidate_origin': 'MODEL_VALIDATED' if self.current_persona is not None else 'SYNTHETIC'})
         return MappingProxyType(sections), tuple(reasons), omitted_memories

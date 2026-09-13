@@ -327,7 +327,7 @@ class PersistenceService:
     """
 
     def __init__(self, repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...],
-                 *, assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1'] = 'LEGACY'):
+                 *, assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1'] = 'LEGACY'):
         self._repositories, self._commands = repositories, commands
         self._command_map = {(item.owner_namespace, item.operation_kind): item for item in commands}
         from companion_memory.logging_service.audit_materialization import validate_bindings
@@ -335,7 +335,7 @@ class PersistenceService:
             if type(definition) is ResultBoundCommandDefinition:
                 validate_bindings(definition)
         self._history_enabled = any(repo.owner_module == "logging_service" and any(t.name == "logging_object_history" for t in repo.tables) for repo in repositories)
-        self._assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1'] = assembly_format
+        self._assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1'] = assembly_format
         self._assembly = assembly_value(repositories, commands, assembly_format=assembly_format)
         self._schema = _BASE_SCHEMA + tuple((table.name, table.sql.strip().rstrip(";")) for repo in repositories for table in repo.tables)
         if (len({name for name, _ in self._schema}) != len(self._schema)
@@ -449,7 +449,7 @@ class PersistenceService:
             "CASE WHEN length(CAST(body AS BLOB))<=8192 THEN body END,"
             "CASE WHEN length(CAST(evidence AS BLOB))<=2048 THEN evidence END "
             "FROM logging_object_history WHERE commit_id=? ORDER BY history_id LIMIT 9", (receipt.commit_id,)).fetchall()
-        check_bundle(receipt, expected, tuple(rows))
+        check_bundle(receipt, expected, tuple(rows), text_format=self._assembly_format=='MODEL_TEXT_LEARNING_V1')
 
     def get_health(self) -> Health:
         """Observe only current in-memory ownership; never perform storage I/O."""
@@ -572,6 +572,12 @@ class PersistenceService:
         retain_completion(completion)
 
         def notify() -> None:
+            # These callbacks can retain native result/context capabilities.
+            # Release only after the actual worker and any retired connection
+            # cleanup end, before waking the owning completion scope. The ended
+            # UoW identity remains available for audit capability validation.
+            if job.uow is not None:
+                job.uow._commit_permissions.clear()
             if not completion.done():
                 completion.set_result(None)
 
@@ -961,7 +967,7 @@ class PersistenceService:
         metadata_columns = self._sql(job, "PRAGMA table_info(application_metadata)").fetchall()
         if {row[1] for row in metadata_columns} != {"singleton", "database_id", "format_version", "assembly"}:
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))
-        assembly_limit = 3145728 if self._assembly_format == 'LOCAL_INFORMATION_V1' else 1048576
+        assembly_limit = 3145728 if self._assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
         rows = self._sql(job, "SELECT database_id, format_version, CASE WHEN typeof(assembly)='blob' AND length(assembly)<=? THEN assembly ELSE NULL END FROM application_metadata WHERE singleton=1", (assembly_limit,)).fetchall()
         if len(rows) != 1 or not valid_identifier(rows[0][0]):
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))
@@ -1033,6 +1039,9 @@ class PersistenceService:
                 raise InvalidValue()
             records.append(record)
         self._check_object_history(job, definition, receipt)
+        if require_complete and type(definition) is CommandDefinition and definition.input_policy is not None:
+            from companion_memory.provider.text_command_policy import validate_receipt_targets
+            validate_receipt_targets(definition, receipt, records)
         return tuple(records)
 
     def _receipt(self, job: _Job, identity: OperationIdentity) -> Receipt | None:
@@ -1081,7 +1090,8 @@ class PersistenceService:
             return Rejected(self._error(operation, "INVALID_INPUT", "UNSUPPORTED_COMMAND", "operation"))
         assert self._settings is not None
         try:
-            return prepare_command(port._definition, identity, command, self._settings.command_max_bytes)
+            from .command_capacity import command_capacity
+            return prepare_command(port._definition, identity, command, command_capacity(port._definition, self._settings.command_max_bytes))
         except ValueTooLarge:
             return Rejected(self._error(operation, "INVALID_INPUT", "LIMIT_EXCEEDED", "operation"))
         except (InvalidValue, RecursionError):

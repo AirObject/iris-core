@@ -47,7 +47,9 @@
 
 [持久接入、三段批次、专注门控与恢复及最小只读观察](architecture/durable-ingress-and-batch-runtime.md)：五组推荐已获用户批准，包含公开端口、状态与事务、配置身份、受控参与者、存储装配、观察边界及整体验收矩阵；实施授权、验证及技术审查进度见[CURRENT_TASK](work/CURRENT_TASK.md)。参数／日志／持久化／产品补充通过该契约导航到各自唯一正文。
 
-[面向宿主的本地信息获取与使用反馈闭环](architecture/local-information-feedback.md)：已按用户批准调整后的[F验收口径](architecture/local-information-feedback.md#f-qualification)获监督技术验收；用户已审核通过并授权本地提交；本记录随该提交收尾。P/X及最大压力资格仍有缺口，证据见[STATUS](work/STATUS.md)。
+[面向宿主的本地信息获取与使用反馈闭环](architecture/local-information-feedback.md)：已按用户批准调整后的[F验收口径](architecture/local-information-feedback.md#f-qualification)获监督技术验收；用户已审核并完成本地提交，提交证据见STATUS。P/X及最大压力资格仍有缺口，证据见[STATUS](work/STATUS.md)。
+
+[真实模型驱动的文本学习闭环](architecture/model-driven-text-learning.md)：六组推荐及明确例外已批准的集中技术契约；包含实际端口、供应商协议候选、真实计量与配置、学习材料／候选、首次persona依赖、事务恢复、容量及独立验收矩阵。实施、技术验收、提交授权及停止点见[CURRENT_TASK](work/CURRENT_TASK.md)，已验收交付及验证限制见[STATUS](work/STATUS.md)。
 
 ## 工作记录
 

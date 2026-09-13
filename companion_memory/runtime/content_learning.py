@@ -62,6 +62,12 @@ async def learn_batch(runtime: ContentRuntimeService, source: MappingProxyType[s
 
 async def _learn_batch(runtime: ContentRuntimeService, source: MappingProxyType[str, Value], *, fresh: bool, admission_event: str | None = None) -> object:
     r = runtime; assembly = r.assembly; bid = cast(str, source['batch_id'])
+    if assembly.text_format:
+        from .text_learning import learn_text
+        return await learn_text(r,source,fresh=fresh,admission_event=admission_event)
+    from companion_memory.cognition.text_candidates import TextCandidateInput
+    candidates=r.candidates
+    if isinstance(candidates,TextCandidateInput):raise ValueError('Text candidates require the native text assembly.')
     work = (await assembly.rows.read('work_get', {'batch_id': bid}))[0]
     integrity_revision = r.gate.protection_revision
     has_media = any(sequence(record(m)['media']) for m in sequence(source['ordered_members']))
@@ -161,7 +167,10 @@ async def _learn_batch(runtime: ContentRuntimeService, source: MappingProxyType[
     if not terminal.value.confirmed_sent or terminal.value.request['outcome'] == 'MODE_BLOCKED':
         closed = await conclude_unsent(r, work, port, request)
         return closed if closed is not None else Found(MappingProxyType({'state': 'WAITING_ADMISSION'}))
-    candidate = r.candidates.build(assembly.configuration, assembly.instance_id, source, cast(int, work['generation']), terminal.value)
+    from companion_memory.configuration.content_persistence import StoredContentConfiguration
+    if type(assembly.configuration) is not StoredContentConfiguration:
+        return Rejected(RuntimeError('CONFIGURATION_UNSUPPORTED','run_learning','configuration','BINDING_MISMATCH'))
+    candidate = candidates.build(assembly.configuration, assembly.instance_id, source, cast(int, work['generation']), terminal.value)
     assembly.retain_learning_terminal(terminal.value)
     staged = await r.execute('store_content_candidate' + ('_with_media' if has_media else ''), stable('candidate_stage', bid),
         {'batch_id': bid, 'expected_revision': work['revision'], 'generation': work['generation'],

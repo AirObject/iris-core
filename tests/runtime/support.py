@@ -1,5 +1,6 @@
 """Full new database assembly with retained identity and explicit synthetic resources."""
 import json
+import asyncio
 import time
 import uuid
 from datetime import datetime,timezone
@@ -9,7 +10,7 @@ from types import MappingProxyType
 from typing import cast
 from companion_memory.configuration import RuntimeConfigurationOk
 from companion_memory.configuration.persistence import ConfigurationAssembly
-from companion_memory.configuration.persistent_results import ConfigurationCommitted
+from companion_memory.configuration.persistent_results import ConfigurationCommitted,ConfigurationUnconfirmed
 from companion_memory.persistence import PersistenceService,DatabaseResources,Ready
 from companion_memory.provider import LedgerAssembly,ProviderService,ProviderResources,SimulationAdapter
 from companion_memory.runtime import RuntimeAssembly,RuntimeService,IngressGrant
@@ -44,6 +45,26 @@ class Fixture:
         assert type(ready) is Ready,ready
         self.config_binding=self.config_assembly.bind(self.storage,'instance')
         configuration=await self.config_binding.persist_initial_configuration('original-config',self.candidate,actor='bootstrap',protected_directories=self.supplied[3])
+        # Short runtime-deadline tests still need their original configuration
+        # task to finish setup. Observe that retained task, including its full
+        # SQLite reconstruction, rather than starting another reconstruction
+        # after each short public wait. Production call deadlines stay intact.
+        for _ in range(8):
+            if type(configuration) is not ConfigurationUnconfirmed:break
+            reference=configuration.reference
+            retained=tuple(self.config_binding._tasks)
+            if retained:
+                assert len(retained)==1
+                done,pending=await asyncio.wait(retained,timeout=5)
+                assert done and not pending,'Original configuration setup remains in flight.'
+                configuration=retained[0].result()
+            else:
+                await asyncio.sleep(.05)
+                configuration=await self.config_binding.persist_initial_configuration('original-config',self.candidate,actor='bootstrap',protected_directories=self.supplied[3])
+            if type(configuration) is ConfigurationCommitted:
+                receipt=configuration.receipt
+                assert (receipt.identity,receipt.command_version,receipt.fingerprint_version,receipt.fingerprint)==(
+                    reference.identity,reference.command_version,reference.fingerprint_version,reference.fingerprint)
         assert type(configuration) is ConfigurationCommitted and configuration.configuration is not None,configuration
         self.runtime=RuntimeService(self.runtime_assembly,self.storage,configuration.configuration,'instance')
         binding=self.provider_assembly.bind(self.storage,self.candidate.foundation)

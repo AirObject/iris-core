@@ -69,6 +69,13 @@ COMMON_FIELDS = (
 )
 MEMORY_SCHEMA = RecordSchema(COMMON_FIELDS + (Field('content', MEMORY_CONTENT), Field('scores', SCORES), Field('origin', ORIGIN)))
 RELATION_SCHEMA = RecordSchema(COMMON_FIELDS + (Field('content', RELATION_CONTENT), Field('scores', SCORES), Field('origin', ORIGIN)))
+TEXT_ORIGIN = RecordSchema(tuple(
+    Field(field.name, enum('SIMULATED', 'NONE', 'REMOTE_PROVIDER') if field.name == 'model_origin'
+          else enum('SYNTHETIC', 'OPERATOR', 'MODEL_VALIDATED') if field.name == 'candidate_origin'
+          else field.schema, nullable=field.nullable) for field in ORIGIN.fields))
+TEXT_COMMON_FIELDS = (Field('object_version', ScalarSchema('integer', 2, 2)),) + COMMON_FIELDS[1:]
+TEXT_MEMORY_SCHEMA = RecordSchema(TEXT_COMMON_FIELDS + (Field('content', MEMORY_CONTENT), Field('scores', SCORES), Field('origin', TEXT_ORIGIN)))
+TEXT_RELATION_SCHEMA = RecordSchema(TEXT_COMMON_FIELDS + (Field('content', RELATION_CONTENT), Field('scores', SCORES), Field('origin', TEXT_ORIGIN)))
 SUBJECT_SCHEMA = RecordSchema((
     Field('subject_version', VERSION), Field('subject_id', ID), Field('instance_id', ID),
     Field('kind', enum('SELF', 'PLATFORM_PERSON', 'THING', 'FICTIONAL_CHARACTER', 'CONTEXT')),
@@ -160,7 +167,7 @@ def isolate_subject(source: object) -> MappingProxyType[str, Value]:
     return value
 
 
-def isolate_object(source: object, limit: int = 4096) -> MappingProxyType[str, Value]:
+def isolate_object(source: object, limit: int = 4096, *, text_format: bool = False) -> MappingProxyType[str, Value]:
     """Isolate a complete current version, including intrinsic semantic invariants."""
     if type(source) not in (dict, MappingProxyType):
         raise InvalidValue()
@@ -170,7 +177,10 @@ def isolate_object(source: object, limit: int = 4096) -> MappingProxyType[str, V
     kind = raw.get('kind')
     if kind not in ('MEMORY', 'RELATION'):
         raise InvalidValue()
-    value = isolate(MEMORY_SCHEMA if kind == 'MEMORY' else RELATION_SCHEMA, source, limit)
+    if type(text_format) is not bool:
+        raise InvalidValue()
+    schema = (TEXT_MEMORY_SCHEMA if kind == 'MEMORY' else TEXT_RELATION_SCHEMA) if text_format else (MEMORY_SCHEMA if kind == 'MEMORY' else RELATION_SCHEMA)
+    value = isolate(schema, source, limit)
     content = record(value['content'])
     check_world(content['world_scope']); isolate_scores(value['scores'])
     if cast(int, value['modified_at_us']) < cast(int, value['created_at_us']):
@@ -182,7 +192,10 @@ def isolate_object(source: object, limit: int = 4096) -> MappingProxyType[str, V
         raise InvalidValue()
     origin = record(value['origin'])
     if origin['kind'] == 'DIRECT_LEARNING':
-        if origin['batch_id'] is None or origin['candidate_id'] is None or origin['model_origin'] != 'SIMULATED' or origin['candidate_origin'] != 'SYNTHETIC':
+        origins = {('SIMULATED', 'SYNTHETIC')}
+        if text_format:
+            origins.add(('REMOTE_PROVIDER', 'MODEL_VALIDATED'))
+        if origin['batch_id'] is None or origin['candidate_id'] is None or (origin['model_origin'], origin['candidate_origin']) not in origins:
             raise InvalidValue()
     elif origin['kind'] == 'OPERATOR_INPUT':
         if origin['batch_id'] is not None or origin['candidate_id'] is not None or origin['model_origin'] != 'NONE' or origin['candidate_origin'] != 'OPERATOR':
@@ -241,9 +254,9 @@ def isolate_links(source: object, object_id: str, revision: int) -> MappingProxy
     return value
 
 
-def decode_object(encoded: bytes) -> MappingProxyType[str, Value]:
+def decode_object(encoded: bytes, *, text_format: bool = False) -> MappingProxyType[str, Value]:
     """Reject malformed or noncanonical stored current values."""
-    value = isolate_object(decode_content(encoded, 4096))
+    value = isolate_object(decode_content(encoded, 4096), text_format=text_format)
     if encode_content(value, 4096) != encoded:
         raise InvalidValue()
     return value

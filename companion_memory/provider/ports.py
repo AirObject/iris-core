@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from .values import Completed, Failed, Found, NotFound, Pending, ProviderError, Rejected
 if TYPE_CHECKING:
     from .service import ProviderService
+    from companion_memory.persistence import UnitOfWork
 
 
 class _Port:
@@ -37,6 +38,14 @@ class _Port:
 class WorkPort(_Port):
     """One caller's bounded model work and its own request observations."""
     __slots__ = ()
+    def verify_request_in_transaction(self, uow: UnitOfWork, request_id: str, original_request: object):
+        """Recheck this exact original request in an existing local transaction."""
+        service = self._native()
+        if service is None:
+            return self._read_denied('lookup_request')
+        from .transaction_evidence import request_in_transaction
+        return request_in_transaction(service,self,uow,request_id,original_request)
+
     def consumers_ended(self) -> bool:
         """Whether this exact native work capability has no actual consumers remaining."""
         service = self._native()
@@ -77,6 +86,13 @@ class WorkPort(_Port):
         from .unsent_evidence import verify_unsent
         return await verify_unsent(service, self, operation, original_request)
 
+    def verify_unsent_in_transaction(self, uow: UnitOfWork, evidence: object, original_request: object, *, retry: bool = False):
+        """Recheck a held native absence seal; optionally check current retry cost."""
+        service = self._native()
+        if service is None:return self._read_denied('lookup_request')
+        from .transaction_evidence import unsent_in_transaction
+        return unsent_in_transaction(service,self,uow,evidence,original_request,retry=retry)
+
 
 @dataclass(frozen=True, slots=True)
 class ObserverGrant:
@@ -111,6 +127,31 @@ class ObserverPort(_Port):
 class ResultOwnerPort(_Port):
     """Exact request allowlist for recovering committed owner-bound handoffs."""
     __slots__ = ()
+    def verify_completion_in_transaction(self, uow: UnitOfWork, completion: object, *, retry_work: WorkPort | None = None):
+        """Check original completion and optional persona retry capacity locally.
+
+        Only an existing native persona work capability may request the retry
+        check. No budget mutation, new request or dispatch grant is produced.
+        """
+        service = self._native()
+        if service is None:
+            return self._read_denied('recover_result')
+        from .transaction_evidence import completion_in_transaction
+        return completion_in_transaction(service,self,uow,completion,retry_work)
+
+    async def confirm_completion(self, terminal: object):
+        """Confirm this native text terminal's original audited completion key.
+
+        Uses the existing exact request allowlist and bounded local reads. It
+        neither exposes audit history nor grants dispatch or retry permission.
+        Failure and actual cleanup remain independent of remote outcome.
+        """
+        service = self._native()
+        if service is None:
+            return self._read_denied('recover_result')
+        from .completion_evidence import confirm_completion
+        return await confirm_completion(service, self, terminal)
+
     async def verify_terminal(self, request_id: object, original_request: object = None):
         """Obtain native evidence for this owner's audited durable terminal, without sending."""
         service = self._native()

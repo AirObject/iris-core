@@ -63,7 +63,7 @@ def history_catalog() -> StatementCatalog:
     return StatementCatalog(RepositoryDefinition('logging_service', 1, (table, index), (insert, get)), (('append', insert), ('get', get)))
 
 
-def validate_history(source: object) -> MappingProxyType[str, Value]:
+def validate_history(source: object, *, text_format: bool = False) -> MappingProxyType[str, Value]:
     """Revalidate the full nested old schema and revision binding, never just a hash."""
     if type(source) not in (dict, MappingProxyType):
         raise InvalidValue()
@@ -71,7 +71,7 @@ def validate_history(source: object) -> MappingProxyType[str, Value]:
     if any(type(k) is not str for k in raw) or set(raw) != {f.name for f in HEADER.fields} | {'previous_value', 'previous_links'}:
         raise InvalidValue()
     value = dict(isolate(HEADER, {k: raw[k] for k in raw if k not in ('previous_value', 'previous_links')}, 2048))
-    old = isolate_subject(raw['previous_value']) if value['object_kind'] == 'SUBJECT' else isolate_object(raw['previous_value'])
+    old = isolate_subject(raw['previous_value']) if value['object_kind'] == 'SUBJECT' else isolate_object(raw['previous_value'], text_format=text_format)
     oid = old['subject_id'] if value['object_kind'] == 'SUBJECT' else old['object_id']
     if oid != value['object_id'] or old['revision'] != value['previous_revision'] or cast(int, value['resulting_revision']) != cast(int, old['revision']) + 1:
         raise InvalidValue()
@@ -113,7 +113,7 @@ def result_history_ids(namespace: str, kind: str, result: Value) -> tuple[Value,
 
 
 def check_bundle(receipt: Receipt, expected: object,
-                 stored: tuple[tuple[str, str, int, str, str, str, str], ...]) -> None:
+                 stored: tuple[tuple[str, str, int, str, str, str, str], ...], *, text_format: bool = False) -> None:
     """Storage invokes this for commit, reopen and every original confirmation.
 
     Rows contain scope, history id, previous revision, object id, commit, body,
@@ -127,7 +127,7 @@ def check_bundle(receipt: Receipt, expected: object,
         if type(body) is not str or type(evidence) is not str:
             raise InvalidValue()
         encoded = body.encode('utf-8', errors='strict')
-        value = validate_history(decode_content(encoded, 8192))
+        value = validate_history(decode_content(encoded, 8192), text_format=text_format)
         if (encode_content(value, 8192) != encoded or hid not in indexed
                 or value['operation_identity'] != identity_value(receipt.identity)
                 or scope != receipt.identity.scope_id or commit != receipt.commit_id
@@ -176,7 +176,9 @@ class HistoryInspection:
 class HistoryBinding:
     """Logging-owned participant and separate finite developer inspection issuer."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService, scope: str,
-                 item_limit: int, item_bytes: int, foundation: object):
+                 item_limit: int, item_bytes: int, foundation: object, *, text_format: bool = False):
+        if type(text_format) is not bool:raise InvalidValue()
+        self._text_format=text_format
         self._catalog, self._storage, self._scope = catalog, storage, scope
         self._rows = BoundStatements(catalog, storage, scope)
         self._lease = storage.claim_module_owner(catalog.definition)
@@ -203,7 +205,7 @@ class HistoryBinding:
             'object_kind': old['kind'] if 'object_id' in old else 'SUBJECT',
             'previous_revision': old['revision'], 'resulting_revision': cast(int, old['revision']) + 1,
             'action': action, 'previous_value': old, 'previous_links': links,
-            'recorded_at_us': now_us, 'operation_identity': identity_value(identity), 'commit_id': commit})
+            'recorded_at_us': now_us, 'operation_identity': identity_value(identity), 'commit_id': commit}, text_format=self._text_format)
         body = encode_content(value, self._item_bytes)
         proof = MappingProxyType({'history_evidence_version': 1, 'operation_identity': identity_value(identity),
             'commit_id': commit, 'reference': reference(value), 'content_digest': hashlib.sha256(body).hexdigest()})
@@ -258,11 +260,11 @@ class HistoryBinding:
             if not rows:
                 return NotFound()
             row = rows[0]
-            value = validate_history(decode_content(cast(str, row['body']).encode(), 8192))
+            value = validate_history(decode_content(cast(str, row['body']).encode(), 8192), text_format=self._text_format)
             if value['history_id'] not in result_history_ids(confirmed.value.identity.owner_namespace, confirmed.value.identity.operation_kind, confirmed.value.result): raise InvalidValue()
             check_bundle(confirmed.value, (value['history_id'],), ((self._scope, cast(str, row['history_id']),
                 cast(int, row['previous_revision']), cast(str, row['object_id']), cast(str, row['commit_id']),
-                cast(str, row['body']), cast(str, row['evidence'])),))
+                cast(str, row['body']), cast(str, row['evidence'])),), text_format=self._text_format)
             return Found(value)
         except (OwnerFailure, InvalidValue, UnicodeError):
             return HistoryAuditError('INTEGRITY_FAILURE', 'read_object_history', 'record', 'HISTORY_INCONSISTENT')

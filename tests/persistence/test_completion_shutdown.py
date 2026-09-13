@@ -3,6 +3,7 @@ import asyncio
 import tempfile
 import threading
 import unittest
+import weakref
 from pathlib import Path
 from companion_memory.persistence import Committed, Ready
 from companion_memory.persistence.completion import CompletionScope
@@ -19,6 +20,15 @@ class CompletionShutdownTests(unittest.IsolatedAsyncioTestCase):
                 published = threading.Event(); observed: list[bool] = []; releases: list[str] = []
                 close_count = 0
                 service = fixture.service
+                retained = []
+                class Evidence:
+                    pass
+                def own_evidence(stage, uow):
+                    if stage == 'after_source':
+                        evidence = Evidence()
+                        retained.append(weakref.ref(evidence))
+                        uow.require_commit_permission(lambda owned=evidence: owned is not None)
+                fixture.local_hook = own_evidence
 
                 class PublishedEnd(threading.Event):
                     def set(self) -> None:
@@ -54,12 +64,14 @@ class CompletionShutdownTests(unittest.IsolatedAsyncioTestCase):
                     completion.when_ended(lambda: releases.append('ended'))
                     if closing_task is None:
                         self.assertTrue(completion.pending)
+                        self.assertIsNotNone(retained[0]())
                         closing_task = asyncio.create_task(service.close())
                     report = await closing_task
                     await asyncio.wait_for(completion.wait(), 3)
                     self.assertEqual(report.status, 'CLOSED')
                     self.assertEqual(observed, [True])
                     self.assertEqual(releases, ['ended']); self.assertEqual(close_count, 2)
+                    self.assertIsNone(retained[0]())
                     self.assertFalse(service._connections); self.assertFalse(service._connection_notifications)
                     self.assertIsNone(service._owner_fd)
                     self.assertIs(await service.close(), report)

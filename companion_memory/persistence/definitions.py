@@ -65,6 +65,7 @@ class CommandDefinition:
     participants: tuple[RepositoryDefinition, ...]
     required_audits: tuple[AuditRequirement, ...]
     handler: Callable[[UnitOfWork, MappingProxyType[str, Value]], object]
+    input_policy: object = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +119,7 @@ class ResultBoundCommandDefinition:
     handler: Callable[[UnitOfWork, MappingProxyType[str, Value]], object]
     audit_intent_schema: RecordSchema
     audit_bindings: tuple[AuditResultBinding, ...]
+    capacity_policy: object = None
 
 
 @dataclass(frozen=True, slots=True)

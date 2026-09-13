@@ -10,6 +10,8 @@
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
+[真实模型驱动的文本学习集中契约](../architecture/model-driven-text-learning.md)：六组推荐及明确例外已批准，含本模块必要端口增量；规则在集中正文唯一维护，实现与验证状态见CURRENT_TASK。
+
 ## 按边界定位
 
 本轮已批准依赖：[真实记忆／来源终结参与](../architecture/formal-memory-source-media.md#sources-candidates)、[媒体门控与恢复](../architecture/formal-memory-source-media.md#interpretation)、[新装配恢复](../architecture/formal-memory-source-media.md#assembly-recovery)；已批准，不改变既有门控。

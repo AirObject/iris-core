@@ -23,6 +23,7 @@ from types import MappingProxyType
 from typing import cast
 from weakref import WeakValueDictionary
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
+from companion_memory.configuration.text_persistence import StoredTextConfiguration,stored_text_configuration_issue
 from companion_memory.persistence import (
     AuditFieldBinding, AuditResultBinding, BoundedTextSchema, Committed, Field, Found,
     NotCommitted, PersistenceService, RecordSchema, RecoveryHandle, Rejected,
@@ -198,9 +199,9 @@ class MediaService:
                     AuditFieldBinding('change', 'RESULT', ('change',)),)),)))
         self.commands = tuple(commands)
 
-    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration, instance_id: str) -> None:
+    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration, instance_id: str) -> None:
         """Bind once to actual persistent configuration and an exclusive owner lease."""
-        if self._bound or type(configuration) is not StoredContentConfiguration: raise ValueError('Native unbound media configuration required.')
+        if self._bound or type(configuration) is not StoredContentConfiguration and stored_text_configuration_issue(configuration) is not None: raise ValueError('Native unbound media configuration required.')
         self.storage, self.configuration, self.instance_id = storage, configuration, instance_id
         self.settings = configuration.candidate.content
         from .work_rows import MediaWorkRows

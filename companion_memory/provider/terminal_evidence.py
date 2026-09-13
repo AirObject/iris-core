@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING
+from weakref import ref
 from .values import Data
 if TYPE_CHECKING:
     from .service import ProviderService
@@ -41,3 +42,19 @@ def issued_terminal(value: object) -> bool:
 class TerminalVerified:
     """A native terminal capability, kept separate from serializable result data."""
     value: VerifiedTerminal
+
+
+# These shared immutable rows live exactly as long as their bounded native proof.
+# Public attestation fields and legacy wire formats remain unchanged.
+_text_attempts: dict[int, tuple[ref[VerifiedTerminal], MappingProxyType[str, Data] | None]] = {}
+
+
+def _retain_text_attempt(value: VerifiedTerminal, attempt: MappingProxyType[str, Data] | None) -> None:
+    key=id(value)
+    _text_attempts[key]=(ref(value,lambda _: _text_attempts.pop(key,None)),attempt)
+
+
+def matches_text_attempt(value: VerifiedTerminal, attempt: MappingProxyType[str, Data] | None) -> bool:
+    """Reject changes to the exact final evidence after native attestation."""
+    retained=_text_attempts.get(id(value))
+    return issued_terminal(value) and retained is not None and retained[0]() is value and retained[1]==attempt

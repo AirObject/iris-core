@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .transactions import MemoryTransactions
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
+from companion_memory.configuration.text_persistence import StoredTextConfiguration
 from companion_memory.persistence import PersistenceService, UnitOfWork, Value, SequenceSchema, RecordSchema, Field
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import StatementCatalog, OwnerFailure
@@ -21,7 +22,7 @@ INDEX_SELECTION = RecordSchema((Field('object_ids', SequenceSchema(ID, 1, 16)),)
 
 class MemoryInformation:
     """Owned by the already bound memory participant, sharing its existing lease."""
-    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration, instance_id: str, objects: MemoryTransactions):
+    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration, instance_id: str, objects: MemoryTransactions):
         self._records = OwnedRecords(catalog, storage, instance_id, LAYOUTS)
         self.configuration = configuration
         self.instance_id = instance_id

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 def validate_content_relationships(foundation: EffectiveSnapshot, runtime: ContentSettingsSnapshot,
                                    content: ContentSettingsSnapshot, platforms: tuple[ContentPlatformSnapshot, ...],
-                                   directories: object) -> str | None:
+                                   directories: object, *, text_only: bool = False) -> str | None:
     """Return a fixed first failure, never a submitted key or resource path."""
     f = {e.definition.key: e.state.value for e in foundation.list_entries() if type(e.state) is PresentValue}
     n, r = content.integer, runtime.integer
@@ -40,7 +40,10 @@ def validate_content_relationships(foundation: EffectiveSnapshot, runtime: Conte
     profiles = cast(tuple[MappingProxyType[str, object], ...], f['provider.profiles'])
     roles = cast(MappingProxyType[str, tuple[str, ...]], f['provider.role_profiles'])
     media = tuple(p for p in profiles if p['profile_id'] in roles.get('MEDIA', ()) and p['capability'] == 'MEDIA_UNDERSTANDING')
-    if not media or any(n('media.blob_max_bytes') > cast(int, p['max_input_units']) for p in media):
+    if text_only:
+        if media or set(roles) != {'LEARNING', 'PERSONA'} or n('media.processing_concurrency') != 0:
+            return 'BUDGET_INVALID'
+    elif not media or any(n('media.blob_max_bytes') > cast(int, p['max_input_units']) for p in media):
         return 'BUDGET_INVALID'
     command_limit = cast(int, f['storage.command_max_bytes'])
     if min(command_limit, cast(int, f['storage.receipt_max_bytes'])) < 57344 or command_limit < 933888:

@@ -6,6 +6,7 @@ creates rows, manufactures goals or invokes external work.
 """
 from dataclasses import dataclass
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
+from companion_memory.configuration.text_persistence import StoredTextConfiguration
 from companion_memory.persistence import PersistenceService, UnitOfWork
 from companion_memory.persistence.owned_statements import OwnerFailure, StatementCatalog
 from companion_memory.information.repository import OwnedRecords
@@ -23,8 +24,8 @@ class GoalsBinding:
 class GoalsOwner:
     """Single goals data owner; metadata validation precedes every business port."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService,
-                 configuration: StoredInformationConfiguration, instance_id: str):
-        if type(configuration) is not StoredInformationConfiguration:
+                 configuration: StoredInformationConfiguration | StoredTextConfiguration, instance_id: str):
+        if type(configuration) not in (StoredInformationConfiguration,StoredTextConfiguration):
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')
         self.binding = GoalsBinding(configuration.database_id, instance_id, configuration.snapshot_id)
         self.configuration = configuration

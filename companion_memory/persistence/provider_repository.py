@@ -22,8 +22,10 @@ class ProviderRepository:
     statements: tuple[tuple[str, StatementDefinition], ...]
 
 
-def create_provider_repository() -> ProviderRepository:
+def create_provider_repository(*, text_generation: bool = False) -> ProviderRepository:
     """Describe a new ledger format without opening or modifying any database."""
+    if type(text_generation) is not bool:
+        raise TypeError('An exact static provider format is required.')
     tables: list[TableDefinition] = []
     statements: list[tuple[str, StatementDefinition]] = []
     read_schemas: dict[str, RecordSchema] = {}
@@ -44,6 +46,11 @@ def create_provider_repository() -> ProviderRepository:
         "cost_items": (Field("attempt_id", ID), Field("item", ScalarSchema("enum", choices=("input", "output", "reported")))),
         "handoffs": (Field("request_id", ID), Field("payload", TEXT)),
     }
+    if text_generation:
+        layouts['attempts'] = layouts['attempts'].replace('ordinal BETWEEN 1 AND 4', 'ordinal=1')
+        layouts['cost_items'] = layouts['cost_items'].replace("('input','output','reported')", "('input','cached_input','output','subscription_request','reported')")
+        extra_fields['attempts'] = (Field('request_id', ID), Field('ordinal', ScalarSchema('integer', 1, 1)))
+        extra_fields['cost_items'] = (Field('attempt_id', ID), Field('item', ScalarSchema('enum', choices=('input', 'cached_input', 'output', 'subscription_request', 'reported'))))
     for name, layout in layouts.items():
         table = "provider_" + name
         state_check = ""
@@ -82,6 +89,33 @@ def create_provider_repository() -> ProviderRepository:
     statements.append(("requests_visible", StatementDefinition(
         "SELECT "+projections["requests"]+" FROM provider_requests WHERE scope_id=:scope_id AND object_id=:object_id AND instr(:scopes,'\"'||caller_scope||'\"')>0 AND (:caller_module IS NULL OR (caller_module=:caller_module AND extension_id=:extension_id))",
         RecordSchema((Field("object_id", ID), Field("scopes", BoundedTextSchema(8192)), Field("caller_module", ID, nullable=True), Field("extension_id", BoundedTextSchema(128), nullable=True))), read_schemas["requests"], False)))
-    statements.append(("usage_aggregate", aggregate_statement()))
-    definition = RepositoryDefinition("provider", 1, tuple(tables), tuple(statement for _, statement in statements))
+    statements.append(("usage_aggregate", aggregate_statement(text_generation=text_generation)))
+    if text_generation:
+        # Instance transactions join only their own actual request. The shared
+        # ledger scope still keeps account liabilities cumulative across callers;
+        # no caller may bind a different SQL scope or obtain a write statement.
+        for name in ('requests','attempts','reservations','budget_windows'):
+            selected=','.join('p.'+field for field in projections[name].split(','))
+            if name=='requests':
+                source='provider_requests p'
+                where="p.scope_id='provider' AND p.caller_scope=:scope_id AND p.object_id=:request_id"
+            else:
+                relation={'attempts':'p.request_id=r.object_id',
+                    'reservations':"p.attempt_id=a.object_id",
+                    'budget_windows':"p.account_id=json_extract(r.body,'$.account_id') AND p.window_id=json_extract(r.body,'$.execution_evidence.account.window_id')"}[name]
+                source='provider_'+name+' p JOIN provider_requests r ON p.scope_id=r.scope_id'
+                if name=='reservations':
+                    source+=' JOIN provider_attempts a ON a.scope_id=r.scope_id AND a.request_id=r.object_id'
+                where="r.scope_id='provider' AND r.caller_scope=:scope_id AND r.object_id=:request_id AND "+relation
+            statements.append(('transaction_'+name,StatementDefinition('SELECT '+selected+' FROM '+source+' WHERE '+where+' LIMIT 2',
+                RecordSchema((Field('request_id',ID),)),read_schemas[name],False)))
+        statements.append(('transaction_original_absence',StatementDefinition(
+            "SELECT "+projections['requests']+" FROM provider_requests WHERE scope_id='provider' AND caller_scope=:scope_id "
+            "AND caller_module=:caller_module AND extension_id=:extension_id AND operation_key=:operation_key LIMIT 2",
+            RecordSchema(tuple(field for field in extra_fields['requests'] if field.name!='caller_scope')),read_schemas['requests'],False)))
+        statements.append(('transaction_unsent_budget',StatementDefinition(
+            "SELECT "+projections['budget_windows']+" FROM provider_budget_windows WHERE scope_id='provider' AND :scope_id=:caller_scope "
+            "AND account_id=:account_id AND window_id=:window_id LIMIT 2",
+            RecordSchema((Field('caller_scope',ID),Field('account_id',ID),Field('window_id',ID))),read_schemas['budget_windows'],False)))
+    definition = RepositoryDefinition("provider", 2 if text_generation else 1, tuple(tables), tuple(statement for _, statement in statements))
     return ProviderRepository(definition, tuple(statements))

@@ -65,10 +65,17 @@ def command_descriptor(definition: CommandSpec) -> Value:
     if type(definition) is ResultBoundCommandDefinition:
         from companion_memory.logging_service.audit_materialization import binding_value
         result.update({"intent_schema": schema_value(definition.audit_intent_schema), "audit_bindings": binding_value(definition), "fingerprint_version": 2})
+    from .command_capacity import declared_capacity
+    capacity = declared_capacity(definition)
+    if capacity is not None:
+        result['frozen_carrier_policy'] = MappingProxyType({'kind': 'TEXT_CONFIGURATION_INITIALIZATION', 'max_bytes': capacity})
+    from companion_memory.provider.text_command_policy import declared
+    if declared(definition):
+        result['input_policy'] = 'TEXT_PROVIDER_MUTATIONS_V3'
     return MappingProxyType(result)
 
 
-type AssemblyFormat = Literal['LEGACY', 'LOCAL_INFORMATION_V1']
+type AssemblyFormat = Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1']
 
 
 def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...],
@@ -79,7 +86,14 @@ def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tup
     and enforces independent descriptor, repository and enclosing byte budgets.
     Readers compare this complete canonical value when opening an existing file.
     """
-    if type(assembly_format) is not str or assembly_format not in ('LEGACY', 'LOCAL_INFORMATION_V1'):
+    if type(assembly_format) is not str or assembly_format not in ('LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1'):
+        raise InvalidValue()
+    from .command_capacity import declared_capacity
+    policies = sum(declared_capacity(command) is not None for command in commands)
+    from companion_memory.provider.text_command_policy import declared
+    if assembly_format != 'MODEL_TEXT_LEARNING_V1' and any(declared(command) for command in commands):
+        raise InvalidValue()
+    if policies != (1 if assembly_format == 'MODEL_TEXT_LEARNING_V1' else 0):
         raise InvalidValue()
     contents: dict[str, Value] = {
         "repositories": tuple(MappingProxyType({"owner": item.owner_module, "version": item.schema_version,
@@ -90,7 +104,7 @@ def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tup
     }
     if assembly_format == 'LEGACY':
         return encode_value(MappingProxyType(contents), 1048576)
-    contents['static_format'] = 'LOCAL_INFORMATION_V1'
+    contents['static_format'] = assembly_format
     encoded = encode_value(MappingProxyType(contents), 3145728)
     descriptors = sum(len(encode_value(command_descriptor(command), 1048576)) for command in commands)
     repository_size = len(encode_value(contents['repositories'], 131072))
@@ -104,15 +118,15 @@ def valid_assembly_encoding(data: object, assembly_format: AssemblyFormat) -> bo
     """Validate the chosen bounded canonical carrier before identity comparison."""
     if type(data) is not bytes:
         return False
-    limit = 3145728 if assembly_format == 'LOCAL_INFORMATION_V1' else 1048576
+    limit = 3145728 if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
     try:
         value = decode_value(data, limit)
         keys = {'repositories', 'commands'}
-        if assembly_format == 'LOCAL_INFORMATION_V1':
+        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1'):
             keys.add('static_format')
         if type(value) is not dict or set(value) != keys:
             return False
-        if assembly_format == 'LOCAL_INFORMATION_V1' and value['static_format'] != 'LOCAL_INFORMATION_V1':
+        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') and value['static_format'] != assembly_format:
             return False
         # The stored blob is compared with the trusted canonical declaration by
         # the caller; decoding here additionally bounds and rejects malformed JSON.
@@ -122,7 +136,16 @@ def valid_assembly_encoding(data: object, assembly_format: AssemblyFormat) -> bo
 
 
 def prepare_command(definition: CommandSpec, identity: OperationIdentity, command: LocalCommand | ResultBoundCommand, limit: int) -> tuple[RecoveryHandle, MappingProxyType[str, Value], MappingProxyType[str, Value]]:
+    from .command_capacity import command_capacity
+    limit = command_capacity(definition, limit)
     values = cast(MappingProxyType[str, Value], freeze_value(definition.input_schema, command.values))
+    from .command_capacity import validate_command_values
+    try:
+        validate_command_values(definition, values)
+        from companion_memory.provider.text_command_policy import validate_values
+        validate_values(definition, values)
+    except (ValueError, TypeError, UnicodeError):
+        raise InvalidValue() from None
     if type(definition) is ResultBoundCommandDefinition:
         from companion_memory.logging_service.audit_materialization import freeze_intents
         if type(command) is not ResultBoundCommand:

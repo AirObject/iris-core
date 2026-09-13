@@ -10,6 +10,8 @@
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
+[文本学习集中契约](../architecture/model-driven-text-learning.md)：六组推荐及明确例外已批准；本模块所涉细化在该正文唯一维护，实现与阻塞见CURRENT_TASK。
+
 ## 按边界定位
 
 本次最小只读状态及日志观察见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#observation)（五组推荐已批准，实施已授权；验证状态见CURRENT_TASK）；本模块原职责和既有批准状态不变。

@@ -23,6 +23,7 @@ from companion_memory.retrieval.query_service import RecallPending
 from companion_memory.retrieval.delivery import DeliveryScope
 from companion_memory.runtime.content_gate import ContentGate
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
+from companion_memory.configuration.text_persistence import StoredTextConfiguration
 
 
 def failure_value(error: InformationError) -> Record:
@@ -73,8 +74,8 @@ class TestSession:
 
 class InformationHTTP:
     """One loopback listener, four connections, sixteen explicitly scoped sessions."""
-    def __init__(self, configuration: StoredInformationConfiguration, gate: ContentGate):
-        if type(configuration) is not StoredInformationConfiguration:
+    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration, gate: ContentGate):
+        if type(configuration) not in (StoredInformationConfiguration,StoredTextConfiguration):
             raise ValueError('HTTP requires the native persisted information configuration.')
         self.gate = gate
         self.settings = configuration.candidate.information.record('management.host')

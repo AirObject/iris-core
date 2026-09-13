@@ -101,6 +101,20 @@ class MemoryService:
         self._grants[id(port)] = port
         return port
 
+    def read_grant_reference(self,port: MemoryReadPort) -> str:
+        """Name an actual native read scope for frozen evidence, without granting it.
+
+        The reference never recreates a capability. Source publication still
+        requires this live issued port and checks each actual current revision.
+        """
+        import hashlib
+        from companion_memory.persistence.content_codec import encode_content
+        if (self._closed or type(port) is not MemoryReadPort or port._service is not self
+                or self._grants.get(id(port)) is not port):raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
+        scope=('memory-read-grant',self._owner.configuration.database_id,self._owner.instance_id,
+            None if port._objects is None else tuple(sorted(port._objects)),tuple(sorted(port._operations)))
+        return 'memory-read-grant:'+hashlib.sha256(encode_content(scope,24576)).hexdigest()
+
     def bind_query_scope(self, *, include_forgotten: bool, object_ids: tuple[str, ...] | None = None) -> MemoryReadPort:
         """Trusted setup explicitly grants a whole-instance or finite query scope.
 

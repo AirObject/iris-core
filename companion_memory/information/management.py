@@ -11,6 +11,7 @@ from collections.abc import Callable
 import asyncio
 import time
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
+from companion_memory.configuration.text_persistence import StoredTextConfiguration
 from companion_memory.persistence import (AuditFieldBinding, AuditResultBinding, Field, RecordSchema, RepositoryDefinition,
     ResultBoundCommandDefinition, ResultBoundCommand, UnitOfWork, PersistenceService, Committed, Found, NotFound,
     NotCommitted, RecoveryHandle, Value, Unconfirmed, Failed, Rejected)
@@ -84,7 +85,7 @@ class ManagementAssembly:
         by_owner = {r.owner_module: r for r in repositories}
         self.retrieval: LocalIndex | None = None
         self.goals: GoalsService | None = None; self.state: StateOwner | None = None
-        self._configuration: StoredInformationConfiguration | None = None
+        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | None = None
         self._gate: ContentGate | None = None
         self.local_recovery: LocalGoalRecovery | None = None
         self._ports: dict[str, ManagementPort] = {}
@@ -208,7 +209,7 @@ class ManagementAssembly:
         oid = next((value[n] for n in ('goal_id', 'activity_id', 'task_id', 'plan_id', 'delivery_id', 'page_id', 'generation_id') if value.get(n) is not None), None)
         return (MappingProxyType({'object_id': oid, 'revision': value['expected_revision']}),)
 
-    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration, instance_id: str,
+    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration, instance_id: str,
              goals: GoalsService, state: StateOwner, retrieval: LocalIndex, gate: ContentGate, retain: Callable[[asyncio.Task[object]], None],
              recovering: Callable[[], bool] = lambda: False) -> None:
         if self._configuration is not None:
@@ -428,7 +429,8 @@ class ManagementAssembly:
                             raise OwnerFailure('RESOURCE_BUSY', 'state', 'ADMISSION_FULL')
                         pending_reference.append(handle)
                         cause_key, slot = self.causes.watch(kind, values)
-                        if changes_content: gate.begin_information_change(active_key)
+                        if changes_content and not gate.try_begin_information_change(active_key):
+                            raise OwnerFailure('RESOURCE_BUSY','state','ADMISSION_FULL')
                         self._pending[active_key] = PendingManagement(encode_content(value, 24576), handle)
                         result = await operation.execute(original_key, command)
                         resolved_change = type(result) in (Committed, NotCommitted, Rejected)

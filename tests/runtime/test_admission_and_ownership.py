@@ -61,7 +61,10 @@ class AdmissionOwnershipTests(unittest.IsolatedAsyncioTestCase):
         started=threading.Event();release=threading.Event()
         scenario=replace(response(),started=started,release=release)
         with TemporaryDirectory(prefix='iris-focus-owner-') as directory:
-            fixture=Fixture(Path(directory),(scenario,),runtime_changes={'runtime.operation_timeout_ms':100,'runtime.close_timeout_ms':100,'runtime.focus_drain_timeout_ms':100,'runtime.claim_lease_ms':1})
+            # Cancellation and the model barrier establish the ownership race.
+            # Keep ordinary configuration I/O on its full deadline; only focus,
+            # close and the claim lease need short cutoffs in this test.
+            fixture=Fixture(Path(directory),(scenario,),runtime_changes={'runtime.close_timeout_ms':100,'runtime.focus_drain_timeout_ms':100,'runtime.claim_lease_ms':1})
             runtime=await fixture.initialize()
             try:
                 bid,cap,port=await self.freeze(fixture,runtime)

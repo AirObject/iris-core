@@ -23,12 +23,14 @@ def close_admission(assembly, uow, work, batch, value):
     from .content_assembly import stable
     proof = assembly._unsent_learning.pop(work['batch_id'], None)
     binding = as_record(freeze(decode_content(work['model_binding'].encode(), 8192), 8192))
+    from companion_memory.cognition.text_context import normalized_request_digest
+    descriptor=normalized_request_digest if assembly.text_format else descriptor_digest
     if (type(proof) is not VerifiedUnsent or not issued_unsent(proof)
             or work['phase'] != 'REQUEST_ASSOCIATED'
             or proof._provider._ledger.storage is not assembly.storage or proof.database_id != assembly.configuration.database_id or proof.caller_scope != assembly.instance_id
             or proof.caller_module != 'cognition' or proof.result_owner != 'cognition' or proof.capability != 'GENERATION'
             or proof.request_id != work['provider_request_id']
-            or descriptor_digest(proof.original_request) != binding.get('request_digest')):
+            or descriptor(proof.original_request) != binding.get('request_digest')):
         raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
     mode = assembly._get('mode', uow, 'mode_id', 'instance_mode')
     assembly.rows.stage('learning_admissions_insert', uow, {
@@ -56,9 +58,19 @@ def reopen_admission(assembly, uow, work, batch, value):
     if not trigger:
         assembly.rows.stage('learning_triggers_insert', uow, {'trigger_key': value['trigger_key'], 'batch_id': work['batch_id']})
     generation = work['admission_generation'] + 1
+    binding=None
+    if assembly.text_format:
+        from companion_memory.memory.sources import decode_source
+        # The first context and all of its hashes remain immutable. Only the
+        # work's current admission descriptor changes in this same transaction.
+        original_binding=decode_content(work['model_binding'].encode(),8192)
+        if (prior['request_digest']!=as_record(freeze(original_binding,8192))['request_digest'] or prior['request_id']!=work['provider_request_id']):
+            raise OwnerFailure('PRECONDITION_FAILED','state','WORK_FENCED')
+        context=assembly.text_transactions.original(uow,decode_source(batch['manifest']),work,original_binding)
+        binding=encode_content(assembly.text_transactions.work_binding(context,generation),8192).decode()
     assembly.rows.stage('work_update', uow, {**work, 'phase': 'FROZEN', 'revision': work['revision'] + 1,
         'admission_generation': generation, 'admission_trigger': value['trigger_key'],
-        'provider_operation_key': None, 'provider_request_id': None, 'model_binding': None})
+        'provider_operation_key': None, 'provider_request_id': None, 'model_binding': binding})
     return assembly._result(uow, value, 'FROZEN', batch['entry_id'], batch_id=work['batch_id'])
 
 

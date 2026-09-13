@@ -19,6 +19,8 @@ from companion_memory.cognition.synthetic_graph import SyntheticGraphInput
 from companion_memory.cognition.synthetic_mutations import SyntheticMutationInput
 from companion_memory.cognition.synthetic_mixed import SyntheticMixedInput
 from companion_memory.cognition.goal_proposals import SyntheticGoalInput
+from companion_memory.cognition.text_candidates import TextCandidateInput
+from .text_collection import TextContextCollection
 from companion_memory.ingress.events import canonical_event
 from companion_memory.ingress.media_events import isolate_media_event, InvalidStateCombination
 from companion_memory.persistence.schema import ValueTooLarge
@@ -62,13 +64,22 @@ async def _entry_call(port, operation, key, argument):
 class ContentRuntimeService:
     """Trusted orchestration with bounded actual jobs and independent read services."""
     def __init__(self, assembly: ContentAssembly, provider: ProviderService,
-                 candidates: SyntheticCandidateInput | SyntheticGraphInput | SyntheticMutationInput | SyntheticMixedInput | SyntheticGoalInput, learning_profile: str, media_policy: MediaPolicy | None):
-        if type(assembly) is not ContentAssembly or not assembly._bound or type(provider) is not ProviderService or type(candidates) not in (SyntheticCandidateInput, SyntheticGraphInput, SyntheticMutationInput, SyntheticMixedInput, SyntheticGoalInput) or not valid_identifier(learning_profile) or type(candidates) is SyntheticGoalInput and not assembly.information_format:
+                 candidates: SyntheticCandidateInput | SyntheticGraphInput | SyntheticMutationInput | SyntheticMixedInput | SyntheticGoalInput | TextCandidateInput, learning_profile: str, media_policy: MediaPolicy | None, *, gate: ContentGate | None = None):
+        if type(assembly) is not ContentAssembly or not assembly._bound or type(provider) is not ProviderService or type(candidates) not in (SyntheticCandidateInput, SyntheticGraphInput, SyntheticMutationInput, SyntheticMixedInput, SyntheticGoalInput,TextCandidateInput) or not valid_identifier(learning_profile) or type(candidates) is SyntheticGoalInput and not assembly.information_format:
             raise ValueError('Bound actual owners and explicit model/candidate inputs are required.')
+        if assembly.text_format!=(type(candidates) is TextCandidateInput):
+            raise ValueError('Text candidates require the independent text assembly.')
+        if (type(candidates) is TextCandidateInput and
+                (candidates.configuration is not assembly.configuration or not provider._assembly.text_generation or media_policy is not None)):
+            raise ValueError('Native text resources and their exact stored configuration are required.')
         self.assembly = assembly; self.provider = provider; self.candidates = candidates; self.learning_profile = learning_profile
         self.settings = assembly.configuration.candidate.runtime
-        self.provider._registration_limit = assembly.configuration.candidate.content.integer('memory.read_page_size')
-        self.gate = ContentGate(self.settings.integer('runtime.max_active_entries') + assembly.configuration.candidate.content.integer('media.processing_concurrency'))
+        if not assembly.text_format:self.provider._registration_limit = assembly.configuration.candidate.content.integer('memory.read_page_size')
+        self.text_contexts:TextContextCollection|None=None
+        capacity=self.settings.integer('runtime.max_active_entries') + assembly.configuration.candidate.content.integer('media.processing_concurrency')
+        if gate is not None and (not assembly.text_format or type(gate) is not ContentGate or gate.capacity!=capacity or gate.state!='RECOVERING'
+                or gate.epoch!=0 or gate._grants or gate._initial_persona is not None):raise ValueError('An unopened native text gate is required.')
+        self.gate = gate if gate is not None else ContentGate(capacity)
         from .content_modes import ContentFocus
         self.focus = ContentFocus(self)
         self.media_policy = media_policy; self.media: ContentMedia | None = None
@@ -134,7 +145,8 @@ class ContentRuntimeService:
                 elif modes[0]['state'] == 'DRAINING':
                     await self.focus.transfer_staged(modes[0]['run_id'])
                 self.state = 'READY'
-                return Found(MappingProxyType({'state': 'READY', 'storage_execution': 'ACTUAL', 'model_adapter': 'SIMULATED', 'candidate_origin': 'SYNTHETIC'}))
+                return Found(MappingProxyType({'state': 'READY', 'storage_execution': 'ACTUAL', 'model_adapter': 'REMOTE_PROVIDER' if self.assembly.text_format else 'SIMULATED',
+                    'candidate_origin': 'MODEL_VALIDATED' if self.assembly.text_format else 'SYNTHETIC'}))
             except OwnerFailure as failure:
                 return Rejected(RuntimeError(failure.code, 'initialize', failure.field, failure.reason, failure.cleanup_pending))
             except (InvalidValue, KeyError, IndexError, UnicodeError):
@@ -183,7 +195,7 @@ class ContentRuntimeService:
         except InvalidValue:
             if on_ended is not None: on_ended()
             return Rejected(RuntimeError('INVALID_INPUT', kind, 'input', 'INVALID_SHAPE'))
-        command = ResultBoundCommand(1, {'operation_id': key, **values}, {r.event_slot: {'actor': 'content_scheduler'} for r in definition.required_audits})
+        command = ResultBoundCommand(definition.command_version, {'operation_id': key, **values}, {r.event_slot: {'actor': 'content_scheduler'} for r in definition.required_audits})
         port = self.assembly.operations[kind]; handle = port.recovery_handle(key, command)
         if type(handle) is not RecoveryHandle:
             if on_ended is not None: on_ended()
@@ -208,7 +220,8 @@ class ContentRuntimeService:
             original = await port.resolve_operation(handle)
             if type(original) is NotCommitted and not self.remaining_request():
                 return Rejected(RuntimeError('TIMEOUT', kind, 'state', 'DEADLINE_EXCEEDED'))
-            if type(original) is NotCommitted and information_change: self.gate.begin_information_change(change_key)
+            if type(original) is NotCommitted and information_change and not self.gate.try_begin_information_change(change_key):
+                return Rejected(RuntimeError('RESOURCE_BUSY',kind,'state','ADMISSION_FULL'))
             result = await port.execute(key, command) if type(original) is NotCommitted else original
             resolved_change = type(result) in (Committed, NotCommitted)
             return result
@@ -308,6 +321,10 @@ class ContentRuntimeService:
         if rows: return await learn_batch(self, decode_source(cast(str, rows[0]['manifest'])), fresh=True, admission_event=stable('select', preparation_id))
         if self.gate.state not in ('NORMAL', 'DRAINING'):
             return Rejected(RuntimeError('MODE_BLOCKED', 'run_learning', 'state', 'DREAMING'))
+        if self.assembly.text_format:
+            if self.text_contexts is None:
+                return Rejected(RuntimeError('PRECONDITION_FAILED','run_learning','state','PERSONA_REQUIRED'))
+            await self.text_contexts.require_current(time.monotonic()+self.remaining_request())
         from .content_transfer import transfer_entry
         transferred = await transfer_entry(self, entry_id)
         if type(transferred) not in (Committed, Found) and not (type(transferred) is ContentNotCommitted and transferred.error is not None and transferred.error.reason == 'BUFFER_FULL'):

@@ -61,7 +61,7 @@ class MaintenanceAssembly:
         if mode['state'] not in ('NORMAL', 'DRAINING'):
             raise OwnerFailure('MODE_BLOCKED', 'state', 'DREAMING')
         if kind == 'plan_memory_change':
-            change = decode_change(cast(str, v['change']), content.configuration.candidate.content.integer('cognition.candidate_item_max_bytes'))
+            change = decode_change(cast(str, v['change']), content.configuration.candidate.content.integer('cognition.candidate_item_max_bytes'), text_format=memory.text_format)
             if change['action'] not in ('REPLACE_CURRENT', 'SET_SCORES', 'DELETE_OBJECT'):
                 raise InvalidValue()
             root_id = cast(str, v['root_id']); semantic = digest(change, 8192)
@@ -116,7 +116,7 @@ class MaintenanceAssembly:
             raise OwnerFailure('PRECONDITION_FAILED', 'source', 'OWNERSHIP_CHANGED')
         intents = memory.rows.stage('maintenance_intents_get', uow, {'root_id': plan['root_id']})
         if not intents: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
-        change = decode_change(cast(str, intents[0]['body']), 8192)
+        change = decode_change(cast(str, intents[0]['body']), 8192, text_format=memory.text_format)
         if digest(change, 8192) != plan['semantic_digest'] or roots[0]['semantic_digest'] != plan['semantic_digest']:
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         actual = observe_release(memory, uow, change)

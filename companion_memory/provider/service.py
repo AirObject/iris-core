@@ -29,6 +29,9 @@ from .ports import ObserverGrant, ObserverPort, ResultGrant, ResultOwnerPort, Wo
 from .resources import AdapterResponse, AuthorizedMedia, CancellationToken, GateBinding, ProviderResources, SimulationAdapter, WorkGrant, native_issued
 from .values import (Completed, Data, DataLimit, Failed, Found, Health, InvalidData, MAX_INTEGER, NotFound, Pending,
                      ProviderError, Ready, Record, RecoveryPending, Rejected, CloseReport, as_record, dump, fingerprint, freeze, is_identifier, load)
+from .generation_resources import RealGenerationResources, ResourceLimits, GenerationBound, ChatGenerationAdapter, usage_observation
+if TYPE_CHECKING:
+    from companion_memory.configuration.text_persistence import StoredTextConfiguration
 
 CAPABILITIES = {"generate": "GENERATION", "embed": "EMBEDDING", "rerank": "RERANK", "understand_media": "MEDIA_UNDERSTANDING"}
 ROLES = ("LEARNING", "DREAM", "PERSONA", "MEDIA", "EMBEDDING", "RERANK", "GOAL", "DIAGNOSTIC")
@@ -76,6 +79,7 @@ class _Job:
     partial_response: AdapterResponse | None = None
     local_read_pending: bool = False
     local_write_pending: bool = False
+    transport_not_sent: bool = False
     completion: CompletionScope = field(default_factory=CompletionScope)
 
 
@@ -107,7 +111,9 @@ class ProviderService:
         self._assembly = assembly
         self._state = "NEW"
         self._binding: LedgerBinding | None = None
-        self._resources: ProviderResources | None = None
+        self._resources: ProviderResources | RealGenerationResources | None = None
+        self._text_configuration: StoredTextConfiguration | None = None
+        self._text_admission_blocked = False
         self._settings: Record = MappingProxyType({})
         self._profiles: dict[str, Record] = {}
         self._accounts: dict[str, Record] = {}
@@ -116,6 +122,7 @@ class ProviderService:
         self._registration_limit: int | None = None
         from weakref import WeakValueDictionary
         self._terminal_evidence = WeakValueDictionary()
+        self._completion_evidence = WeakValueDictionary()
         self._unsent_evidence = WeakValueDictionary()
         self._stored_authorities: WeakValueDictionary[int, StoredMediaAuthority] = WeakValueDictionary()
         self._stored_media: dict[AuthorizedMedia, tuple[StoredMediaAuthority, str, str]] = {}
@@ -142,9 +149,103 @@ class ProviderService:
         return self._binding
 
     @property
-    def _res(self) -> ProviderResources:
+    def _res(self) -> ProviderResources | RealGenerationResources:
         assert self._resources is not None
         return self._resources
+
+    @property
+    def _text(self) -> bool:
+        return self._assembly.text_generation
+
+    def bind_generation_resources(self, configuration: object, resources: object, limits: ResourceLimits) -> GenerationBound | Rejected:
+        """Preflight fixed native generation resources without resolving a secret.
+
+        The persisted configuration identity, transport and role resources must
+        match exactly. A failed binding creates no work port or worker.
+        """
+        from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
+        from .credentials import CredentialResolver
+        from .chat_protocol import ChatBinding
+        from .chat_transport import ChatTransport
+        from companion_memory.cognition.text_resources import output_schema
+        if (not self._text or self._state != 'NEW' or stored_text_configuration_issue(configuration) is not None
+                or type(resources) is not RealGenerationResources or type(limits) is not ResourceLimits):
+            return Rejected(error('RESOURCE_FAILED', 'initialize', 'capability', 'RESOURCE_INVALID'))
+        configured = cast(StoredTextConfiguration, configuration)
+        if (sum(type(port) is WorkPort for port in self._ports) > limits.registered_work_limit
+                or self._binding is not None and self._binding.text_configuration is not configured):
+            return Rejected(error('RESOURCE_FAILED', 'initialize', 'capability', 'RESOURCE_INVALID'))
+        try:
+            if (not native_issued(resources.gate, GateBinding) or type(resources.adapter) is not ChatGenerationAdapter
+                    or type(resources.credential_resolver) is not CredentialResolver
+                    or type(resources.adapter.transport) is not ChatTransport
+                    or resources.adapter.transport._resolver is not resources.credential_resolver
+                    or resources.adapter.transport._settings != configured.candidate.text.record('provider.transport')
+                    or resources.adapter.transport._monotonic is not resources.monotonic
+                    or resources.logger is not None and type(resources.logger) is not Logger
+                    or not all(callable(v) for v in (resources.monotonic, resources.utc_now, resources.new_id, resources.completed))):
+                raise InvalidData()
+            generation = configured.candidate.text.record('provider.generation')
+            for role, name in (('LEARNING', 'text_learning'), ('PERSONA', 'initial_persona')):
+                selected = generation if role == 'LEARNING' else configured.candidate.text.record('self_model.initial_persona')
+                expected = ChatBinding(cast(str, generation['model_id']), cast(tuple[str, ...], generation['expected_reported_models']),
+                    cast(str | None, generation['resolved_model_id']), cast(str, selected['schema_ref']), cast(str, selected['schema_digest']), name, output_schema(role))
+                if resources.adapter.bindings[role] != expected: raise InvalidData()
+        except (InvalidData, AttributeError, KeyError):
+            return Rejected(error('RESOURCE_FAILED', 'initialize', 'capability', 'RESOURCE_INVALID'))
+        self._text_configuration = configured
+        self._registration_limit = limits.registered_work_limit
+        return GenerationBound(configured.database_id, configured.snapshot_id)
+
+    def _input_units(self, capability: str, payload: Record, profile: Record | None = None, role: str = 'LEARNING'):
+        if not self._text:
+            return input_units(capability, payload, profile)
+        from .chat_protocol import encode_request
+        if capability != 'GENERATION' or type(self._res) is not RealGenerationResources:
+            return 0, 0, 'PROTOCOL_UNSUPPORTED'
+        encode_request(payload, self._res.adapter.bindings[role])
+        incoming, outgoing = cast(int, payload['reservation_input_bound']), cast(int, payload['output_tokens'])
+        if profile is not None and (incoming != profile['max_input_units'] or outgoing != profile['max_output_units']):
+            raise InvalidData()
+        return incoming, outgoing, None
+
+    def _usage(self, raw: object, profile: Record, amount: int, *, not_sent: bool = False) -> Record:
+        if not self._text:
+            return normalize_usage(raw, profile, amount)
+        from .text_accounting import normalize
+        from .chat_protocol import observe_usage
+        observation = usage_observation(raw) if type(raw) is MappingProxyType else observe_usage(None)
+        return normalize(observation, self._accounts[cast(str, profile['account_id'])], profile, amount, not_sent=not_sent)
+
+    def _check_budget(self, budget: Record, amount: int) -> str | None:
+        if self._text:
+            from .text_accounting import check_budget as text_check
+            return text_check(budget, amount)
+        return check_budget(budget, amount)
+
+    def _reserve_budget(self, budget: Record, amount: int) -> Record:
+        if self._text:
+            from .text_accounting import reserve_budget as text_reserve
+            return text_reserve(budget, amount)
+        return reserve_budget(budget, amount)
+
+    def _settle_budget(self, budget: Record, reservation: Record, usage: Record) -> Record:
+        if self._text:
+            from .text_accounting import settle_budget as text_settle
+            return text_settle(budget, reservation, usage)
+        return settle_budget(budget, reservation, usage)
+
+    def _result_payload(self, capability: str, raw: object, request: Record, profile: Record, limit: int, role: str) -> Record:
+        if not self._text:
+            return result_payload(capability, raw, request, profile, limit)
+        from .chat_protocol import validate_structured_result
+        resources = self._res
+        if type(resources) is not RealGenerationResources or capability != 'GENERATION':
+            raise InvalidData()
+        binding = resources.adapter.bindings[role]
+        if 'schema_ref' in as_record(request['payload']) and as_record(request['payload'])['schema_ref'] != binding.schema_ref:
+            raise InvalidData()
+        return validate_structured_result(raw, binding)
 
     def _number(self, name: str) -> int:
         return cast(int, self._settings[name])
@@ -181,13 +282,23 @@ class ProviderService:
         Recovery is local and idempotent. An incomplete initialization owns its
         pending task and lease; no other service may reclaim its preparations.
         """
+        if self._text:
+            if (issue := self._state_error('initialize')) is not None:
+                return Rejected(issue)
+            if self._init_task is not None and not self._init_task.done():
+                return RecoveryPending(error('PERSISTENCE_FAILED', 'initialize', 'ledger', 'LEDGER_UNCONFIRMED', True))
+            bound = self.bind_generation_resources(snapshot, resources, ResourceLimits(1, 1))
+            if type(bound) is not GenerationBound:
+                return cast(Rejected, bound)
         try:
-            native_resources = (type(resources) is ProviderResources and native_issued(resources.gate, GateBinding)
+            native_resources = (self._text and type(resources) is RealGenerationResources or type(resources) is ProviderResources and native_issued(resources.gate, GateBinding)
                                 and native_issued(resources.adapter, SimulationAdapter)
                                 and (resources.logger is None or type(resources.logger) is Logger)
                                 and all(callable(value) for value in (resources.monotonic, resources.utc_now, resources.new_id)))
         except AttributeError:
             native_resources = False
+        if self._text and type(resources) is RealGenerationResources:
+            native_resources = True
         if not native_resources:
             return Rejected(error("RESOURCE_FAILED", "initialize", "capability", "RESOURCE_INVALID"))
         if not self._assembly.issued(storage_binding):
@@ -199,14 +310,21 @@ class ProviderService:
         binding = cast(LedgerBinding, storage_binding)
         if binding.storage.get_health().lifecycle != "READY":
             return Rejected(error("ACCESS_DENIED", "initialize", "capability", "CAPABILITY_MISMATCH"))
-        if (issue := provider_snapshot_issue(snapshot)) is not None:
+        supplied_snapshot = self._text_configuration.candidate.foundation if self._text_configuration is not None else snapshot
+        if not self._text and (issue := provider_snapshot_issue(snapshot)) is not None:
             return Rejected(error("CONFIGURATION_UNSUPPORTED", "initialize", "configuration", issue))
-        if binding.snapshot is not snapshot:
+        if self._text and (binding.text_configuration is None or binding.text_configuration is not snapshot or self._text_configuration is None
+                or binding.text_configuration.database_id != self._text_configuration.database_id):
+            return Rejected(error("ACCESS_DENIED", "initialize", "capability", "CAPABILITY_MISMATCH"))
+        if binding.snapshot is not supplied_snapshot:
             return Rejected(error("ACCESS_DENIED", "initialize", "capability", "CAPABILITY_MISMATCH"))
         if not binding.acquire(self):
             return Rejected(error("ACCESS_DENIED", "initialize", "capability", "CAPABILITY_MISMATCH"))
-        self._binding, self._resources = binding, cast(ProviderResources, resources)
-        supplied = cast(EffectiveSnapshot, snapshot)
+        if self._text_configuration is not None and self._text_configuration.database_id != binding.database_id:
+            binding.release()
+            return Rejected(error('ACCESS_DENIED', 'initialize', 'capability', 'CAPABILITY_MISMATCH'))
+        self._binding, self._resources = binding, cast(ProviderResources | RealGenerationResources, resources)
+        supplied = cast(EffectiveSnapshot, supplied_snapshot)
         self._settings = MappingProxyType({entry.definition.key.removeprefix("provider."): cast(Data, entry.state.value)
                                            for entry in supplied.list_entries() if entry.definition.key.startswith("provider.") and type(entry.state) is PresentValue})
         self._profiles = {cast(str, as_record(profile)["profile_id"]): as_record(profile) for profile in cast(tuple[Data, ...], self._settings["profiles"])}
@@ -304,10 +422,12 @@ class ProviderService:
             for account_id, policy in self._accounts.items():
                 budget = row(budget_key(policy), account_id=account_id, window_id=policy["window_id"], policy=policy,
                              attempt_count=0, known_subtotal_atoms=0, held_atoms=0, risk_state="CLEAR")
+                if self._text:
+                    budget = as_record(freeze({**budget, 'format_version': 2, 'quota_reserved': 0, 'quota_known': 0, 'quota_held': 0}, 8192, owned=True))
                 changes.append(Mutation("budget_windows", None, budget))
             await self._commit("initialize_budget", "initialize-budgets", tuple(changes), "provider-startup", None, None, "NONE", "CLEAR", True)
             yield None
-        totals = {key: [0, 0, 0] for key in self._accounts}
+        totals = {key: [0] * (6 if self._text else 3) for key in self._accounts}
         async for reservation in self._pages("reservations"):
             account_id = cast(str, reservation["account_id"])
             if account_id not in totals:
@@ -315,14 +435,23 @@ class ProviderService:
             totals[account_id][0] += 1
             totals[account_id][1] += cast(int, reservation["known_subtotal_atoms"])
             totals[account_id][2] += cast(int, reservation["held_atoms"])
+            if self._text:
+                for index, name in enumerate(('quota_reserved', 'quota_known', 'quota_held'), 3):
+                    totals[account_id][index] += cast(int, reservation[name])
             yield None
         yield None
         for account_id, policy in self._accounts.items():
             budget = await self._ledger.get("budget_windows", budget_key(policy))
             yield None
-            if budget is None or totals[account_id] != [budget["attempt_count"], budget["known_subtotal_atoms"], budget["held_atoms"]]:
+            if budget is None or totals[account_id] != [budget[name] for name in
+                    (('attempt_count', 'known_subtotal_atoms', 'held_atoms', 'quota_reserved', 'quota_known', 'quota_held') if self._text else ('attempt_count', 'known_subtotal_atoms', 'held_atoms'))]:
                 raise InvalidData()
+            if self._text and budget['risk_state'] != 'CLEAR':
+                self._text_admission_blocked = True
         async for request in self._pages("requests"):
+            if self._text and (request['phase'] == 'REMOTE_RESULT_UNKNOWN'
+                    or request['first_error'] is not None and as_record(request['first_error'])['reason'] in ('AUTHENTICATION_FAILED', 'MODEL_BINDING_MISMATCH')):
+                self._text_admission_blocked = True
             attempts = await self._ledger.read("attempts_for_request", {"request_id": request["object_id"]})
             yield None
             if len(attempts) != request["attempt_count"] or tuple(item["ordinal"] for item in attempts) != tuple(range(1, len(attempts)+1)):
@@ -333,6 +462,8 @@ class ProviderService:
                 if reservation is None or reservation["account_id"] != request["account_id"]:
                     raise InvalidData()
                 usage = as_record(attempt["usage"])
+                if self._text and (attempt['state'] in ('PREPARED', 'REMOTE_RESULT_UNKNOWN') or not usage['cost_complete']):
+                    self._text_admission_blocked = True
                 if any(reservation[name] != usage[name] for name in ("known_subtotal_atoms", "held_atoms", "cost_complete", "known_cost_atoms")):
                     raise InvalidData()
                 if any(attempt[name] != request[name] for name in ("account_id", "profile_id", "capability")):
@@ -342,13 +473,16 @@ class ProviderService:
                         part = as_record(part)
                         cost = await self._ledger.get("cost_items", derived_id("cost",attempt["object_id"],part["item"]))
                         yield None
-                        if cost is None or any(cost[name] != part[name] for name in ("quantity", "price_atoms", "cost_atoms")) or cost["evidence_revision"] != attempt["evidence_revision"]:
+                        if cost is None or any(cost[name] != part[name] for name in (('quantity', 'price_numerator', 'price_denominator', 'cost_atoms') if self._text else ('quantity', 'price_atoms', 'cost_atoms'))) or cost["evidence_revision"] != attempt["evidence_revision"]:
                             raise InvalidData()
                     reported = await self._ledger.get("cost_items", derived_id("cost",attempt["object_id"],"reported"))
                     yield None
                     if reported is None or reported["cost_atoms"] != usage["reported_cost_atoms"]:
                         raise InvalidData()
             if request["phase"] == "TERMINAL":
+                if self._text:
+                    from .text_stored_schema import terminal_reason
+                    terminal_reason(request, attempts)
                 if request["outcome"] == "SUCCEEDED":
                     await self._handoff(request, attempts)
                     yield None
@@ -369,8 +503,9 @@ class ProviderService:
                                    "provider-startup", cast(str, request["object_id"]), None, "OPEN", "TERMINAL", True)
                 yield None
 
-    def _issue(self, kind: type, grant: WorkGrant | ObserverGrant | ResultGrant):
-        if self._registration_limit is not None and len(self._ports) >= self._registration_limit:
+    def _issue[P: WorkPort | ObserverPort | ResultOwnerPort](self, kind: type[P], grant: WorkGrant | ObserverGrant | ResultGrant) -> P:
+        registrations = sum(type(port) is WorkPort for port in self._ports) if self._text else len(self._ports)
+        if self._registration_limit is not None and (not self._text or kind is WorkPort) and registrations >= self._registration_limit:
             raise ValueError('Native Provider capability capacity is occupied.')
         port = object.__new__(kind)
         object.__setattr__(port, "_service", self)
@@ -389,6 +524,8 @@ class ProviderService:
                 or not self._ids(grant.capabilities, True) or any(value not in CAPABILITIES.values() for value in grant.capabilities)
                 or any(not self._ids(values) for values in (grant.entry_ids, grant.batch_ids, grant.dream_run_ids, grant.parent_request_ids, grant.trace_ids, grant.prompt_revisions))):
             raise ValueError("A complete native work grant is required.")
+        if self._text and (grant.task_role not in ('LEARNING', 'PERSONA') or grant.capabilities != ('GENERATION',)):
+            raise ValueError('Only the configured text generation roles can receive work authority.')
         return self._issue(WorkPort, grant)
 
     def bind_observer(self, grant: ObserverGrant) -> ObserverPort:
@@ -499,6 +636,13 @@ class ProviderService:
             raise PermissionError("An issued provider capability is required.")
         grant = self._ports[port]
         profiles = tuple(value for key, value in sorted(self._profiles.items()) if type(grant) is not WorkGrant or key in grant.profiles)
+        if self._text_configuration is not None:
+            configuration = self._text_configuration
+            return MappingProxyType({'source': 'REMOTE_PROVIDER', 'configuration_origin': 'PERSISTED_CONFIGURATION',
+                'config_snapshot_id': configuration.snapshot_id,
+                'profile_revision': derived_id('profile', configuration.snapshot_id, profiles[0]['profile_id']) if profiles else None,
+                'price_revision': as_record(next(iter(self._accounts.values()))['price'])['revision_ref'],
+                'profiles': profiles, 'streaming': False, 'tools': False})
         return MappingProxyType({"source": "SIMULATED", "configuration_origin": "UNVERSIONED_CONFIGURATION", "config_snapshot_id": None,
                                  "profile_revision": None, "price_revision": None, "profiles": profiles, "streaming": False, "tools": False})
 
@@ -544,13 +688,17 @@ class ProviderService:
         if any(request[name] is not None and not is_identifier(request[name]) for name in OPTIONALS):
             raise InvalidData()
         validate_attribution(request, grant)
-        input_units(CAPABILITIES[operation], as_record(request["payload"]))
+        self._input_units(CAPABILITIES[operation], as_record(request["payload"]), role=grant.task_role)
         return request, cast(CancellationToken, token), float(deadline)
 
     async def _work(self, port: object, operation: str, raw: object):
         if (issue := self._access(port, operation, (WorkPort,))) is not None:
             return Rejected(issue)
         grant = cast(WorkGrant, self._ports[port])
+        if self._text_admission_blocked:
+            # Original local confirmation remains available through lookup and
+            # result-owner recovery; this check never creates a new request row.
+            return Rejected(error('PAUSED_BUDGET', operation, 'budget', 'BILLING_EVIDENCE_MISSING'))
         if CAPABILITIES[operation] not in grant.capabilities:
             return Rejected(error("ACCESS_DENIED", operation, "capability", "CAPABILITY_MISMATCH"))
         try:
@@ -671,9 +819,18 @@ class ProviderService:
         return Pending(self._reference(job.request_id, job.request["operation_key"]), observation, job.first_error)
 
     def _semantic(self, job: _Job, evidence: Data) -> str:
-        return fingerprint(MappingProxyType({"request": job.request, "capability": CAPABILITIES[job.operation], "caller_module": job.grant.caller_module,
+        identity = MappingProxyType({"capability": CAPABILITIES[job.operation], "caller_module": job.grant.caller_module,
                                             "caller_scope": job.grant.caller_scope, "extension_id": job.grant.extension_id, "task_role": job.grant.task_role,
-                                            "result_owner": job.grant.result_owner, "execution_evidence": evidence}), 2097152)
+                                            "result_owner": job.grant.result_owner})
+        return self._original_fingerprint(job.request, identity, evidence)
+
+    def _original_fingerprint(self, request: Record, identity: Record, evidence: Data) -> str:
+        values = {'request': request, 'execution_evidence': evidence,
+            **{name: identity[name] for name in ('capability', 'caller_module', 'caller_scope', 'extension_id', 'task_role', 'result_owner')}}
+        if self._text_configuration is not None:
+            values.update(format_version=2, config_snapshot_id=self._text_configuration.snapshot_id,
+                profile_revision=derived_id('profile', self._text_configuration.snapshot_id, request['profile_id']))
+        return fingerprint(MappingProxyType(values), 2097152)
 
     async def _commit(self, kind: str, key: str, changes: tuple[Mutation, ...], actor: str, request_id: str | None,
                       attempt_id: str | None, before: str, after: str, complete: bool, *, owner: _Job | None = None) -> Committed:
@@ -691,6 +848,15 @@ class ProviderService:
             if self._now() >= admission_deadline: break
             result = await self._ledger.operations[kind].execute(key, command)
         cleanup_pending = self._observe_write_cleanup(result, owner)
+        if self._text and type(result) is NotCommitted and self._ledger.storage.get_health().lifecycle == 'READY' and self._now() < admission_deadline:
+            # The original local transaction is reliably absent. At most one
+            # unchanged local replay is allowed; the transport is never invoked.
+            if cleanup_pending:
+                if owner is not None: await owner.completion.wait()
+                elif self._initialization_cleanup is not None: await asyncio.shield(self._initialization_cleanup)
+            if self._now() < admission_deadline:
+                result = await self._ledger.operations[kind].execute(key, command)
+                cleanup_pending = self._observe_write_cleanup(result, owner)
         if (type(result) is StorageRejected and result.error.code == 'RESOURCE_BUSY'
                 and result.error.reason == 'ADMISSION_BUSY'):
             raise _WriteFailure('LEDGER_ADMISSION_BUSY', cleanup_pending=cleanup_pending)
@@ -733,7 +899,7 @@ class ProviderService:
                         or profile["capability"] != CAPABILITIES[job.operation]):
                     return await self._blocked(job, "UNSUPPORTED_CAPABILITY", error("UNSUPPORTED_CAPABILITY", job.operation, "configuration", "PROFILE_NOT_AVAILABLE"), None)
                 freeze(job.request, self._number("request_max_bytes"), owned=True)
-                units, output, unsupported = input_units(CAPABILITIES[job.operation], as_record(job.request["payload"]), profile)
+                units, output, unsupported = self._input_units(CAPABILITIES[job.operation], as_record(job.request["payload"]), profile, job.grant.task_role)
                 if unsupported:
                     return await self._blocked(job, "UNSUPPORTED_CAPABILITY", error("UNSUPPORTED_CAPABILITY", job.operation, "capability", unsupported), profile)
                 account_id = cast(str, profile["account_id"])
@@ -746,9 +912,13 @@ class ProviderService:
                 stopped = self._stopped(job)
                 if stopped is not None:
                     return await self._blocked(job, "CANCELLED" if stopped.code == "CANCELLED" else "TIMED_OUT", stopped, profile)
-                amount = units*cast(int, profile["input_price_atoms"])+output*cast(int, profile["output_price_atoms"])
+                if self._text:
+                    from .text_accounting import liability
+                    amount, _ = liability(self._accounts[account_id], profile)
+                else:
+                    amount = units*cast(int, profile["input_price_atoms"])+output*cast(int, profile["output_price_atoms"])
                 budget = await self._budget(profile)
-                if (reason := check_budget(budget, amount)) is not None:
+                if (reason := self._check_budget(budget, amount)) is not None:
                     return await self._blocked(job, "PAUSED_BUDGET", error("PAUSED_BUDGET", job.operation, "budget", reason), profile)
                 request = self._request_row(job, profile, "OPEN", None, None)
                 await self._prepare(job, request, profile, budget, amount, initial=True)
@@ -789,7 +959,7 @@ class ProviderService:
                     stopped = self._stopped(job)
                     gate = self._gate(job) if stopped is None else None
                     budget = await self._budget(profile)
-                    reason = check_budget(budget, amount)
+                    reason = self._check_budget(budget, amount)
                     if stopped or gate or reason:
                         cause = stopped or gate or error("PAUSED_BUDGET", job.operation, "budget", cast(str, reason))
                         terminal = "CANCELLED" if cause.code == "CANCELLED" else "TIMED_OUT" if cause.code == "TIMEOUT" else cause.code
@@ -861,10 +1031,13 @@ class ProviderService:
                                      "request_timeout_ms": self._number("request_timeout_ms"), "retry_delay_ms": self._number("retry_delay_ms"),
                                      "request_max_bytes": self._number("request_max_bytes"), "result_max_bytes": self._number("result_max_bytes")})
         return row(job.request_id, caller_module=job.grant.caller_module, caller_scope=job.grant.caller_scope, extension_id=job.grant.extension_id,
-                   operation_key=job.request["operation_key"], capability=CAPABILITIES[job.operation], task_role=job.grant.task_role, result_owner=job.grant.result_owner, format_version=1, fingerprint_version=1, updated_at=self._utc(),
+                   operation_key=job.request["operation_key"], capability=CAPABILITIES[job.operation], task_role=job.grant.task_role, result_owner=job.grant.result_owner, format_version=2 if self._text else 1, fingerprint_version=2 if self._text else 1, updated_at=self._utc(),
                    profile_id=job.request["profile_id"], account_id=profile["account_id"] if profile else None, created_at=self._utc(),
                    attribution=MappingProxyType({name: job.request[name] for name in ("run_id", "entry_ids", *OPTIONALS)}),
-                   source="SIMULATED", configuration_origin="UNVERSIONED_CONFIGURATION", config_snapshot_id=None, profile_revision=None, price_revision=None,
+                   source="REMOTE_PROVIDER" if self._text else "SIMULATED", configuration_origin="PERSISTED_CONFIGURATION" if self._text else "UNVERSIONED_CONFIGURATION",
+                   config_snapshot_id=self._text_configuration.snapshot_id if self._text_configuration is not None else None,
+                   profile_revision=derived_id('profile', self._text_configuration.snapshot_id, job.request['profile_id']) if self._text_configuration is not None else None,
+                   price_revision=as_record(next(iter(self._accounts.values()))['price'])['revision_ref'] if self._text else None,
                    execution_evidence=evidence, fingerprint=self._semantic(job, evidence), phase=phase, outcome=outcome, first_error=error_value(cause),
                    attempt_count=0, ever_unknown=False, handoff_id=None)
 
@@ -876,16 +1049,22 @@ class ProviderService:
 
     async def _prepare(self, job: _Job, request: Record, profile: Record, budget: Record, amount: int, *, initial: bool) -> None:
         attempt_id = self._id()
-        usage = normalize_usage({}, profile, amount)
+        usage = self._usage({}, profile, amount)
         attempt = row(attempt_id, request_id=job.request_id, ordinal=cast(int, request["attempt_count"])+1, state="PREPARED", logical_outcome=None,
-                      account_id=profile["account_id"], profile_id=profile["profile_id"], capability=profile["capability"], wire_protocol="SIMULATED",
+                      account_id=profile["account_id"], profile_id=profile["profile_id"], capability=profile["capability"], wire_protocol="OPENAI_CHAT_COMPLETIONS" if self._text else "SIMULATED",
                       execution_owner_id=self._execution_owner, created_at=self._utc(), updated_at=self._utc(), adapter_duration_ms=None, handoff_id=None,
                       confirmed_started=None, ever_unknown=False, first_error=None, usage=usage, result_fingerprint=None, evidence_revision=0)
+        if self._text:
+            attempt = MappingProxyType({**attempt, 'terminal_error': None})
         reservation = row(attempt_id, attempt_id=attempt_id, account_id=profile["account_id"], budget_id=budget["object_id"], reserved_atoms=amount,
                           known_subtotal_atoms=0, held_atoms=amount, known_cost_atoms=None, cost_complete=False)
+        if self._text:
+            from .text_accounting import liability
+            _, quota = liability(self._accounts[cast(str, profile['account_id'])], profile)
+            reservation = as_record(freeze({**reservation, 'format_version': 2, 'quota_reserved': quota, 'quota_known': 0, 'quota_held': 0}, 8192, owned=True))
         updated = revise(request, updated_at=self._utc(), attempt_count=attempt["ordinal"]) if not initial else MappingProxyType({**request, "attempt_count": attempt["ordinal"]})
         changes = (Mutation("requests", None if initial else request, updated), Mutation("attempts", None, attempt),
-                   Mutation("reservations", None, reservation), Mutation("budget_windows", budget, reserve_budget(budget, amount)))
+                   Mutation("reservations", None, reservation), Mutation("budget_windows", budget, self._reserve_budget(budget, amount)))
         await self._commit("register" if initial else "prepare", "prepare-"+attempt_id, changes, job.grant.actor_ref, job.request_id, attempt_id,
                            "NONE" if initial else "OPEN", "OPEN", False, owner=job)
         job.stored, job.attempt, job.reserved = updated, attempt, amount
@@ -919,13 +1098,24 @@ class ProviderService:
                 loop.call_soon_threadsafe(finished, None)
                 return
             try:
-                response = self._res.adapter.invoke(attempt_id, job.request, job.token, observe)
+                resources = self._res
+                if type(resources) is RealGenerationResources:
+                    response = resources.adapter.invoke(job.request, job.grant.task_role, job.token, attempt_deadline)
+                else:
+                    response = cast(ProviderResources, resources).adapter.invoke(attempt_id, job.request, job.token, observe)
             except MemoryError as failure:
                 job.worker_failure = failure
                 loop.call_soon_threadsafe(finished, None)
                 return
             except Exception:
                 response = None
+            if type(self._res) is RealGenerationResources:
+                try:
+                    self._res.completed(attempt_id)
+                except MemoryError:
+                    raise
+                except Exception:
+                    response = None
             job.worker_response = response
             try:
                 job.worker_completed_at = self._now()
@@ -983,7 +1173,7 @@ class ProviderService:
     async def _not_sent(self, job: _Job, profile: Record, cause: ProviderError) -> None:
         assert job.attempt is not None
         raw = {"coverage": "COMPLETE", "billing_input_units": 0, "billing_output_units": 0, "known_cost_atoms": 0}
-        usage = normalize_usage(raw, profile, 0)
+        usage = self._usage(raw, profile, 0, not_sent=True)
         outcome = "CANCELLED" if cause.code == "CANCELLED" else "TIMED_OUT" if cause.code == "TIMEOUT" else "MODE_BLOCKED"
         await self._settle(job, profile, outcome, cause, usage, None, False, not_sent=True)
 
@@ -1001,20 +1191,31 @@ class ProviderService:
                            job.grant.actor_ref, job.request_id, cast(str, attempt["object_id"]), "OPEN", "REMOTE_RESULT_UNKNOWN", False, owner=job)
         job.stored, job.attempt, job.unknown = request, attempt, True
         self._unknown += 1
+        if self._text:
+            self._text_admission_blocked = True
 
     def _response(self, job: _Job, profile: Record, response: object):
         assert job.attempt is not None
         if type(response) is AdapterResponse and response.outcome == "NOT_SENT":
             return "NOT_SENT", None, cast(Record, job.attempt["usage"]), None
+        if self._text and type(response) is AdapterResponse and response.outcome == 'LOCAL_NOT_SENT':
+            job.transport_not_sent = True
+            return 'CONFIGURATION_REJECTED', error('RESOURCE_FAILED', job.operation, 'capability', 'RESOURCE_INVALID'), self._usage({}, profile, 0, not_sent=True), None
         amount = job.reserved
-        usage = normalize_usage(response.usage if type(response) is AdapterResponse else {}, profile, amount)
+        usage = self._usage(response.usage if type(response) is AdapterResponse else {}, profile, amount)
         outcome = response.outcome if type(response) is AdapterResponse and response.outcome in OUTCOMES else "ADAPTER_EXCEPTION"
+        if self._text and type(response) is AdapterResponse and response.outcome == 'OUTPUT_LIMIT':
+            # A complete length response is a known business failure even when
+            # its independent usage evidence cannot settle the held liability.
+            return 'OUTPUT_LIMIT', error('ADAPTER_FAILED', job.operation, 'adapter', 'OUTPUT_LIMIT'), usage, None
+        if self._text and type(response) is AdapterResponse and response.outcome == 'MODEL_BINDING_MISMATCH':
+            return 'CONFIGURATION_REJECTED', error('CONFIGURATION_REJECTED', job.operation, 'configuration', 'MODEL_BINDING_MISMATCH'), usage, None
         payload = None
         if not usage["valid"]:
             outcome = "INVALID_RESPONSE"
         if outcome == "SUCCEEDED":
             try:
-                payload = result_payload(CAPABILITIES[job.operation], cast(AdapterResponse, response).payload, job.request, profile, self._number("result_max_bytes"))
+                payload = self._result_payload(CAPABILITIES[job.operation], cast(AdapterResponse, response).payload, job.request, profile, self._number("result_max_bytes"), job.grant.task_role)
             except InvalidData:
                 outcome = "INVALID_RESPONSE"
         cause = None
@@ -1032,11 +1233,18 @@ class ProviderService:
         assert job.attempt is not None and job.stored is not None
         if outcome == "NOT_SENT":
             return
+        not_sent = not_sent or job.transport_not_sent
         if self._ledger_faulted:
             raise _WriteFailure("LEDGER_UNCONFIRMED", True)
         previous_usage = as_record(job.attempt["usage"])
-        if job.attempt["state"] == "COMPLETED":
-            if previous_usage == usage and job.attempt["result_fingerprint"] == (fingerprint(payload) if payload else None):
+        remote_unknown = outcome in ("REMOTE_RESULT_UNKNOWN", "ADAPTER_EXCEPTION")
+        logical = outcome if outcome in ("SUCCEEDED", "SENSITIVE_REFUSAL", "OTHER_REFUSAL", "TIMED_OUT", "CANCELLED", "MODE_BLOCKED", "CONFIGURATION_REJECTED") else "FAILED"
+        final_error = None if remote_unknown or logical == 'SUCCEEDED' else error_value(cause)
+        known_state = "NOT_SENT" if not_sent else "COMPLETED"
+        if job.attempt["state"] == "COMPLETED" or self._text and job.attempt['state']=='NOT_SENT':
+            same_terminal = (not self._text or not remote_unknown and job.attempt['state']==known_state
+                and job.attempt['logical_outcome']==logical and job.attempt['terminal_error']==final_error)
+            if same_terminal and previous_usage == usage and job.attempt["result_fingerprint"] == (fingerprint(payload) if payload else None):
                 return
             raise _EvidenceConflict()
         if job.unknown and not evidence_compatible(previous_usage, usage):
@@ -1046,39 +1254,50 @@ class ProviderService:
         if reservation is None:
             raise InvalidData()
         job.first_error = job.first_error or cause
-        remote_unknown = outcome in ("REMOTE_RESULT_UNKNOWN", "ADAPTER_EXCEPTION")
-        logical = outcome if outcome in ("SUCCEEDED", "SENSITIVE_REFUSAL", "OTHER_REFUSAL", "TIMED_OUT", "CANCELLED", "MODE_BLOCKED") else "FAILED"
         phase = "REMOTE_RESULT_UNKNOWN" if remote_unknown else "OPEN" if retry else "TERMINAL"
         attempt = revise(job.attempt, state="NOT_SENT" if not_sent else "REMOTE_RESULT_UNKNOWN" if remote_unknown else "COMPLETED", logical_outcome=None if remote_unknown else logical,
                          confirmed_started=False if not_sent else True, ever_unknown=job.attempt["ever_unknown"] or remote_unknown,
                          first_error=job.attempt["first_error"] or error_value(cause), usage=usage, result_fingerprint=fingerprint(payload) if payload else None,
                          evidence_revision=cast(int, job.attempt["evidence_revision"])+1, updated_at=self._utc(), handoff_id=job.request_id if payload else None,
                          adapter_duration_ms=max(0, int((job.worker_completed_at-job.worker_started_at)*1000)) if not remote_unknown and job.worker_completed_at is not None and job.worker_started_at is not None else None)
+        if self._text:
+            attempt = MappingProxyType({**attempt, 'terminal_error': final_error})
         request = revise(job.stored, updated_at=self._utc(), phase=phase, outcome=logical if phase == "TERMINAL" else None, first_error=job.stored["first_error"] or error_value(job.first_error),
                          ever_unknown=job.stored["ever_unknown"] or remote_unknown, handoff_id=job.request_id if payload else None)
         updated_reservation = revise(reservation, **{name: usage[name] for name in ("known_subtotal_atoms", "held_atoms", "known_cost_atoms", "cost_complete")})
+        if self._text:
+            updated_reservation = as_record(freeze({**updated_reservation, 'quota_reserved': 0,
+                'quota_known': usage['quota_known'] or 0, 'quota_held': usage['quota_held']}, 8192, owned=True))
         changes = [Mutation("requests", job.stored, request), Mutation("attempts", job.attempt, attempt), Mutation("reservations", reservation, updated_reservation),
-                   Mutation("budget_windows", budget, settle_budget(budget, reservation, usage))]
+                   Mutation("budget_windows", budget, self._settle_budget(budget, reservation, usage))]
         for item in cast(tuple[Data, ...], usage["items"]):
             item = as_record(item)
             key = derived_id("cost",attempt["object_id"],item["item"])
             old = await self._ledger.get("cost_items", key)
             values = {"attempt_id": attempt["object_id"], **item, "evidence_revision": attempt["evidence_revision"], "source": "LOCALLY_ESTIMATED", "unit": "SIMULATED_"+cast(str,item["item"]).upper()+"_UNIT",
                       "known_subtotal_atoms": item["cost_atoms"] or 0, "cost_complete": item["cost_atoms"] is not None}
+            if self._text:
+                values.update(format_version=2, source='LOCALLY_ESTIMATED' if item['cost_atoms'] is not None else 'UNAVAILABLE',
+                    unit='SUBSCRIPTION_REQUEST' if item['item'] == 'subscription_request' else 'TOKEN')
             changes.append(Mutation("cost_items", old, row(key, **values) if old is None else revise(old, **values)))
         reported_key = derived_id("cost",attempt["object_id"],"reported")
         old_reported = await self._ledger.get("cost_items", reported_key)
         reported_values = {"attempt_id": attempt["object_id"], "item": "reported", "cost_atoms": usage["reported_cost_atoms"], "evidence_revision": attempt["evidence_revision"], "source": "SIMULATED_REPORTED", "unit": "TEST_ATOMS",
                            "known_subtotal_atoms": usage["reported_cost_atoms"] or 0, "cost_complete": usage["reported_cost_atoms"] is not None}
+        if self._text:
+            reported_values.update(format_version=2, source='UNAVAILABLE', unit='CURRENCY_ATOM',
+                quantity=None, price_numerator=None, price_denominator=None)
         changes.append(Mutation("cost_items", old_reported, row(reported_key, **reported_values) if old_reported is None else revise(old_reported, **reported_values)))
         if payload is not None:
-            handoff = row(job.request_id, request_id=job.request_id, owner_id=job.grant.result_owner, checksum=fingerprint(payload), source="SIMULATED", artifact_id=job.request_id, format_version=1, created_at=self._utc())
+            handoff = row(job.request_id, request_id=job.request_id, owner_id=job.grant.result_owner, checksum=fingerprint(payload), source="REMOTE_PROVIDER" if self._text else "SIMULATED", artifact_id=job.request_id, format_version=2 if self._text else 1, created_at=self._utc())
             handoff = MappingProxyType({**handoff, "payload": dump(payload)})
             changes.append(Mutation("handoffs", None, handoff))
         kind = "evidence" if job.unknown else "settle"
         await self._commit(kind, kind+"-"+cast(str, attempt["object_id"])+"-"+str(attempt["evidence_revision"]), tuple(changes), job.grant.actor_ref,
                            job.request_id, cast(str, attempt["object_id"]), cast(str, job.stored["phase"]), phase, cast(bool, usage["cost_complete"]), owner=job)
         job.stored, job.attempt = request, attempt
+        if self._text and (remote_unknown or not usage['cost_complete'] or cause is not None and cause.reason in ('AUTHENTICATION_FAILED', 'MODEL_BINDING_MISMATCH')):
+            self._text_admission_blocked = True
         if remote_unknown and not job.unknown:
             self._unknown += 1
             job.unknown = True
@@ -1105,7 +1324,7 @@ class ProviderService:
         profile = as_record(as_record(request["execution_evidence"])["profile"])
         capability = cast(str,request["capability"])
         if capability == "GENERATION":
-            result_payload(capability, payload, MappingProxyType({"payload": MappingProxyType({})}), profile, 8192)
+            self._result_payload(capability, payload, MappingProxyType({"payload": MappingProxyType({})}), profile, 8192, cast(str, request['task_role']))
         elif capability == "EMBEDDING":
             if type(payload.get("input_items")) is not int or not 1 <= cast(int,payload["input_items"]) <= 64:
                 raise InvalidData()
@@ -1317,10 +1536,8 @@ class ProviderService:
                 return Failed(error('RESOURCE_BUSY', operation, 'state', 'ADMISSION_BUSY'))
             normalized = None
             if original_request is not None:
-                normalized = as_record(freeze(original_request, 65536, owned=True))
-                expected = fingerprint(MappingProxyType({'request': normalized, 'capability': request['capability'],
-                    'caller_module': request['caller_module'], 'caller_scope': request['caller_scope'], 'extension_id': request['extension_id'],
-                    'task_role': request['task_role'], 'result_owner': request['result_owner'], 'execution_evidence': request['execution_evidence']}), 2097152)
+                normalized = as_record(freeze(original_request, 131072 if self._text else 65536, owned=True))
+                expected = self._original_fingerprint(normalized, request, request['execution_evidence'])
                 if expected != request['fingerprint']:
                     return Failed(error('ACCESS_DENIED', operation, 'capability', 'CAPABILITY_MISMATCH'))
             from .terminal_evidence import VerifiedTerminal, TerminalVerified
@@ -1332,7 +1549,13 @@ class ProviderService:
             object.__setattr__(evidence, 'original_request', normalized)
             attempts = await self._ledger.read('attempts_for_request', {'request_id': request['object_id']})
             object.__setattr__(evidence, 'confirmed_sent', any(a['confirmed_started'] is True for a in attempts))
-            object.__setattr__(evidence, 'terminal_reason', 'SENSITIVE_INFORMATION' if request['outcome'] == 'SENSITIVE_REFUSAL' else None)
+            terminal_reason = 'SENSITIVE_INFORMATION' if request['outcome'] == 'SENSITIVE_REFUSAL' else None
+            if self._text:
+                from .text_stored_schema import terminal_reason as actual_terminal_reason
+                from .terminal_evidence import _retain_text_attempt
+                terminal_reason = actual_terminal_reason(request, attempts)
+                _retain_text_attempt(evidence, attempts[0] if attempts else None)
+            object.__setattr__(evidence, 'terminal_reason', terminal_reason)
             self._terminal_evidence[id(evidence)] = evidence
             return TerminalVerified(evidence)
         except (LedgerFailure, InvalidData) as failure:
@@ -1420,4 +1643,4 @@ class ProviderService:
             raise
         except Exception:
             return Failed(error("PERSISTENCE_FAILED", operation, "query", "LEDGER_READ_FAILED"))
-        return Found(MappingProxyType({"range": query, "as_of": observed, "sample_count": sum(cast(int, item["request_count"]) for item in rows), "source": "SIMULATED", "rows": rows}))
+        return Found(MappingProxyType({"range": query, "as_of": observed, "sample_count": sum(cast(int, item["request_count"]) for item in rows), "source": "REMOTE_PROVIDER" if self._text else "SIMULATED", "rows": rows}))

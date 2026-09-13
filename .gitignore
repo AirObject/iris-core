@@ -1,3 +1,6 @@
 .venv/
 __pycache__/
 *.py[cod]
+
+# Local Provider test configuration and credentials.
+/.local/provider-tests/

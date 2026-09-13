@@ -13,6 +13,7 @@ from typing import cast, TYPE_CHECKING
 if TYPE_CHECKING:
     from .candidate_goals import CandidateGoalEffects
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
+from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
 from companion_memory.persistence import (
     AuditFieldBinding, AuditResultBinding, BoundedTextSchema, Field, RecordSchema,
     RepositoryDefinition, ResultBoundCommandDefinition, SequenceSchema,
@@ -56,9 +57,12 @@ RESULT = RecordSchema((Field('operation_id', ID), Field('entry_id', ID), Field('
         ('runtime', 'ingress', 'buffers', 'cognition', 'memory', 'logging_service', 'media'))))))
 
 
-def result_schema(owners: tuple[str, ...]) -> RecordSchema:
+def result_schema(owners: tuple[str, ...], *, text_format: bool = False) -> RecordSchema:
     """Each command carries only its statically declared owner summaries."""
     fields = tuple(Field(field.name, SequenceSchema(ID, 0, 0)) if field.name in ('object_refs', 'history', 'retired_source_ids') and 'memory' not in owners else field for field in RESULT.fields if field.name != 'facts')
+    if text_format:
+        fields=tuple(Field(field.name,enum('REMOTE_PROVIDER' if field.name=='model_adapter' else 'MODEL_VALIDATED'))
+            if field.name in ('model_adapter','candidate_origin') else field for field in fields)
     return RecordSchema(fields +
         (Field('facts', RecordSchema(tuple(Field(owner, owner_fact(owner)) for owner in owners))),))
 
@@ -129,18 +133,25 @@ class ContentAssembly:
     """Construct all explicit content owners; media is supplied as a real participant."""
     def __init__(self, media: ContentMediaOwnership | None = None,
                  media_repositories: tuple[RepositoryDefinition, ...] = (), *, publication=None, utc_now_us: Callable[[], int] = lambda: time.time_ns() // 1000,
-                 information_format: bool = False):
+                 information_format: bool = False, text_format: bool = False):
         if (media is None) != (not media_repositories):
             raise ValueError('A media owner and its declarations must be supplied together.')
         self.media = media; self.publication = publication
         self.utc_now_us = utc_now_us
-        if type(information_format) is not bool:
+        if type(information_format) is not bool or type(text_format) is not bool or text_format and not information_format:
             raise ValueError('The assembly format must be selected explicitly.')
         self.information_format = information_format
+        self.text_format = text_format
         self.goal_effects: CandidateGoalEffects | None = None
         from companion_memory.memory.information_repository import information_memory_catalog
         self.catalogs = (information_ingress_catalog() if information_format else ingress_content_catalog(), buffer_content_catalog(), runtime_content_catalog(),
                          candidate_catalog(information_format=information_format), information_memory_catalog() if information_format else memory_catalog(), history_catalog())
+        if text_format:
+            from companion_memory.persistence.text_records import extend_catalog
+            from companion_memory.memory.initial_self import initial_self_catalog
+            from companion_memory.cognition.text_context import context_catalog
+            self.catalogs=tuple(extend_catalog(c,context_catalog(),3) if c.definition.owner_module=='cognition' else
+                extend_catalog(c,initial_self_catalog(),3) if c.definition.owner_module=='memory' else c for c in self.catalogs)
         self.repositories = tuple(c.definition for c in self.catalogs) + media_repositories + (publication.repositories if publication is not None else ())
         self._bound = False
         self._verified_terminals = {}
@@ -197,7 +208,8 @@ class ContentAssembly:
             )) for r in requirements)
             def handler(uow, values, operation=name):
                 return self.run_handler(operation, uow, values, self._handle)
-            definitions.append(ResultBoundCommandDefinition('runtime', name, 1, RecordSchema(key + fields), 1, result_schema(owners),
+            definitions.append(ResultBoundCommandDefinition('runtime', name, 1, RecordSchema(key + fields), 1,
+                result_schema(owners,text_format=text_format and name in ('associate_content_request','store_content_candidate','commit_content_published','commit_content_without_objects')),
                 tuple(ids.values()), requirements, handler, RecordSchema((Field('actor', ID),)), bindings))
         from companion_memory.memory.maintenance import MaintenanceAssembly
         self.maintenance = MaintenanceAssembly(self)
@@ -218,6 +230,12 @@ class ContentAssembly:
             changed = frozenset(d.operation_kind for d in tuple(definitions) + self.candidate_application.commands + self.maintenance.commands)
             self._semantic_definitions = extend_commands(self._semantic_definitions, changed, self)
             self.commands = tuple(self._semantic_definitions.values())
+        if text_format:
+            from .text_context_commands import TextContextCommands
+            self.text_commands=TextContextCommands(self)
+            self.repositories+=(self.text_commands.catalog.definition,)
+            self._semantic_definitions['stage_learning_context']=self.text_commands.definition
+            self.commands+=(self.text_commands.definition,)
 
     def command_definition(self, semantic_kind: str) -> ResultBoundCommandDefinition:
         """Resolve a fixed semantic operation to this assembly's actual command."""
@@ -226,26 +244,33 @@ class ContentAssembly:
             raise OwnerFailure('INVALID_INPUT', 'input', 'UNSUPPORTED_VERSION')
         return definition
 
-    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration, instance_id: str) -> ContentAssembly:
+    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration, instance_id: str) -> ContentAssembly:
         """Bind the unique real owners after full configuration persistence is confirmed."""
-        if self._bound or type(configuration) is not StoredContentConfiguration:
+        valid=(stored_text_configuration_issue(configuration) is None) if self.text_format else type(configuration) is StoredContentConfiguration
+        if self._bound or not valid:
             raise ValueError('Content assembly requires native stored configuration and one binding.')
         self.storage, self.configuration, self.instance_id = storage, configuration, instance_id
+        self.source_revisions=tuple(item for item in configuration.revisions if not self.text_format or item[0] not in ('information','text_learning'))
         catalogs = {c.definition.owner_module: c for c in self.catalogs}
         settings = configuration.candidate.content
         self.history = HistoryBinding(catalogs['logging_service'], storage, instance_id,
-            settings.integer('audit.history_items_per_operation'), settings.integer('audit.history_item_max_bytes'), configuration.candidate.foundation)
+            settings.integer('audit.history_items_per_operation'), settings.integer('audit.history_item_max_bytes'), configuration.candidate.foundation,text_format=self.text_format)
         self.ingress = ContentIngressTransactions(catalogs['ingress'], storage, configuration, instance_id, self.media)
         self.buffers = ContentBufferTransactions(catalogs['buffers'], storage, instance_id, self.ingress)
         self.memory = MemoryTransactions(catalogs['memory'], storage, configuration, instance_id, self.history, self.ingress)
         self.cognition = CandidateBinding(catalogs['cognition'], storage, instance_id, configuration.database_id,
-            settings.integer('cognition.candidate_item_limit'), settings.integer('cognition.candidate_item_max_bytes'), settings.integer('cognition.candidate_max_bytes'), allow_goals=self.information_format)
+            settings.integer('cognition.candidate_item_limit'), settings.integer('cognition.candidate_item_max_bytes'), settings.integer('cognition.candidate_max_bytes'),
+            allow_goals=self.information_format and not self.text_format,text_format=self.text_format)
         from .source_rows import RuntimeSourceRows
         self.rows = RuntimeSourceRows(catalogs['runtime'], storage, instance_id)
         self._lease = storage.claim_module_owner(catalogs['runtime'].definition)
         if self._lease is None: raise ValueError('Runtime owner is unavailable.')
         self.operations = {name: storage.bind_operation(d, instance_id) for name, d in self._semantic_definitions.items()}
         self._bound = True
+        if self.text_format:
+            from .text_content import TextContentTransactions
+            self.text_transactions=TextContentTransactions(self)
+            self.text_commands.bind()
         if self.publication is not None: self.publication.bind(storage, instance_id)
         return self
 
@@ -264,7 +289,8 @@ class ContentAssembly:
         self._verified_terminals[request['object_id']] = evidence
 
     def _result(self, uow: UnitOfWork, values: MappingProxyType[str, Value], state: str, entry: str,
-                *, audit: dict[str, dict[str, Value]] | None = None, **changes: Value) -> dict[str, Value]:
+                *, audit: dict[str, dict[str, Value]] | None = None, text_result: bool = False,
+                extra_targets: tuple[MappingProxyType[str,Value],...] = (), **changes: Value) -> dict[str, Value]:
         row_counts = self.storage.transaction_row_changes(uow)
         owners = self.storage.transaction_audit_owners(uow)
         if any(row_counts.get(owner, 0) == 0 for owner in owners):
@@ -290,10 +316,12 @@ class ContentAssembly:
             **((audit or {}).get(owner, {}))}) for owner in owners}
         objects = tuple(record(ref) for ref in sequence(changes.get('object_refs', ())))
         targets = tuple(MappingProxyType({k: ref[k] for k in ('object_id', 'previous_revision', 'revision')}) for ref in objects)
+        if text_result:
+            targets+=self.text_transactions.audit_targets(uow,values,changes,state)+extra_targets
         return {'operation_id': values['operation_id'], 'entry_id': entry, 'batch_id': None, 'candidate_id': None,
             'source_id': None, 'terminal': state, 'object_refs': (), 'history': (), 'retired_source_ids': (),
             'targets': targets or (MappingProxyType({'object_id': changes.get('operation_id', values['operation_id']), 'previous_revision': None, 'revision': 1}),),
-            'storage_execution': 'ACTUAL', 'model_adapter': 'SIMULATED', 'candidate_origin': 'SYNTHETIC',
+            'storage_execution': 'ACTUAL', 'model_adapter': 'REMOTE_PROVIDER' if text_result else 'SIMULATED', 'candidate_origin': 'MODEL_VALIDATED' if text_result else 'SYNTHETIC',
             'facts': MappingProxyType(facts), **changes, 'history': tuple(record(item)['history_id'] for item in sequence(changes.get('history', ())))}
 
     def _get(self, name: str, uow: UnitOfWork, key: str, value: Value) -> MappingProxyType[str, Value]:
@@ -363,8 +391,8 @@ class ContentAssembly:
                     'transferred_at_us': event['transferred_at_us'], 'media': selections}))
             source: dict[str, Value] = {'source_version': 1, 'source_id': stable('source', self.configuration.database_id, eid, v['batch_id']),
                 'batch_id': v['batch_id'], 'run_id': v['run_id'], 'entry_id': eid, 'host_id': entry['host_id'], 'platform_id': entry['platform_id'],
-                'config_snapshot_id': self.configuration.snapshot_id, 'domain_revisions': tuple(MappingProxyType({'domain_id': k, 'revision': r}) for k, r in self.configuration.revisions),
-                'material_contract_ref': 'complete_source_base64:1', 'frozen_at_us': v['now_us'], 'ordered_members': tuple(members), 'digest': 'pending'}
+                'config_snapshot_id': self.configuration.snapshot_id, 'domain_revisions': tuple(MappingProxyType({'domain_id': k, 'revision': r}) for k, r in self.source_revisions),
+                'material_contract_ref': 'TEXT_CONTEXT_V1' if self.text_format else 'complete_source_base64:1', 'frozen_at_us': v['now_us'], 'ordered_members': tuple(members), 'digest': 'pending'}
             source['digest'] = source_digest(MappingProxyType(source)); manifest = isolate_preparation(source)
             self.buffers.reserve(uow, eid, cast(str, v['preparation_id']))
             for _, mid in selected: self.ingress.retain_payload(uow, mid, 'PREPARATION', cast(str, v['preparation_id']))
@@ -458,9 +486,10 @@ class ContentAssembly:
             return self._result(uow, v, 'REQUEST_ASSOCIATED', eid, batch_id=v['batch_id'])
         if name == 'associate_content_request':
             if work['phase'] not in ('FROZEN', 'PARKED'): raise OwnerFailure('PRECONDITION_FAILED', 'candidate', 'WORK_FENCED')
+            if self.text_format:self.text_transactions.verify_association(uow,v,work,batch)
             self.rows.stage('work_update', uow, {**work, 'revision': cast(int, work['revision']) + 1,
                 'phase': 'REQUEST_ASSOCIATED', 'provider_operation_key': v['provider_operation_key'], 'model_binding': v['model_binding']})
-            return self._result(uow, v, 'REQUEST_ASSOCIATED', eid, batch_id=v['batch_id'])
+            return self._result(uow, v, 'REQUEST_ASSOCIATED', eid, batch_id=v['batch_id'],text_result=self.text_format)
         if name == 'store_content_candidate':
             if work['phase'] != 'REQUEST_ASSOCIATED': raise OwnerFailure('PRECONDITION_FAILED', 'candidate', 'WORK_FENCED')
             settings = self.configuration.candidate.content
@@ -476,8 +505,11 @@ class ContentAssembly:
             request = evidence.request
             frozen_manifest = decode_source(cast(str, batch['manifest']))
             proposed = 'SUCCEEDED' if request['outcome'] == 'SUCCEEDED' else 'SENSITIVE_DROPPED' if request['outcome'] == 'SENSITIVE_REFUSAL' else 'FAILED_DROPPED'
+            if self.text_format:
+                self.text_transactions.verify_candidate(uow,work,batch,candidate,evidence)
+                proposed=cast(str,m['terminal_proposal'])
             if (work['provider_request_id'] is not None and work['provider_request_id'] != m['provider_request_id'] or request['operation_key'] != work['provider_operation_key'] or record(request['attribution'])['batch_id'] != v['batch_id']
-                    or record(request['attribution'])['run_id'] != batch['run_id'] or request['handoff_id'] != m['handoff_ref']
+                    or record(request['attribution'])['run_id'] != batch['run_id'] or not self.text_format and request['handoff_id'] != m['handoff_ref']
                     or m['terminal_proposal'] != proposed or m['source_id'] != frozen_manifest['source_id']
                     or m['config_snapshot_id'] != self.configuration.snapshot_id):
                 raise OwnerFailure('ACCESS_DENIED', 'candidate', 'BINDING_MISMATCH')
@@ -491,7 +523,7 @@ class ContentAssembly:
             self.rows.stage('work_update', uow, {**work, 'revision': cast(int, work['revision']) + 1, 'phase': 'CANDIDATE_STORED',
                 'provider_request_id': m['provider_request_id'], 'handoff_ref': m['handoff_ref'], 'candidate_id': m['candidate_id']})
             return self._result(uow, v, 'CANDIDATE_STORED', eid, batch_id=v['batch_id'], candidate_id=m['candidate_id'],
-                audit={'cognition': {'counts': (MappingProxyType({'name': 'candidate_leaves', 'count': len(candidate.leaves)}),)}})
+                audit={'cognition': {'counts': (MappingProxyType({'name': 'candidate_leaves', 'count': len(candidate.leaves)}),)}},text_result=self.text_format)
         if name.startswith('commit_content_'):
             return self.finish_candidate(uow, v, name)
         raise InvalidValue()
@@ -516,6 +548,8 @@ class ContentAssembly:
                 member = record(raw_member)
                 self.media.verify_selections(uow, eid, cast(str, member['message_id']), tuple(record(s) for s in sequence(member['media'])))
         applied = None; new_source = None
+        if self.text_format:
+            scope_override=self.text_transactions.apply_scope(uow,v,work,batch,candidate)
         if memory_leaves:
             scope = scope_override or ApplyScope(self.instance_id, cast(str, m['candidate_id']), cast(str, m['batch_id']),
                 frozenset(cast(tuple[str, ...], v['readable_objects'])), frozenset(cast(tuple[str, ...], v['readable_subjects'])),
@@ -539,6 +573,7 @@ class ContentAssembly:
         if self.media:
             self.media.release_consumer(uow, 'BATCH', cast(str, v['batch_id']), tuple(record(m) for m in sequence(frozen_source['ordered_members'])))
         self.cognition.dispose(uow, candidate)
+        context_targets=(self.text_transactions.release(uow,v,candidate),) if self.text_format else ()
         self.rows.stage('work_update', uow, {**work, 'revision': cast(int, work['revision']) + 1, 'phase': 'TERMINAL'})
         self.rows.stage('batches_update', uow, {**batch, 'terminal': terminal})
         audit: dict[str, dict[str, Value]] = {'memory': {'counts': applied_counts(applied)}} if applied else {}
@@ -555,12 +590,13 @@ class ContentAssembly:
         audit.setdefault('ingress', {})['counts'] = cast(tuple, audit.get('ingress', {}).get('counts', ())) + tuple(MappingProxyType({'name': key, 'count': count}) for key, count in (('targets_consumed', target_count), ('rotation_payloads_deleted', deleted_payloads)))
         return self._result(uow, v, terminal, eid, batch_id=v['batch_id'], candidate_id=v['candidate_id'],
             source_id=frozen_source['source_id'] if new_source is not None else None, retired_source_ids=applied.retired_sources if applied else (), object_refs=applied.objects if applied else (), history=applied.history if applied else (),
-            audit=audit)
+            audit=audit,text_result=self.text_format,extra_targets=context_targets)
 
     def close(self) -> bool:
         """Close each owner without prematurely releasing an unfinished storage job."""
         if not self._bound: return True
         results = [owner.close() for owner in (self.memory, self.cognition, self.buffers, self.ingress, self.history)]
+        if self.text_format:results.append(self.text_commands.close())
         assert self._lease is not None
         results.append(self._lease.release())
         return all(results)

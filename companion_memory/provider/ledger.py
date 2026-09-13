@@ -6,11 +6,13 @@ the generic receipt; only stable object references and revisions are returned.
 """
 from __future__ import annotations
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
-from typing import cast
+from typing import cast, TYPE_CHECKING
 
 from companion_memory.configuration import EffectiveSnapshot
+if TYPE_CHECKING:
+    from companion_memory.configuration.text_persistence import StoredTextConfiguration
 from companion_memory.logging_service import AuditBound, AuditErr, AuditRequirement, bind_audit
 from companion_memory.persistence import (
     BoundedTextSchema, CommandDefinition, Committed, Field, LocalCommand, ModuleOwnerLease,
@@ -57,8 +59,11 @@ class Mutation:
 
 class LedgerAssembly:
     """Trusted declarations required before creating a new provider database."""
-    def __init__(self) -> None:
-        self.repository = create_provider_repository()
+    def __init__(self, *, text_generation: bool = False) -> None:
+        if type(text_generation) is not bool:
+            raise TypeError('An exact static provider format is required.')
+        self.text_generation = text_generation
+        self.repository = create_provider_repository(text_generation=text_generation)
         self._bindings: dict[int, LedgerBinding] = {}
         self._active: LedgerBinding | None = None
         mutation_schema = RecordSchema((Field("table", ScalarSchema("enum", choices=TABLES)), Field("object_id", IDENTIFIER),
@@ -69,23 +74,42 @@ class LedgerAssembly:
         commands = []
         self.requirements = {}
         for kind, (event_code, reason) in KINDS.items():
-            requirement = AuditRequirement("provider", "provider_change", event_code, 1, (reason,), CHANGE)
+            change_schema = CHANGE
+            if text_generation:
+                change_schema = RecordSchema(CHANGE.fields + (
+                    Field('billing_mode', ScalarSchema('enum', choices=('TOKEN_METERED', 'SUBSCRIPTION'))),
+                    Field('currency', ScalarSchema('enum', choices=('CNY', 'USD'))),
+                    Field('quota_known', INTEGER, nullable=True), Field('quota_held', INTEGER), Field('config_snapshot_id', IDENTIFIER)))
+            requirement = AuditRequirement("provider", "provider_change", event_code, 1, (reason,), change_schema)
             self.requirements[kind] = requirement
             def handler(uow: UnitOfWork, values: MappingProxyType[str, Value], action=kind):
                 binding = self._active
                 if binding is None:
                     raise InvalidData()
                 return binding._handle(action, uow, values)
-            commands.append(CommandDefinition("provider", kind, 1, input_schema, 1, result_schema,
-                                              (self.repository.definition,), (requirement,), handler))
+            definition = CommandDefinition("provider", kind, 2 if text_generation else 1, input_schema, 1, result_schema,
+                                              (self.repository.definition,), (requirement,), handler)
+            if text_generation:
+                from .text_command_policy import issue
+                definition = replace(definition, input_policy=issue(self))
+            commands.append(definition)
         self.commands = tuple(commands)
         self.repositories = (self.repository.definition,)
 
-    def bind(self, storage: PersistenceService, snapshot: EffectiveSnapshot) -> LedgerBinding:
+    def bind(self, storage: PersistenceService, snapshot: EffectiveSnapshot | StoredTextConfiguration) -> LedgerBinding:
         """Issue restricted statements; acquiring unique execution ownership is separate."""
-        if type(storage) is not PersistenceService or type(snapshot) is not EffectiveSnapshot:
+        if type(storage) is not PersistenceService:
             raise TypeError("Native storage and configuration bindings are required.")
-        binding = LedgerBinding(self, storage, snapshot)
+        from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
+        stored = None
+        if self.text_generation:
+            if stored_text_configuration_issue(snapshot) is not None:
+                raise TypeError('Native persisted text configuration is required.')
+            stored = cast(StoredTextConfiguration, snapshot)
+            snapshot = stored.candidate.foundation
+        elif type(snapshot) is not EffectiveSnapshot:
+            raise TypeError('The simulation configuration format is required.')
+        binding = LedgerBinding(self, storage, cast(EffectiveSnapshot, snapshot), text_configuration=stored)
         self._bindings[id(binding)] = binding
         return binding
 
@@ -95,8 +119,10 @@ class LedgerAssembly:
 
 class LedgerBinding:
     """Private-to-service ledger capability with no arbitrary SQL or connection API."""
-    def __init__(self, assembly: LedgerAssembly, storage: PersistenceService, snapshot: EffectiveSnapshot):
+    def __init__(self, assembly: LedgerAssembly, storage: PersistenceService, snapshot: EffectiveSnapshot,
+                 *, text_configuration: StoredTextConfiguration | None = None):
         self.assembly, self.storage, self.snapshot = assembly, storage, snapshot
+        self.text_configuration = text_configuration
         self.statements = {name: storage.bind_statement(assembly.repository.definition, statement, "provider")
                            for name, statement in assembly.repository.statements}
         self.operations = {definition.operation_kind: storage.bind_operation(definition, "provider") for definition in assembly.commands}
@@ -148,11 +174,25 @@ class LedgerBinding:
             if (expected is None and existing is not None) or (expected is not None and (existing is None or existing["revision"] != expected)):
                 raise InvalidData()
             row = load(change["body"])
-            validate_row(table, row)
+            self._validate_row(table, row)
             immutable = {"requests": ("object_id", "caller_scope", "caller_module", "extension_id", "operation_key", "fingerprint", "execution_evidence", "attribution", "created_at", "profile_id", "account_id", "result_owner", "capability", "task_role"),
                          "attempts": ("object_id", "request_id", "ordinal", "account_id", "profile_id", "capability", "execution_owner_id", "created_at"),
                          "budget_windows": ("object_id", "account_id", "window_id", "policy"), "reservations": ("object_id", "attempt_id", "account_id", "budget_id", "reserved_atoms"),
                          "cost_items": ("object_id", "attempt_id", "item", "source", "unit"), "handoffs": tuple(row)}[table]
+            if self.assembly.text_generation:
+                if table == 'requests':
+                    if existing is not None and existing['first_error'] is not None and existing['first_error']!=row['first_error']:raise InvalidData()
+                    immutable += ('source', 'configuration_origin', 'config_snapshot_id', 'profile_revision', 'price_revision', 'format_version', 'fingerprint_version')
+                elif table == 'attempts' and existing is not None:
+                    if (existing['first_error'] is not None and existing['first_error']!=row['first_error']
+                            or existing['state'] in ('COMPLETED','NOT_SENT') and any(existing[name]!=row[name]
+                                for name in ('terminal_error','state','logical_outcome','usage','result_fingerprint','evidence_revision','handoff_id','confirmed_started'))):
+                        raise InvalidData()
+                elif table == 'cost_items':
+                    immutable = ('object_id', 'attempt_id', 'item', 'unit', 'format_version', 'price_numerator', 'price_denominator')
+                    if existing is not None and (existing['source'] != 'UNAVAILABLE' and existing['source'] != row['source']
+                            or any(existing[name] is not None and existing[name] != row[name] for name in ('quantity', 'cost_atoms'))):
+                        raise InvalidData()
             if existing is not None and any(existing[name] != row[name] for name in immutable):
                 raise InvalidData()
             if row["object_id"] != key or type(row["revision"]) is not int or row["revision"] != (0 if expected is None else cast(int, expected)+1):
@@ -183,8 +223,32 @@ class LedgerBinding:
         assert first is not None
         return {"object_id": first["object_id"], "revision": first["revision"]}
 
-    @staticmethod
-    def _decode(table: str, raw: MappingProxyType[str, Value]) -> Record:
+    def _validate_row(self, table: str, row: Record) -> None:
+        if self.assembly.text_generation:
+            from .text_stored_schema import validate
+            validate(table, row)
+            if self.text_configuration is None:
+                raise InvalidData()
+            from companion_memory.configuration import PresentValue
+            from .service import derived_id
+            values = {entry.definition.key: entry.state.value for entry in self.text_configuration.candidate.foundation.list_entries() if type(entry.state) is PresentValue}
+            accounts = cast(tuple[Data, ...], values['provider.accounts'])
+            account = as_record(accounts[0])
+            profiles = cast(tuple[Data, ...], values['provider.profiles'])
+            if table == 'budget_windows' and row['policy'] != account:
+                raise InvalidData()
+            if table == 'requests':
+                if (row['config_snapshot_id'] != self.text_configuration.snapshot_id
+                        or row['profile_revision'] != derived_id('profile', self.text_configuration.snapshot_id, row['profile_id'])
+                        or row['price_revision'] != as_record(account['price'])['revision_ref']):
+                    raise InvalidData()
+                evidence = as_record(row['execution_evidence'])
+                if evidence['profile'] is not None and (evidence['profile'] not in profiles or evidence['account'] != account):
+                    raise InvalidData()
+        else:
+            validate_row(table, row)
+
+    def _decode(self, table: str, raw: MappingProxyType[str, Value]) -> Record:
         """Validate physical identity and stored schema for reads and mutations."""
         record = load(raw["body"])
         for name in raw:
@@ -196,7 +260,7 @@ class LedgerBinding:
             if raw[name] != expected or type(raw[name]) is not type(expected):
                 raise InvalidData()
         if table != "usage_aggregate":
-            validate_row(table, record)
+            self._validate_row(table, record)
         if "payload" in raw:
             record = MappingProxyType({**record, "payload": cast(str, raw["payload"])})
         return record
@@ -242,14 +306,26 @@ class LedgerBinding:
                             "previous_revision": None if first.previous is None else first.previous["revision"], "revision": first.current["revision"],
                             "previous_state": previous_state, "state": state, "cost_complete": cost_complete}}
         if kind == "initialize_budget":
-            event["target_refs"] = [{"object_id": change.current["account_id"],
+            event["target_refs"] = [{"object_id": change.current["object_id" if self.assembly.text_generation else "account_id"],
                                      "previous_revision": None if change.previous is None else change.previous["revision"],
                                      "revision": change.current["revision"]} for change in changes]
+        if self.assembly.text_generation:
+            assert self.text_configuration is not None
+            configured = next(entry.state for entry in self.text_configuration.candidate.foundation.list_entries() if entry.definition.key == 'provider.accounts')
+            from companion_memory.configuration import PresentValue
+            if type(configured) is not PresentValue:
+                raise InvalidData()
+            account = as_record(cast(tuple[Data, ...], configured.value)[0])
+            usage = next((as_record(change.current['usage']) for change in changes if change.table == 'attempts'), None)
+            event['change'].update({'billing_mode': account['billing_mode'], 'currency': account['currency'],
+                'quota_known': usage['quota_known'] if usage is not None else 0,
+                'quota_held': usage['quota_held'] if usage is not None else 0,
+                'config_snapshot_id': self.text_configuration.snapshot_id})
         frozen_event = as_record(freeze(event, 2048))
         values = {"changes": [{"table": change.table, "object_id": change.current["object_id"],
                                 "expected_revision": None if change.previous is None else change.previous["revision"], "body": dump(MappingProxyType({name: value for name, value in change.current.items() if name != "payload"})),
                                 "payload": change.current.get("payload")} for change in changes],
                   "event": dump(frozen_event, 2048)}
-        command = LocalCommand(1, values, {"provider_change": event})
+        command = LocalCommand(2 if self.assembly.text_generation else 1, values, {"provider_change": event})
         result = await self.operations[kind].execute(key, command)
         return result, command

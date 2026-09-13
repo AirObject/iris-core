@@ -60,7 +60,7 @@ def apply_usage(owner: MemoryTransactions, uow: UnitOfWork, expected: Record, no
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
     _, since = transition(current, retention, at, owner._settings.integer('memory.forget_below'), owner._settings.integer('memory.restore_at'))
     value = isolate_object(dict(current) | {'revision': revision, 'modified_at_us': max(at, integer(current['modified_at_us'])),
-        'scores': dict(record(current['scores'])) | {'retention': retention}, 'lifecycle': lifecycle, 'forgotten_since_us': since})
+        'scores': dict(record(current['scores'])) | {'retention': retention}, 'lifecycle': lifecycle, 'forgotten_since_us': since}, text_format=owner.text_format)
     links = isolate_links({'sources': tuple(dict(record(link)) | {'object_revision': revision} for link in sequence(old_links['sources'])),
         'bases': tuple(dict(record(link)) | {'dependent_revision': revision} for link in sequence(old_links['bases']))}, text(current['object_id']), revision)
     history = owner.history.append_object_history(uow, current, old_links,

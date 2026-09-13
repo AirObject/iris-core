@@ -158,6 +158,8 @@ class ContentBudgetTests(unittest.IsolatedAsyncioTestCase):
                         OperationIdentity(fixture.expected_id, 'configuration', 'initialize_content', 'instance', 'content-config'), command, 1048576)
                     encoded = encode_value(MappingProxyType({'definition': command_descriptor(definition), 'values': owned, 'intentions': intentions}), 1048576)
                     self.assertLessEqual(len(encoded), 933888)
+                    from companion_memory.configuration.content_persistence import StoredContentConfiguration
+                    assert type(fixture.assembly.configuration) is StoredContentConfiguration
                     self.assertEqual(candidate_values(fixture.assembly.configuration.candidate), values)
                     self.assertEqual(len(fixture.adapter.calls), 0)
                     identity = (handle.fingerprint, fixture.assembly.configuration.snapshot_id, fixture.assembly.configuration.revisions)

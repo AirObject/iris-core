@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .information_tracking import MemoryInformation
     from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
+from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
 from companion_memory.logging_service.object_history import HistoryBinding
 from companion_memory.persistence import UnitOfWork, PersistenceService, Value
 from companion_memory.persistence.schema import InvalidValue
@@ -73,13 +74,16 @@ def applied_counts(applied: AppliedChanges) -> tuple[MappingProxyType[str, Value
 class MemoryTransactions:
     """Only this participant modifies memory tables; other owners join by protocol."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService,
-                 configuration: StoredContentConfiguration, instance_id: str,
+                 configuration: StoredContentConfiguration | StoredTextConfiguration, instance_id: str,
                  history: HistoryBinding, sources: SourceParticipants):
-        if type(configuration) is not StoredContentConfiguration or type(history) is not HistoryBinding:
+        text_format=type(configuration) is StoredTextConfiguration
+        configuration_valid=(stored_text_configuration_issue(configuration) is None and catalog.definition.schema_version==3) if text_format else type(configuration) is StoredContentConfiguration
+        if not configuration_valid or type(history) is not HistoryBinding or history._text_format != text_format:
             raise ValueError('Native persistent configuration and history owner are required.')
         from .source_rows import MemorySourceRows
         self.rows = MemorySourceRows(catalog, storage, instance_id)
         self.storage = storage
+        self.text_format = text_format
         self._lease = storage.claim_module_owner(catalog.definition)
         if self._lease is None:
             raise ValueError('Memory owner is unavailable.')
@@ -89,10 +93,10 @@ class MemoryTransactions:
         self._information_catalog = catalog
         self.information: MemoryInformation | None = None
 
-    def bind_information(self, configuration: StoredInformationConfiguration) -> MemoryInformation:
+    def bind_information(self, configuration: StoredInformationConfiguration | StoredTextConfiguration) -> MemoryInformation:
         """Select change tracking only for the explicit independent memory format."""
         from .information_tracking import MemoryInformation
-        if self.information is not None or self._information_catalog.definition.schema_version != 2 or configuration.database_id != self.configuration.database_id or configuration.snapshot_id != self.configuration.snapshot_id:
+        if self.information is not None or self._information_catalog.definition.schema_version != (3 if self.text_format else 2) or configuration.database_id != self.configuration.database_id or configuration.snapshot_id != self.configuration.snapshot_id:
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')
         self.information = MemoryInformation(self._information_catalog, self.storage, configuration, self.instance_id, self)
         return self.information
@@ -105,7 +109,7 @@ class MemoryTransactions:
     def decode_current(self, row: MappingProxyType[str, Value]) -> MappingProxyType[str, Value]:
         """Check redundant identity, revision, state and exact stored body digest."""
         body = cast(str, row['body']).encode()
-        value = decode_object(body)
+        value = decode_object(body, text_format=self.text_format)
         if value['instance_id'] != self.instance_id or any(row[k] != value[k] for k in ('object_id', 'revision', 'kind', 'lifecycle')) or row['digest'] != hashlib.sha256(body).hexdigest():
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         return value
@@ -120,6 +124,29 @@ class MemoryTransactions:
         if encode_content(value, 2048).decode() != body:
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         return value
+
+    async def retained_basis_roots(self,expected: MappingProxyType[str,Value],deadline: float) -> tuple[str,...]:
+        """Recheck one already frozen basis for the native learning participant.
+
+        This owner method grants no public read capability. Its caller restores
+        the complete persisted context first. Current body and link revision are
+        rechecked again in the candidate transaction before publication.
+        """
+        import time
+        from companion_memory.persistence.deadlines import DeadlineScope
+        if not self.text_format:raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
+        oid=cast(str,expected['object_id']);revision=cast(int,expected['revision'])
+        with DeadlineScope(deadline):
+            rows=await self.rows.read('objects_get',{'object_id':oid})
+            if len(rows)!=1 or self.decode_current(rows[0])!=expected:raise OwnerFailure('PRECONDITION_FAILED','object','BASIS_UNAVAILABLE')
+            links=await self.rows.read('links_get',{'object_id':oid})
+            if len(links)!=1 or links[0]['revision']!=revision:raise OwnerFailure('PRECONDITION_FAILED','object','BASIS_UNAVAILABLE')
+            body=cast(str,links[0]['body']);value=isolate_links(decode_content(body.encode(),2048),oid,revision)
+            if encode_content(value,2048).decode()!=body:raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
+            if time.monotonic()>=deadline:raise OwnerFailure('TIMEOUT','state','DEADLINE_EXCEEDED')
+            roots={cast(str,record(anchor)['message_id']) for link in sequence(value['sources']) for anchor in sequence(record(link)['target_anchors'])}
+            roots.update(cast(str,mid) for link in sequence(value['bases']) for mid in sequence(record(link)['evidence_roots']))
+            return tuple(sorted(roots))
 
     def subject(self, uow: UnitOfWork, sid: str) -> MappingProxyType[str, Value] | None:
         """Read a registered subject without equating labels across identities."""
@@ -160,7 +187,7 @@ class MemoryTransactions:
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
         if not 1 <= len(changes) <= self._settings.integer('cognition.candidate_item_limit'):
             raise InvalidValue()
-        checked = tuple(isolate_change(c, self._settings.integer('cognition.candidate_item_max_bytes')) for c in changes)
+        checked = tuple(isolate_change(c, self._settings.integer('cognition.candidate_item_max_bytes'), text_format=self.text_format) for c in changes)
         if len({cast(str, c['target_id']) for c in checked}) != len(checked):
             raise InvalidValue()
         proposed: dict[str, MappingProxyType[str, Value]] = {}
@@ -198,7 +225,7 @@ class MemoryTransactions:
                     raise OwnerFailure('PRECONDITION_FAILED', 'revision', 'REVISION_CONFLICT')
                 subjects[oid] = value
                 continue
-            value = isolate_object(value, self._settings.integer('memory.current_max_bytes'))
+            value = isolate_object(value, self._settings.integer('memory.current_max_bytes'), text_format=self.text_format)
             origin = record(value['origin'])
             if old is None and origin['kind'] == 'OPERATOR_INPUT':
                 raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'object', 'BUSINESS_NOT_IMPLEMENTED')
