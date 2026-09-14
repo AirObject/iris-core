@@ -21,6 +21,7 @@ from companion_memory.provider.unsent_evidence import VerifiedUnsent
 from companion_memory.provider.values import as_record
 from companion_memory.runtime.content_gate import ContentGate
 from companion_memory.runtime.initial_persona_mode import InitialPersonaMode
+from companion_memory.memory.initial_subjects import definition as subjects_definition,register_subjects
 from .formats import isolate_run,GENERATION
 from .storage import PersonaStorage
 from .preparation import prepare_run,associate_run,confirm_run,retained_material,generation_key
@@ -47,7 +48,7 @@ class PersonaInvocation:
 
 
 class PersonaTransactions:
-    """Seven fixed commands plus the memory-owned initial registration command.
+    """Seven persona commands and two memory-owned initial registration commands.
 
     This participant supplies no automatic generation loop. Trusted management
     must close ordinary admission before prepare and independently join actual
@@ -77,6 +78,7 @@ class PersonaTransactions:
             def handle(uow,values,operation=kind):return self.handle(operation,uow,values)
             self.definitions[kind]=ResultBoundCommandDefinition('self_model',kind,1,RecordSchema((Field('operation_id',ID),)+fields),1,
                 result_schema(owners,states),participants,requirements,handle,INTENT,bindings)
+        self.definitions['register_initial_subjects']=subjects_definition(participants,lambda uow,values:self.handle('register_initial_subjects',uow,values))
         self.commands=self.initial_commands.commands+tuple(self.definitions.values())
         original_mode=assembly.command_definition('change_content_mode')
         if original_mode.command_version!=1:raise InvalidValue()
@@ -113,18 +115,27 @@ class PersonaTransactions:
 
     def _guard(self,uow: UnitOfWork,kind: str,values: MappingProxyType[str,Value]) -> PersonaInvocation:
         scope=self._scope;gate=self.gate
+        allowed=('NORMAL',) if kind=='register_initial_subjects' else ('DREAM_PREPARING','DREAM_FOCUSED')
         if (self._closed or scope is None or scope.kind!=kind or scope.values!=values or gate is None
-                or gate.state not in ('DREAM_PREPARING','DREAM_FOCUSED') or gate.integrity_pending()):
+                or gate.state not in allowed or gate.integrity_pending()):
             raise OwnerFailure('ACCESS_DENIED','identity','BOUNDARY_DENIED')
         epoch=gate.epoch
         uow.require_commit_permission(lambda:not self._closed and self._scope is scope and self.gate is gate and gate.epoch==epoch
-            and gate.state in ('DREAM_PREPARING','DREAM_FOCUSED') and not gate.integrity_pending())
+            and gate.state in allowed and not gate.integrity_pending())
         return scope
 
     def handle(self,kind: str,uow: UnitOfWork,values: MappingProxyType[str,Value]):
         scope=self._guard(uow,kind,values)
         assert self.persona is not None and self.initial is not None
         owner=self.persona;a=self.assembly;now=a.utc_now_us()
+        if kind=='register_initial_subjects':
+            mode=a._get('mode',uow,'mode_id','instance_mode')
+            run_id=stable_identity('persona-run',a.configuration.database_id,a.instance_id)
+            if mode['state']!='NORMAL' or owner.read(uow,'run',run_id) is not None or owner.current_publication(uow) is not None:
+                raise OwnerFailure('PRECONDITION_FAILED','state','STATE_MISMATCH')
+            if self.initial.read_initial(uow,self.initial.input_id) is None:
+                raise OwnerFailure('PRECONDITION_FAILED','state','STATE_MISMATCH')
+            return register_subjects(a.memory,uow,values,self.initial_commands._binding.input_origin,now)
         key={'owner_namespace':'self_model','operation_kind':kind,'scope_id':a.instance_id,'operation_key':values['operation_id']}
         changed: list[tuple[str,MappingProxyType[str,Value]|None,MappingProxyType[str,Value]]]=[]
         mode_before=None;mode_after=None

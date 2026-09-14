@@ -53,4 +53,6 @@
 
 ## 工作记录
 
+[暂缓问题](work/DEFERRED_ISSUES.md)是暂缓事项状态、事实及后续建议的唯一维护位置。
+
 [CURRENT_TASK](work/CURRENT_TASK.md)只保留当前目标、授权、契约链接、阻塞、最近验证及停止点；使用[简短模板](work/TASK_TEMPLATE.md)更新，不追加历史全文。[STATUS](work/STATUS.md)仅记录已验收里程碑及版本证据。已提交历史通过提交号和原路径读取；未提交且独有的信息须保留。[ORGANIZATION_REPORT](work/ORGANIZATION_REPORT.md)保持历史用途，不持续重算全文哈希或覆盖映射。

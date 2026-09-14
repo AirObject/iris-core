@@ -70,22 +70,22 @@ PRICE=record(revision_ref=ID,source_url=BoundedTextSchema(512),checked_date=Boun
 QUOTA=record(subscription_ref=ID,unit=enum('SUBSCRIPTION_REQUEST'),window_limit=integer(1,10**12),
     per_attempt_bound=integer(1,10**6),consumed_before_test=U,evidence_ref=ID)
 ACCOUNT=record(account_id=ID,window_id=ID,currency=enum('CNY','USD'),max_in_flight=integer(1,1),
-    attempt_limit=integer(16,16),cost_limit_atoms=integer(1,10**12),atom_scale=integer(1000000,1000000),
-    billing_mode=enum('TOKEN_METERED','SUBSCRIPTION'),price=PRICE,quota=(QUOTA,),evidence_ref=ID)
-PROFILE=record(profile_id=ID,account_id=ID,model_id=enum('ark-code-latest'),wire_protocol=enum('OPENAI_CHAT_COMPLETIONS'),
+    attempt_limit=integer(14,16),cost_limit_atoms=integer(0,10**12),atom_scale=integer(1000000,1000000),
+    billing_mode=enum('TOKEN_METERED','SUBSCRIPTION','USAGE_ONLY_TRIAL'),price=PRICE,quota=(QUOTA,),evidence_ref=ID)
+PROFILE=record(profile_id=ID,account_id=ID,model_id=enum('ark-code-latest','MiniMax-M3','deepseek-flash'),wire_protocol=enum('OPENAI_CHAT_COMPLETIONS','MINIMAX_CHAT_JSON_V1','DEEPSEEK_CHAT_JSON_V1'),
     capability=enum('GENERATION'),max_attempts=integer(1,1),attempt_timeout_ms=integer(1,30000),
     max_input_units=integer(1,1048576),max_output_units=integer(2048,2048),max_items=integer(2,2),
     dimensions=(U,),space_id=(ID,),media_tasks=SequenceSchema(ID,0,0),generation_ref=ID,
-    billing_mode=enum('TOKEN_METERED','SUBSCRIPTION'))
+    billing_mode=enum('TOKEN_METERED','SUBSCRIPTION','USAGE_ONLY_TRIAL'))
 TRANSPORT=record(origin=BoundedTextSchema(256),base_path=BoundedTextSchema(128),endpoint_path=BoundedTextSchema(64),
     secret_ref=ID,secret_revision=ID,account_ref=ID,connect_timeout_ms=integer(1,10000),read_timeout_ms=integer(1,30000),
     response_max_bytes=integer(256,262144),headers_max_bytes=integer(256,16384),header_count=integer(1,100),
     chunk_bytes=integer(256,8192),network_slots=integer(1,1),queue_slots=integer(0,0))
-GENERATION=record(protocol=enum('OPENAI_CHAT_COMPLETIONS'),model_id=enum('ark-code-latest'),
+GENERATION=record(protocol=enum('OPENAI_CHAT_COMPLETIONS','MINIMAX_CHAT_JSON_V1','DEEPSEEK_CHAT_JSON_V1'),model_id=enum('ark-code-latest','MiniMax-M3','deepseek-flash'),
     expected_reported_models=SequenceSchema(ID,1,8),resolved_model_id=(ID,),capability_evidence_ref=ID,
     billing_evidence_ref=ID,eligibility_evidence_ref=ID,schema_ref=ID,schema_digest=D,prompt_ref=ID,prompt_digest=D,
     transform_ref=ID,transform_digest=D,model_context_tokens=integer(1,1048576),reservation_input_bound=integer(1,1048576),
-    max_tokens=integer(2048,2048),n=integer(1,1),stream=BOOL,response_mode=enum('JSON_SCHEMA_STRICT'),
+    max_tokens=integer(2048,2048),n=integer(1,1),stream=BOOL,response_mode=enum('JSON_SCHEMA_STRICT','JSON_PROMPT_V1','JSON_OBJECT_V1'),
     schema_max_bytes=integer(12288,12288),local_generation_limit=integer(1,1),tool_steps=integer(0,0))
 CONTEXT_VALUES=MappingProxyType(dict(event_max_bytes=2048,member_limit=4,target_limit=2,related_limit=2,
     related_record_max_bytes=4096,user_max_bytes=32768,system_max_bytes=4096,persona_projection_max_bytes=2048,

@@ -115,7 +115,7 @@ def resource_digest(resource: bytes) -> str:
 LEARNING_TRANSFORM_RESOURCE = b'text-memory-output-v1:create-memory-only;exact-target-utf8-anchors;retained-context;configured-retention;owner-verified-bases'
 
 
-def render_learning_instructions(subjects: object, worlds: object) -> str:
+def render_learning_instructions(subjects: object, worlds: object, model: str='ark-code-latest') -> str:
     """Render trusted owner identities within the existing bounded SYSTEM text.
 
     These records are data selected by the native caller's existing read rights.
@@ -140,22 +140,44 @@ def render_learning_instructions(subjects: object, worlds: object) -> str:
     for world in world_values:
         check_world(world)
         if record(world)['context_id'] is not None and record(world)['context_id'] not in contexts:raise InvalidValue()
-    text=LEARNING_INSTRUCTIONS+'\nTrusted owner identities and worlds (data):\n'+encode_content(value,4096).decode()
+    text=business_instructions('LEARNING',model)+'\nTrusted owner identities and worlds (data):\n'+encode_content(value,4096).decode()
     if len(text.encode())>4096:
         from companion_memory.persistence.schema import ValueTooLarge
         raise ValueTooLarge()
     return text
 
 
-def learning_authorizations(system_text: str):
+def learning_authorizations(system_text: str, model: str='ark-code-latest'):
     """Recover the exact trusted roster from the frozen rendered template."""
     from companion_memory.persistence.content_codec import decode_content
     from companion_memory.memory.formats import record
     from companion_memory.persistence.schema import InvalidValue, Value
     from companion_memory.provider.values import freeze
     from typing import cast
-    prefix=LEARNING_INSTRUCTIONS+'\nTrusted owner identities and worlds (data):\n'
+    prefix=business_instructions('LEARNING',model)+'\nTrusted owner identities and worlds (data):\n'
     if type(system_text) is not str or not system_text.startswith(prefix):raise InvalidValue()
     value=record(cast(Value,freeze(decode_content(system_text[len(prefix):].encode(),4096),4096,owned=True)))
-    if set(value)!={'subjects','worlds'} or render_learning_instructions(value['subjects'],value['worlds'])!=system_text:raise InvalidValue()
+    if set(value)!={'subjects','worlds'} or render_learning_instructions(value['subjects'],value['worlds'],model)!=system_text:raise InvalidValue()
     return value
+
+
+def prompt_resource(role: str,model: str) -> bytes:
+    """Bind supplier JSON instructions and the unchanged business schema together."""
+    base=business_instructions(role,model)
+    if model=='ark-code-latest':return base.encode()
+    if model=='deepseek-flash':
+        from companion_memory.provider.deepseek_protocol import prompt_suffix
+    elif model=='MiniMax-M3':
+        from companion_memory.provider.minimax_protocol import prompt_suffix
+    else:raise ValueError('A fixed generation model is required.')
+    return (base+prompt_suffix(output_schema(role))).encode()
+
+
+def business_instructions(role: str, model: str) -> str:
+    """Select immutable instructions by the configuration-bound model identity."""
+    if role not in ('LEARNING','PERSONA') or model not in ('ark-code-latest','MiniMax-M3','deepseek-flash'):
+        raise ValueError('A supported role and fixed model are required.')
+    if model=='deepseek-flash':
+        from .text_instructions import LEARNING_INSTRUCTIONS as revised, PERSONA_EXAMPLE
+        return revised if role=='LEARNING' else PERSONA_INSTRUCTIONS+PERSONA_EXAMPLE
+    return LEARNING_INSTRUCTIONS if role=='LEARNING' else PERSONA_INSTRUCTIONS

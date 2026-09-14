@@ -44,7 +44,7 @@ class RecoveryOwnershipTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(fixture.storage.get_health().reads_in_flight)
                 release.set()
                 async with asyncio.timeout(3):
-                    while runtime._jobs:await asyncio.sleep(0.01)
+                    while runtime._jobs or fixture.storage.get_health().reads_in_flight:await asyncio.sleep(0.01)
                 self.assertEqual(runtime.get_health()['lifecycle'],'CLOSING')
                 closed=await runtime.close();self.assertEqual(closed.status,'CLOSED')
                 refused=await runtime.recover_runtime();assert type(refused) is RecoveryPending

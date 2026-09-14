@@ -77,7 +77,7 @@ class LedgerAssembly:
             change_schema = CHANGE
             if text_generation:
                 change_schema = RecordSchema(CHANGE.fields + (
-                    Field('billing_mode', ScalarSchema('enum', choices=('TOKEN_METERED', 'SUBSCRIPTION'))),
+                    Field('billing_mode', ScalarSchema('enum', choices=('TOKEN_METERED', 'SUBSCRIPTION','USAGE_ONLY_TRIAL'))),
                     Field('currency', ScalarSchema('enum', choices=('CNY', 'USD'))),
                     Field('quota_known', INTEGER, nullable=True), Field('quota_held', INTEGER), Field('config_snapshot_id', IDENTIFIER)))
             requirement = AuditRequirement("provider", "provider_change", event_code, 1, (reason,), change_schema)

@@ -88,7 +88,7 @@ class TextHostTests(unittest.IsolatedAsyncioTestCase):
                     opened=await confirm_local(lambda:h.initialize('CREATE_NEW'));self.assertIs(type(opened),Found,opened)
                     assert type(opened) is Found
                     self.assertFalse(record(opened.value)['learning_ready']);self.assertEqual(len(requests),0)
-                    self.assertEqual(len(h.combination.commands),103)
+                    self.assertEqual(len(h.combination.commands),104)
                     runtime=h.runtime;assert runtime is not None and h.persona is not None and h.stored is not None
                     port=h.initialization_port()
                     async def join():

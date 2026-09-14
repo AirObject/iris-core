@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from .credentials import Available, CredentialLease, CredentialResolver
 from .resources import CancellationToken, native_issued
 from .values import Record, InvalidData
+from .wire_evidence import WireEvidence
 
 
 class WireFailure(Exception):
@@ -149,16 +150,17 @@ class _Reader:
 
 class ChatTransport:
     """Fixed endpoint and reference-bound transport; one actual consumer at a time."""
-    def __init__(self, settings: Record, resolver: CredentialResolver, monotonic: Callable[[], float]):
+    def __init__(self, settings: Record, resolver: CredentialResolver, monotonic: Callable[[], float], *, evidence: WireEvidence|None=None):
         from companion_memory.configuration.text_validation import validate_transport
         validate_transport(settings)
-        if type(resolver) is not CredentialResolver or not callable(monotonic):
+        if type(resolver) is not CredentialResolver or not callable(monotonic) or evidence is not None and type(evidence) is not WireEvidence:
             raise InvalidData()
         parsed = urlsplit(cast(str, settings['origin']))
         self._endpoint = _Endpoint(cast(str, parsed.hostname), 443,
             cast(str, settings['base_path']) + cast(str, settings['endpoint_path']), True, ssl.create_default_context())
         self._settings, self._resolver, self._monotonic = settings, resolver, monotonic
         self._slot = threading.Lock()
+        self._evidence=evidence
 
     @classmethod
     def controlled_loopback(cls, settings: Record, resolver: CredentialResolver, monotonic: Callable[[], float],
@@ -179,6 +181,12 @@ class ChatTransport:
 
     def exchange(self, body: bytes, deadline: float, cancellation: CancellationToken) -> WireObservation:
         """Perform one POST; only full framed responses return bounded raw bytes."""
+        if self._evidence is not None:self._evidence.request(body)
+        result=self._exchange(body,deadline,cancellation)
+        if self._evidence is not None:self._evidence.response(result.state,result.status,result.body,result.reason)
+        return result
+
+    def _exchange(self, body: bytes, deadline: float, cancellation: CancellationToken) -> WireObservation:
         if (type(body) is not bytes or len(body) > 131072 or not body
                 or type(deadline) not in (float, int) or not math.isfinite(deadline)
                 or not native_issued(cancellation, CancellationToken)):
@@ -205,10 +213,15 @@ class ChatTransport:
             remaining = deadline - self._monotonic()
             if remaining <= 0 or cancellation.cancelled:
                 raise TimeoutError()
-            connection.settimeout(min(remaining, cast(int, self._settings['connect_timeout_ms']) / 1000))
+            connect_deadline = min(deadline, self._monotonic() + cast(int, self._settings['connect_timeout_ms']) / 1000)
+            connection.settimeout(max(0.0, connect_deadline - self._monotonic()))
             connection.connect(address)
             if endpoint.tls:
                 assert endpoint.context is not None
+                remaining = connect_deadline - self._monotonic()
+                if remaining <= 0 or cancellation.cancelled:
+                    raise TimeoutError()
+                connection.settimeout(remaining)
                 connection = endpoint.context.wrap_socket(connection, server_hostname=endpoint.host)
             reader = _Reader(connection, self._settings, deadline, self._monotonic, cancellation)
             reader.check()

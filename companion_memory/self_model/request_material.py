@@ -14,7 +14,7 @@ from companion_memory.persistence.text_records import digest,isolate_record
 from companion_memory.memory.formats import record
 from companion_memory.memory.initial_self import isolate_initial_self
 from companion_memory.cognition.text_context import BINDING,normalized_request_digest
-from companion_memory.cognition.text_resources import PERSONA_INSTRUCTIONS,output_schema,resource_digest
+from companion_memory.cognition.text_resources import business_instructions,output_schema,resource_digest,prompt_resource
 from companion_memory.provider.chat_protocol import ChatBinding,encode_request
 from companion_memory.provider.service import derived_id
 from companion_memory.provider.values import freeze
@@ -39,7 +39,7 @@ def request_material(configuration: StoredTextConfiguration,initial: object,run_
     if (value['database_id'],value['config_snapshot_id'])!=(configuration.database_id,configuration.snapshot_id):raise InvalidValue()
     settings=configuration.candidate.text.record('self_model.initial_persona')
     generation_config=configuration.candidate.text.record('provider.generation')
-    if (settings['prompt_digest']!=resource_digest(PERSONA_INSTRUCTIONS.encode()) or settings['schema_digest']!=resource_digest(output_schema('PERSONA'))
+    if (settings['prompt_digest']!=resource_digest(prompt_resource('PERSONA',cast(str,generation_config['model_id']))) or settings['schema_digest']!=resource_digest(output_schema('PERSONA'))
             or settings['transform_digest']!=resource_digest(PERSONA_TRANSFORM_RESOURCE)):raise InvalidValue()
     from companion_memory.configuration import PresentValue
     from companion_memory.configuration.resolution_results import ResolutionOk
@@ -51,9 +51,9 @@ def request_material(configuration: StoredTextConfiguration,initial: object,run_
     account=record(cast(tuple[Value,...],account_state.value)[0]);profile=record(cast(tuple[Value,...],profile_state.value)[0])
     partial_binding={'profile_id':profile['profile_id'],'config_snapshot_id':configuration.snapshot_id,
         'profile_revision':derived_id('profile',configuration.snapshot_id,cast(str,profile['profile_id'])),'price_revision':record(account['price'])['revision_ref'],
-        'protocol':'OPENAI_CHAT_COMPLETIONS','model_id':profile['model_id'],'capability_evidence_ref':generation_config['capability_evidence_ref'],
+        'protocol':profile['wire_protocol'],'model_id':profile['model_id'],'capability_evidence_ref':generation_config['capability_evidence_ref'],
         'billing_evidence_ref':generation_config['billing_evidence_ref']}
-    system=PERSONA_INSTRUCTIONS+'\nGeneration goal:\n'+cast(str,settings['generation_goal'])+'\nSupervision instructions:\n'+cast(str,settings['supervision_prompt'])
+    system=business_instructions('PERSONA',cast(str,generation_config['model_id']))+'\nGeneration goal:\n'+cast(str,settings['generation_goal'])+'\nSupervision instructions:\n'+cast(str,settings['supervision_prompt'])
     if len(system.encode())>4096:raise InvalidValue()
     resources={name:settings[name] for name in ('prompt_ref','prompt_digest','schema_ref','schema_digest','transform_ref','transform_digest')}
     user=cast(Value,freeze({'initial_input':value,'identity':{'database_id':configuration.database_id,'instance_id':value['instance_id'],

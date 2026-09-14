@@ -69,7 +69,7 @@ class TextContentTransactions:
         binding=record(context.context['model_binding'])
         expected={'profile_id':self.profile['profile_id'],'config_snapshot_id':self.configuration.snapshot_id,
             'profile_revision':derived_id('profile',self.configuration.snapshot_id,cast(str,self.profile['profile_id'])),
-            'price_revision':record(self.account['price'])['revision_ref'],'protocol':'OPENAI_CHAT_COMPLETIONS','model_id':self.profile['model_id'],
+            'price_revision':record(self.account['price'])['revision_ref'],'protocol':self.profile['wire_protocol'],'model_id':self.profile['model_id'],
             'capability_evidence_ref':settings['capability_evidence_ref'],'billing_evidence_ref':settings['billing_evidence_ref']}
         if any(binding[name]!=value for name,value in expected.items()) or any(record(context.context['resources'])[name]!=settings[name]
                 for name in ('prompt_ref','prompt_digest','schema_ref','schema_digest','transform_ref','transform_digest')):raise InvalidValue()
@@ -133,7 +133,7 @@ class TextContentTransactions:
         if values['readable_objects'] or values['readable_subjects']:raise InvalidValue()
         source=decode_source(cast(str,batch['manifest']))
         context=self.original(uow,source,work,decode_content(cast(str,work['model_binding']).encode(),8192))
-        authorization=learning_authorizations(cast(str,context.context['system_text']))
+        authorization=learning_authorizations(cast(str,context.context['system_text']),self.chat.requested_model)
         return ApplyScope(self.assembly.instance_id,cast(str,candidate.manifest['candidate_id']),cast(str,batch['batch_id']),
             frozenset(cast(str,record(raw)['object_id']) for raw in sequence(record(context.context['user'])['related'])),
             frozenset(cast(str,record(raw)['subject_id']) for raw in sequence(authorization['subjects'])),

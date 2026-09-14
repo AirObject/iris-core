@@ -38,7 +38,7 @@ class ChatBinding:
     schema_bytes: bytes
 
     def __post_init__(self) -> None:
-        if (self.requested_model != 'ark-code-latest' or type(self.expected_models) is not tuple
+        if (self.requested_model not in ('ark-code-latest','MiniMax-M3','deepseek-flash') or type(self.expected_models) is not tuple
                 or not 1 <= len(self.expected_models) <= 8
                 or any(not is_identifier(v) for v in self.expected_models)
                 or len(set(self.expected_models)) != len(self.expected_models)
@@ -49,6 +49,8 @@ class ChatBinding:
                 or type(self.schema_bytes) is not bytes or len(self.schema_bytes) > 12288):
             raise InvalidData()
         if hashlib.sha256(self.schema_bytes).hexdigest() != self.schema_digest:
+            raise InvalidData()
+        if self.requested_model in ('MiniMax-M3','deepseek-flash') and (self.expected_models!=(self.requested_model,) or self.resolved_model is not None):
             raise InvalidData()
         decode_wire(self.schema_bytes, 12288)
 
@@ -76,6 +78,12 @@ def encode_request(payload: object, binding: ChatBinding) -> bytes:
         if set(message) != {'role', 'text'} or message['role'] != role:
             raise InvalidData()
         wire.append({'role': role.lower(), 'content': _text(message['text'], limit)})
+    if binding.requested_model == 'deepseek-flash':
+        from .deepseek_protocol import encode
+        return encode(wire,binding.schema_bytes)
+    if binding.requested_model == 'MiniMax-M3':
+        from .minimax_protocol import encode
+        return encode(wire,binding.schema_bytes)
     result = as_record(freeze({'model': binding.requested_model, 'messages': wire,
         'max_tokens': 2048, 'n': 1, 'stream': False,
         'response_format': {'type': 'json_schema', 'json_schema': {'name': binding.schema_name,
@@ -177,6 +185,18 @@ def validate_structured_result(value: object, binding: ChatBinding) -> Record:
 
 
 def decode_response(raw: bytes, binding: ChatBinding) -> ChatObservation:
+    """Dispatch only explicitly bound supplier protocols."""
+    if type(binding) is not ChatBinding:raise InvalidData()
+    if binding.requested_model=='deepseek-flash':
+        from .deepseek_protocol import decode
+        return decode(raw,binding)
+    if binding.requested_model=='MiniMax-M3':
+        from .minimax_protocol import decode
+        return decode(raw,binding)
+    return _decode_response(raw,binding)
+
+
+def _decode_response(raw: bytes, binding: ChatBinding) -> ChatObservation:
     """Validate the whole response; refusals and partial text never become output."""
     if type(binding) is not ChatBinding:
         raise InvalidData()

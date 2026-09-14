@@ -102,10 +102,12 @@ def completion_in_transaction(service: ProviderService, port: ResultOwnerPort, u
             if attempt is not None:
                 reservation = _read(service,uow,'reservations',request_id,scope)
                 usage = as_record(attempt['usage'])
+                from .usage_only import continuation_ready
+                trial=usage.get('format_version')==3 and usage.get('billing_mode')=='USAGE_ONLY_TRIAL'
                 if (attempt['state'] not in ('COMPLETED','NOT_SENT') or reservation is None
-                        or reservation['cost_complete'] is not True or usage['cost_complete'] is not True
+                        or reservation['cost_complete']!=usage['cost_complete'] or not continuation_ready(usage)
                         or any(reservation[name] != 0 for name in ('held_atoms','quota_reserved','quota_held'))
-                        or usage['quota_held'] != 0 or usage['quota_known'] is None):
+                        or usage['quota_held'] != 0 or usage['quota_known'] is None and not trial):
                     return Failed(error('RESOURCE_BUSY','recover_result','state','ADMISSION_BUSY'))
             profile = service._profiles[cast(str,request['profile_id'])]
             account = service._accounts[cast(str,profile['account_id'])]

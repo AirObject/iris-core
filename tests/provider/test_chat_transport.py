@@ -21,14 +21,26 @@ from tests.text_learning.configuration_support import inputs
 
 @contextmanager
 def server(response: bytes, *, context: ssl.SSLContext | None = None,
-           entered: threading.Event | None = None, release: threading.Event | None = None):
+           entered: threading.Event | None = None, release: threading.Event | None = None,
+           release_timeout: float = 3):
     listener = socket.socket()
-    listener.bind(('127.0.0.1', 0)); listener.listen(2); listener.settimeout(3)
+    listener.bind(('127.0.0.1', 0)); listener.listen(2); listener.settimeout(.1)
     requests: list[bytes] = []
     failures: list[Exception] = []
+    stopped=threading.Event()
     def run():
         try:
-            connection, _ = listener.accept()
+            # Host initialization may precede a send, or legitimately send nothing.
+            # Keep admission alive until explicit fixture cleanup, without treating
+            # an idle listener as a transport timeout or manufacturing a request.
+            while not stopped.is_set():
+                try:
+                    connection, _ = listener.accept();break
+                except socket.timeout:continue
+                except OSError:
+                    if stopped.is_set():return
+                    raise
+            else:return
             with connection:
                 connection.settimeout(3)
                 if context is not None:
@@ -47,7 +59,7 @@ def server(response: bytes, *, context: ssl.SSLContext | None = None,
                         body += block
                     requests.append(headers + b'\r\n\r\n' + body)
                     if entered is not None: entered.set()
-                    if release is not None: release.wait(3)
+                    if release is not None: release.wait(release_timeout)
                     connection.sendall(response)
                 finally:
                     connection.close()
@@ -59,7 +71,7 @@ def server(response: bytes, *, context: ssl.SSLContext | None = None,
         yield listener.getsockname()[1], requests, failures
     finally:
         if release is not None: release.set()
-        listener.close(); worker.join(4)
+        stopped.set();listener.close(); worker.join(4)
         if worker.is_alive(): raise AssertionError('Loopback server retained a live worker.')
 
 

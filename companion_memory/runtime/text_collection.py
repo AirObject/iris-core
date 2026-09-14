@@ -82,13 +82,13 @@ class TextContextCollection:
                 'event':decode_content(cast(str,payload[0]['body']).encode(),r.settings.integer('ingress.event_max_bytes'))})
         if time.monotonic()>=deadline:raise OwnerFailure('TIMEOUT','state','DEADLINE_EXCEEDED')
         resources=text.configuration.candidate.text.record('provider.generation')
-        context={'context_version':1,'system_text':render_learning_instructions(subjects,scope.worlds),
+        context={'context_version':1,'system_text':render_learning_instructions(subjects,scope.worlds,cast(str,resources['model_id'])),
             'user':{'members':members,'persona':current.value,'related':related,'identity':{'database_id':text.configuration.database_id,'instance_id':a.instance_id,
                 **{name:source[name] for name in ('batch_id','run_id','source_id','config_snapshot_id')}}},
             'resources':{name:resources[name] for name in ('prompt_ref','prompt_digest','schema_ref','schema_digest','transform_ref','transform_digest')},
             'model_binding':{'profile_id':text.profile['profile_id'],'config_snapshot_id':text.configuration.snapshot_id,
                 'profile_revision':derived_id('profile',text.configuration.snapshot_id,cast(str,text.profile['profile_id'])),
-                'price_revision':record(text.account['price'])['revision_ref'],'protocol':'OPENAI_CHAT_COMPLETIONS','model_id':text.profile['model_id'],
+                'price_revision':record(text.account['price'])['revision_ref'],'protocol':text.profile['wire_protocol'],'model_id':text.profile['model_id'],
                 'capability_evidence_ref':resources['capability_evidence_ref'],'billing_evidence_ref':resources['billing_evidence_ref']}}
         operation={'owner_namespace':'runtime','operation_kind':'stage_learning_context','scope_id':a.instance_id,'operation_key':key}
         reference=r.memory.read_grant_reference(scope.port)

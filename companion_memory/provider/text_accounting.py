@@ -21,6 +21,9 @@ def prices(account: Record) -> TokenPrices:
 
 def liability(account: Record, profile: Record) -> tuple[int, int]:
     """Money and independent subscription quota reserved for a single attempt."""
+    if account['billing_mode'] == 'USAGE_ONLY_TRIAL':
+        if account['cost_limit_atoms']!=0 or account['quota'] is not None:raise InvalidData()
+        return 0,0
     if account['billing_mode'] == 'TOKEN_METERED':
         return reserve_tokens(quantity(profile['max_input_units']), quantity(profile['max_output_units']), prices(account)), 0
     return quantity(as_record(account['price'])['per_attempt_money_bound']), quantity(as_record(account['quota'])['per_attempt_bound'])
@@ -31,6 +34,17 @@ def normalize(observation: UsageObservation, account: Record, profile: Record, r
     """Build bounded UsageV2 independently of output validity and HTTP success."""
     if type(observation) is not UsageObservation:
         raise InvalidData()
+    if account['billing_mode']=='USAGE_ONLY_TRIAL':
+        from .usage_only import normalize as usage_only
+        if reserved!=0:raise InvalidData()
+        return usage_only(observation,account,profile,not_sent=not_sent)
+    deepseek=profile['wire_protocol']=='DEEPSEEK_CHAT_JSON_V1'
+    original_raw=observation.raw_usage
+    if deepseek:
+        # The estimator consumes the hit count; the persisted raw alias is separate.
+        raw={k:v for k,v in observation.raw_usage.items() if k not in ('prompt_cache_hit_tokens','prompt_cache_miss_tokens')}
+        raw['cached_tokens']=observation.fields['cache_read_tokens']
+        observation=UsageObservation(observation.fields,MappingProxyType(raw),observation.valid,observation.billing_covered)
     money, quota = liability(account, profile)
     if reserved not in (0, money) or reserved != money and not not_sent:
         raise InvalidData()
@@ -71,7 +85,7 @@ def normalize(observation: UsageObservation, account: Record, profile: Record, r
             'price_numerator': None, 'price_denominator': None, 'cost_atoms': estimated}))
     complete = bool(covered and estimated is not None)
     subtotal = estimated if complete else 0
-    return as_record(freeze({'format_version': 2, 'fields': fields, 'raw_usage': observation.raw_usage,
+    result=as_record(freeze({'format_version': 2, 'fields': fields, 'raw_usage': observation.raw_usage,
         'source': 'LOCALLY_ESTIMATED' if estimated is not None else 'UNAVAILABLE',
         'coverage': 'COMPLETE' if covered else 'PARTIAL' if any(v is not None for v in fields.values()) else 'UNAVAILABLE',
         'cost_complete': complete, 'known_cost_atoms': estimated if complete else None,
@@ -81,6 +95,10 @@ def normalize(observation: UsageObservation, account: Record, profile: Record, r
         'valid': valid, 'cost_disagreement': False, 'currency': account['currency'], 'atom_scale': account['atom_scale'],
         'billing_mode': account['billing_mode'], 'quota_known': 0 if not_sent or quota == 0 else None,
         'quota_held': 0 if not_sent else quota}, 4096, owned=True))
+    if deepseek:
+        from .deepseek_usage import normalized
+        return normalized(result,original_raw,not_sent=not_sent)
+    return result
 
 
 def check_budget(budget: Record, amount: int) -> str | None:
@@ -121,10 +139,11 @@ def settle_budget(budget: Record, reservation: Record, usage: Record) -> Record:
         if old > total:
             raise InvalidData()
         return add(total - old, new)
+    from .usage_only import continuation_ready
     return revise(budget,
         known_subtotal_atoms=replace_total('known_subtotal_atoms', quantity(reservation['known_subtotal_atoms']), quantity(usage['known_subtotal_atoms'])),
         held_atoms=replace_total('held_atoms', quantity(reservation['held_atoms']), quantity(usage['held_atoms'])),
         quota_reserved=replace_total('quota_reserved', quantity(reservation['quota_reserved']), 0),
         quota_known=replace_total('quota_known', quantity(reservation['quota_known']), quantity(usage['quota_known'] or 0)),
         quota_held=replace_total('quota_held', quantity(reservation['quota_held']), quantity(usage['quota_held'])),
-        risk_state='RESERVATION_OVERRUN' if not usage['cost_complete'] and any(v is not None for v in as_record(usage['fields']).values()) else budget['risk_state'])
+        risk_state='RESERVATION_OVERRUN' if not continuation_ready(usage) and any(v is not None for v in as_record(usage['fields']).values()) else budget['risk_state'])

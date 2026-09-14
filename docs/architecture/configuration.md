@@ -38,6 +38,8 @@
 
 配置数据库可用前的启动项（数据目录、秘密根引用、基本监听）由最小bootstrap契约读取；它们仍归入统一Schema与管理展示。配置文件导入、CLI和Web走相同的校验/审计入口；磁盘文件被手工改动不得触发无法追溯的旁路热修改。
 
+默认时区的已批准产品规则及尚未实现的边界，统一见[Web初始化引导](../product/operations-and-management.md#initial-default-timezone)；本节不新增参数定义或激活能力。
+
 <a id="source-line-837"></a>
 
 ### 11.2 参数注册表

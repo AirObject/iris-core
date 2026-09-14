@@ -30,6 +30,11 @@ def account(value: object) -> Record:
         encode_value(freeze_value(ACCOUNT, result, owned=True), 4096)
     except InvalidValue:
         raise InvalidData() from None
+    if result['attempt_limit'] not in (14,16):raise InvalidData()
+    if result['billing_mode']=='USAGE_ONLY_TRIAL':
+        price=as_record(result['price'])
+        if result['cost_limit_atoms']!=0 or result['quota'] is not None or any(price[k] is not None for k in ('input_atoms_per_million','cached_atoms_per_million','output_atoms_per_million','per_attempt_money_bound')):raise InvalidData()
+    elif result['cost_limit_atoms']==0:raise InvalidData()
     return result
 
 
@@ -39,6 +44,9 @@ def profile(value: object) -> Record:
         encode_value(freeze_value(PROFILE, result, owned=True), 2048)
     except InvalidValue:
         raise InvalidData() from None
+    protocol={'ark-code-latest':'OPENAI_CHAT_COMPLETIONS','MiniMax-M3':'MINIMAX_CHAT_JSON_V1','deepseek-flash':'DEEPSEEK_CHAT_JSON_V1'}[str(result['model_id'])]
+    if (result['wire_protocol']!=protocol or (result['billing_mode']=='USAGE_ONLY_TRIAL')!=(result['model_id']=='MiniMax-M3')
+            or result['model_id']=='deepseek-flash' and result['billing_mode']!='TOKEN_METERED'):raise InvalidData()
     if result['dimensions'] is not None or result['space_id'] is not None:
         raise InvalidData()
     return result
@@ -47,6 +55,12 @@ def profile(value: object) -> Record:
 def validate_usage(value: object, *, not_sent: bool = False) -> Record:
     """Check complete UsageV2, preserving unknown quantities and rational items."""
     item = exact(freeze(value, 4096, owned=True), USAGE_NAMES)
+    if item['format_version']==4:
+        from .deepseek_usage import validate as validate_deepseek
+        return validate_deepseek(item,not_sent=not_sent)
+    if item['format_version']==3:
+        from .usage_only import validate_usage as validate_trial
+        return validate_trial(item,not_sent=not_sent)
     integer(item['format_version'], minimum=2, maximum=2)
     enum(item['currency'], ('CNY', 'USD')); integer(item['atom_scale'], minimum=1000000, maximum=1000000)
     enum(item['billing_mode'], ('TOKEN_METERED', 'SUBSCRIPTION'))
@@ -149,6 +163,10 @@ def validate(table: str, value: Record) -> None:
     identifier(value['object_id']); integer(value['revision'])
     for name in ('created_at', 'updated_at'):
         if name in value: timestamp(value[name])
+    if table=='cost_items' and value['format_version']==3:
+        from .usage_only import validate_item
+        validate_item(value)
+        return
     if 'format_version' in value: integer(value['format_version'], minimum=2, maximum=2)
     if table == 'requests':
         for name in ('caller_module', 'caller_scope', 'operation_key', 'result_owner', 'profile_id', 'config_snapshot_id', 'profile_revision', 'price_revision'):
@@ -170,14 +188,18 @@ def validate(table: str, value: Record) -> None:
             p, a = profile(evidence['profile']), account(evidence['account'])
             if (p['account_id'] != a['account_id'] or p['account_id'] != value['account_id'] or p['profile_id'] != value['profile_id']
                     or as_record(a['price'])['revision_ref'] != value['price_revision']): raise InvalidData()
+            if a['attempt_limit']!=(14 if p['model_id']=='deepseek-flash' else 16):raise InvalidData()
+            if p['model_id']=='deepseek-flash' and (a['billing_mode']!='TOKEN_METERED' or a['currency']!='CNY'):raise InvalidData()
         elif evidence['account'] is not None or value['account_id'] is not None: raise InvalidData()
     elif table == 'attempts':
         for name in ('request_id', 'account_id', 'profile_id', 'execution_owner_id'): identifier(value[name])
         integer(value['ordinal'], minimum=1, maximum=1); integer(value['evidence_revision']); integer(value['adapter_duration_ms'], True)
         enum(value['state'], ('PREPARED', 'COMPLETED', 'NOT_SENT', 'REMOTE_RESULT_UNKNOWN')); enum(value['logical_outcome'], TERMINALS, True)
-        enum(value['capability'], ('GENERATION',)); enum(value['wire_protocol'], ('OPENAI_CHAT_COMPLETIONS',))
+        enum(value['capability'], ('GENERATION',)); enum(value['wire_protocol'], ('OPENAI_CHAT_COMPLETIONS','MINIMAX_CHAT_JSON_V1','DEEPSEEK_CHAT_JSON_V1'))
         boolean(value['confirmed_started'], True); boolean(value['ever_unknown']); _cause(value['first_error'])
         identifier(value['handoff_id'], True); checksum(value['result_fingerprint'], True); validate_usage(value['usage'], not_sent=value['state'] == 'NOT_SENT')
+        expected_usage={'OPENAI_CHAT_COMPLETIONS':2,'MINIMAX_CHAT_JSON_V1':3,'DEEPSEEK_CHAT_JSON_V1':4}[str(value['wire_protocol'])]
+        if as_record(value['usage'])['format_version']!=expected_usage:raise InvalidData()
         _cause(value['terminal_error'])
         if value['state'] in ('PREPARED','REMOTE_RESULT_UNKNOWN'):
             if value['terminal_error'] is not None or value['logical_outcome'] is not None:raise InvalidData()

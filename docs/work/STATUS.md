@@ -1,5 +1,7 @@
 # 实际工作状态
 
+2026-09-14真实文本供应商适配与受控试验收尾：用户已授权监督者提交上阶段产物。578份受测文件与最终有效证据一致，本轮仅核对版本、差异和提交范围，复用执行者验证，没有重跑项目。工程及试验产物提交不表示学习质量通过；[质量未达标及暂缓决定](DEFERRED_ISSUES.md#text-learning-quality)保持，后续验证按[统一口径](../CODING_STANDARDS.md#validation-environment)。当前进度见[CURRENT_TASK](CURRENT_TASK.md)。
+
 仅在验收节点更新业务里程碑；2026-09-11用户审核通过本次运行整体交付及修复并授权本地提交。2026-09-09文档唯一正文迁移不新增业务验收，现行维护关系见[INDEX](../INDEX.md)。前两项为2026-09-09验收；2026-09-10用户确认第三项、日志内部组件及完整控制台与文件运行诊断服务验收，包含截点报告、饱和计数及临时目录修复；同日用户进一步验收持久化配置校验、事务基础、幂等恢复与同事务审计整体阶段并授权独立本地提交。表中为各里程碑对应版本的验证依据，不代替当前工作区检查。
 
 | 已验收里程碑 | 独立本地提交 | 当时实际验证依据 |
@@ -17,8 +19,9 @@
 | 正式记忆、完整来源与媒体持久化闭环：上一阶段已获监督技术验收，用户已手动提交；包含完成通知与宿主关闭收尾修复 | `f89cbbe773b119a7e683367410f17eda4538739a`（父提交`6a41859fdfc8c0f80305e792221e19fdab2a9fa2`） | 监督核对164文件提交、干净工作区及377份受测文件一致；有效证据`/private/tmp/iris-shutdown-validation-iybs3qfe`，聚合指纹`e2d0ec33eab889726db283d339658b409015405d08cf3419b1c9690be5d8bbdb`。执行者680项unittest通过、全量Pyright 1.1.413覆盖320份Python零诊断；Pylance未验证。本轮仅记录收尾，未重跑；真实本地存储／媒体，Provider仍模拟、候选与梦境参与者仍显式合成，未验证真实供应商或Linux／Docker。 |
 | 本地信息获取与使用反馈闭环：按用户批准调整后的[F口径](../architecture/local-information-feedback.md#f-qualification)获监督技术验收；用户已审核通过并授权本地提交 | `8bc948c1822afb931625b77563df710fc9bbf20d`（父提交`f89cbbe773b119a7e683367410f17eda4538739a`） | 验收证据绑定445份原受测集合`6c7c30243327775381a4040084815eb15386b37f888ccbf312777be1bb8b3fa3`（收尾外部`.gitignore`变更及当前快照另见CURRENT_TASK）；[关闭与恢复最终全量及复用链](/private/tmp/iris-close-recovery-roizxp0d/report.md)、[两平台词项F材料](/private/tmp/iris-lexical-qualification-ogol92tv/report.md)、[用户确认73组正式相关性](/private/tmp/iris-confirmed-relevance-7hd78kj8/report.md)、[四边界更正](/private/tmp/iris-boundary-correction-cmdf82y4/report.md)。旧报告保持其当时审查状态；本行记录按调整口径的技术验收，未重跑全量。ACTUAL本地存储／回环HTTP／两平台恢复，模型仍SIMULATED；最大合法词项与4096可达性仍缺最大压力资格，P/X及长期负载未执行，Pylance未验证。 |
 | 文本学习与首次persona发布：监督已通过工程实现及本地验证的技术验收，用户已授权本地提交；含独立文本配置、Provider传输／账本、完整context与持久候选、记忆／来源原子终结、首次persona确认与发布、恢复和本地查询 | 本记录所属提交（父提交`8bc948c1822afb931625b77563df710fc9bbf20d`） | [最终验证](/private/tmp/iris-text-final-error-tlgoa1tb/report.md)：macOS／Linux各890项unittest通过，Pyright1.1.413覆盖534份Python零诊断；编译、JS、离线锁、容量实物及完整差异／链接检查通过。提交收尾核对542份受测文件指纹`1001c775c3aa5c27b124b3cfc616ab9d157e02a5e83aa6f4e9e9af28fefbbefb`一致，仅更新记录并复用有效检查。真实SQLite／文件、受控回环HTTP/TLS及跨进程恢复成立；真实供应商效果、用户质量审核和Pylance分别未验证，原最大词项资格、P/X及长期负载限制保持。[提交收尾证据](/private/tmp/iris-text-commit-1dv0scoc/report.md)记录实际提交及文件范围。 |
+| MiniMax／DeepSeek真实文本适配与受控试验：受控主体登记、凭据解析、独立协议／计量、原候选审核发布、学习及恢复工具；用户授权提交工程与试验产物，学习质量未通过且已暂缓 | 本记录所属提交（父提交`c2be9327b80be3b3ccb12262af7ff15c4539ea2d`） | 最终578份受测文件／570份Python指纹`16b7d88d466e9549d800604140a9d9de353b2534563628492a331b1139de0582`；执行者最终macOS／Linux各17项关联测试通过，全量锁定Pyright1.1.413零诊断，编译及差异检查通过，未机械重跑全量unittest。真实发送按[集中交付报告](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/report-complete.md)分版本记录，不能外推为全部请求均使用最终代码。DeepSeek14槽完成，两平台persona已发布，正式记忆5／12条；恢复0新增发送。旧MiniMax UNKNOWN与外层保守责任保持；[正式质量结果](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/quality-final/report.md)未达标，Pylance、生产及最大容量资格未验证。默认时区仅产品决定获批，工程未实现。 |
 
-本次记录文本学习工程技术验收及提交收尾；当前授权与停止点见[CURRENT_TASK](CURRENT_TASK.md)。监督与执行由用户手动衔接，不使用子代理。
+本次记录真实文本试验工程收尾及用户提交授权；当前授权与停止点见[CURRENT_TASK](CURRENT_TASK.md)。监督与执行由用户手动衔接，不使用子代理。
 
 上述配置与运行诊断里程碑的历史验证使用Python 3.12.13及既有uv环境；完整命令及版本依据见下方Git定位。前两项没有运行第三方类型检查器，第三项已执行项目锁定Pyright；工具链检查不代表完整业务能力通过。
 

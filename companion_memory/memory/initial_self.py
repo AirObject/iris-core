@@ -4,6 +4,9 @@ This format never derives a person or label from generated text. The memory
 transaction must register the actual SELF and its input together, exactly once.
 """
 from types import MappingProxyType
+from dataclasses import replace
+from companion_memory.persistence import StatementDefinition
+from companion_memory.persistence.owned_statements import StatementCatalog
 from companion_memory.persistence.schema import Field, RecordSchema, BoundedTextSchema, ScalarSchema, Value, InvalidValue
 from companion_memory.persistence.text_records import BASE, ID, REVISION, DIGEST, OPERATION, RecordTable, IndexSpec, record_catalog, isolate_record, digest
 
@@ -28,5 +31,10 @@ def isolate_initial_self(value: object) -> MappingProxyType[str,Value]:
 
 def initial_self_catalog():
     """Declare immutable input and the two actual uniqueness constraints."""
-    return record_catalog('memory',3,(RecordTable('initial_self_inputs',8192,False,(
+    original=record_catalog('memory',3,(RecordTable('initial_self_inputs',8192,False,(
         IndexSpec('by_self',('self_subject_id',)),IndexSpec('by_operation',('operation.operation_key',),point_read=False))),))
+
+    probe=StatementDefinition("SELECT subject_id FROM memory_subjects WHERE scope_id=:scope_id AND kind!='SELF' LIMIT 1",
+        RecordSchema(()),RecordSchema((Field('subject_id',ID),)),False)
+    return StatementCatalog(replace(original.definition,statements=original.definition.statements+(probe,)),
+        original.statements+(('initial_nonself_exists',probe),))

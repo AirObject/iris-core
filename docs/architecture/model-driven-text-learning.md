@@ -1,8 +1,10 @@
 # 真实模型驱动的文本学习闭环
 
-**状态：用户已批准六组推荐、首次persona、最多三代请求、专注期初始化管理例外、独立配置边界及费用取整方案；授权文档定稿、整阶段实现、自查、测试与范围内修复。** 本文“推荐”表示已采纳方案；未采纳替代、供应商事实、实际费用与资格证据、质量阈值及范围外事项保持各自状态。实施、技术验收、提交授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)，已验收里程碑见[STATUS](../work/STATUS.md)。批准来源为用户核验的主草案SHA256 `83dffe3d015ca50e092a5396daf6ca31c08ae1369e283b4b16dc4f1e7ffe6a21`。
+**状态：用户已批准六组推荐、首次persona、最多三代请求、专注期初始化管理例外、独立配置边界及费用取整方案；授权文档定稿、整阶段实现、自查、测试与范围内修复。** 本文“推荐”表示已采纳方案；未采纳替代、供应商事实、实际费用与资格证据及范围外事项保持各自状态；用户已批准§8的本阶段质量门槛。实施、技术验收、提交授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)，已验收里程碑见[STATUS](../work/STATUS.md)。批准来源为用户核验的主草案SHA256 `83dffe3d015ca50e092a5396daf6ca31c08ae1369e283b4b16dc4f1e7ffe6a21`。
 
 ## 1. 目标、范围与集中批准决定
+
+后续状态导航：用户已批准[学习质量暂缓](../work/DEFERRED_ISSUES.md#text-learning-quality)，后续验证遵循[统一检查口径](../CODING_STANDARDS.md#validation-environment)。本契约历史试验、原阈值及原始证据保持原解释；当前工作见[CURRENT_TASK](../work/CURRENT_TASK.md)。
 
 形成可独立验收的链路：真实文本输入 → 按入口冻结完整材料 → 真实Provider生成 → 本地校验及持久候选 → 正式记忆／完整来源同事务终结 → 本地查询 → 跨进程恢复。这里“真实”指实际输入来源、供应商执行证据和对象所有者效果；不保证模型陈述为事实，不将格式合法当作学习质量。
 
@@ -10,12 +12,12 @@
 
 | 集中决定（六组推荐已批准） | 推荐与影响 | 未采纳替代／仍缺条件 |
 | --- | --- | --- |
-| 供应商与协议 | 用户已选择OpenAI兼容Chat Completions；连接材料是方舟Coding Plan及`ark-code-latest`。非流式、严格结构化文本方案已批准；仅GENERATION | 协议选择不等于资源适用性确认；账号资格、实际后端身份、结构化能力及费用缺口见§3，不自行换端点／模型 |
+| 供应商与协议 | 用户已选择OpenAI兼容Chat Completions；用户现选择MiniMax Token Plan、`MiniMax-M3`及`https://api.minimax.cn/v1/chat/completions`，替代此前方舟试验选择。非流式、严格结构化文本方案已批准；仅GENERATION | 协议选择不等于资源适用性确认；账号资格、实际后端身份、结构化能力及费用缺口见§3，不自行换端点／模型 |
 | 适配器与重试 | Provider自有标准库HTTPS适配器、每逻辑请求最多1个attempt；无SDK、网关或业务重试 | SDK可减少协议维护，但须另固定版本并关闭重试；本推荐不新增SDK或tokenizer依赖 |
 | 学习动作 | 普通学习首包仅CREATE_MEMORY，0–8项完整候选；主体由可信登记映射，不由模型创建 | 模型修改／删除、关系／目标建议及工具循环待另行批准；既有获准原生维护能力继续保留，不能将本子集称完整认知agent |
 | 首份persona | 纳入有限的一次初始化整理（已知失败后显式最多2次重试见§5.1）：外部初始自我材料 → 真实Provider摘要 → 用户确认候选 → 原子首次发布；缺失时普通学习暂停 | §5新增产品决定已批准。仅要求已有真实persona可减少范围，但现有仓库没有其产生路径；空串、TestPersona或导入自由文本冒充生成发布均不可用 |
 | 格式与装配 | 独立真实文本装配、新配置组合及版本化Provider／候选来源；旧组合原样可恢复，新旧组合双向拒绝 | 不迁移旧库；不改旧SIMULATED／SYNTHETIC记录标签，不把已有94命令／26新增表的实测当新装配实测 |
-| 验证与费用 | §8有限离线协议、实库恢复、两平台受控真实调用和用户质量审核分别验收；真实调用包合计至多16个attempt；金额／订阅额度上限须按方舟实际计费显式供给 | 请求上限方案已批准；实际调用另需授权；当前费用未确认即禁止发送，不是零价或账单保证；无密钥／无出站时只报告本地验证范围 |
+| 验证与费用 | §8有限离线协议、实库恢复、两平台受控真实调用和用户质量审核分别验收；真实调用包合计至多16个attempt；本次MiniMax试验按用户批准只记录用量，试验费用口径¥0（不构成供应商账单结论） | 请求上限与本版合成材料已批准；保留本地完整Schema校验、人工persona审核及结果标注；原生账本未知事实不得改成已结清，无密钥／无出站时只报告本地验证范围 |
 
 既有产品规则只引用：[批次冻结与三终态](../product/batches-and-learning.md)、[来源与记忆](../product/provenance-and-memory.md)、[self与persona](../product/self-and-persona.md)、[内部上下文与成本](context-and-cost.md)。新增细化在本集中契约维护，所属模块只保留导航。
 
@@ -42,28 +44,29 @@
 
 ### 3.1 本地准备与官方依据的边界
 
-上一轮仅提取两个JSON的`capability/provider_name/base_url/endpoint_path/model`标量，未读取、摘要或回显任何`.api-key`，也未改四个本地文件。LLM材料为`GENERATION / volc_llm / https://ark.cn-beijing.volces.com/api/coding/v3 / /chat/completions / ark-code-latest`。2026-09-12用户补充确认：使用**Coding Plan**、请求模型别名为**ark-code-latest**、已配置**Auto**；本轮按用户声明记录，不重新读取准备文件或访问账号。套餐档位／额度、Auto的实际路由集合与各后端版本未供给；用户确认设置不等于已核验服务资格、strict能力或价格。以下官方依据沿用上一轮只读核对，本轮未重新联网验证，无模型或诊断API调用。
+2026-09-13用户改选**MiniMax Token Plan / MiniMax-M3**，本地LLM非秘密白名单为`GENERATION / minimax_llm / https://api.minimax.cn/v1 / /chat/completions / MiniMax-M3`。用户声明已取得本用途的平台许可、速率限制1 rps，并确认平台没有明确承诺strict JSON。凭据内容不进入文档、日志或指纹；embedding材料不读取。本次执行串行，前次实际收尾后至少间隔30秒，不自动重试。
 
-| 核对项 | 已取得依据与尚缺证据 |
+| 核对项 | 当前依据及界限（2026-09-13访问） |
 | --- | --- |
-| Chat协议形状 | 方舟官方SDK声明`messages/model/max_tokens/n/stream/response_format`，与Responses的输入及输出不同；本轮选Chat，不保留Responses参数。[官方请求类型](https://github.com/volcengine/volcengine-python-sdk/blob/master/volcenginesdkarkruntime/types/chat/completion_create_params.py) |
-| 模型及适用范围 | 请求标识保持`ark-code-latest`，Auto已由用户确认配置；不将别名或Auto写成固定后端快照。控制台实际路由集合、后端模型版本、可用地区、非编程文本学习／自建宿主的适用资格仍未验证。官方[套餐概览](https://www.volcengine.com/docs/82379/1925114)、[接入说明](https://www.volcengine.com/docs/82379/1928262)上一轮重定向后无法读取；不据第三方文章判定允许或禁止本用途。需非秘密控制台／官方资格依据或供应商确认；不擅自改为普通按量端点 |
-| 结构化输出 | SDK包含ResponseFormatJSONSchema类型，但不能证明此动态别名支持严格json_schema。[官方Schema类型](https://github.com/volcengine/volcengine-python-sdk/blob/master/volcenginesdkarkruntime/types/shared_params/response_format_json_schema.py) 本推荐要求Chat `response_format.json_schema`且本地完整校验；实际模型支持子集及参数适用性待供给。未证实时PROTOCOL_UNSUPPORTED，不自动退为自由文本／json_object。官方[Chat参考](https://www.volcengine.com/docs/82379/1494384)上一轮无法读取，不能冒称已核实服务端strict |
-| 返回与拒绝 | 官方SDK的choices含stop/length/tool_calls/content_filter/function_call，顶层model、id、usage；不是Responses的status/output数组。moderation_hit_type的violence/severe_violation不等于“敏感信息拒学”，自由拒绝文本亦不作此推断。[官方响应类型](https://github.com/volcengine/volcengine-python-sdk/blob/master/volcenginesdkarkruntime/types/chat/chat_completion.py) |
-| usage | 官方SDK有prompt_tokens/completion_tokens/total_tokens、prompt_tokens_details.cached_tokens及completion_tokens_details.reasoning_tokens；是否由当前Coding路由实际返回、是否含隐藏计价项仍须验证。[官方usage类型](https://github.com/volcengine/volcengine-python-sdk/blob/master/volcenginesdkarkruntime/types/completion_usage.py) |
-| 价格及重试 | 用户确认Coding Plan，但套餐档位／窗口额度、请求折算、超额计价、实际模型价表及网关内部重试保证仍待供给。不能从套餐名称或Auto推定价格／折算数。删除上一版OpenAI token价格、USD10及其单次费用推导。官方SDK有可关闭的客户端重试，对409/429/5xx存在重试分支；这与网关是否重试不同。[官方客户端](https://github.com/volcengine/volcengine-python-sdk/blob/master/volcenginesdkarkruntime/_base_client.py) SDK类型存在不等于账户免费，也不证明网关恰好一次；推荐无SDK，Provider每逻辑请求一attempt、传输与业务不自动重发，远程UNKNOWN保持未知 |
+| 端点、模型与用量 | [MiniMax官方Chat Completions](https://platform.minimax.cn/docs/api-reference/text-chat-openai)确认精确端点、MiniMax-M3、非流式、模型／响应身份及token usage；1M上下文不能独立证明完整协议输入责任上界。未调用模型或账号诊断API |
+| strict输出 | 同页及官方公开OpenAPI没有`response_format/json_schema/strict`声明，用户许可也未明确支持。用户现已批准MiniMax独立JSON prompt协议（§3.3.1），不要求服务端strict证明，也不发送这些字段；本地完整校验继续保留 |
+| 思考及协议差异 | [官方SDK兼容说明](https://platform.minimax.cn/docs/api-reference/text-openai-api)说明M3默认thinking、可输出think标签，max_tokens为旧字段。不能沿用方舟受控夹具证明M3正文可直接按现行JSON Schema解码；尚未定稿的适配不增加任意extra_body |
+| 本次计量口径 | 用户明确Token Plan，只记录usage，费用可按¥0计。该数是**用户指定的试验统计口径**，不是reported_cost、供应商零价或每attempt扣额结清证据；不再要求用户另设金额／套餐额度实值。14标准／至多16共享attempt仍有效，额外2次仍另批。本次例外仅属试验授权，不改既有通用TOKEN_METERED／SUBSCRIPTION账本事实或清除held |
+| 已有适配的边界 | 已验收的方舟固定配置与传输保留用于既有确定性回归；方舟资格、Auto和价格资料不再作为本次MiniMax发送前置。用户已批准M3独立协议、usage-only原生装配与直接首次persona验证；旧待审包保留，新冻结执行包及实际结果见CURRENT_TASK |
 
-以上SDK是读取时master源码，作为协议形状的第一方静态依据，既非安装版本也非Coding Plan所有模型的能力承诺。分别保存请求别名`requested_model_id`、响应原报`reported_model_id`和有独立依据的`resolved_model_id`；响应若仍只给别名则后者为null，不从Auto或请求model猜后端。Auto作为用户确认的外部路由设置记录在能力／费用证据中，不新增请求参数、配置开关或模型ID。发送前证据须覆盖Auto所有允许后端的协议／strict、上下文及计价责任，且满足§7有界允许响应集合；不能只取最便宜或某一后端的上界。集合不能界定或依据不足则暂停真实发送；响应超集合或身份／费用漂移，保留原响应／责任并停止后续请求，不改标旧事实或自动换模型。账号数据保留、地域及用途条件待核实，不沿用OpenAI的store语义。
+本版合成初始自我、监管目标、全部13条H/T/R材料及10个标准命题已由用户冻结确认；原包与审核证据见[CURRENT_TASK](../work/CURRENT_TASK.md)。真实persona发布和最终命题标注仍由用户另行审核，不由执行者代签。
 
 ### 3.2 Chat请求、传输及凭据（已批准）
 
-连接解析将上述base_url与endpoint_path组合为`https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions`；只允许配置绑定的精确HTTPS origin和路径，无任意宿主URL、重定向、代理改写或路径猜测。POST UTF-8 JSON，ensure_ascii=false、C0按JSON转义。请求字段集合恰为`model,messages,max_tokens,n,stream,response_format`：model为当前绑定别名，messages恰SYSTEM／USER两条（线上role为小写system/user，content为文本）；max_tokens=2048、n=1、stream=false；response_format恰`{type:json_schema,json_schema:{name,schema,strict:true}}`。schema为版本化封闭资源，name恰text_learning或initial_persona，按工作角色固定；不是宿主自由字段。该形状以**实际路由支持核实**为发送前置，不能因为本地可编码而发送探测。
+既有已实现方舟适配将base_url与endpoint_path组合为`https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions`；本次MiniMax独立分支见§3.3.1，以下方舟wire形状不适用于MiniMax，不因用户换key而复用方舟能力证明。对任一已核验绑定，只允许配置绑定的精确HTTPS origin和路径，无任意宿主URL、重定向、代理改写或路径猜测。POST UTF-8 JSON，ensure_ascii=false、C0按JSON转义。请求字段集合恰为`model,messages,max_tokens,n,stream,response_format`：model为当前绑定别名，messages恰SYSTEM／USER两条（线上role为小写system/user，content为文本）；max_tokens=2048、n=1、stream=false；response_format恰`{type:json_schema,json_schema:{name,schema,strict:true}}`。schema为版本化封闭资源，name恰text_learning或initial_persona，按工作角色固定；不是宿主自由字段。该形状以**实际路由支持核实**为发送前置，不能因为本地可编码而发送探测。
 
 不发送`text.format/max_output_tokens/background/store/truncation/previous_response_id/conversation`等Responses方案参数；不发送tools、functions、图片、文件、reasoning控制或未明确支持的自由参数。工具权限固定空，收到工具请求明确失败。temperature等未选参数保持协议默认并记录未指定，不宣称模型重跑确定性。若需要禁思考／其他模型参数，先补确切官方依据和固定Schema，不增加任意extra_body。服务端上下文拒绝后不裁掉冻结目标或重发。
 
 标准库HTTPS worker属于Provider，TLS校验主机与证书；DNS至本地结算共用绝对期限。响应体262144、头总16384／100项、块8192字节；累计读取限额不依赖Content-Length可信，只接受identity编码，不自动解压。外层超时不能证明底层socket／DNS或存储I/O结束，尚未结束继续占槽，不能创建替代worker。
 
 `RealGenerationResources`恰绑定原生gate、固定适配器、credential_resolver、时钟、操作完成通知。配置仅持`secret_ref,secret_revision,account_ref`三个安全ID≤128字节；可信外层将引用绑定到受保护资源，凭据不是配置值或模型材料。resolver返回Available(opaque lease≤4096字节)/Unavailable/Revoked/Failed；仅Provider取得lease，撤销先于发送则不发。旧结果本地恢复不解析秘密；不把密钥或密钥摘要用于日志、指纹或审计。借入resolver不得误关，自有lease按实际完成通知释放。
+
+受控Linux启动器可先在原生凭据模块中打开受保护文件描述符，再永久降为固定非root UID；打开时只读元信息，秘密字节仍仅由Provider调用resolver后读取。持有者核对原device／inode、单链接、私有权限及大小；Docker Desktop同一挂载inode的所有者投影只允许原UID或预先固定的接收UID，不接受任意owner变化。启动器只在全部Provider消费者实际结束后关闭自有描述符；恢复入口不建立该绑定。
 
 ### 3.3 规范化与真实计量（已批准）
 
@@ -83,7 +86,7 @@ Chat成功要求恰一个choice、index=0、message.role=assistant、完整非�
 
 usage精确映射prompt_tokens→input_tokens、completion_tokens→output_tokens、total_tokens→total_tokens、cached_tokens→cache_read_tokens、reasoning_tokens→reasoning_tokens。全部精确非负63位整数或null，bool拒绝；total已知须等于input＋output，cache_read≤input、reasoning≤output。缺字段为null，不用字节units补token。细分的provisioned/audio等如存在非零而本包无计价覆盖，保留费用不完整并停止后续发送。白名单raw_usage≤2048，完整UsageV2≤4096；计量独立于正文成败，错误正文不进安全错误。
 
-费用方案由§7闭合配置区分TOKEN_METERED与SUBSCRIPTION：前者保存精确币种／atom尺度、非缓存输入／缓存输入／输出三个互斥单价及责任上界；后者独立保存套餐窗口、供应商请求折算上界和已知额度证据，不能把套餐每请求假换token价格，也不能将订阅额度充足推成金额0。当前两类实际值均未供给；配置结构可以审查，真实发送前必须选定并完整供值，null不会作为零价通过。使用整数微币单位（10^6 atoms/币种单位，CNY或USD显式），三项有理单价以atoms/百万token表达，逐项向上取整作为估算责任，实际账单金额仍null直到有独立证据。
+既有原生费用方案由§7闭合配置区分TOKEN_METERED与SUBSCRIPTION（本次MiniMax的已批准试验统计例外见§3.1及§8，以下不重新要求用户审批金额／套餐额度）：前者保存精确币种／atom尺度、非缓存输入／缓存输入／输出三个互斥单价及责任上界；后者独立保存套餐窗口、供应商请求折算上界和已知额度证据，不能把套餐每请求假换token价格，也不能将订阅额度充足推成金额0。这两类原生方案要求实际值完整，null不会作为零价通过；本次usage-only试验的原生装配未完成前，不伪填这些字段。使用整数微币单位（10^6 atoms/币种单位，CNY或USD显式），三项有理单价以atoms/百万token表达，逐项向上取整作为估算责任，实际账单金额仍null直到有独立证据。
 
 无tokenizer时input_token_estimate=null，request_bytes单列；输入责任上界必须有确切模型／允许路由集合的官方上下文依据，不能沿用上版1,047,576。SUBSCRIPTION预留为明确的per_attempt_quota_bound，并同时持有有证据的金额上界（不能仅靠订阅价格推每次费用）。未知远程／计费责任不释放；16次共享预算不随重启或persona重试重置。没有充分上界时PAUSED_BUDGET/UNBOUNDED_COST，仍可完成离线及本地恢复验证。SDK和网关重试语义未知不能当作max_attempts=1的远端恰好一次证明。
 
@@ -94,6 +97,40 @@ usage精确映射prompt_tokens→input_tokens、completion_tokens→output_token
 修正后的保守责任上界为`R=C(I×max(u,c))+δ+C(O×o)`，其中仅当`I≥2且u>0且c>0`时δ=1，否则δ=0。依据：两个正费用输入分项满足`ceil(a)+ceil(b)≤ceil(a+b)+1`，其合并分子不超过`I×max(u,c)`；无法同时出现两个正分项时无额外取整。输出独立取整；因此全部合法usage均有S≤R，无需推定缓存比例，也不要求证明R为最紧上界。上述反例的输入预留修正为30721。每次prepare前在同一预算事务验证`known_subtotal+held+reserved+R≤cost_limit_atoms`（三类现有责任互斥，本次R尚未计入），才能持有R；结算按原状态机原子转移／保留责任，未完整确认不能释放差额。若供应商尚有未覆盖计费项、Auto路由或重试倍率，则R不是充分责任上界，拒绝新发送，不能用δ替代这些未知费用。
 
 63位规则：数量、费率、每个乘积、C的结果、δ加法、三项和、单请求R、窗口累计金额／quota均须在`0..2^63−1`，bool／负数／float不接受；运算前用除法检查乘积是否越界，用`a≤MAX−b`检查非负加法。C用`q=x div M, r=x mod M, C=q+[r>0]`，不以可能溢出的`x+M−1`取整；即使数学除后可放入63位，超限乘积也拒绝，不依赖大整数或饱和截断使其通过。配置解析及发送预留先验此规则；返回usage超过绑定I/O、费用覆盖失效或结算运算溢出时，保留有界原usage及异常证据，按费用未完整覆盖停止新请求，原预留不释放，超出责任不得伪写成已知完整S。UNKNOWN和原键确认沿原持久状态机，不重算旧价格或重复扣费。
+
+### 3.3.1 MiniMax版本化JSON prompt与usage-only试验（用户已批准）
+
+用户明确批准“MiniMax独立协议调整，key有效，直接发起验证”。固定组合为MiniMax-M3／MINIMAX_CHAT_JSON_V1／JSON_PROMPT_V1／USAGE_ONLY_TRIAL，仅在新配置中同时成立；不能把它拼到方舟或模拟profile。旧TOKEN_METERED、SUBSCRIPTION及服务端strict解释保持。端点固定https://api.minimax.cn/v1/chat/completions，标准库Provider持有实际发送权，不接受任意URL、重试或SDK旁路。
+
+请求恰model、messages、max_completion_tokens=2048、stream=false、thinking={type:disabled}。M3的disabled取值与新输出限额字段有官方依据；不发送n、max_tokens、response_format、json_schema、strict或tools。原SYSTEM指令及USER材料保持，Provider在SYSTEM末尾加入MINIMAX_JSON_PROMPT_V1固定指令和完整业务Schema；新增协议指令与Schema同时纳入prompt版本／摘要及完整wire摘要，重开从原材料和资源复建逐字节相同。逻辑SYSTEM仍≤4096；线上追加的固定ASCII指令及Schema≤12544，线上SYSTEM≤16640；完整请求保守118784≤131072，原context、原输出及静态界不扩。完整编码实物仍须核验，标准答案不加入请求。
+
+MiniMax响应独立验证官方封套及示例字段：base_resp、敏感标记／类型、message.name／audio_content，以及usage.total_characters。只接受已限定类型和界，音频必须空；base_resp非零按实际错误分类，1004鉴权失败、1001/1002/1013保持远程未决，其他明确拒绝为已知失败。敏感标记为真沿OTHER_REFUSAL，不推断敏感来源。正文必须是完整JSON对象；无截取、去围栏、猜测、修复或额外请求。thinking已显式关闭，仍不把任何reasoning字段或think混合正文变成记忆；本地完整业务Schema／来源／主体／世界／权限／容量及人工审核继续生效。
+
+USAGE_ONLY_TRIAL是此受控试验的计量政策，不宣称供应商结清。新UsageV3及其计量项与旧UsageV2分开验证：真实prompt/completion/total必须齐全且一致、精确非负整数；缓存／reasoning等未返回保持null。有效总输入／输出不能超绑定上界，未知扩展或矛盾停止后续请求。真实金额、估算金额和套餐扣额均null；cost_complete=false、金额known小计0且不预留金额／套餐quota，0只表示此政策无货币预留，不表示账单零。三项token观察和reported未知金额项持久入原表，原预算attempt_count仍真实递增，必要审计保留cost_complete=false。已知未发送可本地恢复确认；实际已发送时只有该独立policy的完整有效usage允许后续准入，不能据此释放旧账户held或放行旧计费模式。外层¥0注明OPERATOR_CONVENTION_NOT_SUPPLIER_BILL。
+
+显式冻结授权启动器连接共享原14＋2包和原生Provider：每平台首次persona只占标准persona槽；外层持久reserve先于native登记，每次实际attempt仍记入原生独立账本。新进程或换库不能重置外层槽位；UNKNOWN、身份错配、缺usage／审计／提交或实际清理未结束均阻止下一请求；已知普通失败保留原样、不自动重放。原始HTTP事实只进入受控脱敏证据，不进普通运行日志；恢复路径不解析凭据、不发送。首次macOS原请求收尾明确后等待≥30秒再Linux；用户审核前不得发布或继续学习。
+
+### 3.3.2 DeepSeek独立适配与真实试验（技术增量与新增调用已批准）
+
+DeepSeek是独立账户／实例／目录／配置的新组合，不迁移MiniMax业务状态或改写其UNKNOWN。用户已批准协议适配、提示词补齐和期限修正，并于2026-09-14明确批准**14个新attempt、两平台共享30元及旧UNKNOWN保持时独立开展新试验**，不重复询问。原未激活候选包保持；另建激活记录绑定其摘要、实际受测代码与该用户决定，批准者仅记录用户及原消息引用，不伪造姓名或签名。旧10个attempt、旧停止证据及剩余6槽保持，旧槽不转用。新包为每平台persona一次及六次学习、无备用、无自动重试，历史最多24次；外层共享授权必须先于原生attempt登记，两套账本均保留。原§3.1、§3.3.1的14＋2与¥0仅属于旧MiniMax包。
+
+外层证据采集错误与原生UNKNOWN必须分开：若原停止条目已绑定的原始／恢复产物证明仅为提交后本地查询RESOURCE_BUSY、原生request与attempt从未UNKNOWN、usage与费用完整、同一终结／对象／来源／发布身份保持、公开查询已恢复且实际清理结束，可在原哈希链追加受限的观测更正。原停止条目、所有attempt、原保守金额责任和总包上限保持，不清零、不重建或重放。实际UNKNOWN、费用缺失、身份错配、提交未确认、资源监控失联或清理未完不适用此更正；这落实原生事实与外层观察分离，不扩大业务恢复权限。
+
+固定新绑定：provider_name=deepseek_llm（外部非秘密选择名）；transport.origin=https://api.deepseek.com、base_path空、endpoint_path=/chat/completions；Generation/Profile的model_id=deepseek-flash，protocol/wire_protocol=DEEPSEEK_CHAT_JSON_V1，response_mode=JSON_OBJECT_V1；expected_reported_models只有deepseek-flash、resolved_model_id=null。Account/Profile为TOKEN_METERED、CNY、atom_scale=1000000。没有新增配置键、表或命令；其他模型的原组合、解析和恢复规则保持。
+
+线上请求恰model、两条SYSTEM/USER消息、max_tokens=2048、stream=false、thinking={type:disabled}、response_format={type:json_object}，不用MiniMax的max_completion_tokens、n、strict Schema、tools、Responses或extra_body。Provider自己编码HTTP，不经过SDK；首次persona同时验证真实协议，不额外探测。依据：[Chat Completion](https://api-docs.deepseek.com/zh-cn/api/create-chat-completion/)、[JSON Output](https://api-docs.deepseek.com/zh-cn/guides/json_mode/)、[思考模式](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)，核对日期2026-09-13，思考模式2026-09-14再次核对。
+
+JSON Object不提供业务Schema保证。封套只接受官方闭合字段id/object/created/model/choices/system_fingerprint及usage；choice恰index/message/finish_reason/logprobs（index=0、logprobs=null）；assistant message只有content及可选reasoning_content/tool_calls，本组合后两者只能为null或空reasoning字符串，不接受工具列表。model须精确匹配；stop再验证整个content为JSON对象，空白、重复键、围栏、混合正文或截断一律失败，不提取或修补。length保留OUTPUT_LIMIT，content_filter为OTHER_REFUSAL；tool_calls、insufficient_system_resource、aborted为已知不支持的INVALID_RESPONSE，未知结束值拒绝。结果身份、语法和业务校验与usage覆盖分别表达；原first_error与terminal_error不同职责保留。
+
+新UsageV4保留prompt_tokens/completion_tokens/total_tokens、prompt_cache_hit_tokens/prompt_cache_miss_tokens及可选prompt_tokens_details.cached_tokens原值。P=hit+miss、T=P+C，所有数量为精确非负整数；可选alias若出现须等于hit，缺失保留null；completion_tokens_details只接受reasoning_tokens且本非思考组合只能缺失/null/0。未知计费扩展、缺必需数量、矛盾或超I/O责任界，不能完整结算，不把未知补零。估算分项复用§3.3的互斥缓存计量及保守取整；usage版本4不等于计量表版本4，cost_items仍用原v2，request/attempt/预算/预留/handoff仍原版本2。旧UsageV2/V3与新协议逐层隔离验证。
+
+费率冻结取[官方价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)2026-09-13值，2026-09-14复核一致：每百万tokens缓存命中0.04元、未命中2元、输出8元。统一采用高峰费率作为预算上界，不以无法预知的请求时段套较低价；supplier bill始终另列。官方上下文1M，输入责任保守取1048576、输出2048，不减去输出凑预算。单次R=ceil(1048576×2000000/1000000)+1+ceil(2048×8000000/1000000)=2113537 atoms；14次29589518 atoms（29.589518元），比30元少410482 atoms。实际估算依真实usage和冻结费率，不宣称逐笔供应商扣款；无usage时保留全额R。
+
+仅新DeepSeek组合的固定向量将runtime.operation_timeout_ms由5000改60000，Provider总期60000、attempt与读取上限30000、连接上限10000保持；其他组合仍5000。入口在准入时生成一次绝对期限，准备、关联、Provider及本地終结均消费剩余时间。连接与TLS握手共用该连接阶段的剩余限额，不重新开始10秒。调用者期限耗尽而本地提交被拒绝时保留未确认及原资源所有权，不能清除DeadlineScope或换worker伪成功；合法原键恢复独立确认原PREPARED/UNKNOWN，不新增发送。跨过5秒、实际30秒网络超时、调用者耗尽及迟到原worker终态的断言见[DeepSeek期限测试](../../tests/provider_trials/test_deepseek_lifecycle.py)。
+
+新学习资源TEXT_LEARNING_JSON_V2及persona示例INITIAL_PERSONA_JSON_V2只用于DeepSeek，旧prompt字节不变。本地Schema不改语义；模型可见规则明确BODY/EVENT.item_index=null、QUOTATION实际零基索引、UTF-8字节半开范围与双null整段引用、TARGET专属锚点、HISTORY/RECENT专属辅助引用、授权主体/世界/对象revision及否定/不确定/转述/虚构边界。中性格式示例不是标准答案，13条材料、六批窗口、10个标准命题和质量门槛不变。完整Schema连同DEEPSEEK_JSON_OBJECT_V1指令追加于SYSTEM并纳入prompt摘要；逻辑SYSTEM≤4096、追加≤12544、线上SYSTEM≤16640、完整HTTP≤131072，其他容量沿§7.2。完整实际学习请求依新人工批准persona及原生ID冻结，发送前逐字节取摘要；合成资格请求不得冒充未来真实请求。
+
+准备工具只输出可复核的完整配置、资源和未激活模板，见[DeepSeek准备](../../tests/provider_trials/deepseek_prepare.py)；两平台回环资格见[合成链路](../../tests/provider_trials/deepseek_qualification.py)，授权控制见[独立授权](../../tests/provider_trials/deepseek_authorization.py)。普通测试不加载真实key。实际发送前仍须核实两平台非root、持久路径、当前TLS/CA、受控HTTPS、原生凭据解析及当前资源监控；旧TLS证明不能替代。新候选必须分别人工审核，旧macOS的APPROVE不迁移；发布后才允许该平台六批学习。每次实际清理结束后至少30秒，新增UNKNOWN、费用覆盖缺失、身份错配、提交不明或清理未结束立即停止后续发送。
 
 ### 3.4 embedding准备缺口（不纳入本阶段）
 
@@ -269,9 +306,12 @@ run在prepare写PREPARED且request_id=null；关联后REQUEST_ASSOCIATED，Provi
 
 新增统一NewResult恰`operation_id:ID,state:<本命令封闭成功态>,references:Ref[1..8],facts:{<本分支owner>:NewFact},targets:Target[1..8]`；Ref恰`{kind:E(INPUT,SELF,RUN,RESOLUTION,PUBLICATION,CONTEXT,WORK,MODE),object_id:ID,revision:R}`；Target恰`{object_id:ID,previous_revision:R?,revision:R}`；NewFact恰`{rows_changed:1..16,references:Ref[1..8]}`。各owner事实完整≤2048、result≤8192。targets是本次真实根记录写入的去重集合，references可含该根真实叶写入的计数，不造placeholder；新建previous_revision=null，更新必须+1。每owner一个`<owner>_text_learning`必要slot，event_code为固定大写命令名，reason=APPLY，target_refs绑定RESULT.targets、change绑定RESULT.facts.owner、actor_ref绑定INTENT.actor；root空targets在装配拒绝。基础保留命令继续其原slot名称。
 
-| 新增命令（9条）／成功分支 | I之外完整参数；成功state | 实际写owner／slot数量；targets来源 |
+register_initial_subjects使用独立窄结果：Ref.kind仅SUBJECT、references及targets为1..6，memory.rows_changed为1..6，其余结构沿NewResult，旧Ref枚举不扩大。一次完整登记后拒绝其他新键；同原键完整输入先确认历史回执，即使当前已进入persona模式也不重新写入。每主体完整编码≤1024，完整输入≤8192、事实≤2048、结果≤8192、原回执≤65536。memory增加一条同scope的只读有界存在性查询（LIMIT 1）用于拒绝已有非SELF主体；无新增表、索引或配置键。不允许SELF、更新、删除、重名归并、模型造主体或普通HTTP登记。首次准备与登记同事务核对持久run／publication／mode，原生管理调用及commit permission持续保有到真实清理结束。主体原格式全检、必要审计及原键恢复遵守原owner规则，新装配签名不迁移旧库。
+
+| 新增命令（10条）／成功分支 | I之外完整参数；成功state | 实际写owner／slot数量；targets来源 |
 | --- | --- | --- |
 | register_initial_self／PRESET或NO_PRESET | input_kind、body:Text(2048)、input_origin；REGISTERED。ID／label等由可信初始化绑定，NO_PRESET仍有原用户输入 | memory／1；真实SELF与input新行；输入和身份一次提交，已存在SELF或input拒绝，不改名重建 |
+| register_initial_subjects／FIRST | subjects:原SUBJECT[1..6]、input_origin；REGISTERED。原键、完整输入及actor来自可信本机初始化能力；已有SELF/input且首次persona准备前、NORMAL模式才能执行 | memory／1；一次新建最多6项非SELF主体（PLATFORM_PERSON、FICTIONAL_CHARACTER、CONTEXT各至多2），所有revision=1且实例及身份唯一。复用memory.apply_change_set REGISTER_SUBJECT，同事务主体／必要审计／原回执；只读self_model／runtime不写审计 |
 | prepare_initial_persona／FIRST | input_id:ID, expected_self_revision:R, expected_epoch:R；PREPARED | self_model＋runtime／2；新run、原mode ENTER至PREPARING。真实input只读不写memory审计；原READY截点后才可generate |
 | associate_initial_persona_request／PREPARED | run_id:ID, expected_revision:R, generation:1..3, expected_epoch:R；REQUEST_ASSOCIATED | self_model／1；run更新（已冻结key及GenerationBinding摘要）；发送在提交后，runtime gate同截点核验但只读 |
 | confirm_initial_persona_request／ASSOCIATED | run_id:ID, expected_revision:R, generation:1..3, request_id:ID；REQUEST_ASSOCIATED | self_model／1；run填真实request_id，与Provider原键确认一致；不同值拒绝，同值只读返回 |
@@ -281,7 +321,7 @@ run在prepare写PREPARED且request_id=null；关联后REQUEST_ASSOCIATED，Provi
 | publish_initial_persona／FIRST | run_id:ID, expected_revision:R, candidate_id:ID, candidate_revision:R, candidate_digest:D, expected_epoch:R；PUBLISHED | self_model＋runtime／2；新publication、run终态、原mode FINISH至DRAINING；memory／Provider只读，候选已APPROVED不再改review |
 | stage_learning_context／FROZEN | batch_id:ID, expected_revision:R, generation:R, manifest:Text(8192), leaves:Text(8192)[1..8]；CONTEXT_STORED | cognition＋runtime／2；新context／全部叶，work.model_binding原子关联context（work仍FROZEN）；不提前关联Provider发送，原冻结所有者只读 |
 
-所有失败分支统一安全拒绝／回滚，不生成正文、对象或审计；提交是否确认沿持久封套，不能把UNKNOWN包装成handler零写。record_resolution的重复相同证据只查原命令回执，已知终态不允许不同证据覆盖；UNKNOWN→已知只接受原Provider保留迟到证据且本地服务仍允许该写，不能远程查询补造。generate_initial_persona是上述associate→Provider→confirm→resolution的受控编排端口，**不是第10条持久命令**。
+所有失败分支统一安全拒绝／回滚，不生成正文、对象或审计；提交是否确认沿持久封套，不能把UNKNOWN包装成handler零写。record_resolution的重复相同证据只查原命令回执，已知终态不允许不同证据覆盖；UNKNOWN→已知只接受原Provider保留迟到证据且本地服务仍允许该写，不能远程查询补造。generate_initial_persona是上述associate→Provider→confirm→resolution的受控编排端口，**不是额外持久命令**。
 
 | 改变原命令（13条） | 分支／输入输出与实际writer、slot、targets |
 | --- | --- |
@@ -299,25 +339,25 @@ run在prepare写PREPARED且request_id=null；关联后REQUEST_ASSOCIATED，Provi
 | information_commit_content_without_objects | 原输入保持，SUCCEEDED零条／FAILED_DROPPED／SENSITIVE_DROPPED三个原终态；runtime/cognition/ingress/buffers四原slot，cognition同事务释放context；memory无写不审计，无虚假正式对象／source。供应商不给细粒度敏感证明时真实路径不能选择敏感终态 |
 | change_content_mode | ENTER/READY/FINISH/FAULT/DRAINED原输入／输出与runtime_mode 1slot保留；对首次run禁普通外部FINISH，仅publish内固定调用同owner效果，不能额外嵌套执行本命令；READY读取run绑定、健康及旧资源，重复／错epoch零写拒绝 |
 
-计数：原94条中13条在新组合替换定义，另新增9条，**新组合103条**；原组合94条不变，新增表由原26增至本新组合32（另6表），并非“旧库加表迁移”。新组合保留其余81条原定义及原所有writer／固定释放分支，仅新v2对象解析由明确owner格式选择；真实学习不会走with_media／goal／mutation分支，旧原生维护仍可对v2合法对象执行，不获模型授权。上述改动输入／结果格式变为新装配签名，不能在旧装配重解释原命令键。
+计数：原94条中13条在新组合替换定义，另新增10条，**新组合104条**；原组合94条不变，新增表由原26增至本新组合32（另6表），并非“旧库加表迁移”。新组合保留其余81条原定义及原所有writer／固定释放分支，仅新v2对象解析由明确owner格式选择；真实学习不会走with_media／goal／mutation分支，旧原生维护仍可对v2合法对象执行，不获模型授权。上述改动输入／结果格式变为新装配签名，不能在旧装配重解释原命令键。
 
 
 新文本attempt的最终错误已批准独立持久保存。先超时并持久UNKNOWN、同一worker后交回完整length时，request保持原超时first_error并转TERMINAL/FAILED；attempt保持原超时first_error、转COMPLETED/FAILED，terminal_error固定ADAPTER_FAILED/adapter/OUTPUT_LIMIT，persona读取原生最终原因形成KNOWN_FAILED/OUTPUT_LIMIT。普通超时没有完整最终证据仍为UNKNOWN，不推断length；成功终态terminal_error为null。已登记零attempt沿真实请求终态，不补造attempt。原生终态证明按实际attempt完整记录推导最终原因，完成K确认及事务核验重新比对同一份最终证据；原生公开证明字段不增加，内部有限保留的原attempt随证明释放。首次错误、费用／提交确认／实际清理分别核验，费用缺失继续持有责任。
 
-最终错误纳入原evidence命令指纹及重复内容比较；相同完整证据幂等，既知terminal_error／终态／usage／结果指纹冲突安全拒绝，不能覆盖原回执或已知事实。新文本命令的固定input_policy签名为TEXT_PROVIDER_MUTATIONS_V3，打开比较拒绝旧文本声明；不做迁移。旧模拟及信息组合字节／指纹保持，命令仍103、六张新增表、118键；各行8192、回执65536、普通命令1MiB、静态预算及唯一配置初始化2MiB均不变，新增字段与完整封套须实际编码验证。
+最终错误纳入原evidence命令指纹及重复内容比较；相同完整证据幂等，既知terminal_error／终态／usage／结果指纹冲突安全拒绝，不能覆盖原回执或已知事实。新文本命令的固定input_policy签名为TEXT_PROVIDER_MUTATIONS_V3，打开比较拒绝旧文本声明；不做迁移。旧模拟及信息组合字节／指纹保持，命令为104、六张新增表、118键；各行8192、回执65536、普通命令1MiB、静态预算及唯一配置初始化2MiB均不变，新增字段与完整封套须实际编码验证。
 
 固定错误封套沿各owner已有error结构。Provider新增固定错误组合为UNSUPPORTED_CAPABILITY/capability/PROTOCOL_UNSUPPORTED、CONFIGURATION_REJECTED/configuration/MODEL_BINDING_MISMATCH、PAUSED_BUDGET/budget/BILLING_EVIDENCE_MISSING及ADAPTER_FAILED/adapter/OUTPUT_LIMIT；runtime新增reason仅PERSONA_REQUIRED、CONTEXT_UNRECOVERABLE、INITIAL_RETRY_NOT_ALLOWED（code分别PRECONDITION_FAILED、INTEGRITY_FAILURE、PRECONDITION_FAILED）。configuration仍用现有VALUE_INVALID/DEFINITION_MISMATCH/CAPACITY_INSUFFICIENT语义及固定field，新增operation为resolve/persist/load_text_learning_configuration与text_learning_snapshot_issue。新self_model封套恰code/operation/field/reason：code为INVALID_INPUT/ACCESS_DENIED/PRECONDITION_FAILED/INTEGRITY_FAILURE/RESOURCE_BUSY/PERSISTENCE_FAILED；operation限本节8个persona／self管理命令及read_current/verify_current/recover_local；field为input/identity/state/revision/provider/configuration/storage/resource；reason为INVALID_SHAPE/BOUNDARY_DENIED/REVISION_CONFLICT/STATE_MISMATCH/BINDING_MISMATCH/RECORD_INVALID/CLEANUP_PENDING/COMMIT_UNCONFIRMED。固定合法组合为INVALID_INPUT/input/INVALID_SHAPE、ACCESS_DENIED/identity/BOUNDARY_DENIED、PRECONDITION_FAILED/revision/REVISION_CONFLICT、PRECONDITION_FAILED/state/STATE_MISMATCH、INTEGRITY_FAILURE/identity/BINDING_MISMATCH、INTEGRITY_FAILURE/storage/RECORD_INVALID、RESOURCE_BUSY/resource/CLEANUP_PENDING、PERSISTENCE_FAILED/storage/COMMIT_UNCONFIRMED；其他组合拒绝。不允许外部指定code/reason；详细原始异常、路径及供应商消息不外泄。
 
 ### 6.4 公开端口与原生恢复授权（已批准）
 
-以下均精确原生类型，错误封套见§6.3。跨owner只经端口；序列深不可变、有界，不传游标、任意Any、SQL或回调。UoW内端口同步且无网络／等待；外部读取使用共享绝对deadline和本操作完成通知。只读端口不计入103条持久命令。
+以下均精确原生类型，错误封套见§6.3。跨owner只经端口；序列深不可变、有界，不传游标、任意Any、SQL或回调。UoW内端口同步且无网络／等待；外部读取使用共享绝对deadline和本操作完成通知。只读端口不计入104条持久命令。
 
 | 端口 | 完整输入／返回与权限 |
 | --- | --- |
 | InitialSelfPort.read_initial | (input_id:ID, deadline:<原生绝对期限>)→Found(§6.1完整input, 原SELF记录)/Missing/Failed(固定error)。只签发给本实例首次整理owner，不开放所有memory表 |
 | CurrentPersonaPort.read_current | (deadline)→Available(CurrentPersonaProjection)/Unavailable/Failed；完整投影≤2048，交付复用已有末端原生权限／HTTP会话／mode仲裁 |
 | CurrentPersonaPort.verify_current | (uow:原生UoW, publication_id:ID, expected_revision:R)→Matched/Conflict/Failed；必须同实例当前唯一发布，验证source滞后与scope但不生成 |
-| PersonaInitializationPort | 8条管理命令的类型化输入见§6.3，输出原持久封套；generate(run_id,generation,original_key,deadline)是编排入口，返回SavedResolution/RemoteUnknown/LocalUnconfirmed/Rejected。SavedResolution含已持久SUCCEEDED／KNOWN_FAILED／NOT_SENT候选及真实结果登记回执；未登记NOT_SENT的request引用为空，安全run引用及cleanup_pending保留。依赖同一原生初始化管理grant，禁止普通调用者伪造internal_dream |
+| PersonaInitializationPort | 9条管理命令的类型化输入见§6.3，输出原持久封套；generate(run_id,generation,original_key,deadline)是编排入口，返回SavedResolution/RemoteUnknown/LocalUnconfirmed/Rejected。SavedResolution含已持久SUCCEEDED／KNOWN_FAILED／NOT_SENT候选及真实结果登记回执；未登记NOT_SENT的request引用为空，安全run引用及cleanup_pending保留。依赖同一原生初始化管理grant，禁止普通调用者伪造internal_dream |
 | LearningContextPort.stage／release | stage(uow,完整manifest,完整leaves)→Staged(context_ref)/Rejected；release(uow,context_id,原finalize身份)→Staged(revision,deleted_leaf_count)/Rejected；只参加§6.3固定UoW，不自行开事务 |
 | LearningContextPort.load | (context_id,deadline)→Stored(manifest,leaves)/Released(manifest)/Failed；仅对应run原生恢复grant。STORED缺叶安全失败，RELEASED不重新收集现有输入 |
 | Provider.bind_generation_resources | (已持久文本配置视图,RealGenerationResources)→Bound/Rejected；只Provider绑定网络和凭据，实例并发／请求登记容量由公开typed ResourceLimits(max_in_flight:1,registered_work_limit:1)预检，不写Provider私有_registration_limit。绑定失败仅回收本次持有的能力 |
@@ -365,6 +405,10 @@ run在prepare写PREPARED且request_id=null；关联后REQUEST_ASSOCIATED，Provi
 
 上述替换须在新完整解析、适用性复检、保存及OPEN_EXISTING按同一封闭规则执行；媒体目录不能填空、错目录不能因processing=0通过。新快照绑定真实材料／无媒体模型能力，旧库与旧快照不迁移；旧组合的material=73728或processing=0、缺MEDIA仍按旧规则拒绝，新组合带旧单位／范围／验证器／材料版本也拒绝。这个独立组合增量已在本契约批准，旧组合仍遵守[配置正文](configuration.md)。
 
+DeepSeek新组合的精确补充及已批准调用授权见§3.3.2；下表保留旧组合定义。
+
+本次MiniMax采用§3.3.1的精确闭合替换：transport固定api.minimax.cn／v1；Generation／Profile模型MiniMax-M3、protocol／wire_protocol=MINIMAX_CHAT_JSON_V1、response_mode=JSON_PROMPT_V1、expected_reported_models仅MiniMax-M3、resolved_model_id=null。其余方舟字段结构保留，max_tokens/n是本地语义约束，不作为MiniMax线上字段。Account／Profile的billing_mode新增USAGE_ONLY_TRIAL，Account.cost_limit_atoms允许且仅该模式必须0；Price的全部金额字段及Quota均null。完整usage使用§3.3.1的UsageV3与计量项v3；request、attempt、预算、预留和handoff的既有版本及字段结构不改变，恢复逐层核对协议／账户组合。prompt资源摘要覆盖完整附加指令与Schema。此段是下表方舟定义的已批准精确补充，不要求为MiniMax提供下表方舟价格／订阅扣额。
+
 以下列举所有嵌套字段；记号沿§6.1，全部required，?显式nullable。字节边界是整个对象上限，校验不接受待定占位。`待供给`只存在本文，运行配置必须提供实际值；当前不能解析成可发送快照。
 
 | 结构（完整字段） | 固定值／限制、来源与跨字段条件 |
@@ -397,13 +441,13 @@ run在prepare写PREPARED且request_id=null；关联后REQUEST_ASSOCIATED，Provi
 | 配置条目body | 新文本组合完整118项定义和值实际编码之和≤524288，每项≤8192，六域及原字段限制保持。撤销100／13／5固定分组配额；完整总量准入，不缩写元信息、删字段或压短目录制造通过；原100项样本及完整118项须实际编码并核验 |
 | 配置初始化 | 唯一initialize_text_learning完整冻结载体≤2097152，包含命令定义、全部值和必要审计意图。条件推导`3×524288＋118×256＋6×8192＋65536＝1717760≤2097152`，须重新证明转义系数及全部封套并构造实际载体。该例外由可信新装配和已注册原生命令绑定，纳入静态声明、签名、打开比较及原键恢复；预检、指纹、执行、确认和恢复共用同一规则。调用参数、命令名称或普通端口不能授予扩容。旧组合字节／指纹／上限保持，普通命令仍受storage.command_max_bytes及1MiB约束；回执65536、审计／结果界不变。初始化仍同事务一次发布；静态装配及载体预算不扩，不增命令／表／键 |
 | DDL与仓储 | 6表＋14辅助索引＝20新DDL；原30554固定仓储字节＋20×2048DDL文本界＋新增每表8个固定语句声明×6×1024＝120666≤131072。DDL与语句名均ASCII；表每个只允许get/insert/CAS/recovery_page及最多4个唯一点读／叶释放语句，不允许任意SQL。实际必要语句超该预算必须重新审查；每表至多3辅助索引保持 |
-| 命令描述 | 原固定描述803445字节作为不删减保守基数，13个替换及9新增最多各73728（按每命令输入／结果／意图≤192个Schema节点×256、最多5slot每slot≤4096绑定声明＋命令封套4096＝73728；Provider输入以bounded body而非在descriptor无限嵌套业务JSON）。保守`803445＋22×73728＝2425461≤2621440`。包含旧替换声明被重复计入的安全余量；节点及实际slot绑定必须由未来实际声明逐项核验，此处不是已经构造103条 |
+| 命令描述 | 原固定描述803445字节作为不删减保守基数，13个替换及10新增最多各73728（按每命令输入／结果／意图≤192个Schema节点×256、最多5slot每slot≤4096绑定声明＋命令封套4096＝73728；Provider输入以bounded body而非在descriptor无限嵌套业务JSON）。保守`803445＋23×73728＝2499189≤2621440`。包含旧替换声明被重复计入的安全余量；节点及实际slot绑定必须由未来实际声明逐项核验，此处不是已经构造104条 |
 | 完整静态装配 | 以上descriptor2425461＋repositories120666＋outer8192＝2554319≤2760704，余206385；静态载体3145728不变。若任一声明超过对应推导界则该总界不成立，须停下提交差额，不能只引用总余量直接扩限 |
 | 运行资源 | 并发1／排队0，至多131072请求＋262144网络体＋8192交接＋73728context＋73728候选，至多3份同时载荷副本≤2MiB（只计载荷，非RSS）；深度≤12／节点≤20000的JSON解析及真实线程／连接RSS须未来实测。原F目录20GiB候选、12GiB停止、4GiB可用下限不变 |
 
 新DDL固定语句闭集：每表get/insert/recovery_page；初始输入及publication不设CAS（不可变），各增加按self/run或instance唯一点读；run设CAS及by_instance；candidate设CAS(review only)、by_run_generation、by_request；context设CAS(release only)、by_batch；leaf设by_context及delete_by_context。每表至多8是保守预算而非必须生成8条。SQLite主键／唯一索引含空值的语义须以candidate非null部分唯一约束实物验证；解析验证的数据库身份不能被SQL外键替代。
 
-此前Provider双payload上界冲突已在**已批准新格式**中用仅handoff可带payload的精确分支收敛；旧Provider命令不修改。本轮材料／媒体关系及取整修订不增键、表、命令、cost_items或字段；整数仍最多19位，118条／6域、103命令及descriptor／DDL声明预算不变，但13个变更项的完整定义大小必须重新实物证明。这些推导不替代编码证明；必须对103真实命令、32张阶段新增表、所有必要索引／结果／slot／回执／完整配置做实际构造、最大值编码、持久写入、读取比较及OPEN_EXISTING，不以模拟材料上限或上述分配预算代替实物资格。若13个变更项之外出现必要配置增量，先更新计数／定义和容量再批准，不隐式占用剩余10键。
+此前Provider双payload上界冲突已在**已批准新格式**中用仅handoff可带payload的精确分支收敛；旧Provider命令不修改。本轮材料／媒体关系及取整修订不增键、表、命令、cost_items或字段；整数仍最多19位，118条／6域、104命令及descriptor／DDL声明预算不变，但13个变更项的完整定义大小必须重新实物证明。这些推导不替代编码证明；必须对104真实命令、32张阶段新增表、所有必要索引／结果／slot／回执／完整配置做实际构造、最大值编码、持久写入、读取比较及OPEN_EXISTING，不以模拟材料上限或上述分配预算代替实物资格。若13个变更项之外出现必要配置增量，先更新计数／定义和容量再批准，不隐式占用剩余10键。
 
 ## 8. 独立验收矩阵、环境与停止条件（已批准）
 
@@ -421,18 +465,21 @@ run在prepare写PREPARED且request_id=null；关联后REQUEST_ASSOCIATED，Provi
 | 真实临时SQLite与文件 | 从CREATE_NEW持久完整配置／候选／来源／审计／回执，实际新组合全命令／DDL／结果绑定；注册表与格式故意错配拒绝；分别记录最大合法载体和超限拒绝，不能只跑纯分词／纯JSON夹具 |
 | 新进程恢复 | §6每截点前后真实进程终止；原请求确认、handoff已存候选未存、stage／finalize回执丢失、Provider UNKNOWN、费用缺失、旧worker实际在途、原版本缺失；重新打开零模型调用，实际请求／候选／费用／正式对象／审计各一次 |
 | 模式、关闭、权限 | 普通与持久DREAM_PREPARING／DREAM_FOCUSED，恢复最后空页／close双向顺序，发送许可撤销，交付前撤权，绑定失败纠正重试，借入资源不误关；初始化结果、scheduler启动次数、原回执、实际占用和重复close直接断言 |
+| 受控初始主体 | 最多6项、跨实例／重复／SELF／修改／额外登记拒绝，普通端口／伪造管理能力拒绝；主体、必要审计及回执各故障点整体回滚；原键在persona准备后与新进程只确认一次。完整输入／结果／审计实物容量及104命令装配验证 |
 | 首次persona | 无预设／有外部设定两类；唯一SELF及真实管理来源、真实原请求／用户确认／两owner发布、缺persona暂停、旧TestPersona不能通过、重开不生成、用户拒绝或未审不发布、普通学习不更新persona |
 | 文本业务原子性 | 0／1／8条与9条拒绝，辅助单独成记忆拒绝，假目标锚点／错UTF-8／越权主体／世界／旧revision拒绝；每owner及每必要审计失败都整体无部分成功；真实目标／后到输入／共享source／失败历史／明确敏感三终态分别断言 |
 | 本地查询和索引恢复 | 真实生成后正式对象可查；dirty与active一致语义、双代次写删／发布竞争、原票据／反馈与旧读者；重开后persona和来源保持原绑定，查询零Provider调用；无同义保证，不用模型复答替本地查询 |
 | 受控真实供应商 | 先批准配置、账号／模型、出站及材料清单，再执行固定请求包；记录真实model、response/request关联、usage／估算费用／未知责任、拒绝与协议适用性。两平台各1次首次persona、6次独立文本批次（共14）；余2次仅供明确批准的persona有界重试或失败诊断，共享16次总量，无自动补跑 |
-| 用户学习质量 | 每平台6批至少覆盖事实／事件区别、否定／不确定、辅助指代、人物与世界、零记忆、输入内恶意指令。冻结后先由用户审核值得记住的命题及目标锚点，再审所有生成结果与遗漏、无依据内容、分类／分数和persona；保留失败／拒绝样本，不选择较好平台。报告命题precision／recall及分母、空目标集、源锚点正确率、世界／人物错误数；候选阈值precision≥0.90、recall≥0.80、锚点正确率1.0且越权0均待用户批准，少样本不承诺泛化 |
-| 类型及工程回归 | 源码／测试变更后，两平台全量unittest；按[锁定Pyright要求](../CODING_STANDARDS.md#python-type-checking)覆盖源码／测试／新增文件，全量0错误；编译、相关JS、锁与链接／全部差异检查。Pylance独立记录；新集合不得复用为已运行旧全量 |
+| 用户学习质量 | 每平台6批至少覆盖事实／事件区别、否定／不确定、辅助指代、人物与世界、零记忆、输入内恶意指令。冻结后先由用户审核值得记住的命题及目标锚点，再审所有生成结果与遗漏、无依据内容、分类／分数和persona；保留失败／拒绝样本，不选择较好平台。报告命题precision／recall及分母、空目标集、源锚点正确率、世界／人物错误数；本阶段质量门槛precision≥0.90、recall≥0.80、锚点正确率1.0且越权0已获用户批准，少样本不承诺泛化 |
+| 类型及工程回归 | 默认定点测试与受影响关联回归，平台相关用例双平台验证；仅影响广且定点不足或用户明确要求时全量unittest，并记录原因。代码稳定后统一一次按[锁定Pyright要求](../CODING_STANDARDS.md#python-type-checking)覆盖源码／测试／新增文件，全量0错误；编译、相关JS、锁与链接／全部差异检查。Pylance独立记录；新集合不得复用为已运行旧全量 |
 
 人工质量按预先确认的原子命题集计分：precision分母为全部输出命题（重复输出逐项占分母，不能作为新增命中），recall分母为人工认为应学习的唯一目标命题；匹配关系须人工确认，不能由模型或已返回对象反推相关集。空人工集的recall为不适用，另报是否零输出及误生成数；没有输出时precision为不适用，不能记1。拒绝／格式失败／未决分别计批次覆盖，不从报告中删除；两平台分别展示原结果和审核，不移植数据库ID或挑较好结果。来源锚点正确率的分母为全部输出直接命题，纯语法锚点检查与人工支持性审阅分列。
 
 资源候选使用现有macOS arm64自有目录与Linux arm64非root真实ext4持久卷，Linux 2CPU／4GiB、无swap、128pid、源／根只读；禁止tmpfs替代实库恢复。历史可用环境为Python3.12.14、macOS SQLite3.53.1／Linux3.53.4及Pyright1.1.413，镜像`sha256:e1196578279b9386460f3873e3f8cef90a22a84dbbc20e5ecd91d0ca88b9cf4f`；只是准备参照，执行前复核实际平台／TLS／CA／镜像／依赖与权限，不能把历史版本当当前事实。标准库实现无需新增SDK或GPU；真实阶段需由用户提供安全凭据注入和受控官方HTTPS出站，原无外网Linux剖面不能直接声称可调用。生产认证、amd64性能、掉电、P/X及24小时试验不在该矩阵内。
 
-自动停止新请求／造数条件：16次已登记attempt、已批准的实际金额／订阅额度上限（已知小计＋held责任）、任一UNKNOWN远程结果／未决费用、任一认证／权限／模型／计费维度错配、持久故障、审计缺失、费用预留超额或预算计量不完整；任一先到即停止。普通已知失败保存原批次终态，不自动替换样本；格式／容量错误先完成本地分析，不能用真实反复请求调试Schema。目录累计12GiB、可用≤4GiB、持久操作20000或资源监控失联也停新增负载；保留在途确认和关闭空间，不能取消后假释放。真实受控试验先离线协议通过，跨平台费用共享总包上限，由父级授权清单防止两库各消费16次。
+通用自动停止新请求／造数条件：16次已登记attempt、已批准的实际金额／订阅额度上限（已知小计＋held责任）、任一UNKNOWN远程结果／未决费用、任一认证／权限／模型／计费维度错配、持久故障、审计缺失、费用预留超额或预算计量不完整；任一先到即停止。普通已知失败保存原批次终态，不自动替换样本；格式／容量错误先完成本地分析，不能用真实反复请求调试Schema。目录累计12GiB、可用≤4GiB、持久操作20000或资源监控失联也停新增负载；保留在途确认和关闭空间，不能取消后假释放。真实受控试验先离线协议通过，跨平台费用共享总包上限，由父级授权清单防止两库各消费16次。
+
+本次MiniMax试验按§3.1用户批准的usage-only／¥0统计口径替代金额与套餐额度审批门槛；不改变未知远程结果、资源、完整审计和请求上限停止条件，也不把未知账本事实伪结清。未完成相应原生装配前，不允许绕过Provider预算或自行释放held。
 
 每次记录完整argv、退出码、原始脱敏输出、断言位置、平台／镜像、资源量、请求数与费用覆盖；模型正文证据只进受控审核产物，不进普通诊断或秘密导出。按排序“路径＋NUL＋文件SHA256＋LF”对受测代码／测试／资源／工程文件生成清单和聚合SHA，执行后核对未变；文档另记摘要。人工质量未审、真实供应商未调用、最大合法词项资格和Pylance分别保持缺口，任何一项不能由模拟或静态核算替代。
 
@@ -440,6 +487,6 @@ run在prepare写PREPARED且request_id=null；关联后REQUEST_ASSOCIATED，Provi
 
 本文批准一个带首次persona依赖的有限文本学习整体。监督重点检查真实／模拟格式隔离、原请求与版本身份、refusal不误清历史、未知预算责任、完整上下文恢复、每条真实目标锚点、首次发布及学习终结同事务、配置与静态装配完整容量。
 
-真实调用仍需确切账户适用资格、Auto允许后端及strict能力、安全凭据引用、实际初始设定与监管目标、调用材料与出站授权、方舟计费模式及金额／额度实值；质量阈值仍待用户批准。资料缺口只暂停真实发送，不暂停独立实现与本地验证。所有最长字段实际编码、持久化及恢复须按§8证明；不得把批准后的静态推导称为运行结果。若发现真实契约冲突、容量无法满足或必须扩大产品／权限边界，列出双方位置、影响和推荐决定，停止受影响部分，继续独立工作。
+MiniMax独立协议及直接首次persona验证已获明确批准，执行不再要求strict证明；供应商选择、材料、计量口径及非SELF登记已按§3.1／§6.3获用户批准，persona发布与最终结果审核仍分别保留。资料缺口只暂停真实发送，不暂停独立实现与本地验证。所有最长字段实际编码、持久化及恢复须按§8证明；不得把批准后的静态推导称为运行结果。若发现真实契约冲突、容量无法满足或必须扩大产品／权限边界，列出双方位置、影响和推荐决定，停止受影响部分，继续独立工作。
 
-实际技术验收、后续提交授权与停止点统一见[CURRENT_TASK](../work/CURRENT_TASK.md)；本契约的技术批准不自动授权真实供应商调用、推送、合并或部署。
+实际技术验收、后续提交授权与停止点统一见[CURRENT_TASK](../work/CURRENT_TASK.md)；本次已明确授权固定包首次persona真实调用；仍不授权推送、合并或部署。

@@ -60,13 +60,13 @@ class TextCombinationTests(unittest.IsolatedAsyncioTestCase):
                 'information_commit_content_published','information_commit_content_without_objects')}
             receipt=None;static=None
             for mode in ('CREATE_NEW','OPEN_EXISTING'):
-                assembly=TextLearningAssembly();self.assertEqual(len(assembly.commands),103)
+                assembly=TextLearningAssembly();self.assertEqual(len(assembly.commands),104)
                 actual={(c.owner_namespace,c.operation_kind):encode_content(command_descriptor(c),1048576) for c in assembly.commands}
                 changed={key for key in old_commands.keys() & actual.keys() if old_commands[key]!=actual[key]}
                 self.assertEqual(changed,expected_changed)
                 self.assertEqual(len(old_commands.keys() & actual.keys())-len(changed),81)
                 self.assertEqual(old_commands.keys()-actual.keys(),{('configuration','initialize_information')})
-                self.assertEqual(len(actual.keys()-old_commands.keys()),10)
+                self.assertEqual(len(actual.keys()-old_commands.keys()),11)
                 self.assertLessEqual(len(assembly.static_carrier),2760704)
                 self.assertLessEqual(sum(map(len,actual.values())),2621440)
                 if static is None:static=assembly.static_carrier
@@ -87,5 +87,5 @@ class TextCombinationTests(unittest.IsolatedAsyncioTestCase):
                 finally:
                     publisher.close();await assembly.storage.close();publisher.close()
             assert static is not None
-            print({'source':'ACTUAL_TEXT_COMBINATION','commands':103,'unchanged_commands':81,'replaced_commands':13,
+            print({'source':'ACTUAL_TEXT_COMBINATION','commands':104,'unchanged_commands':81,'replaced_commands':13,
                 'static_bytes':len(static),'static_sha256':hashlib.sha256(static).hexdigest()})

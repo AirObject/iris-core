@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from companion_memory.persistence.owned_statements import OwnerFailure
 
-OPERATIONS=frozenset(('register_initial_self','prepare_initial_persona','associate_initial_persona_request',
+OPERATIONS=frozenset(('register_initial_self','register_initial_subjects','prepare_initial_persona','associate_initial_persona_request',
     'confirm_initial_persona_request','record_initial_persona_resolution','review_initial_persona','retry_initial_persona',
     'publish_initial_persona','read_current','verify_current','recover_local'))
 COMBINATIONS={

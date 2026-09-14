@@ -91,7 +91,7 @@ class TextContextCommands:
         if type(owner) is not MemoryService or owner._owner is not a.memory:raise InvalidValue()
         if any(record(reference)['grant_ref']!=owner.read_grant_reference(port) for reference in sequence(context.manifest['related_objects'])):
             raise OwnerFailure('ACCESS_DENIED','identity','BOUNDARY_DENIED')
-        roster=learning_authorizations(cast(str,context.context['system_text']))
+        roster=learning_authorizations(cast(str,context.context['system_text']),text.chat.requested_model)
         for raw in sequence(roster['subjects']):
             subject=record(raw);identity=cast(str,subject['subject_id'])
             if owner._authorize(port,identity,'read_subject') is not None:raise OwnerFailure('ACCESS_DENIED','identity','BOUNDARY_DENIED')

@@ -71,6 +71,10 @@ class PersonaInitializationPort:
     async def register_initial_self(self,original_key: str,input_kind: str,body: str,input_origin: str,deadline: float):
         return await _call(self,'register_initial_self',original_key,{'input_kind':input_kind,'body':body,'input_origin':input_origin},deadline)
 
+    async def register_initial_subjects(self,original_key: str,subjects: object,input_origin: str,deadline: float):
+        """Register a bounded operator roster before first persona preparation."""
+        return await _call(self,'register_initial_subjects',original_key,{'subjects':subjects,'input_origin':input_origin},deadline)
+
     async def prepare_initial_persona(self,original_key: str,input_id: str,expected_self_revision: int,expected_epoch: int,deadline: float):
         return await _call(self,'prepare_initial_persona',original_key,{'input_id':input_id,'expected_self_revision':expected_self_revision,'expected_epoch':expected_epoch},deadline)
 
@@ -130,7 +134,7 @@ class PersonaManagement:
         if self._task is not None:return rejected(kind,'busy',True)
         try:
             if not valid_identifier(key) or type(deadline) not in (int,float) or not time.monotonic()<deadline<float('inf'):raise InvalidValue()
-            if kind in t.definitions:values=dict(isolate_record(t.definitions[kind].input_schema,{'operation_id':key,**values},8192))
+            if kind in t.definitions:values=cast(dict,plain(isolate_record(t.definitions[kind].input_schema,{'operation_id':key,**values},8192)))
             elif kind=='register_initial_self':values=dict(isolate_record(t.initial_commands.commands[0].input_schema,{'operation_id':key,**values},8192))
             elif kind in ('generate','read_pending'):
                 if not valid_identifier(values['run_id']) or kind=='generate' and (type(values['generation']) is not int or not 1<=values['generation']<=3):raise InvalidValue()
@@ -265,6 +269,7 @@ class PersonaManagement:
         if kind=='register_initial_self':
             if gate.state!='NORMAL' or gate.integrity_pending():raise OwnerFailure('MODE_BLOCKED','state','DREAMING')
             return await t.initial_commands._register(key,values['input_kind'],values['body'],values['input_origin'])
+        if kind=='register_initial_subjects':return await self._execute(kind,key,values,deadline)
         if kind=='prepare_initial_persona':
             if self.focus is None:raise OwnerFailure('INVALID_STATE','state','NOT_READY')
             gate.close_ordinary()

@@ -250,8 +250,9 @@ class ContentRuntimeService:
         if identity in self._jobs: return Rejected(RuntimeError('RESOURCE_BUSY', operation, 'state', 'OWNER_ACTIVE', True))
         if len(self._jobs) >= self.settings.integer('runtime.max_active_entries'):
             return Rejected(RuntimeError('RESOURCE_BUSY', operation, 'state', 'ADMISSION_FULL'))
+        admitted_deadline = time.monotonic() + self.settings.integer('runtime.operation_timeout_ms') / 1000
         async def run():
-            deadline = self._request_deadline.set(time.monotonic() + self.settings.integer('runtime.operation_timeout_ms') / 1000)
+            deadline = self._request_deadline.set(admitted_deadline)
             try:
                 if operation == 'accept_event': return await self.accept(port._entry, cast(str, key), argument)
                 result = await self.learn_entry(port._entry, cast(str, key))
@@ -271,13 +272,17 @@ class ContentRuntimeService:
             if not job.cancelled(): job.exception()
             self._jobs.pop(identity, None)
         task.add_done_callback(ended)
-        done, _ = await asyncio.wait((outcome,), timeout=self.settings.integer('runtime.operation_timeout_ms') / 1000)
+        done, _ = await asyncio.wait((outcome,), timeout=max(0.0, admitted_deadline - time.monotonic()))
         if not done: return Rejected(RuntimeError('TIMEOUT', operation, 'state', 'DEADLINE_EXCEEDED', True))
         return outcome.result()
 
-    def remaining_request(self) -> float:
+    def request_deadline(self) -> float:
+        """Carry the original entry deadline through every preparation/finish step."""
         deadline = self._request_deadline.get()
-        return self.settings.integer('runtime.operation_timeout_ms') / 1000 if deadline is None else max(0.0, deadline - time.monotonic())
+        return time.monotonic() + self.settings.integer('runtime.operation_timeout_ms') / 1000 if deadline is None else deadline
+
+    def remaining_request(self) -> float:
+        return max(0.0, self.request_deadline() - time.monotonic())
 
     async def accept(self, entry_id: str, key: str, event: object):
         value = isolate_media_event(event, self.settings.integer('ingress.event_max_bytes'),

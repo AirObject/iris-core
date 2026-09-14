@@ -23,7 +23,7 @@ MEMBER = RecordSchema((Field('role', ScalarSchema('enum', choices=('HISTORY','TA
 BASIS = RecordSchema((Field('object_id', ID), Field('revision', REVISION), Field('grant_ref', ID), Field('snapshot_digest', DIGEST)))
 LEAF_REF = RecordSchema((Field('object_id', ID), Field('ordinal', ScalarSchema('integer',0,7)), Field('digest', DIGEST), Field('byte_count', ScalarSchema('integer',0,7168))))
 BINDING = RecordSchema(tuple(Field(name, ID) for name in ('profile_id','config_snapshot_id','profile_revision','price_revision')) + (
-    Field('protocol', ScalarSchema('enum', choices=('OPENAI_CHAT_COMPLETIONS',))), Field('model_id',ID),
+    Field('protocol', ScalarSchema('enum', choices=('OPENAI_CHAT_COMPLETIONS','MINIMAX_CHAT_JSON_V1','DEEPSEEK_CHAT_JSON_V1'))), Field('model_id',ID),
     Field('capability_evidence_ref',ID), Field('billing_evidence_ref',ID), Field('request_digest',DIGEST)))
 IDENTITY = RecordSchema(tuple(Field(name,ID) for name in ('database_id','instance_id','batch_id','run_id','source_id','config_snapshot_id')))
 RESOURCES = RecordSchema(tuple(Field(kind+suffix,ID if suffix=='_ref' else DIGEST) for kind in ('prompt','schema','transform') for suffix in ('_ref','_digest')))

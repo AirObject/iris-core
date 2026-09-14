@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 from companion_memory.configuration import EffectiveSnapshot, PresentValue, provider_snapshot_issue
 from companion_memory.logging_service import Logger
 from companion_memory.persistence import Committed, NotCommitted, Unconfirmed
+from .usage_only import continuation_ready
 from .accounting import budget_key, check_budget, evidence_compatible, reserve_budget, revise, row, settle_budget
 from .ledger import LedgerAssembly, LedgerBinding, LedgerFailure, Mutation
 from .normalization import OUTCOMES, USAGE_FIELDS, input_units, keys, normalize_usage, result_payload, validate_attribution
@@ -462,7 +463,8 @@ class ProviderService:
                 if reservation is None or reservation["account_id"] != request["account_id"]:
                     raise InvalidData()
                 usage = as_record(attempt["usage"])
-                if self._text and (attempt['state'] in ('PREPARED', 'REMOTE_RESULT_UNKNOWN') or not usage['cost_complete']):
+                if self._text and attempt['wire_protocol']!=self._profiles[cast(str,request['profile_id'])]['wire_protocol']:raise InvalidData()
+                if self._text and (attempt['state'] in ('PREPARED', 'REMOTE_RESULT_UNKNOWN') or not continuation_ready(usage)):
                     self._text_admission_blocked = True
                 if any(reservation[name] != usage[name] for name in ("known_subtotal_atoms", "held_atoms", "cost_complete", "known_cost_atoms")):
                     raise InvalidData()
@@ -1051,7 +1053,7 @@ class ProviderService:
         attempt_id = self._id()
         usage = self._usage({}, profile, amount)
         attempt = row(attempt_id, request_id=job.request_id, ordinal=cast(int, request["attempt_count"])+1, state="PREPARED", logical_outcome=None,
-                      account_id=profile["account_id"], profile_id=profile["profile_id"], capability=profile["capability"], wire_protocol="OPENAI_CHAT_COMPLETIONS" if self._text else "SIMULATED",
+                      account_id=profile["account_id"], profile_id=profile["profile_id"], capability=profile["capability"], wire_protocol=profile["wire_protocol"] if self._text else "SIMULATED",
                       execution_owner_id=self._execution_owner, created_at=self._utc(), updated_at=self._utc(), adapter_duration_ms=None, handoff_id=None,
                       confirmed_started=None, ever_unknown=False, first_error=None, usage=usage, result_fingerprint=None, evidence_revision=0)
         if self._text:
@@ -1277,7 +1279,7 @@ class ProviderService:
             values = {"attempt_id": attempt["object_id"], **item, "evidence_revision": attempt["evidence_revision"], "source": "LOCALLY_ESTIMATED", "unit": "SIMULATED_"+cast(str,item["item"]).upper()+"_UNIT",
                       "known_subtotal_atoms": item["cost_atoms"] or 0, "cost_complete": item["cost_atoms"] is not None}
             if self._text:
-                values.update(format_version=2, source='LOCALLY_ESTIMATED' if item['cost_atoms'] is not None else 'UNAVAILABLE',
+                values.update(format_version=3 if usage['format_version']==3 else 2, source=('PROVIDER_REPORTED' if item['quantity'] is not None else 'UNAVAILABLE') if usage['format_version']==3 else 'LOCALLY_ESTIMATED' if item['cost_atoms'] is not None else 'UNAVAILABLE',
                     unit='SUBSCRIPTION_REQUEST' if item['item'] == 'subscription_request' else 'TOKEN')
             changes.append(Mutation("cost_items", old, row(key, **values) if old is None else revise(old, **values)))
         reported_key = derived_id("cost",attempt["object_id"],"reported")
@@ -1285,7 +1287,7 @@ class ProviderService:
         reported_values = {"attempt_id": attempt["object_id"], "item": "reported", "cost_atoms": usage["reported_cost_atoms"], "evidence_revision": attempt["evidence_revision"], "source": "SIMULATED_REPORTED", "unit": "TEST_ATOMS",
                            "known_subtotal_atoms": usage["reported_cost_atoms"] or 0, "cost_complete": usage["reported_cost_atoms"] is not None}
         if self._text:
-            reported_values.update(format_version=2, source='UNAVAILABLE', unit='CURRENCY_ATOM',
+            reported_values.update(format_version=3 if usage['format_version']==3 else 2, source='UNAVAILABLE', unit='CURRENCY_ATOM',
                 quantity=None, price_numerator=None, price_denominator=None)
         changes.append(Mutation("cost_items", old_reported, row(reported_key, **reported_values) if old_reported is None else revise(old_reported, **reported_values)))
         if payload is not None:
@@ -1296,7 +1298,7 @@ class ProviderService:
         await self._commit(kind, kind+"-"+cast(str, attempt["object_id"])+"-"+str(attempt["evidence_revision"]), tuple(changes), job.grant.actor_ref,
                            job.request_id, cast(str, attempt["object_id"]), cast(str, job.stored["phase"]), phase, cast(bool, usage["cost_complete"]), owner=job)
         job.stored, job.attempt = request, attempt
-        if self._text and (remote_unknown or not usage['cost_complete'] or cause is not None and cause.reason in ('AUTHENTICATION_FAILED', 'MODEL_BINDING_MISMATCH')):
+        if self._text and (remote_unknown or not continuation_ready(usage) or cause is not None and cause.reason in ('AUTHENTICATION_FAILED', 'MODEL_BINDING_MISMATCH')):
             self._text_admission_blocked = True
         if remote_unknown and not job.unknown:
             self._unknown += 1

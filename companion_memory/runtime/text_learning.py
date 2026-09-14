@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 async def learn_text(runtime: ContentRuntimeService,source: MappingProxyType[str,Value],*,fresh: bool,admission_event: str|None=None):
     r=runtime;a=r.assembly;text=a.text_transactions;bid=cast(str,source['batch_id'])
-    deadline=time.monotonic()+r.remaining_request()
+    deadline=r.request_deadline()
     work=(await a.rows.read('work_get',{'batch_id':bid}))[0]
     if work['phase'] in ('CANDIDATE_STORED','TERMINAL'):
         rows=await a.cognition._rows.read('get',{'candidate_id':work['candidate_id']})

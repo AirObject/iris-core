@@ -53,7 +53,12 @@ class ChatGenerationAdapter:
             from .chat_json import decode_wire
             try:
                 response = as_record(decode_wire(result.body, 262144))
-                observation = observe_usage(response.get('usage'))
+                observer=observe_usage
+                if binding.requested_model=='deepseek-flash':
+                    from .deepseek_protocol import observe_usage as observer
+                if binding.requested_model=='MiniMax-M3':
+                    from .minimax_protocol import observe_usage as observer
+                observation = observer(response.get('usage'))
                 unknown = observation_value(UsageObservation(observation.fields, observation.raw_usage, observation.valid, False))
             except InvalidData:
                 pass

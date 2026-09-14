@@ -14,7 +14,7 @@ from companion_memory.configuration.persistent_results import ConfigurationCommi
 from companion_memory.persistence import PersistenceService,DatabaseResources,Ready
 from companion_memory.provider import LedgerAssembly,ProviderService,ProviderResources,SimulationAdapter
 from companion_memory.runtime import RuntimeAssembly,RuntimeService,IngressGrant
-from companion_memory.runtime.results import Committed,RuntimeReady
+from companion_memory.runtime.results import Committed,RecoveryPending,RuntimeReady
 from tests.runtime.configuration_support import candidate,event
 from tests.runtime.participants import SyntheticParticipant
 from tests.provider.support import Gate, success
@@ -73,6 +73,16 @@ class Fixture:
         logger=self.logging.get_logger('runtime');assert type(logger) is LoggingOk
         self.runtime.attach_logger(logger.value)
         ready=await self.runtime.initialize_runtime()
+        # Fixture setup may span several bounded local recovery pages. Wait for
+        # actual owners before continuing; never extend the tested deadlines.
+        for _ in range(8):
+            if type(ready) is not RecoveryPending:break
+            assert ready.stage=='RUNTIME' and ready.reason in ('DEADLINE_EXCEEDED','OWNER_ACTIVE','COMMIT_UNCONFIRMED'),ready
+            retained=tuple(self.runtime._jobs)
+            if retained:
+                done,pending=await asyncio.wait(retained,timeout=5)
+                assert done and not pending,'Original runtime setup remains in flight.'
+            ready=await self.runtime.initialize_runtime()
         assert type(ready) is RuntimeReady,ready
         return self.runtime
     async def entry(self,name='sample_entry'):

@@ -1,11 +1,15 @@
 # 当前任务
 
-文本学习工程实现及本地验证已获监督技术验收；用户已明确授权“没有问题就可以提交”。本记录随一次精确的本地提交收尾：标题`feat(learning): 实现文本学习与首次 persona 发布`，版本为本记录所属提交，父提交`8bc948c1822afb931625b77563df710fc9bbf20d`，分支main。完成提交及事后核对后停止，等待用户决定下一步。
+上阶段为MiniMax／DeepSeek真实文本适配与受控试验，本次按用户明确授权由监督者完成提交收尾。学习质量未达到门槛，按[已批准暂缓决定](DEFERRED_ISSUES.md#text-learning-quality)不阻塞后续计划；提交不改变质量结论。
 
-已验收交付包括[独立文本配置与Provider传输／账本、完整context和持久候选、记忆／来源原子终结、首次persona确认与发布、恢复及本地查询](../architecture/model-driven-text-learning.md)。118键／6域、六新增表／103命令、0–8正式记忆、配置扩容与唯一初始化2MiB例外、原键恢复、persona三代与可信NOT_SENT、迟到OUTPUT_LIMIT的首错／最终错误分离均按已审核实现保持，旧格式和指纹不变。
+提交基线为main／`c2be9327b80be3b3ccb12262af7ff15c4539ea2d`。只提交本阶段源码、测试、所属契约、时区产品决定、质量暂缓及验证规则记录；后续语义检索草案和实施计划不纳入。密钥、准备文件、原试验库／响应和外层授权日志均不提交或改写。
 
-提交范围固定为已审核148份变更：86份源码、49份测试、12份文档及.gitignore。收尾仅修改本记录、STATUS、INDEX和主契约中的授权／停止点导航，不改源码、测试、依赖或技术设计。.gitignore的新增规则仅为`/.local/provider-tests/`；本地准备文件、密钥、环境及临时证据不进入提交，全部已有文件保留。
+交付包括受控主体登记、Provider凭据解析、MiniMax独立协议及usage-only、DeepSeek协议与计量、试验材料／授权／执行工具、persona审核发布和学习结果／恢复核验。DeepSeek两平台14槽已用尽，无备用；正式记忆分别5／12条。费用估算与外层责任分别见[集中报告](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/report-complete.md)，不冒充供应商账单；旧MiniMax UNKNOWN保持，不新增发送。
 
-有效验证绑定542份源码／测试／资源／工程文件，SHA256 `1001c775c3aa5c27b124b3cfc616ab9d157e02a5e83aa6f4e9e9af28fefbbefb`。macOS／Linux全量各890项通过（832.754秒／941.464秒），Pyright1.1.413覆盖全部534份Python、零错误／警告／信息；编译、3份JS、离线锁、容量实物及完整差异／链接检查通过。收尾逐项核对受测文件与提交树一致，只有文档变化，复用有效结果，不称为新全量。版本、实际命令、原始证据及限定见[最终验证报告](/private/tmp/iris-text-final-error-tlgoa1tb/report.md)与[矩阵](/private/tmp/iris-text-final-error-tlgoa1tb/matrix.md)；实际新SHA、父提交、148份清单、暂存核对及提交后状态见[提交收尾证据](/private/tmp/iris-text-commit-1dv0scoc/report.md)。旧报告保持当时的审查状态，本次技术验收由用户监督确认。
+最近有效验证由执行者完成：最终macOS／Linux各17项关联测试通过，全量锁定Pyright1.1.413零诊断，编译及差异检查通过。未机械重跑全量unittest；JS／锁文件未改。完整命令、退出码和原失败保留于[证据索引](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/checks-index-complete.json)。本轮监督者未运行项目、测试或模型，核对文件一致后复用该版本证据。
 
-真实存储、受控回环HTTP/TLS及新解释器恢复验证成立；真实供应商效果、用户质量审核、Pylance分别未验证。原最大词项资格、P/X及长期负载限制保持；供应商资格／strict／Auto责任／费用及出站授权仍是真实调用前置。本轮不读真实密钥或四份准备文件，不调用供应商，不修改AGENTS或冻结资料，不使用其他会话／子代理，不amend、推送、合并、部署或启动下一阶段。
+最终578份受测文件／570份Python指纹为`16b7d88d466e9549d800604140a9d9de353b2534563628492a331b1139de0582`，算法为相对路径排序后逐项“路径＋NUL＋文件SHA256十六进制＋LF”再取SHA256。[完整清单](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/tested-files-corrected-final.json)不含密钥及准备文件；[本轮提交范围与复核证据](/private/tmp/iris-supervisor-planning-3ayat7pi/baseline.json)保留初始73份变更身份。真实请求分别使用报告记录的几个版本，不将最终指纹倒推至全部历史请求。
+
+限制：学习质量未通过；生产环境、最大容量／长期负载及Pylance未验证；默认时区仅已批准产品规则，尚未实施。历史原始报告与已确认评分保持，不能用后续结果覆盖。
+
+停止点：完成用户授权的本地提交后，监督者另行编写下一阶段计划；本次提交不授权下一阶段实现、真实调用、推送、合并或部署。后续统一Docker Linux验证，规则只维护于[代码规范](../CODING_STANDARDS.md#validation-environment)。

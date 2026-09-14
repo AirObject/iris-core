@@ -46,9 +46,10 @@ def validate_transport(value: object) -> None:
     """Validate the closed supplier endpoint and every network resource bound."""
     schema, limit = TEXT_VALUES['provider.transport']
     transport = _record(_bounded(schema, value, limit))
-    if (transport['origin'] != 'https://ark.cn-beijing.volces.com'
-            or transport['base_path'] != '/api/coding/v3'
-            or transport['endpoint_path'] != '/chat/completions'):
+    if (transport['origin'],transport['base_path'],transport['endpoint_path']) not in (
+            ('https://ark.cn-beijing.volces.com','/api/coding/v3','/chat/completions'),
+            ('https://api.minimax.cn','/v1','/chat/completions'),
+            ('https://api.deepseek.com','','/chat/completions')):
         raise InvalidValue()
 
 
@@ -66,6 +67,7 @@ def validate_text_values(foundation, text) -> None:
         raise InvalidValue()
     transport,g=checked['provider.transport'],checked['provider.generation']
     validate_transport(transport)
+    validate_supplier_binding(a,p,g,transport)
     if (transport['account_ref']!=a['account_id']
             or p['account_id']!=a['account_id'] or p['billing_mode']!=a['billing_mode']
             or p['dimensions'] is not None or p['space_id'] is not None or p['generation_ref']!='provider.generation'
@@ -80,12 +82,15 @@ def validate_text_values(foundation, text) -> None:
     if not _text(persona['generation_goal']).strip() or not _text(persona['supervision_prompt']).strip():
         raise InvalidValue()
     price=_record(a['price']);url=urlsplit(_text(price['source_url']))
-    if (url.scheme!='https' or url.hostname not in ('www.volcengine.com','volcengine.com')
+    if (url.scheme!='https' or url.hostname not in (('platform.minimax.cn',) if a['billing_mode']=='USAGE_ONLY_TRIAL' else ('api-docs.deepseek.com',) if p['model_id']=='deepseek-flash' else ('www.volcengine.com','volcengine.com'))
             or url.username is not None or url.password is not None or url.query or url.fragment
             or url.port not in (None,443) or not url.path or date.fromisoformat(_text(price['checked_date'])).isoformat()!=price['checked_date']):
         raise InvalidValue()
     rates=tuple(price[k] for k in ('input_atoms_per_million','cached_atoms_per_million','output_atoms_per_million'))
-    if a['billing_mode']=='TOKEN_METERED':
+    if a['billing_mode']=='USAGE_ONLY_TRIAL':
+        if a['quota'] is not None or any(v is not None for v in rates) or price['per_attempt_money_bound'] is not None or a['cost_limit_atoms']!=0:raise InvalidValue()
+        liability=0
+    elif a['billing_mode']=='TOKEN_METERED':
         if a['quota'] is not None or price['per_attempt_money_bound'] is not None or any(type(v) is not int or v>10**12 for v in rates):
             raise InvalidValue()
         liability=reserve_tokens(_number(g['reservation_input_bound']),_number(g['max_tokens']),TokenPrices(*(_number(rate) for rate in rates)))
@@ -109,6 +114,8 @@ def validate_inherited_vector(candidate) -> bool:
         'provider.retry_delay_ms':0,'provider.request_max_bytes':131072})
     for key in ('provider.accounts','provider.profiles','provider.role_profiles'):
         del expected['foundation'][key]
+    if candidate.text.record('provider.generation')['model_id']=='deepseek-flash':
+        expected['runtime']['runtime.operation_timeout_ms']=60000
     expected['runtime']['learning.material_max_bytes']=73728
     expected['content']['media.processing_concurrency']=0
     for name,values in expected.items():
@@ -131,3 +138,23 @@ def validate_relationships(candidate, directories) -> bool:
     c=candidate.text.record('cognition.text_context');g=candidate.text.record('provider.generation')
     return (c['total_max_bytes']==n('learning.material_max_bytes') and _number(c['system_max_bytes'])+_number(c['user_max_bytes'])<=n('learning.input_units_limit')
             and n('learning.output_units_limit')==_number(g['max_tokens']) and f['provider.max_in_flight']==1)
+
+
+def validate_supplier_binding(account,profile,generation=None,transport=None) -> None:
+    """Keep each provider/model/protocol/account tuple closed and indivisible."""
+    model=profile['model_id']
+    bindings={
+        'ark-code-latest':('OPENAI_CHAT_COMPLETIONS','JSON_SCHEMA_STRICT','https://ark.cn-beijing.volces.com',16),
+        'MiniMax-M3':('MINIMAX_CHAT_JSON_V1','JSON_PROMPT_V1','https://api.minimax.cn',16),
+        'deepseek-flash':('DEEPSEEK_CHAT_JSON_V1','JSON_OBJECT_V1','https://api.deepseek.com',14),
+    }
+    if model not in bindings:raise InvalidValue()
+    protocol,response_mode,origin,attempt_limit=bindings[model]
+    if (profile['wire_protocol']!=protocol or (account['billing_mode']=='USAGE_ONLY_TRIAL')!=(model=='MiniMax-M3')
+            or account['attempt_limit']!=attempt_limit):raise InvalidValue()
+    if model!='MiniMax-M3' and account['cost_limit_atoms']<1:raise InvalidValue()
+    if model=='deepseek-flash' and (account['billing_mode']!='TOKEN_METERED' or account['currency']!='CNY'):raise InvalidValue()
+    if generation is not None:
+        if generation['model_id']!=model or generation['protocol']!=protocol or generation['response_mode']!=response_mode:raise InvalidValue()
+        if model in ('MiniMax-M3','deepseek-flash') and (tuple(generation['expected_reported_models'])!=(model,) or generation['resolved_model_id'] is not None):raise InvalidValue()
+    if transport is not None and transport['origin']!=origin:raise InvalidValue()

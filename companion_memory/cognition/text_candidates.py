@@ -21,7 +21,7 @@ from companion_memory.provider.chat_protocol import validate_structured_result,C
 from companion_memory.provider.values import as_record
 from .text_context import FrozenContext,material_digest,normalized_request_digest,restore_context,admission_request
 from .text_output import isolate_text_output
-from .text_resources import output_schema,resource_digest,LEARNING_INSTRUCTIONS,LEARNING_TRANSFORM_RESOURCE,learning_authorizations
+from .text_resources import output_schema,resource_digest,prompt_resource,LEARNING_INSTRUCTIONS,LEARNING_TRANSFORM_RESOURCE,learning_authorizations
 from .candidates import Candidate,stable_identity,manifest_digest,isolate_candidate
 
 
@@ -42,7 +42,7 @@ class TextCandidateInput:
     def __init__(self,configuration: StoredTextConfiguration):
         if stored_text_configuration_issue(configuration) is not None:raise InvalidValue()
         generation=configuration.candidate.text.record('provider.generation')
-        if (generation['transform_digest']!=resource_digest(LEARNING_TRANSFORM_RESOURCE) or generation['prompt_digest']!=resource_digest(LEARNING_INSTRUCTIONS.encode())
+        if (generation['transform_digest']!=resource_digest(LEARNING_TRANSFORM_RESOURCE) or generation['prompt_digest']!=resource_digest(prompt_resource('LEARNING',cast(str,generation['model_id'])))
                 or generation['schema_digest']!=resource_digest(output_schema('LEARNING'))):raise InvalidValue()
         self.configuration=configuration
         self.transform_version=cast(str,generation['transform_ref'])
@@ -74,7 +74,7 @@ class TextCandidateInput:
         if tuple(({'H':'HISTORY','T':'TARGET','R':'RECENT'}[cast(str,item['role'])],item['message_id'],item['payload_digest']) for item in members)!=tuple((item['role'],item['message_id'],item['payload_digest']) for item in frozen_members):raise InvalidValue()
         settings=configuration.candidate.content
         if any(record(context.context['resources'])[name]!=resources[name] for name in ('prompt_ref','prompt_digest','schema_ref','schema_digest','transform_ref','transform_digest')):raise InvalidValue()
-        authorization=learning_authorizations(cast(str,context.context['system_text']))
+        authorization=learning_authorizations(cast(str,context.context['system_text']),cast(str,resources['model_id']))
         rid=cast(str,request['object_id']);handoff=cast(str|None,request['handoff_id'])
         batch=cast(str,original['batch_id']);database=configuration.database_id
         origin_ref=handoff or rid
