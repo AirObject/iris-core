@@ -9,6 +9,7 @@ from types import MappingProxyType
 from typing import Protocol
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
+from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
 from companion_memory.logging_service import AuditRequirement
 from companion_memory.persistence import (AuditFieldBinding, AuditResultBinding, Field, RecordSchema, RepositoryDefinition,
     ResultBoundCommandDefinition, ResultBoundCommand, UnitOfWork, PersistenceService, Committed, Found, NotFound, NotCommitted,
@@ -29,7 +30,7 @@ class InformationInitialization:
         names = ('retrieval', 'state', 'goals', 'memory')
         by_owner = {r.owner_module: r for r in repositories}
         self._owners: dict[str, InitializableOwner] = {}
-        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | None = None
+        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | None = None
         self._instance = ''
         self._configuration_check: Callable[[UnitOfWork], bool] | None = None
         audits = tuple(AuditRequirement(owner, owner + '_initialize_information_owners', 'INITIALIZE_INFORMATION_OWNERS', 1, ('APPLY',), FACT, target_limit=16) for owner in names)
@@ -43,7 +44,7 @@ class InformationInitialization:
             tuple(by_owner[n] for n in names) + (configuration_repository,), audits, self._handle, RecordSchema((Field('actor', ID),)), bindings)
         self.commands = (self.definition,)
 
-    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration, instance_id: str,
+    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str,
              owners: dict[str, InitializableOwner], configuration_check: Callable[[UnitOfWork], bool]) -> None:
         if self._configuration is not None or set(owners) != {'retrieval', 'state', 'goals', 'memory'}:
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')

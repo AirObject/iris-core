@@ -12,9 +12,11 @@ from types import MappingProxyType
 from typing import Protocol, cast, TYPE_CHECKING
 if TYPE_CHECKING:
     from .information_tracking import MemoryInformation
+    from .semantic_tracking import MemorySemanticCoverage
     from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
+from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration, stored_semantic_configuration_issue
 from companion_memory.logging_service.object_history import HistoryBinding
 from companion_memory.persistence import UnitOfWork, PersistenceService, Value
 from companion_memory.persistence.schema import InvalidValue
@@ -25,6 +27,7 @@ from .formats import (
     transition, TOMBSTONE_SCHEMA,
 )
 from .changes import isolate_change, semantic_change
+from .fixed_source import PreparedFixedSource,isolate_fixed_source,decode_fixed_source,is_fixed_source,fixed_digest,check_fixed_anchor
 from .sources import SourceParticipants, SourcePayload, isolate_source, decode_source, check_anchor
 
 
@@ -40,8 +43,8 @@ class SourceRelease(Protocol):
 class ApplyScope:
     """Explicit trusted work scope; this is an assembly input, not a public grant."""
     instance_id: str
-    candidate_id: str
-    batch_id: str
+    candidate_id: str | None
+    batch_id: str | None
     readable_objects: frozenset[str]
     readable_subjects: frozenset[str]
     writable_objects: frozenset[str]
@@ -74,14 +77,15 @@ def applied_counts(applied: AppliedChanges) -> tuple[MappingProxyType[str, Value
 class MemoryTransactions:
     """Only this participant modifies memory tables; other owners join by protocol."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService,
-                 configuration: StoredContentConfiguration | StoredTextConfiguration, instance_id: str,
+                 configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str,
                  history: HistoryBinding, sources: SourceParticipants):
-        text_format=type(configuration) is StoredTextConfiguration
-        configuration_valid=(stored_text_configuration_issue(configuration) is None and catalog.definition.schema_version==3) if text_format else type(configuration) is StoredContentConfiguration
+        self.semantic_format=type(configuration) is StoredSemanticConfiguration
+        text_format=type(configuration) in (StoredTextConfiguration,StoredSemanticConfiguration)
+        configuration_valid=(stored_semantic_configuration_issue(configuration) is None and catalog.definition.schema_version==4) if self.semantic_format else (stored_text_configuration_issue(configuration) is None and catalog.definition.schema_version==3) if text_format else type(configuration) is StoredContentConfiguration
         if not configuration_valid or type(history) is not HistoryBinding or history._text_format != text_format:
             raise ValueError('Native persistent configuration and history owner are required.')
         from .source_rows import MemorySourceRows
-        self.rows = MemorySourceRows(catalog, storage, instance_id)
+        self.rows = MemorySourceRows(catalog, storage, instance_id,semantic_format=self.semantic_format)
         self.storage = storage
         self.text_format = text_format
         self._lease = storage.claim_module_owner(catalog.definition)
@@ -92,13 +96,19 @@ class MemoryTransactions:
         self._settings = configuration.candidate.content
         self._information_catalog = catalog
         self.information: MemoryInformation | None = None
+        self.semantic: MemorySemanticCoverage | None = None
+        self._prepared_fixed_source: PreparedFixedSource | None=None
 
-    def bind_information(self, configuration: StoredInformationConfiguration | StoredTextConfiguration) -> MemoryInformation:
+    def bind_information(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration) -> MemoryInformation:
         """Select change tracking only for the explicit independent memory format."""
         from .information_tracking import MemoryInformation
-        if self.information is not None or self._information_catalog.definition.schema_version != (3 if self.text_format else 2) or configuration.database_id != self.configuration.database_id or configuration.snapshot_id != self.configuration.snapshot_id:
+        if self.information is not None or self._information_catalog.definition.schema_version != (4 if self.semantic_format else 3 if self.text_format else 2) or configuration.database_id != self.configuration.database_id or configuration.snapshot_id != self.configuration.snapshot_id:
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')
         self.information = MemoryInformation(self._information_catalog, self.storage, configuration, self.instance_id, self)
+        if self.semantic_format:
+            from .semantic_tracking import MemorySemanticCoverage
+            assert type(configuration) is StoredSemanticConfiguration
+            self.semantic=MemorySemanticCoverage(self,self.information,cast(str,configuration.candidate.text.record('retrieval.semantic')['space_id']))
         return self.information
 
     def current(self, uow: UnitOfWork, oid: str) -> MappingProxyType[str, Value] | None:
@@ -164,7 +174,14 @@ class MemoryTransactions:
         rows = self.rows.stage('sources_get', uow, {'source_id': sid})
         if not rows or rows[0]['state'] != 'RETAINED':
             raise OwnerFailure('PRECONDITION_FAILED', 'source', 'SOURCE_CHANGED')
-        row = rows[0]; source = decode_source(cast(str, row['body']))
+        row = rows[0]
+        if self.semantic_format and is_fixed_source(cast(str,row['body'])):
+            source=decode_fixed_source(cast(str,row['body']))
+            if (row['batch_id'] is not None or row['source_id']!=source['source_id'] or row['entry_id']!=source['entry_id']
+                    or row['digest']!=fixed_digest(source) or self.rows.stage('source_holder_count',uow,{'source_id':sid})[0]['count']!=row['holder_count']):
+                raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
+            return row,source
+        source = decode_source(cast(str, row['body']))
         if any(row[k] != source[k] for k in ('source_id', 'entry_id', 'batch_id', 'digest')):
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         if self.rows.stage('source_holder_count', uow, {'source_id': sid})[0]['count'] != row['holder_count']:
@@ -175,14 +192,42 @@ class MemoryTransactions:
                 raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         return row, source
 
+    def prepare_fixed_source(self,uow: UnitOfWork,owner: object,set_id: str,ordinal: int) -> PreparedFixedSource:
+        """Consume a sealed member through its actual cognition owner in this UoW."""
+        from companion_memory.cognition.fixed_memory import FixedMemorySets
+        from companion_memory.persistence.semantic_records import identity
+        if type(owner) is not FixedMemorySets or owner.memory is not self or not self.semantic_format:
+            raise OwnerFailure('ACCESS_DENIED','source','BINDING_MISMATCH')
+        operation,_=self.storage.semantic_operation_context(uow,self._information_catalog.definition)
+        if operation.operation_kind!='fixed_establish':raise InvalidValue()
+        root,member=owner.sealed_member(uow,set_id,ordinal)
+        grant=owner.review
+        value=decode_object(cast(str,member['memory_json']).encode(),text_format=True)
+        source=isolate_fixed_source({'format':'FIXED_REVIEWED_TEXT_V1',
+            'source_id':identity('fixed-source',self.instance_id,set_id,member['member_id']),
+            'entry_id':grant.entry_id,'world_scope':record(value['content'])['world_scope'],
+            'event':decode_content(cast(str,member['event_json']).encode(),2048),'set_id':set_id,
+            'member_id':member['member_id'],'review_ref':root['review_ref'],'review_digest':root['review_digest']})
+        proof=object.__new__(PreparedFixedSource)
+        for key,item in (('memory',self),('uow',uow),('source',source),('object_value',value)):
+            object.__setattr__(proof,key,item)
+        self._prepared_fixed_source=proof
+        return proof
+
     def apply_change_set(self, uow: UnitOfWork, scope: ApplyScope, changes: tuple[MappingProxyType[str, Value], ...],
-                         new_source: MappingProxyType[str, Value] | None, release: SourceRelease | None,
+                         new_source: MappingProxyType[str, Value] | PreparedFixedSource | None, release: SourceRelease | None,
                          now_us: int, operation_ref: str, reason_code: str) -> AppliedChanges:
         """Stage an entire authorized set, or reject it before any memory write.
 
         The supplied release participant must verify the persisted source plan
         plus ingress/media reference revisions before applying its fixed branch.
         """
+        fixed=new_source if type(new_source) is PreparedFixedSource else None
+        if fixed is not None:
+            if not self.semantic_format or fixed is not self._prepared_fixed_source or fixed.memory is not self or fixed.uow is not uow:
+                raise OwnerFailure('ACCESS_DENIED','source','BINDING_MISMATCH')
+            self._prepared_fixed_source=None
+            new_source=fixed.source
         if type(scope) is not ApplyScope or scope.instance_id != self.instance_id or type(changes) is not tuple:
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
         if not 1 <= len(changes) <= self._settings.integer('cognition.candidate_item_limit'):
@@ -227,8 +272,10 @@ class MemoryTransactions:
                 continue
             value = isolate_object(value, self._settings.integer('memory.current_max_bytes'), text_format=self.text_format)
             origin = record(value['origin'])
-            if old is None and origin['kind'] == 'OPERATOR_INPUT':
+            if old is None and origin['kind'] == 'OPERATOR_INPUT' and fixed is None:
                 raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'object', 'BUSINESS_NOT_IMPLEMENTED')
+            if fixed is not None and (len(checked)!=1 or action!='CREATE_MEMORY' or value!=fixed.object_value):
+                raise OwnerFailure('ACCESS_DENIED','source','BINDING_MISMATCH')
             if old is None and (origin['candidate_id'], origin['batch_id']) != (scope.candidate_id, scope.batch_id):
                 raise OwnerFailure('ACCESS_DENIED', 'candidate', 'BINDING_MISMATCH')
             lifecycle, since = transition(old, cast(int, record(value['scores'])['retention']), cast(int, value['modified_at_us']),
@@ -270,8 +317,8 @@ class MemoryTransactions:
         source_rows: dict[str, MappingProxyType[str, Value]] = {}
         delta: dict[str, tuple[set[str], set[str]]] = {}
         if new_source is not None:
-            new_source = isolate_source(new_source)
-            if (new_source['batch_id'], new_source['config_snapshot_id']) != (scope.batch_id, self.configuration.snapshot_id):
+            new_source = isolate_fixed_source(new_source) if fixed is not None else isolate_source(new_source)
+            if fixed is None and (new_source['batch_id'], new_source['config_snapshot_id']) != (scope.batch_id, self.configuration.snapshot_id):
                 raise OwnerFailure('ACCESS_DENIED', 'source', 'BINDING_MISMATCH')
             if self.rows.stage('sources_get', uow, {'source_id': new_source['source_id']}):
                 raise OwnerFailure('PRECONDITION_FAILED', 'source', 'SOURCE_CHANGED')
@@ -294,6 +341,7 @@ class MemoryTransactions:
             raise InvalidValue()
         payloads: dict[tuple[str, str], SourcePayload] = {}
         for sid, manifest in manifests.items():
+            if manifest.get('format')=='FIXED_REVIEWED_TEXT_V1':continue
             for member in sequence(manifest['ordered_members']):
                 m = record(member)
                 payloads[(sid, cast(str, m['message_id']))] = self.sources.verify_member(uow, cast(str, manifest['entry_id']), m)
@@ -319,6 +367,12 @@ class MemoryTransactions:
             direct = False; roots: set[str] = set()
             for item in sequence(links['sources']):
                 link = record(item); sid = cast(str, link['source_id']); manifest = manifests[sid]
+                if manifest.get('format')=='FIXED_REVIEWED_TEXT_V1':
+                    if manifest['world_scope']!=content['world_scope'] or link['auxiliary_refs']:raise InvalidValue()
+                    for item in sequence(link['target_anchors']):
+                        anchor=record(item);check_fixed_anchor(anchor,manifest);roots.add(cast(str,anchor['message_id']))
+                        if link['link_role']=='DIRECT':direct=True
+                    continue
                 members = {cast(str, record(m)['message_id']): record(m) for m in sequence(manifest['ordered_members'])}
                 for item in sequence(link['target_anchors']):
                     anchor = record(item); mid = cast(str, anchor['message_id'])
@@ -330,7 +384,7 @@ class MemoryTransactions:
                     auxiliary = record(item)
                     if auxiliary['message_id'] not in members or members[cast(str, auxiliary['message_id'])]['role'] not in ('H', 'R'):
                         raise InvalidValue()
-            if record(value['origin'])['kind'] == 'DIRECT_LEARNING' and not direct:
+            if (record(value['origin'])['kind'] == 'DIRECT_LEARNING' or fixed is not None) and not direct:
                 raise InvalidValue()
             bases = {cast(str, record(b)['basis_id']): record(b) for b in sequence(links['bases'])}
             for bid, basis in bases.items():
@@ -358,7 +412,7 @@ class MemoryTransactions:
                     raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'source', 'OWNER_MISSING')
                 release.verify(uow, sid, cast(int, row['references_revision']), cast(int, row['holder_count']),
                     cast(int, row['holder_count']) - len(removed) + len(acquired),
-                    tuple(record(m) for m in sequence(manifests[sid]['ordered_members'])))
+                    tuple(record(m) for m in sequence(manifests[sid].get('ordered_members',()))))
         history = []
         for oid, old in old_values.items():
             action = next(c['action'] for c in checked if c['target_id'] == oid)
@@ -367,12 +421,12 @@ class MemoryTransactions:
         if new_source is not None:
             sid = cast(str, new_source['source_id'])
             self.rows.stage('sources_insert', uow, {'source_id': sid, 'entry_id': new_source['entry_id'],
-                'batch_id': new_source['batch_id'], 'state': 'RETAINED', 'references_revision': 1, 'holder_count': 0,
-                'body': encode_content(new_source, 8192).decode(), 'digest': new_source['digest']})
-            for ordinal, member in enumerate(sequence(new_source['ordered_members'])):
+                'batch_id': None if fixed is not None else new_source['batch_id'], 'state': 'RETAINED', 'references_revision': 1, 'holder_count': 0,
+                'body': encode_content(new_source, 8192).decode(), 'digest': fixed_digest(new_source) if fixed is not None else new_source['digest']})
+            for ordinal, member in enumerate(sequence(new_source['ordered_members']) if fixed is None else ()):
                 self.rows.stage('source_members_insert', uow, {'source_id': sid, 'ordinal': ordinal,
                     'message_id': record(member)['message_id'], 'body': encode_content(member, 2048).decode()})
-            self.sources.retain_source(uow, sid, cast(str, new_source['entry_id']), tuple(record(m) for m in sequence(new_source['ordered_members'])))
+            if fixed is None:self.sources.retain_source(uow, sid, cast(str, new_source['entry_id']), tuple(record(m) for m in sequence(new_source['ordered_members'])))
         retired = 0
         retired_ids: list[str] = []
         for sid in sorted(delta):
@@ -393,8 +447,9 @@ class MemoryTransactions:
                 raise OwnerFailure('PRECONDITION_FAILED', 'source', 'OWNERSHIP_CHANGED')
             if count == 0:
                 assert release is not None
-                self.rows.stage('source_members_release', uow, {'source_id': sid})
-                release.release(uow, sid, tuple(record(m) for m in sequence(manifests[sid]['ordered_members'])))
+                if manifests[sid].get('format')!='FIXED_REVIEWED_TEXT_V1':
+                    self.rows.stage('source_members_release', uow, {'source_id': sid})
+                release.release(uow, sid, tuple(record(m) for m in sequence(manifests[sid].get('ordered_members',()))))
                 retired += 1
                 retired_ids.append(sid)
         for sid, subject in subjects.items():
@@ -446,4 +501,8 @@ class MemoryTransactions:
     def close(self) -> bool:
         """Retain the module lease until all database participants have ended."""
         assert self._lease is not None
-        return self._lease.release()
+        released=self._lease.release()
+        if released:
+            self._prepared_fixed_source=None
+            if self.semantic is not None:self.semantic._summary_uow=None
+        return released

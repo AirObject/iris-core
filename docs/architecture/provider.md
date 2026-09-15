@@ -433,7 +433,7 @@ Provider受审计命令各声明一个必需位置provider_change，事件码为
 | 交接缺失／损坏、费用与预留不一致、旧Schema或无Provider表数据库、低新读取限额 | 完整性或格式拒绝，无自动补表／迁移／覆盖；历史原结果按格式上限读，不用新配置截断，读超时明确失败 |
 | 诊断禁用／过滤ERROR／sink故障，与必须审计失败分别组合；统计和恢复查询 | 前者不影响账本和费用，后者阻止提交／新attempt；全部只读查询无模型调用、无审计历史／payload旁路 |
 
-实现轮应记录当时文件集合／Git基线、Python／实际SQLite／Pyright版本及命令结果；保留原测试行为，新增有意义的公开流程和故障测试，运行全量unittest、Pyright、compileall、离线锁文件及含新增文件的差异检查。静态架构审查确认Provider外没有模型出口、SQL旁路和配置私设默认；具体执行结果只记在[CURRENT_TASK](../work/CURRENT_TASK.md)。
+实现轮应记录当时文件集合／Git基线、Python／实际SQLite／Pyright版本及命令结果；保留原测试行为，新增有意义的公开流程和故障测试，按[统一验证规则](../CODING_STANDARDS.md#validation-environment)选择定点及关联回归，完成全量Pyright和必要的编译、锁文件及含新增文件的差异检查。静态架构审查确认Provider外没有模型出口、SQL旁路和配置私设默认；具体执行结果只记在[CURRENT_TASK](../work/CURRENT_TASK.md)。
 
 <a id="provider-foundation-decisions"></a>
 

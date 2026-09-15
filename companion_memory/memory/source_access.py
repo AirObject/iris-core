@@ -110,6 +110,15 @@ class SourceAccess:
             args = {'object_id': object_id, 'source_id': source_id}
             rows = await self._memory.rows.read('review_manifest', args)
             if not rows: return MemoryError('PRECONDITION_FAILED', operation, 'source', 'SOURCE_CHANGED')
+            from .fixed_source import is_fixed_source,decode_fixed_source,fixed_digest
+            if self._memory.semantic_format and is_fixed_source(cast(str,rows[0]['body'])):
+                manifest=decode_fixed_source(cast(str,rows[0]['body']))
+                if fixed_digest(manifest)!=rows[0]['digest']:raise InvalidValue()
+                if await self._memory.rows.read('review_manifest',args)!=rows:
+                    return MemoryError('PRECONDITION_FAILED',operation,'source','SOURCE_CHANGED')
+                if ordinal is None:return Found(manifest)
+                if ordinal!=0:return MemoryError('PRECONDITION_FAILED',operation,'source','SOURCE_CHANGED')
+                return Found(MappingProxyType({'event':manifest['event'],'interpretations':()}))
             manifest = decode_source(cast(str, rows[0]['body']))
             if manifest['digest'] != rows[0]['digest']: raise InvalidValue()
             if ordinal is None: return Found(manifest)

@@ -28,7 +28,7 @@ class CandidateGoalEffects:
         self.goals, self.memory = goals, memory
 
     def apply(self, uow: UnitOfWork, candidate: Candidate, scope: ApplyScope, work: Record, now: int) -> Record:
-        if (candidate.manifest['candidate_version'] != 2 or candidate.manifest['candidate_id'] != scope.candidate_id
+        if (scope.candidate_id is None or candidate.manifest['candidate_version'] != 2 or candidate.manifest['candidate_id'] != scope.candidate_id
                 or candidate.manifest['batch_id'] != scope.batch_id or scope.instance_id != self.goals.binding.instance_id):
             raise OwnerFailure('ACCESS_DENIED', 'candidate', 'BINDING_MISMATCH')
         raw = decode_content(text(work['model_binding']).encode(), 8192)
@@ -74,6 +74,9 @@ def add_goal_commands(assembly: ContentAssembly, repository: RepositoryDefinitio
             result = assembly.run_handler(semantic, uow, values, assembly.candidate_application.handle)
             facts = dict(record(result['facts']))
             facts['memory'] = MappingProxyType(dict(record(facts['memory'])) | {'from_seq': before, 'to_seq': tracker.sequence(uow)['last_seq']})
+            if assembly.semantic_format:
+                assert assembly.memory.semantic is not None
+                facts['memory']=MappingProxyType(dict(record(facts['memory']))|dict(assembly.memory.semantic.audit_fact(uow)))
             return dict(result) | {'facts': MappingProxyType(facts)}
         definition = replace(original, operation_kind='information_' + name, result_schema=schema,
             participants=original.participants + (repository,), required_audits=original.required_audits + (audit,),

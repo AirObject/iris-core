@@ -32,7 +32,7 @@ def usage_observation(value: object) -> UsageObservation:
 class ChatGenerationAdapter:
     """One configured role-specific wire request, without hidden retries."""
     def __init__(self, transport: ChatTransport, learning: ChatBinding, persona: ChatBinding):
-        if type(transport) is not ChatTransport or any(type(v) is not ChatBinding for v in (learning, persona)):
+        if type(transport) is not ChatTransport or transport._format!='GENERATION' or any(type(v) is not ChatBinding for v in (learning, persona)):
             raise InvalidData()
         if learning.schema_name != 'text_learning' or persona.schema_name != 'initial_persona':
             raise InvalidData()

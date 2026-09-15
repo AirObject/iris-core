@@ -30,6 +30,7 @@ class VerifiedUnsent:
     original_request: MappingProxyType[str, Data]
     request_id: str | None
     conclusion: str
+    deadline: float
 
     def __init__(self): raise TypeError('Unsent evidence requires the original Provider owner.')
 
@@ -99,7 +100,7 @@ async def verify_unsent(provider, port, action, raw):
                 for name, value in {'_provider': provider, 'database_id': provider._ledger.database_id, 'caller_module': grant.caller_module,
                     'caller_scope': grant.caller_scope, 'result_owner': grant.result_owner, 'capability': CAPABILITIES[action],
                     'original_request': as_record(freeze(request, provider._number('request_max_bytes'), owned=True)),
-                    'request_id': request_id, 'conclusion': conclusion}.items(): object.__setattr__(evidence, name, value)
+                    'request_id': request_id, 'conclusion': conclusion,'deadline':deadline}.items(): object.__setattr__(evidence, name, value)
                 provider._unsent_evidence[key] = evidence
                 return UnsentVerified(evidence)
             except (LedgerFailure, InvalidData) as failure: return provider._read_failure(operation, failure)

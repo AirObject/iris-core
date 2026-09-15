@@ -31,3 +31,18 @@ def bounded_deadline(resource_now: float, configured_seconds: float) -> float:
     original = _current.get()
     remaining = configured_seconds if original is None else min(configured_seconds, max(0, original - time.monotonic()))
     return resource_now + remaining
+
+
+def current_deadline(configured_seconds: float) -> float:
+    """Return the inherited monotonic upper bound, never extending its budget."""
+    now = time.monotonic()
+    original = _current.get()
+    return min(original, now + configured_seconds) if original is not None else now + configured_seconds
+
+
+def check_deadline() -> None:
+    """Stop the next local action after the original scoped budget expires."""
+    original = _current.get()
+    if original is not None and time.monotonic() >= original:
+        from .owned_statements import OwnerFailure
+        raise OwnerFailure('TIMEOUT', 'state', 'DEADLINE_EXCEEDED')

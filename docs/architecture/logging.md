@@ -12,7 +12,7 @@
 
 已批准契约：[统一运行诊断日志：控制台与文件](#runtime-diagnostics-contract)；[集中决定](#runtime-diagnostics-decisions)。[配置补充契约](configuration.md#configuration-additional-validation-contract)已另行批准；实施前仍须落实[Schema与目录规格](#runtime-diagnostics-schema)，G1已批准，G2见[待定事项](#runtime-diagnostics-prerequisite-decisions)。本文件为唯一维护正文。
 
-已批准契约：[同事务审计详细契约](#transactional-audit-contract)，已随[持久化事务基础整体决定](persistence-and-transactions.md#persistence-foundation-decisions)获批，待实现授权；运行诊断L1–L4的批准范围不变。
+已批准契约：[同事务审计详细契约](#transactional-audit-contract)，已随[持久化事务基础整体决定](persistence-and-transactions.md#persistence-foundation-decisions)获批；运行诊断L1–L4的批准范围不变。
 
 <a id="section-10"></a>
 
@@ -114,7 +114,7 @@ Web只接受本系统类型化白名单配置，不直接加载用户提交的�
 
 ### 10.8 统一运行诊断日志：控制台与文件输出最小契约
 
-**状态：日志服务契约已批准，日志服务未授权实现。** 用户已批准本节L1–L4四组决定、参数表中的具体建议，以及文件恢复一致性和独立flush等待期限两项修订；只转换批准状态，不改变行为或验收预期。本节只细化运行诊断日志切片，不代表完整日志模块或§15.1第一行完成。§10.1–10.7、模块所有权和T13保持原样；§11.9、§11.10的已批准配置行为不变。配置纯内存校验按[补充契约](configuration.md#configuration-additional-validation-contract)独立授权；后续能力和未定事项不随本节获准，日志服务实现仍须另行授权，服务例子全部未执行。
+**状态：日志服务契约已批准。** 用户已批准本节L1–L4四组决定、参数表中的具体建议，以及文件恢复一致性和独立flush等待期限两项修订。本节只定义运行诊断日志的有限能力，不代表完整日志模块。§10.1–10.7、模块所有权和T13保持原样；§11.9、§11.10的已批准配置行为不变。配置纯内存校验按[补充契约](configuration.md#configuration-additional-validation-contract)独立授权；后续能力和未定事项不随本节获准。实际验收版本见[STATUS](../work/STATUS.md)，当前授权见[CURRENT_TASK](../work/CURRENT_TASK.md)。
 
 <a id="runtime-diagnostics-scope"></a>
 
@@ -217,7 +217,7 @@ flush报告仅描述本次截点，不建立事件重试、关闭或持久化承
 
 **原解析入口不能证明日志配置完整有效；生产装配仍有独立前置缺口。** 模块覆写映射的模块名／等级／数量、路径隔离、R<Q、E≤B等需要附加或跨参数校验。定义方必须保留必要validator／dependencies；原resolve_configuration入口将如实返回UNSUPPORTED_RESOLUTION_SEMANTICS（VALIDATOR_NOT_SUPPORTED优先于同定义的DEPENDENCIES_NOT_SUPPORTED），包括未提供值的定义。不能清空声明、删掉不支持定义、只截取可解析子集或通过日志私有校验器制造成功快照。
 
-M15的受限、静态白名单验证能力已另行获批：执行明确标识的纯内存validator、读取已声明dependencies完成本表约束、未知验证器或依赖语义拒绝、全部检查成功才产生原有形态的不可变快照；不开放任意回调／动态导入，不要求同时实现加载、热配置或权限系统。目录真实存在、可写、独占与符号链接等易变事实由日志资源准备再次核验，不能被纯内存校验替代。该补充的端口和错误协议见[最小配置校验补充契约](configuration.md#configuration-additional-validation-contract)；§11.9／§11.10的既有行为不变。本轮仅授权该显式扩展入口的纯内存实现及合成测试，实际进度和验证见[CURRENT_TASK](../work/CURRENT_TASK.md)。生产路径若需非public敏感级别，也必须另补相应安全能力，不能为了适配解析器降级标签。完整生产配置接入在此缺口解决前不可宣称可实施通过。
+M15的受限、静态白名单验证能力已另行获批：执行明确标识的纯内存validator、读取已声明dependencies完成本表约束、未知验证器或依赖语义拒绝、全部检查成功才产生原有形态的不可变快照；不开放任意回调／动态导入，不要求同时实现加载、热配置或权限系统。目录真实存在、可写、独占与符号链接等易变事实由日志资源准备再次核验，不能被纯内存校验替代。该补充的端口和错误协议见[最小配置校验补充契约](configuration.md#configuration-additional-validation-contract)；§11.9／§11.10的既有行为不变。该显式扩展入口限定纯内存校验；实际验证版本见[STATUS](../work/STATUS.md)。生产路径若需非public敏感级别，也必须另补相应安全能力，不能为了适配解析器降级标签。完整生产配置接入在此缺口解决前不可宣称可实施通过。
 
 下表的**新增生产参数、具体默认建议及约束已批准**，尚不表示参数已注册，也不是合成测试值。共同元信息中的具体建议同获批准，明确未定项仍待决定：owner／consumer为logging_service，作用域instance、无配置层级覆写（no_override），required=true、nullable=false，仅初始化生效（声明需重建实例），角色为可信运维读写；普通数值／枚举为public，目录须部署安全审查。模块“覆写”是一个实例参数内的日志路由语义，不是配置解析器的多层override_policy。参数定义及唯一默认只能放M15；下方[共同元信息与逐项差异](#runtime-diagnostics-schema)给出§11.9全部字段落点，尚未决定的内容明确标出，不能统一填空validator／dependencies或把待定当NotApplicable。
 
@@ -349,7 +349,7 @@ get_logger先生命周期再模块精确准入。emit先生命周期，随后顶
 
 <a id="runtime-diagnostics-examples"></a>
 
-#### 10.8.8 具体验收例子（合成，全部未执行）
+#### 10.8.8 具体验收例子（合成）
 
 以下只定义输入和预期，不是现有测试或生产默认。共用合成场景：module=bootstrap；I=INFO、console=INFO、file=DEBUG、无模块覆写、两端启用、console_stream=stderr；E=4096、Q=4、R=1、P=2、B=8192、K=2；I/O时限20ms、探测间隔100ms、flush／close总时限50ms；应急容量2、间隔100ms。文件目录为隔离临时目录中显式准备的空目录，双流用可控资源替身，事件ID源在观察时记为e1／e2（不是实际UUID值），UTC时钟固定为2026-09-09T00:00:00.000000Z。其余必要值显式给出；需要完整初始化的例子以配置前置能力已另行批准并具备为前提，不通过删validator／dependencies构造假成功快照。
 
@@ -396,7 +396,7 @@ get_logger先生命周期再模块精确准入。emit先生命周期，随后顶
 
 ### 10.9 同事务审计详细契约
 
-**状态：契约已批准，待实现授权。** 本节是[持久化事务基础整体交付](persistence-and-transactions.md#persistence-foundation-contract)的审计正文，已批准决定集中在其[P4](persistence-and-transactions.md#persistence-foundation-decisions)行，包含本节固定失败协议，不新建独立批准表。既有§10.1、§10.5、§10.6和[模块所有权](../modules/logging.md#contract)继续有效；运行诊断已批准行为不改变。此范围只有同库追加审计与最小按操作读取，不含审计导出、Web、历史全文搜索、内容捕获、保留清理或Provider账本实现。
+**状态：契约已批准。** 本节是[持久化事务基础整体交付](persistence-and-transactions.md#persistence-foundation-contract)的审计正文，已批准决定集中在其[P4](persistence-and-transactions.md#persistence-foundation-decisions)行，包含本节固定失败协议，不新建独立批准表。既有§10.1、§10.5、§10.6和[模块所有权](../modules/logging.md#contract)继续有效；运行诊断已批准行为不改变。此范围只有同库追加审计与最小按操作读取，不含审计导出、Web、历史全文搜索、内容捕获、保留清理或Provider账本实现。
 
 日志模块拥有审计记录Schema、事件准入、输入安全、追加及查询边界；各业务模块拥有本模块事件的业务含义、必要性、对象引用和合法变更。基础设施仅承载受限审计仓储，将其加入同一UoW；不由业务仓储直接写审计表，也不让日志模块获得业务表通用读写能力。实际表／索引名称与编码实现属于私有细节。
 
@@ -469,7 +469,7 @@ AuditError恰含code、operation、field、reason、cleanup_pending，字段只�
 
 首个审计失败的code／reason／field在本次调用中保留；后续清理只更新cleanup_pending，不覆盖首错。事务结果及是否允许重试由[持久化证据协议](persistence-and-transactions.md#persistence-foundation-errors)决定：同一个AUDIT_FAILED在确认回滚后可对应NOT_COMMITTED，在回滚／迟到提交无法排除时必须UNCONFIRMED；不能只用AuditError推断全无。跨模块映射后保留的是外层已确定的首个映射原因，内部原始错误不作为嵌套负载返回。
 
-组合例子（全部未执行）：无读取能力且查询身份也非法时，先ACCESS_DENIED／AUDIT_ACCESS_DENIED、operation=read_audit，不查库；有效写能力下，事件Schema非法且位置重复时，先INVALID_INPUT／AUDIT_INPUT_INVALID、operation=append_audit，不以重复位置掩盖输入错误；全部已写事件合法但缺一条必要事件、同时诊断关闭时，为AUDIT_INCOMPLETE／AUDIT_REQUIRED、operation=check_required_audits，外层映射TRANSACTION_FAILED／AUDIT_REQUIRED。审计失败加回滚／清理失败的结果提升例子唯一见[事务组合表](persistence-and-transactions.md#persistence-foundation-errors)。
+组合例子：无读取能力且查询身份也非法时，先ACCESS_DENIED／AUDIT_ACCESS_DENIED、operation=read_audit，不查库；有效写能力下，事件Schema非法且位置重复时，先INVALID_INPUT／AUDIT_INPUT_INVALID、operation=append_audit，不以重复位置掩盖输入错误；全部已写事件合法但缺一条必要事件、同时诊断关闭时，为AUDIT_INCOMPLETE／AUDIT_REQUIRED、operation=check_required_audits，外层映射TRANSACTION_FAILED／AUDIT_REQUIRED。审计失败加回滚／清理失败的结果提升例子唯一见[事务组合表](persistence-and-transactions.md#persistence-foundation-errors)。
 
 必要审计验证、编码、大小检查或数据库写入失败均使受审计UoW不可提交，不提供内存缓存成功、事后补写、独立数据库或诊断文件兜底。失败事务不会留下“成功审计”或成功回执；无法证明回滚完成时保持结果未知，不能声称全无。失败尝试只能作为安全诊断观察，并不自动成为另一个已持久审计事件；未来需要独立安全事件时须单独定义事务。
 
@@ -479,7 +479,7 @@ AuditError恰含code、operation、field、reason、cleanup_pending，字段只�
 
 #### 10.9.4 验收与停止边界
 
-本节与存储基础一起按[整体验收矩阵](persistence-and-transactions.md#persistence-foundation-acceptance)验证必要事件完整性、全有或全无、重复与重新打开、审计故障、诊断隔离和受控读取；例子全部未执行，不再复制一份验收表。参数及当前配置缺口见[配置唯一补充正文](configuration.md#configuration-persistence-validation-contract)。本轮仅完成已批准契约的文档定稿，不新增审计实现、测试或数据库，实现授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)。
+本节与存储基础一起按[整体验收矩阵](persistence-and-transactions.md#persistence-foundation-acceptance)验证必要事件完整性、全有或全无、重复与重新打开、审计故障、诊断隔离和受控读取，不复制验收表。参数见[配置唯一补充正文](configuration.md#configuration-persistence-validation-contract)；实际验证版本见[STATUS](../work/STATUS.md)，执行授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)。
 
 <a id="runtime-web-observation-draft"></a>
 

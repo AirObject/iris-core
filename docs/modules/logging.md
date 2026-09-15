@@ -17,12 +17,12 @@
 | 关注点 | 阅读位置与边界 |
 | --- | --- |
 | 职责、非职责、数据所有权 | [模块所有权行](../architecture/ownership.md#m14)；[模块职责与端口](logging.md#contract) |
-| 公开能力与依赖 | 本模块正文的“建议端口”仍为草名；[统一依赖与启动边界](../architecture/ownership.md#source-line-267) |
+| 公开能力与依赖 | 运行诊断、审计与观察的公开端口见[详细契约](../architecture/logging.md)，其余“建议端口”保留完整模块方向；[统一依赖与启动边界](../architecture/ownership.md#source-line-267) |
 | 状态、提交和恢复 | [接收承诺与允许损失](../architecture/persistence-and-transactions.md#section-04)；[T13](../architecture/persistence-and-transactions.md#t13)；[远程结果未知](../architecture/persistence-and-transactions.md#source-line-518)（仅涉及外部调用时） |
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-895)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A64](../product/acceptance.md#a64)、[A66](../product/acceptance.md#a66)、[A93](../product/acceptance.md#a93)（任务范围扩大时按完整表补充） |
-| 工程验收定位 | [V52](../architecture/acceptance.md#v52)、[V57](../architecture/acceptance.md#v57)、[V58](../architecture/acceptance.md#v58)、[V59](../architecture/acceptance.md#v59)、[V60](../architecture/acceptance.md#v60)、[V61](../architecture/acceptance.md#v61)、[V62](../architecture/acceptance.md#v62)、[V63](../architecture/acceptance.md#v63)、[V64](../architecture/acceptance.md#v64)、[V65](../architecture/acceptance.md#v65)、[V66](../architecture/acceptance.md#v66)、[V67](../architecture/acceptance.md#v67)、[V68](../architecture/acceptance.md#v68)、[V69](../architecture/acceptance.md#v69)、[V70](../architecture/acceptance.md#v70)、[V71](../architecture/acceptance.md#v71)、[V72](../architecture/acceptance.md#v72)（预期行为，未执行） |
-| 尚未决定 | 运行语言与日志库、队列/保留/捕获参数、Web传输与具体权限实现尚未批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 工程验收定位 | [V52](../architecture/acceptance.md#v52)、[V57](../architecture/acceptance.md#v57)、[V58](../architecture/acceptance.md#v58)、[V59](../architecture/acceptance.md#v59)、[V60](../architecture/acceptance.md#v60)、[V61](../architecture/acceptance.md#v61)、[V62](../architecture/acceptance.md#v62)、[V63](../architecture/acceptance.md#v63)、[V64](../architecture/acceptance.md#v64)、[V65](../architecture/acceptance.md#v65)、[V66](../architecture/acceptance.md#v66)、[V67](../architecture/acceptance.md#v67)、[V68](../architecture/acceptance.md#v68)、[V69](../architecture/acceptance.md#v69)、[V70](../architecture/acceptance.md#v70)、[V71](../architecture/acceptance.md#v71)、[V72](../architecture/acceptance.md#v72)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
+| 尚未决定 | 运行诊断、队列／保留参数、事务审计和受限Web观察见[已批准日志契约](../architecture/logging.md)；生产G2、完整管理权限及历史保留政策仍待细化。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

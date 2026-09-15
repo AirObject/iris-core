@@ -12,7 +12,7 @@ from types import MappingProxyType
 from typing import Literal, cast
 
 from companion_memory.logging_service.audit_records import AuditRecord, audit_manifest, freeze_audit_event
-from .definitions import CommandSpec, CommandDefinition, LocalCommand, RepositoryDefinition, ResultBoundCommand, ResultBoundCommandDefinition
+from .definitions import CommandSpec, CommandDefinition, LocalCommand, RepositoryDefinition, ResultBoundCommand, ResultBoundCommandDefinition, TableDefinition
 from .results import OperationIdentity, Receipt, RecoveryHandle
 from .schema import (
     BoundedTextSchema, InvalidValue, RecordSchema, ScalarSchema, SequenceSchema, Value,
@@ -68,14 +68,25 @@ def command_descriptor(definition: CommandSpec) -> Value:
     from .command_capacity import declared_capacity
     capacity = declared_capacity(definition)
     if capacity is not None:
-        result['frozen_carrier_policy'] = MappingProxyType({'kind': 'TEXT_CONFIGURATION_INITIALIZATION', 'max_bytes': capacity})
+        result['frozen_carrier_policy'] = MappingProxyType({'kind': 'SEMANTIC_CONFIGURATION_INITIALIZATION' if definition.operation_kind=='initialize_semantic' else 'TEXT_CONFIGURATION_INITIALIZATION', 'max_bytes': capacity})
     from companion_memory.provider.text_command_policy import declared
     if declared(definition):
         result['input_policy'] = 'TEXT_PROVIDER_MUTATIONS_V3'
+    from .semantic_commands import declared as semantic_declared,descriptor as semantic_descriptor
+    if semantic_declared(definition):
+        return semantic_descriptor(definition,MappingProxyType(result))
     return MappingProxyType(result)
 
 
-type AssemblyFormat = Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1']
+type AssemblyFormat = Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1']
+
+
+def table_descriptor(table: TableDefinition) -> Value:
+    """Include complete new body schemas while preserving old table bytes."""
+    fields: dict[str,Value]={'name':table.name,'sql':table.sql.strip().rstrip(';')}
+    if table.record_schemas:
+        fields['record_schemas']=tuple(schema_value(schema) for schema in table.record_schemas)
+    return MappingProxyType(fields)
 
 
 def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...],
@@ -86,25 +97,34 @@ def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tup
     and enforces independent descriptor, repository and enclosing byte budgets.
     Readers compare this complete canonical value when opening an existing file.
     """
-    if type(assembly_format) is not str or assembly_format not in ('LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1'):
+    if type(assembly_format) is not str or assembly_format not in ('LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1'):
         raise InvalidValue()
     from .command_capacity import declared_capacity
     policies = sum(declared_capacity(command) is not None for command in commands)
     from companion_memory.provider.text_command_policy import declared
-    if assembly_format != 'MODEL_TEXT_LEARNING_V1' and any(declared(command) for command in commands):
+    from .semantic_commands import declared as semantic_declared
+    if assembly_format!='ASYNC_SEMANTIC_V1' and any(semantic_declared(command) for command in commands):
         raise InvalidValue()
-    if policies != (1 if assembly_format == 'MODEL_TEXT_LEARNING_V1' else 0):
+    if assembly_format not in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1') and any(declared(command) for command in commands):
+        raise InvalidValue()
+    if policies != (1 if assembly_format in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1') else 0):
+        raise InvalidValue()
+    if any(declared_capacity(c) is not None and (c.operation_kind=='initialize_semantic') != (assembly_format=='ASYNC_SEMANTIC_V1') for c in commands):
         raise InvalidValue()
     contents: dict[str, Value] = {
         "repositories": tuple(MappingProxyType({"owner": item.owner_module, "version": item.schema_version,
-                                               "tables": tuple(MappingProxyType({"name": table.name, "sql": table.sql.strip().rstrip(";")})
-                                                               for table in item.tables)})
+                                               "tables": tuple(table_descriptor(table) for table in item.tables)})
                               for item in sorted(repositories, key=lambda item: item.owner_module)),
         "commands": tuple(command_descriptor(item) for item in sorted(commands, key=lambda item: (item.owner_namespace, item.operation_kind))),
     }
     if assembly_format == 'LEGACY':
         return encode_value(MappingProxyType(contents), 1048576)
     contents['static_format'] = assembly_format
+    if assembly_format=='ASYNC_SEMANTIC_V1':
+        for repository in repositories:
+            for table in repository.tables:
+                if table.record_schemas:encode_value(table_descriptor(table),32768)
+        return encode_value(MappingProxyType(contents),4194304)
     encoded = encode_value(MappingProxyType(contents), 3145728)
     descriptors = sum(len(encode_value(command_descriptor(command), 1048576)) for command in commands)
     repository_size = len(encode_value(contents['repositories'], 131072))
@@ -118,15 +138,15 @@ def valid_assembly_encoding(data: object, assembly_format: AssemblyFormat) -> bo
     """Validate the chosen bounded canonical carrier before identity comparison."""
     if type(data) is not bytes:
         return False
-    limit = 3145728 if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
+    limit = 4194304 if assembly_format=='ASYNC_SEMANTIC_V1' else 3145728 if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
     try:
         value = decode_value(data, limit)
         keys = {'repositories', 'commands'}
-        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1'):
+        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1'):
             keys.add('static_format')
         if type(value) is not dict or set(value) != keys:
             return False
-        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') and value['static_format'] != assembly_format:
+        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1') and value['static_format'] != assembly_format:
             return False
         # The stored blob is compared with the trusted canonical declaration by
         # the caller; decoding here additionally bounds and rejects malformed JSON.
@@ -144,6 +164,8 @@ def prepare_command(definition: CommandSpec, identity: OperationIdentity, comman
         validate_command_values(definition, values)
         from companion_memory.provider.text_command_policy import validate_values
         validate_values(definition, values)
+        from .semantic_commands import validate_values as validate_semantic_values
+        validate_semantic_values(definition,values)
     except (ValueError, TypeError, UnicodeError):
         raise InvalidValue() from None
     if type(definition) is ResultBoundCommandDefinition:

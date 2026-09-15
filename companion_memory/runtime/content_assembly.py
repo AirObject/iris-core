@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .candidate_goals import CandidateGoalEffects
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
+from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration, stored_semantic_configuration_issue
 from companion_memory.persistence import (
     AuditFieldBinding, AuditResultBinding, BoundedTextSchema, Field, RecordSchema,
     RepositoryDefinition, ResultBoundCommandDefinition, SequenceSchema,
@@ -133,19 +134,29 @@ class ContentAssembly:
     """Construct all explicit content owners; media is supplied as a real participant."""
     def __init__(self, media: ContentMediaOwnership | None = None,
                  media_repositories: tuple[RepositoryDefinition, ...] = (), *, publication=None, utc_now_us: Callable[[], int] = lambda: time.time_ns() // 1000,
-                 information_format: bool = False, text_format: bool = False):
+                 information_format: bool = False, text_format: bool = False, semantic_format: bool = False):
         if (media is None) != (not media_repositories):
             raise ValueError('A media owner and its declarations must be supplied together.')
         self.media = media; self.publication = publication
         self.utc_now_us = utc_now_us
-        if type(information_format) is not bool or type(text_format) is not bool or text_format and not information_format:
+        if (type(information_format) is not bool or type(text_format) is not bool or type(semantic_format) is not bool
+                or text_format and not information_format or semantic_format and (not information_format or text_format)):
             raise ValueError('The assembly format must be selected explicitly.')
         self.information_format = information_format
         self.text_format = text_format
+        self.semantic_format = semantic_format
         self.goal_effects: CandidateGoalEffects | None = None
         from companion_memory.memory.information_repository import information_memory_catalog
         self.catalogs = (information_ingress_catalog() if information_format else ingress_content_catalog(), buffer_content_catalog(), runtime_content_catalog(),
-                         candidate_catalog(information_format=information_format), information_memory_catalog() if information_format else memory_catalog(), history_catalog())
+                         candidate_catalog(information_format=information_format), information_memory_catalog(semantic_format=semantic_format) if information_format else memory_catalog(), history_catalog())
+        if semantic_format:
+            from companion_memory.persistence.text_records import extend_catalog
+            from companion_memory.memory.initial_self import initial_self_catalog
+            from companion_memory.memory.semantic_repository import semantic_memory_catalog
+            from companion_memory.cognition.fixed_memory_repository import fixed_memory_catalog
+            self.catalogs=tuple(extend_catalog(c,fixed_memory_catalog(),4) if c.definition.owner_module=='cognition' else
+                extend_catalog(extend_catalog(c,initial_self_catalog(),3),semantic_memory_catalog(),4)
+                if c.definition.owner_module=='memory' else c for c in self.catalogs)
         if text_format:
             from companion_memory.persistence.text_records import extend_catalog
             from companion_memory.memory.initial_self import initial_self_catalog
@@ -244,9 +255,9 @@ class ContentAssembly:
             raise OwnerFailure('INVALID_INPUT', 'input', 'UNSUPPORTED_VERSION')
         return definition
 
-    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration, instance_id: str) -> ContentAssembly:
+    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str) -> ContentAssembly:
         """Bind the unique real owners after full configuration persistence is confirmed."""
-        valid=(stored_text_configuration_issue(configuration) is None) if self.text_format else type(configuration) is StoredContentConfiguration
+        valid=(stored_semantic_configuration_issue(configuration) is None) if self.semantic_format else (stored_text_configuration_issue(configuration) is None) if self.text_format else type(configuration) is StoredContentConfiguration
         if self._bound or not valid:
             raise ValueError('Content assembly requires native stored configuration and one binding.')
         self.storage, self.configuration, self.instance_id = storage, configuration, instance_id
@@ -254,7 +265,7 @@ class ContentAssembly:
         catalogs = {c.definition.owner_module: c for c in self.catalogs}
         settings = configuration.candidate.content
         self.history = HistoryBinding(catalogs['logging_service'], storage, instance_id,
-            settings.integer('audit.history_items_per_operation'), settings.integer('audit.history_item_max_bytes'), configuration.candidate.foundation,text_format=self.text_format)
+            settings.integer('audit.history_items_per_operation'), settings.integer('audit.history_item_max_bytes'), configuration.candidate.foundation,text_format=self.text_format or self.semantic_format)
         self.ingress = ContentIngressTransactions(catalogs['ingress'], storage, configuration, instance_id, self.media)
         self.buffers = ContentBufferTransactions(catalogs['buffers'], storage, instance_id, self.ingress)
         self.memory = MemoryTransactions(catalogs['memory'], storage, configuration, instance_id, self.history, self.ingress)

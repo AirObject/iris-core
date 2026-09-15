@@ -1,12 +1,12 @@
-# 代码组织建议与设计冻结点
+# 代码组织边界与剩余交付路线
 
 > 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
-适用主题与局部定义：目录树和阶段表属于设计建议，不表示仓库已有对应实现。目录示例中的模块编号、三段简称和说明留在设计阅读材料中，不能机械复制进源码、测试、日志或运行时prompt。
+适用主题与局部定义：本页维护代码组织边界和剩余实施顺序；具体目录以仓库为准，技术规则和批准状态链接所属正文。路线是规划，不是实现或资源授权。
 
 设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
-按关联工作联合阅读：[代码规范](../CODING_STANDARDS.md)；[本轮实际状态](../work/STATUS.md)；[待批准的小任务](../work/CURRENT_TASK.md)；[候选部署](deployment-candidates.md)。
+按关联工作联合阅读：[代码规范](../CODING_STANDARDS.md)；[已交付状态](../work/STATUS.md)；[当前任务与授权](../work/CURRENT_TASK.md)；[候选部署](deployment-candidates.md)。
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
@@ -14,79 +14,11 @@
 
 <a id="source-line-1024"></a>
 
-## 13. 代码组织建议
+## 13. 代码组织边界
 
-```text
-repository/
-  docs/
-    requirements.md
-    architecture.md
-    modules.md
-    api-contracts.md
-    config-reference.md      由Schema生成，不手写重复默认值
-    observability.md         日志等级/统计口径/保留边界
-    adr/
-  src/companion_memory/
-    main.py                  只调用bootstrap，不在各模块重复初始化
-    application/             跨模块用例编排、事务与运行上下文
-    modules/
-      ingress/
-      runtime/
-      buffers/
-      media/
-      cognition/
-      memory/
-      self_model/
-      retrieval/
-      state/
-      goals/
-      dream/
-      management/            Web/管理用例，不保存配置或用量副本
-      provider/              M13：唯一模型出口与计量
-        ports.py
-        service.py
-        adapters/            chat_completions/responses/anthropic/embedding/rerank
-        admission.py         账户/角色限流、预算预留、deadline
-        ledger.py            request/attempt/usage/cost及统计
-      logging_service/       M14：避免命名logging.py遮蔽标准库
-        ports.py
-        service.py
-        sinks/               console/file/web
-        redaction.py
-        audit.py
-      configuration/         M15：唯一配置模型与生效流程
-        schema.py            参数注册、类型、单位、唯一默认值
-        service.py
-        snapshots.py
-        activation.py
-        secrets.py           只管理引用和接口，不泄漏明文
-    infrastructure/
-      storage/               SQLite仓储/UoW/迁移/备份实现
-      indexes/               词法/向量引擎实现
-      files/                 blob发布与GC
-    shared/                  小型ID、时间、错误及通用接口
-    bootstrap/               最小启动配置、应急日志、正式模块注入
-  web/                       初始化与管理界面源码，构建后静态交付
-  tests/
-    unit/
-    contracts/
-    integration/
-    recovery/
-    load/
-    evaluation/
-    architecture/            检查模型出口、日志handler与配置旁路
-  deploy/
-    Dockerfile
-    compose.yaml
-  migrations/
-```
+源码按业务职责组织在`companion_memory/`，测试在`tests/`；文档的唯一维护位置见[总入口](../INDEX.md)。不另维护推测的未来文件树，也不为对应规划阶段创建平行目录。文件、接口和运行资源的命名按[代码规范](../CODING_STANDARDS.md)。
 
-该目录以Python为优先实现候选展示，不提前固定HTTP框架、ORM、模型SDK或向量库。每个模块可以先由少量文件组成；不为凑分层给每个模块创建几十个空目录。
-
-业务规则与Repository接口可在模块内组织，实现放基础设施；模块之间通过公开端口或应用编排协作。架构测试限制跨模块访问私有实现。外部平台专用薄兼容层可以在宿主插件或独立适配项目实现，不把所有聊天框架打包进核心容器。
-
-
-图示／代码框中的文档标记定位：[M13](../modules/provider.md#contract)、[M14](../modules/logging.md#contract)、[M15](../modules/configuration.md#contract)。这些标记仅用于本文阅读，不能进入未来实现。
+模块之间通过公开端口或应用编排协作，数据所有权见[所有权正文](ownership.md)。Provider、日志、配置各自独立，管理层不保存它们的权威副本；外部平台专用薄兼容层可位于宿主插件或独立适配项目。尚需新增的HTTP框架、模型SDK、索引或部署文件按具体交付选择，不能从目录示例推定已经批准。
 
 <a id="section-15"></a>
 
@@ -96,39 +28,35 @@ repository/
 
 <a id="source-line-1202"></a>
 
-### 15.1 开发顺序
+### 15.1 剩余交付路线
 
-| 阶段 | 交付范围 | 通过后再进入 |
+2026-09-14按实际已提交能力重排为四个完整交付阶段，替换原按模块递进的阶段表。历史顺序可通过Git查阅；当前语义检索工程与真实闭环已验收，质量按用户决定暂缓；剩余三项继续按完整阶段推进。本表不自动批准尚未定稿的产品细化、实现、调用或资源。已实现的持久接入、三段运行、正式记忆／来源／媒体文件、本地查询／反馈／状态／目标，以及有限文本学习和首次persona均复用，实际版本和限制见[STATUS](../work/STATUS.md)。
+
+| 顺序／完整交付 | 合并范围与依赖 | 独立验收结果 |
 | --- | --- | --- |
-| 0 | [M15](../modules/configuration.md#contract)类型化Schema/快照、[M14](../modules/logging.md#contract)控制台+文件/事务审计、[M13基础服务与模拟适配器](provider.md#provider-foundation-contract)及真实调用账本（契约已批准）、[I01](ownership.md#i01)基础 | 所有后续模块从开始就没有请求/日志/配置旁路 |
-| 1 | [M01](../modules/ingress.md#contract)/[M02](../modules/runtime.md#contract)/[M03](../modules/buffers.md#contract)：持久接收、三段、三终态、幂等、重启；Web日志与模式只读页面 | 基础状态不会丢失、误删或重放 |
-| 2 | [M04](../modules/media.md#contract)/[M06](../modules/memory.md#contract)：hash媒体、来源、对象关系、引用与统一事务 | 正式认知与来源/文件一致，审计可解释 |
-| 3 | [M08](../modules/retrieval.md#contract)/[M09](../modules/state.md#contract)/[M10](../modules/goals.md#contract)本地路径：一秒查询、反馈、当前状态、目标注入及Provider统计页面 | 无生成LLM的查询边界与诊断开销可验证 |
-| 4 | [M13](../modules/provider.md#contract)真实协议/能力/预算/完整usage，[M05](../modules/cognition.md#contract)结构化学习，异步embedding；[M15](../modules/configuration.md#contract)安全热发布 | 请求与成本可观察，错误/未知不漏报，配置切换不破坏旧任务 |
-| 5 | [M07](../modules/self-model.md#contract)/[M11](../modules/dream.md#contract)自我、梦境、persona发布与恢复；验证配置下梦境生效及专注门控 | 梦境不破坏数据或成为配置/请求绕过通道 |
-| 6 | [M12](../modules/management.md#contract)完整管理，[M14](../modules/logging.md#contract)日志历史/导出/背压，[M15](../modules/configuration.md#contract)迁移与回退，备份和综合压力测试 | 冻结首期发布与剩余容量边界 |
+| 1．语义检索闭环 | [embedding、持久向量、异步索引及混合查询](async-embedding-semantic-retrieval.md)；合并Provider、配置、缓存、权限、恢复及观察，依赖现有正式记忆和本地查询 | 记忆提交不等模型；修订／删除不会被旧结果覆盖；可查询、可恢复、不可重复收费。真实协议效果及最大容量按各自实际证据分列；实绩与质量暂缓见[STATUS](../work/STATUS.md) |
+| 2．完整日常认知与媒体学习 | [认知加工](../modules/cognition.md)、[真实媒体理解](../modules/media.md)、学习触发、有限工具预算、记忆修订、主体／关系处理、目标建议与语义去重；使用第一阶段检索；后续以图片为验证重点，音视频测试暂缓 | 普通输入到合法认知更新贯通，不止CREATE_MEMORY；不恢复已暂缓的文本质量调优，不降低来源及权限保障 |
+| 3．梦境与长期维护 | [梦境](../modules/dream.md)、衰减／遗忘与既有删除／恢复衔接、来源影响修复、自我整理和周期persona发布、模式中止与恢复；使用前两项公开能力 | 已完成整理步骤不重复，失败不丢输入、不发布半份persona，业务门控与入口回流保持；当前状态仍归外部管理 |
+| 4．可部署、可管理的首期产品 | [管理Web](../modules/management.md)、统一宿主、初始化与时区、权限／凭据、[配置预览与安全激活／回退](../modules/configuration.md)、日志、备份恢复、升级及[Docker交付](deployment-candidates.md) | 新环境可安装、初始化、接入宿主、持续管理并恢复；只对实际验证的部署和负载声明支持 |
 
-Web只读运行状态应在早期随骨架提供，不能等到最后才有办法排查梦境卡住。[第6阶段](implementation-options.md#source-line-1202)补齐完整界面，不表示早期完全没有管理观察能力。
+管理与配置、部署与发布合并为第四项，避免重复初始化、身份、目录、版本和恢复流程。前三项按依赖递进，各阶段把必要配置、公开端口、实现、持久化、测试和记录作为一项交付，不按表、命令或文件新增审批阶段。可选rerank等不在当前语义草案中的能力，仍需明确首期取舍；不能借“完整项目”自动扩展当前范围。
+
+每阶段由监督者先集中形成技术契约和实施计划；用户一次授权完整范围后，执行者连续完成实现、自查、定点及关联回归、范围内修复，最后集中技术验收。普通实现细节不重复审批；真实契约冲突和新增外部副作用仍交用户决定。文档与执行者分工唯一见[AGENTS.md](../../AGENTS.md)，验证规则唯一见[代码规范](../CODING_STANDARDS.md#validation-environment)。
+
+[已暂缓质量问题](../work/DEFERRED_ISSUES.md)不作为推进前置。最大容量、长期负载及生产介质资格按实际资源单列，未完成不能称通过，也不据保守预算立即要求采购。原四项中语义检索已完成工程交付，剩余三项是当前首期功能的规划估算，不表示三轮对话或全部生产资格已经获得批准。
 
 <a id="source-line-1216"></a>
 
-### 15.2 需要形成ADR的决定
+### 15.2 剩余工程决定入口
 
-草稿已给出方向，以下是正式实现前应批准的少量工程决定，而不是重新讨论产品主体：
+已批准技术选择在各自正文维护，不另建重复ADR或将已有实现重新列为候选。以下只导航后续需要细化的增量：
 
-| 决策 | 草稿建议 |
+| 主题 | 唯一正文及剩余边界 |
 | --- | --- |
-| 部署形态 | 单容器模块化单体、单调度领导者、持久卷、Web静态交付 |
-| 权威存储 | SQLite/WAL/FULL优先验证；正式批准基于写延迟、备份和大规模读取测试 |
-| 一秒与语义质量 | 不强依赖在线生成LLM；查询embedding短截止、明确词法降级；拒绝/错误与成功分别统计 |
-| 本地恢复 | 单操作ID与原子提交；候选已保存则只重试提交，远程结果未知采用显式恢复决策 |
-| 检索实现 | FTS5中文适配 + 本地向量索引接口；具体ANN后端经内存/删除/重建/过滤测试确定 |
-| 独立Provider | [M13](../modules/provider.md#contract)唯一模型出口；能力与协议分离；逻辑请求/attempt/usage独立持久化；只有一层有限远程尝试 |
-| 独立日志 | [M14](../modules/logging.md#contract)统一标准等级及三sink；运行诊断、事务审计与Provider账本分开；异步诊断有界背压 |
-| 独立配置 | [M15](../modules/configuration.md#contract)唯一Schema/默认值/版本真相；不可变快照与分阶段激活；专注期只读；迁移/重启不伪装热改 |
-| 专注切换 | 入梦先收尾，在梦期间只暂存，梦境发布后恢复业务，各入口独立回流 |
-| 原始媒体 | 字节hash内容寻址、独立出现记录、阶段发布、引用驱动GC |
+| 生产部署、资源与存储资格 | [部署候选](deployment-candidates.md)、[事务与生产前置](persistence-and-transactions.md#runtime-production-prerequisites)：生产身份、G2、卷／备份／迁移、负载与介质验证 |
+| 语义检索 | [集中契约](async-embedding-semantic-retrieval.md)：小档工程及原18次真实闭环已验收，剩余质量、订阅扣额、完整大档及生产资格分别见[STATUS](../work/STATUS.md)，800GiB方案不批准；不重开已审核材料或旧调用额度 |
+| 完整认知、真实媒体与目标agent | [认知](../modules/cognition.md)、[媒体](../modules/media.md)、[目标](../modules/goals.md)：完整工具循环、供应商能力、语义去重及冲突处置 |
+| 长期维护与梦境 | [生命周期](../product/lifecycle.md)、[梦境](../product/dream.md)、[自我](../product/self-and-persona.md)：周期、扫描预算、来源影响修复、persona监管及异常管理 |
+| 初始化、配置和管理权限 | [配置](configuration.md)、[管理行为](../product/operations-and-management.md)：已批准默认时区的工程衔接、热激活／回退、生产凭据与管理确认 |
 
-仍需具体数值的项目包括部署CPU/内存/磁盘预算、正常峰值、S1/S2/S3与token预算、反馈有效期、目标去重字段合并、提醒路由、时间格式、梦境中断管理员操作。它们应在对应模块开始正式编码前固定，不妨碍先验证输入/事务核心。
-
-本草稿不把“预计记忆不超过输入”变成强制输出限制，不把“成本低”变成逐条重要性LLM预检，不把“支持API”变成所有provider功能等价，也不把“事务恢复”变成无限重复远程调用。
+已有窗口、材料预算、反馈有效期、本地目标合并与提醒时间规则按各自批准契约复用；新增范围的数值随对应完整交付集中核算，不用随意常量代替决定。容量预估、成本目标和API兼容声明均不放宽产品行为、独立Provider或远程重试边界。

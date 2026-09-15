@@ -86,6 +86,15 @@ class WorkPort(_Port):
         from .unsent_evidence import verify_unsent
         return await verify_unsent(service, self, operation, original_request)
 
+    async def send_verified_first(self,evidence: object,original_request: object):
+        """Send one original embedding request after native absence verification.
+
+        This explicit entry cannot revive registered or zero-attempt terminal
+        work. It consumes one issuer-bound seal and preserves its total deadline.
+        """
+        service=self._native()
+        return self._denied('embed') if service is None else await service._send_verified_first(self,evidence,original_request)
+
     def verify_unsent_in_transaction(self, uow: UnitOfWork, evidence: object, original_request: object, *, retry: bool = False):
         """Recheck a held native absence seal; optionally check current retry cost."""
         service = self._native()

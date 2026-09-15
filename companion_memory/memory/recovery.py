@@ -78,13 +78,17 @@ class MemoryRecovery:
             if value['body'] is not None or member_count: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
             self.source_identity = None
             return True
-        source = decode_source(value['body'])
-        if any(source[k] != value[k] for k in ('source_id', 'entry_id', 'batch_id', 'digest')):
+        from .fixed_source import is_fixed_source,decode_fixed_source,fixed_digest
+        fixed=memory.semantic_format and is_fixed_source(value['body'])
+        source=decode_fixed_source(value['body']) if fixed else decode_source(value['body'])
+        if fixed and (value['batch_id'] is not None or fixed_digest(source)!=value['digest'] or member_count):
+            raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
+        if any(source[k] != value[k] for k in (('source_id','entry_id') if fixed else ('source_id', 'entry_id', 'batch_id', 'digest'))):
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
-        if member_count != len(sequence(source['ordered_members'])):
+        if member_count != len(sequence(source.get('ordered_members',()))):
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         from .source_records import split_manifest
-        stored_header = split_manifest(value['body'])[0] if memory.information is not None else None
+        stored_header = split_manifest(value['body'],semantic_format=memory.semantic_format)[0] if memory.information is not None else None
         while not self.holders_complete:
             if time.monotonic() >= deadline: return False
             holders = await memory.information.recovery_source_holders(sid, self.holder_after) if memory.information is not None else await memory.rows.read('source_holders_page', {'source_id': sid, 'after': self.holder_after, 'limit': limit})
@@ -100,6 +104,9 @@ class MemoryRecovery:
                     observed = await memory.rows.read('review_manifest', {'object_id': holder['owner_id'], 'source_id': sid})
                     if not observed or observed[0]['body'] != value['body']: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
                 self.holder_after = holder['owner_id']
+        if fixed:
+            self.source_identity=None;self.holder_after='';self.holders_complete=False;self.member_ordinal=0
+            return True
         ingress = memory.sources
         if type(ingress) is not ContentIngressTransactions: raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'source', 'OWNER_MISSING')
         stored_members = {item['ordinal']: item for item in await memory.information.recovery_source_members(sid)} if memory.information is not None else None

@@ -22,13 +22,19 @@ RESULT=RecordSchema((Field('operation_id',ID),Field('state',ScalarSchema('enum',
     Field('references',REFS),Field('facts',RecordSchema((Field('memory',FACT),))),Field('targets',SequenceSchema(TARGET,1,6))))
 INPUT=RecordSchema((Field('operation_id',ID),Field('subjects',SequenceSchema(SUBJECT_SCHEMA,1,6)),
     Field('input_origin',ScalarSchema('enum',choices=('ACTUAL_INPUT','SYNTHETIC_FIXTURE')))))
+from companion_memory.persistence.semantic_records import N,integer
+SEMANTIC_FACT=RecordSchema(FACT.fields+(Field('semantic_root',ID),Field('semantic_from_seq',N),
+    Field('semantic_to_seq',N),Field('semantic_gap_delta',integer(-8,8))))
+SEMANTIC_RESULT=RecordSchema(tuple(Field('facts',RecordSchema((Field('memory',SEMANTIC_FACT),))) if field.name=='facts' else field for field in RESULT.fields))
 
 
 def definition(participants,handler) -> ResultBoundCommandDefinition:
     """Use one new subject-only result vocabulary without broadening older facts."""
     requirements,bindings=audits('register_initial_subjects',('memory',))
-    requirements=(replace(requirements[0],change_schema=FACT,target_limit=6),)
-    return ResultBoundCommandDefinition('memory','register_initial_subjects',1,INPUT,1,RESULT,participants,requirements,handler,INTENT,bindings)
+    semantic=any(p.owner_module=='memory' and p.schema_version==4 for p in participants)
+    requirements=(replace(requirements[0],change_schema=SEMANTIC_FACT if semantic else FACT,target_limit=6),)
+    return ResultBoundCommandDefinition('memory','register_initial_subjects',2 if semantic else 1,INPUT,2 if semantic else 1,
+        SEMANTIC_RESULT if semantic else RESULT,participants,requirements,handler,INTENT,bindings)
 
 
 def register_subjects(owner: MemoryTransactions,uow: UnitOfWork,values: MappingProxyType[str,Value],origin: str,now: int):
@@ -48,6 +54,7 @@ def register_subjects(owner: MemoryTransactions,uow: UnitOfWork,values: MappingP
     if applied.subjects!=len(subjects) or applied.objects or applied.history or applied.relations:raise InvalidValue()
     refs=tuple({'kind':'SUBJECT','object_id':s['subject_id'],'revision':1} for s in subjects)
     facts={'memory':{'rows_changed':len(subjects),'references':refs}}
-    isolate_record(FACT,facts['memory'],2048)
-    return isolate_record(RESULT,{'operation_id':values['operation_id'],'state':'REGISTERED','references':refs,'facts':facts,
+    if owner.semantic is not None:facts['memory'].update(owner.semantic.audit_fact(uow))
+    isolate_record(SEMANTIC_FACT if owner.semantic is not None else FACT,facts['memory'],2048)
+    return isolate_record(SEMANTIC_RESULT if owner.semantic is not None else RESULT,{'operation_id':values['operation_id'],'state':'REGISTERED','references':refs,'facts':facts,
         'targets':tuple({'object_id':s['subject_id'],'previous_revision':None,'revision':1} for s in subjects)},8192)

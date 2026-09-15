@@ -557,7 +557,7 @@ i为explicit_values插入顺序中的零基下标，j为绑定注册表list_defi
 
 ### 11.11 日志所需附加与跨参数校验：最小补充契约
 
-**状态：C1–C4及G1表示／定义匹配规格均已批准。** 本轮仅授权日志所需纯内存配置校验，使用明确的完整合成Schema、五类目录清单及非秘密public路径验证；G2真实目录、路径敏感分级及资源核验仍是生产装配前置，不阻止合成验证。实现进度与实际检查见[CURRENT_TASK](../work/CURRENT_TASK.md)。本节仅补足[日志配置前置缺口](logging.md#runtime-diagnostics-configuration)；日志参数、默认值和数值范围仍以该处唯一参数表为准，不在此复制或补齐另一套生产定义。§11.9／§11.10正文、公开类型和既有拒绝语义保持不变。已批准决定集中见[末表](#configuration-additional-validation-decisions)。
+**状态：C1–C4及G1表示／定义匹配规格均已批准。** 本节限定日志所需纯内存配置校验，使用明确的完整合成Schema、五类目录清单及非秘密public路径验证；G2真实目录、路径敏感分级及资源核验仍是生产装配前置，不阻止合成验证。实现进度与实际检查见[CURRENT_TASK](../work/CURRENT_TASK.md)。本节仅补足[日志配置前置缺口](logging.md#runtime-diagnostics-configuration)；日志参数、默认值和数值范围仍以该处唯一参数表为准，不在此复制或补齐另一套生产定义。§11.9／§11.10正文、公开类型和既有拒绝语义保持不变。已批准决定集中见[末表](#configuration-additional-validation-decisions)。
 
 #### 11.11.1 显式扩展入口与兼容
 
@@ -642,13 +642,13 @@ j／d是注册表排序下标／依赖声明下标。所有路径只含上述固
 | C3 路径隔离输入 | 可信装配方提供五类完整目录清单；规范POSIX文本和组件隔离，真实资源核验仍归日志准备，不引入加载或秘密识别能力 |
 | C4 发布、错误与验收 | 上述确定首错顺序、独立安全错误、完整校验后一次发布、深不可变与输入隔离，以及上述合成验收预期 |
 
-日志完整字段的落点、目录来源核对及剩余决定见[日志实施前置规格](logging.md#runtime-diagnostics-schema)。本补充及G1表示／匹配细化已批准；真实目录布局、安全分级与资源核验仍按[G2待定事项](logging.md#runtime-diagnostics-prerequisite-decisions)处理，不能把候选布局或合成夹具当作真实部署；若路径需非public则另定对应支持。本轮仅授权本节纯内存实现，不自动注册参数、不选生产路径、不创建夹具目录；生产装配及日志服务仍须另行授权。本节不扩展加载、持久化、秘密解析、权限、热修改、配置计算引擎或后续日志能力。
+日志完整字段的落点、目录来源核对及剩余决定见[日志实施前置规格](logging.md#runtime-diagnostics-schema)。本补充及G1表示／匹配细化已批准；真实目录布局、安全分级与资源核验仍按[G2待定事项](logging.md#runtime-diagnostics-prerequisite-decisions)处理，不能把候选布局或合成夹具当作真实部署；若路径需非public则另定对应支持。本节限定纯内存校验，不自动注册参数、不选择或创建生产路径；生产装配范围见G2，日志服务契约在[日志正文](logging.md)维护。本节不扩展加载、持久化、秘密解析、权限、热修改、配置计算引擎或后续日志能力。
 
 <a id="configuration-persistence-validation-contract"></a>
 
 ### 11.12 持久化与审计所需配置校验：已批准契约
 
-**状态：契约已批准，待实现授权。** 本节是[持久化事务基础整体契约](persistence-and-transactions.md#persistence-foundation-contract)的配置唯一正文，已随其[集中决定P6](persistence-and-transactions.md#persistence-foundation-decisions)获批；不扩大整体交付范围。§11.9–11.11及现有两个解析入口、公开类型、日志定义匹配和拒绝语义均不改变，不自动转调本入口，不新增实现授权。
+**状态：契约已批准。** 本节是[持久化事务基础整体契约](persistence-and-transactions.md#persistence-foundation-contract)的配置唯一正文，已随其[集中决定P6](persistence-and-transactions.md#persistence-foundation-decisions)获批；不扩大整体交付范围。§11.9–11.11及现有两个解析入口、公开类型、日志定义匹配和拒绝语义均不改变，不自动转调本入口，不新增实现授权。
 
 #### 11.12.1 显式入口、载体与日志组
 
@@ -734,7 +734,7 @@ storage.database_file以外的9项不需要附加validator；五项白名单各�
 
 i／j／d及原日志k的下标含义沿用所属既有表；新增persistence_definitions的k只定位本节必需键清单，不是注册表j。目录错误路径最多为`("protected_directories", 固定类别, 成员下标)`；顶层或类别形状错误分别止于顶层／类别，不输出未知类别名。其余只包含被引用表的固定字段名及整数下标，不含提交键、默认、路径值、模块名、异常、栈或对象表示，不调用其哈希／比较／转换钩子，也不自行记录诊断。无法构造安全错误的非预期运行故障按既有边界处理，不交付快照。
 
-#### 11.12.6 组合验收例子（全部未执行）
+#### 11.12.6 组合验收例子
 
 前提为完整合成storage／audit定义，参数值取[整体合成场景](persistence-and-transactions.md#persistence-foundation-acceptance)，路径仅用非秘密合成文本；有日志组时追加完整已批准日志定义、合法显式值和五类目录文本。不创建目录或数据库；以下仅列后续测试预期。
 
@@ -751,7 +751,7 @@ i／j／d及原日志k的下标含义沿用所属既有表；新增persistence_d
 | 额外可选依赖缺值，同时存储路径非法；补齐依赖后重调 | 先DEPENDENCY_VALUE_MISSING，后PATH_SYNTAX_INVALID；无部分成功，不靠清空dependencies通过 |
 | 固定验证器抛普通异常；成功后调用方修改原输入和目录清单 | 前者仅VALIDATOR_FAILED且旧快照不变；后者已发布快照及嵌套数据不变。两者均不读取环境或资源 |
 
-本节补充契约已批准、尚未实现，现有[配置公开入口](../../companion_memory/configuration/__init__.py)、[普通解析](../../companion_memory/configuration/resolution.py)、[日志附加解析](../../companion_memory/configuration/checked_resolution.py)尚无此能力；以上接口静态核对不代表执行通过。当前授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)，不开始实现或自动注册参数。
+本节补充契约已批准；[配置公开入口](../../companion_memory/configuration/__init__.py)中的独立持久化校验与普通／日志入口保持各自支持边界。实现及验收版本见[STATUS](../work/STATUS.md)，当前授权见[CURRENT_TASK](../work/CURRENT_TASK.md)；本节不触发自动注册或资源访问。
 
 <a id="configuration-provider-validation-contract"></a>
 
@@ -1096,7 +1096,7 @@ foundation日志仍须按原规则提交完整合法配置；其候选与目录�
 
 新ContentConfigurationError恰含code、operation、field、reason：operation为resolve_content_configuration／persist_content_configuration／load_content_configuration／content_snapshot_issue，field为foundation/runtime/platforms/content/definition/value/context/storage/identity。code／reason闭合集合沿§11.14的分类及枚举，新预算／目录／域总量失败用VALUE_INVALID/BUDGET_INVALID或CAPACITY_INSUFFICIENT，不新增自由原因；不透传路径／非法键。顺序：精确载体→域身份／未知键→全部声明／支持→完整定义→foundation原校验→全部值隔离→依赖→固定及跨域／完整编码→一次候选。旧错误类／旧首错不变。持久初始化错误另配真实提交证据，纯解析没有I/O成功含义。
 
-没有自动衰减率、使用反馈增益／有效期、自动删除保留天数、在线配置或解除保护参数；那些是后续模块未实现职责，不用占位值伪装已支持。新参数推荐及路径能力已批准，全包核算须以实际验证证明，验收统一见[整体矩阵](formal-memory-source-media.md#acceptance)。
+没有自动衰减率、使用反馈增益／有效期、自动删除保留天数、在线配置或解除保护参数；这些不属于本配置组合；已批准使用反馈另见[本地信息配置](#local-information-configuration-draft)，其余范围按所属契约细化，不用占位值伪装已支持。新参数推荐及路径能力已批准，全包核算须以实际验证证明，验收统一见[整体矩阵](formal-memory-source-media.md#acceptance)。
 
 <a id="local-information-configuration-draft"></a>
 

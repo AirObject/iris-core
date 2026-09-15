@@ -21,8 +21,8 @@
 | 状态、提交和恢复 | [接收承诺与允许损失](../architecture/persistence-and-transactions.md#section-04)；[T09](../architecture/persistence-and-transactions.md#t09)；[远程结果未知](../architecture/persistence-and-transactions.md#source-line-518)（仅涉及外部调用时） |
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A38](../product/acceptance.md#a38)、[A49](../product/acceptance.md#a49)、[A67](../product/acceptance.md#a67)、[A94](../product/acceptance.md#a94)、[A106](../product/acceptance.md#a106)、[A108](../product/acceptance.md#a108)（任务范围扩大时按完整表补充） |
-| 工程验收定位 | [V24](../architecture/acceptance.md#v24)、[V26](../architecture/acceptance.md#v26)、[V80](../architecture/acceptance.md#v80)（预期行为，未执行） |
-| 尚未决定 | 专注入退场、非专注发布协调、管理员中止与恢复、扫描预算待固定。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 工程验收定位 | [V24](../architecture/acceptance.md#v24)、[V26](../architecture/acceptance.md#v26)、[V80](../architecture/acceptance.md#v80)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
+| 尚未决定 | 专注入退场与回流见[已批准模式契约](../architecture/durable-ingress-and-batch-runtime.md#modes)；完整整理、非专注发布协调、管理员中止与恢复、扫描预算仍待细化。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

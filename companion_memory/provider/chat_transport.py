@@ -161,6 +161,33 @@ class ChatTransport:
         self._settings, self._resolver, self._monotonic = settings, resolver, monotonic
         self._slot = threading.Lock()
         self._evidence=evidence
+        self._format='GENERATION'
+
+    @classmethod
+    def for_embedding(cls, settings: Record, resolver: CredentialResolver, account_ref: str,
+                      monotonic: Callable[[],float], *, loopback_port: int|None=None, evidence:WireEvidence|None=None) -> ChatTransport:
+        """Bind the independent dense endpoint without resolving credentials.
+
+        A loopback override is an explicit controlled transport resource. It
+        cannot name a host, redirect, proxy or alternative supplier endpoint.
+        """
+        from companion_memory.configuration.semantic_schema import TRANSPORT,USAGE_TRANSPORT
+        from companion_memory.persistence.semantic_records import isolate
+        from .values import freeze,as_record,is_identifier
+        value=isolate(USAGE_TRANSPORT if settings.get('v')==2 else TRANSPORT,settings)
+        if evidence is not None and type(evidence) is not WireEvidence:raise InvalidData()
+        if type(resolver) is not CredentialResolver or not is_identifier(account_ref) or not callable(monotonic):raise InvalidData()
+        if loopback_port is not None and (type(loopback_port) is not int or not 1<=loopback_port<=65535):raise InvalidData()
+        owned=object.__new__(cls)
+        owned._settings=as_record(freeze({'origin':value['origin'],'base_path':'','endpoint_path':value['endpoint_path'],
+            'secret_ref':value['secret_ref'],'secret_revision':value['secret_revision'],'account_ref':account_ref,
+            'request_max_bytes':65536,'response_max_bytes':65536,'headers_max_bytes':16384,'header_count':100,
+            'chunk_bytes':8192,'connect_timeout_ms':10000,'read_timeout_ms':30000},8192))
+        owned._endpoint=_Endpoint('ark.cn-beijing.volces.com' if loopback_port is None else '127.0.0.1',
+            443 if loopback_port is None else loopback_port,cast(str,value['endpoint_path']),loopback_port is None,
+            ssl.create_default_context() if loopback_port is None else None)
+        owned._resolver=resolver;owned._monotonic=monotonic;owned._slot=threading.Lock();owned._evidence=evidence;owned._format='EMBEDDING'
+        return owned
 
     @classmethod
     def controlled_loopback(cls, settings: Record, resolver: CredentialResolver, monotonic: Callable[[], float],
@@ -187,7 +214,7 @@ class ChatTransport:
         return result
 
     def _exchange(self, body: bytes, deadline: float, cancellation: CancellationToken) -> WireObservation:
-        if (type(body) is not bytes or len(body) > 131072 or not body
+        if (type(body) is not bytes or len(body) > cast(int,self._settings.get('request_max_bytes',131072)) or not body
                 or type(deadline) not in (float, int) or not math.isfinite(deadline)
                 or not native_issued(cancellation, CancellationToken)):
             return WireObservation('NOT_SENT', None, None, 'INVALID_REQUEST')

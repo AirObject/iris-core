@@ -153,7 +153,7 @@ HTTP发送、provider执行与本地持久化之间没有跨供应商原子事�
 
 ## 8. 持久化事务基础与同事务审计：整体契约
 
-**状态：契约已批准，待实现授权。** 本节及其引用的[审计详细契约](logging.md#transactional-audit-contract)、[配置补充§11.12](configuration.md#configuration-persistence-validation-contract)、[SQLite验证采用契约](deployment-candidates.md#sqlite-validation-candidate)构成一项整体交付，公开行为和保障统一列入[集中已批准决定](#persistence-foundation-decisions)。用户已批准P1–P6，包括建库身份补充、固定失败协议及配置§11.12；不改变上文既有要求的状态，不授权本轮编码。私有类、辅助函数、SQL布局、锁和执行器实现由实现者选择，不拆分为审批或验收任务。
+**状态：契约已批准。** 本节及其引用的[审计详细契约](logging.md#transactional-audit-contract)、[配置补充§11.12](configuration.md#configuration-persistence-validation-contract)、[SQLite验证采用契约](deployment-candidates.md#sqlite-validation-candidate)构成一项整体交付，公开行为和保障统一列入[集中已批准决定](#persistence-foundation-decisions)。用户已批准P1–P6，包括建库身份补充、固定失败协议及配置§11.12；不改变上文既有要求的状态；执行授权见[CURRENT_TASK](../work/CURRENT_TASK.md)。私有类、辅助函数、SQL布局、锁和执行器实现由实现者选择，不拆分为审批或验收任务。
 
 整体交付包含：存储初始化和版本拒绝、模块仓储协作的短事务、操作幂等和持久回执、同事务审计、最小受控读取、关闭后重新打开及故障恢复。用测试专属的两个合成业务仓储贯通验证；正式包只提供基础设施和日志模块的审计能力，不提前建立记忆、入口、批次、Provider或配置激活的业务表／命令。索引、媒体、Web、审计导出、备份系统、自动修复和生产部署不在范围内。
 
@@ -288,7 +288,7 @@ operation是被调用的语义端口，不是SQL语句或下游私有函数名�
 
 **原因与结果分开裁决：** 一次调用保留按上述顺序首次确定的code／reason／field，operation始终为该公开端口；后续回滚、释放、诊断错误不能覆盖它。cleanup_pending只说明本次自有资源尚未确认释放；已确认回滚且没有迟到提交可能时，即使清理未完成仍可NOT_COMMITTED。反之，无法证明回滚或原执行者结束时提升为UNCONFIRMED，保留原error并如实设置cleanup_pending，不能用“已有失败原因”证明全无。没有更早失败才选表中的确认／清理原因。COMMITTED证据已取得后，清理或诊断故障不改写业务结果，存入健康；close自己的失败报告不撤销旧回执。不可变旧报告不因迟到完成而更新。
 
-少量组合例子固定优先级（全部未执行）：
+少量组合例子固定优先级：
 
 | 组合 | 唯一预期 |
 | --- | --- |
@@ -306,7 +306,7 @@ operation是被调用的语义端口，不是SQL语句或下游私有函数名�
 
 统一配置仍是所有参数及唯一默认值的所有者；存储和审计服务只通过原生EffectiveSnapshot的get_registry／get_entry／list_entries读取绑定定义与值。生命周期内固定快照，不读环境或配置文件、不私自resolve、不构造私有快照、不建立默认副本，不提供热替换或配置激活。真实配置持久版本尚不存在时不以Schema修订、内容hash或库格式版本充当config_snapshot_id。
 
-**配置补充已批准，待实现授权。** 参数类型、范围、唯一默认声明及完整匹配现已集中在[配置§11.12.2](configuration.md#configuration-persistence-definitions)，入口、日志组、目录上下文、顺序和固定错误只在[配置补充正文](configuration.md#configuration-persistence-validation-contract)维护。本表仅说明消费用途，不构成另一份定义表；超时时取较小剩余预算仍是事务协议。
+**配置补充已批准。** 参数类型、范围、唯一默认声明及完整匹配现已集中在[配置§11.12.2](configuration.md#configuration-persistence-definitions)，入口、日志组、目录上下文、顺序和固定错误只在[配置补充正文](configuration.md#configuration-persistence-validation-contract)维护。本表仅说明消费用途，不构成另一份定义表；超时时取较小剩余预算仍是事务协议。
 
 | 完整键 | 消费用途 |
 | --- | --- |
@@ -323,7 +323,7 @@ operation是被调用的语义端口，不是SQL语句或下游私有函数名�
 
 固定协议规则包括唯一提交、同键冲突、未知不重放、格式拒绝和本次验证采用的同步要求；不能做成关闭开关。资源能力则包括实际SQLite连接工厂、目录／文件身份和所有权核验、期望库身份、受控执行与单调／UTC时钟、ID源及可选受限诊断句柄。它们由可信启动代码／基础设施注入，不携带另一份路径、超时、容量或同步配置以覆盖快照；期望库身份是持久资源标识，不是调参。资源适配器再次验证文件类型、路径别名／符号链接、可写性、数据库与诊断目录隔离和伴随文件归属，保证绑定同一实际文件；无法证明即拒绝，不把纯文本校验当真实安全证明。测试故障注入只存在于测试装配，不能经生产参数启用。
 
-当前所需解析能力及其与现有公开接口的缺口见[配置补充正文](configuration.md#configuration-persistence-validation-contract)；该补充契约已批准，尚未实现；实现仍须授权。参数仍只由统一配置注册和解析，存储不以私有校验、默认值或环境读取绕过入口。
+本组合所需解析能力见[已批准配置补充](configuration.md#configuration-persistence-validation-contract)，实现及验证版本见[STATUS](../work/STATUS.md)。参数仍只由统一配置注册和解析，存储不以私有校验、默认值或环境读取绕过入口。
 
 现有[诊断公开接口](../../companion_memory/logging_service/__init__.py)和[结果](../../companion_memory/logging_service/results.py)只确认诊断准入／写出，不是审计或事务端口；[集成测试](../../tests/logging_service/test_service_integration.py)、[故障测试](../../tests/logging_service/test_service_recovery.py)、[真实文件测试](../../tests/logging_service/test_file_resources.py)不构成数据库持久性证据。独立审计由[同事务审计契约](logging.md#transactional-audit-contract)补足，不扩充EmitReceipt或借用运行日志队列保存审计。
 
@@ -337,9 +337,9 @@ operation是被调用的语义端口，不是SQL语句或下游私有函数名�
 
 <a id="persistence-foundation-acceptance"></a>
 
-### 8.7 整体验收与证据分层（全部未执行）
+### 8.7 整体验收与证据分层
 
-验收对象是完整公开流程，不是逐个内部类。未来实施须保留现有配置／诊断行为，并依[代码规范](../CODING_STANDARDS.md#python-type-checking)执行适当全量测试及类型检查；下列例子当前均未执行，不能复用历史320项测试结果称为本契约通过。
+验收对象是完整公开流程，不是逐个内部类；须保留配置／诊断兼容行为。下表维护验收要求，实际覆盖与版本见[STATUS](../work/STATUS.md)，当前执行范围及类型检查按[统一验证规则](../CODING_STANDARDS.md#validation-environment)，不能将其他版本的通过结果外推为本组合验证。
 
 共用合成场景：测试专属两个仓储分别持有source和target计数，初值10／0；transfer_units命令以固定对象ID、预期修订、scope=sample_scope、key=move_7转移3，成功为7／3并各增一次修订，要求两条模块变更审计和一份含原结果的回执。所有标识与审计值均明确合成。完整配置经拟补入口显式解析；可用测试值为操作时限1000ms、锁等待50ms、关闭1000ms、读容量2、命令4096字节、回执4096字节、checkpoint 100页、审计单条2048字节及每操作8条；路径在获准测试时由测试自有临时目录实际提供。这些值不是默认值或性能承诺。
 
@@ -359,7 +359,7 @@ operation是被调用的语义端口，不是SQL语句或下游私有函数名�
 
 证据必须按层记录对应提交／工作区、解释器及实际SQLite库、操作系统／架构、文件系统与资源方式、命令、结果及限制，不把“测试退出0”扩写为下列所有层都通过：
 
-| 证据层 | 后续方法与可声称范围（当前均未执行） |
+| 证据层 | 验证方法与可声称范围 |
 | --- | --- |
 | 可控故障注入 | 内存替身／真实连接边界屏障覆盖COMMIT前后、响应丢失、锁和迟到I/O；证明协议分支，不能证明操作系统取消或介质持久性 |
 | 本机真实文件与普通重启 | 自有临时库真实提交、close／重新打开；另启动独立解释器读取同一路径，检查原回执、计数、审计与完整性；只证明本机所测运行库及普通重启 |
@@ -384,9 +384,9 @@ operation是被调用的语义端口，不是SQL语句或下游私有函数名�
 | P5 初始化、故障与验收范围 | [§8.4](#persistence-foundation-initialization)、[§8.6](#persistence-foundation-provider)、[§8.7](#persistence-foundation-acceptance)：副作用前准备并保留建库身份、显式创建／打开、版本拒绝、固定错误及结果证据映射、Provider依赖与整体验收证据分层 |
 | P6 配置最小补充 | [配置§11.12](configuration.md#configuration-persistence-validation-contract)：显式入口、完整定义／日志组、目录上下文、全集合顺序与固定安全错误；[§8.5](#persistence-foundation-configuration)仅保留用途和资源边界 |
 
-真实前置缺口分开处理：整体实现尚待用户授权；配置所需显式校验及审计／事务公开能力尚不存在；本机实际SQLite链接库及目标Linux能力未核验，是否需要运行时准备未知。生产建库身份保留仍须落实[可信装配责任](#persistence-foundation-initialization)。生产路径、路径敏感分级与完整部署资源清单仍归[G2](logging.md#runtime-diagnostics-prerequisite-decisions)，不是可用合成夹具替代的事实；这些生产缺口不要求本轮选择路径，也不阻止日后获准的自有临时资源验证。
+生产前置仍须独立落实[可信建库身份](#persistence-foundation-initialization)及[G2](logging.md#runtime-diagnostics-prerequisite-decisions)的生产路径、安全分级和完整资源清单，不能用合成夹具替代。已交付的显式配置校验、审计／事务及所测SQLite／Linux版本见[STATUS](../work/STATUS.md)；历史验证不证明新环境就绪，变更环境时按[验证规则](../CODING_STANDARDS.md#validation-environment)核验。
 
-当前授权仅完成文档定稿。工作记录和停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)；契约已批准，待实现授权，不表示实现通过或验收完成。
+本节只维护已批准契约；当前授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)，验收和提交证据见[STATUS](../work/STATUS.md)。
 
 <a id="provider-persistence-bridge"></a>
 

@@ -1,15 +1,13 @@
 # 当前任务
 
-上阶段为MiniMax／DeepSeek真实文本适配与受控试验，本次按用户明确授权由监督者完成提交收尾。学习质量未达到门槛，按[已批准暂缓决定](DEFERRED_ISSUES.md#text-learning-quality)不阻塞后续计划；提交不改变质量结论。
+**语义检索小档工程及真实闭环已通过监督技术验收，用户已授权提交本阶段产物。** 相关性未达标按用户决定暂缓，不阻塞后续推进；详细事实见[STATUS](STATUS.md)、[暂缓问题](DEFERRED_ISSUES.md#semantic-retrieval-quality)。本次提交不包含下一阶段契约、实施计划及其新增导航。
 
-提交基线为main／`c2be9327b80be3b3ccb12262af7ff15c4539ea2d`。只提交本阶段源码、测试、所属契约、时区产品决定、质量暂缓及验证规则记录；后续语义检索草案和实施计划不纳入。密钥、准备文件、原试验库／响应和外层授权日志均不提交或改写。
+提交父版本：main／`9936385d8697b7add662562c3465c041a48d76fa`。本阶段包含完整配置、原生embedding账本与持久交接、固定集、异步工作、两代索引、版本化查询／HTTP及恢复，并收录此前获准的文档整理。完整契约见[语义检索正文](../architecture/async-embedding-semantic-retrieval.md)。
 
-交付包括受控主体登记、Provider凭据解析、MiniMax独立协议及usage-only、DeepSeek协议与计量、试验材料／授权／执行工具、persona审核发布和学习结果／恢复核验。DeepSeek两平台14槽已用尽，无备用；正式记忆分别5／12条。费用估算与外层责任分别见[集中报告](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/report-complete.md)，不冒充供应商账单；旧MiniMax UNKNOWN保持，不新增发送。
+有效[受测清单](/private/tmp/iris-semantic-allocated-ryg1zesg/final-tested-files.json)共672份，算法为按路径排序的“路径＋NUL＋文件SHA256＋LF”清单再取SHA256；聚合指纹`bde65f12bc611d56bb85d62020fe85520e14396684b811f08c5e968b31eaa348`。提交前逐文件核对一致，复用执行者已完成的有效检查，不重跑项目测试。[完整交接](/private/tmp/iris-semantic-allocated-ryg1zesg/supervisor-handoff.json)、[原始命令／退出码](/private/tmp/iris-semantic-allocated-ryg1zesg/commands.json)、[断言矩阵](/private/tmp/iris-semantic-allocated-ryg1zesg/acceptance-matrix.json)、[版本对应](/private/tmp/iris-semantic-allocated-ryg1zesg/code-version-binding.json)均保留。
 
-最近有效验证由执行者完成：最终macOS／Linux各17项关联测试通过，全量锁定Pyright1.1.413零诊断，编译及差异检查通过。未机械重跑全量unittest；JS／锁文件未改。完整命令、退出码和原失败保留于[证据索引](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/checks-index-complete.json)。本轮监督者未运行项目、测试或模型，核对文件一致后复用该版本证据。
+执行者Docker Linux arm64：29项定点／关联通过，锁定Pyright1.1.413全量零诊断；未重跑全量unittest。12 DOCUMENT＋6 QUERY全部提交并清理，原18槽耗尽；原键／缓存／新进程恢复新增发送0，供应商报告1134 tokens，费用及实际扣额未知。原HTTP工具身份错误及修正证据保留，不把不同测试快照混称同一版本。监督仅做静态审查和Git／文件／证据核对，未运行项目、测试、容器或模型，未读取密钥。
 
-最终578份受测文件／570份Python指纹为`16b7d88d466e9549d800604140a9d9de353b2534563628492a331b1139de0582`，算法为相对路径排序后逐项“路径＋NUL＋文件SHA256十六进制＋LF”再取SHA256。[完整清单](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/tested-files-corrected-final.json)不含密钥及准备文件；[本轮提交范围与复核证据](/private/tmp/iris-supervisor-planning-3ayat7pi/baseline.json)保留初始73份变更身份。真实请求分别使用报告记录的几个版本，不将最终指纹倒推至全部历史请求。
+[技术结论](/private/tmp/iris-semantic-stage-acceptance-63h1n5qc/review.json)限定于已批准工程，不表示相关性质量或全部生产资格通过。Pylance、4096完整大档、真实冷查询250ms成功率和生产条件未验证；旧UNKNOWN保持。按用户要求，后续采用单端Docker Linux、定点及受影响关联验证和锁定全量Pyright。
 
-限制：学习质量未通过；生产环境、最大容量／长期负载及Pylance未验证；默认时区仅已批准产品规则，尚未实施。历史原始报告与已确认评分保持，不能用后续结果覆盖。
-
-停止点：完成用户授权的本地提交后，监督者另行编写下一阶段计划；本次提交不授权下一阶段实现、真实调用、推送、合并或部署。后续统一Docker Linux验证，规则只维护于[代码规范](../CODING_STANDARDS.md#validation-environment)。
+本次停止点为指定本地提交完成；不推送、合并或部署。下一阶段计划与授权由监督另行维护，执行者须由用户手动转交后开始，不通过其他会话工具自动启动。

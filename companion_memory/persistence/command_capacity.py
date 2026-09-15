@@ -34,6 +34,15 @@ def _issue_text_configuration_capacity(owner: object) -> ConfigurationInitializa
     return result
 
 
+def _issue_semantic_configuration_capacity(owner: object) -> ConfigurationInitializationCapacity:
+    from companion_memory.configuration.semantic_persistence import SemanticConfigurationAssembly
+    if type(owner) is not SemanticConfigurationAssembly:
+        raise InvalidValue()
+    result=object.__new__(ConfigurationInitializationCapacity)
+    object.__setattr__(result,'_owner',owner);object.__setattr__(result,'_issuer',_ISSUER)
+    return result
+
+
 def declared_capacity(definition: CommandSpec) -> int | None:
     """Validate native identity before declaring or applying the fixed exception."""
     from .definitions import ResultBoundCommandDefinition
@@ -41,14 +50,16 @@ def declared_capacity(definition: CommandSpec) -> int | None:
         return None
     policy = definition.capacity_policy
     from companion_memory.configuration.text_persistence import TextConfigurationAssembly
+    from companion_memory.configuration.semantic_persistence import SemanticConfigurationAssembly
     if (type(policy) is not ConfigurationInitializationCapacity or getattr(policy, '_issuer', None) is not _ISSUER
-            or type(getattr(policy, '_owner', None)) is not TextConfigurationAssembly):
+            or type(getattr(policy, '_owner', None)) not in (TextConfigurationAssembly,SemanticConfigurationAssembly)):
         raise InvalidValue()
-    owner = cast(TextConfigurationAssembly, policy._owner)
+    owner = cast(TextConfigurationAssembly | SemanticConfigurationAssembly, policy._owner)
+    semantic=type(owner) is SemanticConfigurationAssembly
     if (owner.commands != (definition,) or owner.commands[0] is not definition
             or definition.handler != owner._handle
-            or definition.owner_namespace != 'configuration' or definition.operation_kind != 'initialize_text_learning'
-            or definition.participants != owner.repositories or owner.repository.definition.schema_version != 4):
+            or definition.owner_namespace != 'configuration' or definition.operation_kind != ('initialize_semantic' if semantic else 'initialize_text_learning')
+            or definition.participants != owner.repositories or owner.repository.definition.schema_version != (5 if semantic else 4)):
         raise InvalidValue()
     return 2097152
 
@@ -64,12 +75,17 @@ def validate_command_values(definition: CommandSpec, values) -> None:
     """Enforce the independent aggregate body limit before transaction admission."""
     if declared_capacity(definition) is None:
         return
-    from companion_memory.configuration.text_codec import CONFIGURATION_BODY_LIMIT
+    from companion_memory.configuration.text_codec import CONFIGURATION_BODY_LIMIT as TEXT_BODY_LIMIT
+    from companion_memory.configuration.semantic_codec import CONFIGURATION_BODY_LIMIT as SEMANTIC_BODY_LIMIT
+    from companion_memory.configuration.semantic_schema import semantic_definitions
+    semantic=definition.operation_kind=='initialize_semantic'
+    limit=SEMANTIC_BODY_LIMIT if semantic else TEXT_BODY_LIMIT
+    added={d['key'] for d in semantic_definitions()} if semantic else set()
     from companion_memory.configuration.content_codec import decode_content_entry, entries_digest
     domains=values['domains']
     if len(domains)!=6 or len({d['domain_id'] for d in domains})!=6:
         raise InvalidValue()
-    count=total=0
+    count=total=inherited=0
     for domain in domains:
         entries=domain['entries'];count+=len(entries)
         if len({e['parameter_key'] for e in entries})!=len(entries):raise InvalidValue()
@@ -77,8 +93,9 @@ def validate_command_values(definition: CommandSpec, values) -> None:
             declaration,_,_,_=decode_content_entry(entry['body'])
             if declaration['key']!=entry['parameter_key']:raise InvalidValue()
             total+=len(entry['body'].encode('utf-8'))
+            if entry['parameter_key'] not in added: inherited+=len(entry['body'].encode('utf-8'))
         if entries_digest(tuple((e['parameter_key'],e['body']) for e in entries))!=domain['digest']:raise InvalidValue()
-    if count!=118:raise InvalidValue()
-    if total>CONFIGURATION_BODY_LIMIT:
+    if count!=(124 if semantic else 118):raise InvalidValue()
+    if total>limit or inherited>TEXT_BODY_LIMIT:
         from .schema import ValueTooLarge
         raise ValueTooLarge()

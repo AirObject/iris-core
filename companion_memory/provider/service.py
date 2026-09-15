@@ -694,6 +694,27 @@ class ProviderService:
         return request, cast(CancellationToken, token), float(deadline)
 
     async def _work(self, port: object, operation: str, raw: object):
+        admitted=self._admit_work(port,operation,raw)
+        return await self._wait_work(admitted) if type(admitted) is _Job else admitted
+
+    async def _send_verified_first(self,port: object,evidence: object,raw: object):
+        """Consume one original absence seal under registration exclusion.
+
+        Admission retains the real job before releasing the serial gate. A
+        concurrent consumer cannot observe a gap between the seal and the job.
+        The original absolute deadline is an upper bound, never renewed here.
+        """
+        from .unsent_evidence import VerifiedUnsent,issued_unsent
+        if type(evidence) is not VerifiedUnsent or not issued_unsent(evidence):
+            return Rejected(error('ACCESS_DENIED','embed','capability','CAPABILITY_MISMATCH'))
+        if self._serial.locked():
+            return Rejected(error('RESOURCE_BUSY','embed','state','ADMISSION_BUSY'))
+        async with self._serial:
+            admitted=self._admit_work(port,'embed',raw,first_send=evidence)
+        return await self._wait_work(admitted) if type(admitted) is _Job else admitted
+
+    def _admit_work(self,port: object,operation: str,raw: object,*,first_send: object=None):
+        """Retain one admitted worker synchronously, before any registration I/O."""
         if (issue := self._access(port, operation, (WorkPort,))) is not None:
             return Rejected(issue)
         grant = cast(WorkGrant, self._ports[port])
@@ -723,8 +744,16 @@ class ProviderService:
             return Rejected(error("RESOURCE_FAILED", operation, "state", "RESOURCE_FAILURE"))
         if request["profile_id"] not in grant.profiles:
             return Rejected(error("ACCESS_DENIED", operation, "capability", "CAPABILITY_MISMATCH"))
-        from .unsent_evidence import request_key
-        if request_key(grant, request) in self._unsent_evidence:
+        from .unsent_evidence import request_key,issued_unsent,VerifiedUnsent
+        original_key=request_key(grant,request)
+        if first_send is not None:
+            if (type(first_send) is not VerifiedUnsent or not issued_unsent(first_send)
+                    or first_send._provider is not self or self._unsent_evidence.get(original_key) is not first_send
+                    or first_send.conclusion!='REGISTRATION_ABSENT' or first_send.request_id is not None
+                    or first_send.original_request!=request or first_send.capability!='EMBEDDING'
+                    or first_send.result_owner!=grant.result_owner or requested_deadline>first_send.deadline):
+                return Rejected(error('ACCESS_DENIED',operation,'capability','CAPABILITY_MISMATCH'))
+        elif original_key in self._unsent_evidence:
             return Rejected(error('MODE_BLOCKED', operation, 'state', 'ORIGINAL_ADMISSION_CLOSED'))
         if len(self._jobs) >= self._number("max_in_flight"):
             return Rejected(error("RESOURCE_BUSY", operation, "state", "ADMISSION_BUSY"))
@@ -752,9 +781,16 @@ class ProviderService:
                 job.media_authorization = submitted['media']
         job.publication = asyncio.get_running_loop().create_future()
         self._jobs.add(job)
+        if first_send is not None:del self._unsent_evidence[original_key]
         job.task = asyncio.create_task(self._drive_owned(job))
         job.task.add_done_callback(lambda task: self._job_finished(job, task))
+        return job
+
+    async def _wait_work(self,job: _Job):
+        """Wait within the original deadline while the job retains actual cleanup."""
         execution = job.task
+        assert execution is not None and job.publication is not None
+        deadline=job.deadline;operation=job.operation
         try:
             done, _ = await asyncio.wait((execution, job.publication), timeout=max(0, deadline-self._now()), return_when=asyncio.FIRST_COMPLETED)
             if job.publication in done:

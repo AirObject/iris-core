@@ -10,9 +10,6 @@
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
-# 独立陪伴角色记忆与认知系统：技术架构与模块设计草稿
-
-> 文档性质：模块与工程契约草稿，不是实现完成报告或最终技术栈批准记录。  
 > 需求依据：[现行产品行为](../product/overview.md)，以及本文列出的部署、规模、时延、持久化和远程模型约束。
 > 标识约定：[M01](../modules/ingress.md#contract)—[M15](../modules/configuration.md#contract)为逻辑模块；[I01](ownership.md#i01)—[I02](ownership.md#i02)为基础设施；[T01](persistence-and-transactions.md#t01)—[T13](persistence-and-transactions.md#t13)为事务与恢复契约；[V01](acceptance.md#v01)—[V90](acceptance.md#v90)为工程验收。模块不等于进程、容器、仓库或独立agent。
 
@@ -131,7 +128,7 @@ FTS5提供tokenizer扩展能力。中文昵称、两字词、连续中文和中�
 
 #### 持久化事务基础的SQLite验证采用（契约已批准）
 
-已批准在[整体事务契约](persistence-and-transactions.md#persistence-foundation-contract)范围内验证采用Python标准库`sqlite3`适配器：同主机本地文件系统、一份数据库保存参与仓储、审计和提交回执，一个应用进程受控写入，独立连接用于受控短读取。验证仅使用测试自有临时资源与合成仓储；不批准生产选型、生产路径、G2或多实例部署，不包含FTS5、向量扩展、媒体和备份实现。此验证采用契约已随[集中决定P1](persistence-and-transactions.md#persistence-foundation-decisions)获批，待实现授权，不另设技术选型批准表；不表示Linux就绪、性能达标或掉电保证获准。
+已批准在[整体事务契约](persistence-and-transactions.md#persistence-foundation-contract)范围内验证采用Python标准库`sqlite3`适配器：同主机本地文件系统、一份数据库保存参与仓储、审计和提交回执，一个应用进程受控写入，独立连接用于受控短读取。验证仅使用测试自有临时资源与合成仓储；不批准生产选型、生产路径、G2或多实例部署，不包含FTS5、向量扩展、媒体和备份实现。此验证采用契约已随[集中决定P1](persistence-and-transactions.md#persistence-foundation-decisions)获批，不另设技术选型批准表；不表示Linux就绪、性能达标或掉电保证获准。
 
 **运行库前置：** 官方已记录WAL-reset问题及修复：3.51.3及后续版本，另有3.44.6、3.50.7回补。已批准的验证准入下限为`3.51.3`，不默认接纳旧分支或无法核实补丁的定制构建；确需回补分支时须提出明确构建证据和准入修订。版本下限只排除已知问题，不表示后续版本均已验证。[SQLite官方WAL-reset说明](https://sqlite.org/wal.html)
 

@@ -12,9 +12,9 @@
 
 ## 按边界定位
 
-本轮已批准依赖：[媒体出现与输入状态](../architecture/formal-memory-source-media.md#interpretation)、[真实上传及接收承诺](../architecture/formal-memory-source-media.md#files-gc)、[权限投影](../architecture/formal-memory-source-media.md#ports-permissions)；旧事件／装配兼容见同一集中契约。
+已批准依赖：[媒体出现与输入状态](../architecture/formal-memory-source-media.md#interpretation)、[真实上传及接收承诺](../architecture/formal-memory-source-media.md#files-gc)、[权限投影](../architecture/formal-memory-source-media.md#ports-permissions)；旧事件／装配兼容见同一集中契约。
 
-本次详细接口及联合验收见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#ingress)（五组推荐已批准，实施已授权；验证状态见CURRENT_TASK）；本模块原职责和既有批准状态不变。
+本次详细接口及联合验收见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#ingress)（契约已批准；实际验证见[STATUS](../work/STATUS.md)）；本模块原职责和既有批准状态不变。
 
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
@@ -25,7 +25,7 @@
 | 状态、提交和恢复 | [接收承诺与允许损失](../architecture/persistence-and-transactions.md#section-04)；[T01](../architecture/persistence-and-transactions.md#t01)；[远程结果未知](../architecture/persistence-and-transactions.md#source-line-518)（仅涉及外部调用时） |
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A01](../product/acceptance.md#a01)、[A02](../product/acceptance.md#a02)、[A03](../product/acceptance.md#a03)、[A17](../product/acceptance.md#a17)、[A61](../product/acceptance.md#a61)（任务范围扩大时按完整表补充） |
-| 工程验收定位 | [V01](../architecture/acceptance.md#v01)、[V03](../architecture/acceptance.md#v03)（预期行为，未执行） |
+| 工程验收定位 | [V01](../architecture/acceptance.md#v01)、[V03](../architecture/acceptance.md#v03)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
 | 尚未决定 | 输入、原键和错误格式已在[整体契约](../architecture/durable-ingress-and-batch-runtime.md#ports)批准；生产身份来源与鉴权装配仍待批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>

@@ -16,8 +16,13 @@ HEADER = RecordSchema(tuple(f for f in MANIFEST_SCHEMA.fields if f.name != 'orde
     Field('ordered_member_digests', SequenceSchema(BoundedTextSchema(64), 1, 4)),))
 
 
-def split_manifest(body: str) -> tuple[str, tuple[str, ...]]:
+def split_manifest(body: str, *, semantic_format: bool = False) -> tuple[str, tuple[str, ...]]:
     """Keep complete logical identity while bounding each physical point record."""
+    if semantic_format:
+        from .fixed_source import decode_fixed_source,is_fixed_source
+        if is_fixed_source(body):
+            decode_fixed_source(body)
+            return body, ()
     value = record(freeze_value(LOGICAL_RECORD, decode_content(body.encode(), 8192)))
     members = tuple(encode_content(member, 2048).decode() for member in sequence(value['ordered_members']))
     header = freeze_value(HEADER, {k: v for k, v in value.items() if k != 'ordered_members'} | {
@@ -25,16 +30,24 @@ def split_manifest(body: str) -> tuple[str, tuple[str, ...]]:
     return encode_content(header, 4096).decode(), members
 
 
-def member_digests(body: str) -> tuple[str, ...]:
+def member_digests(body: str, *, semantic_format: bool = False) -> tuple[str, ...]:
     """Reject noncanonical or oversized persisted headers before reading leaves."""
+    if semantic_format:
+        from .fixed_source import decode_fixed_source,is_fixed_source
+        if is_fixed_source(body):
+            decode_fixed_source(body)
+            return ()
     value = freeze_value(HEADER, decode_content(body.encode(), 4096))
     if encode_content(value, 4096).decode() != body: raise InvalidValue()
     return cast(tuple[str, ...], record(value)['ordered_member_digests'])
 
 
-def join_manifest(body: str, members: tuple[str, ...]) -> str:
+def join_manifest(body: str, members: tuple[str, ...], *, semantic_format: bool = False) -> str:
     """Restore the complete logical manifest only after every leaf digest matches."""
-    checksums = member_digests(body)
+    checksums = member_digests(body,semantic_format=semantic_format)
+    if not checksums:
+        if members:raise InvalidValue()
+        return body
     if len(members) != len(checksums) or any(hashlib.sha256(member.encode()).hexdigest() != checksum for member, checksum in zip(members, checksums)):
         raise InvalidValue()
     value = record(freeze_value(HEADER, decode_content(body.encode(), 4096)))

@@ -3,7 +3,8 @@ from companion_memory.persistence import Field, RecordSchema, StatementDefinitio
 from companion_memory.information.records import ID, TEXT, TIME, COUNT
 from companion_memory.information.repository import Layout, declarations
 from companion_memory.persistence.owned_statements import StatementCatalog
-from .records import TICKET, MEMBER, USAGE, DISPOSITION, GENERATION, PAGE, INDEX_OBJECT, POSTING, LEASE, COORDINATOR
+from .records import TICKET,SEMANTIC_TICKET, MEMBER, USAGE, DISPOSITION,SEMANTIC_DISPOSITION, GENERATION, PAGE, INDEX_OBJECT, POSTING, LEASE, COORDINATOR
+from dataclasses import replace
 
 
 def columns(schema: RecordSchema, *names: str) -> tuple[Field, ...]:
@@ -24,7 +25,11 @@ LAYOUTS = (
 )
 
 
-def retrieval_catalog() -> StatementCatalog:
+def layouts(semantic_format:bool=False) -> tuple[Layout,...]:
+    return tuple(replace(layout,schema=SEMANTIC_TICKET if layout.name=='ticket' else SEMANTIC_DISPOSITION) if semantic_format and layout.name in ('ticket','disposition') else layout for layout in LAYOUTS)
+
+
+def retrieval_catalog(*,semantic_format:bool=False) -> StatementCatalog:
     """Declare every table and query before the persistence service validates it."""
     indices = (
         TableDefinition('retrieval_expiry', 'CREATE INDEX retrieval_expiry ON retrieval_ticket(scope_id,expires_at_us,recall_id)'),
@@ -33,7 +38,8 @@ def retrieval_catalog() -> StatementCatalog:
         TableDefinition('retrieval_posting_object', 'CREATE INDEX retrieval_posting_object ON retrieval_posting(scope_id,generation_id,object_id,ordinal)'),
     )
     extra = []
-    for layout in LAYOUTS:
+    selected=layouts(semantic_format)
+    for layout in selected:
         row = RecordSchema(layout.columns + (Field('body', TEXT(layout.limit)),))
         key = layout.keys[0]
         extra.append((layout.name + '_page', StatementDefinition('SELECT ' + ','.join(f.name for f in row.fields) + ' FROM retrieval_' + layout.name
@@ -89,4 +95,4 @@ def retrieval_catalog() -> StatementCatalog:
     protected_ids = ','.join("json_extract(:protected,'$[" + str(index) + "]')" for index in range(16))
     extra.append(('ticket_occupancy', StatementDefinition('SELECT count(*) AS occupied,coalesce(sum(expires_at_us>:now),0) AS live,coalesce(sum(expires_at_us<=:now),0) AS expired,coalesce(sum(expires_at_us<=:now AND recall_id IN (' + protected_ids + ')),0) AS protected FROM retrieval_ticket WHERE scope_id=:scope_id',
         RecordSchema((Field('now', TIME), Field('protected', TEXT(4096)))), RecordSchema((Field('occupied', COUNT), Field('live', COUNT), Field('expired', COUNT), Field('protected', COUNT))), False)))
-    return declarations('retrieval', 1, LAYOUTS, indices, tuple(extra))
+    return declarations('retrieval', 2 if semantic_format else 1, selected, indices, tuple(extra))

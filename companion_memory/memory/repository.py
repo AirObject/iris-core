@@ -12,7 +12,7 @@ from companion_memory.persistence.owned_statements import StatementCatalog
 from .formats import ID, INT, REVISION, enum
 
 
-def memory_catalog() -> StatementCatalog:
+def memory_catalog(*, semantic_format: bool = False) -> StatementCatalog:
     """Build the finite memory schema before the database is created."""
     tables: list[TableDefinition] = []
     statements: list[tuple[str, StatementDefinition]] = []
@@ -56,16 +56,16 @@ def memory_catalog() -> StatementCatalog:
         RecordSchema((Field('subject_id', ID),)), False)
     tables.append(TableDefinition('memory_single_self', "CREATE UNIQUE INDEX memory_single_self ON memory_subjects(scope_id) WHERE kind='SELF'"))
     table('tombstones', (Field('object_id', ID), Field('body', BoundedTextSchema(1024))), 'PRIMARY KEY(scope_id,object_id)', ('object_id',))
-    source_fields = (Field('source_id', ID), Field('entry_id', ID), Field('batch_id', ID),
+    source_fields = (Field('source_id', ID), Field('entry_id', ID), Field('batch_id', ID, nullable=semantic_format),
         Field('state', enum('RETAINED', 'RELEASED')), Field('references_revision', REVISION),
-        Field('holder_count', INT), Field('body', BoundedTextSchema(4096), nullable=True), Field('digest', ID))
+        Field('holder_count', INT), Field('body', BoundedTextSchema(8192 if semantic_format else 4096), nullable=True), Field('digest', ID))
     table('sources', source_fields, 'PRIMARY KEY(scope_id,source_id), UNIQUE(scope_id,batch_id), CHECK(references_revision>0), CHECK(holder_count>=0)', ('source_id',))
     source_row = RecordSchema(source_fields)
     add('sources_references', 'UPDATE memory_sources SET references_revision=references_revision+1,holder_count=:holder_count,state=:state,body=:body '
         'WHERE scope_id=:scope_id AND source_id=:source_id AND references_revision=:expected_revision AND references_revision<9223372036854775807 '
         'RETURNING source_id,entry_id,batch_id,state,references_revision,holder_count,body,digest',
         RecordSchema((Field('source_id', ID), Field('expected_revision', REVISION), Field('holder_count', INT),
-            Field('state', enum('RETAINED', 'RELEASED')), Field('body', BoundedTextSchema(4096), nullable=True))), source_row, True)
+            Field('state', enum('RETAINED', 'RELEASED')), Field('body', BoundedTextSchema(8192 if semantic_format else 4096), nullable=True))), source_row, True)
     holder_fields = (Field('source_id', ID), Field('owner_kind', enum('OBJECT', 'CANDIDATE', 'WORK', 'SOURCE')),
                      Field('owner_id', ID))
     table('source_holders', holder_fields, 'PRIMARY KEY(scope_id,source_id,owner_kind,owner_id)', ('source_id', 'owner_kind', 'owner_id'))

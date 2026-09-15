@@ -12,10 +12,12 @@ from companion_memory.persistence import UnitOfWork, Field, RecordSchema, Sequen
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.information.records import Record, ID, REVISION, TIME, checked, integer, text, record, fact
 from companion_memory.memory.service import MemoryReadPort, MemoryService
-from .records import TICKET, MEMBER, USAGE
+from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
+from .records import TICKET,SEMANTIC_TICKET, MEMBER, USAGE
 from .index import LocalIndex, IndexTransaction
 
 ISSUE = RecordSchema((Field('ticket', TICKET), Field('members', SequenceSchema(MEMBER, 1, 8))))
+SEMANTIC_ISSUE=RecordSchema((Field('ticket',SEMANTIC_TICKET),Field('members',SequenceSchema(MEMBER,1,8))))
 EXPIRE = RecordSchema((Field('recall_id', ID),))
 USED = RecordSchema((Field('object_id', ID), Field('returned_revision', REVISION)))
 CONSUME = RecordSchema((Field('recall_id', ID), Field('used_members', SequenceSchema(USED, 1, 8)), Field('used_at', TIME, nullable=True)))
@@ -70,7 +72,8 @@ class RecallTickets:
             raise OwnerFailure('ACCESS_DENIED', 'ticket', 'BINDING_MISMATCH')
 
     def issue(self, kind: str, uow: UnitOfWork, payload: object, now: int, authority: RecallAuthority) -> TicketEffect:
-        value = checked(ISSUE, payload, 8192); ticket = record(value['ticket'])
+        from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
+        value = checked(SEMANTIC_ISSUE if type(self.owner.configuration) is StoredSemanticConfiguration else ISSUE, payload, 8192); ticket = record(value['ticket'])
         self._binding(ticket, authority)
         deep = kind == 'ticket_issue_deep'
         if (ticket['query_mode'] != ('DEEP' if deep else 'NORMAL') or ticket['issued_at_us'] != now or ticket['clock_observation'] != now
@@ -113,7 +116,8 @@ class RecallTickets:
         if len(members) != ticket['member_count']:
             raise OwnerFailure('STORAGE_FAILED', 'ticket', 'INTEGRITY_FAILURE')
         tx.write('disposition', {n: ticket[n] for n in ('recall_id', 'database_id', 'principal_binding_id', 'request_key', 'intent_digest')} |
-            {'expired_at_us': ticket['expires_at_us'], 'disposed_at_us': now, 'member_count': ticket['member_count'], 'outcome': 'EXPIRED', 'version': 1})
+            {'expired_at_us': ticket['expires_at_us'], 'disposed_at_us': now, 'member_count': ticket['member_count'], 'outcome': 'EXPIRED', 'version': ticket['version']} |
+            ({'response_digest':ticket['response_digest']} if type(self.owner.configuration) is StoredSemanticConfiguration else {}))
         for raw in members:
             member = self.owner._records.unpack('member', raw)
             tx.remove('member', {'recall_id': ticket['recall_id'], 'object_id': member['object_id']})

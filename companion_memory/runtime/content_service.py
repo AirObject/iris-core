@@ -64,7 +64,7 @@ async def _entry_call(port, operation, key, argument):
 class ContentRuntimeService:
     """Trusted orchestration with bounded actual jobs and independent read services."""
     def __init__(self, assembly: ContentAssembly, provider: ProviderService,
-                 candidates: SyntheticCandidateInput | SyntheticGraphInput | SyntheticMutationInput | SyntheticMixedInput | SyntheticGoalInput | TextCandidateInput, learning_profile: str, media_policy: MediaPolicy | None, *, gate: ContentGate | None = None):
+                 candidates: SyntheticCandidateInput | SyntheticGraphInput | SyntheticMutationInput | SyntheticMixedInput | SyntheticGoalInput | TextCandidateInput, learning_profile: str, media_policy: MediaPolicy | None, *, gate: ContentGate | None = None, embedding=None):
         if type(assembly) is not ContentAssembly or not assembly._bound or type(provider) is not ProviderService or type(candidates) not in (SyntheticCandidateInput, SyntheticGraphInput, SyntheticMutationInput, SyntheticMixedInput, SyntheticGoalInput,TextCandidateInput) or not valid_identifier(learning_profile) or type(candidates) is SyntheticGoalInput and not assembly.information_format:
             raise ValueError('Bound actual owners and explicit model/candidate inputs are required.')
         if assembly.text_format!=(type(candidates) is TextCandidateInput):
@@ -73,6 +73,12 @@ class ContentRuntimeService:
                 (candidates.configuration is not assembly.configuration or not provider._assembly.text_generation or media_policy is not None)):
             raise ValueError('Native text resources and their exact stored configuration are required.')
         self.assembly = assembly; self.provider = provider; self.candidates = candidates; self.learning_profile = learning_profile
+        from companion_memory.provider.embedding_service import EmbeddingProvider
+        if assembly.semantic_format:
+            if type(embedding) is not EmbeddingProvider or embedding.configuration is not assembly.configuration or embedding.storage is not assembly.storage or media_policy is not None:
+                raise ValueError('Native semantic runtime owner required.')
+        elif embedding is not None:raise ValueError('Embedding requires the semantic assembly.')
+        self.embedding=embedding
         self.settings = assembly.configuration.candidate.runtime
         if not assembly.text_format:self.provider._registration_limit = assembly.configuration.candidate.content.integer('memory.read_page_size')
         self.text_contexts:TextContextCollection|None=None
@@ -121,19 +127,23 @@ class ContentRuntimeService:
         """Recover original local work before exposing admission; repeated calls join."""
         from .content_recovery import recover_original_work
         if self.state == 'READY': return Found(MappingProxyType({'state': 'READY'}))
-        if self.state != 'RECOVERING' or self.provider.get_health().lifecycle != 'READY':
+        provider_ready=self.embedding._initialized if self.embedding is not None else self.provider.get_health().lifecycle=='READY'
+        if self.state != 'RECOVERING' or not provider_ready:
             return Rejected(RuntimeError('INVALID_STATE', 'initialize', 'state', 'NOT_READY'))
-        if self.provider._resources is None or self.provider._resources.gate is not self.gate.binding:
+        if self.embedding is None and (self.provider._resources is None or self.provider._resources.gate is not self.gate.binding):
             return Rejected(RuntimeError('ACCESS_DENIED', 'initialize', 'capability', 'BINDING_MISMATCH'))
         if self.media_policy is not None and self.media is None: self.media = ContentMedia(self, self.media_policy)
         async def recover():
             try:
                 verified = await self._memory_recovery.advance()
+                if self.state != 'RECOVERING': return Rejected(RuntimeError('INVALID_STATE', 'initialize', 'state', 'SERVICE_CLOSED'))
                 if type(verified) is not Found or record(verified.value)['state'] != 'MEMORY_VERIFIED': return verified
                 candidates_verified = await self.assembly.cognition.verify_stored(self.assembly.configuration.candidate.content.integer('memory.read_page_size'),
                     time.monotonic() + self.settings.integer('runtime.recovery_timeout_ms') / 1000)
+                if self.state != 'RECOVERING': return Rejected(RuntimeError('INVALID_STATE', 'initialize', 'state', 'SERVICE_CLOSED'))
                 if not candidates_verified: return Found(MappingProxyType({'state': 'RECOVERY_PENDING', 'owner': 'cognition'}))
                 result = await recover_original_work(self)
+                if self.state != 'RECOVERING': return Rejected(RuntimeError('INVALID_STATE', 'initialize', 'state', 'SERVICE_CLOSED'))
                 if type(result) is not Found or record(result.value)['state'] != 'ORIGINAL_WORK_VERIFIED': return result
                 modes = await self.assembly.rows.read('mode_get', {'mode_id': 'instance_mode'})
                 if not modes: return Rejected(RuntimeError('INVALID_STATE', 'initialize', 'state', 'NOT_READY'))
@@ -144,6 +154,7 @@ class ContentRuntimeService:
                     if type(settled) not in (Committed, Found): return settled
                 elif modes[0]['state'] == 'DRAINING':
                     await self.focus.transfer_staged(modes[0]['run_id'])
+                if self.state != 'RECOVERING': return Rejected(RuntimeError('INVALID_STATE', 'initialize', 'state', 'SERVICE_CLOSED'))
                 self.state = 'READY'
                 return Found(MappingProxyType({'state': 'READY', 'storage_execution': 'ACTUAL', 'model_adapter': 'REMOTE_PROVIDER' if self.assembly.text_format else 'SIMULATED',
                     'candidate_origin': 'MODEL_VALIDATED' if self.assembly.text_format else 'SYNTHETIC'}))
@@ -158,6 +169,7 @@ class ContentRuntimeService:
 
     def bind_entry(self, entry_id: str) -> ContentEntryPort:
         """Trusted host setup limits the capability to one registered entry ID."""
+        if self.assembly.semantic_format:raise ValueError('The embedding host grants no learning entry capability.')
         if self.state != 'READY' or len(self._entries) >= self.settings.integer('runtime.max_active_entries') or not valid_identifier(entry_id): raise ValueError('Ready registered entry scope required.')
         port = object.__new__(ContentEntryPort)
         object.__setattr__(port, '_runtime', self); object.__setattr__(port, '_entry', entry_id)
@@ -389,9 +401,15 @@ class ContentRuntimeService:
                 self.provider.revoke(port); self.gate.revoke(grant); self._learning_held.pop(bid)
         if self.media is not None: self.media.release_ended_capabilities()
 
+    def stop_admission(self) -> None:
+        """Irreversibly stop initialization and new work before awaiting owners."""
+        if self.state == 'CLOSED': return
+        self.state = 'CLOSING'; self.gate.close(); self._entries.clear(); self.observations.close(); self.maintenance.close(); self.sources.close(); self.focus.close()
+
     async def close(self) -> bool:
         """Revoke admission and keep the runtime alive until its actual jobs end."""
-        self.state = 'CLOSING'; self.gate.close(); self._entries.clear(); self.observations.close(); self.maintenance.close(); self.sources.close(); self.focus.close()
+        if self.state == 'CLOSED': return True
+        self.stop_admission()
         tasks = tuple(self._external_jobs) + tuple(self.focus.jobs) + tuple(self._jobs.values()) + tuple(self.maintenance.jobs.values()) + tuple(self._commands) + ((self._recovery_job,) if self._recovery_job is not None and not self._recovery_job.done() else ())
         if tasks: await asyncio.wait(tasks, timeout=self.settings.integer('runtime.close_timeout_ms') / 1000)
         if any(not task.done() for task in tasks) or self._external_jobs or self._jobs or self._commands or self.maintenance.jobs or self.sources._active or self.memory._active or self.observations.jobs or self.provider.get_health().cleanup_pending: return False

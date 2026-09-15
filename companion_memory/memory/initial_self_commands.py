@@ -47,13 +47,14 @@ class InitialSelfPort:
 class InitialSelfCommands:
     """One fixed declaration and a unique trusted identity binding."""
     def __init__(self,catalog: StatementCatalog,utc_now_us: Callable[[],int] = lambda:time.time_ns()//1000):
-        if catalog.definition.owner_module!='memory' or catalog.definition.schema_version!=3 or not callable(utc_now_us):raise InvalidValue()
+        if catalog.definition.owner_module!='memory' or catalog.definition.schema_version not in (3,4) or not callable(utc_now_us):raise InvalidValue()
         self.catalog=catalog;self._clock=utc_now_us;self._owner: InitialSelfStorage | None=None;self._port: InitialSelfPort | None=None
         requirements,bindings=audits('register_initial_self',('memory',))
         self.commands=(ResultBoundCommandDefinition('memory','register_initial_self',1,
             RecordSchema((Field('operation_id',ID),Field('input_kind',ScalarSchema('enum',choices=('PRESET','NO_PRESET'))),Field('body',BoundedTextSchema(2048)),
                 Field('input_origin',ScalarSchema('enum',choices=('ACTUAL_INPUT','SYNTHETIC_FIXTURE'))))),1,result_schema(('memory',),('REGISTERED',)),
             (catalog.definition,),requirements,self._handle,INTENT,bindings),)
+        self.admit:Callable[[UnitOfWork],None]|None=None
         self._operation=None;self._closed=False;self._read_task:asyncio.Task|None=None
 
     def bind(self,memory: MemoryTransactions,binding: InitialSelfBinding) -> InitialSelfPort:
@@ -66,6 +67,7 @@ class InitialSelfCommands:
 
     def _handle(self,uow: UnitOfWork,values: MappingProxyType[str,Value]):
         if self._owner is None:raise InvalidValue()
+        if self.admit is not None:self.admit(uow)
         uow.require_commit_permission(lambda:not self._closed)
         operation={'owner_namespace':'memory','operation_kind':'register_initial_self','scope_id':self._owner._owner.instance_id,
             'operation_key':values['operation_id']}

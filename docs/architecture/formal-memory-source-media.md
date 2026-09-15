@@ -2,7 +2,7 @@
 
 **状态：五组推荐及本契约所链接的四份所属补充已获用户明确批准。** 批准范围限于当前推荐方案；未采纳替代、范围外能力及其他正文待定事项不随之批准。本文与所属补充共同约束实现；实施、验证及监督技术审查进度只在[当前任务](../work/CURRENT_TASK.md)维护，[STATUS](../work/STATUS.md)只记录已验收里程碑。
 
-契约基线：`main`，HEAD=`6a41859fdfc8c0f80305e792221e19fdab2a9fa2`。旧装配的已验收能力和限制见[STATUS](../work/STATUS.md)；历史检查不证明本契约新增能力。
+本契约定义正式记忆／完整来源／媒体装配及其对基础运行装配的兼容边界；旧装配验证不自动证明新增能力。实际实现、验收及提交版本见[STATUS](../work/STATUS.md)。
 
 <a id="scope"></a>
 
@@ -36,12 +36,12 @@
 | [MediaParticipant](../../companion_memory/ingress/media.py)、[接收与终结](../../companion_memory/runtime/assembly.py) | retain_event／settle_event／release_event在同UoW参与；payload最后一个运行／来源引用释放才可清理 | 新媒体出现绑定、文件代次、理解快照和处理中保护；回流沿同一事件owner连续持有，不要求再复制blob |
 | [合成媒体](../../tests/runtime/media_participant.py)、[合成学习／发布](../../tests/runtime/participants.py) | 显式临时SQLite仓储、失败点及共享保护形状 | SyntheticMedia仅声明READY并保存清单，无文件；学习结果仅result_count及目标ID，无正式正文、双指标或关系。保留作旧装配验证，不能转正 |
 | [事件格式](../../companion_memory/ingress/events.py) | 完整不可变原始事件，身份与正文分离，引用／发生时间保留 | 旧媒体状态仅AVAILABLE／MISSING／REFUSED，新增event_version=2及精确状态结构；旧格式解释保持，不覆写旧接收原文 |
-| [Provider端口](../../companion_memory/provider/ports.py)、[媒体授权](../../companion_memory/provider/service.py) | understand_media、lookup_request、recover_result；字节上限1 MiB，固定模态任务；真实账本和模拟适配器 | authorize_media当前仅声明合成bytes；新真实存储绑定与字节能力生命周期见[Provider补充](provider.md#stored-media-provider-bridge)，不绕过Provider |
+| [Provider端口](../../companion_memory/provider/ports.py)、[媒体授权](../../companion_memory/provider/service.py) | understand_media、lookup_request、recover_result；字节上限1 MiB，固定模态任务；真实账本和模拟适配器 | 基础装配的authorize_media仅声明合成bytes；新真实存储绑定与字节能力生命周期见[Provider补充](provider.md#stored-media-provider-bridge)，不绕过Provider |
 | [配置持久化](../../companion_memory/configuration/persistence.py)、[编码](../../companion_memory/configuration/persistent_codec.py) | 完整值／定义、材料声明、真实snapshot身份、原键初始化和恢复 | 新组合入口／域／材料版本；旧初始化整命令、单参数8192和目录上限必须同时核算，平台结构上限不是容量证明 |
 | [运行结果Schema](../../companion_memory/runtime/transaction_schema.py)、[观察](../../companion_memory/runtime/observation.py) | 安全计数、原始回执／当前观察分离、有限当前进程确认观察 | 旧facts固定synthetic及共享change不适合正式对象；新命令结果精确列对象／来源／引用事实，独立能力来源标签。扩展固定投影，保留有限窗口约束 |
 | [同事务审计](logging.md#transactional-audit-contract) | 必要slot、结果绑定、同事务失败毒化、独立开发者读取 | 现有change禁止正文；修订历史采用[专属审计正文补充](logging.md#memory-history-audit)，不放宽旧摘要或向agent开放审计 |
 
-未发现需要裁决的现行正文真实冲突：上述属于现有契约明确未实现或待细化的能力。旧契约正文中的历史实施措辞不作为本轮授权；现行批准保障按所属正文继承，实际版本以本页基线及STATUS为准。实现若发现必须改变旧格式字节解释或无法满足以下上界，应暂停受影响部分列明具体位置和差异。
+上表对比基础运行装配与本契约扩展所需能力，用于解释接口和兼容边界；不作为当前未实现清单。实际版本见[STATUS](../work/STATUS.md)。若后续变更必须改变旧格式字节解释或无法满足以下上界，须按[项目指引](../../AGENTS.md)报告具体冲突并暂停受影响部分。
 
 <a id="objects"></a>
 
@@ -484,4 +484,4 @@ USER依次为`material=2`行，instance／host／platform／entry／batch／run�
 | M29 | S最后holder计划后新增B，及S非最后计划后B释放；H继续持原文后再轮转；无媒体／有媒体／共享解释／独立维护和批次删除；计划／执行COMMIT前后跨进程退出 | 旧分支OWNERSHIP_CHANGED时业务全无；确认未提交后新计划才选正确静态mask，UNKNOWN不重规划。memory／ingress／media及历史审计严格匹配实际变化，buffers未变不写slot；原文最后释放、解释保留、文件仅GC、root至多成功一次；必要集合不得临时扩大或漏项 |
 | M30 | 最长合法元信息遍历各来源／状态；I=1330/1331/2048；固定REFUSED且text限额0；512普通字节和512个U+0000；外部报告／完整event超限；内部失败保存时SQLite错误 | 精确验证§5.4各上界及±1；配置不足零副作用，外部非法T01全无，内部普通成功超限仅存1327字节FAILED且原Provider交接不变。敏感固定1331字节不得降FAILED；保底保存失败仍未知／阻塞、不假RESULT_STORED；新满窗40180／请求44290／释放计划876544／配置933888按真实编码逐项验证 |
 
-验证计划还包括既有全量unittest回归，覆盖新真实临时文件／SQLite、独立进程重新打开及终止恢复；全量Pyright覆盖`companion_memory/`、`tests/`及所有新增／未跟踪Python文件，新增维护目录须进入检查范围。按[代码规范](../CODING_STANDARDS.md#python-type-checking)记录实际版本、命令、退出码与诊断数量；Pylance另需实际编辑器workspace诊断证据，不能用Pyright替代。实际执行结果和未验证条件只在CURRENT_TASK记录。
+回归范围按[统一验证规则](../CODING_STANDARDS.md#validation-environment)选择，保持真实临时文件／SQLite、独立进程重新打开及终止恢复的相关保障；全量Pyright覆盖`companion_memory/`、`tests/`及所有新增／未跟踪Python文件，新增维护目录须进入检查范围。按[代码规范](../CODING_STANDARDS.md#python-type-checking)记录实际版本、命令、退出码与诊断数量；Pylance另需实际编辑器workspace诊断证据，不能用Pyright替代。实际执行结果和未验证条件只在CURRENT_TASK记录。

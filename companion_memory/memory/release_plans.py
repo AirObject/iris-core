@@ -134,18 +134,18 @@ def observe_change_set_release(memory: MemoryTransactions, uow: UnitOfWork,
         if after_count < 0: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         payloads = []
         if after_count == 0:
-            for member in sequence(source['ordered_members']):
+            for member in sequence(source.get('ordered_members',())):
                 payload = ingress.event(uow, cast(str, record(member)['message_id']))
                 mid = cast(str, payload['message_id'])
                 released = payload_releases.get(mid, 0) + 1
                 payload_releases[mid] = released
                 payloads.append(MappingProxyType({'message_id': mid, 'references_revision': payload['references_revision'],
                     'holder_count': payload['holder_count'], 'payload_deleted': payload['holder_count'] == released}))
-        has_media = after_count == 0 and any(sequence(record(m)['media']) for m in sequence(source['ordered_members']))
+        has_media = after_count == 0 and any(sequence(record(m)['media']) for m in sequence(source.get('ordered_members',())))
         effects = None
         if has_media:
             if ingress.media is None: raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'media', 'OWNER_MISSING')
-            effects = ingress.media.observe_source_release(uow, sid, tuple(record(m) for m in sequence(source['ordered_members'])),
+            effects = ingress.media.observe_source_release(uow, sid, tuple(record(m) for m in sequence(source.get('ordered_members',()))),
                 frozenset(cast(str, payload['message_id']) for payload in payloads if payload['payload_deleted']))
         leaves.append(isolate(RELEASE_LEAF, {'source_id': sid, 'references_revision': row['references_revision'], 'holder_count': row['holder_count'],
             'resulting_count': after_count, 'payloads': tuple(payloads), 'has_media': has_media, 'media_effects': effects}, 8192))

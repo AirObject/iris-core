@@ -1,56 +1,37 @@
 # 实际工作状态
 
-2026-09-14真实文本供应商适配与受控试验收尾：用户已授权监督者提交上阶段产物。578份受测文件与最终有效证据一致，本轮仅核对版本、差异和提交范围，复用执行者验证，没有重跑项目。工程及试验产物提交不表示学习质量通过；[质量未达标及暂缓决定](DEFERRED_ISSUES.md#text-learning-quality)保持，后续验证按[统一口径](../CODING_STANDARDS.md#validation-environment)。当前进度见[CURRENT_TASK](CURRENT_TASK.md)。
+本次语义检索提交的父版本为`9936385d8697b7add662562c3465c041a48d76fa`，父提交`c2be9327b80be3b3ccb12262af7ff15c4539ea2d`；72份工程及试验产物已按用户授权本地提交，未推送。[提交核对](/private/tmp/iris-supervisor-planning-3ayat7pi/commit-verified.json)确认578份受测文件一致。工程交付不表示学习质量通过；质量事实与暂缓决定只在[暂缓问题](DEFERRED_ISSUES.md#text-learning-quality)维护。
 
-仅在验收节点更新业务里程碑；2026-09-11用户审核通过本次运行整体交付及修复并授权本地提交。2026-09-09文档唯一正文迁移不新增业务验收，现行维护关系见[INDEX](../INDEX.md)。前两项为2026-09-09验收；2026-09-10用户确认第三项、日志内部组件及完整控制台与文件运行诊断服务验收，包含截点报告、饱和计数及临时目录修复；同日用户进一步验收持久化配置校验、事务基础、幂等恢复与同事务审计整体阶段并授权独立本地提交。表中为各里程碑对应版本的验证依据，不代替当前工作区检查。
+本页只记录已交付能力、对应版本和仍有效的限制。当前文档整理、实施授权及停止点见[CURRENT_TASK](CURRENT_TASK.md)，后续顺序见[剩余路线](../architecture/implementation-options.md#source-line-1202)。
 
-| 已验收里程碑 | 独立本地提交 | 当时实际验证依据 |
+## 已交付能力与版本
+
+下表测试均由当时执行者实际运行，结果只对应所列版本；监督者复核源码、Git及证据，没有亲自运行这些测试。早期内部组件合并记入所属完整能力，详细过程通过Git读取。
+
+| 能力及验收范围 | 提交 | 对应验证依据 |
 | --- | --- | --- |
-| 配置参数定义与只读注册表：用户已验收；六类声明、静态自洽校验、深不可变、失败原子性及安全错误，类型身份检查绕过已修复 | `88bca36c810318bbdcc4e46e62cac54849420d70` | 48项unittest通过（含4项类型身份回归）；语法编译、离线锁文件、11份Python文件定向AST／文本及差异检查通过；收尾核对已测文件指纹一致，未重复运行测试 |
-| 显式配置值解析与不可变有效快照：用户已验收；缺失／默认／空值区分、全集合能力检查、安全首错、深不可变快照及绑定查询 | `3337b2daa9ace5803f7e5b1c7a211bfac7cb8266` | 验收收尾重新执行93项unittest（原48＋新增45）、语法编译、离线锁文件及差异检查，均通过；记录并核对全部18份Python文件指纹。实现轮次另做8份文件AST／文本检查，收尾未重做 |
-| 日志所需纯内存配置校验：用户已验收；完整Schema匹配、固定验证器、依赖存在性、目录文本隔离、安全首错及原生完整快照 | `b94cd5070b9da8c2683e0f7632c248175095acf2` | 提交中记录139项unittest通过；全量Pyright 1.1.411覆盖27份Python，0 errors／0 warnings／0 informations；编译、离线锁文件及含未跟踪文件的差异检查通过，配置测试类型诊断已修复 |
-| 日志事件安全处理、JSONL编码与等级路由：用户已验收；仅内部纯内存组件 | `a5de74e5588d180c347a712283d662102dc0c850` | 验收收尾重新执行205项unittest（原139＋新增66）、全量Pyright（40份Python，0错误／0警告）、编译及离线锁文件检查，均通过；已测指纹与最终暂存内容一致，15份文件的暂存差异检查通过 |
-| 日志规范化槽位与双端有界队列：用户已验收；内部准入、预留、UNKNOWN所有权、截点及失败一致记账 | `f090d534d1a299aaf5346bcc58c92fe956071344` | 修复轮246项unittest通过（保留原240项）、全量Pyright覆盖45份Python且零错误／警告、编译及离线锁文件检查通过；验收收尾确认48份已测文件与暂存内容指纹一致，复用有效检查；12份文件暂存差异检查通过 |
-| 日志双端异步写出与 I/O 超时控制：用户已验收；含完成发布／超时仲裁修复，保持单端 FIFO、UNKNOWN 所有权及迟到完成记账 | `8189d33c3104240346979d0952f83a085a8d81a9` | 修复后270项unittest通过（原267项正文保留）、Pyright 1.1.411全量零错误／警告／信息、编译及离线锁文件检查通过；验收收尾核对52份已测文件指纹一致，按授权复用有效结果；显式10份文件暂存及差异检查，详见该提交的CURRENT_TASK |
-| 控制台与文件运行诊断服务：用户已验收；公开配置接入与服务、截点报告、flush／close、有界应急、恢复探测、真实文件轮转／保留，包含饱和计数及临时目录修复 | `fdbf7a99a307b39b15764a6622b64af9a095b1e2` | 修复轮320项unittest通过（保留原313项）、Pyright 1.1.411全量零错误／警告／信息、编译及离线锁文件检查通过；验收收尾核对61份Python及3份工程文件的指纹与已测版本一致，按授权复用；显式19份文件暂存及差异检查，完整指纹与命令见该提交的CURRENT_TASK |
-| 持久化配置校验、事务基础、幂等恢复与同事务审计：用户已整体验收；10项持久化／审计参数与条件触发的完整日志组、受限仓储及UoW、原子回执、同键原结果、受控确认、必要审计完整性与诊断隔离 | `6a99353c6035629bcff866e8367d6fd69fa93113` | CPython 3.12.14／实际SQLite 3.53.1／Pyright 1.1.413；实现轮412项unittest（原320＋新增92）通过，全量类型检查零错误／警告／信息，compileall、离线锁及含24份新增文件的差异检查通过；收尾核对88份受测文件指纹一致，复用有效结果，仅更新验收记录，显式35文件暂存与检查 |
-| Provider基础服务与模拟适配器：2026-09-10主会话按用户委托完成草案审查、定稿批准及完整实现的技术验收；四能力、真实本地SQLite账本／预算／交接、登记确认后发送、同事务审计、有界执行／清理、UNKNOWN恢复及受限查询；用户现已审核通过并授权独立本地提交 | `128f908e8d780da647949dfe3f6c21980b31fcf2` | 执行子代理最终479项unittest通过（9.164秒）、Pyright 1.1.413全量零诊断、compileall／离线锁／含新增文件差异检查通过；主会话未执行测试，亲自静态审查并独立核对119份受测文件指纹`4c69b3f4e9fef825b02fad7fe575ad8934f67e85c8c90b2f2e415b0e8315a2f9`，含最后清理所有权与任务引用修复；命令、算法及范围见`128f908e8d780da647949dfe3f6c21980b31fcf2:docs/work/CURRENT_TASK.md` |
-| 持久接入、三段批次、专注门控与恢复及最小只读观察：2026-09-11用户审核通过并授权本地提交；含持久配置身份、结果绑定审计、Provider原键只读确认、独立入口回流、真实只读HTTP及本地确认观察限容／证据合并修复 | 本记录所属提交（父提交`128f908e8d780da647949dfe3f6c21980b31fcf2`） | CPython 3.12.14／SQLite 3.53.1／Pyright 1.1.413；最终569项unittest通过（48.619秒），全量类型检查零诊断，编译、JS、离线锁、含新增文件及链接检查通过。提交前复核187份受测文件指纹`954804a6bb62235e1dd6997121d7bd76979728f5ef8ff81018ecd6929cb0da43`一致，仅更新验收记录，复用有效结果；完整命令及限制见本提交的[CURRENT_TASK](CURRENT_TASK.md) |
-| 正式记忆、完整来源与媒体持久化闭环：上一阶段已获监督技术验收，用户已手动提交；包含完成通知与宿主关闭收尾修复 | `f89cbbe773b119a7e683367410f17eda4538739a`（父提交`6a41859fdfc8c0f80305e792221e19fdab2a9fa2`） | 监督核对164文件提交、干净工作区及377份受测文件一致；有效证据`/private/tmp/iris-shutdown-validation-iybs3qfe`，聚合指纹`e2d0ec33eab889726db283d339658b409015405d08cf3419b1c9690be5d8bbdb`。执行者680项unittest通过、全量Pyright 1.1.413覆盖320份Python零诊断；Pylance未验证。本轮仅记录收尾，未重跑；真实本地存储／媒体，Provider仍模拟、候选与梦境参与者仍显式合成，未验证真实供应商或Linux／Docker。 |
-| 本地信息获取与使用反馈闭环：按用户批准调整后的[F口径](../architecture/local-information-feedback.md#f-qualification)获监督技术验收；用户已审核通过并授权本地提交 | `8bc948c1822afb931625b77563df710fc9bbf20d`（父提交`f89cbbe773b119a7e683367410f17eda4538739a`） | 验收证据绑定445份原受测集合`6c7c30243327775381a4040084815eb15386b37f888ccbf312777be1bb8b3fa3`（收尾外部`.gitignore`变更及当前快照另见CURRENT_TASK）；[关闭与恢复最终全量及复用链](/private/tmp/iris-close-recovery-roizxp0d/report.md)、[两平台词项F材料](/private/tmp/iris-lexical-qualification-ogol92tv/report.md)、[用户确认73组正式相关性](/private/tmp/iris-confirmed-relevance-7hd78kj8/report.md)、[四边界更正](/private/tmp/iris-boundary-correction-cmdf82y4/report.md)。旧报告保持其当时审查状态；本行记录按调整口径的技术验收，未重跑全量。ACTUAL本地存储／回环HTTP／两平台恢复，模型仍SIMULATED；最大合法词项与4096可达性仍缺最大压力资格，P/X及长期负载未执行，Pylance未验证。 |
-| 文本学习与首次persona发布：监督已通过工程实现及本地验证的技术验收，用户已授权本地提交；含独立文本配置、Provider传输／账本、完整context与持久候选、记忆／来源原子终结、首次persona确认与发布、恢复和本地查询 | 本记录所属提交（父提交`8bc948c1822afb931625b77563df710fc9bbf20d`） | [最终验证](/private/tmp/iris-text-final-error-tlgoa1tb/report.md)：macOS／Linux各890项unittest通过，Pyright1.1.413覆盖534份Python零诊断；编译、JS、离线锁、容量实物及完整差异／链接检查通过。提交收尾核对542份受测文件指纹`1001c775c3aa5c27b124b3cfc616ab9d157e02a5e83aa6f4e9e9af28fefbbefb`一致，仅更新记录并复用有效检查。真实SQLite／文件、受控回环HTTP/TLS及跨进程恢复成立；真实供应商效果、用户质量审核和Pylance分别未验证，原最大词项资格、P/X及长期负载限制保持。[提交收尾证据](/private/tmp/iris-text-commit-1dv0scoc/report.md)记录实际提交及文件范围。 |
-| MiniMax／DeepSeek真实文本适配与受控试验：受控主体登记、凭据解析、独立协议／计量、原候选审核发布、学习及恢复工具；用户授权提交工程与试验产物，学习质量未通过且已暂缓 | 本记录所属提交（父提交`c2be9327b80be3b3ccb12262af7ff15c4539ea2d`） | 最终578份受测文件／570份Python指纹`16b7d88d466e9549d800604140a9d9de353b2534563628492a331b1139de0582`；执行者最终macOS／Linux各17项关联测试通过，全量锁定Pyright1.1.413零诊断，编译及差异检查通过，未机械重跑全量unittest。真实发送按[集中交付报告](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/report-complete.md)分版本记录，不能外推为全部请求均使用最终代码。DeepSeek14槽完成，两平台persona已发布，正式记忆5／12条；恢复0新增发送。旧MiniMax UNKNOWN与外层保守责任保持；[正式质量结果](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/quality-final/report.md)未达标，Pylance、生产及最大容量资格未验证。默认时区仅产品决定获批，工程未实现。 |
+| 配置注册表、显式解析与不可变快照、日志纯内存校验 | `b94cd5070b9da8c2683e0f7632c248175095acf2` | 139项unittest；全量Pyright零诊断。后续持久化／Provider及各装配配置在对应交付中验收 |
+| 控制台与文件运行诊断，双端有界队列、截点、轮转、保留与清理所有权 | `fdbf7a99a307b39b15764a6622b64af9a095b1e2` | 320项unittest；全量Pyright零诊断，实际自有临时文件验证 |
+| 持久化事务、幂等原键恢复及同事务审计 | `6a99353c6035629bcff866e8367d6fd69fa93113` | 412项unittest；全量Pyright零诊断，真实SQLite及独立进程恢复 |
+| Provider基础服务与模拟适配器，调用／尝试／费用／预算及结果交接账本 | `128f908e8d780da647949dfe3f6c21980b31fcf2` | 479项unittest；全量Pyright零诊断，模型模拟、SQLite账本实际运行 |
+| 持久接入、H/T/R冻结与三终态、门控／回流、持久配置身份及最小只读HTTP | `6a41859fdfc8c0f80305e792221e19fdab2a9fa2` | 569项unittest；全量Pyright零诊断，187份受测文件核对一致 |
+| 正式记忆、完整来源与真实媒体文件，原子终结、受控读取、释放／GC及恢复 | `f89cbbe773b119a7e683367410f17eda4538739a` | 680项unittest；全量Pyright零诊断，377份受测文件核对一致；模型及认知候选仍为模拟／合成 |
+| 本地词法信息获取、使用反馈、外部状态、多目标及提醒响应 | `8bc948c1822afb931625b77563df710fc9bbf20d` | 按批准后的[F口径](../architecture/local-information-feedback.md#f-qualification)技术验收；两平台恢复及用户确认73组相关性，445份原受测集合。完整版本链见该提交的CURRENT_TASK |
+| 文本学习独立宿主、持久候选、记忆／来源原子终结、首次persona审核发布 | `c2be9327b80be3b3ccb12262af7ff15c4539ea2d` | macOS／Linux各890项unittest；全量Pyright零诊断，542份受测文件核对一致。此版本证明工程及本地验证，真实供应商试验见下一行 |
+| MiniMax／DeepSeek真实文本协议、受控登记／凭据／试验工具与恢复；工程已交付，质量暂缓 | `9936385d8697b7add662562c3465c041a48d76fa` | 最终macOS／Linux各17项关联回归；锁定Pyright 1.1.413全量零诊断，578份文件／570份Python。真实请求按[原报告](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/report-complete.md)分版本解释，未重跑全量unittest |
 
-本次记录真实文本试验工程收尾及用户提交授权；当前授权与停止点见[CURRENT_TASK](CURRENT_TASK.md)。监督与执行由用户手动衔接，不使用子代理。
+2026-09-15：[语义检索小档工程与真实闭环](../architecture/async-embedding-semantic-retrieval.md)在已批准范围内通过监督技术验收，用户已授权本次提交。版本为上述HEAD上的672文件指纹`bde65f12bc611d56bb85d62020fe85520e14396684b811f08c5e968b31eaa348`；此前受控核心证据复用，本轮用量配置／v4账本／v2usage、UNKNOWN门控、原生交接及共享传输增量静态核对未发现新的阻塞问题，依据见[监督核对](/private/tmp/iris-semantic-stage-acceptance-63h1n5qc/review.json)。执行者29项定点／关联测试通过，锁定Pyright1.1.413全量零诊断；未重跑全量unittest。
 
-上述配置与运行诊断里程碑的历史验证使用Python 3.12.13及既有uv环境；完整命令及版本依据见下方Git定位。前两项没有运行第三方类型检查器，第三项已执行项目锁定Pyright；工具链检查不代表完整业务能力通过。
+真实12 DOCUMENT＋6 QUERY均HTTP200、原生提交并完成实际清理，报告1134 tokens，费用与供应商实际扣额未知；18个原槽已全部消耗。原进程后的新解释器恢复、原键及缓存复用新增发送0，见[逐项核账](/private/tmp/iris-semantic-allocated-ryg1zesg/send-accounting.json)。首次EXECUTE因HTTP验证使用不同principal在18次成功后退出1，原失败保留；只修正验证工具身份后RECOVER退出0，生产源码从发送到恢复不变，两个验证文件的版本差异另见[版本对应](/private/tmp/iris-semantic-allocated-ryg1zesg/code-version-binding.json)。[相关性质量未达标，用户已决定暂缓并继续推进](DEFERRED_ISSUES.md#semantic-retrieval-quality)，不写成完整效果资格通过。Pylance、4096完整大档、真实冷查询250ms成功率及生产条件未验证。
 
-## 能力限制
+## 当前限制与验证边界
 
-以下段落保留各历史里程碑当时的能力与环境限制；本地信息与文本学习阶段已补齐的实际范围以上表对应证据为准。文本学习工程技术验收不代表真实供应商效果或用户质量审核通过，原最大词项资格及P/X限制保持。
+- DeepSeek固定14槽已执行，两平台persona已审核发布，正式记忆分别5／12条，恢复零新增发送；这不证明学习质量达标。旧MiniMax UNKNOWN及外层保守责任仍保留，不能视作结清或自动续用额度。原请求、标注及费用估算证据保持原样。
+- 配置支持已批准装配的一次初始化与持久恢复；在线编辑、安全热激活／回退、存量迁移、持久FAULTED解除及UNKNOWN人工结案未交付。[默认时区及Web首次确认](../product/operations-and-management.md#initial-default-timezone)仅产品决定已批准，工程未实现。
+- 语义检索小档工程及真实闭环已技术验收，相关性问题暂缓；下一项为完整日常认知与媒体学习，以图片为当前验证模态。真实图片理解、完整认知工具循环、周期梦境／persona与自动长期维护尚未交付；[音视频测试暂缓](DEFERRED_ISSUES.md#audio-video-validation)。既有模拟／合成参与者不代表这些完整能力。
+- 实际临时文件／SQLite、受控HTTP、故障注入及新进程恢复支持各自断言；后续已包含Docker Linux验证，不能继续沿用早期“Linux未测试”的全局描述，也不能据此声称生产部署完成。生产身份／鉴权、目录与G2、完整管理Web、备份升级、最大合法词项资格、P/X及长期负载、介质掉电保障仍未验证或交付。
+- 永久阻塞的底层资源在有界返回后仍保留实际占用，清理状态与提交／远程结果分开表达。历史环境不能证明新环境就绪；后续检查范围只按[统一验证规则](../CODING_STANDARDS.md#validation-environment)。Pylance未验证。
 
-配置注册、普通解析及三个独立增强校验入口已验收，仍不表示完整配置模块完成。注册表仅校验定义元信息、冻结本地内存状态，构建只承诺串行；普通解析入口仍限定instance／no_override／public并拒绝非空validator／dependencies。独立日志校验入口支持已批准的固定验证器、依赖存在性和路径文本检查；持久化校验入口完整核验持久化／审计参数和条件触发的日志组；Provider校验入口及适用性检查支持完整模拟配置，保留旧入口拒绝语义。各入口均不以纯内存解析证明物理资源安全；角色／生效字段只保存声明。解析期间调用方须保持输入稳定，安全发布后支持并发只读；不是同进程恶意代码沙箱。
+## 历史定位
 
-本次已验收初始化一次、跨重启恢复的持久配置身份，以及接入、缓存、运行协调和最小只读HTTP；不支持在线配置编辑、热激活、迁移、持久FAULTED解除或UNKNOWN人工结案。所有内部模型调用仍经模拟Provider，认知、正式记忆／来源和梦境发布使用合成参与者；真实临时SQLite、受控进程中断及回环HTTP只证明本机资源与恢复／权限语义，不代表真实模型、生产鉴权或供应商支持。Provider原有UNVERSIONED_CONFIGURATION及版本None解释保留，运行批次另绑定实际持久配置身份。生产身份保留、路径／G2、Linux／Docker、性能与掉电保证未批准；Pylance未验证。有限当前进程观察不代替持久原键确认，配置结构上限不保证持久容量，存储全检可能长期超预算而不就绪。
-
-完整控制台与文件运行诊断服务已验收，当时验证依据及提交范围见`fdbf7a99a307b39b15764a6622b64af9a095b1e2:docs/work/CURRENT_TASK.md`。单缓冲构造依赖已核验的CPython 3.12.13 BytesIO共享路径，换解释器须重新核验。并发、截点、超时与迟到完成通过可控时钟／事件及内存故障注入验证；本机 Darwin 25.6.0 arm64 的真实自有临时文件覆盖写出、轮转、保留、重新打开、异常记录／条目和目录独占。永久阻塞资源可在close返回后继续占用线程／目录，cleanup_pending如实反映。该运行诊断里程碑未做强杀／掉电或持久化验证；其历史环境和证据范围保持原样。
-
-持久化与审计整体阶段采用macOS 26.6.2／arm64、APFS自有临时目录及标准库sqlite3，实际SQLite 3.53.1通过已批准准入。生命周期由父目录FD独占锁保护，与SQLite事务锁分开；可信测试装配在数据库副作用前持有并保留建库身份。真实临时库、两组合成仓储、独立解释器重新打开、父进程在COMMIT前／后屏障强制终止子进程、子进程写锁以及受控异常验证全无／全有、原始回执、审计完整性、首错与未知结果。新CPython 3.12.14已重新核验既有BytesIO共享构造及E=512缓冲地址／峰值边界；后续更换解释器仍须复核。源码、测试及工程文件共88项的受测集合指纹为`9a919f1110699723dfc5dfa21d3fb62fa8d4b76f8da43463c48b47e67d1c1ff2`，算法、版本来源及命令见`6a99353c6035629bcff866e8367d6fd69fa93113:docs/work/CURRENT_TASK.md`。
-
-该验收不批准生产路径／G2、生产建库身份存储、实际业务模块、Linux／Docker、性能目标或介质掉电保证。受控故障注入与进程中断不能代表物理掉电；永久阻塞可在有界返回后继续占用资源，cleanup_pending反映事实。未查看编辑器Pylance诊断。
-
-## Git历史定位
-
-删除历史全文前已核实可追溯；使用`git show <提交号>:<原文件路径>`读取：
-
-- 注册表验收、完整命令与已测源码指纹：`88bca36c810318bbdcc4e46e62cac54849420d70:docs/work/CURRENT_TASK.md`；同提交的`docs/work/STATUS.md`记录当时状态。
-- 解析／快照验收、完整命令与已测源码指纹，以及累计的配置契约定稿／注册表历史：`3337b2daa9ace5803f7e5b1c7a211bfac7cb8266:docs/work/CURRENT_TASK.md`。
-- 日志配置校验及配置测试类型检查修复的实现、命令和验证记录：`b94cd5070b9da8c2683e0f7632c248175095acf2:docs/work/CURRENT_TASK.md`。
-- 日志事件安全处理、JSONL编码与等级路由的验收及提交依据：`a5de74e5588d180c347a712283d662102dc0c850:docs/work/CURRENT_TASK.md`。
-- 日志规范化槽位与双端有界队列验收及提交依据：`f090d534d1a299aaf5346bcc58c92fe956071344:docs/work/CURRENT_TASK.md`。
-- 日志双端异步写出与I/O超时控制验收及提交依据：`8189d33c3104240346979d0952f83a085a8d81a9:docs/work/CURRENT_TASK.md`。
-- 控制台与文件运行诊断服务验收及提交依据：`fdbf7a99a307b39b15764a6622b64af9a095b1e2:docs/work/CURRENT_TASK.md`。
-- 持久化配置校验、事务基础、幂等恢复与同事务审计验收及提交依据：`6a99353c6035629bcff866e8367d6fd69fa93113:docs/work/CURRENT_TASK.md`。
-- 本次精简前的状态全文（含早期文档基线、契约设计与审查过程）：`3337b2daa9ace5803f7e5b1c7a211bfac7cb8266:docs/work/STATUS.md`。
-
-[ORGANIZATION_REPORT.md](ORGANIZATION_REPORT.md)保持历史冻结，不作为日常必读；其中待定项若已被后续批准替代，以有效契约为准。历史仓库观察和检查结果均只对应当时版本。
+使用`git show <上表提交>:docs/work/CURRENT_TASK.md`读取对应交付的命令、原始证据路径、文件指纹与限制；需要完整累计历史时读取`9936385d8697b7add662562c3465c041a48d76fa:docs/work/STATUS.md`。一次性文档整理过程只保留在该提交的`docs/work/ORGANIZATION_REPORT.md`，不再作为工作区文档或待定事项来源。未提交的当前计划及独有证据保持保全。

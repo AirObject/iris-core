@@ -13,11 +13,12 @@ from typing import cast, TYPE_CHECKING
 from companion_memory.configuration import EffectiveSnapshot
 if TYPE_CHECKING:
     from companion_memory.configuration.text_persistence import StoredTextConfiguration
+    from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
 from companion_memory.logging_service import AuditBound, AuditErr, AuditRequirement, bind_audit
 from companion_memory.persistence import (
     BoundedTextSchema, CommandDefinition, Committed, Field, LocalCommand, ModuleOwnerLease,
     PersistenceService, RecordSchema, ScalarSchema, SequenceSchema, Staged, UnitOfWork, Value,
-    create_provider_repository,
+    create_provider_repository, NotCommitted,
 )
 from companion_memory.persistence import Failed as StorageFailed, Found as StorageFound, NotFound as StorageNotFound
 from .accounting import validate_row
@@ -59,11 +60,15 @@ class Mutation:
 
 class LedgerAssembly:
     """Trusted declarations required before creating a new provider database."""
-    def __init__(self, *, text_generation: bool = False) -> None:
-        if type(text_generation) is not bool:
+    def __init__(self, *, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False) -> None:
+        if type(text_generation) is not bool or type(embedding_format) is not bool or text_generation and embedding_format:
             raise TypeError('An exact static provider format is required.')
+        if type(embedding_usage_only) is not bool or embedding_usage_only and not embedding_format:raise TypeError('Usage-only requires embedding format.')
+        self.embedding_usage_only=embedding_usage_only
+        self.version=4 if embedding_usage_only else 3 if embedding_format else 2 if text_generation else 1
         self.text_generation = text_generation
-        self.repository = create_provider_repository(text_generation=text_generation)
+        self.embedding_format = embedding_format
+        self.repository = create_provider_repository(text_generation=text_generation,embedding_format=embedding_format,embedding_usage_only=embedding_usage_only)
         self._bindings: dict[int, LedgerBinding] = {}
         self._active: LedgerBinding | None = None
         mutation_schema = RecordSchema((Field("table", ScalarSchema("enum", choices=TABLES)), Field("object_id", IDENTIFIER),
@@ -75,10 +80,10 @@ class LedgerAssembly:
         self.requirements = {}
         for kind, (event_code, reason) in KINDS.items():
             change_schema = CHANGE
-            if text_generation:
+            if text_generation or embedding_format:
                 change_schema = RecordSchema(CHANGE.fields + (
-                    Field('billing_mode', ScalarSchema('enum', choices=('TOKEN_METERED', 'SUBSCRIPTION','USAGE_ONLY_TRIAL'))),
-                    Field('currency', ScalarSchema('enum', choices=('CNY', 'USD'))),
+                    Field('billing_mode', ScalarSchema('enum', choices=('USAGE_ONLY_TRIAL',) if embedding_usage_only else ('TOKEN_METERED','SIMULATED') if embedding_format else ('TOKEN_METERED', 'SUBSCRIPTION','USAGE_ONLY_TRIAL'))),
+                    Field('currency', ScalarSchema('enum', choices=('CNY','TEST') if embedding_format else ('CNY', 'USD'))),
                     Field('quota_known', INTEGER, nullable=True), Field('quota_held', INTEGER), Field('config_snapshot_id', IDENTIFIER)))
             requirement = AuditRequirement("provider", "provider_change", event_code, 1, (reason,), change_schema)
             self.requirements[kind] = requirement
@@ -87,29 +92,36 @@ class LedgerAssembly:
                 if binding is None:
                     raise InvalidData()
                 return binding._handle(action, uow, values)
-            definition = CommandDefinition("provider", kind, 2 if text_generation else 1, input_schema, 1, result_schema,
+            definition = CommandDefinition("provider", kind, self.version, input_schema, 1, result_schema,
                                               (self.repository.definition,), (requirement,), handler)
-            if text_generation:
+            if text_generation or embedding_format:
                 from .text_command_policy import issue
                 definition = replace(definition, input_policy=issue(self))
             commands.append(definition)
         self.commands = tuple(commands)
         self.repositories = (self.repository.definition,)
 
-    def bind(self, storage: PersistenceService, snapshot: EffectiveSnapshot | StoredTextConfiguration) -> LedgerBinding:
+    def bind(self, storage: PersistenceService, snapshot: EffectiveSnapshot | StoredTextConfiguration | StoredSemanticConfiguration) -> LedgerBinding:
         """Issue restricted statements; acquiring unique execution ownership is separate."""
         if type(storage) is not PersistenceService:
             raise TypeError("Native storage and configuration bindings are required.")
         from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
         stored = None
-        if self.text_generation:
+        semantic = None
+        if self.embedding_format:
+            from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration,stored_semantic_configuration_issue
+            if stored_semantic_configuration_issue(snapshot) is not None:raise TypeError('Native persisted semantic configuration is required.')
+            semantic=cast(StoredSemanticConfiguration,snapshot)
+            if self.embedding_usage_only!=(semantic.candidate.text.record('provider.embedding_transport')['v']==2):raise TypeError('Embedding ledger format differs.')
+            snapshot=semantic.candidate.foundation
+        elif self.text_generation:
             if stored_text_configuration_issue(snapshot) is not None:
                 raise TypeError('Native persisted text configuration is required.')
             stored = cast(StoredTextConfiguration, snapshot)
             snapshot = stored.candidate.foundation
         elif type(snapshot) is not EffectiveSnapshot:
             raise TypeError('The simulation configuration format is required.')
-        binding = LedgerBinding(self, storage, cast(EffectiveSnapshot, snapshot), text_configuration=stored)
+        binding = LedgerBinding(self, storage, cast(EffectiveSnapshot, snapshot), text_configuration=stored,semantic_configuration=semantic)
         self._bindings[id(binding)] = binding
         return binding
 
@@ -120,9 +132,10 @@ class LedgerAssembly:
 class LedgerBinding:
     """Private-to-service ledger capability with no arbitrary SQL or connection API."""
     def __init__(self, assembly: LedgerAssembly, storage: PersistenceService, snapshot: EffectiveSnapshot,
-                 *, text_configuration: StoredTextConfiguration | None = None):
+                 *, text_configuration: StoredTextConfiguration | None = None, semantic_configuration: StoredSemanticConfiguration | None = None):
         self.assembly, self.storage, self.snapshot = assembly, storage, snapshot
         self.text_configuration = text_configuration
+        self.semantic_configuration = semantic_configuration
         self.statements = {name: storage.bind_statement(assembly.repository.definition, statement, "provider")
                            for name, statement in assembly.repository.statements}
         self.operations = {definition.operation_kind: storage.bind_operation(definition, "provider") for definition in assembly.commands}
@@ -162,8 +175,8 @@ class LedgerBinding:
     def database_id(self) -> str | None:
         return self.lease.database_id if self.lease is not None else None
 
-    def _handle(self, kind: str, uow: UnitOfWork, values: MappingProxyType[str, Value]) -> object:
-        changes = cast(tuple[MappingProxyType[str, Value], ...], values["changes"])
+    def _apply(self, uow: UnitOfWork, changes: tuple[MappingProxyType[str, Value], ...]) -> Record:
+        """Apply validated owner mutations inside an already declared transaction."""
         first: Record | None = None
         for change in changes:
             table, key, expected = cast(str, change["table"]), cast(str, change["object_id"]), change["expected_revision"]
@@ -179,7 +192,7 @@ class LedgerBinding:
                          "attempts": ("object_id", "request_id", "ordinal", "account_id", "profile_id", "capability", "execution_owner_id", "created_at"),
                          "budget_windows": ("object_id", "account_id", "window_id", "policy"), "reservations": ("object_id", "attempt_id", "account_id", "budget_id", "reserved_atoms"),
                          "cost_items": ("object_id", "attempt_id", "item", "source", "unit"), "handoffs": tuple(row)}[table]
-            if self.assembly.text_generation:
+            if self.assembly.text_generation or self.assembly.embedding_format:
                 if table == 'requests':
                     if existing is not None and existing['first_error'] is not None and existing['first_error']!=row['first_error']:raise InvalidData()
                     immutable += ('source', 'configuration_origin', 'config_snapshot_id', 'profile_revision', 'price_revision', 'format_version', 'fingerprint_version')
@@ -193,9 +206,11 @@ class LedgerBinding:
                     if existing is not None and (existing['source'] != 'UNAVAILABLE' and existing['source'] != row['source']
                             or any(existing[name] is not None and existing[name] != row[name] for name in ('quantity', 'cost_atoms'))):
                         raise InvalidData()
+                elif table == 'handoffs' and self.assembly.embedding_format:
+                    immutable=tuple(name for name in row if name not in ('revision','embedding_cleanup'))
             if existing is not None and any(existing[name] != row[name] for name in immutable):
                 raise InvalidData()
-            if row["object_id"] != key or type(row["revision"]) is not int or row["revision"] != (0 if expected is None else cast(int, expected)+1):
+            if row["object_id"] != key or type(row["revision"]) is not int or row["revision"] != ((1 if self.assembly.embedding_format else 0) if expected is None else cast(int, expected)+1):
                 raise InvalidData()
             parameters: dict[str, object] = {"object_id": key, "revision": row["revision"], "body": change["body"]}
             if table == "handoffs":
@@ -216,6 +231,11 @@ class LedgerBinding:
                 raise LedgerFailure(staged)
             if first is None:
                 first = row
+        assert first is not None
+        return first
+
+    def _handle(self, kind: str, uow: UnitOfWork, values: MappingProxyType[str, Value]) -> object:
+        first=self._apply(uow,cast(tuple[MappingProxyType[str,Value],...],values['changes']))
         event = load(values["event"], 2048)
         audit = self.audits[kind].append_audit(uow, plain(event))
         if type(audit) is AuditErr:
@@ -224,7 +244,23 @@ class LedgerBinding:
         return {"object_id": first["object_id"], "revision": first["revision"]}
 
     def _validate_row(self, table: str, row: Record) -> None:
-        if self.assembly.text_generation:
+        if self.assembly.embedding_format:
+            from .embedding_stored_schema import validate as validate_embedding
+            from companion_memory.configuration import PresentValue
+            from companion_memory.persistence.semantic_records import identity
+            stored=self.semantic_configuration
+            if stored is None:raise InvalidData()
+            simulated=stored.candidate.text.record('retrieval.embedding')['qualification_profile']=='OFFLINE_CAPACITY'
+            validate_embedding(table,row,simulated=simulated,usage_only=self.assembly.embedding_usage_only)
+            values={entry.definition.key:entry.state.value for entry in stored.candidate.foundation.list_entries() if type(entry.state) is PresentValue}
+            accounts=cast(tuple[Data,...],values['provider.accounts']);account=as_record(accounts[0])
+            profiles=cast(tuple[Data,...],values['provider.profiles'])
+            if table=='budget_windows' and row['policy']!=account:raise InvalidData()
+            if table=='requests':
+                evidence=as_record(row['execution_evidence'])
+                if (row['config_snapshot_id']!=stored.snapshot_id or row['profile_revision']!=identity('embedding-profile',stored.snapshot_id,cast(str,row['profile_id']))
+                        or evidence['profile'] not in profiles or evidence['account']!=account):raise InvalidData()
+        elif self.assembly.text_generation:
             from .text_stored_schema import validate
             validate(table, row)
             if self.text_configuration is None:
@@ -306,26 +342,31 @@ class LedgerBinding:
                             "previous_revision": None if first.previous is None else first.previous["revision"], "revision": first.current["revision"],
                             "previous_state": previous_state, "state": state, "cost_complete": cost_complete}}
         if kind == "initialize_budget":
-            event["target_refs"] = [{"object_id": change.current["object_id" if self.assembly.text_generation else "account_id"],
+            event["target_refs"] = [{"object_id": change.current["object_id" if self.assembly.text_generation or self.assembly.embedding_format else "account_id"],
                                      "previous_revision": None if change.previous is None else change.previous["revision"],
                                      "revision": change.current["revision"]} for change in changes]
-        if self.assembly.text_generation:
-            assert self.text_configuration is not None
-            configured = next(entry.state for entry in self.text_configuration.candidate.foundation.list_entries() if entry.definition.key == 'provider.accounts')
+        if self.assembly.text_generation or self.assembly.embedding_format:
+            configuration=self.semantic_configuration if self.assembly.embedding_format else self.text_configuration
+            assert configuration is not None
+            configured = next(entry.state for entry in configuration.candidate.foundation.list_entries() if entry.definition.key == 'provider.accounts')
             from companion_memory.configuration import PresentValue
             if type(configured) is not PresentValue:
                 raise InvalidData()
             account = as_record(cast(tuple[Data, ...], configured.value)[0])
             usage = next((as_record(change.current['usage']) for change in changes if change.table == 'attempts'), None)
-            event['change'].update({'billing_mode': account['billing_mode'], 'currency': account['currency'],
-                'quota_known': usage['quota_known'] if usage is not None else 0,
+            event['change'].update({'billing_mode': account.get('billing_mode','SIMULATED'), 'currency': account['currency'],
+                'quota_known': usage['quota_known'] if usage is not None else None if self.assembly.embedding_usage_only else 0,
                 'quota_held': usage['quota_held'] if usage is not None else 0,
-                'config_snapshot_id': self.text_configuration.snapshot_id})
+                'config_snapshot_id': configuration.snapshot_id})
         frozen_event = as_record(freeze(event, 2048))
         values = {"changes": [{"table": change.table, "object_id": change.current["object_id"],
                                 "expected_revision": None if change.previous is None else change.previous["revision"], "body": dump(MappingProxyType({name: value for name, value in change.current.items() if name != "payload"})),
                                 "payload": change.current.get("payload")} for change in changes],
                   "event": dump(frozen_event, 2048)}
-        command = LocalCommand(2 if self.assembly.text_generation else 1, values, {"provider_change": event})
+        command = LocalCommand(self.assembly.version, values, {"provider_change": event})
+        if self.assembly.embedding_format:
+            port=self.operations[kind]
+            prior=await port.resolve_operation(port.recovery_handle(key,command))
+            if type(prior) is not NotCommitted or prior.error is not None:return prior,command
         result = await self.operations[kind].execute(key, command)
         return result, command

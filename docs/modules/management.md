@@ -14,7 +14,7 @@
 
 ## 按边界定位
 
-本次最小只读状态及日志观察见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#observation)（五组推荐已批准，实施已授权；验证状态见CURRENT_TASK）；本模块原职责和既有批准状态不变。
+本次最小只读状态及日志观察见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#observation)（契约已批准；实际验证见[STATUS](../work/STATUS.md)）；本模块原职责和既有批准状态不变。
 
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
@@ -25,8 +25,8 @@
 | 状态、提交和恢复 | [接收承诺与允许损失](../architecture/persistence-and-transactions.md#section-04)；[T08](../architecture/persistence-and-transactions.md#t08)、[T12](../architecture/persistence-and-transactions.md#t12)、[T13](../architecture/persistence-and-transactions.md#t13)；[远程结果未知](../architecture/persistence-and-transactions.md#source-line-518)（仅涉及外部调用时） |
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A66](../product/acceptance.md#a66)、[A67](../product/acceptance.md#a67)、[A68](../product/acceptance.md#a68)、[A93](../product/acceptance.md#a93)（任务范围扩大时按完整表补充） |
-| 工程验收定位 | [V24](../architecture/acceptance.md#v24)、[V35](../architecture/acceptance.md#v35)、[V36](../architecture/acceptance.md#v36)、[V38](../architecture/acceptance.md#v38)、[V54](../architecture/acceptance.md#v54)、[V61](../architecture/acceptance.md#v61)、[V68](../architecture/acceptance.md#v68)、[V69](../architecture/acceptance.md#v69)、[V76](../architecture/acceptance.md#v76)、[V81](../architecture/acceptance.md#v81)、[V89](../architecture/acceptance.md#v89)（预期行为，未执行） |
-| 尚未决定 | 账号与权限细则、人工管理确认流程、备份恢复、完整来源与审计正文访问范围待固定。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 工程验收定位 | [V24](../architecture/acceptance.md#v24)、[V35](../architecture/acceptance.md#v35)、[V36](../architecture/acceptance.md#v36)、[V38](../architecture/acceptance.md#v38)、[V54](../architecture/acceptance.md#v54)、[V61](../architecture/acceptance.md#v61)、[V68](../architecture/acceptance.md#v68)、[V69](../architecture/acceptance.md#v69)、[V76](../architecture/acceptance.md#v76)、[V81](../architecture/acceptance.md#v81)、[V89](../architecture/acceptance.md#v89)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
+| 尚未决定 | 完整来源及审计历史隔离见[已批准读取契约](../architecture/formal-memory-source-media.md)；生产账号、管理确认、Web写入、备份及恢复流程仍待细化。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

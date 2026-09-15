@@ -12,7 +12,7 @@
 
 ## 按边界定位
 
-本轮已批准细化：[集中契约的媒体状态与复用](../architecture/formal-memory-source-media.md#interpretation)、[真实字节发布／引用／GC](../architecture/formal-memory-source-media.md#files-gc)、[容量与整体验收](../architecture/formal-memory-source-media.md#capacity)。实施已获授权，既有职责不变。
+已批准细化：[集中契约的媒体状态与复用](../architecture/formal-memory-source-media.md#interpretation)、[真实字节发布／引用／GC](../architecture/formal-memory-source-media.md#files-gc)、[容量与整体验收](../architecture/formal-memory-source-media.md#capacity)。实施已获授权，既有职责不变。
 
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
@@ -23,7 +23,7 @@
 | 状态、提交和恢复 | [接收承诺与允许损失](../architecture/persistence-and-transactions.md#section-04)；[T01](../architecture/persistence-and-transactions.md#t01)、[T03](../architecture/persistence-and-transactions.md#t03)、[T04](../architecture/persistence-and-transactions.md#t04)、[T05](../architecture/persistence-and-transactions.md#t05)、[T06](../architecture/persistence-and-transactions.md#t06)；[远程结果未知](../architecture/persistence-and-transactions.md#source-line-518)（仅涉及外部调用时） |
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A04](../product/acceptance.md#a04)、[A05](../product/acceptance.md#a05)、[A06](../product/acceptance.md#a06)、[A13](../product/acceptance.md#a13)、[A63](../product/acceptance.md#a63)、[A64](../product/acceptance.md#a64)、[A65](../product/acceptance.md#a65)、[A91](../product/acceptance.md#a91)、[A103](../product/acceptance.md#a103)（任务范围扩大时按完整表补充） |
-| 工程验收定位 | [V10](../architecture/acceptance.md#v10)、[V11](../architecture/acceptance.md#v11)、[V12](../architecture/acceptance.md#v12)、[V13](../architecture/acceptance.md#v13)、[V14](../architecture/acceptance.md#v14)、[V15](../architecture/acceptance.md#v15)（预期行为，未执行） |
+| 工程验收定位 | [V10](../architecture/acceptance.md#v10)、[V11](../architecture/acceptance.md#v11)、[V12](../architecture/acceptance.md#v12)、[V13](../architecture/acceptance.md#v13)、[V14](../architecture/acceptance.md#v14)、[V15](../architecture/acceptance.md#v15)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
 | 尚未决定 | 理解状态、新事件处理、上传限制与GC保护参数已在[集中契约](../architecture/formal-memory-source-media.md#interpretation)批准；内部部分结果生产路径和保护解除仍未开放。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>

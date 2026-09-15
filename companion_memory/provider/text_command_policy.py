@@ -32,7 +32,7 @@ class TextMutationPolicy:
 
 def issue(owner: object) -> TextMutationPolicy:
     from .ledger import LedgerAssembly
-    if type(owner) is not LedgerAssembly or not owner.text_generation:
+    if type(owner) is not LedgerAssembly or not (owner.text_generation or owner.embedding_format):
         raise InvalidValue()
     policy = object.__new__(TextMutationPolicy)
     object.__setattr__(policy, 'owner', owner)
@@ -51,7 +51,7 @@ def declared(definition: CommandSpec) -> bool:
             or type(getattr(policy, 'owner', None)) is not LedgerAssembly):
         raise InvalidValue()
     owner = cast(LedgerAssembly, policy.owner)
-    if not owner.text_generation or not any(command is definition for command in owner.commands):
+    if not (owner.text_generation or owner.embedding_format) or not any(command is definition for command in owner.commands):
         raise InvalidValue()
     return True
 
@@ -66,7 +66,15 @@ def validate_values(definition: CommandSpec, values: MappingProxyType[str, Value
         for change in changes:
             table = cast(str, change['table'])
             body = load(change['body'])
-            validate(table, body)
+            from .ledger import LedgerAssembly
+            owner=cast(LedgerAssembly,cast(TextMutationPolicy,definition.input_policy).owner)
+            if owner.embedding_format:
+                from .embedding_stored_schema import validate as validate_embedding
+                if owner.embedding_usage_only:validate_embedding(table,body,simulated=False,usage_only=True)
+                else:
+                    try:validate_embedding(table,body,simulated=False)
+                    except InvalidValue:validate_embedding(table,body,simulated=True)
+            else:validate(table, body)
             if body['object_id'] != change['object_id']:
                 raise InvalidData()
             if table == 'handoffs':

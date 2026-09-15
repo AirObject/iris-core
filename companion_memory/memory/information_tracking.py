@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .transactions import MemoryTransactions
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
+from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
 from companion_memory.persistence import PersistenceService, UnitOfWork, Value, SequenceSchema, RecordSchema, Field
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import StatementCatalog, OwnerFailure
@@ -22,7 +23,7 @@ INDEX_SELECTION = RecordSchema((Field('object_ids', SequenceSchema(ID, 1, 16)),)
 
 class MemoryInformation:
     """Owned by the already bound memory participant, sharing its existing lease."""
-    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration, instance_id: str, objects: MemoryTransactions):
+    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str, objects: MemoryTransactions):
         self._records = OwnedRecords(catalog, storage, instance_id, LAYOUTS)
         self.configuration = configuration
         self.instance_id = instance_id
@@ -141,6 +142,8 @@ class MemoryInformation:
                'first_uncovered_seq': before['first_uncovered_seq'] if before else seq,
                'latest_change_seq': seq, 'action': 'REMOVE' if deleted else 'UPSERT'}
         self._records.write('index_gap', uow, gap, expected_revision=integer(before['revision']) if before else None)
+        if self._objects.semantic is not None:
+            self._objects.semantic.mark(uow,object_id,revision,deleted,previous,seq)
         return previous, seq
 
     async def current_page(self, after: str = '', limit: int = 16) -> tuple[Record, ...]:

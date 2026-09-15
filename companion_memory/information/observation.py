@@ -9,6 +9,10 @@ import asyncio
 from dataclasses import dataclass
 from types import MappingProxyType
 import time
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from companion_memory.retrieval.semantic_work import SemanticWork
+    from companion_memory.retrieval.semantic_cache import SemanticQueryCache
 from companion_memory.persistence import Found, NotFound, Value
 from companion_memory.persistence.completion import start_owned
 from companion_memory.persistence.deadlines import DeadlineScope, bounded_deadline
@@ -16,6 +20,9 @@ from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.persistence.schema import InvalidValue, ValueTooLarge
 from companion_memory.provider.ports import ObserverPort
+from companion_memory.provider.embedding_observation import EmbeddingObserver
+from companion_memory.provider.values import InvalidData
+from companion_memory.provider.ledger import LedgerFailure
 from companion_memory.provider.values import Found as ProviderFound, NotFound as ProviderNotFound, Failed as ProviderFailed
 from companion_memory.goals.service import GoalsService
 from companion_memory.state.service import StateOwner
@@ -38,23 +45,26 @@ def owned_projection(value: object, depth: int = 0) -> Value:
 class InformationObserver:
     _service: InformationObservations
     _scopes: frozenset[str]
-    _provider: ObserverPort | None
+    _provider: ObserverPort | EmbeddingObserver | None
 
     def __init__(self): raise TypeError('Observation requires an explicit native scope.')
     async def read(self, scope: str, query: object): return await self._service.read(self, scope, query)
 
 
 class InformationObservations:
-    def __init__(self, runtime: ContentRuntimeService, tickets: RecallTickets, state: StateOwner, goals: GoalsService):
+    def __init__(self, runtime: ContentRuntimeService, tickets: RecallTickets, state: StateOwner, goals: GoalsService,*,
+                 semantic:SemanticWork|None=None,cache:SemanticQueryCache|None=None):
         self.runtime, self.tickets, self.state, self.goals = runtime, tickets, state, goals
         self.ports: dict[int, InformationObserver] = {}
         self.jobs: set[asyncio.Task[object]] = set()
+        self.semantic=semantic;self.cache=cache
 
-    def bind(self, scopes: frozenset[str], provider: ObserverPort | None = None) -> InformationObserver:
-        if type(scopes) is not frozenset or not scopes <= {'retrieval', 'state', 'goals', 'provider/usage', 'provider/requests', 'provider/budget'} or len(self.ports) >= 16:
+    def bind(self, scopes: frozenset[str], provider: ObserverPort | EmbeddingObserver | None = None) -> InformationObserver:
+        if type(scopes) is not frozenset or not scopes <= {'retrieval', 'retrieval/semantic','state', 'goals', 'provider/usage', 'provider/requests', 'provider/budget'} or len(self.ports) >= 16:
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
-        if any(scope.startswith('provider/') for scope in scopes) and type(provider) is not ObserverPort:
+        if any(scope.startswith('provider/') for scope in scopes) and type(provider) not in (ObserverPort,EmbeddingObserver):
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'OPERATION_NOT_GRANTED')
+        if 'retrieval/semantic' in scopes and (self.semantic is None or self.cache is None):raise OwnerFailure('ACCESS_DENIED','capability','OPERATION_NOT_GRANTED')
         port = object.__new__(InformationObserver)
         for name, value in (('_service', self), ('_scopes', scopes), ('_provider', provider)): object.__setattr__(port, name, value)
         self.ports[id(port)] = port
@@ -99,6 +109,9 @@ class InformationObservations:
                                 raise OwnerFailure('STORAGE_FAILED', 'storage', 'READ_FAILED', result.error.cleanup_pending)
                             if type(result) is not ProviderFound: raise InvalidValue()
                             view = owned_projection(result.value)
+                        elif scope=='retrieval/semantic':
+                            if set(query)-{'after'} or 'after' in query and type(query['after']) is not str:raise InvalidValue()
+                            view=await self._semantic_view(query.get('after',''),now)
                         else:
                             if query: raise InvalidValue()
                             if scope == 'retrieval':
@@ -109,9 +122,10 @@ class InformationObservations:
                         self.authorize(port, scope)
                         encode_content(view, 32768)
                         return Found(view)
+                    except LedgerFailure:return rejected('observe_information',OwnerFailure('STORAGE_FAILED','storage','READ_FAILED'))
                     except OwnerFailure as failure: return rejected('observe_information', failure)
                     except ValueTooLarge: return rejected('observe_information', OwnerFailure('INVALID_INPUT', 'query', 'LIMIT_EXCEEDED'))
-                    except InvalidValue: return rejected('observe_information', OwnerFailure('INVALID_INPUT', 'query', 'INVALID_SHAPE'))
+                    except (InvalidValue,InvalidData,ValueError): return rejected('observe_information', OwnerFailure('INVALID_INPUT', 'query', 'INVALID_SHAPE'))
             task, outcome = start_owned(inspect()); self.jobs.add(task); self.runtime.retain_external_work(task)
             def ended(job: asyncio.Task[object]) -> None:
                 if not job.cancelled(): job.exception()
@@ -122,3 +136,29 @@ class InformationObservations:
             return outcome.result()
         except OwnerFailure as failure: return rejected('observe_information', failure)
         except InvalidValue: return rejected('observe_information', OwnerFailure('INVALID_INPUT', 'query', 'INVALID_SHAPE'))
+
+    async def _semantic_view(self,after:str,now:int) -> Record:
+        from companion_memory.retrieval.semantic_schema import EMBED_STATES,LOCAL_STATES
+        from companion_memory.persistence.semantic_records import string,number
+        owner=self.semantic;cache=self.cache;assert owner is not None and cache is not None
+        if len(after)>128:raise InvalidValue()
+        control=await owner.rows.read('semantic_control',owner.control_id)
+        publication=await owner.memory.rows.read('semantic_publication',owner.memory.root_id)
+        if control is None or publication is None:raise OwnerFailure('STORAGE_FAILED','index','INTEGRITY_FAILURE')
+        coverage=await owner.memory.information.coverage_view()
+        floor=(await owner.memory.rows.statements.read('semantic_floor',{'space_id':owner.space}))[0]
+        counts={state:0 for state in (*EMBED_STATES,*LOCAL_STATES)};pending=False
+        for row in await owner.rows.statements.read('semantic_work_counts',{}):
+            counts[string(row['state'])]=number(row['count']);pending|=bool(row['cleanup_pending'])
+        caches={'active':0,'expired':0,'hits':cache.hits,'misses':cache.misses}
+        for row in await owner.rows.statements.read('semantic_cache_counts',{}):caches[string(row['state']).lower()]=number(row['count'])
+        first=await owner.rows.page('embedding_work',after,8)
+        second=await owner.rows.page('embedding_work',string(first[-1]['row_id']),8) if len(first)==8 else ()
+        items=tuple(MappingProxyType({'work_id':row['work_id'],'kind':row['kind'],'state':row['state'],
+            'request_ref':row.get('request_ref'),'error':row['error'],'cleanup_pending':bool(row['cleanup_pending']) or
+                row['kind']=='EMBED' and owner.provider.pending_for(string(row['work_id']))}) for row in (*first,*second))
+        pending|=owner.provider.cleanup_pending
+        return MappingProxyType({'v':1,'space_id':owner.space,'generation_id':control['current_generation'],'captured_seq':coverage['captured_seq'],
+            'material_seq':publication['material_seq'],'published_seq':publication['published_seq'],'first_uncovered_seq':floor['minimum'],'pending_count':floor['count'],
+            'work_counts':MappingProxyType(counts),'cache_counts':MappingProxyType(caches),'pause_reason':control['pause_reason'],
+            'cleanup_pending':pending,'items':items,'observed_at':now})

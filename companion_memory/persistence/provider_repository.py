@@ -4,7 +4,7 @@ Only trusted assembly sees these declarations. Provider handlers receive bound
 statements, and all mutations participate in the existing transaction service.
 The internal scope is shared across callers so profiles cannot split budgets.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass,replace
 from .definitions import RepositoryDefinition, StatementDefinition, TableDefinition
 from .provider_queries import aggregate_statement
 from .schema import BoundedTextSchema, Field, RecordSchema, ScalarSchema
@@ -22,10 +22,12 @@ class ProviderRepository:
     statements: tuple[tuple[str, StatementDefinition], ...]
 
 
-def create_provider_repository(*, text_generation: bool = False) -> ProviderRepository:
+def create_provider_repository(*, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False) -> ProviderRepository:
     """Describe a new ledger format without opening or modifying any database."""
-    if type(text_generation) is not bool:
+    if type(text_generation) is not bool or type(embedding_format) is not bool or text_generation and embedding_format:
         raise TypeError('An exact static provider format is required.')
+    if type(embedding_usage_only) is not bool or embedding_usage_only and not embedding_format:raise TypeError('Usage-only requires embedding format.')
+    version=4 if embedding_usage_only else 3 if embedding_format else 2 if text_generation else 1
     tables: list[TableDefinition] = []
     statements: list[tuple[str, StatementDefinition]] = []
     read_schemas: dict[str, RecordSchema] = {}
@@ -46,7 +48,7 @@ def create_provider_repository(*, text_generation: bool = False) -> ProviderRepo
         "cost_items": (Field("attempt_id", ID), Field("item", ScalarSchema("enum", choices=("input", "output", "reported")))),
         "handoffs": (Field("request_id", ID), Field("payload", TEXT)),
     }
-    if text_generation:
+    if text_generation or embedding_format:
         layouts['attempts'] = layouts['attempts'].replace('ordinal BETWEEN 1 AND 4', 'ordinal=1')
         layouts['cost_items'] = layouts['cost_items'].replace("('input','output','reported')", "('input','cached_input','output','subscription_request','reported')")
         extra_fields['attempts'] = (Field('request_id', ID), Field('ordinal', ScalarSchema('integer', 1, 1)))
@@ -89,12 +91,12 @@ def create_provider_repository(*, text_generation: bool = False) -> ProviderRepo
     statements.append(("requests_visible", StatementDefinition(
         "SELECT "+projections["requests"]+" FROM provider_requests WHERE scope_id=:scope_id AND object_id=:object_id AND instr(:scopes,'\"'||caller_scope||'\"')>0 AND (:caller_module IS NULL OR (caller_module=:caller_module AND extension_id=:extension_id))",
         RecordSchema((Field("object_id", ID), Field("scopes", BoundedTextSchema(8192)), Field("caller_module", ID, nullable=True), Field("extension_id", BoundedTextSchema(128), nullable=True))), read_schemas["requests"], False)))
-    statements.append(("usage_aggregate", aggregate_statement(text_generation=text_generation)))
-    if text_generation:
+    statements.append(("usage_aggregate", aggregate_statement(text_generation=text_generation,embedding=embedding_format)))
+    if text_generation or embedding_format:
         # Instance transactions join only their own actual request. The shared
         # ledger scope still keeps account liabilities cumulative across callers;
         # no caller may bind a different SQL scope or obtain a write statement.
-        for name in ('requests','attempts','reservations','budget_windows'):
+        for name in ('requests','attempts','reservations','budget_windows')+(('handoffs',) if embedding_format else ()):
             selected=','.join('p.'+field for field in projections[name].split(','))
             if name=='requests':
                 source='provider_requests p'
@@ -102,7 +104,8 @@ def create_provider_repository(*, text_generation: bool = False) -> ProviderRepo
             else:
                 relation={'attempts':'p.request_id=r.object_id',
                     'reservations':"p.attempt_id=a.object_id",
-                    'budget_windows':"p.account_id=json_extract(r.body,'$.account_id') AND p.window_id=json_extract(r.body,'$.execution_evidence.account.window_id')"}[name]
+                    'budget_windows':"p.account_id=json_extract(r.body,'$.account_id') AND p.window_id=json_extract(r.body,'$.execution_evidence.account.window_id')",
+                    'handoffs':'p.request_id=r.object_id'}[name]
                 source='provider_'+name+' p JOIN provider_requests r ON p.scope_id=r.scope_id'
                 if name=='reservations':
                     source+=' JOIN provider_attempts a ON a.scope_id=r.scope_id AND a.request_id=r.object_id'
@@ -117,5 +120,20 @@ def create_provider_repository(*, text_generation: bool = False) -> ProviderRepo
             "SELECT "+projections['budget_windows']+" FROM provider_budget_windows WHERE scope_id='provider' AND :scope_id=:caller_scope "
             "AND account_id=:account_id AND window_id=:window_id LIMIT 2",
             RecordSchema((Field('caller_scope',ID),Field('account_id',ID),Field('window_id',ID))),read_schemas['budget_windows'],False)))
-    definition = RepositoryDefinition("provider", 2 if text_generation else 1, tuple(tables), tuple(statement for _, statement in statements))
+    if embedding_usage_only:
+        statements.append(('requests_blocked',StatementDefinition(
+            'SELECT '+projections['requests']+" FROM provider_requests WHERE scope_id=:scope_id "
+            "AND json_extract(body,'$.account_id')=:account_id AND (json_extract(body,'$.phase')!='TERMINAL' "
+            "OR json_extract(body,'$.outcome')!='SUCCEEDED') ORDER BY object_id LIMIT 1",
+            RecordSchema((Field('account_id',ID),)),read_schemas['requests'],False)))
+        from companion_memory.provider.embedding_stored_schema import schemas
+        roots=schemas(False,usage_only=True)
+        tables=[replace(t,record_schemas=(roots[t.name.removeprefix('provider_')],)) for t in tables]
+    definition = RepositoryDefinition("provider", version, tuple(tables), tuple(statement for _, statement in statements))
+    if embedding_format:
+        from .owned_statements import StatementCatalog
+        from .text_records import extend_catalog
+        from companion_memory.provider.embedding_repository import embedding_handoff_catalog
+        combined=extend_catalog(StatementCatalog(definition,tuple(statements)),embedding_handoff_catalog(),version)
+        definition=combined.definition;statements=list(combined.statements)
     return ProviderRepository(definition, tuple(statements))

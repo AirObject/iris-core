@@ -14,9 +14,9 @@
 
 ## 按边界定位
 
-本轮已批准依赖：[真实记忆／来源终结参与](../architecture/formal-memory-source-media.md#sources-candidates)、[媒体门控与恢复](../architecture/formal-memory-source-media.md#interpretation)、[新装配恢复](../architecture/formal-memory-source-media.md#assembly-recovery)；已批准，不改变既有门控。
+已批准依赖：[真实记忆／来源终结参与](../architecture/formal-memory-source-media.md#sources-candidates)、[媒体门控与恢复](../architecture/formal-memory-source-media.md#interpretation)、[新装配恢复](../architecture/formal-memory-source-media.md#assembly-recovery)；已批准，不改变既有门控。
 
-本次模式、发送竞争和恢复细节见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#modes)（五组推荐已批准，实施已授权；验证状态见CURRENT_TASK）；本模块原职责和既有批准状态不变。
+本次模式、发送竞争和恢复细节见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#modes)（契约已批准；实际验证见[STATUS](../work/STATUS.md)）；本模块原职责和既有批准状态不变。
 
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
@@ -27,7 +27,7 @@
 | 状态、提交和恢复 | [接收承诺与允许损失](../architecture/persistence-and-transactions.md#section-04)；[T02](../architecture/persistence-and-transactions.md#t02)、[T09](../architecture/persistence-and-transactions.md#t09)；[远程结果未知](../architecture/persistence-and-transactions.md#source-line-518)（仅涉及外部调用时） |
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A67](../product/acceptance.md#a67)、[A93](../product/acceptance.md#a93)、[A94](../product/acceptance.md#a94)、[A106](../product/acceptance.md#a106)（任务范围扩大时按完整表补充） |
-| 工程验收定位 | [V02](../architecture/acceptance.md#v02)、[V24](../architecture/acceptance.md#v24)、[V30](../architecture/acceptance.md#v30)、[V49](../architecture/acceptance.md#v49)、[V81](../architecture/acceptance.md#v81)（预期行为，未执行） |
+| 工程验收定位 | [V02](../architecture/acceptance.md#v02)、[V24](../architecture/acceptance.md#v24)、[V30](../architecture/acceptance.md#v30)、[V49](../architecture/acceptance.md#v49)、[V81](../architecture/acceptance.md#v81)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
 | 尚未决定 | 在途收尾及发布后开放点已在[整体契约](../architecture/durable-ingress-and-batch-runtime.md#modes)批准；故障解除和UNKNOWN人工结案仍未批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>

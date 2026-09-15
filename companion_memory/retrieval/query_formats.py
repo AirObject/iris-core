@@ -18,10 +18,15 @@ QUERY = RecordSchema((Field('request_key', ID), Field('entry_id', ID), Field('qu
     Field('world_scope', ID, nullable=True), Field('time_range', RANGE, nullable=True), Field('allow_partial', BOOL), Field('require_complete', BOOL),
     Field('retrieval_mode', choice('LOCAL_LEXICAL_V1')), Field('rerank', BOOL), Field('include_state', BOOL), Field('include_goals', BOOL)))
 PREPARE = RecordSchema(QUERY.fields + (Field('participant_ids', SequenceSchema(ID, 0, 8)), Field('situation', TEXT(512))))
+SEMANTIC_QUERY=RecordSchema(tuple(Field(field.name,choice('LOCAL_LEXICAL_V1','REAL_HYBRID_V1'))
+    if field.name=='retrieval_mode' else field for field in QUERY.fields))
+SEMANTIC_PREPARE=RecordSchema(SEMANTIC_QUERY.fields+PREPARE.fields[len(QUERY.fields):])
 
 
-def isolate_query(payload: object, prepare: bool) -> tuple[Record, StructuralFilter]:
-    value = checked(PREPARE if prepare else QUERY, payload, 4096)
+def isolate_query(payload: object, prepare: bool, *, semantic_format: bool=False) -> tuple[Record, StructuralFilter]:
+    if type(semantic_format) is not bool:raise OwnerFailure('INVALID_INPUT','query','UNSUPPORTED_VERSION')
+    schema=(SEMANTIC_PREPARE if prepare else SEMANTIC_QUERY) if semantic_format else PREPARE if prepare else QUERY
+    value = checked(schema, payload, 4096)
     owned = dict(value)
     for name in ('subject_ids', 'object_ids', 'participant_ids'):
         if name not in owned: continue

@@ -1,8 +1,8 @@
 # 持久接入、三段批次、专注门控与恢复及最小只读观察
 
-**状态：完整技术契约已获用户批准；尚未通过本阶段技术验收。** 本文及链接的配置、日志、持久化、产品补充共同定义一次可独立验收的能力范围。既有批准保证保持有效；下面的“须／不得”表达已批准实现的验收约束。集中批准决定见[§12](#decisions)，执行授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)。
+**状态：完整技术契约已获用户批准。** 本文及链接的配置、日志、持久化、产品补充共同定义一次可独立验收的能力范围。既有批准保证保持有效；下面的“须／不得”表达已批准实现的验收约束。集中批准决定见[§12](#decisions)，执行授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)。
 
-静态基线为`main`的`128f908e8d780da647949dfe3f6c21980b31fcf2`，父提交`6a99353c6035629bcff866e8367d6fd69fa93113`。本文不重开基础设施验收。已实现事实以[STATUS](../work/STATUS.md)及源码为证；历史测试通过不表示下面的组合已经运行。
+本契约定义基础运行装配及模拟／合成参与者边界；后续正式记忆、文本学习等扩展不改变该装配的兼容性要求。实际实现、验收与提交版本见[STATUS](../work/STATUS.md)。
 
 <a id="scope"></a>
 
@@ -367,7 +367,7 @@ Provider初始化仍遵守[既有恢复契约](provider.md#provider-foundation-t
 | 实际接入／缓存／模式／配置服务 | 本文端口、持久格式、真实状态机及事务 | 实际代码、同库账本、回执和恢复按整体验收；执行证据见[当前任务](../work/CURRENT_TASK.md) |
 | 实际Provider服务＋模拟适配器 | 既有WorkGrant／GateBinding、登记后发送、受限结果交接 | 实际服务门控和本地计量，模型回应／usage／金额均SIMULATED；不代表真实模型质量、调用协议或计费 |
 | 合成学习参与者 | `prepare_outcome(batch_snapshot, provider_handoff)`确定性生成有界候选，核验非空目标锚点及独立辅助引用；输出synthetic=true | 可验证只总结目标的结构约束、零结果／多结果／普通失败／敏感拒学和恢复；不能以固定答案证明认知质量或自主agent工具规划 |
-| 合成记忆／来源参与者 | 同一UoW中`stage_result(candidate)`、`retain_source(manifest)`；共享来源仍引用原始完整材料；可注入必要参与者失败 | 真实临时SQLite中的合成对象可证明原子发布、来源保护及共享引用；正式记忆、生命周期、关系推理和来源读取服务仍未实现 |
+| 合成记忆／来源参与者 | 同一UoW中`stage_result(candidate)`、`retain_source(manifest)`；共享来源仍引用原始完整材料；可注入必要参与者失败 | 真实临时SQLite中的合成对象可证明原子发布、来源保护及共享引用；此参与者不提供正式记忆、生命周期、关系推理或来源读取服务；正式记忆与来源扩展见[独立契约](formal-memory-source-media.md) |
 | 合成媒体引用参与者 | 向单条出现记录签发READY引用，绑定库／入口／对象；UoW内retain／release／transfer引用，不触碰物理文件 | 可证明引用连续及共享保护；只在测试装配签发非秘密合成资源，无实际上传、解码、理解或GC保证 |
 | 合成梦境／发布参与者 | 持久run／检查点、完整发布引用、失败不改上次指针、同UoW校验完成证据；可用DREAM角色模拟调用测试门控 | 证明模式依赖有效发布、失败可见和回流；不能把合成“发布成功”展示为persona更新／梦境整理完成 |
 | 实际Web／日志查询＋测试会话 | HTTP只读路由、授权过滤、转义、有界查询和慢客户端隔离 | 可证明实现的权限边界及页面行为；测试身份提供器不等于生产鉴权 |
@@ -485,4 +485,4 @@ config=<config_snapshot_id>
 | 参与者与最小观察 | [§9](#observation)、[§10](#participants)及[日志游标权限](logging.md#runtime-log-cursor-privacy)：实际服务、模拟模型、合成业务参与者、只读HTTP测试会话；内部全局位置不透明，额外全局元信息须独立授权 | 部分入口观察者的events、has_more、健康及gap均投影，缺口不能借全局差值假称授权数据丢失；保守未知连续性有局限。真实业务、完整日志历史、生产认证仍需扩大前置，不能从测试会话获批 |
 | 审计基础增量、兼容与生产前置 | [持久化精确增量](persistence-and-transactions.md#runtime-result-bound-audit)与[日志物化端口](logging.md#runtime-derived-audit-draft)：新命令冻结完整意图和结果映射、指纹2、同事务物化及原结果关联校验；旧命令／回执／Provider指纹1不变。自有临时新完整装配，无自动补表／迁移 | 这是已批准的必要公开基础扩展，不能仅复用旧接口声称可实现动态审计。生产路径、G2、鉴权、身份保留、存量迁移仍依[具体前置](persistence-and-transactions.md#runtime-production-prerequisites)，本轮不选择 |
 
-全部新增验收在取得实际执行证据前保持未执行；历史Provider测试不作为本组合验证。STATUS不新增已验收里程碑。按CURRENT_TASK授权连续实施、自查及验证后交回只读监督审查，用户负责最终审核；不暂存、提交、推送、部署或进入下一阶段，不使用子代理或其他会话。
+实际验证与验收版本见[STATUS](../work/STATUS.md)，不能将某一基础模块的历史测试外推为其他装配通过。执行授权、文档维护及停止点按[CURRENT_TASK](../work/CURRENT_TASK.md)和[项目分工](../../AGENTS.md)管理。

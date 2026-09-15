@@ -24,6 +24,7 @@ from companion_memory.retrieval.delivery import DeliveryScope
 from companion_memory.runtime.content_gate import ContentGate
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
+from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration,stored_semantic_configuration_issue
 
 
 def failure_value(error: InformationError) -> Record:
@@ -74,8 +75,8 @@ class TestSession:
 
 class InformationHTTP:
     """One loopback listener, four connections, sixteen explicitly scoped sessions."""
-    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration, gate: ContentGate):
-        if type(configuration) not in (StoredInformationConfiguration,StoredTextConfiguration):
+    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, gate: ContentGate):
+        if type(configuration) not in (StoredInformationConfiguration,StoredTextConfiguration) and stored_semantic_configuration_issue(configuration) is not None:
             raise ValueError('HTTP requires the native persisted information configuration.')
         self.gate = gate
         self.settings = configuration.candidate.information.record('management.host')

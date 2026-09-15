@@ -7,11 +7,13 @@ final storage permission check shares the runtime's short mode serialization.
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from types import MappingProxyType
+from typing import cast
 from collections.abc import Callable
 import asyncio
 import time
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
+from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
 from companion_memory.persistence import (AuditFieldBinding, AuditResultBinding, Field, RecordSchema, RepositoryDefinition,
     ResultBoundCommandDefinition, ResultBoundCommand, UnitOfWork, PersistenceService, Committed, Found, NotFound,
     NotCommitted, RecoveryHandle, Value, Unconfirmed, Failed, Rejected)
@@ -83,9 +85,10 @@ class ManagementAssembly:
     """Static owner handlers declared before storage is constructed."""
     def __init__(self, repositories: tuple[RepositoryDefinition, ...]):
         by_owner = {r.owner_module: r for r in repositories}
+        self.semantic_format=by_owner['memory'].schema_version==4
         self.retrieval: LocalIndex | None = None
         self.goals: GoalsService | None = None; self.state: StateOwner | None = None
-        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | None = None
+        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | None = None
         self._gate: ContentGate | None = None
         self.local_recovery: LocalGoalRecovery | None = None
         self._ports: dict[str, ManagementPort] = {}
@@ -106,6 +109,13 @@ class ManagementAssembly:
             audits = tuple(AuditRequirement(name, 'object_history' if name == 'logging_service' else name + '_' + kind, kind.upper(), 1, ('APPLY',), owner_fact(name) if name == 'logging_service' else FACT, target_limit=16) for name in writers)
             result = RecordSchema((Field('outcome', choice('APPLIED')), Field('targets', TARGETS), Field('items', ITEMS),
                 Field('facts', RecordSchema(tuple(Field(name, owner_fact(name) if name == 'logging_service' else FACT) for name in writers)))))
+            semantic=self.semantic_format and kind in ('usage_change','usage_restore')
+            if semantic:
+                from companion_memory.persistence.semantic_records import N,integer as bound_integer
+                extended=RecordSchema(FACT.fields+(Field('semantic_root',ID),Field('semantic_from_seq',N),Field('semantic_to_seq',N),Field('semantic_gap_delta',bound_integer(-8,8))))
+                audits=tuple(replace(a,change_schema=extended) if a.owner_module=='memory' else a for a in audits)
+                result=RecordSchema(tuple(Field(f.name,RecordSchema(tuple(Field(p.name,extended) if p.name=='memory' else p
+                    for p in cast(RecordSchema,f.schema).fields))) if f.name=='facts' else f for f in result.fields))
             bindings = tuple(AuditResultBinding(audit.event_slot, 1, (
                 AuditFieldBinding('actor_kind', 'CONSTANT', constant='SYSTEM'), AuditFieldBinding('actor_ref', 'INTENT', ('actor',)),
                 AuditFieldBinding('reason_code', 'CONSTANT', constant='APPLY'), AuditFieldBinding('target_refs', 'RESULT', ('targets',)),
@@ -115,15 +125,20 @@ class ManagementAssembly:
             else:
                 participants = (by_owner[owner],) + ((by_owner['memory'], by_owner['cognition']) if kind == 'goal_inject_internal' else
                     (by_owner['memory'],) if kind.startswith('ticket_issue') or kind.startswith('index_') and kind not in ('index_retire_page', 'index_trim_page') else ())
-            definitions.append(ResultBoundCommandDefinition('information', kind, 1, COMMAND_INPUT, 1, result, participants,
+            version=2 if semantic or self.semantic_format and kind.startswith('ticket_issue') else 1
+            definitions.append(ResultBoundCommandDefinition('information', kind, version, COMMAND_INPUT, version, result, participants,
                 audits, self._handler(kind), RecordSchema((Field('actor', ID),)), bindings))
         self.commands = tuple(definitions)
         self._retain: Callable[[asyncio.Task[object]], None] | None = None
 
+    def _schema(self,kind:str):
+        from companion_memory.retrieval.tickets import SEMANTIC_ISSUE
+        return SEMANTIC_ISSUE if self.semantic_format and kind.startswith('ticket_issue') else SCHEMAS[kind]
+
     def _handler(self, kind: str):
         def handle(uow: UnitOfWork, values: Record) -> Record:
             try:
-                value = checked(SCHEMAS[kind], decode_content(text(values['payload']).encode(), 24576), 24576)
+                value = checked(self._schema(kind), decode_content(text(values['payload']).encode(), 24576), 24576)
                 completion_id = text(value['delivery_id']) if kind == 'goal_attempt_finish' else None
                 binding_id = text(values['binding_id']); port = self._ports.get(binding_id)
                 if port is None and completion_id is not None:
@@ -196,6 +211,9 @@ class ManagementAssembly:
                     facts = effect.targets
                 targets = tuple(sorted((MappingProxyType({n: f[n] for n in ('object_id', 'previous_revision', 'revision')}) for f in facts), key=lambda item: text(item['object_id'])))
                 item = MappingProxyType({'object_id': summary['object_id'], 'status': 'APPLIED', 'operation_key': values['request_key'], 'revision': summary['revision']})
+                if self.semantic_format and kind in ('usage_change','usage_restore'):
+                    assert self.retrieval is not None and self.retrieval.memory._objects.semantic is not None
+                    owner_facts['memory']=MappingProxyType(dict(record(owner_facts['memory']))|dict(self.retrieval.memory._objects.semantic.audit_fact(uow)))
                 return MappingProxyType({'outcome': 'APPLIED', 'targets': targets, 'items': (item,) if items is None else items, 'facts': MappingProxyType(owner_facts | {owner: summary})})
             except OwnerFailure as issue:
                 self.causes.record(kind, values, issue)
@@ -209,7 +227,7 @@ class ManagementAssembly:
         oid = next((value[n] for n in ('goal_id', 'activity_id', 'task_id', 'plan_id', 'delivery_id', 'page_id', 'generation_id') if value.get(n) is not None), None)
         return (MappingProxyType({'object_id': oid, 'revision': value['expected_revision']}),)
 
-    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration, instance_id: str,
+    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str,
              goals: GoalsService, state: StateOwner, retrieval: LocalIndex, gate: ContentGate, retain: Callable[[asyncio.Task[object]], None],
              recovering: Callable[[], bool] = lambda: False) -> None:
         if self._configuration is not None:
@@ -310,8 +328,8 @@ class ManagementAssembly:
         active_key = identity('active_management', port.binding_id, kind, self.operation_key(port, kind, key))
         pending = self._pending.get(active_key)
         if pending is None: return None
-        value = checked(SCHEMAS[kind], decode_content(pending.payload, 24576), 24576)
-        if expected_payload is not None and encode_content(checked(SCHEMAS[kind], expected_payload, 24576), 24576) != pending.payload:
+        value = checked(self._schema(kind), decode_content(pending.payload, 24576), 24576)
+        if expected_payload is not None and encode_content(checked(self._schema(kind), expected_payload, 24576), 24576) != pending.payload:
             raise OwnerFailure('IDEMPOTENCY_CONFLICT', 'input', 'CONTENT_MISMATCH')
         ticket = record(value['ticket']) if ticket_intent is not None and kind.startswith('ticket_issue') else None
         if ticket_intent is not None and (ticket is None or ticket['intent_digest'] != ticket_intent):
@@ -355,7 +373,7 @@ class ManagementAssembly:
                 return rejected('resolve_management', OwnerFailure('INVALID_INPUT', 'input', 'INVALID_SHAPE'))
             if not valid_identifier(key):
                 raise OwnerFailure('INVALID_INPUT', 'input', 'INVALID_SHAPE')
-            value = checked(SCHEMAS[kind], payload, 24576)
+            value = checked(self._schema(kind), payload, 24576)
             completion_id = text(value['delivery_id']) if kind == 'goal_attempt_finish' else None
             self._check(port, kind, None, deadline, confirm_only=True, completion_id=completion_id)
             if self.jobs:
@@ -409,7 +427,7 @@ class ManagementAssembly:
                         values = checked(COMMAND_INPUT, {'binding_id': port._identity.binding_id, 'request_key': original_key,
                             'expected': self.expected(value), 'observed_at': now, 'payload': encode_content(value, 24576).decode()}, 65536)
                         definition = next(d for d in self.commands if d.operation_kind == kind)
-                        command = ResultBoundCommand(1, decode_content(encode_content(values, 65536), 65536), {a.event_slot: {'actor': port._identity.principal_id} for a in definition.required_audits})
+                        command = ResultBoundCommand(definition.command_version, decode_content(encode_content(values, 65536), 65536), {a.event_slot: {'actor': port._identity.principal_id} for a in definition.required_audits})
                         handle = operation.recovery_handle(original_key, command)
                         if type(handle) is Rejected: return InformationRejected(storage_error(kind, handle.error, writing=True))
                         if type(handle) is not RecoveryHandle: return handle

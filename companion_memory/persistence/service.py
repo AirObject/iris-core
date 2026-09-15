@@ -327,7 +327,7 @@ class PersistenceService:
     """
 
     def __init__(self, repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...],
-                 *, assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1'] = 'LEGACY'):
+                 *, assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1'] = 'LEGACY'):
         self._repositories, self._commands = repositories, commands
         self._command_map = {(item.owner_namespace, item.operation_kind): item for item in commands}
         from companion_memory.logging_service.audit_materialization import validate_bindings
@@ -335,7 +335,7 @@ class PersistenceService:
             if type(definition) is ResultBoundCommandDefinition:
                 validate_bindings(definition)
         self._history_enabled = any(repo.owner_module == "logging_service" and any(t.name == "logging_object_history" for t in repo.tables) for repo in repositories)
-        self._assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1'] = assembly_format
+        self._assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1'] = assembly_format
         self._assembly = assembly_value(repositories, commands, assembly_format=assembly_format)
         self._schema = _BASE_SCHEMA + tuple((table.name, table.sql.strip().rstrip(";")) for repo in repositories for table in repo.tables)
         if (len({name for name, _ in self._schema}) != len(self._schema)
@@ -369,6 +369,14 @@ class PersistenceService:
         self._close_job: _Job | None = None
         self._ports: WeakValueDictionary[int, _SealedPort] = WeakValueDictionary()
         self._module_owners: dict[str, ModuleOwnerLease] = {}
+        self._semantic_admission = None
+
+    def bind_semantic_admission(self,admission) -> None:
+        """Bind the single native whole-instance monitor before opening storage."""
+        from .semantic_admission import SemanticAdmission
+        if (self._assembly_format!='ASYNC_SEMANTIC_V1' or self._lifecycle!='NEW' or self._semantic_admission is not None
+                or type(admission) is not SemanticAdmission):raise ValueError('Native unopened semantic storage admission required.')
+        self._semantic_admission=admission
 
     def confirm_prior_operation(self, uow: UnitOfWork, definition: CommandSpec, key: str) -> Receipt | None:
         """Confirm one saved prior operation under the current exclusive writer.
@@ -391,6 +399,43 @@ class PersistenceService:
         if type(uow) is not UnitOfWork or not self._valid_uow(uow, uow._identity.scope_id):
             raise InvalidValue()
         return MappingProxyType(dict(uow._row_changes))
+
+    def confirm_embedding_operation(self,uow: UnitOfWork,definition: CommandSpec,key: str,request_id: str) -> Receipt | None:
+        """Confirm a cross-owner embedding receipt using the request's real scope.
+
+        The caller cannot select a foreign scope. Both command identities must
+        be native semantic declarations and the Provider is a declared reader or
+        writer. Only handoff completion and artifact reception may cross scopes.
+        """
+        from .semantic_commands import declared
+        from companion_memory.provider.text_command_policy import declared as ledger_declared,TextMutationPolicy
+        target_declared=declared(definition)
+        if not target_declared and type(definition.input_policy) is TextMutationPolicy:
+            from companion_memory.provider.ledger import LedgerAssembly
+            owner=definition.input_policy.owner
+            target_declared=type(owner) is LedgerAssembly and owner.embedding_format and ledger_declared(definition)
+        if (type(uow) is not UnitOfWork or not self._valid_uow(uow,uow._identity.scope_id)
+                or not declared(uow._definition) or not target_declared or not any(definition is d for d in self._commands)
+                or not any(r.owner_module=='provider' for r in uow._definition.participants)
+                or (definition.owner_namespace,definition.operation_kind) not in (('provider','store_embedding_handoff'),('provider','retire_embedding_handoff'),('retrieval','record_result'),('provider','terminate'),('provider','recover'))
+                or not valid_identifier(key) or not valid_identifier(request_id)):
+            raise InvalidValue()
+        row=self._sql(uow._job,"SELECT caller_scope FROM provider_requests WHERE scope_id='provider' AND object_id=?",(request_id,)).fetchone()
+        if row is None or uow._identity.scope_id not in ('provider',row[0]):raise InvalidValue()
+        scope='provider' if definition.owner_namespace=='provider' else row[0]
+        return self._receipt(uow._job,OperationIdentity(uow._identity.database_id,definition.owner_namespace,definition.operation_kind,scope,key))
+
+    def semantic_operation_context(self,uow: UnitOfWork,repository: RepositoryDefinition) -> tuple[OperationIdentity,str]:
+        """Bind a semantic participant's evidence to this original frozen command.
+
+        This reveals no connection, input body or other operation. A reference
+        can be retained inside a row before its atomic receipt is materialized.
+        """
+        from .semantic_commands import declared
+        if (type(uow) is not UnitOfWork or uow._service is not self or not uow._active
+                or not declared(uow._definition) or not any(repository is item for item in uow._definition.participants)):
+            raise InvalidValue()
+        return uow._identity,uow._job.handle.fingerprint
 
     def transaction_audit_owners(self, uow: UnitOfWork) -> tuple[str, ...]:
         """Read only the command's fixed owner mask from a currently active UoW."""
@@ -449,7 +494,7 @@ class PersistenceService:
             "CASE WHEN length(CAST(body AS BLOB))<=8192 THEN body END,"
             "CASE WHEN length(CAST(evidence AS BLOB))<=2048 THEN evidence END "
             "FROM logging_object_history WHERE commit_id=? ORDER BY history_id LIMIT 9", (receipt.commit_id,)).fetchall()
-        check_bundle(receipt, expected, tuple(rows), text_format=self._assembly_format=='MODEL_TEXT_LEARNING_V1')
+        check_bundle(receipt, expected, tuple(rows), text_format=self._assembly_format in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1'))
 
     def get_health(self) -> Health:
         """Observe only current in-memory ownership; never perform storage I/O."""
@@ -967,7 +1012,7 @@ class PersistenceService:
         metadata_columns = self._sql(job, "PRAGMA table_info(application_metadata)").fetchall()
         if {row[1] for row in metadata_columns} != {"singleton", "database_id", "format_version", "assembly"}:
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))
-        assembly_limit = 3145728 if self._assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
+        assembly_limit = 4194304 if self._assembly_format=='ASYNC_SEMANTIC_V1' else 3145728 if self._assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
         rows = self._sql(job, "SELECT database_id, format_version, CASE WHEN typeof(assembly)='blob' AND length(assembly)<=? THEN assembly ELSE NULL END FROM application_metadata WHERE singleton=1", (assembly_limit,)).fetchall()
         if len(rows) != 1 or not valid_identifier(rows[0][0]):
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))
@@ -1275,6 +1320,11 @@ class PersistenceService:
                     self._checkpoint(job)
                 else:
                     job.absence_checked = True
+                    if self._semantic_admission is not None:
+                        try:self._semantic_admission.admit(handle,values)
+                        except MemoryError:raise
+                        except Exception:
+                            raise _StorageFault(self._error('execute','RESOURCE_BUSY','ADMISSION_BUSY','resources')) from None
                     assert self._resources is not None and self._settings is not None and self._snapshot is not None
                     try:
                         commit_id = self._resources.new_id()

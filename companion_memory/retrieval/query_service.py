@@ -7,6 +7,7 @@ confirmation metadata only, including when ticket payload has been disposed.
 """
 from __future__ import annotations
 import asyncio
+from contextlib import AsyncExitStack
 from dataclasses import dataclass, replace
 from hashlib import sha256
 import secrets
@@ -15,6 +16,7 @@ from types import MappingProxyType
 from typing import cast
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
+from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
 from companion_memory.self_model.current import CurrentPersonaPort,Available
 from companion_memory.self_model.results import Failed as PersonaFailed
 from companion_memory.persistence import Found, Committed, NotFound, Value
@@ -34,6 +36,7 @@ from .tickets import RecallAuthority
 from .query_formats import isolate_query
 from .delivery import deliver
 from .lexical import normalize_material, object_text, matches_structure, has_lexical_match, rank_key, StructuralFilter
+from .semantic_query import SemanticQuery,REASONS as SEMANTIC_REASONS
 from companion_memory.information.payload_limits import bounded_items, bounded_single
 
 
@@ -88,14 +91,17 @@ class QueryPort:
 
 class QueryService:
     """Two admitted queries, zero waiting queue, and one inherited I/O deadline."""
-    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration, runtime: ContentRuntimeService, management: ManagementAssembly,
-                 index: LocalIndex, state: StateOwner, goals: GoalsService, *, test_persona: TestPersona | None = None,current_persona: CurrentPersonaPort | None = None):
+    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, runtime: ContentRuntimeService, management: ManagementAssembly,
+                 index: LocalIndex, state: StateOwner, goals: GoalsService, *, test_persona: TestPersona | None = None,current_persona: CurrentPersonaPort | None = None,
+                 semantic:SemanticQuery|None=None):
         if test_persona is not None and type(test_persona) is not TestPersona:
             raise ValueError('Only explicitly identified test persona material is supported.')
         if type(configuration) is StoredTextConfiguration:
             if test_persona is not None or type(current_persona) is not CurrentPersonaPort or current_persona._owner.transactions.assembly is not runtime.assembly:
                 raise ValueError('Text queries require their actual native current-persona owner.')
         elif current_persona is not None:raise ValueError('A native text persona requires the independent text configuration.')
+        if (type(configuration) is StoredSemanticConfiguration)!=(type(semantic) is SemanticQuery):raise ValueError('Native semantic query assembly differs.')
+        self.semantic=semantic
         self.configuration, self.runtime, self.management, self.index, self.state, self.goals = configuration, runtime, management, index, state, goals
         self.test_persona = test_persona
         self.current_persona=current_persona
@@ -164,7 +170,7 @@ class QueryService:
         try:
             self._authorize(port, operation)
             prepare = operation == 'prepare_reply' or operation == 'resolve_recall' and prepared
-            query, selected = isolate_query(payload, prepare)
+            query, selected = isolate_query(payload, prepare,semantic_format=self.semantic is not None)
             if query['entry_id'] != port._entry_id:
                 raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
             mode = 'DEEP' if operation == 'deep_recall' or operation == 'resolve_recall' and deep else 'NORMAL'
@@ -174,6 +180,7 @@ class QueryService:
             if len(self.jobs) >= 2:
                 raise OwnerFailure('RESOURCE_BUSY', 'query', 'ADMISSION_FULL', True)
             attempted_ticket = False
+            resources=AsyncExitStack()
             async def run() -> object:
                 nonlocal attempted_ticket
                 with DeadlineScope(deadline):
@@ -189,16 +196,23 @@ class QueryService:
                             if type(receipt) is not Found: raise OwnerFailure('STORAGE_FAILED', 'ticket', 'INTEGRITY_FAILURE')
                             return Found(MappingProxyType({'availability': 'CONFIRMED_ONLY', 'recall_id': original['recall_id'], 'request_key': query['request_key'],
                                 'commit_id': receipt.value.commit_id, 'payload_available': 'expires_at_us' in original,
-                                'member_count': original['member_count'], 'intent_digest': intent}))
+                                'member_count': original['member_count'], 'intent_digest': intent} |
+                                ({'response_digest':original['response_digest'],'response_version':2} if original.get('version')==2 else {})))
                         if operation == 'resolve_recall': return NotFound()
                         checkpoint = self.check_mode()
                         if prepare and self.test_persona is None and self.current_persona is None and (query['require_complete'] or not query['allow_partial']):
                             raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'state', 'PUBLICATION_MISSING')
                         for attempt in range(2):
-                            objects, coverage, reasons = await self._candidates(port, query, selected, mode == 'DEEP')
+                            await resources.aclose()
+                            detail=None
+                            if self.semantic is not None and query['retrieval_mode']=='REAL_HYBRID_V1':
+                                objects,coverage,reasons,detail=await self.semantic.select(self,port,query,selected,mode=='DEEP',resources,deadline)
+                            else:objects, coverage, reasons = await self._candidates(port, query, selected, mode == 'DEEP')
                             sections, section_reasons, omitted_memories = await self._sections(port, query, prepare, objects)
                             objects = tuple(record(value) for value in cast(tuple[Value, ...], sections['memories']))
                             reasons = tuple(dict.fromkeys((*reasons, *section_reasons)))
+                            if detail is not None:
+                                reasons=tuple(dict.fromkeys(reason if reason in SEMANTIC_REASONS else 'INTEGRITY_UNAVAILABLE' for reason in reasons))
                             if reasons and (query['require_complete'] or not query['allow_partial']):
                                 if 'SECTION_LIMIT' in section_reasons:
                                     raise OwnerFailure('INVALID_INPUT', 'query', 'LIMIT_EXCEEDED')
@@ -220,9 +234,15 @@ class QueryService:
                                 'capabilities': MappingProxyType({'generative_query': False, 'embedding': False, 'rerank': False,
                                     'semantic_equivalence': False, 'real_persona': 'persona' in sections and record(sections['persona']).get('origin')=='REMOTE_PROVIDER',
                                     'persona_origin': record(sections['persona']).get('origin','UNAVAILABLE') if 'persona' in sections else 'SYNTHETIC' if self.test_persona else 'UNAVAILABLE'})})
+                            if detail is not None:
+                                response=MappingProxyType({k:v for k,v in response.items() if k!='retrieval_mode'}|{'response_version':2,
+                                    'requested_mode':'REAL_HYBRID_V1',**detail,'decision':'MATCH' if objects else 'INCOMPLETE_EMPTY' if reasons else 'NO_MATCH',
+                                    'truncation':MappingProxyType({'reasons':tuple(r for r in SEMANTIC_REASONS if r in reasons),'omitted_memories':omitted_memories}),
+                                    'capabilities':MappingProxyType(dict(record(response['capabilities']))|{'embedding':True})})
+                                digest=sha256(encode_content(MappingProxyType({'binding':binding,'response':response}),131072)).hexdigest()
                             encode_content(response, 131072)
                             if objects:
-                                root = MappingProxyType(dict(binding) | {'recall_id': recall_id, 'version': 1, 'query_mode': mode,
+                                root = MappingProxyType(dict(binding) | {'recall_id': recall_id, 'version':2 if detail is not None else 1, 'query_mode': mode,
                                     'issued_at_us': now, 'expires_at_us': now + 86400000000, 'clock_observation': now,
                                     'response_digest': digest, 'intent_digest': intent, 'member_count': len(objects)})
                                 members = tuple(MappingProxyType({'recall_id': recall_id, 'object_id': obj['object_id'],
@@ -249,7 +269,10 @@ class QueryService:
                     except (InvalidValue, UnicodeError): return rejected(operation, OwnerFailure('INVALID_INPUT', 'query', 'INVALID_SHAPE'))
             reader_token = secrets.token_hex(16)
             self.index.retain_query(reader_token)
-            task, outcome = start_owned(run()); self.jobs.add(task); self.runtime.retain_external_work(task)
+            async def retained_run():
+                try:return await run()
+                finally:await resources.aclose()
+            task, outcome = start_owned(retained_run()); self.jobs.add(task); self.runtime.retain_external_work(task)
             def ended(job: asyncio.Task[object]) -> None:
                 if not job.cancelled(): job.exception()
                 self.jobs.discard(job)

@@ -25,6 +25,7 @@ class TableDefinition:
 
     name: str
     sql: str
+    record_schemas: tuple[RecordSchema, ...] = ()
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -120,6 +121,7 @@ class ResultBoundCommandDefinition:
     audit_intent_schema: RecordSchema
     audit_bindings: tuple[AuditResultBinding, ...]
     capacity_policy: object = None
+    input_policy: object = None
 
 
 @dataclass(frozen=True, slots=True)
