@@ -317,7 +317,7 @@ OPEN_EXISTING在存储验证原Schema／回执／审计后，由goals公开恢�
 
 #### 9.2.3 全命令族、固定分支与owner清单
 
-基线[原始unittest输出](/private/tmp/iris-shutdown-validation-iybs3qfe/unittest.log)第691行记录`command_count=64, command_descriptors=551815, repository_descriptors=21579, envelope=94, assembly=573488`。这是对应已验收版本的执行证据，不是新包测量。[command_descriptor／assembly_value](../../companion_memory/persistence/_codec.py)、[content_budget](../../companion_memory/runtime/content_budget.py)静态确认：participants只编码owner名；DDL表名和SQL进入仓储描述，查询statement的Schema不进入此字段；所有结果Schema、必要审计Schema／manifest、intent和五字段绑定均进入命令描述，不能只数业务入参。
+基线历史验收记录记载`command_count=64, command_descriptors=551815, repository_descriptors=21579, envelope=94, assembly=573488`。原记录引用临时unittest输出第691行；该临时文件现已不可用，本轮未重新核验原始输出，旧引用可通过Git定位。这是对应已验收版本的历史记录，不是新包测量。[command_descriptor／assembly_value](../../companion_memory/persistence/_codec.py)、[content_budget](../../companion_memory/runtime/content_budget.py)静态确认：participants只编码owner名；DDL表名和SQL进入仓储描述，查询statement的Schema不进入此字段；所有结果Schema、必要审计Schema／manifest、intent和五字段绑定均进入命令描述，不能只数业务入参。
 
 | 基线族（合计64） | 新组合处理与实际写owner／必要审计 |
 | --- | --- |

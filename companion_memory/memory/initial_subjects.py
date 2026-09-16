@@ -31,7 +31,7 @@ SEMANTIC_RESULT=RecordSchema(tuple(Field('facts',RecordSchema((Field('memory',SE
 def definition(participants,handler) -> ResultBoundCommandDefinition:
     """Use one new subject-only result vocabulary without broadening older facts."""
     requirements,bindings=audits('register_initial_subjects',('memory',))
-    semantic=any(p.owner_module=='memory' and p.schema_version==4 for p in participants)
+    semantic=any(p.owner_module=='memory' and p.schema_version in (4,5) for p in participants)
     requirements=(replace(requirements[0],change_schema=SEMANTIC_FACT if semantic else FACT,target_limit=6),)
     return ResultBoundCommandDefinition('memory','register_initial_subjects',2 if semantic else 1,INPUT,2 if semantic else 1,
         SEMANTIC_RESULT if semantic else RESULT,participants,requirements,handler,INTENT,bindings)

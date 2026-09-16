@@ -10,6 +10,7 @@ from hashlib import sha256
 from types import MappingProxyType
 from typing import cast
 import time
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
 from companion_memory.memory.semantic_tracking import MemorySemanticCoverage
 from companion_memory.memory.formats import record,sequence
@@ -18,6 +19,7 @@ from companion_memory.persistence.definitions import CommandSpec
 from companion_memory.persistence.owned_statements import StatementCatalog,OwnerFailure
 from companion_memory.persistence.semantic_catalog import SemanticRecords
 from companion_memory.persistence.semantic_records import Record,identity,isolate,number,string,RECEIPT
+from companion_memory.provider.daily_service import DailyProvider
 from companion_memory.provider.embedding_service import EmbeddingProvider,EmbeddingRequest,EmbeddingResult
 from companion_memory.provider.values import as_record
 from .semantic_repository import TABLES
@@ -27,10 +29,10 @@ from .semantic_material import render_document
 
 class SemanticWork:
     """One retrieval owner for prepared work, application and bounded recovery."""
-    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration,instance: str,
+    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredDailyConfiguration,instance: str,
                  memory: MemorySemanticCoverage,provider: EmbeddingProvider,definitions: tuple[CommandSpec,...],
                  checkpoint: Callable[[],None],normal: Callable[[],None],authorization: Callable[[str],bool]):
-        if (type(memory) is not MemorySemanticCoverage or type(provider) is not EmbeddingProvider or memory.objects.storage is not storage
+        if (type(memory) is not MemorySemanticCoverage or type(provider) is not (DailyProvider if type(configuration) is StoredDailyConfiguration else EmbeddingProvider) or memory.objects.storage is not storage
                 or memory.objects.configuration is not configuration or provider.configuration is not configuration
                 or provider.instance!=instance or memory.objects.instance_id!=instance):raise ValueError('Native semantic owners must share one instance.')
         self.catalog=catalog;self.storage=storage;self.configuration=configuration;self.instance=instance;self.memory=memory;self.provider=provider
@@ -42,6 +44,31 @@ class SemanticWork:
         self._binding: tuple[EmbeddingRequest,Record]|None=None;self._result: EmbeddingResult|None=None
         self._local_failure: tuple[str,str]|None=None;self._not_sent:tuple[str,str]|None=None
         provider.bind_retrieval(catalog)
+
+    def hold_binding(self,request:EmbeddingRequest,intent:Record) -> Callable[[],None]:
+        """Retain a native first-request binding through actual transaction end."""
+        if self._binding is not None:raise OwnerFailure('RESOURCE_BUSY','state','CLEANUP_PENDING',True)
+        binding=(request,intent);self._binding=binding
+        def release():
+            if self._binding is binding:self._binding=None
+        return release
+
+    def hold_received(self,result:EmbeddingResult) -> Callable[[],None]:
+        """Retain complete Provider material until its reception transaction ends."""
+        if self._result is not None:raise OwnerFailure('RESOURCE_BUSY','state','CLEANUP_PENDING',True)
+        self._result=result
+        def release():
+            if self._result is result:self._result=None
+            self.provider.release_result(result)
+        return release
+
+    def hold_unsent(self,work_id:str,error:str) -> Callable[[],None]:
+        """Supply local absence while the Provider's native absence lease is held."""
+        if self._not_sent is not None:raise OwnerFailure('RESOURCE_BUSY','state','CLEANUP_PENDING',True)
+        proof=(work_id,error);self._not_sent=proof
+        def release():
+            if self._not_sent is proof:self._not_sent=None
+        return release
 
     @staticmethod
     def work_id(payload: Record,instance: str) -> str:
@@ -114,7 +141,7 @@ class SemanticWork:
                 if control['scheduler']=='PAUSED' and control['pause_reason']==payload['reason']:raise OwnerFailure('PRECONDITION_FAILED','state','NO_CHANGE')
                 return self._finish(uow,control,targets,(),scheduler='PAUSED',pause_reason=payload['reason'])
             self.normal()
-            if (control['scheduler']!='PAUSED' or control['pause_reason'] in ('UNKNOWN','INTEGRITY') or not self.authorization(string(payload['authorization_digest']))):
+            if (control['scheduler']!='PAUSED' and type(self.configuration) is not StoredDailyConfiguration or control['pause_reason'] in ('UNKNOWN','INTEGRITY') or not self.authorization(string(payload['authorization_digest']))):
                 raise OwnerFailure('ACCESS_DENIED','binding','BINDING_MISMATCH')
             return self._finish(uow,control,targets,(),scheduler='ENABLED',pause_reason='NONE',authorization_digest=payload['authorization_digest'])
         if kind=='prepare':

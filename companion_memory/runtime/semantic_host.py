@@ -92,6 +92,16 @@ class SemanticHost:
         if self.state!='READY' or self.runtime is None or self.runtime.gate.information_checkpoint() is None:
             raise OwnerFailure('MODE_BLOCKED','state','NOT_READY')
 
+    def enable_semantic_dispatch(self) -> None:
+        """Activate this host's volatile semantic gate after confirmed resume."""
+        self._scheduling=True
+
+    def observe_semantic_control(self,control:Record) -> None:
+        self._dispatch_control=control
+
+    def semantic_dispatch_allowed(self,control:Record) -> bool:
+        return self._scheduling and control['scheduler']=='ENABLED' and (control['last_cleanup_at'] is None or time.time_ns()//1000-number(control['last_cleanup_at'])>=30000000)
+
     def _authorized(self,digest: str) -> bool:
         authorization=self.authorization
         return (authorization is not None and authorization.grant.digest==digest and authorization._activated

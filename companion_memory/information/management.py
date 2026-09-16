@@ -13,6 +13,7 @@ import asyncio
 import time
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
 from companion_memory.persistence import (AuditFieldBinding, AuditResultBinding, Field, RecordSchema, RepositoryDefinition,
     ResultBoundCommandDefinition, ResultBoundCommand, UnitOfWork, PersistenceService, Committed, Found, NotFound,
@@ -85,10 +86,10 @@ class ManagementAssembly:
     """Static owner handlers declared before storage is constructed."""
     def __init__(self, repositories: tuple[RepositoryDefinition, ...]):
         by_owner = {r.owner_module: r for r in repositories}
-        self.semantic_format=by_owner['memory'].schema_version==4
+        self.semantic_format=by_owner['memory'].schema_version in (4,5)
         self.retrieval: LocalIndex | None = None
         self.goals: GoalsService | None = None; self.state: StateOwner | None = None
-        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | None = None
+        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration | None = None
         self._gate: ContentGate | None = None
         self.local_recovery: LocalGoalRecovery | None = None
         self._ports: dict[str, ManagementPort] = {}
@@ -199,7 +200,7 @@ class ManagementAssembly:
                     if self.goals is None:
                         raise OwnerFailure('INVALID_STATE', 'goal', 'NOT_READY')
                     owner = 'goals'
-                    goal_authority = GoalAuthority(grant.route_ids, text(values['request_key']))
+                    goal_authority = GoalAuthority(grant.route_ids, text(values['request_key']),entry_id=grant.entry_id if self.goals.daily_format else None)
                     if kind == 'goal_inject_internal':
                         work = self._formed_goals.get(binding_id)
                         if work is None or values['request_key'] != self.operation_key(port, kind, work.key):
@@ -227,7 +228,7 @@ class ManagementAssembly:
         oid = next((value[n] for n in ('goal_id', 'activity_id', 'task_id', 'plan_id', 'delivery_id', 'page_id', 'generation_id') if value.get(n) is not None), None)
         return (MappingProxyType({'object_id': oid, 'revision': value['expected_revision']}),)
 
-    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str,
+    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str,
              goals: GoalsService, state: StateOwner, retrieval: LocalIndex, gate: ContentGate, retain: Callable[[asyncio.Task[object]], None],
              recovering: Callable[[], bool] = lambda: False) -> None:
         if self._configuration is not None:

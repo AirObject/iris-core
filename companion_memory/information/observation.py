@@ -21,6 +21,8 @@ from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.persistence.schema import InvalidValue, ValueTooLarge
 from companion_memory.provider.ports import ObserverPort
 from companion_memory.provider.embedding_observation import EmbeddingObserver
+from companion_memory.provider.daily_observation import DailyProviderObserver
+from companion_memory.runtime.daily_observation import DailyObservations
 from companion_memory.provider.values import InvalidData
 from companion_memory.provider.ledger import LedgerFailure
 from companion_memory.provider.values import Found as ProviderFound, NotFound as ProviderNotFound, Failed as ProviderFailed
@@ -45,7 +47,7 @@ def owned_projection(value: object, depth: int = 0) -> Value:
 class InformationObserver:
     _service: InformationObservations
     _scopes: frozenset[str]
-    _provider: ObserverPort | EmbeddingObserver | None
+    _provider: ObserverPort | EmbeddingObserver | DailyProviderObserver | None
 
     def __init__(self): raise TypeError('Observation requires an explicit native scope.')
     async def read(self, scope: str, query: object): return await self._service.read(self, scope, query)
@@ -53,16 +55,21 @@ class InformationObserver:
 
 class InformationObservations:
     def __init__(self, runtime: ContentRuntimeService, tickets: RecallTickets, state: StateOwner, goals: GoalsService,*,
-                 semantic:SemanticWork|None=None,cache:SemanticQueryCache|None=None):
+                 semantic:SemanticWork|None=None,cache:SemanticQueryCache|None=None,daily:DailyObservations|None=None):
         self.runtime, self.tickets, self.state, self.goals = runtime, tickets, state, goals
         self.ports: dict[int, InformationObserver] = {}
         self.jobs: set[asyncio.Task[object]] = set()
         self.semantic=semantic;self.cache=cache
+        if daily is not None and (type(daily) is not DailyObservations or daily.host.runtime is not runtime):raise InvalidValue()
+        self.daily=daily
 
-    def bind(self, scopes: frozenset[str], provider: ObserverPort | EmbeddingObserver | None = None) -> InformationObserver:
-        if type(scopes) is not frozenset or not scopes <= {'retrieval', 'retrieval/semantic','state', 'goals', 'provider/usage', 'provider/requests', 'provider/budget'} or len(self.ports) >= 16:
+    def bind(self, scopes: frozenset[str], provider: ObserverPort | EmbeddingObserver | DailyProviderObserver | None = None) -> InformationObserver:
+        allowed={'learning','media','goal_dedup'} if self.daily is not None else set()
+        if type(scopes) is not frozenset or not scopes <= allowed | {'retrieval', 'retrieval/semantic','state', 'goals', 'provider/usage', 'provider/requests', 'provider/budget'} or len(self.ports) >= 16:
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
-        if any(scope.startswith('provider/') for scope in scopes) and type(provider) not in (ObserverPort,EmbeddingObserver):
+        if provider is None and self.daily is not None and any(scope.startswith('provider/') for scope in scopes):provider=self.daily.provider
+        if type(provider) is DailyProviderObserver and (self.daily is None or provider is not self.daily.provider):raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
+        if any(scope.startswith('provider/') for scope in scopes) and type(provider) not in (ObserverPort,EmbeddingObserver,DailyProviderObserver):
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'OPERATION_NOT_GRANTED')
         if 'retrieval/semantic' in scopes and (self.semantic is None or self.cache is None):raise OwnerFailure('ACCESS_DENIED','capability','OPERATION_NOT_GRANTED')
         port = object.__new__(InformationObserver)
@@ -109,6 +116,9 @@ class InformationObservations:
                                 raise OwnerFailure('STORAGE_FAILED', 'storage', 'READ_FAILED', result.error.cleanup_pending)
                             if type(result) is not ProviderFound: raise InvalidValue()
                             view = owned_projection(result.value)
+                        elif scope in ('learning','media','goal_dedup'):
+                            if self.daily is None:raise InvalidValue()
+                            view=await self.daily.read(scope,query)
                         elif scope=='retrieval/semantic':
                             if set(query)-{'after'} or 'after' in query and type(query['after']) is not str:raise InvalidValue()
                             view=await self._semantic_view(query.get('after',''),now)

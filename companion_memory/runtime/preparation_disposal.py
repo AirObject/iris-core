@@ -1,4 +1,4 @@
-"""Fixed original plans dispose only expired or materially changed preparations.
+"""Fixed original plans dispose expired, changed or proven unusable preparations.
 
 A plan captures every payload and media reference revision under the writer.
 Execution checks the entire closure before removing any consumer. PROCESSING
@@ -60,13 +60,15 @@ class PreparationDisposal:
         self.commands = tuple(commands)
 
     def reason(self, uow, preparation, now):
-        """Only persistent total expiry or actual FIFO membership changes dispose."""
+        """Use persistent expiry, native input rejection or actual FIFO changes."""
         a = self.assembly
         if preparation['phase'] not in ('SELECTED', 'CLAIMED', 'MEDIA_READY', 'PARKED'):
             raise OwnerFailure('PRECONDITION_FAILED', 'state', 'WORK_FENCED')
         if now >= preparation['deadline_at_us'] or now < preparation['last_observed_at_us']:
             return 'EXPIRED'
         source = decode_preparation(preparation['manifest'])
+        if a.daily_format and a.daily_input_failures is not None and a.daily_input_failures.rejected_preparation(uow,sequence(source['ordered_members'])):
+            return 'INVALIDATED'
         platform = a.configuration.candidate.platform(source['platform_id'])
         selected = a.buffers.select(uow, preparation['entry_id'], platform.count('history_context_count'), platform.count('target_count'), platform.count('recent_context_count'))
         if selected != tuple((record(member)['role'], record(member)['message_id']) for member in sequence(source['ordered_members'])):

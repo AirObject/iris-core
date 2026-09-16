@@ -38,7 +38,7 @@ def normalize(observation: UsageObservation, account: Record, profile: Record, r
         from .usage_only import normalize as usage_only
         if reserved!=0:raise InvalidData()
         return usage_only(observation,account,profile,not_sent=not_sent)
-    deepseek=profile['wire_protocol']=='DEEPSEEK_CHAT_JSON_V1'
+    deepseek=profile['wire_protocol'] in ('DEEPSEEK_CHAT_JSON_V1','DEEPSEEK_IMAGE_JSON_V1')
     original_raw=observation.raw_usage
     if deepseek:
         # The estimator consumes the hit count; the persisted raw alias is separate.

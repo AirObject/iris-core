@@ -138,6 +138,21 @@ class MediaWorkTransactions:
         if not proof.confirmed_sent or proof.request['outcome'] == 'MODE_BLOCKED':
             raise OwnerFailure('RESOURCE_BUSY', 'state', 'WAITING_ADMISSION')
         request = proof.request; sensitive = request['outcome'] == 'SENSITIVE_REFUSAL' and proof.terminal_reason == 'SENSITIVE_INFORMATION'
+        return self._store_effects(uow,work,request,proof.result,sensitive,now_us)
+
+    def store_daily(self,uow:UnitOfWork,work_id:str,expected_revision:int,request,output,now_us:int):
+        """Apply only a native daily consumer's already verified original result."""
+        owner=self.media;work=owner._get('work',uow,'work_id',work_id)
+        from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
+        if type(owner.configuration) is not StoredDailyConfiguration or work['revision']!=expected_revision or work['phase'] not in ('REQUEST_ASSOCIATED','REMOTE_UNKNOWN'):
+            raise OwnerFailure('PRECONDITION_FAILED','revision','WORK_FENCED')
+        if request['operation_key']!=work['original_operation_key'] or request['object_id']!=work['provider_request_id'] or request['phase']!='TERMINAL':raise InvalidValue()
+        return self._store_effects(uow,work,request,output,request['outcome']=='SENSITIVE_REFUSAL',now_us)
+
+    def _store_effects(self,uow,work,request,output,sensitive,now_us):
+        from .service import identity
+        from companion_memory.provider.values import as_record
+        owner=self.media;work_id=cast(str,work['work_id']);request_id=cast(str,request['object_id'])
         interpretation: dict[str, Value] = {'interpretation_version': 1, 'interpretation_id': identity('interpretation', work_id),
             'blob_id': work['blob_id'], 'generation': work['generation'], 'task': work['task'], 'modality': work['modality'], 'origin': 'INTERNAL',
             'status': 'REFUSED' if sensitive else 'FAILED', 'text': REFUSAL_TEXT if sensitive else None, 'coverage': 'UNSPECIFIED',
@@ -145,7 +160,7 @@ class MediaWorkTransactions:
             'scope_kind': 'CONTENT', 'scope_id': work['authorization_domain_id'], 'event_id': None, 'provider_request_id': request_id,
             'created_at_us': now_us, 'failure_reason': None if sensitive else 'OTHER_REFUSAL' if request['outcome'] == 'OTHER_REFUSAL' else 'PROVIDER_FAILURE'}
         if request['outcome'] == 'SUCCEEDED':
-            response = as_record(proof.result); text = response['text']
+            response = as_record(output); text = response['text']
             if type(text) is not str: raise InvalidValue()
             interpretation.update(status='EMPTY' if text == '' else 'COMPLETE', text=text, coverage='COMPLETE', source_ref=cast(str, request['handoff_id']), failure_reason=None)
         try:
@@ -186,3 +201,13 @@ class MediaWorkTransactions:
         owner._reference(uow, cast(str, work['blob_id']), cast(int, work['generation']), 'PROCESSING', work_id, cast(str, work['occurrence_id']), False, now_us)
         payload = ingress.event(uow, cast(str, work['message_id']))
         ingress.release_payload(uow, cast(str, work['message_id']), 'PROCESSING', work_id, cast(int, payload['references_revision']))
+
+    def release_unsent_processing(self,uow:UnitOfWork,ingress:ContentIngressTransactions,work,now_us:int):
+        """Release an input-rejected occurrence after its same-UoW native absence proof."""
+        owner=self.media
+        current=owner._get('work',uow,'work_id',work['work_id'])
+        if not owner.daily_format or current['phase']!='PARKED' or current['request_association_state']!='INPUT_REJECTED' or current['provider_request_id'] is not None:
+            raise OwnerFailure('PRECONDITION_FAILED','state','WORK_FENCED')
+        owner._reference(uow,cast(str,work['blob_id']),cast(int,work['generation']),'PROCESSING',cast(str,work['work_id']),cast(str,work['occurrence_id']),False,now_us)
+        payload=ingress.event(uow,cast(str,work['message_id']))
+        ingress.release_payload(uow,cast(str,work['message_id']),'PROCESSING',cast(str,work['work_id']),cast(int,payload['references_revision']))

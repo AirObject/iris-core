@@ -12,7 +12,7 @@ import time
 from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import cast
+from typing import cast,Protocol
 from weakref import WeakValueDictionary
 from companion_memory.cognition.synthetic_input import SyntheticCandidateInput
 from companion_memory.cognition.synthetic_graph import SyntheticGraphInput
@@ -31,11 +31,17 @@ from companion_memory.persistence.schema import freeze_value, InvalidValue, vali
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.provider import ProviderService
+from companion_memory.provider.daily_service import DailyProvider
 from .content_assembly import ContentAssembly, stable
 from .content_gate import ContentGate
 from .content_media import ContentMedia, MediaPolicy
 from .results import RuntimeError, Rejected, NotCommitted as ContentNotCommitted, Unconfirmed as ContentUnconfirmed
 
+
+class DailyLearningControl(Protocol):
+    """Native daily learning orchestration installed by the complete host."""
+    async def learn_batch(self,source:MappingProxyType[str,Value],*,fresh:bool,admission_event:str|None=None) -> object: ...
+    async def require_current(self,deadline:float) -> object: ...
 
 @dataclass(frozen=True, slots=True, weakref_slot=True, init=False)
 class ContentEntryPort:
@@ -63,27 +69,28 @@ async def _entry_call(port, operation, key, argument):
 
 class ContentRuntimeService:
     """Trusted orchestration with bounded actual jobs and independent read services."""
-    def __init__(self, assembly: ContentAssembly, provider: ProviderService,
-                 candidates: SyntheticCandidateInput | SyntheticGraphInput | SyntheticMutationInput | SyntheticMixedInput | SyntheticGoalInput | TextCandidateInput, learning_profile: str, media_policy: MediaPolicy | None, *, gate: ContentGate | None = None, embedding=None):
-        if type(assembly) is not ContentAssembly or not assembly._bound or type(provider) is not ProviderService or type(candidates) not in (SyntheticCandidateInput, SyntheticGraphInput, SyntheticMutationInput, SyntheticMixedInput, SyntheticGoalInput,TextCandidateInput) or not valid_identifier(learning_profile) or type(candidates) is SyntheticGoalInput and not assembly.information_format:
+    def __init__(self, assembly: ContentAssembly, provider: ProviderService | DailyProvider,
+                 candidates: SyntheticCandidateInput | SyntheticGraphInput | SyntheticMutationInput | SyntheticMixedInput | SyntheticGoalInput | TextCandidateInput | None, learning_profile: str, media_policy: MediaPolicy | None, *, gate: ContentGate | None = None, embedding=None):
+        if type(assembly) is not ContentAssembly or not assembly._bound or type(provider) is not (DailyProvider if assembly.daily_format else ProviderService) or (candidates is not None if assembly.daily_format else type(candidates) not in (SyntheticCandidateInput, SyntheticGraphInput, SyntheticMutationInput, SyntheticMixedInput, SyntheticGoalInput,TextCandidateInput)) or not valid_identifier(learning_profile) or type(candidates) is SyntheticGoalInput and not assembly.information_format:
             raise ValueError('Bound actual owners and explicit model/candidate inputs are required.')
         if assembly.text_format!=(type(candidates) is TextCandidateInput):
             raise ValueError('Text candidates require the independent text assembly.')
         if (type(candidates) is TextCandidateInput and
-                (candidates.configuration is not assembly.configuration or not provider._assembly.text_generation or media_policy is not None)):
+                (candidates.configuration is not assembly.configuration or type(provider) is not ProviderService or not provider._assembly.text_generation or media_policy is not None)):
             raise ValueError('Native text resources and their exact stored configuration are required.')
         self.assembly = assembly; self.provider = provider; self.candidates = candidates; self.learning_profile = learning_profile
         from companion_memory.provider.embedding_service import EmbeddingProvider
         if assembly.semantic_format:
-            if type(embedding) is not EmbeddingProvider or embedding.configuration is not assembly.configuration or embedding.storage is not assembly.storage or media_policy is not None:
+            if type(embedding) is not (DailyProvider if assembly.daily_format else EmbeddingProvider) or embedding.configuration is not assembly.configuration or embedding.storage is not assembly.storage or media_policy is not None:
                 raise ValueError('Native semantic runtime owner required.')
         elif embedding is not None:raise ValueError('Embedding requires the semantic assembly.')
         self.embedding=embedding
+        self.daily_learning:DailyLearningControl|None=None
         self.settings = assembly.configuration.candidate.runtime
-        if not assembly.text_format:self.provider._registration_limit = assembly.configuration.candidate.content.integer('memory.read_page_size')
+        if not assembly.text_format and type(self.provider) is ProviderService:self.provider._registration_limit = assembly.configuration.candidate.content.integer('memory.read_page_size')
         self.text_contexts:TextContextCollection|None=None
         capacity=self.settings.integer('runtime.max_active_entries') + assembly.configuration.candidate.content.integer('media.processing_concurrency')
-        if gate is not None and (not assembly.text_format or type(gate) is not ContentGate or gate.capacity!=capacity or gate.state!='RECOVERING'
+        if gate is not None and (not (assembly.text_format or assembly.daily_format) or type(gate) is not ContentGate or gate.capacity!=capacity or gate.state!='RECOVERING'
                 or gate.epoch!=0 or gate._grants or gate._initial_persona is not None):raise ValueError('An unopened native text gate is required.')
         self.gate = gate if gate is not None else ContentGate(capacity)
         from .content_modes import ContentFocus
@@ -127,10 +134,10 @@ class ContentRuntimeService:
         """Recover original local work before exposing admission; repeated calls join."""
         from .content_recovery import recover_original_work
         if self.state == 'READY': return Found(MappingProxyType({'state': 'READY'}))
-        provider_ready=self.embedding._initialized if self.embedding is not None else self.provider.get_health().lifecycle=='READY'
+        provider_ready=self.provider.ready if type(self.provider) is DailyProvider else self.embedding._initialized if self.embedding is not None else self.provider.get_health().lifecycle=='READY'
         if self.state != 'RECOVERING' or not provider_ready:
             return Rejected(RuntimeError('INVALID_STATE', 'initialize', 'state', 'NOT_READY'))
-        if self.embedding is None and (self.provider._resources is None or self.provider._resources.gate is not self.gate.binding):
+        if self.embedding is None and (type(self.provider) is not ProviderService or self.provider._resources is None or self.provider._resources.gate is not self.gate.binding):
             return Rejected(RuntimeError('ACCESS_DENIED', 'initialize', 'capability', 'BINDING_MISMATCH'))
         if self.media_policy is not None and self.media is None: self.media = ContentMedia(self, self.media_policy)
         async def recover():
@@ -156,8 +163,8 @@ class ContentRuntimeService:
                     await self.focus.transfer_staged(modes[0]['run_id'])
                 if self.state != 'RECOVERING': return Rejected(RuntimeError('INVALID_STATE', 'initialize', 'state', 'SERVICE_CLOSED'))
                 self.state = 'READY'
-                return Found(MappingProxyType({'state': 'READY', 'storage_execution': 'ACTUAL', 'model_adapter': 'REMOTE_PROVIDER' if self.assembly.text_format else 'SIMULATED',
-                    'candidate_origin': 'MODEL_VALIDATED' if self.assembly.text_format else 'SYNTHETIC'}))
+                return Found(MappingProxyType({'state': 'READY', 'storage_execution': 'ACTUAL', 'model_adapter': 'REMOTE_PROVIDER' if self.assembly.text_format or self.assembly.daily_format else 'SIMULATED',
+                    'candidate_origin': 'MODEL_VALIDATED' if self.assembly.text_format or self.assembly.daily_format else 'SYNTHETIC'}))
             except OwnerFailure as failure:
                 return Rejected(RuntimeError(failure.code, 'initialize', failure.field, failure.reason, failure.cleanup_pending))
             except (InvalidValue, KeyError, IndexError, UnicodeError):
@@ -169,8 +176,9 @@ class ContentRuntimeService:
 
     def bind_entry(self, entry_id: str) -> ContentEntryPort:
         """Trusted host setup limits the capability to one registered entry ID."""
-        if self.assembly.semantic_format:raise ValueError('The embedding host grants no learning entry capability.')
-        if self.state != 'READY' or len(self._entries) >= self.settings.integer('runtime.max_active_entries') or not valid_identifier(entry_id): raise ValueError('Ready registered entry scope required.')
+        if self.assembly.semantic_format and not self.assembly.daily_format:raise ValueError('The embedding host grants no learning entry capability.')
+        capacity=self.settings.integer('runtime.read_page_size' if self.assembly.daily_format else 'runtime.max_active_entries')
+        if self.state != 'READY' or len(self._entries) >= capacity or not valid_identifier(entry_id): raise ValueError('Ready registered entry scope required.')
         port = object.__new__(ContentEntryPort)
         object.__setattr__(port, '_runtime', self); object.__setattr__(port, '_entry', entry_id)
         self._entries[id(port)] = port
@@ -262,7 +270,10 @@ class ContentRuntimeService:
         if identity in self._jobs: return Rejected(RuntimeError('RESOURCE_BUSY', operation, 'state', 'OWNER_ACTIVE', True))
         if len(self._jobs) >= self.settings.integer('runtime.max_active_entries'):
             return Rejected(RuntimeError('RESOURCE_BUSY', operation, 'state', 'ADMISSION_FULL'))
-        admitted_deadline = time.monotonic() + self.settings.integer('runtime.operation_timeout_ms') / 1000
+        timeout_ms=self.settings.integer('runtime.operation_timeout_ms')
+        if self.assembly.daily_format and operation=='run_learning':
+            timeout_ms=1200000
+        admitted_deadline = time.monotonic() + timeout_ms / 1000
         async def run():
             deadline = self._request_deadline.set(admitted_deadline)
             try:
@@ -328,7 +339,26 @@ class ContentRuntimeService:
             if await media.rows.read('event_occurrences', {'message_id': mid}): return True
         return False
 
-    async def learn_entry(self, entry_id: str, key: str) -> object:
+    async def daily_coverage(self,entry_id:str,upper:int|None):
+        """Observe accepted FIFO coverage without creating a preparation or receipt."""
+        if not self.assembly.daily_format:raise InvalidValue()
+        a=self.assembly;state=(await a.buffers.rows.read('get',{'entry_id':entry_id}))[0]
+        if upper is not None and upper>=cast(int,state['next_sequence']):raise InvalidValue()
+        entry=(await a.ingress.rows.read('entry',{'entry_id':entry_id}))[0]
+        platform=a.configuration.candidate.platform(cast(str,entry['platform_id']))
+        positions=await a.buffers.rows.read('fifo',{'entry_id':entry_id,'state':'NORMAL','limit':platform.count('target_count')+platform.count('recent_context_count')})
+        if len(positions)<platform.count('target_count')+platform.count('recent_context_count'):return None
+        end=cast(int,positions[platform.count('target_count')-1]['entry_seq'])
+        return None if upper is not None and end>upper else end
+
+    async def drive_daily_trigger(self,entry_id:str,key:str,through_seq:int):
+        """Retain a daily dispatch's absolute budget independently of its wake caller."""
+        if not self.assembly.daily_format:raise InvalidValue()
+        deadline=self._request_deadline.set(time.monotonic()+1200)
+        try:return await self.learn_entry(entry_id,key,through_seq=through_seq)
+        finally:self._request_deadline.reset(deadline)
+
+    async def learn_entry(self, entry_id: str, key: str,*,through_seq:int|None=None) -> object:
         from .content_learning import learn_batch
         preparation_id = stable('preparation', self.assembly.configuration.database_id, entry_id, key)
         batch_id = stable('batch', preparation_id); run_id = stable('run', preparation_id)
@@ -342,12 +372,17 @@ class ContentRuntimeService:
             if self.text_contexts is None:
                 return Rejected(RuntimeError('PRECONDITION_FAILED','run_learning','state','PERSONA_REQUIRED'))
             await self.text_contexts.require_current(time.monotonic()+self.remaining_request())
+        if self.assembly.daily_format:
+            if self.daily_learning is None:return Rejected(RuntimeError('PRECONDITION_FAILED','run_learning','state','PERSONA_REQUIRED'))
+            await self.daily_learning.require_current(time.monotonic()+self.remaining_request())
         from .content_transfer import transfer_entry
         transferred = await transfer_entry(self, entry_id)
         if type(transferred) not in (Committed, Found) and not (type(transferred) is ContentNotCommitted and transferred.error is not None and transferred.error.reason == 'BUFFER_FULL'):
             return transferred
         rows = await self.assembly.rows.read('preparations_get', {'preparation_id': preparation_id})
         if not rows:
+            if through_seq is not None and await self.daily_coverage(entry_id,through_seq) is None:
+                return Found(MappingProxyType({'state':'NO_TARGET','entry_id':entry_id,'new_sends':0}))
             state = (await self.assembly.buffers.rows.read('get', {'entry_id': entry_id}))[0]
             if state['reservation_id'] is not None:
                 if state['reservation_kind'] == 'BATCH':
@@ -398,6 +433,7 @@ class ContentRuntimeService:
         if not self._commands: self.assembly._verified_terminals.clear()
         for bid, (grant, port) in tuple(self._learning_held.items()):
             if port.consumers_ended():
+                if type(self.provider) is not ProviderService:raise InvalidValue()
                 self.provider.revoke(port); self.gate.revoke(grant); self._learning_held.pop(bid)
         if self.media is not None: self.media.release_ended_capabilities()
 

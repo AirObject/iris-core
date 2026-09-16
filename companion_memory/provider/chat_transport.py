@@ -150,9 +150,20 @@ class _Reader:
 
 class ChatTransport:
     """Fixed endpoint and reference-bound transport; one actual consumer at a time."""
+    _daily_binding:Record
+
+    @property
+    def execution_kind(self) -> str:
+        """Nonsecret physical transport origin for native activation checks."""
+        return 'CONTROLLED' if self._endpoint.host=='127.0.0.1' else 'REAL'
+
     def __init__(self, settings: Record, resolver: CredentialResolver, monotonic: Callable[[], float], *, evidence: WireEvidence|None=None):
         from companion_memory.configuration.text_validation import validate_transport
         validate_transport(settings)
+        self._bind_endpoint(settings,resolver,monotonic,evidence)
+
+    def _bind_endpoint(self,settings:Record,resolver:CredentialResolver,monotonic:Callable[[],float],evidence:WireEvidence|None):
+        """Install only a caller-validated closed endpoint and bounded settings."""
         if type(resolver) is not CredentialResolver or not callable(monotonic) or evidence is not None and type(evidence) is not WireEvidence:
             raise InvalidData()
         parsed = urlsplit(cast(str, settings['origin']))
@@ -188,6 +199,37 @@ class ChatTransport:
             ssl.create_default_context() if loopback_port is None else None)
         owned._resolver=resolver;owned._monotonic=monotonic;owned._slot=threading.Lock();owned._evidence=evidence;owned._format='EMBEDDING'
         return owned
+
+    @classmethod
+    def daily(cls,settings:Record,resolver:CredentialResolver,monotonic:Callable[[],float],*,evidence:WireEvidence|None=None) -> ChatTransport:
+        """Bind the full native daily role without resolving a credential or opening I/O."""
+        from companion_memory.configuration.daily_schema import ROLE_TRANSPORT
+        from companion_memory.configuration.text_schema import TRANSPORT
+        from companion_memory.persistence.semantic_records import isolate
+        from types import MappingProxyType
+        bound=isolate(ROLE_TRANSPORT,settings,8192)
+        image=bound['role']=='MEDIA';protocol=bound['protocol']
+        if protocol=='MINIMAX_IMAGE_JSON_V1' and image:origin,base='https://api.minimax.io','/v1'
+        elif protocol==('DEEPSEEK_IMAGE_JSON_V1' if image else 'DEEPSEEK_CHAT_JSON_V1'):origin,base='https://api.deepseek.com',''
+        else:raise InvalidData()
+        if (bound['origin'],bound['base_path'],bound['endpoint_path'])!=(origin,base,'/chat/completions'):raise InvalidData()
+        transport=object.__new__(cls)
+        transport._bind_endpoint(MappingProxyType({f.name:bound[f.name] for f in TRANSPORT.fields}),resolver,monotonic,evidence)
+        transport._settings=MappingProxyType({**transport._settings,'request_max_bytes':2097152 if bound['role']=='MEDIA' else 1048576})
+        transport._format='DAILY_GENERATION';transport._daily_binding=bound
+        return transport
+
+    @classmethod
+    def controlled_daily_loopback(cls,settings:Record,resolver:CredentialResolver,monotonic:Callable[[],float],port:int,*,evidence:WireEvidence|None=None) -> ChatTransport:
+        """Explicit local test endpoint; all original role settings stay bound."""
+        if type(port) is not int or not 1<=port<=65535:raise InvalidData()
+        transport=cls.daily(settings,resolver,monotonic,evidence=evidence)
+        transport._endpoint=_Endpoint('127.0.0.1',port,transport._endpoint.path,False,None)
+        return transport
+
+    def matches_daily(self,settings:Record) -> bool:
+        """Expose only exact resource binding equality, with no resolver or endpoint."""
+        return self._format=='DAILY_GENERATION' and getattr(self,'_daily_binding',None)==settings
 
     @classmethod
     def controlled_loopback(cls, settings: Record, resolver: CredentialResolver, monotonic: Callable[[], float],

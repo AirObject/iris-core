@@ -7,6 +7,7 @@ from types import MappingProxyType
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
 from companion_memory.persistence import Field, RecordSchema, PersistenceService, UnitOfWork, Value
 from companion_memory.persistence.owned_statements import StatementCatalog, OwnerFailure
 from companion_memory.information.records import Record, ID, TIME, TEXT, REVISION, BOOL, checked, fact, identity, integer, text, record, decode
@@ -27,7 +28,7 @@ END_INPUT = RecordSchema((Field('activity_id', ID), Field('expected_revision', R
 
 class StateOwner:
     """Native state owner with an explicit initial pointer and one writer host."""
-    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str):
+    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str):
         self._records = OwnedRecords(catalog, storage, instance_id, LAYOUTS)
         self.configuration = configuration
         self.instance_id = instance_id

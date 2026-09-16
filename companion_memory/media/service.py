@@ -25,6 +25,7 @@ from weakref import WeakValueDictionary
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration,stored_text_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration,stored_semantic_configuration_issue
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.persistence import (
     AuditFieldBinding, AuditResultBinding, BoundedTextSchema, Committed, Field, Found,
     NotCommitted, PersistenceService, RecordSchema, RecoveryHandle, Rejected,
@@ -124,8 +125,9 @@ class MediaUploadPort:
 
 class MediaService:
     """Static media owner and lifecycle service, using exclusively configured limits."""
-    def __init__(self):
-        self.catalog = media_catalog(); self.repositories = (self.catalog.definition,)
+    def __init__(self,*,daily_format:bool=False):
+        self.daily_format = daily_format
+        self.catalog = media_catalog(daily_format=daily_format); self.repositories = (self.catalog.definition,)
         self.files: PhysicalDirectories
         from .lifecycle import MediaLifecycle
         self.lifecycle = MediaLifecycle(self)
@@ -200,10 +202,17 @@ class MediaService:
                     AuditFieldBinding('change', 'RESULT', ('change',)),)),)))
         self.commands = tuple(commands)
 
-    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str) -> None:
+    def daily_reference_targets(self,uow:UnitOfWork,blob_ids:tuple[str,...]):
+        """Read actual bounded blob reference revisions under the media owner."""
+        from companion_memory.persistence.daily_results import target
+        if type(self.configuration) is not StoredDailyConfiguration or not 1<=len(blob_ids)<=8:raise InvalidValue()
+        return tuple(target(bid,cast(int,self._blob(uow,bid)['references_revision'])) for bid in blob_ids)
+
+    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str) -> None:
         """Bind once to actual persistent configuration and an exclusive owner lease."""
         if self._bound or (type(configuration) is not StoredContentConfiguration and stored_text_configuration_issue(configuration) is not None
-                and stored_semantic_configuration_issue(configuration) is not None): raise ValueError('Native unbound media configuration required.')
+                and stored_semantic_configuration_issue(configuration) is not None and stored_daily_configuration_issue(configuration) is not None): raise ValueError('Native unbound media configuration required.')
+        if type(configuration) is StoredDailyConfiguration and configuration.scope_id!=instance_id:raise ValueError('Daily media scope differs.')
         self.storage, self.configuration, self.instance_id = storage, configuration, instance_id
         self.settings = configuration.candidate.content
         from .work_rows import MediaWorkRows
@@ -486,12 +495,16 @@ class MediaService:
         if not done: raise OwnerFailure('TIMEOUT', 'state', 'DEADLINE_EXCEEDED', True)
         return future.result()
 
-    async def initialize(self, resources: MediaResources, mode: str):
+    async def initialize(self, resources: MediaResources, mode: str, *, continuation=None):
         """Join one retained root acquisition/recovery without releasing old pins twice."""
         if not self._bound or self._closing or type(resources) is not MediaResources:
             return MediaError('INVALID_STATE', 'initialize_media', 'state', 'NOT_READY')
         if mode not in ('CREATE_NEW', 'OPEN_EXISTING') or not valid_identifier(resources.root_id):
             return MediaError('INVALID_INPUT', 'initialize_media', 'input', 'INVALID_SHAPE')
+        if continuation is not None:
+            from companion_memory.runtime.daily_initialization import DailyInitialization
+            if type(continuation) is not DailyInitialization or mode!='CREATE_NEW' or not continuation.permits_media_continuation(self.configuration):
+                return MediaError('ACCESS_DENIED','initialize_media','capability','BINDING_MISMATCH')
         if self._physical_fault: return MediaError('FILE_FAILED', 'initialize_media', 'media', 'RESOURCE_IDENTITY_MISMATCH')
         identity_key = resources.root_id, mode
         if self._initialization_identity is not None and self._initialization_identity != identity_key:
@@ -502,7 +515,7 @@ class MediaService:
         self._initialization_identity = identity_key
         self._retained_resources = resources
         if self._initialization is None or self._initialization.done():
-            self._initialization = asyncio.create_task(self._initialize(resources, mode))
+            self._initialization = asyncio.create_task(self._initialize(resources, mode,continue_empty=continuation is not None))
         done, _ = await asyncio.wait((self._initialization,), timeout=self.settings.integer('media.recovery_timeout_ms') / 1000)
         if not done: return MediaError('TIMEOUT', 'initialize_media', 'state', 'DEADLINE_EXCEEDED', True)
         return self._initialization.result()
@@ -514,7 +527,7 @@ class MediaService:
         if self._ready: return await self.collect_unreferenced()
         return await self.initialize(self._retained_resources, self._initialization_identity[1])
 
-    async def _initialize(self, resources: MediaResources, mode: str):
+    async def _initialize(self, resources: MediaResources, mode: str, *, continue_empty:bool=False):
         """Acquire the configured physical root and confirm its retained identity."""
         operation = 'initialize_media'
         if not self._bound or type(resources) is not MediaResources or not valid_identifier(resources.root_id) or not resources.retained_identity_check(resources.root_id, self.configuration.database_id, str(self.root)):
@@ -535,13 +548,21 @@ class MediaService:
                 root = os.fstat(root_fd)
                 if mode == 'CREATE_NEW':
                     allowed = {'.owner', self.staging.relative_to(self.root).parts[0]}
+                    if continue_empty:allowed.add('published')
                     if any(name not in allowed for name in os.listdir(root_fd)):
                         raise OSError(errno.EEXIST, 'Media root is not empty.')
                     stage_fd = PhysicalDirectories.open_child(root_fd, self.staging.relative_to(self.root), True)
                     try:
                         if os.listdir(stage_fd): raise OSError(errno.EEXIST, 'Media staging is not empty.')
                     finally: os.close(stage_fd)
-                    os.mkdir('published', 0o700, dir_fd=root_fd)
+                    try:os.mkdir('published', 0o700, dir_fd=root_fd)
+                    except FileExistsError:
+                        if not continue_empty:raise
+                    if continue_empty:
+                        published_fd=os.open('published',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=root_fd)
+                        try:
+                            if os.listdir(published_fd):raise OSError(errno.EEXIST,'Unfinished media publication directory contains content.')
+                        finally:os.close(published_fd)
                 self.files = PhysicalDirectories(self.root, root_fd, (self.staging, self.published), owner, self._invalidate_directories)
                 self._root_fd, self._owner_fd = root_fd, owner
                 return root.st_dev, root.st_ino
@@ -568,6 +589,15 @@ class MediaService:
             return Found(MappingProxyType({'state': 'READY', 'storage_execution': 'ACTUAL'}))
         except (OwnerFailure, OSError) as failure:
             return self._failure(operation, failure)
+
+    async def observation(self):
+        """Read only bounded aggregate file and cleanup state through this owner."""
+        if not self._ready or self._closing:raise OwnerFailure('INVALID_STATE','state','SERVICE_CLOSED')
+        health=self.get_health()
+        rows=await self.rows.read('observe_gc',{})
+        return MappingProxyType({'storage':rows[0],'file_workers':health.file_workers,
+            'cleanup_pending':health.cleanup_pending,'processing_suspects':health.processing_suspects,
+            'collection_in_flight':health.collection_in_flight})
 
     def bind_upload(self, entry_id: str) -> MediaUploadPort:
         """Trusted ingress setup grants one exact entry; no caller path is accepted."""
@@ -1013,6 +1043,35 @@ class MediaService:
                     raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
             result.append(value)
         return tuple(result)
+
+    async def read_daily_interpretation(self,batch_id:str,selected:MappingProxyType[str,Value],member:MappingProxyType[str,Value]):
+        """Read one complete immutable understanding protected by the actual batch."""
+        versions=await self.rows.read('interpretations_get',{'interpretation_id':selected['interpretation_id']})
+        holder_id=identity('consumer_interpretation','BATCH',batch_id,selected['occurrence_id'])
+        holders=await self.rows.read('interpretation_holders_get',{'holder_id':holder_id})
+        selections=await self.rows.read('selections_get',{'occurrence_id':selected['occurrence_id'],'selection_revision':selected['selection_revision']})
+        if (len(versions)!=1 or len(holders)!=1 or len(selections)!=1 or holders[0]['owner_kind']!='BATCH' or holders[0]['owner_id']!=batch_id
+                or holders[0]['interpretation_id']!=selected['interpretation_id'] or selections[0]['interpretation_id']!=selected['interpretation_id']):raise InvalidValue()
+        value=decode_interpretation(cast(str,versions[0]['body']).encode())
+        if value['blob_id']!=selected['blob_id'] or cast(int,value['generation'])>cast(int,selected['generation']):raise InvalidValue()
+        if value['origin']=='EXTERNAL' and (value['generation']!=selected['generation'] or value['event_id']!=member['message_id']):raise InvalidValue()
+        if value['generation']!=selected['generation'] and value['status']!='REFUSED':raise InvalidValue()
+        return value
+
+    async def read_retained_interpretations(self,source_id:str,member:MappingProxyType[str,Value]):
+        """Read exact source-held versions for bounded formal-source recovery."""
+        if not self._bound or self._closing or not valid_identifier(source_id):raise InvalidValue()
+        selections=tuple(record(v) for v in sequence(member['media']))
+        if len(selections)>self.settings.integer('media.event_occurrence_limit'):raise InvalidValue()
+        values=[]
+        for selected in selections:
+            versions=await self.rows.read('interpretations_get',{'interpretation_id':selected['interpretation_id']})
+            holders=await self.rows.read('interpretation_holders_get',{'holder_id':identity('interpretation_ref',source_id,selected['occurrence_id'])})
+            if len(versions)!=1 or len(holders)!=1 or holders[0]['interpretation_id']!=selected['interpretation_id']:raise InvalidValue()
+            value=decode_interpretation(cast(str,versions[0]['body']).encode())
+            if value['interpretation_id']!=selected['interpretation_id'] or value['blob_id']!=selected['blob_id']:raise InvalidValue()
+            values.append(value)
+        return tuple(values)
 
     def retain_source(self, uow: UnitOfWork, source_id: str, entry_id: str, members: tuple[MappingProxyType[str, Value], ...]) -> None:
         """Acquire source blob/version protection before runtime consumers release."""

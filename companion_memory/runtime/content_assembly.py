@@ -12,7 +12,9 @@ from types import MappingProxyType
 from typing import cast, TYPE_CHECKING
 if TYPE_CHECKING:
     from .candidate_goals import CandidateGoalEffects
+    from companion_memory.media.daily_work import DailyImageWork
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration, stored_semantic_configuration_issue
 from companion_memory.persistence import (
@@ -73,7 +75,7 @@ def stable(kind: str, *parts: Value) -> str:
     return kind + ':' + hashlib.sha256(encode_content(tuple(parts), 8192)).hexdigest()
 
 
-def runtime_content_catalog() -> StatementCatalog:
+def runtime_content_catalog(*,daily_format:bool=False) -> StatementCatalog:
     """Declare mode, preparation and original work association as separate records."""
     tables = []; statements = []
     layouts = {
@@ -105,6 +107,11 @@ def runtime_content_catalog() -> StatementCatalog:
             ('update', 'UPDATE ' + table + ' SET ' + ','.join(f.name + '=:' + f.name for f in fields[1:]) + ' WHERE scope_id=:scope_id AND ' + key + '=:' + key + ' RETURNING ' + columns, row, row, True),
         ):
             statements.append((name + '_' + suffix, StatementDefinition(sql, params, result, writes)))
+    if daily_format:
+        fields=layouts['preparations']
+        statements.append(('daily_preparation_for_batch',StatementDefinition(
+            'SELECT '+','.join(f.name for f in fields)+' FROM runtime_content_preparations WHERE scope_id=:scope_id AND batch_id=:batch_id LIMIT 2',
+            RecordSchema((Field('batch_id',ID),)),RecordSchema(fields),False)))
     for name in ('preparations', 'batches', 'work'):
         fields = layouts[name]; key = fields[0].name
         metadata = tuple(f for f in fields if f.name in (key, 'phase', 'terminal'))
@@ -134,22 +141,25 @@ class ContentAssembly:
     """Construct all explicit content owners; media is supplied as a real participant."""
     def __init__(self, media: ContentMediaOwnership | None = None,
                  media_repositories: tuple[RepositoryDefinition, ...] = (), *, publication=None, utc_now_us: Callable[[], int] = lambda: time.time_ns() // 1000,
-                 information_format: bool = False, text_format: bool = False, semantic_format: bool = False):
+                 information_format: bool = False, text_format: bool = False, semantic_format: bool = False, daily_format: bool = False):
         if (media is None) != (not media_repositories):
             raise ValueError('A media owner and its declarations must be supplied together.')
         self.media = media; self.publication = publication
         self.utc_now_us = utc_now_us
         if (type(information_format) is not bool or type(text_format) is not bool or type(semantic_format) is not bool
-                or text_format and not information_format or semantic_format and (not information_format or text_format)):
+                or type(daily_format) is not bool or text_format and not information_format or semantic_format and (not information_format or text_format)
+                or daily_format and (not information_format or text_format or semantic_format)):
             raise ValueError('The assembly format must be selected explicitly.')
         self.information_format = information_format
         self.text_format = text_format
-        self.semantic_format = semantic_format
+        self.semantic_format = semantic_format or daily_format
+        self.daily_format = daily_format
+        self.daily_input_failures: DailyImageWork | None = None
         self.goal_effects: CandidateGoalEffects | None = None
         from companion_memory.memory.information_repository import information_memory_catalog
-        self.catalogs = (information_ingress_catalog() if information_format else ingress_content_catalog(), buffer_content_catalog(), runtime_content_catalog(),
-                         candidate_catalog(information_format=information_format), information_memory_catalog(semantic_format=semantic_format) if information_format else memory_catalog(), history_catalog())
-        if semantic_format:
+        self.catalogs = (information_ingress_catalog() if information_format else ingress_content_catalog(), buffer_content_catalog(), runtime_content_catalog(daily_format=daily_format),
+                         candidate_catalog(information_format=information_format,daily_format=daily_format), information_memory_catalog(semantic_format=self.semantic_format,daily_format=daily_format) if information_format else memory_catalog(), history_catalog())
+        if self.semantic_format:
             from companion_memory.persistence.text_records import extend_catalog
             from companion_memory.memory.initial_self import initial_self_catalog
             from companion_memory.memory.semantic_repository import semantic_memory_catalog
@@ -163,6 +173,16 @@ class ContentAssembly:
             from companion_memory.cognition.text_context import context_catalog
             self.catalogs=tuple(extend_catalog(c,context_catalog(),3) if c.definition.owner_module=='cognition' else
                 extend_catalog(c,initial_self_catalog(),3) if c.definition.owner_module=='memory' else c for c in self.catalogs)
+        if daily_format:
+            from companion_memory.persistence.text_records import extend_catalog
+            from companion_memory.memory.subject_origins import subject_origin_catalog
+            from companion_memory.memory.daily_application import application_catalog
+            from companion_memory.cognition.reasoning_records import reasoning_catalog
+            from companion_memory.cognition.daily_material import context_catalog as daily_context_catalog
+            from .daily_schedule_records import schedule_catalog
+            from .daily_initialization import initialization_catalog
+            additions={'memory':extend_catalog(subject_origin_catalog(),application_catalog(),5),'cognition':extend_catalog(reasoning_catalog(),daily_context_catalog(),5),'runtime':extend_catalog(schedule_catalog(),initialization_catalog(),5)}
+            self.catalogs=tuple(extend_catalog(c,additions[c.definition.owner_module],5) if c.definition.owner_module in additions else c for c in self.catalogs)
         self.repositories = tuple(c.definition for c in self.catalogs) + media_repositories + (publication.repositories if publication is not None else ())
         self._bound = False
         self._verified_terminals = {}
@@ -185,7 +205,7 @@ class ContentAssembly:
             'reopen_learning_admission': (Field('batch_id', ID), Field('generation', REVISION), Field('expected_revision', REVISION), Field('trigger_key', ID), Field('expected_epoch', REVISION)),
             'park_content_work': (Field('batch_id', ID), Field('generation', REVISION), Field('expected_revision', REVISION)),
             'store_content_candidate': (Field('batch_id', ID), Field('expected_revision', REVISION), Field('generation', REVISION),
-                Field('manifest', BoundedTextSchema(4096)), Field('leaves', SequenceSchema(BoundedTextSchema(8192), 0, 8))),
+                Field('manifest', BoundedTextSchema(8192 if daily_format else 4096)), Field('leaves', SequenceSchema(BoundedTextSchema(8192), 0, 8))),
         }
         participants = {
             'initialize_content_runtime': ('runtime',), 'register_content_entry': ('ingress', 'buffers'),
@@ -236,6 +256,14 @@ class ContentAssembly:
         self.candidate_application = CandidateApplication(self)
         self.commands = tuple(definitions) + self.candidate_application.commands + self.transfers.commands + self.modes.commands + self.preparation_disposal.commands + self.maintenance.commands + (self.media_commands.commands if self.media_commands else ())
         self._semantic_definitions = {d.operation_kind: d for d in self.commands}
+        if daily_format:
+            from dataclasses import replace
+            def daily_result(definition):
+                fields=tuple(Field(field.name,enum('REMOTE_PROVIDER' if field.name=='model_adapter' else 'MODEL_VALIDATED'))
+                    if field.name in ('model_adapter','candidate_origin') else field for field in definition.result_schema.fields)
+                return replace(definition,result_schema=RecordSchema(fields))
+            self._semantic_definitions={name:daily_result(definition) for name,definition in self._semantic_definitions.items()}
+            self.commands=tuple(self._semantic_definitions.values())
         if information_format:
             from .information_content import extend_commands
             changed = frozenset(d.operation_kind for d in tuple(definitions) + self.candidate_application.commands + self.maintenance.commands)
@@ -255,13 +283,21 @@ class ContentAssembly:
             raise OwnerFailure('INVALID_INPUT', 'input', 'UNSUPPORTED_VERSION')
         return definition
 
-    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str) -> ContentAssembly:
+    def replace_static_command(self, semantic_kind: str, definition: ResultBoundCommandDefinition) -> None:
+        """Install an explicit native variant before any owner is bound."""
+        previous = self.command_definition(semantic_kind)
+        if self._bound or definition.operation_kind != previous.operation_kind or definition.owner_namespace != previous.owner_namespace:
+            raise ValueError('A static replacement must preserve its native operation identity.')
+        self._semantic_definitions[semantic_kind] = definition
+        self.commands = tuple(self._semantic_definitions.values())
+
+    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str) -> ContentAssembly:
         """Bind the unique real owners after full configuration persistence is confirmed."""
-        valid=(stored_semantic_configuration_issue(configuration) is None) if self.semantic_format else (stored_text_configuration_issue(configuration) is None) if self.text_format else type(configuration) is StoredContentConfiguration
+        valid=(stored_daily_configuration_issue(configuration) is None and cast(StoredDailyConfiguration,configuration).scope_id==instance_id) if self.daily_format else (stored_semantic_configuration_issue(configuration) is None) if self.semantic_format else (stored_text_configuration_issue(configuration) is None) if self.text_format else type(configuration) is StoredContentConfiguration
         if self._bound or not valid:
             raise ValueError('Content assembly requires native stored configuration and one binding.')
         self.storage, self.configuration, self.instance_id = storage, configuration, instance_id
-        self.source_revisions=tuple(item for item in configuration.revisions if not self.text_format or item[0] not in ('information','text_learning'))
+        self.source_revisions=tuple(item for item in configuration.revisions if not (self.text_format or self.daily_format) or item[0] not in ('information','text_learning','daily_cognition'))
         catalogs = {c.definition.owner_module: c for c in self.catalogs}
         settings = configuration.candidate.content
         self.history = HistoryBinding(catalogs['logging_service'], storage, instance_id,
@@ -271,7 +307,7 @@ class ContentAssembly:
         self.memory = MemoryTransactions(catalogs['memory'], storage, configuration, instance_id, self.history, self.ingress)
         self.cognition = CandidateBinding(catalogs['cognition'], storage, instance_id, configuration.database_id,
             settings.integer('cognition.candidate_item_limit'), settings.integer('cognition.candidate_item_max_bytes'), settings.integer('cognition.candidate_max_bytes'),
-            allow_goals=self.information_format and not self.text_format,text_format=self.text_format)
+            allow_goals=self.information_format and not self.text_format,text_format=self.text_format,daily_format=self.daily_format)
         from .source_rows import RuntimeSourceRows
         self.rows = RuntimeSourceRows(catalogs['runtime'], storage, instance_id)
         self._lease = storage.claim_module_owner(catalogs['runtime'].definition)
@@ -332,7 +368,7 @@ class ContentAssembly:
         return {'operation_id': values['operation_id'], 'entry_id': entry, 'batch_id': None, 'candidate_id': None,
             'source_id': None, 'terminal': state, 'object_refs': (), 'history': (), 'retired_source_ids': (),
             'targets': targets or (MappingProxyType({'object_id': changes.get('operation_id', values['operation_id']), 'previous_revision': None, 'revision': 1}),),
-            'storage_execution': 'ACTUAL', 'model_adapter': 'REMOTE_PROVIDER' if text_result else 'SIMULATED', 'candidate_origin': 'MODEL_VALIDATED' if text_result else 'SYNTHETIC',
+            'storage_execution': 'ACTUAL', 'model_adapter': 'REMOTE_PROVIDER' if text_result or self.daily_format else 'SIMULATED', 'candidate_origin': 'MODEL_VALIDATED' if text_result or self.daily_format else 'SYNTHETIC',
             'facts': MappingProxyType(facts), **changes, 'history': tuple(record(item)['history_id'] for item in sequence(changes.get('history', ())))}
 
     def _get(self, name: str, uow: UnitOfWork, key: str, value: Value) -> MappingProxyType[str, Value]:
@@ -403,7 +439,7 @@ class ContentAssembly:
             source: dict[str, Value] = {'source_version': 1, 'source_id': stable('source', self.configuration.database_id, eid, v['batch_id']),
                 'batch_id': v['batch_id'], 'run_id': v['run_id'], 'entry_id': eid, 'host_id': entry['host_id'], 'platform_id': entry['platform_id'],
                 'config_snapshot_id': self.configuration.snapshot_id, 'domain_revisions': tuple(MappingProxyType({'domain_id': k, 'revision': r}) for k, r in self.source_revisions),
-                'material_contract_ref': 'TEXT_CONTEXT_V1' if self.text_format else 'complete_source_base64:1', 'frozen_at_us': v['now_us'], 'ordered_members': tuple(members), 'digest': 'pending'}
+                'material_contract_ref': 'DAILY_CONTEXT_V1' if self.daily_format else 'TEXT_CONTEXT_V1' if self.text_format else 'complete_source_base64:1', 'frozen_at_us': v['now_us'], 'ordered_members': tuple(members), 'digest': 'pending'}
             source['digest'] = source_digest(MappingProxyType(source)); manifest = isolate_preparation(source)
             self.buffers.reserve(uow, eid, cast(str, v['preparation_id']))
             for _, mid in selected: self.ingress.retain_payload(uow, mid, 'PREPARATION', cast(str, v['preparation_id']))
@@ -504,23 +540,24 @@ class ContentAssembly:
         if name == 'store_content_candidate':
             if work['phase'] != 'REQUEST_ASSOCIATED': raise OwnerFailure('PRECONDITION_FAILED', 'candidate', 'WORK_FENCED')
             settings = self.configuration.candidate.content
-            candidate = self.cognition.isolate(decode_content(cast(str, v['manifest']).encode(), 4096),
+            candidate = self.cognition.isolate(decode_content(cast(str, v['manifest']).encode(), self.cognition.manifest_bytes),
                 tuple(decode_content(cast(str, leaf).encode(), 8192) for leaf in sequence(v['leaves'])))
             m = candidate.manifest
             binding = decode_content(cast(str, work['model_binding']).encode(), 8192)
             if type(binding) is not dict or binding.get('transform_version') != m['transform_version']:
                 raise OwnerFailure('ACCESS_DENIED', 'candidate', 'BINDING_MISMATCH')
-            evidence = self._verified_terminals.pop(m['provider_request_id'], None)
-            from companion_memory.provider.terminal_evidence import issued_terminal
+            evidence = self._verified_terminals.get(m['provider_request_id'])
+            from companion_memory.provider.terminal_evidence import issued_terminal,VerifiedTerminal
             if not issued_terminal(evidence): raise OwnerFailure('ACCESS_DENIED', 'candidate', 'BINDING_MISMATCH')
+            evidence=cast(VerifiedTerminal,evidence)
             request = evidence.request
             frozen_manifest = decode_source(cast(str, batch['manifest']))
             proposed = 'SUCCEEDED' if request['outcome'] == 'SUCCEEDED' else 'SENSITIVE_DROPPED' if request['outcome'] == 'SENSITIVE_REFUSAL' else 'FAILED_DROPPED'
             if self.text_format:
                 self.text_transactions.verify_candidate(uow,work,batch,candidate,evidence)
                 proposed=cast(str,m['terminal_proposal'])
-            if (work['provider_request_id'] is not None and work['provider_request_id'] != m['provider_request_id'] or request['operation_key'] != work['provider_operation_key'] or record(request['attribution'])['batch_id'] != v['batch_id']
-                    or record(request['attribution'])['run_id'] != batch['run_id'] or not self.text_format and request['handoff_id'] != m['handoff_ref']
+            if (work['provider_request_id'] is not None and work['provider_request_id'] != m['provider_request_id'] or request['operation_key'] != work['provider_operation_key'] or record(cast(Value,request['attribution']))['batch_id'] != v['batch_id']
+                    or record(cast(Value,request['attribution']))['run_id'] != batch['run_id'] or not self.text_format and request['handoff_id'] != m['handoff_ref']
                     or m['terminal_proposal'] != proposed or m['source_id'] != frozen_manifest['source_id']
                     or m['config_snapshot_id'] != self.configuration.snapshot_id):
                 raise OwnerFailure('ACCESS_DENIED', 'candidate', 'BINDING_MISMATCH')
@@ -538,6 +575,111 @@ class ContentAssembly:
         if name.startswith('commit_content_'):
             return self.finish_candidate(uow, v, name)
         raise InvalidValue()
+
+    async def read_daily_batch(self,batch_id:str):
+        """Read one complete original daily source and its actual runtime work."""
+        if not self.daily_format:raise InvalidValue()
+        batches=await self.rows.read('batches_get',{'batch_id':batch_id})
+        work=await self.rows.read('work_get',{'batch_id':batch_id})
+        if len(batches)!=1 or len(work)!=1:raise InvalidValue()
+        source=decode_source(cast(str,batches[0]['manifest']))
+        if source['batch_id']!=batch_id or work[0]['batch_id']!=batch_id:raise InvalidValue()
+        return MappingProxyType({'source':source,'work':work[0],'batch':batches[0]})
+
+    def participate_daily_work(self,uow:UnitOfWork,batch_id:str):
+        """Return the exact native batch and work in one transaction."""
+        if not self.daily_format:raise InvalidValue()
+        return self._get('batches',uow,'batch_id',batch_id),self._get('work',uow,'batch_id',batch_id)
+
+    async def read_daily_preparation(self,batch_id:str):
+        """Read the original preparation start and mode; never restart its clock."""
+        if not self.daily_format:raise InvalidValue()
+        rows=await self.rows.read('daily_preparation_for_batch',{'batch_id':batch_id})
+        if len(rows)!=1:raise InvalidValue()
+        return rows[0]
+
+    def participate_daily_preparation(self,uow:UnitOfWork,batch_id:str):
+        """Compare the same original preparation inside the caller's native UoW."""
+        if not self.daily_format:raise InvalidValue()
+        rows=self.rows.stage('daily_preparation_for_batch',uow,{'batch_id':batch_id})
+        if len(rows)!=1:raise InvalidValue()
+        return rows[0]
+
+    def participate_daily_source(self,uow:UnitOfWork,batch_id:str,generation:int,revision:int):
+        """Verify a frozen or staged daily batch without changing its identity."""
+        batch,work=self.participate_daily_work(uow,batch_id)
+        if (work['generation']!=generation or work['revision']!=revision or work['phase'] not in ('FROZEN','PARKED','CANDIDATE_STORED')
+                or batch['terminal']!='FROZEN'):raise OwnerFailure('PRECONDITION_FAILED','batch','WORK_FENCED')
+        return decode_source(cast(str,batch['manifest']))
+
+    def stage_daily_candidate(self,uow:UnitOfWork,candidate,work,route_ids):
+        """Transfer original source protection to the complete checked candidate."""
+        manifest=candidate.manifest;source=self.participate_daily_source(uow,cast(str,manifest['batch_id']),cast(int,work['generation']),cast(int,work['revision']))
+        self.cognition.stage(uow,candidate,batch_id=cast(str,manifest['batch_id']),run_id=cast(str,manifest['run_id']),work_generation=cast(int,work['generation']),
+            request_id=cast(str,manifest['provider_request_id']),handoff_ref=cast(str|None,manifest['handoff_ref']))
+        members=tuple(record(m) for m in sequence(source['ordered_members']))
+        for member in members:
+            self.ingress.verify_member(uow,cast(str,source['entry_id']),member)
+            self.ingress.retain_payload(uow,cast(str,member['message_id']),'CANDIDATE',cast(str,manifest['candidate_id']))
+        if self.media is not None and any(member['media'] for member in members):self.media.retain_consumer(uow,'CANDIDATE',cast(str,manifest['candidate_id']),members)
+        changed=dict(work)|{'revision':cast(int,work['revision'])+1,'phase':'CANDIDATE_STORED','provider_request_id':manifest['provider_request_id'],
+            'handoff_ref':manifest['handoff_ref'],'candidate_id':manifest['candidate_id'],'model_binding':encode_content(MappingProxyType({'goal_route_ids':route_ids,'entry_id':source['entry_id']}),8192).decode()}
+        self.rows.stage('work_update',uow,changed)
+        return MappingProxyType(changed)
+
+    def daily_source_audit_targets(self,uow:UnitOfWork,source,*,include_buffers:bool,release=None,before=None):
+        """Name actual reference and FIFO revisions, including old source media."""
+        from companion_memory.persistence.daily_results import target
+        result={};mid=cast(str,record(sequence(source['ordered_members'])[0])['message_id'])
+        event=self.ingress.event(uow,mid);result['ingress']=(target(mid,cast(int,event['references_revision'])),)
+        if include_buffers:
+            entry=self.buffers.current(uow,cast(str,source['entry_id']))
+            result['buffers']=(target(cast(str,source['entry_id']),cast(int,entry['revision'])),)
+        blob_ids={cast(str,record(selected)['blob_id']) for raw in sequence(source['ordered_members']) for selected in sequence(record(raw)['media'])}
+        if release is not None:blob_ids.update(release.media_blob_ids())
+        if blob_ids:
+            if self.media is None:raise InvalidValue()
+            from companion_memory.media.service import MediaService
+            if type(self.media) is not MediaService:raise InvalidValue()
+            result['media']=self.media.daily_reference_targets(uow,tuple(sorted(blob_ids))[:1])
+        if before is not None:
+            for owner,refs in result.items():
+                original=before[owner][0]
+                if refs[0]['object_id']!=original['object_id'] or refs[0]['revision']<=original['revision']:raise InvalidValue()
+                refs[0]['previous_revision']=original['revision']
+        return result
+
+    def expire_daily_work(self,uow:UnitOfWork,batch,work,terminal:str):
+        """Consume a proven failed original batch without inventing Provider output."""
+        if not self.daily_format or batch['terminal']!='FROZEN' or work['phase'] not in ('FROZEN','PARKED','CANDIDATE_STORED'):
+            raise OwnerFailure('PRECONDITION_FAILED','batch','WORK_FENCED')
+        if terminal not in ('FAILED_DROPPED','SENSITIVE_DROPPED'):raise InvalidValue()
+        source=decode_source(cast(str,batch['manifest']));members=tuple(record(m) for m in sequence(source['ordered_members']))
+        cid=cast(str|None,work['candidate_id'])
+        if cid is not None:
+            candidate=self.cognition.load(uow,cid)
+            if candidate.manifest['batch_id']!=batch['batch_id']:raise InvalidValue()
+            for member in members:
+                mid=cast(str,member['message_id']);event=self.ingress.event(uow,mid)
+                self.ingress.release_payload(uow,mid,'CANDIDATE',cid,cast(int,event['references_revision']))
+            if self.media is not None:self.media.release_consumer(uow,'CANDIDATE',cid,members)
+            self.cognition.dispose(uow,candidate)
+        self.buffers.terminate(uow,cast(str,batch['entry_id']),cast(str,batch['batch_id']),
+            tuple((cast(str,m['role']),cast(str,m['message_id'])) for m in members),terminal,
+            self.configuration.candidate.platform(cast(str,source['platform_id'])).count('history_context_count'))
+        if self.media is not None:self.media.release_consumer(uow,'BATCH',cast(str,batch['batch_id']),members)
+        self.rows.stage('work_update',uow,dict(work)|{'revision':cast(int,work['revision'])+1,'phase':'TERMINAL'})
+        self.rows.stage('batches_update',uow,dict(batch)|{'terminal':terminal})
+
+    def participate_daily_batch(self,uow:UnitOfWork,batch_id:str,generation:int,revision:int):
+        """Cognition freezes the actual original runtime batch under the same UoW."""
+        if not self.daily_format:raise InvalidValue()
+        batch=self._get('batches',uow,'batch_id',batch_id);work=self._get('work',uow,'batch_id',batch_id)
+        if work['generation']!=generation or work['revision']!=revision or work['phase'] not in ('FROZEN','PARKED') or batch['terminal']!='FROZEN':
+            raise OwnerFailure('PRECONDITION_FAILED','batch','WORK_FENCED')
+        source=decode_source(cast(str,batch['manifest']))
+        for member in sequence(source['ordered_members']):self.ingress.verify_member(uow,cast(str,source['entry_id']),record(member))
+        return source
 
     def finish_candidate(self, uow, v, name, release=None, scope_override=None):
         """Apply real owners and rotate once under the coordinator's fixed audit mask."""

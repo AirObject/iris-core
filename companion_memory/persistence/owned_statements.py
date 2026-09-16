@@ -85,3 +85,24 @@ class OwnerCauses:
         with self.lock:
             slot = self.slots[key]; slot.users -= 1
             if not slot.users: del self.slots[key]
+
+    async def execute_original(self,port,definition,key,command):
+        """Preserve an owner's safe cause only for its proved uncommitted command.
+
+        The watcher lives through this command's actual completion, including a
+        writer still running after logical timeout. Known receipts and unknown
+        commit states are never replaced by the handler's provisional failure.
+        """
+        from .results import NotCommitted
+        from .schema import freeze_value
+        from .completion import CompletionScope
+        prior=await port.resolve_operation(port.recovery_handle(key,command))
+        if type(prior) is not NotCommitted or prior.error is not None:return prior,None
+        watched,slot=self.watch(definition.operation_kind,freeze_value(definition.input_schema,command.values,owned=True))
+        with CompletionScope() as completion:
+            try:
+                outcome=await port.execute(key,command)
+                return outcome,slot.cause if type(outcome) is NotCommitted else None
+            finally:
+                await completion.wait()
+                self.release(watched)

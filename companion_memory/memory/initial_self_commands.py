@@ -43,11 +43,34 @@ class InitialSelfPort:
             return MemoryError('ACCESS_DENIED','read_initial','capability','BINDING_MISMATCH')
         return await owner._read_initial(input_id,deadline)
 
+    def participate_initial(self,uow:UnitOfWork,input_id:str):
+        """Read the exact original input and SELF within a native consumer UoW."""
+        owner=getattr(self,'_owner',None)
+        if type(self) is not InitialSelfPort or type(owner) is not InitialSelfCommands or owner._port is not self or owner._owner is None or owner._closed:
+            raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
+        found=owner._owner.read_initial(uow,input_id)
+        if found is None:raise OwnerFailure('PRECONDITION_FAILED','input','NOT_FOUND')
+        return found
+
+    def publication_stale(self,uow:UnitOfWork,publication):
+        """Compare a native publication source to this instance's actual SELF."""
+        owner=getattr(self,'_owner',None)
+        if type(self) is not InitialSelfPort or type(owner) is not InitialSelfCommands or owner._port is not self or owner._owner is None or owner._closed:
+            raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
+        return owner._owner.publication_stale(uow,publication)
+
+    async def publication_stale_original(self,publication,deadline:float):
+        """Inspect the same immutable source under the caller's original deadline."""
+        owner=getattr(self,'_owner',None)
+        if type(self) is not InitialSelfPort or type(owner) is not InitialSelfCommands or owner._port is not self or owner._owner is None or owner._closed:
+            raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
+        return await owner._owner.publication_stale_original(publication,deadline)
+
 
 class InitialSelfCommands:
     """One fixed declaration and a unique trusted identity binding."""
     def __init__(self,catalog: StatementCatalog,utc_now_us: Callable[[],int] = lambda:time.time_ns()//1000):
-        if catalog.definition.owner_module!='memory' or catalog.definition.schema_version not in (3,4) or not callable(utc_now_us):raise InvalidValue()
+        if catalog.definition.owner_module!='memory' or catalog.definition.schema_version not in (3,4,5) or not callable(utc_now_us):raise InvalidValue()
         self.catalog=catalog;self._clock=utc_now_us;self._owner: InitialSelfStorage | None=None;self._port: InitialSelfPort | None=None
         requirements,bindings=audits('register_initial_self',('memory',))
         self.commands=(ResultBoundCommandDefinition('memory','register_initial_self',1,

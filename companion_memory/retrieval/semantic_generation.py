@@ -12,6 +12,7 @@ from companion_memory.persistence.deadlines import DeadlineScope,current_deadlin
 from companion_memory.persistence.completion import retain_completion
 from hashlib import sha256
 from types import MappingProxyType
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration,stored_semantic_configuration_issue
 from companion_memory.memory.semantic_tracking import MemorySemanticCoverage
 from companion_memory.persistence import PersistenceService,UnitOfWork,Value
@@ -27,9 +28,9 @@ from .semantic_payloads import restore_vector
 
 class SemanticGenerations:
     """One retrieval owner's bounded index participant and retained file proofs."""
-    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration,
+    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredDailyConfiguration,
                  instance: str,memory: MemorySemanticCoverage,files: VectorFiles,checkpoint: Callable[[],None]):
-        if (stored_semantic_configuration_issue(configuration) is not None or catalog.definition.owner_module!='retrieval'
+        if ((stored_daily_configuration_issue(configuration) if type(configuration) is StoredDailyConfiguration else stored_semantic_configuration_issue(configuration)) is not None or catalog.definition.owner_module!='retrieval'
                 or type(memory) is not MemorySemanticCoverage or type(files) is not VectorFiles
                 or memory.objects.storage is not storage or memory.objects.instance_id!=instance
                 or memory.objects.configuration is not configuration):

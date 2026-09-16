@@ -62,11 +62,18 @@ async def learn_batch(runtime: ContentRuntimeService, source: MappingProxyType[s
 
 async def _learn_batch(runtime: ContentRuntimeService, source: MappingProxyType[str, Value], *, fresh: bool, admission_event: str | None = None) -> object:
     r = runtime; assembly = r.assembly; bid = cast(str, source['batch_id'])
+    if assembly.daily_format:
+        if r.daily_learning is None:
+            return Rejected(RuntimeError('CAPABILITY_UNAVAILABLE','run_learning','state','BUSINESS_NOT_IMPLEMENTED'))
+        return await r.daily_learning.learn_batch(source,fresh=fresh,admission_event=admission_event)
     if assembly.text_format:
         from .text_learning import learn_text
         return await learn_text(r,source,fresh=fresh,admission_event=admission_event)
     from companion_memory.cognition.text_candidates import TextCandidateInput
     candidates=r.candidates
+    from companion_memory.provider.service import ProviderService
+    if candidates is None or type(r.provider) is not ProviderService:
+        raise ValueError('Legacy learning requires its native provider and candidate input.')
     if isinstance(candidates,TextCandidateInput):raise ValueError('Text candidates require the native text assembly.')
     work = (await assembly.rows.read('work_get', {'batch_id': bid}))[0]
     integrity_revision = r.gate.protection_revision
@@ -111,7 +118,7 @@ async def _learn_batch(runtime: ContentRuntimeService, source: MappingProxyType[
             'output_units_limit': r.settings.integer('learning.output_units_limit')}}
     from .learning_admissions import descriptor_digest, conclude_unsent
     binding = MappingProxyType({'profile_id': r.learning_profile, 'prompt_revision': 'target_source_records:1',
-        'transform_version': r.candidates.transform_version, 'candidate_source_fingerprint': r.candidates.fingerprint, 'request_digest': descriptor_digest(request)})
+        'transform_version': candidates.transform_version, 'candidate_source_fingerprint': candidates.fingerprint, 'request_digest': descriptor_digest(request)})
     from companion_memory.cognition.synthetic_mutations import SyntheticMutationInput
     from companion_memory.cognition.synthetic_mixed import SyntheticMixedInput
     from companion_memory.cognition.goal_proposals import SyntheticGoalInput

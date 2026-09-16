@@ -101,6 +101,25 @@ class MemoryService:
         self._grants[id(port)] = port
         return port
 
+    def matches_configuration(self,configuration:object,storage:object) -> bool:
+        """Trusted read setup verifies native owner identity without borrowing storage."""
+        return not self._closed and self._owner.configuration is configuration and self._owner.storage is storage
+
+    def verify_current_access(self,port:MemoryReadPort,object_id:str) -> None:
+        """Check an existing native grant without issuing broader read authority."""
+        error=self._authorize(port,object_id,'get_current')
+        if error is not None:raise OwnerFailure(error.code,'capability',error.reason)
+
+    def verify_scope_member(self,port:MemoryReadPort,object_id:str) -> None:
+        """Validate trusted setup membership without authorizing a current read.
+
+        Opening may reconstruct a native scope while its mode is RECOVERING.
+        Actual reads and formal applications still check their live mode gate.
+        """
+        self.read_grant_reference(port)
+        if not valid_identifier(object_id) or 'get_current' not in port._operations or port._objects is not None and object_id not in port._objects:
+            raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
+
     def read_grant_reference(self,port: MemoryReadPort) -> str:
         """Name an actual native read scope for frozen evidence, without granting it.
 
@@ -236,6 +255,37 @@ class MemoryService:
         error = self._authorize(port, oid, operation)
         if error is not None: raise OwnerFailure(error.code, 'capability', error.reason)
         return MappingProxyType(dict(current) | {'source_refs': refs})
+
+    async def subject_relationships(self,port:MemoryReadPort,subject_id:str,subject_ids:frozenset[str],worlds:tuple) -> object:
+        """Read bounded explicit relation metadata under the existing native scope."""
+        from .formats import record
+        if not self._owner.daily_format or subject_id not in subject_ids:return MemoryError('ACCESS_DENIED','read_subjects','subject','OPERATION_NOT_GRANTED')
+        issue=self._authorize(port,subject_id,'read_subject')
+        if issue is not None:return issue
+        async def read():
+            rows=await self._owner.rows.read('daily_subject_relations',{'subject_id':subject_id})
+            relations=[];limited=len(rows)>4
+            for row in rows[:4]:
+                current=self._owner.decode_current(row);content=record(current['content']);oid=cast(str,current['object_id'])
+                if content['world_scope'] not in worlds or self._authorize(port,oid,'get_current') is not None:continue
+                endpoints=tuple(record(content[name]) for name in ('from_ref','to_ref'))
+                if any(endpoint['type']=='SUBJECT' and endpoint['id'] not in subject_ids for endpoint in endpoints):continue
+                visible=True
+                for endpoint in endpoints:
+                    operation='read_subject' if endpoint['type']=='SUBJECT' else 'get_current'
+                    if self._authorize(port,endpoint['id'],operation) is not None:visible=False;break
+                    if endpoint['type']=='OBJECT':
+                        actual=await self._owner.rows.read('objects_get',{'object_id':endpoint['id']})
+                        if not actual or self._owner.decode_current(actual[0])['lifecycle']!='ACTIVE':visible=False;break
+                if not visible:continue
+                actual=await self._owner.rows.read('objects_get',{'object_id':oid})
+                if len(actual)!=1 or actual[0]!=row:raise OwnerFailure('PRECONDITION_FAILED','revision','REVISION_CONFLICT')
+                relations.append(MappingProxyType({'object_id':oid,'revision':current['revision'],
+                    **{name:content[name] for name in ('from_ref','to_ref','relation_type','world_scope')}}))
+            issue=self._authorize(port,subject_id,'read_subject')
+            if issue is not None:return issue
+            return Found(MappingProxyType({'relations':tuple(relations),'truncated':limited}))
+        return await self._bounded('read_subjects',read)
 
     async def _bounded(self, operation, work):
         if self._active >= self._limit: return MemoryError('RESOURCE_BUSY', operation, 'state', 'ADMISSION_FULL')

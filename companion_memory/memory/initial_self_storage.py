@@ -17,6 +17,7 @@ from companion_memory.persistence.deadlines import DeadlineScope
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
 from .formats import isolate_subject,record
 from .initial_self import INITIAL_SELF,input_digest,isolate_initial_self
 if TYPE_CHECKING:
@@ -47,7 +48,7 @@ class InitialSelfStorage:
     """Private memory participant sharing the native memory owner's real lease."""
     def __init__(self,owner: MemoryTransactions,binding: InitialSelfBinding):
         from .transactions import MemoryTransactions
-        if type(owner) is not MemoryTransactions or not owner.text_format or type(owner.configuration) not in (StoredTextConfiguration,StoredSemanticConfiguration) or type(binding) is not InitialSelfBinding:raise InvalidValue()
+        if type(owner) is not MemoryTransactions or not owner.text_format or type(owner.configuration) not in (StoredTextConfiguration,StoredSemanticConfiguration,StoredDailyConfiguration) or type(binding) is not InitialSelfBinding:raise InvalidValue()
         self._owner=owner;self._binding=binding
         self.input_id=stable_identity('self-input',owner.configuration.database_id,owner.instance_id)
 

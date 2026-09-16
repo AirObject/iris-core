@@ -14,19 +14,19 @@ if TYPE_CHECKING:
 
 def validate_content_relationships(foundation: EffectiveSnapshot, runtime: ContentSettingsSnapshot,
                                    content: ContentSettingsSnapshot, platforms: tuple[ContentPlatformSnapshot, ...],
-                                   directories: object, *, text_only: bool = False, embedding_only: bool = False) -> str | None:
+                                   directories: object, *, text_only: bool = False, embedding_only: bool = False, daily_network: bool = False) -> str | None:
     """Return a fixed first failure, never a submitted key or resource path."""
     f = {e.definition.key: e.state.value for e in foundation.list_entries() if type(e.state) is PresentValue}
     n, r = content.integer, runtime.integer
     if not n('memory.forget_below') < n('memory.restore_at'):
         return 'BUDGET_INVALID'
-    if n('cognition.candidate_item_limit') * n('cognition.candidate_item_max_bytes') + 4096 > n('cognition.candidate_max_bytes'):
+    if n('cognition.candidate_item_limit') * n('cognition.candidate_item_max_bytes') + (8192 if daily_network else 4096) > n('cognition.candidate_max_bytes'):
         return 'CAPACITY_INSUFFICIENT'
     if n('audit.history_items_per_operation') < n('cognition.candidate_item_limit') or n('audit.history_item_max_bytes') < n('memory.current_max_bytes') + 4096:
         return 'CAPACITY_INSUFFICIENT'
     if n('media.file_worker_capacity') < sum(n('media.' + key) for key in ('upload_concurrency', 'read_concurrency', 'processing_concurrency')):
         return 'BUDGET_INVALID'
-    if n('media.processing_concurrency') + r('runtime.max_active_entries') > cast(int, f['provider.max_in_flight']):
+    if not daily_network and n('media.processing_concurrency') + r('runtime.max_active_entries') > cast(int, f['provider.max_in_flight']):
         return 'BUDGET_INVALID'
     if max(n('media.upload_chunk_bytes'), n('media.read_chunk_bytes')) > n('media.blob_max_bytes'):
         return 'BUDGET_INVALID'
@@ -40,7 +40,10 @@ def validate_content_relationships(foundation: EffectiveSnapshot, runtime: Conte
     profiles = cast(tuple[MappingProxyType[str, object], ...], f['provider.profiles'])
     roles = cast(MappingProxyType[str, tuple[str, ...]], f['provider.role_profiles'])
     media = tuple(p for p in profiles if p['profile_id'] in roles.get('MEDIA', ()) and p['capability'] == 'MEDIA_UNDERSTANDING')
-    if embedding_only:
+    if daily_network:
+        if text_only or embedding_only or len(media)!=1 or set(roles)!={'LEARNING','MEDIA','GOAL_DEDUP','PERSONA','EMBEDDING_DOCUMENT','EMBEDDING_QUERY'} or n('media.processing_concurrency')!=1 or f['provider.max_in_flight']!=1:
+            return 'BUDGET_INVALID'
+    elif embedding_only:
         if text_only or media or set(roles) != {'EMBEDDING_DOCUMENT', 'EMBEDDING_QUERY'} or n('media.processing_concurrency') != 0:
             return 'BUDGET_INVALID'
     elif text_only:

@@ -14,7 +14,7 @@ CHANGE_HEADER = RecordSchema((Field('change_version', VERSION),
     Field('target_id', ID), Field('expected_revision', REVISION, nullable=True)))
 
 
-def isolate_change(source: object, limit: int, *, text_format: bool = False) -> MappingProxyType[str, Value]:
+def isolate_change(source: object, limit: int, *, text_format: bool = False, daily_format: bool = False) -> MappingProxyType[str, Value]:
     """Own a whole leaf and enforce the action's exact proposed-value shape."""
     if type(source) not in (dict, MappingProxyType):
         raise InvalidValue()
@@ -32,9 +32,18 @@ def isolate_change(source: object, limit: int, *, text_format: bool = False) -> 
         value['proposed_value'] = None; value['links'] = None
     elif action == 'REGISTER_SUBJECT':
         subject = isolate_subject(raw['proposed_value'])
-        if raw['links'] is not None or subject['subject_id'] != value['target_id'] or subject['revision'] != 1:
+        if (not daily_format and raw['links'] is not None) or subject['subject_id'] != value['target_id'] or subject['revision'] != 1:
             raise InvalidValue()
         value['proposed_value'] = subject; value['links'] = None
+        if daily_format:
+            links=isolate_links(raw['links'],cast(str,subject['subject_id']),1)
+            sources=links['sources']
+            if subject['kind']=='SELF' or links['bases'] or type(sources) is not tuple or len(sources)!=1:
+                raise InvalidValue()
+            source=sources[0]
+            if type(source) is not MappingProxyType or source['link_role']!='DIRECT' or not source['target_anchors'] or source['auxiliary_refs']:
+                raise InvalidValue()
+            value['links']=links
     else:
         obj = isolate_object(raw['proposed_value'], text_format=text_format)
         expected = 1 if creating else cast(int, value['expected_revision']) + 1
@@ -49,9 +58,9 @@ def isolate_change(source: object, limit: int, *, text_format: bool = False) -> 
     return result
 
 
-def decode_change(body: str, limit: int, *, text_format: bool = False) -> MappingProxyType[str, Value]:
+def decode_change(body: str, limit: int, *, text_format: bool = False, daily_format: bool = False) -> MappingProxyType[str, Value]:
     """Stored leaf bytes and semantic shape must both be canonical."""
-    value = isolate_change(decode_content(body.encode(), limit), limit, text_format=text_format)
+    value = isolate_change(decode_content(body.encode(), limit), limit, text_format=text_format,daily_format=daily_format)
     if encode_content(value, limit).decode() != body:
         raise InvalidValue()
     return value

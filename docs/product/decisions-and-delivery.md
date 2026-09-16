@@ -1,5 +1,7 @@
 # 待细化契约、参数性质与实施组织
 
+日常学习的受控主体登记与保守目标语义合并已获用户明确批准；行为增量分别见[主体来源](../architecture/daily-cognition-and-image-learning.md#33-受控主体与来源)、[目标合并](../architecture/daily-cognition-and-image-learning.md#5-目标语义判断与合并)。指定合成验证实例的[persona导入](../architecture/daily-cognition-and-image-learning.md#persona-import)是独立窄例外；新真实调用授权另记。
+
 > 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：本文件集中保留待细化项目、参数表和实施建议。数量、阈值与阶段示例不能直接充当批准后的实现默认值或开发授权。

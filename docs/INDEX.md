@@ -43,6 +43,8 @@
 
 ## 当前跨模块契约
 
+[日常认知、图片理解与目标处理闭环](architecture/daily-cognition-and-image-learning.md)：工程实施及三项明确产品决定已授权，含完整组合、有限工具／候选、图片、来源／目标竞争、配置、事务及验收矩阵；新增真实调用包的批准状态独立。按[当前任务](work/CURRENT_TASK.md)连续完成整阶段，执行者不改文档。
+
 [正式记忆、完整来源与媒体持久化闭环](architecture/formal-memory-source-media.md)：五组推荐及四份所属补充已获用户批准，未采纳替代和范围外事项保持未批准；包含实际端口核对、对象与来源、媒体发布／复用／GC、容量核算、兼容和整体验收矩阵。配置、持久化、日志及Provider必要补充由正文链接导航；实现及验收里程碑见[STATUS](work/STATUS.md)，当前授权以[CURRENT_TASK](work/CURRENT_TASK.md)为准。
 
 [持久接入、三段批次、专注门控与恢复及最小只读观察](architecture/durable-ingress-and-batch-runtime.md)：五组推荐已获用户批准，包含公开端口、状态与事务、配置身份、受控参与者、存储装配、观察边界及整体验收矩阵；实施授权、验证及技术审查进度见[CURRENT_TASK](work/CURRENT_TASK.md)。参数／日志／持久化／产品补充通过该契约导航到各自唯一正文。
@@ -53,7 +55,7 @@
 
 ## 工作记录
 
-[剩余交付路线](architecture/implementation-options.md#source-line-1202)只在实施顺序正文维护。语义检索工程及真实小包已完成技术验收，已批准技术规则与固定材料保留于[集中契约](architecture/async-embedding-semantic-retrieval.md)，结果和限制见STATUS。本次提交收录已验收语义检索产物、质量暂缓事实及文档整理；下一阶段详细计划与新增授权单独维护。协作分工只维护于[AGENTS.md](../AGENTS.md)。
+[剩余交付路线](architecture/implementation-options.md#source-line-1202)只在实施顺序正文维护。语义检索工程及真实小包已完成技术验收，已批准技术规则与固定材料保留于[集中契约](architecture/async-embedding-semantic-retrieval.md)，结果和限制见STATUS。当前[日常认知与图片学习契约](architecture/daily-cognition-and-image-learning.md)承载已定稿的完整工程，实施进度与下一动作只在CURRENT_TASK维护；图片为当前验证模态，音视频测试暂缓，新增真实调用包批准状态独立。协作分工只维护于[AGENTS.md](../AGENTS.md)。
 
 [暂缓问题](work/DEFERRED_ISSUES.md)是暂缓事项状态、事实及后续建议的唯一维护位置。
 

@@ -26,11 +26,12 @@ from companion_memory.retrieval.semantic_work import SemanticWork
 from .semantic_results import outcome,LocalConfirmation,LocalFailure
 if TYPE_CHECKING:
     from .semantic_host import SemanticHost
+    from .daily_host import DailyCognitionHost
 
 
 class SemanticManagementPort:
     """Trusted host's bounded management, with no implicit activation or sends."""
-    def __init__(self,host:SemanticHost):
+    def __init__(self,host:SemanticHost|DailyCognitionHost):
         self.host=host;owner=host.combination.work;assert owner is not None
         self.owner:SemanticWork=owner
         self._task:asyncio.Task[Record|LocalFailure]|None=None
@@ -93,10 +94,10 @@ class SemanticManagementPort:
             original=await self.host.storage.bind_operation(self.definitions['resume'],self.owner.instance).read_receipt(key)
             if type(original) is Failed:raise LocalConfirmation(original)
             if type(original) is not Found:raise OwnerFailure('STORAGE_FAILED','receipt','INTEGRITY_FAILURE')
-            self.host._scheduling=True;return original.value
+            self.host.enable_semantic_dispatch();return original.value
         receipt=await self._commit('resume',key,MappingProxyType({'space_id':self.owner.space,'expected_revision':control['revision'],
             'authorization_digest':authorization.grant.digest}))
-        self.host._scheduling=True;return receipt
+        self.host.enable_semantic_dispatch();return receipt
 
     @outcome
     async def prepare_document(self,object_id:str,original_request_key:str,partition_id:str) -> str:
@@ -154,29 +155,22 @@ class SemanticManagementPort:
                     'expected_revision':work['revision'],'completion_receipt':work['completion_ref'],'cleanup_pending':False}))
             return await self.work(work_id)
         provider=self.owner.provider
-        if provider._pending is not None:
-            if provider._pending.request.description['work_id']!=work_id:raise OwnerFailure('RESOURCE_BUSY','state','CLEANUP_PENDING',True)
-            finished=await provider.finish_pending()
-            if type(finished) is not Committed:raise LocalConfirmation(finished)
-        if provider._failure is not None:
-            if provider._failure[0].current['operation_key']!=work['original_request_key']:raise OwnerFailure('RESOURCE_BUSY','state','CLEANUP_PENDING',True)
-            await provider.finish_failure()
+        await provider.finish_original_pending(work_id,string(work['original_request_key']))
         if work['state']=='PREPARED' and work['intent'] is None:
             # Admission shares the original cold deadline; paid completion does not.
             with DeadlineScope(admission_deadline) if admission_deadline is not None else nullcontext():
                 check_deadline()
                 self.host.normal();authorization=self.host.authorization
                 if authorization is None or slot_id is None:raise ValueError('Original authorized slot required.')
-                self.host._dispatch_control=await self.control()
-                control=self.host._dispatch_control
-                if (not self.host._scheduling or control['scheduler']!='ENABLED' or control['last_cleanup_at'] is not None and time.time_ns()//1000-number(control['last_cleanup_at'])<30000000):
+                control=await self.control();self.host.observe_semantic_control(control)
+                if not self.host.semantic_dispatch_allowed(control):
                     raise OwnerFailure('RESOURCE_BUSY','state','ADMISSION_FULL')
                 check_deadline()
                 await provider.check_budget(work)
                 check_deadline()
                 text=await self.owner.text(work)
                 check_deadline()
-                old=authorization._entries.get(work_id)
+                old=authorization.original(work_id)
                 deadline=number(record(old['intent'])['expires_at']) if old else min(time.time_ns()//1000+60000000,number(authorization.grant.binding['expires_at']),
                     request_deadline_at if request_deadline_at is not None else 2**63-1)
                 if deadline<=time.time_ns()//1000:raise OwnerFailure('TIMEOUT','state','DEADLINE_EXCEEDED')
@@ -184,12 +178,12 @@ class SemanticManagementPort:
                 intent=authorization.reserve(work,request.fingerprint,deadline,slot_id)
                 check_deadline()
                 if deadline<=time.time_ns()//1000:raise OwnerFailure('TIMEOUT','state','DEADLINE_EXCEEDED')
-                self.owner._binding=(request,intent)
+                release_binding=self.owner.hold_binding(request,intent)
                 completion=CompletionScope()
                 try:
                     with completion:
                         await self._commit('bind',identity('semantic-bind',work_id),MappingProxyType({'work_id':work_id,'expected_revision':work['revision'],'intent':intent,'deadline_at':deadline}))
-                finally:completion.when_ended(lambda:setattr(self.owner,'_binding',None))
+                finally:completion.when_ended(release_binding)
                 work=await self.work(work_id)
         if work['state'] in ('PREPARED','BOUND') and work['intent'] is not None:
             with DeadlineScope(admission_deadline) if admission_deadline is not None else nullcontext():
@@ -201,18 +195,18 @@ class SemanticManagementPort:
             if registered is None and number(work['deadline_at'])<=time.time_ns()//1000:
                 absence=await provider.verify_unsent(request)
                 if absence is None:raise OwnerFailure('RESOURCE_BUSY','state','ADMISSION_FULL')
-                self.owner._not_sent=(work_id,'DEADLINE')
+                release_unsent=self.owner.hold_unsent(work_id,'DEADLINE')
                 try:
                     await self._commit('fail',identity('semantic-fail',work_id),MappingProxyType({'kind':'EMBED','work_id':work_id,
                         'expected_revision':work['revision'],'error':'DEADLINE','request_ref':None,'terminal_receipt':None}))
                 finally:
-                    self.owner._not_sent=None;provider.release_absence(absence)
+                    release_unsent();provider.release_absence(absence)
                 if self.host.authorization is not None:self.host.authorization.complete(work_id)
                 return await self.work(work_id)
             if registered is None:
                 with DeadlineScope(admission_deadline) if admission_deadline is not None else nullcontext():
                     check_deadline()
-                    self.host._dispatch_control=await self.control()
+                    self.host.observe_semantic_control(await self.control())
                     check_deadline()
                     absence=await provider.verify_unsent(request)
                     if absence is None:raise OwnerFailure('RESOURCE_BUSY','state','ADMISSION_FULL')
@@ -243,7 +237,7 @@ class SemanticManagementPort:
             elif registered['phase']!='TERMINAL':raise OwnerFailure('RESOURCE_BUSY','work','OWNER_ACTIVE',True)
         if work['state'] in ('PREPARED','BOUND') and work['intent'] is not None:
             request=provider.request(work,await self.owner.text(work),number(work['deadline_at']))
-            received=await provider.recover_result(request.request_id);self.owner._result=received
+            received=await provider.recover_result(request.request_id);release_received=self.owner.hold_received(received)
             completion=CompletionScope()
             try:
                 with completion:
@@ -251,9 +245,7 @@ class SemanticManagementPort:
                         'expected_revision':work['revision'],'request_ref':MappingProxyType({'request_id':request.request_id,'attempt_id':request.attempt_id}),
                         'provider_completion':provider.reference(received.completion)}))
             finally:
-                def release():
-                    self.owner._result=None;provider.release_result(received)
-                completion.when_ended(release)
+                completion.when_ended(release_received)
             work=await self.work(work_id)
         if work['state']=='RESULT_STORED':
             if work['purpose']=='DOCUMENT':
@@ -304,12 +296,24 @@ class SemanticManagementPort:
             await self._commit('record_cleanup',identity('semantic-cleanup',work_id),MappingProxyType({'kind':'EMBED','work_id':work_id,
                 'expected_revision':work['revision'],'request_ref':work['request_ref'],'provider_receipt':provider.reference(proof.value),'cleanup_pending':False}))
             if self.host.authorization is not None:self.host.authorization.complete(work_id)
+        await provider.reconcile_network()
         return await self.work(work_id)
 
     @outcome
     async def publish(self,generation_id:str,captured_seq:int) -> Record:
         """Build and publish one complete generation from paid native artifacts."""
         return await self._local(lambda:self._publish(generation_id,captured_seq))
+
+    @property
+    def pending(self) -> bool:
+        """Actual work and local file descendants retain their original owner."""
+        return any(task is not None and not task.done() for task in (self._task,self._local_task))
+
+    async def wait_actual(self,timeout:float) -> bool:
+        tasks=tuple(task for task in (self._task,self._local_task) if task is not None and not task.done())
+        if not tasks:return True
+        _,pending=await asyncio.wait(tasks,timeout=timeout)
+        return not pending
 
     async def _local[T](self,action:Callable[[],Awaitable[T]]) -> T:
         """One original five-second call, retaining all admitted descendant I/O."""

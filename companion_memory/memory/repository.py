@@ -12,7 +12,7 @@ from companion_memory.persistence.owned_statements import StatementCatalog
 from .formats import ID, INT, REVISION, enum
 
 
-def memory_catalog(*, semantic_format: bool = False) -> StatementCatalog:
+def memory_catalog(*, semantic_format: bool = False, daily_format: bool = False) -> StatementCatalog:
     """Build the finite memory schema before the database is created."""
     tables: list[TableDefinition] = []
     statements: list[tuple[str, StatementDefinition]] = []
@@ -44,6 +44,14 @@ def memory_catalog(*, semantic_format: bool = False) -> StatementCatalog:
     add('objects_replace', 'UPDATE memory_objects SET kind=:kind,revision=:revision,lifecycle=:lifecycle,body=:body,digest=:digest '
         'WHERE scope_id=:scope_id AND object_id=:object_id AND revision=:expected_revision RETURNING object_id,kind,revision,lifecycle,body,digest',
         RecordSchema(object_fields + (Field('expected_revision', REVISION),)), object_row, True)
+    if daily_format:
+        for endpoint in ('from_ref','to_ref'):
+            tables.append(TableDefinition('memory_daily_subject_'+endpoint,
+                "CREATE INDEX memory_daily_subject_"+endpoint+" ON memory_objects(scope_id,json_extract(body,'$.content."+endpoint+".id'),object_id) WHERE kind='RELATION' AND lifecycle='ACTIVE' AND json_extract(body,'$.content."+endpoint+".type')='SUBJECT'"))
+        add('daily_subject_relations',"SELECT object_id,kind,revision,lifecycle,body,digest FROM memory_objects WHERE scope_id=:scope_id AND kind='RELATION' AND lifecycle='ACTIVE' "
+            "AND ((json_extract(body,'$.content.from_ref.type')='SUBJECT' AND json_extract(body,'$.content.from_ref.id')=:subject_id) "
+            "OR (json_extract(body,'$.content.to_ref.type')='SUBJECT' AND json_extract(body,'$.content.to_ref.id')=:subject_id)) ORDER BY object_id LIMIT 5",
+            RecordSchema((Field('subject_id',ID),)),object_row,False)
     table('links', (Field('object_id', ID), Field('revision', REVISION), Field('body', BoundedTextSchema(2048))),
         'PRIMARY KEY(scope_id,object_id), CHECK(revision>0)', ('object_id',))
     subject_fields = (Field('subject_id', ID), Field('kind', ID), Field('platform_id', ID, nullable=True),
@@ -66,7 +74,7 @@ def memory_catalog(*, semantic_format: bool = False) -> StatementCatalog:
         'RETURNING source_id,entry_id,batch_id,state,references_revision,holder_count,body,digest',
         RecordSchema((Field('source_id', ID), Field('expected_revision', REVISION), Field('holder_count', INT),
             Field('state', enum('RETAINED', 'RELEASED')), Field('body', BoundedTextSchema(8192 if semantic_format else 4096), nullable=True))), source_row, True)
-    holder_fields = (Field('source_id', ID), Field('owner_kind', enum('OBJECT', 'CANDIDATE', 'WORK', 'SOURCE')),
+    holder_fields = (Field('source_id', ID), Field('owner_kind', enum(*(('OBJECT', 'CANDIDATE', 'WORK', 'SOURCE', 'SUBJECT') if daily_format else ('OBJECT', 'CANDIDATE', 'WORK', 'SOURCE')))),
                      Field('owner_id', ID))
     table('source_holders', holder_fields, 'PRIMARY KEY(scope_id,source_id,owner_kind,owner_id)', ('source_id', 'owner_kind', 'owner_id'))
     add('source_holder_count', 'SELECT count(*) AS count FROM memory_source_holders WHERE scope_id=:scope_id AND source_id=:source_id',

@@ -18,6 +18,8 @@ from types import MappingProxyType
 from typing import cast
 from companion_memory.configuration import PresentValue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
+from .daily_network import DailyNetwork,NetworkPermit
 from companion_memory.persistence import Committed,Found,Staged,Receipt,ResultBoundCommandDefinition,ResultBoundCommand,UnitOfWork,Value,NotCommitted,Unconfirmed,Rejected,Failed
 from companion_memory.persistence.completion import start_owned
 from companion_memory.persistence.deadlines import DeadlineScope,check_deadline
@@ -78,22 +80,27 @@ class _Completion:
 
 class EmbeddingProvider:
     """Native embedding owner, with zero send queue and explicit first-send gate."""
-    def __init__(self,ledger: LedgerBinding,configuration: StoredSemanticConfiguration,instance: str,
+    def __init__(self,ledger: LedgerBinding,configuration: StoredSemanticConfiguration | StoredDailyConfiguration,instance: str,
                  definitions: tuple[ResultBoundCommandDefinition,...],transport: ChatTransport|None,
                  checkpoint: Callable[[],None],permit: Callable[[Record,Record],bool],
-                 dispatch:Callable[[Record,Record,Callable[[],asyncio.Future[WireObservation]]],asyncio.Future[WireObservation]]|None=None):
+                 dispatch:Callable[[Record,Record,Callable[[],asyncio.Future[WireObservation]]],asyncio.Future[WireObservation]]|None=None,*,network:DailyNetwork|None=None):
         if (type(ledger) is not LedgerBinding or not ledger.assembly.embedding_format or ledger.semantic_configuration is not configuration
                 or transport is not None and (type(transport) is not ChatTransport or transport._format!='EMBEDDING')):
             raise ValueError('Native embedding ledger and transport bindings are required.')
+        if (type(configuration) is StoredDailyConfiguration)!=(type(network) is DailyNetwork) or ledger.assembly.daily_format!=(network is not None):raise ValueError('Daily Provider requires its one native network owner.')
+        self._unknown_requests:set[str]=set()
+        self.network=network;self._network_permit:NetworkPermit|None=None;self._network_work:str|None=None
         self.ledger=ledger;self.configuration=configuration;self.instance=instance;self.checkpoint=checkpoint;self.permit=permit
         self.transport=transport;self.storage=ledger.storage
         self.dispatch=dispatch
         self.simulated=configuration.candidate.text.record('retrieval.embedding')['qualification_profile']=='OFFLINE_CAPACITY'
         if self.simulated!=(transport is None):raise ValueError('Transport and complete configuration tier differ.')
         values={entry.definition.key:entry.state.value for entry in configuration.candidate.foundation.list_entries() if type(entry.state) is PresentValue}
-        self.account=as_record(cast(tuple,values['provider.accounts'])[0]);self.profiles=tuple(as_record(v) for v in cast(tuple,values['provider.profiles']))
+        self.profiles=tuple(as_record(v) for v in cast(tuple,values['provider.profiles']))
+        account_id=next(p['account_id'] for p in self.profiles if p['profile_id']==configuration.candidate.text.record('retrieval.embedding')['document_profile'])
+        self.account=next(as_record(a) for a in cast(tuple,values['provider.accounts']) if as_record(a)['account_id']==account_id) if network is not None else as_record(cast(tuple,values['provider.accounts'])[0])
         self.usage_only=self.account.get('billing_mode')=='USAGE_ONLY_TRIAL'
-        self.version=4 if self.usage_only else 3
+        self.version=5 if network is not None else 4 if self.usage_only else 3
         self.billing_mode='USAGE_ONLY_TRIAL' if self.usage_only else 'SIMULATED' if self.simulated else 'TOKEN_METERED'
         if self.usage_only!=ledger.assembly.embedding_usage_only:raise ValueError('Native metering format differs.')
         self.space=string(configuration.candidate.text.record('retrieval.semantic')['space_id'])
@@ -110,9 +117,11 @@ class EmbeddingProvider:
         self._active: asyncio.Task[object]|None=None;self._pending: _Completion|None=None
         self._active_work: str|None=None
         self._results: dict[int,EmbeddingResult]={};self._reading=0;self._retiring:set[str]=set()
-        self._closed=False;self._executor=ThreadPoolExecutor(max_workers=1,thread_name_prefix='embedding-provider')
+        self._closed=False;self._executor=ThreadPoolExecutor(max_workers=1,thread_name_prefix='embedding-provider') if network is None else None
         self._cancel=CancellationSource();self._initialized=False;self.executions=0
-        if not ledger.acquire(self):self._executor.shutdown(wait=False);raise ValueError('Provider owner is already occupied.')
+        if not ledger.acquire(self):
+            if self._executor is not None:self._executor.shutdown(wait=False)
+            raise ValueError('Provider owner is already occupied.')
 
     @staticmethod
     def _now() -> str:
@@ -150,6 +159,9 @@ class EmbeddingProvider:
                 if request['phase']=='TERMINAL' and (not attempts or attempts[0]['logical_outcome']!=request['outcome']):raise ValueError('Terminal disagreement.')
                 if request['phase']=='OPEN' and attempts and attempts[0]['state']=='PREPARED':
                     await self._mark_unknown(request,attempts[0])
+                if request['phase']=='REMOTE_RESULT_UNKNOWN':
+                    self._unknown_requests.add(cast(str,request['object_id']))
+                    if self.network is not None:self.network.block_account(cast(str,request['account_id']))
                 after=cast(str,request['object_id'])
         self._initialized=True
 
@@ -200,7 +212,10 @@ class EmbeddingProvider:
             self._absence=None
             absolute=time.monotonic()+remaining
             if admission_deadline is not None:absolute=min(absolute,admission_deadline)
-            task,logical=start_owned(self._execute_first(request,intent,absolute))
+            if self.network is not None:
+                self._network_permit=self.network.reserve(request.request_id,string(request.description['original_request_key']),cast(str,self.account['account_id']),absolute,consumer_required=True)
+                self._network_work=string(request.description['work_id'])
+            task,logical=start_owned(self._execute_admitted(request,intent,absolute))
             self._active=task;self._active_work=string(request.description['work_id'])
         def ended(done: asyncio.Task[object]) -> None:
             if not done.cancelled():done.exception()
@@ -209,6 +224,32 @@ class EmbeddingProvider:
         task.add_done_callback(ended)
         done,_=await asyncio.wait((logical,),timeout=remaining)
         return logical.result() if done else MappingProxyType({'state':'PENDING','cleanup_pending':True})
+
+    async def _execute_admitted(self,request:EmbeddingRequest,intent:Record,deadline:float) -> object:
+        from companion_memory.persistence.completion import CompletionScope
+        with CompletionScope() as actual:
+            try:return await self._execute_first(request,intent,deadline)
+            finally:
+                await actual.wait()
+                if self.network is not None:
+                    try:await self.reconcile_network()
+                    except (LedgerFailure,OwnerFailure,InvalidData):pass
+
+    async def reconcile_network(self) -> None:
+        """Confirm only the retained request after its actual storage tail ended."""
+        permit=self._network_permit
+        if self.network is None or permit is None:return
+        request=await self.ledger.get('requests',permit.request_id)
+        if request is None:
+            self.network.cancel_unregistered(permit);self._network_permit=None;self._network_work=None
+        elif request['phase'] in ('TERMINAL','REMOTE_RESULT_UNKNOWN'):
+            if request['phase']=='REMOTE_RESULT_UNKNOWN':self.network.block_account(permit.account_id)
+            self.network.confirm_terminal(permit)
+            if request['outcome']=='SUCCEEDED':
+                handoff=await self.ledger.get('handoffs',cast(str,request['handoff_id']))
+                if handoff is None or as_record(handoff['embedding_cleanup'])['state']!='RETIRED':return
+            if self._pending is not None or self._failure is not None or self._reading or self._results:return
+            self.network.confirm_consumed(permit);self._network_permit=None;self._network_work=None
 
     async def _commit(self,kind: str,key: str,changes: tuple[Mutation,...],request_id: str|None,attempt_id: str|None,
                       previous_state: str,state: str,complete: bool) -> Receipt:
@@ -221,6 +262,12 @@ class EmbeddingProvider:
                 failure.cleanup_pending or self._pending is not None or self._failure is not None) from None
         if type(result) is not Committed:raise LedgerFailure(self._retained_outcome(result))
         return result.receipt
+
+    async def before_first_registration(self,request) -> None:
+        """Optional native outer-purpose accounting; legacy hosts have none."""
+
+    async def after_first_registration(self,request,receipt:Receipt) -> None:
+        """Observe the original registration only; never creates another attempt."""
 
     def _retained_outcome(self,result:object) -> object:
         """Merge retained response ownership without changing confirmation or cause."""
@@ -287,7 +334,7 @@ class EmbeddingProvider:
                 'format_version':self.version,'fingerprint_version':self.version,'attribution':{'run_id':request.description['work_id'],'entry_ids':(),
                     'parent_request_id':None,'trace_id':None,'batch_id':None,'dream_run_id':None,'prompt_revision':None},
                 'source':'SIMULATED' if self.simulated else 'REMOTE_PROVIDER','configuration_origin':'PERSISTED_CONFIGURATION','config_snapshot_id':self.configuration.snapshot_id,
-                'profile_revision':identity('embedding-profile',self.configuration.snapshot_id,cast(str,profile['profile_id'])),'price_revision':price_revision,
+                'profile_revision':identity('daily-profile' if self.network is not None else 'embedding-profile',self.configuration.snapshot_id,cast(str,profile['profile_id'])),'price_revision':price_revision,
                 'execution_evidence':{'profile':profile,'account':self.account,'request_timeout_ms':60000,'retry_delay_ms':0,'request_max_bytes':65536,'result_max_bytes':40960},
                 'fingerprint':request.fingerprint,'phase':'OPEN','outcome':None,'first_error':None,'attempt_count':1,'ever_unknown':False,'handoff_id':None},8192,owned=True))
             attempt=as_record(freeze({'object_id':request.attempt_id,'revision':1,'request_id':request.request_id,'ordinal':1,'state':'PREPARED','logical_outcome':None,
@@ -299,8 +346,14 @@ class EmbeddingProvider:
                 'known_cost_atoms':None,'cost_complete':False,'format_version':self.version,'quota_reserved':0,'quota_known':None if self.usage_only else 0,'quota_held':0,**({'billing_mode':self.billing_mode} if self.usage_only else {})},8192,owned=True))
             advanced=as_record(freeze(dict(budget)|{'revision':cast(int,budget['revision'])+1,'attempt_count':cast(int,budget['attempt_count'])+1,'held_atoms':reserve},8192,owned=True))
             check_deadline()
-            await self._commit('register',identity('embedding-register',request.request_id),(Mutation('requests',None,req),Mutation('attempts',None,attempt),
+            await self.before_first_registration(request)
+            check_deadline()
+            registered=await self._commit('register',identity('embedding-register',request.request_id),(Mutation('requests',None,req),Mutation('attempts',None,attempt),
                 Mutation('budget_windows',budget,advanced),Mutation('reservations',None,reservation)),request.request_id,request.attempt_id,'NONE','PREPARED',False)
+            try:await self.after_first_registration(request,registered)
+            except (OwnerFailure,InvalidValue):
+                return await self._fail_terminal(req,attempt,advanced,reservation,
+                    self._usage(reserved=reserve,rate=rate,price_revision=price_revision,not_sent=True),True,'COMMIT_UNCONFIRMED')
         if time.monotonic()>=deadline or not self.permit(request.description,intent):
             return await self._unknown(request,req,attempt)
         self.executions+=1
@@ -314,6 +367,11 @@ class EmbeddingProvider:
             assert self.transport is not None
             def begin():
                 assert self.transport is not None
+                if self.network is not None:
+                    permit=self._network_permit
+                    if permit is None:raise OwnerFailure('ACCESS_DENIED','request','BINDING_MISMATCH')
+                    transport=self.transport
+                    return self.network.start(permit,lambda:transport.exchange(request.wire,min(deadline,start+30),self._cancel.token))
                 return asyncio.get_running_loop().run_in_executor(self._executor,self.transport.exchange,request.wire,min(deadline,start+30),self._cancel.token)
             try:wire=await (self.dispatch(request.description,intent,begin) if self.dispatch is not None else begin())
             except OwnerFailure:return await self._fail_terminal(req,attempt,advanced,reservation,
@@ -356,6 +414,16 @@ class EmbeddingProvider:
             Mutation('reservations',reservation,settled_reservation),Mutation('cost_items',None,cost_item),Mutation('handoffs',None,handoff)),None,(Mutation('attempts',attempt,observed),))
         return await self.finish_pending()
 
+    async def finish_original_pending(self,work_id:str,original_key:str) -> None:
+        """Finish only this work's retained registration or failure notification."""
+        if self._pending is not None:
+            if self._pending.request.description['work_id']!=work_id:raise OwnerFailure('RESOURCE_BUSY','state','CLEANUP_PENDING',True)
+            finished=await self.finish_pending()
+            if type(finished) is not Committed:raise LedgerFailure(finished)
+        if self._failure is not None:
+            if self._failure[0].current['operation_key']!=original_key:raise OwnerFailure('RESOURCE_BUSY','state','CLEANUP_PENDING',True)
+            await self.finish_failure()
+
     async def finish_pending(self) -> object:
         """Confirm retained original evidence and handoff without another send."""
         pending=self._pending
@@ -368,7 +436,9 @@ class EmbeddingProvider:
         payload=MappingProxyType({'request_ref':MappingProxyType({'request_id':request.request_id,'attempt_id':request.attempt_id}),
             'original_request_digest':request.fingerprint,'terminal_evidence_ref':self.reference(evidence)})
         completed=await self.execute('store_embedding_handoff',identity('embedding-complete',request.request_id),payload)
-        if type(completed) is Committed:self._pending=None
+        if type(completed) is Committed:
+            self._pending=None
+            if self.network is not None:await self.reconcile_network()
         return self._retained_outcome(completed)
 
     async def _fail_terminal(self,request:ModelRecord,attempt:ModelRecord,budget:ModelRecord,reservation:ModelRecord,
@@ -398,7 +468,9 @@ class EmbeddingProvider:
         request=changes[0].current;attempt=changes[1].current
         receipt=await self._commit('terminate',identity('embedding-terminate',cast(str,request['object_id'])),changes,cast(str,request['object_id']),
             cast(str,attempt['object_id']),'OPEN','TERMINAL',bool(as_record(attempt['usage'])['cost_complete']))
-        self._failure=None;return receipt
+        self._failure=None
+        if self.network is not None:await self.reconcile_network()
+        return receipt
 
     async def _unknown(self,request: EmbeddingRequest,req: ModelRecord,attempt: ModelRecord) -> object:
         return await self._mark_unknown(req,attempt)
@@ -407,8 +479,11 @@ class EmbeddingProvider:
         error={'code':'REMOTE_RESULT_UNKNOWN','field':'result','reason':'ORIGINAL_RESULT_UNCONFIRMED'}
         current=as_record(freeze(dict(req)|{'revision':cast(int,req['revision'])+1,'phase':'REMOTE_RESULT_UNKNOWN','ever_unknown':True,'first_error':error},8192,owned=True))
         unknown=as_record(freeze(dict(attempt)|{'revision':cast(int,attempt['revision'])+1,'state':'REMOTE_RESULT_UNKNOWN','ever_unknown':True,'first_error':error},8192,owned=True))
-        return await self._commit('recover',identity('embedding-unknown',cast(str,req['object_id'])),(Mutation('requests',req,current),Mutation('attempts',attempt,unknown)),
+        receipt=await self._commit('recover',identity('embedding-unknown',cast(str,req['object_id'])),(Mutation('requests',req,current),Mutation('attempts',attempt,unknown)),
             cast(str,req['object_id']),cast(str,attempt['object_id']),'PREPARED','REMOTE_RESULT_UNKNOWN',False)
+        self._unknown_requests.add(cast(str,req['object_id']))
+        if self.network is not None:self.network.block_account(cast(str,req['account_id']))
+        return receipt
 
     @staticmethod
     def reference(receipt: Receipt) -> Record:
@@ -617,12 +692,12 @@ class EmbeddingProvider:
         """Actual ownership across all work, independent of observation paging."""
         with self._lock:
             return bool(self._active is not None and not self._active.done() or self._pending is not None
-                or self._failure is not None or self._reading or self._results)
+                or self._failure is not None or self._reading or self._results or self._network_permit is not None)
 
     def pending_for(self,work_id: str) -> bool:
         """Actual retained execution/results, independent of remote outcome."""
         with self._lock:
-            return (self._active_work==work_id and self._active is not None and not self._active.done()
+            return (self._network_work==work_id and self._network_permit is not None or self._active_work==work_id and self._active is not None and not self._active.done()
                 or self._pending is not None and self._pending.request.description['work_id']==work_id
                 or self._failure is not None and as_record(self._failure[0].current['attribution'])['run_id']==work_id
                 or any(as_record(r.request['attribution'])['run_id']==work_id for r in self._results.values()))
@@ -634,5 +709,8 @@ class EmbeddingProvider:
             done,_=await asyncio.wait((self._active,),timeout=max(0,deadline-time.monotonic()))
             if not done:return False
         if self._reading or self._results or self._pending is not None or self._failure is not None:return False
-        self._executor.shutdown(wait=False)
+        if self.network is not None:
+            observation=self.network.close()
+            if observation.occupied:return False
+        if self._executor is not None:self._executor.shutdown(wait=False)
         return self.ledger.release()

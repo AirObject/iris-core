@@ -1,8 +1,8 @@
 # 实际工作状态
 
-本次语义检索提交的父版本为`9936385d8697b7add662562c3465c041a48d76fa`，父提交`c2be9327b80be3b3ccb12262af7ff15c4539ea2d`；72份工程及试验产物已按用户授权本地提交，未推送。[提交核对](/private/tmp/iris-supervisor-planning-3ayat7pi/commit-verified.json)确认578份受测文件一致。工程交付不表示学习质量通过；质量事实与暂缓决定只在[暂缓问题](DEFERRED_ISSUES.md#text-learning-quality)维护。
+最新工程技术验收为2026-09-16的日常认知与图片学习，本页随`feat(cognition): 增加日常认知宿主与图片学习`归档，父提交为`c7bf865b20a67b3fc373839be7cd00ec6d0855c3`。按用户已有条件提交授权收尾，具体提交身份以Git为准，未授权推送。真实图片2次成功；真实学习重复键失败后按契约停发，后续真实链路未完成，详见[独立限制记录](DEFERRED_ISSUES.md#daily-cognition-real-output)。上一语义阶段已提交版本及质量暂缓决定保持。
 
-本页只记录已交付能力、对应版本和仍有效的限制。当前文档整理、实施授权及停止点见[CURRENT_TASK](CURRENT_TASK.md)，后续顺序见[剩余路线](../architecture/implementation-options.md#source-line-1202)。
+本页只记录已交付能力、对应版本和仍有效的限制。当前实施授权及停止点见[CURRENT_TASK](CURRENT_TASK.md)，后续顺序见[剩余路线](../architecture/implementation-options.md#source-line-1202)。
 
 ## 已交付能力与版本
 
@@ -19,16 +19,20 @@
 | 本地词法信息获取、使用反馈、外部状态、多目标及提醒响应 | `8bc948c1822afb931625b77563df710fc9bbf20d` | 按批准后的[F口径](../architecture/local-information-feedback.md#f-qualification)技术验收；两平台恢复及用户确认73组相关性，445份原受测集合。完整版本链见该提交的CURRENT_TASK |
 | 文本学习独立宿主、持久候选、记忆／来源原子终结、首次persona审核发布 | `c2be9327b80be3b3ccb12262af7ff15c4539ea2d` | macOS／Linux各890项unittest；全量Pyright零诊断，542份受测文件核对一致。此版本证明工程及本地验证，真实供应商试验见下一行 |
 | MiniMax／DeepSeek真实文本协议、受控登记／凭据／试验工具与恢复；工程已交付，质量暂缓 | `9936385d8697b7add662562c3465c041a48d76fa` | 最终macOS／Linux各17项关联回归；锁定Pyright 1.1.413全量零诊断，578份文件／570份Python。真实请求按[原报告](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/report-complete.md)分版本解释，未重跑全量unittest |
+| 异步embedding、两代语义索引、混合查询／HTTP、固定来源与原键恢复；真实小包完成，质量暂缓 | `c7bf865b20a67b3fc373839be7cd00ec6d0855c3` | Docker Linux arm64 29项定点／关联通过，锁定全量Pyright零诊断；672份受测文件与提交树一致；12＋6真实调用，恢复／缓存新增发送0 |
+| 日常认知统一宿主、图片准备、有界工具、六类候选、SUBJECT来源、目标合并、persona导入与初始化续办；工程验收，真实验证有限 | 本页所在日常认知提交，父`c7bf865b20a67b3fc373839be7cd00ec6d0855c3` | 844份受测文件；本轮60个具名成功检查按版本复用，最终Pyright776文件零诊断；真实图片2成功、学习1失败后停止 |
 
-2026-09-15：[语义检索小档工程与真实闭环](../architecture/async-embedding-semantic-retrieval.md)在已批准范围内通过监督技术验收，用户已授权本次提交。版本为上述HEAD上的672文件指纹`bde65f12bc611d56bb85d62020fe85520e14396684b811f08c5e968b31eaa348`；此前受控核心证据复用，本轮用量配置／v4账本／v2usage、UNKNOWN门控、原生交接及共享传输增量静态核对未发现新的阻塞问题，依据见[监督核对](/private/tmp/iris-semantic-stage-acceptance-63h1n5qc/review.json)。执行者29项定点／关联测试通过，锁定Pyright1.1.413全量零诊断；未重跑全量unittest。
+2026-09-16：[日常认知与图片学习](../architecture/daily-cognition-and-image-learning.md)工程范围通过监督技术验收。统一宿主、六类候选、SUBJECT来源、目标合并、persona导入、图片／语义联动及可信初始化续办已交付；本轮静态复核未发现新的阻塞工程问题。[监督核对](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-daily-stage-acceptance-y3y63i5a/review.json)与[执行证据](/private/tmp/iris-daily-rerun-aczy2fsy/handoff-index.json)对应844份受测文件指纹`670ec29e674e0c1cea8d3e1551fc2a5b65c15bb5e4a67d4785ec6bab4e58680a`；文档收尾保留788份工程文件。Docker Linux arm64本轮60个具名成功检查，15组矩阵按版本复用；最终锁定Pyright1.1.413覆盖776份Python零诊断，未重跑全量unittest。新包3次实际发送、学习无有效应用、后续29槽停止，旧3次失败保留；[真实结果与未验证范围](DEFERRED_ISSUES.md#daily-cognition-real-output)不写成真实闭环或质量通过。Pylance未验证。
+
+2026-09-15：[语义检索小档工程与真实闭环](../architecture/async-embedding-semantic-retrieval.md)在已批准范围内通过监督技术验收并提交。版本为语义提交`c7bf865b20a67b3fc373839be7cd00ec6d0855c3`的672文件指纹`bde65f12bc611d56bb85d62020fe85520e14396684b811f08c5e968b31eaa348`；此前受控核心证据复用，本轮用量配置／v4账本／v2usage、UNKNOWN门控、原生交接及共享传输增量静态核对未发现新的阻塞问题，依据见[监督核对](/private/tmp/iris-semantic-stage-acceptance-63h1n5qc/review.json)。执行者29项定点／关联测试通过，锁定Pyright1.1.413全量零诊断；未重跑全量unittest。
 
 真实12 DOCUMENT＋6 QUERY均HTTP200、原生提交并完成实际清理，报告1134 tokens，费用与供应商实际扣额未知；18个原槽已全部消耗。原进程后的新解释器恢复、原键及缓存复用新增发送0，见[逐项核账](/private/tmp/iris-semantic-allocated-ryg1zesg/send-accounting.json)。首次EXECUTE因HTTP验证使用不同principal在18次成功后退出1，原失败保留；只修正验证工具身份后RECOVER退出0，生产源码从发送到恢复不变，两个验证文件的版本差异另见[版本对应](/private/tmp/iris-semantic-allocated-ryg1zesg/code-version-binding.json)。[相关性质量未达标，用户已决定暂缓并继续推进](DEFERRED_ISSUES.md#semantic-retrieval-quality)，不写成完整效果资格通过。Pylance、4096完整大档、真实冷查询250ms成功率及生产条件未验证。
 
 ## 当前限制与验证边界
 
 - DeepSeek固定14槽已执行，两平台persona已审核发布，正式记忆分别5／12条，恢复零新增发送；这不证明学习质量达标。旧MiniMax UNKNOWN及外层保守责任仍保留，不能视作结清或自动续用额度。原请求、标注及费用估算证据保持原样。
-- 配置支持已批准装配的一次初始化与持久恢复；在线编辑、安全热激活／回退、存量迁移、持久FAULTED解除及UNKNOWN人工结案未交付。[默认时区及Web首次确认](../product/operations-and-management.md#initial-default-timezone)仅产品决定已批准，工程未实现。
-- 语义检索小档工程及真实闭环已技术验收，相关性问题暂缓；下一项为完整日常认知与媒体学习，以图片为当前验证模态。真实图片理解、完整认知工具循环、周期梦境／persona与自动长期维护尚未交付；[音视频测试暂缓](DEFERRED_ISSUES.md#audio-video-validation)。既有模拟／合成参与者不代表这些完整能力。
+- 配置支持已批准装配的一次初始化与持久恢复；在线编辑、安全热激活／回退、存量迁移、持久FAULTED解除及UNKNOWN人工结案未交付。[默认时区](../product/operations-and-management.md#initial-default-timezone)已在日常宿主的可信配置准备中实现，Web首次确认／修改尚未实现。
+- 语义检索小档工程及真实闭环已技术验收，相关性问题暂缓；[日常认知与图片学习](../architecture/daily-cognition-and-image-learning.md)工程已交付，实际图片成功但质量有偏差，真实学习／工具及本宿主真实向量闭环未完成。周期梦境／persona与自动长期维护尚未交付；[音视频测试暂缓](DEFERRED_ISSUES.md#audio-video-validation)。既有模拟／合成参与者不代表这些完整能力。
 - 实际临时文件／SQLite、受控HTTP、故障注入及新进程恢复支持各自断言；后续已包含Docker Linux验证，不能继续沿用早期“Linux未测试”的全局描述，也不能据此声称生产部署完成。生产身份／鉴权、目录与G2、完整管理Web、备份升级、最大合法词项资格、P/X及长期负载、介质掉电保障仍未验证或交付。
 - 永久阻塞的底层资源在有界返回后仍保留实际占用，清理状态与提交／远程结果分开表达。历史环境不能证明新环境就绪；后续检查范围只按[统一验证规则](../CODING_STANDARDS.md#validation-environment)。Pylance未验证。
 

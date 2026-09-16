@@ -6,6 +6,7 @@ generation. Recovery checks actual roots and never expires payload implicitly.
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
 from companion_memory.persistence import PersistenceService, UnitOfWork
 from companion_memory.persistence.owned_statements import StatementCatalog, OwnerFailure
 from companion_memory.information.records import Record, fact, integer
@@ -15,8 +16,8 @@ from .repository import layouts
 
 class RetrievalOwner:
     """Own all retrieval rows and keep their lease until actual work has ended."""
-    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str):
-        self._records = OwnedRecords(catalog, storage, instance_id, layouts(type(configuration) is StoredSemanticConfiguration))
+    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str):
+        self._records = OwnedRecords(catalog, storage, instance_id, layouts(type(configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration)))
         self.configuration = configuration
         self.instance_id = instance_id
         lease = storage.claim_module_owner(catalog.definition)

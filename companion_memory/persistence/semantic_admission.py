@@ -14,6 +14,7 @@ import stat
 import threading
 import time
 from types import MappingProxyType
+from companion_memory.configuration.daily_resolution import DailyConfigurationCandidate,daily_snapshot_issue
 from companion_memory.configuration.semantic_resolution import SemanticConfigurationCandidate,semantic_snapshot_issue
 from companion_memory.configuration import PresentValue
 from .content_codec import encode_content,decode_content
@@ -32,15 +33,17 @@ COMPLETION=frozenset(('apply','record_result','record_cleanup','fail','supersede
 
 class SemanticAdmission:
     """One exclusive persistent counter covering every registered business owner."""
-    def __init__(self,configuration: SemanticConfigurationCandidate,root: Path,mode: str):
-        if semantic_snapshot_issue(configuration) is not None or mode not in ('CREATE_NEW','OPEN_EXISTING'):raise InvalidValue()
+    def __init__(self,configuration: SemanticConfigurationCandidate | DailyConfigurationCandidate,root: Path,mode: str):
+        if (daily_snapshot_issue(configuration) if type(configuration) is DailyConfigurationCandidate else semantic_snapshot_issue(configuration)) is not None or mode not in ('CREATE_NEW','OPEN_EXISTING'):raise InvalidValue()
         if not root.is_absolute() or root.resolve(strict=True)!=root or any(p.is_symlink() for p in (root,*root.parents)):raise InvalidValue()
+        self.daily=type(configuration) is DailyConfigurationCandidate
         self.root=root;self.settings=configuration.text.record('retrieval.semantic_storage');self._lock=threading.RLock()
         values={e.definition.key:e.state.value for e in configuration.foundation.list_entries() if type(e.state) is PresentValue}
         database=values['storage.database_file'];assert type(database) is str
         self.database=Path(database)
         staging=configuration.content.value('media.staging_directory');assert type(staging) is str
         self.staging=Path(staging)
+        self.media_published=Path(str(configuration.content.value('media.root_directory')))/'published'
         log_directory=values['logging.file_directory'];assert type(log_directory) is str
         if not self.staging.is_relative_to(root) or not Path(log_directory).is_relative_to(root):raise InvalidValue()
         if not self.database.is_relative_to(root) or not Path(string(self.settings['index_root'])).is_relative_to(root):raise InvalidValue()
@@ -55,7 +58,7 @@ class SemanticAdmission:
             if not stat.S_ISREG(os.fstat(fd).st_mode) or os.fstat(fd).st_nlink!=1:raise InvalidValue()
             self._fd=fd
             if mode=='CREATE_NEW':
-                header=encode_content(MappingProxyType({'format':'SEMANTIC_OPERATION_ADMISSION_V1','binding':self._identity}),1024)+b'\n'
+                header=encode_content(MappingProxyType({'format':'DAILY_OPERATION_ADMISSION_V1' if self.daily else 'SEMANTIC_OPERATION_ADMISSION_V1','binding':self._identity}),1024)+b'\n'
                 if os.write(fd,header)!=len(header):raise OSError('Admission header write incomplete.')
                 os.fsync(fd)
                 directory=os.open(root,os.O_RDONLY|os.O_DIRECTORY)
@@ -70,7 +73,7 @@ class SemanticAdmission:
         deadline=time.monotonic()+5
         with os.fdopen(os.dup(self._fd),'rb') as stream:
             stream.seek(0);header=stream.readline(1025)
-            expected=encode_content(MappingProxyType({'format':'SEMANTIC_OPERATION_ADMISSION_V1','binding':self._identity}),1024)+b'\n'
+            expected=encode_content(MappingProxyType({'format':'DAILY_OPERATION_ADMISSION_V1' if self.daily else 'SEMANTIC_OPERATION_ADMISSION_V1','binding':self._identity}),1024)+b'\n'
             if header!=expected:raise InvalidValue()
             ordinal=0
             offset=stream.tell()
@@ -88,6 +91,7 @@ class SemanticAdmission:
         """Measure complete owned files and their actual volume; unknown stops work."""
         if self._faulted:raise OwnerFailure('RESOURCE_BUSY','storage','CLEANUP_PENDING',True)
         deadline=time.monotonic()+1;total=database=wal=backup=temporary=index=0
+        aliases={};physical=set()
         def files(directory: Path):
             if time.monotonic()>=deadline:raise TimeoutError('Resource observation incomplete.')
             with os.scandir(directory) as entries:
@@ -95,16 +99,26 @@ class SemanticAdmission:
                     if time.monotonic()>=deadline:raise TimeoutError('Resource observation incomplete.')
                     st=entry.stat(follow_symlinks=False)
                     if stat.S_ISDIR(st.st_mode):yield from files(Path(entry.path))
-                    elif stat.S_ISREG(st.st_mode) and st.st_nlink==1:yield Path(entry.path),st.st_size
+                    elif stat.S_ISREG(st.st_mode):
+                        path=Path(entry.path);inode=(st.st_dev,st.st_ino)
+                        if st.st_nlink!=1:
+                            if not self.daily or path.parent not in (self.staging,self.media_published):raise OSError('Owned resource alias or special file.')
+                            paths,links=aliases.setdefault(inode,([],st.st_nlink))
+                            if links!=st.st_nlink:raise OSError('Media publication changed during observation.')
+                            paths.append(path)
+                        yield path,st.st_size,inode
                     else:raise OSError('Owned resource alias or special file.')
         try:
-            for path,size in files(self.root):
-                total+=size
+            for path,size,inode in files(self.root):
+                if inode not in physical:total+=size;physical.add(inode)
                 if path==self.database:database+=size
                 elif str(path)==str(self.database)+'-wal':wal+=size
                 elif path.is_relative_to(self.root/'backup'):backup+=size
                 elif path.is_relative_to(Path(string(self.settings['index_root']))):index+=size
                 elif path.is_relative_to(self.root/'temporary') or path.is_relative_to(self.staging):temporary+=size
+            for paths,links in aliases.values():
+                if len(paths)!=links or sum(path.parent==self.media_published for path in paths)!=1 or not any(path.parent==self.staging for path in paths):
+                    raise OSError('Media publication links escape the owned publication pair.')
             free=os.statvfs(self.root)
             if (free.f_bavail*free.f_frsize<number(self.settings['free_reserve_bytes'])
                     or any(actual>=number(self.settings[key]) for actual,key in ((total,'directory_stop_bytes'),(database,'database_stop_bytes'),
@@ -115,6 +129,13 @@ class SemanticAdmission:
     def admit(self,handle: RecoveryHandle,values: Record) -> None:
         """Count one actual write attempt after reliable original receipt absence."""
         kind=handle.identity.operation_kind;eligible=kind in COMPLETION
+        daily_completion=('store_daily_handoff','confirm_daily_handoff','retire_daily_handoff','store_goal_comparison','apply_goal_comparison','finish_goal_comparison',
+            'associate_daily_image','store_daily_image','retire_daily_image_processing','complete_trigger','retire_reasoning_material',
+            'expire_goal_comparison','retire_goal_material',
+            'associate_reasoning_turn','store_reasoning_result','finish_reasoning_turn','store_reasoning_tool','stage_daily_candidate','stage_daily_candidate_media','plan_daily_candidate')
+        daily_application=tuple('apply_daily_candidate'+('_history' if h else '')+('_media' if m else '')+('_goals' if g else '')
+            for h in (False,True) for m in (False,True) for g in (False,True))
+        if self.daily and kind in daily_completion+daily_application:eligible=True
         if kind=='prepare' and type(values.get('payload')) is str:
             payload=decode_content(string(values['payload']).encode(),24576)
             eligible=type(payload) is dict and payload.get('kind')=='DELETE_LOCAL'

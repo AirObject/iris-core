@@ -105,7 +105,8 @@ def result_history_ids(namespace: str, kind: str, result: Value) -> tuple[Value,
     uses the same selection and still verifies every bound piece.
     """
     root = record(result)
-    if namespace == 'information' and kind in ('usage_change', 'usage_restore'):
+    daily_history=('apply_daily_candidate_history','apply_daily_candidate_history_media','apply_daily_candidate_history_goals','apply_daily_candidate_history_media_goals')
+    if namespace == 'information' and kind in ('usage_change', 'usage_restore') or namespace=='runtime' and kind in daily_history:
         expected = record(record(root['facts'])['logging_service'])['history_ids']
     else:
         expected = root['history']

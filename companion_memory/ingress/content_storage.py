@@ -11,6 +11,7 @@ from typing import Protocol, cast
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
 from companion_memory.persistence import (
     Field, RecordSchema, RepositoryDefinition, StatementDefinition, TableDefinition,
     BoundedTextSchema, PersistenceService, UnitOfWork, Value,
@@ -109,7 +110,7 @@ def information_ingress_catalog() -> StatementCatalog:
 
 class ContentIngressTransactions:
     """Only ingress mutates raw payloads or their finite ownership edges."""
-    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration,
+    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration,
                  instance_id: str, media: ContentMediaOwnership | None):
         self.rows = BoundStatements(catalog, storage, instance_id)
         self.configuration, self.instance_id, self.media = configuration, instance_id, media

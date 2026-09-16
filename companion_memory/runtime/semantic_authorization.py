@@ -29,6 +29,12 @@ BINDING=record(format=enum('SEMANTIC_TRIAL_AUTH_V1'),package_id=ID,set_id=ID,ins
 USAGE_BINDING=RecordSchema(tuple(replace(f,schema=enum('SEMANTIC_TRIAL_AUTH_V2')) if f.name=='format' else
     replace(f,schema=SequenceSchema(ID,12,12)) if f.name=='document_ids' else f for f in BINDING.fields)
     +(Field('verification_mode',enum('USER_ALLOCATED_USAGE_TRIAL')),))
+DAILY_DOCUMENT=record(object_id=ID,revision=T,material_digest=H,partition_id=ID)
+DAILY_QUERY=record(query_id=ID,text=BoundedTextSchema(512),partition_id=ID)
+DAILY_BINDING=RecordSchema(tuple(replace(f,schema=enum('DAILY_SEMANTIC_AUTH_V1')) if f.name=='format' else
+    replace(f,schema=SequenceSchema(ID,0,12)) if f.name=='document_ids' else
+    replace(f,schema=SequenceSchema(DAILY_QUERY,2,2)) if f.name=='queries' else f for f in BINDING.fields)
+    +(Field('verification_mode',enum('USER_ALLOCATED_USAGE_TRIAL')),Field('documents',SequenceSchema(DAILY_DOCUMENT,0,12))))
 
 
 @dataclass(frozen=True,slots=True,init=False)
@@ -46,11 +52,15 @@ class SemanticActivationAuthority:
 
     def grant(self,binding: object) -> SemanticActivation:
         if type(binding) is dict or type(binding) is MappingProxyType:
-            value=isolate(USAGE_BINDING if binding.get('format')=='SEMANTIC_TRIAL_AUTH_V2' else BINDING,binding,1048576)
+            shape=DAILY_BINDING if binding.get('format')=='DAILY_SEMANTIC_AUTH_V1' else USAGE_BINDING if binding.get('format')=='SEMANTIC_TRIAL_AUTH_V2' else BINDING
+            value=isolate(shape,binding,1048576)
         else:raise InvalidValue()
         if self._grant is not None or not self._verify(value):raise InvalidValue()
         documents=value['document_ids'];queries=value['queries'];assert type(documents) is tuple and type(queries) is tuple
-        if len(set(documents))!=len(documents) or len({string(q['query_id']) for q in queries if type(q) is MappingProxyType})!=6:raise InvalidValue()
+        if len(set(documents))!=len(documents) or len({string(q['query_id']) for q in queries if type(q) is MappingProxyType})!=len(queries):raise InvalidValue()
+        if value['format']=='DAILY_SEMANTIC_AUTH_V1':
+            originals=value['documents']
+            if type(originals) is not tuple or tuple(_record(d)['object_id'] for d in originals)!=documents or any(number(_record(d)['revision'])<1 for d in originals):raise InvalidValue()
         grant=object.__new__(SemanticActivation)
         object.__setattr__(grant,'authority',self);object.__setattr__(grant,'binding',value)
         object.__setattr__(grant,'digest',sha256(encode_content(value,1048576)).hexdigest());self._grant=grant
@@ -88,7 +98,7 @@ class SemanticAuthorization:
                         allowed={identity('semantic-slot',grant.binding['package_id'],'DOCUMENT',oid) for oid in documents}
                         allowed.update(identity('semantic-slot',grant.binding['package_id'],'QUERY',_record(q)['query_id']) for q in queries)
                         if intent['slot_id'] not in allowed or old is None and any(_record(e['intent'])['slot_id']==intent['slot_id'] for e in self._entries.values()):raise InvalidValue()
-                        if old is None and len(self._entries)>=len(documents)+6:raise InvalidValue()
+                        if old is None and len(self._entries)>=len(documents)+len(queries):raise InvalidValue()
                         self._entries[key]=entry
             except BaseException:
                 os.close(self._fd);self._fd=-1;raise
@@ -96,6 +106,14 @@ class SemanticAuthorization:
     def _header(self) -> bytes:
         return encode_content(MappingProxyType({'format':self.grant.binding['format'],'package_id':self.grant.binding['package_id'],
             'authorization_digest':self.grant.digest}),8192)+b'\n'
+
+    @property
+    def activated(self) -> bool:
+        return self._activated
+
+    def original(self,work_id:str) -> Record|None:
+        """Read only the exact work's immutable original slot reservation."""
+        return self._entries.get(work_id)
 
     def activate(self) -> None:
         """Explicit resume activates only this verified original package."""
@@ -121,13 +139,20 @@ class SemanticAuthorization:
         if any(_record(e['intent'])['slot_id']==slot_id for e in self._entries.values()):raise InvalidValue()
         documents=self.grant.binding['document_ids'];queries=self.grant.binding['queries']
         assert type(documents) is tuple and type(queries) is tuple
-        if len(self._entries)>=len(documents)+6:raise InvalidValue()
+        if len(self._entries)>=len(documents)+len(queries):raise InvalidValue()
         if work['purpose']=='DOCUMENT':
             oid=_record(work['object_ref'])['object_id']
             allowed=_record(work['object_ref'])['revision']==1 and oid in documents and slot_id==identity('semantic-slot',self.grant.binding['package_id'],'DOCUMENT',oid)
+            if self.grant.binding['format']=='DAILY_SEMANTIC_AUTH_V1':
+                originals=self.grant.binding['documents']
+                if type(originals) is not tuple:raise InvalidValue()
+                allowed=any(_record(d)['object_id']==oid and _record(d)['revision']==_record(work['object_ref'])['revision']
+                    and _record(d)['material_digest']==work['material_digest'] and _record(d)['partition_id']==work['partition_id'] for d in originals)
+                allowed=allowed and slot_id==identity('semantic-slot',self.grant.binding['package_id'],'DOCUMENT',oid)
         else:
             allowed=any(type(q) is MappingProxyType and sha256(string(q['text']).encode()).hexdigest()==work['material_digest']
-                and slot_id==identity('semantic-slot',self.grant.binding['package_id'],'QUERY',q['query_id']) for q in queries)
+                and slot_id==identity('semantic-slot',self.grant.binding['package_id'],'QUERY',q['query_id'])
+                and (self.grant.binding['format']!='DAILY_SEMANTIC_AUTH_V1' or q['partition_id']==work['partition_id']) for q in queries)
         if not allowed:raise InvalidValue()
         intent=isolate(INTENT,{'package_id':self.grant.binding['package_id'],'slot_id':slot_id,'authorization_digest':self.grant.digest,
             'request_digest':request_digest,'expires_at':deadline_at})

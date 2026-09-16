@@ -20,7 +20,7 @@ from companion_memory.persistence.schema import InvalidValue
 from companion_memory.provider import WorkGrant,ResultGrant,CancellationSource,Completed,Pending,Found as ProviderFound
 from companion_memory.provider.terminal_evidence import TerminalVerified
 from companion_memory.provider.values import as_record,freeze
-from companion_memory.provider.service import OPTIONALS
+from companion_memory.provider.service import OPTIONALS,ProviderService
 from .content_assembly import stable
 from .results import Rejected,RuntimeError
 if TYPE_CHECKING:
@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 
 async def learn_text(runtime: ContentRuntimeService,source: MappingProxyType[str,Value],*,fresh: bool,admission_event: str|None=None):
     r=runtime;a=r.assembly;text=a.text_transactions;bid=cast(str,source['batch_id'])
+    provider=r.provider
+    if type(provider) is not ProviderService:raise InvalidValue()
     deadline=r.request_deadline()
     work=(await a.rows.read('work_get',{'batch_id':bid}))[0]
     if work['phase'] in ('CANDIDATE_STORED','TERMINAL'):
@@ -87,7 +89,7 @@ async def learn_text(runtime: ContentRuntimeService,source: MappingProxyType[str
         admitted=r.gate.admit(grant,r.gate.epoch,expected_protection_revision=r.gate.protection_revision) if send else r.gate.admit_recovery(grant)
         if not admitted and send:send=False;admitted=r.gate.admit_recovery(grant)
         if not admitted:return Rejected(RuntimeError('RESOURCE_BUSY','run_learning','state','ADMISSION_FULL'))
-        try:port=r.provider.bind_work(grant)
+        try:port=provider.bind_work(grant)
         except ValueError:
             r.gate.revoke(grant)
             return Rejected(RuntimeError('RESOURCE_BUSY','run_learning','state','ADMISSION_FULL'))
@@ -106,7 +108,7 @@ async def learn_text(runtime: ContentRuntimeService,source: MappingProxyType[str
         if type(confirmed) is not Committed:return confirmed
         work=(await a.rows.read('work_get',{'batch_id':bid}))[0]
     elif work['provider_request_id']!=rid:raise InvalidValue()
-    owner=r.provider.bind_result_owner(ResultGrant('cognition',(cast(str,rid),)))
+    owner=provider.bind_result_owner(ResultGrant('cognition',(cast(str,rid),)))
     with CompletionScope() as cleanup:
         try:
             original=as_record(freeze({**{name:descriptor.get(name) for name in OPTIONALS},**descriptor},131072,owned=True))
@@ -121,6 +123,6 @@ async def learn_text(runtime: ContentRuntimeService,source: MappingProxyType[str
                 'generation':work['generation'],'manifest':encode_content(candidate.manifest,4096).decode(),
                 'leaves':[encode_content(leaf,8192).decode() for leaf in candidate.leaves]})
         finally:
-            await cleanup.wait();r.provider.revoke(owner)
+            await cleanup.wait();provider.revoke(owner)
     if type(staged) is not Committed:return staged
     return await learn_text(r,source,fresh=False)

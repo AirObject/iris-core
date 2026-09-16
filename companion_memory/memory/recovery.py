@@ -23,6 +23,7 @@ class MemoryRecovery:
     def __init__(self, memory, media):
         self.memory = memory; self.media = media
         self.phase = 'objects'; self.after = ''
+        self.origin_after='';self.origins_complete=False
         self.source_identity = None; self.holder_after = ''; self.holders_complete = False; self.member_ordinal = 0
 
     async def advance(self):
@@ -62,6 +63,18 @@ class MemoryRecovery:
                         return Found(MappingProxyType({'state': 'RECOVERY_PENDING', 'owner': 'memory'}))
                     self.after = identity
             self.phase = {'objects': 'subjects', 'subjects': 'sources', 'sources': 'complete'}[phase]; self.after = ''
+        if memory.daily_format and not self.origins_complete:
+            while True:
+                if time.monotonic()>=deadline:return Found(MappingProxyType({'state':'RECOVERY_PENDING','owner':'memory'}))
+                origins=await memory.rows.read('subject_origins_recovery_page',{'after':self.origin_after,'limit':4})
+                if not origins:
+                    self.origins_complete=True;break
+                for row in origins:
+                    if time.monotonic()>=deadline:return Found(MappingProxyType({'state':'RECOVERY_PENDING','owner':'memory'}))
+                    raw=decode_content(cast(str,row['body']).encode(),4096)
+                    if type(raw) is not dict:raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
+                    await memory.verify_subject_origin(raw['subject_id'],raw['source_id'])
+                    self.origin_after=row['object_id']
         return Found(MappingProxyType({'state': 'MEMORY_VERIFIED'}))
 
     async def source(self, value, limit, deadline):
@@ -97,6 +110,10 @@ class MemoryRecovery:
                 break
             for holder in holders:
                 if time.monotonic() >= deadline: return False
+                if memory.daily_format and holder['owner_kind']=='SUBJECT':
+                    await memory.verify_subject_origin(holder['owner_id'],sid)
+                    self.holder_after=holder['owner_id']
+                    continue
                 if holder['owner_kind'] != 'OBJECT': raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
                 if memory.information is not None:
                     if holder['source_body'] != stored_header: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')

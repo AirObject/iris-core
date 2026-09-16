@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .information_tracking import MemoryInformation
     from .semantic_tracking import MemorySemanticCoverage
     from companion_memory.configuration.information_persistence import StoredInformationConfiguration
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration, stored_daily_configuration_issue
 from companion_memory.configuration.content_persistence import StoredContentConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration, stored_semantic_configuration_issue
@@ -77,11 +78,12 @@ def applied_counts(applied: AppliedChanges) -> tuple[MappingProxyType[str, Value
 class MemoryTransactions:
     """Only this participant modifies memory tables; other owners join by protocol."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService,
-                 configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str,
+                 configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str,
                  history: HistoryBinding, sources: SourceParticipants):
-        self.semantic_format=type(configuration) is StoredSemanticConfiguration
-        text_format=type(configuration) in (StoredTextConfiguration,StoredSemanticConfiguration)
-        configuration_valid=(stored_semantic_configuration_issue(configuration) is None and catalog.definition.schema_version==4) if self.semantic_format else (stored_text_configuration_issue(configuration) is None and catalog.definition.schema_version==3) if text_format else type(configuration) is StoredContentConfiguration
+        self.daily_format=type(configuration) is StoredDailyConfiguration
+        self.semantic_format=type(configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration)
+        text_format=type(configuration) in (StoredTextConfiguration,StoredSemanticConfiguration,StoredDailyConfiguration)
+        configuration_valid=(stored_daily_configuration_issue(configuration) is None and catalog.definition.schema_version==5 and cast(StoredDailyConfiguration,configuration).scope_id==instance_id) if self.daily_format else (stored_semantic_configuration_issue(configuration) is None and catalog.definition.schema_version==4) if self.semantic_format else (stored_text_configuration_issue(configuration) is None and catalog.definition.schema_version==3) if text_format else type(configuration) is StoredContentConfiguration
         if not configuration_valid or type(history) is not HistoryBinding or history._text_format != text_format:
             raise ValueError('Native persistent configuration and history owner are required.')
         from .source_rows import MemorySourceRows
@@ -98,18 +100,111 @@ class MemoryTransactions:
         self.information: MemoryInformation | None = None
         self.semantic: MemorySemanticCoverage | None = None
         self._prepared_fixed_source: PreparedFixedSource | None=None
+        from .daily_application import DailyMemoryApplication
+        self.daily_application=DailyMemoryApplication(self,catalog) if self.daily_format else None
 
-    def bind_information(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration) -> MemoryInformation:
+    def repository_definition(self):
+        """Expose the owning static declaration for native transaction participation."""
+        return self._information_catalog.definition
+
+    def bind_information(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration) -> MemoryInformation:
         """Select change tracking only for the explicit independent memory format."""
         from .information_tracking import MemoryInformation
-        if self.information is not None or self._information_catalog.definition.schema_version != (4 if self.semantic_format else 3 if self.text_format else 2) or configuration.database_id != self.configuration.database_id or configuration.snapshot_id != self.configuration.snapshot_id:
+        if self.information is not None or self._information_catalog.definition.schema_version != (5 if self.daily_format else 4 if self.semantic_format else 3 if self.text_format else 2) or configuration.database_id != self.configuration.database_id or configuration.snapshot_id != self.configuration.snapshot_id:
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')
         self.information = MemoryInformation(self._information_catalog, self.storage, configuration, self.instance_id, self)
         if self.semantic_format:
             from .semantic_tracking import MemorySemanticCoverage
-            assert type(configuration) is StoredSemanticConfiguration
+            assert type(configuration) is StoredSemanticConfiguration or type(configuration) is StoredDailyConfiguration
             self.semantic=MemorySemanticCoverage(self,self.information,cast(str,configuration.candidate.text.record('retrieval.semantic')['space_id']))
         return self.information
+
+    async def read_import_self(self,subject_id:str) -> MappingProxyType[str,Value] | None:
+        """Current SELF-only observation for the daily imported persona owner."""
+        if not self.daily_format:raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
+        rows=await self.rows.read('subjects_get',{'subject_id':subject_id})
+        if not rows:return None
+        subject=isolate_subject(decode_content(cast(str,rows[0]['body']).encode(),1024))
+        if subject['kind']!='SELF' or subject['instance_id']!=self.instance_id or any(subject[k]!=rows[0][k] for k in ('subject_id','kind','revision','platform_id','external_subject_id')):raise InvalidValue()
+        return subject
+
+    def import_self(self,uow:UnitOfWork,binding:object,*,create:bool) -> MappingProxyType[str,Value]:
+        """Participate in the narrow approved persona import with the trusted SELF.
+
+        Reusing a legal SELF performs no memory write. Its identity and label
+        come from native local setup, never from the imported persona text.
+        """
+        from .initial_self_storage import InitialSelfBinding
+        if not self.daily_format or type(binding) is not InitialSelfBinding:raise InvalidValue()
+        command=self.storage.daily_operation_context(uow,self._information_catalog.definition)
+        if (command.owner_namespace!='self_model' or command.operation_kind!=('import_approved_persona_with_self' if create else 'import_approved_persona')):
+            raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
+        current=self.subject(uow,binding.self_subject_id)
+        found=self.rows.stage('subject_identity',uow,{'kind':'SELF','platform_id':None,'external_subject_id':None})
+        if not create:
+            if current is None or current['kind']!='SELF' or len(found)!=1 or found[0]['subject_id']!=binding.self_subject_id:raise InvalidValue()
+            return current
+        if current is not None or found:raise OwnerFailure('PRECONDITION_FAILED','revision','REVISION_CONFLICT')
+        subject=isolate_subject({'subject_version':1,'subject_id':binding.self_subject_id,'instance_id':self.instance_id,'kind':'SELF',
+            'platform_id':None,'external_subject_id':None,'label':binding.self_label,'revision':1})
+        self.rows.stage('subjects_insert',uow,{key:subject[key] for key in ('subject_id','kind','platform_id','external_subject_id','revision')}|
+            {'body':encode_content(subject,1024).decode()})
+        return subject
+
+    async def verify_subject_origin(self, subject_id: str, source_id: str | None = None) -> MappingProxyType[str,Value] | None:
+        """Verify an internal creation's reverse subject/source ownership on recovery.
+
+        External registration has no internal origin. A SUBJECT holder requires
+        an origin, while any stored origin must protect a real retained source.
+        """
+        if not self.daily_format:raise OwnerFailure('ACCESS_DENIED','source','BINDING_MISMATCH')
+        from .subject_origins import TABLE,ORIGIN
+        from companion_memory.persistence.text_records import decode_row
+        from companion_memory.persistence.daily_records import identity
+        rows=await self.rows.read('subject_origins_by_subject',{'subject_id':subject_id})
+        if not rows:
+            if source_id is not None:raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
+            return None
+        if len(rows)!=1:raise InvalidValue()
+        origin=TABLE.isolate(decode_row(rows[0],ORIGIN,4096,self.configuration.database_id,self.instance_id,self.configuration.snapshot_id))
+        if (origin['object_id']!=identity('subject-origin',self.configuration.database_id,self.instance_id,subject_id)
+                or origin['subject_id']!=subject_id or source_id is not None and origin['source_id']!=source_id):raise InvalidValue()
+        subjects=await self.rows.read('subjects_get',{'subject_id':subject_id})
+        if len(subjects)!=1:raise InvalidValue()
+        subject=isolate_subject(decode_content(cast(str,subjects[0]['body']).encode(),1024))
+        if subject['subject_id']!=subject_id or subject['kind']=='SELF' or subject['instance_id']!=self.instance_id:raise InvalidValue()
+        sources=await self.rows.read('sources_get',{'source_id':origin['source_id']})
+        holders=await self.rows.read('source_holders_get',{'source_id':origin['source_id'],'owner_kind':'SUBJECT','owner_id':subject_id})
+        if len(sources)!=1 or len(holders)!=1 or sources[0]['state']!='RETAINED':raise InvalidValue()
+        manifest=decode_source(cast(str,sources[0]['body']))
+        if manifest['batch_id']!=origin['batch_id']:raise InvalidValue()
+        if manifest['source_id']!=origin['source_id'] or manifest['digest']!=sources[0]['digest']:raise InvalidValue()
+        from companion_memory.ingress.content_storage import ContentIngressTransactions
+        from companion_memory.ingress.media_events import decode_media_event
+        from companion_memory.media.service import MediaService
+        from .sources import SourcePayload,check_anchor
+        ingress=cast(ContentIngressTransactions,cast(object,self.sources))
+        if type(ingress) is not ContentIngressTransactions:raise InvalidValue()
+        members={record(m)['message_id']:record(m) for m in sequence(manifest['ordered_members'])}
+        payloads=await ingress.recovery_source_payloads(cast(str,origin['source_id']),tuple(cast(str,key) for key in members))
+        complete={row['message_id']:row for row in payloads}
+        for raw in sequence(origin['target_anchors']):
+            anchor=record(raw);member=members.get(anchor['message_id']);payload=complete.get(anchor['message_id'])
+            if member is None or member['role']!='T' or payload is None or payload['source_holder']!=origin['source_id']:raise InvalidValue()
+            body=cast(str,payload['body']).encode()
+            if hashlib.sha256(body).hexdigest()!=member['payload_digest']:raise InvalidValue()
+            event=decode_media_event(body,self.configuration.candidate.runtime.integer('ingress.event_max_bytes'),
+                occurrence_limit=self.configuration.candidate.content.integer('media.event_occurrence_limit'),text_limit=self.configuration.candidate.content.integer('media.interpretation_text_max_bytes'))
+            media=cast(MediaService|None,cast(object,ingress.media))
+            if member['media'] and type(media) is not MediaService:raise InvalidValue()
+            versions=await media.read_retained_interpretations(cast(str,origin['source_id']),member) if type(media) is MediaService else ()
+            check_anchor(anchor,member,SourcePayload(event,body,versions))
+        from companion_memory.persistence import OperationIdentity,Found
+        operation=record(origin['created_operation'])
+        receipt=await self.storage.read_daily_origin_receipt(OperationIdentity(self.configuration.database_id,cast(str,operation['owner_namespace']),
+            cast(str,operation['operation_kind']),cast(str,operation['scope_id']),cast(str,operation['operation_key'])))
+        if type(receipt) is not Found:raise InvalidValue()
+        return origin
 
     def current(self, uow: UnitOfWork, oid: str) -> MappingProxyType[str, Value] | None:
         """Read and verify the current row inside the coordinator's transaction."""
@@ -157,6 +252,39 @@ class MemoryTransactions:
             roots={cast(str,record(anchor)['message_id']) for link in sequence(value['sources']) for anchor in sequence(record(link)['target_anchors'])}
             roots.update(cast(str,mid) for link in sequence(value['bases']) for mid in sequence(record(link)['evidence_roots']))
             return tuple(sorted(roots))
+
+    async def read_daily_platform_subject(self,platform_id:str,external_subject_id:str) -> MappingProxyType[str,Value]|None:
+        """Collect exact platform reuse before candidate construction; apply rechecks."""
+        if not self.daily_format:raise InvalidValue()
+        rows=await self.rows.read('subject_identity',{'kind':'PLATFORM_PERSON','platform_id':platform_id,'external_subject_id':external_subject_id})
+        if not rows:return None
+        result=await self.rows.read('subjects_get',{'subject_id':rows[0]['subject_id']})
+        if len(result)!=1:raise InvalidValue()
+        value=isolate_subject(decode_content(cast(str,result[0]['body']).encode(),1024))
+        if value['subject_id']!=rows[0]['subject_id'] or value['kind']!='PLATFORM_PERSON' or value['platform_id']!=platform_id or value['external_subject_id']!=external_subject_id:raise InvalidValue()
+        return value
+
+    def participate_basis_roots(self,uow:UnitOfWork,expected:MappingProxyType[str,Value]) -> tuple[str,...]:
+        """Recheck a frozen current revision and every retained source root."""
+        if not self.daily_format or self.current(uow,cast(str,expected['object_id']))!=expected:
+            raise OwnerFailure('PRECONDITION_FAILED','object','BASIS_UNAVAILABLE')
+        links=self.links(uow,cast(str,expected['object_id']),cast(int,expected['revision']))
+        roots=set()
+        for raw in sequence(links['sources']):
+            link=record(raw);self.source(uow,cast(str,link['source_id']))
+            roots.update(cast(str,record(anchor)['message_id']) for anchor in sequence(link['target_anchors']))
+        roots.update(cast(str,mid) for raw in sequence(links['bases']) for mid in sequence(record(raw)['evidence_roots']))
+        if not 1<=len(roots)<=8:raise InvalidValue()
+        return tuple(sorted(roots))
+
+    def subject_for_platform(self,uow:UnitOfWork,platform_id:str,external_subject_id:str) -> MappingProxyType[str,Value]|None:
+        """Resolve the exact platform identity without matching labels."""
+        if not self.daily_format:raise InvalidValue()
+        rows=self.rows.stage('subject_identity',uow,{'kind':'PLATFORM_PERSON','platform_id':platform_id,'external_subject_id':external_subject_id})
+        if not rows:return None
+        value=self.subject(uow,cast(str,rows[0]['subject_id']))
+        if value is None or value['kind']!='PLATFORM_PERSON' or value['platform_id']!=platform_id or value['external_subject_id']!=external_subject_id:raise InvalidValue()
+        return value
 
     def subject(self, uow: UnitOfWork, sid: str) -> MappingProxyType[str, Value] | None:
         """Read a registered subject without equating labels across identities."""
@@ -232,7 +360,7 @@ class MemoryTransactions:
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
         if not 1 <= len(changes) <= self._settings.integer('cognition.candidate_item_limit'):
             raise InvalidValue()
-        checked = tuple(isolate_change(c, self._settings.integer('cognition.candidate_item_max_bytes'), text_format=self.text_format) for c in changes)
+        checked = tuple(isolate_change(c, self._settings.integer('cognition.candidate_item_max_bytes'), text_format=self.text_format,daily_format=self.daily_format and reason_code=='LEARNING') for c in changes)
         if len({cast(str, c['target_id']) for c in checked}) != len(checked):
             raise InvalidValue()
         proposed: dict[str, MappingProxyType[str, Value]] = {}
@@ -316,6 +444,8 @@ class MemoryTransactions:
         manifests: dict[str, MappingProxyType[str, Value]] = {}
         source_rows: dict[str, MappingProxyType[str, Value]] = {}
         delta: dict[str, tuple[set[str], set[str]]] = {}
+        subject_delta: dict[str,set[str]] = {}
+        subject_origins: dict[str,MappingProxyType[str,Value]] = {}
         if new_source is not None:
             new_source = isolate_fixed_source(new_source) if fixed is not None else isolate_source(new_source)
             if fixed is None and (new_source['batch_id'], new_source['config_snapshot_id']) != (scope.batch_id, self.configuration.snapshot_id):
@@ -337,7 +467,18 @@ class MemoryTransactions:
                 if sid in after - before: acquired.add(oid)
                 if sid in before and not self.rows.stage('source_holders_get', uow, {'source_id': sid, 'owner_kind': 'OBJECT', 'owner_id': oid}):
                     raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
-        if new_source is not None and not delta.get(cast(str, new_source['source_id']), (set(), set()))[1]:
+        if self.daily_format and subjects and reason_code=='LEARNING':
+            if new_source is None or fixed is not None or scope.candidate_id is None or scope.batch_id is None:
+                raise OwnerFailure('ACCESS_DENIED','source','BINDING_MISMATCH')
+            for change in checked:
+                if change['action']!='REGISTER_SUBJECT':continue
+                oid=cast(str,change['target_id']);link=record(sequence(record(change['links'])['sources'])[0])
+                if link['source_id']!=new_source['source_id']:
+                    raise OwnerFailure('ACCESS_DENIED','source','BINDING_MISMATCH')
+                sid=cast(str,link['source_id']);subject_delta.setdefault(sid,set()).add(oid)
+                delta.setdefault(sid,(set(),set()))
+                subject_origins[oid]=link
+        if new_source is not None and not (delta.get(cast(str,new_source['source_id']),(set(),set()))[1] or subject_delta.get(cast(str,new_source['source_id']))):
             raise InvalidValue()
         payloads: dict[tuple[str, str], SourcePayload] = {}
         for sid, manifest in manifests.items():
@@ -345,6 +486,13 @@ class MemoryTransactions:
             for member in sequence(manifest['ordered_members']):
                 m = record(member)
                 payloads[(sid, cast(str, m['message_id']))] = self.sources.verify_member(uow, cast(str, manifest['entry_id']), m)
+        for oid,link in subject_origins.items():
+            sid=cast(str,link['source_id']);manifest=manifests[sid]
+            members={cast(str,record(m)['message_id']):record(m) for m in sequence(manifest['ordered_members'])}
+            for raw_anchor in sequence(link['target_anchors']):
+                anchor=record(raw_anchor);mid=cast(str,anchor['message_id'])
+                if mid not in members:raise InvalidValue()
+                check_anchor(anchor,members[mid],payloads[(sid,mid)])
         for oid, value in proposed.items():
             content = record(value['content']); world = record(content['world_scope'])
             if world['context_id'] is not None and get_subject(cast(str, world['context_id']))['kind'] != 'CONTEXT':
@@ -411,7 +559,7 @@ class MemoryTransactions:
                 if release is None:
                     raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'source', 'OWNER_MISSING')
                 release.verify(uow, sid, cast(int, row['references_revision']), cast(int, row['holder_count']),
-                    cast(int, row['holder_count']) - len(removed) + len(acquired),
+                    cast(int, row['holder_count']) - len(removed) + len(acquired) + len(subject_delta.get(sid,())),
                     tuple(record(m) for m in sequence(manifests[sid].get('ordered_members',()))))
         history = []
         for oid, old in old_values.items():
@@ -431,7 +579,7 @@ class MemoryTransactions:
         retired_ids: list[str] = []
         for sid in sorted(delta):
             removed, acquired = delta[sid]
-            if not removed and not acquired: continue
+            if not removed and not acquired and not subject_delta.get(sid): continue
             row = source_rows.get(sid)
             before = cast(int, row['holder_count']) if row else 0
             for oid in removed:
@@ -439,7 +587,9 @@ class MemoryTransactions:
                     raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
             for oid in acquired:
                 self.rows.stage('source_holders_insert', uow, {'source_id': sid, 'owner_kind': 'OBJECT', 'owner_id': oid})
-            count = before - len(removed) + len(acquired)
+            for subject_id in subject_delta.get(sid,()):
+                self.rows.stage('source_holders_insert',uow,{'source_id':sid,'owner_kind':'SUBJECT','owner_id':subject_id})
+            count = before - len(removed) + len(acquired) + len(subject_delta.get(sid,()))
             if count < 0: raise InvalidValue()
             if len(self.rows.stage('sources_references', uow, {'source_id': sid,
                     'expected_revision': row['references_revision'] if row else 1, 'holder_count': count,
@@ -456,6 +606,18 @@ class MemoryTransactions:
             self.rows.stage('subjects_insert', uow, {'subject_id': sid, 'kind': subject['kind'],
                 'platform_id': subject['platform_id'], 'external_subject_id': subject['external_subject_id'],
                 'revision': subject['revision'], 'body': encode_content(subject, 1024).decode()})
+            if sid in subject_origins:
+                from .subject_origins import TABLE
+                from companion_memory.persistence.daily_records import identity
+                link=subject_origins[sid]
+                command_identity=self.storage.daily_operation_context(uow,self._information_catalog.definition)
+                origin=TABLE.isolate({'format_version':1,'object_id':identity('subject-origin',self.configuration.database_id,self.instance_id,sid),
+                    'revision':1,'database_id':self.configuration.database_id,'instance_id':self.instance_id,
+                    'config_snapshot_id':self.configuration.snapshot_id,'created_at_us':now_us,'updated_at_us':now_us,
+                    'subject_id':sid,'candidate_id':scope.candidate_id,'batch_id':scope.batch_id,'source_id':link['source_id'],
+                    'target_anchors':link['target_anchors'],'created_operation':{'owner_namespace':command_identity.owner_namespace,'operation_kind':command_identity.operation_kind,
+                    'scope_id':command_identity.scope_id,'operation_key':command_identity.operation_key}})
+                self.rows.stage('subject_origins_insert',uow,{'object_id':origin['object_id'],'revision':1,'body':encode_content(origin,4096).decode()})
         results = []; dependencies = 0
         for c in checked:
             oid = cast(str, c['target_id'])
@@ -496,7 +658,7 @@ class MemoryTransactions:
             results.append(MappingProxyType({'object_id': oid, 'previous_revision': old['revision'] if old else None,
                 'revision': revision, 'lifecycle': value['lifecycle'] if value else 'DELETED'}))
         return AppliedChanges(tuple(results), tuple(history), len(subjects), sum(v['kind'] == 'RELATION' for v in proposed.values()),
-            len(results), dependencies, retired, sum(len(v[1]) for v in delta.values()), sum(len(v[0]) for v in delta.values()), tuple(retired_ids))
+            len(results), dependencies, retired, sum(len(v[1]) for v in delta.values())+sum(len(ids) for ids in subject_delta.values()), sum(len(v[0]) for v in delta.values()), tuple(retired_ids))
 
     def close(self) -> bool:
         """Retain the module lease until all database participants have ended."""

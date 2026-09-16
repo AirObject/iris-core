@@ -23,6 +23,7 @@ class GoalAuthority:
     route_ids: tuple[str, ...]
     basis_id: str
     internal_basis: Callable[[UnitOfWork, str], bool] | None = None
+    entry_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,8 +39,8 @@ def signature(value: Record) -> str:
     if type(subjects) is not tuple:
         raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
     normalized = ' '.join(unicodedata.normalize('NFKC', text(value['content'])).casefold().split())
-    return identity('goal_signature', normalized, tuple(sorted(text(v) for v in subjects)), value['world_scope'],
-                    value['deadline'], value['reminder_lead_seconds'], value['route_id'])
+    parts = (normalized, tuple(sorted(text(v) for v in subjects)), value['world_scope'], value['deadline'], value['reminder_lead_seconds'], value['route_id'])
+    return identity('goal_signature', *parts, value['entry_id']) if 'entry_id' in value else identity('goal_signature', *parts)
 
 
 def letter_terms(content: str) -> frozenset[str]:
@@ -139,6 +140,8 @@ class GoalsService(GoalsOwner):
         direct: tuple[Record, ...] | None = None
         if kind in ('goal_inject_external', 'goal_inject_internal'):
             self._terms(value, authority)
+            if self.daily_format and authority.entry_id is None:
+                raise OwnerFailure('ACCESS_DENIED','goal','BINDING_MISMATCH')
             subjects = value['subject_ids']
             if type(subjects) is not tuple or tuple(sorted(set(text(v) for v in subjects))) != subjects:
                 raise OwnerFailure('INVALID_INPUT', 'goal', 'INVALID_SHAPE')
@@ -150,7 +153,7 @@ class GoalsService(GoalsOwner):
             goal_id = trusted_goal_id if trusted_goal_id is not None else identity('goal', self.binding.instance_id, key)
             goal = tx.write('goal', {name: value[name] for name in ('content', 'subject_ids', 'world_scope', 'deadline', 'reminder_lead_seconds', 'route_id')} |
                 {'goal_id': goal_id, 'canonical_id': goal_id, 'revision': 1, 'status': 'OPEN', 'created_at': now, 'updated_at': now,
-                 'source_count': 1, 'alias_count': 0, 'dedup_state': 'PENDING'})
+                 'source_count': 1, 'alias_count': 0, 'dedup_state': 'PENDING'} | ({'entry_id': authority.entry_id} if self.daily_format else {}))
             tx.write('source', {'goal_id': goal_id, 'source_id': value['source_id'], 'basis_id': value['basis_id'] if internal else authority.basis_id,
                 'origin': 'TRUSTED_INTERNAL' if internal else 'EXTERNAL', 'created_at': now})
             tx.write('dedup_task', {'task_id': identity('goal_dedup', goal_id), 'goal_id': goal_id, 'config_snapshot_id': self.binding.config_snapshot_id,
@@ -180,11 +183,15 @@ class GoalsService(GoalsOwner):
                     raise OwnerFailure('PRECONDITION_FAILED', 'goal', 'NO_CHANGE')
                 candidates = tuple(self._records.unpack('goal', r) for r in self._records.rows.stage('exact_candidates', uow,
                     {'signature': signature(goal), 'goal_id': goal['goal_id']}))
-                if len(candidates) < 32:
+                if len(candidates) < 32 and not self.daily_format:
                     near = tuple(self._records.unpack('goal', r) for r in self._records.rows.stage('near_candidates', uow,
                         {'signature': signature(goal), 'goal_id': goal['goal_id'], 'world_scope': goal['world_scope']}))
                     terms = letter_terms(text(goal['content']))
                     candidates += tuple(candidate for candidate in near if terms.intersection(letter_terms(text(candidate['content']))))[:32 - len(candidates)]
+                if self.daily_format:
+                    near = self.structural_candidates(uow, goal)[0]
+                    exact_ids = {text(candidate['goal_id']) for candidate in candidates}
+                    candidates += tuple(candidate for candidate in near if candidate['goal_id'] not in exact_ids)[:32-len(candidates)]
                 for candidate in candidates:
                     tx.write('dedup_candidate', {'task_id': before['task_id'], 'candidate_id': candidate['goal_id'], 'revision': candidate['revision']})
                 changed_goal = tx.update('goal', goal, dedup_state='RUNNING', updated_at=now)
@@ -253,6 +260,29 @@ class GoalsService(GoalsOwner):
         targets = direct or (MappingProxyType({n: summary[n] for n in ('object_id', 'previous_revision', 'revision')}),)
         return GoalEffect(summary, tuple(sorted(targets, key=lambda item: text(item['object_id']))))
 
+    def structural_candidates(self, uow: UnitOfWork, goal: Record) -> tuple[tuple[Record, ...], bool]:
+        """Rank the complete same-structure group using pages of eight rows.
+
+        Only eight complete candidates are retained. The loop is bounded by the
+        existing 1000-open-goal capacity and the caller's absolute transaction
+        deadline; every read uses the active native UoW.
+        """
+        if not self.daily_format:
+            raise OwnerFailure('ACCESS_DENIED','goal','OPERATION_NOT_GRANTED')
+        terms = letter_terms(text(goal['content']))
+        params = {name: goal[name] for name in ('entry_id','world_scope','deadline','reminder_lead_seconds','route_id','created_at','goal_id')}
+        params.update(subject_ids=encode_content(goal['subject_ids'],1024).decode(), after_at=-(2**62), after_id='')
+        selected: list[Record] = []; count = 0
+        while page := self._records.rows.stage('daily_structural_candidates',uow,params):
+            values = [self._records.unpack('goal',row) for row in page]
+            count += len(values)
+            if count > 1000:
+                raise OwnerFailure('STORAGE_FAILED','goal','INTEGRITY_FAILURE')
+            selected = sorted(selected + values, key=lambda candidate: (
+                -len(terms.intersection(letter_terms(text(candidate['content'])))), integer(candidate['created_at']),text(candidate['goal_id'])))[:8]
+            params.update(after_at=values[-1]['created_at'], after_id=values[-1]['goal_id'])
+        return tuple(selected), count > len(selected)
+
     def _merge(self, tx: GoalTransaction, task: Record, goal: Record, value: Record) -> Record:
         canonical = tx.resolve(text(value['canonical_id'])); tx.check_revision(canonical, value['canonical_revision'])
         frozen = tx.children('dedup_candidate', {'task_id': task['task_id']})
@@ -280,6 +310,17 @@ class GoalsService(GoalsOwner):
         tx.cancel_plans(goal['goal_id'])
         return tx.update('dedup_task', task, status='EXACT_MERGED')
 
+    async def read_learning_goals(self,entry_id:str,world_scope:str,limit:int):
+        """Current open goals restricted in SQL to the frozen learning entry/world."""
+        from companion_memory.persistence.schema import valid_identifier
+        if not self.daily_format or not self.ready or not valid_identifier(entry_id) or not valid_world_scope(world_scope) or type(limit) is not int or not 1<=limit<=4:
+            raise OwnerFailure('ACCESS_DENIED','goal','TOOL_NOT_GRANTED')
+        roots=await self._records.rows.read('daily_tool_goals',{'entry_id':entry_id,'world_scope':world_scope})
+        values=tuple(self._records.unpack('goal',row) for row in roots)
+        if any(value['entry_id']!=entry_id or value['world_scope']!=world_scope or value['status']!='OPEN' or value['canonical_id']!=value['goal_id'] for value in values):
+            raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
+        return values[:limit],len(values)>limit
+
     async def list_open(self, now: int, after_at: int = -(2**62), after_id: str = '') -> tuple[Record, ...]:
         """Fixed eight-goal page with explicit dedup and deadline limitations."""
         if not self.ready:
@@ -298,7 +339,7 @@ class GoalsService(GoalsOwner):
             result.append(MappingProxyType(dict(goal) | {'source_refs': tuple(self._records.unpack('source', s) for s in sources),
                 'expired': expired, 'dedup_unresolved': waiting,
                 'suggestion': 'CONSIDER_ABANDON_OR_CHANGE_DEADLINE' if expired else None,
-                'semantic_review_available': False, 'observed_at': now}))
+                'semantic_review_available': self.daily_format, 'observed_at': now}))
         return tuple(result)
 
     async def has_open_after(self, last: Record) -> bool:
@@ -384,7 +425,7 @@ class GoalsService(GoalsOwner):
     async def observation(self, now: int) -> Record:
         """Aggregate only; observation conveys no goal, source or route authority."""
         rows = await self._records.rows.read('observation', {'now': now})
-        return MappingProxyType(dict(rows[0]) | {'observed_at': now, 'sink_mode': self.configuration.candidate.information.record('goals.delivery')['sink_mode'], 'semantic_review_available': False})
+        return MappingProxyType(dict(rows[0]) | {'observed_at': now, 'sink_mode': self.configuration.candidate.information.record('goals.delivery')['sink_mode'], 'semantic_review_available': self.daily_format})
 
     async def prepare_reminder(self, plan_id: str, revision: int, key: str, at_us: int) -> Record:
         """Prepare immutable metadata; the registration UoW verifies its digest."""

@@ -49,6 +49,11 @@ class CheckedRelease:
         self.blob_references_released = 0
         self.interpretation_references_released = 0
 
+    def media_blob_ids(self) -> tuple[str,...]:
+        """Return the native plan's affected blob identities for actual audit roots."""
+        return tuple(sorted({cast(str,record(blob)['blob_id']) for leaf in self._leaves.values() if leaf['media_effects'] is not None
+            for blob in sequence(record(leaf['media_effects'])['blobs'])}))
+
     def verify(self, uow: UnitOfWork, source_id: str, references_revision: int, before_count: int,
                after_count: int, members: tuple[MappingProxyType[str, Value], ...]) -> None:
         """Recompute source and payload closure before the first business mutation."""

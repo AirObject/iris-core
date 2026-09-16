@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from companion_memory.persistence import Value
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.information.records import integer, identity, text
-from .repository import LAYOUTS
+from .repository import goal_layouts
 if TYPE_CHECKING:
     from .service import GoalsService
 
@@ -24,7 +24,7 @@ async def verify_goals(owner: GoalsService) -> None:
     rows = owner._records
     require(integer((await rows.rows.read('open_count', {}))[0]['count']) <= 1000)
     require((await rows.rows.read('recovery_invalid_candidates', {}))[0]['count'] == 0)
-    for layout in LAYOUTS:
+    for layout in goal_layouts(owner.daily_format):
         after: dict[str, Value] = {'after_' + key: '' for key in layout.keys}
         while page := await rows.rows.read(layout.name + '_recovery_page', after):
             for raw in page:
@@ -39,7 +39,7 @@ async def verify_goals(owner: GoalsService) -> None:
                         and counts['aliases'] == value['alias_count'] and counts['tasks'] == 1)
                     if value['canonical_id'] != value['goal_id']:
                         alias = await rows.read('alias', {'alias_id': value['goal_id']})
-                        require(alias is not None and alias['canonical_id'] == value['canonical_id'] and value['dedup_state'] == 'EXACT_MERGED')
+                        require(alias is not None and alias['canonical_id'] == value['canonical_id'] and value['dedup_state'] in (('EXACT_MERGED','SEMANTIC_MERGED') if owner.daily_format else ('EXACT_MERGED',)))
                 elif name == 'source':
                     require(await rows.read('goal', {'goal_id': value['goal_id']}) is not None)
                 elif name == 'alias':

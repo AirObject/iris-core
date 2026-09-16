@@ -12,6 +12,7 @@ from companion_memory.persistence import UnitOfWork, Field, RecordSchema, Sequen
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.information.records import Record, ID, REVISION, TIME, checked, integer, text, record, fact
 from companion_memory.memory.service import MemoryReadPort, MemoryService
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
 from .records import TICKET,SEMANTIC_TICKET, MEMBER, USAGE
 from .index import LocalIndex, IndexTransaction
@@ -73,7 +74,7 @@ class RecallTickets:
 
     def issue(self, kind: str, uow: UnitOfWork, payload: object, now: int, authority: RecallAuthority) -> TicketEffect:
         from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
-        value = checked(SEMANTIC_ISSUE if type(self.owner.configuration) is StoredSemanticConfiguration else ISSUE, payload, 8192); ticket = record(value['ticket'])
+        value = checked(SEMANTIC_ISSUE if type(self.owner.configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration) else ISSUE, payload, 8192); ticket = record(value['ticket'])
         self._binding(ticket, authority)
         deep = kind == 'ticket_issue_deep'
         if (ticket['query_mode'] != ('DEEP' if deep else 'NORMAL') or ticket['issued_at_us'] != now or ticket['clock_observation'] != now
@@ -117,7 +118,7 @@ class RecallTickets:
             raise OwnerFailure('STORAGE_FAILED', 'ticket', 'INTEGRITY_FAILURE')
         tx.write('disposition', {n: ticket[n] for n in ('recall_id', 'database_id', 'principal_binding_id', 'request_key', 'intent_digest')} |
             {'expired_at_us': ticket['expires_at_us'], 'disposed_at_us': now, 'member_count': ticket['member_count'], 'outcome': 'EXPIRED', 'version': ticket['version']} |
-            ({'response_digest':ticket['response_digest']} if type(self.owner.configuration) is StoredSemanticConfiguration else {}))
+            ({'response_digest':ticket['response_digest']} if type(self.owner.configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration) else {}))
         for raw in members:
             member = self.owner._records.unpack('member', raw)
             tx.remove('member', {'recall_id': ticket['recall_id'], 'object_id': member['object_id']})

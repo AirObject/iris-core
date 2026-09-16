@@ -1,5 +1,7 @@
 # 真实模型驱动的文本学习闭环
 
+日常认知新组合的扩展候选及工具循环见[独立契约](daily-cognition-and-image-learning.md#reasoning)。用户已批准仅指定合成验证新实例的[persona原文导入例外](daily-cognition-and-image-learning.md#persona-import)；原文本组合的首次生成／审核规则不变。
+
 **状态：用户已批准六组推荐、首次persona、最多三代请求、专注期初始化管理例外、独立配置边界及费用取整方案；授权文档定稿、整阶段实现、自查、测试与范围内修复。** 本文“推荐”表示已采纳方案；未采纳替代、供应商事实、实际费用与资格证据及范围外事项保持各自状态；用户已批准§8的本阶段质量门槛。实施、技术验收、提交授权及停止点见[CURRENT_TASK](../work/CURRENT_TASK.md)，已验收里程碑见[STATUS](../work/STATUS.md)。批准来源为用户核验的主草案SHA256 `83dffe3d015ca50e092a5396daf6ca31c08ae1369e283b4b16dc4f1e7ffe6a21`。
 
 ## 1. 目标、范围与集中批准决定

@@ -14,6 +14,7 @@ from companion_memory.configuration import EffectiveSnapshot
 if TYPE_CHECKING:
     from companion_memory.configuration.text_persistence import StoredTextConfiguration
     from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
+    from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
 from companion_memory.logging_service import AuditBound, AuditErr, AuditRequirement, bind_audit
 from companion_memory.persistence import (
     BoundedTextSchema, CommandDefinition, Committed, Field, LocalCommand, ModuleOwnerLease,
@@ -60,15 +61,17 @@ class Mutation:
 
 class LedgerAssembly:
     """Trusted declarations required before creating a new provider database."""
-    def __init__(self, *, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False) -> None:
+    def __init__(self, *, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False, daily_format: bool = False) -> None:
         if type(text_generation) is not bool or type(embedding_format) is not bool or text_generation and embedding_format:
             raise TypeError('An exact static provider format is required.')
         if type(embedding_usage_only) is not bool or embedding_usage_only and not embedding_format:raise TypeError('Usage-only requires embedding format.')
-        self.embedding_usage_only=embedding_usage_only
-        self.version=4 if embedding_usage_only else 3 if embedding_format else 2 if text_generation else 1
+        if type(daily_format) is not bool or daily_format and any((text_generation,embedding_format,embedding_usage_only)):raise TypeError('Daily Provider requires an independent selection.')
+        self.daily_format=daily_format
+        self.embedding_usage_only=embedding_usage_only or daily_format
+        self.version=5 if daily_format else 4 if embedding_usage_only else 3 if embedding_format else 2 if text_generation else 1
         self.text_generation = text_generation
-        self.embedding_format = embedding_format
-        self.repository = create_provider_repository(text_generation=text_generation,embedding_format=embedding_format,embedding_usage_only=embedding_usage_only)
+        self.embedding_format = embedding_format or daily_format
+        self.repository = create_provider_repository(text_generation=text_generation,embedding_format=embedding_format,embedding_usage_only=embedding_usage_only,daily_format=daily_format)
         self._bindings: dict[int, LedgerBinding] = {}
         self._active: LedgerBinding | None = None
         mutation_schema = RecordSchema((Field("table", ScalarSchema("enum", choices=TABLES)), Field("object_id", IDENTIFIER),
@@ -80,10 +83,10 @@ class LedgerAssembly:
         self.requirements = {}
         for kind, (event_code, reason) in KINDS.items():
             change_schema = CHANGE
-            if text_generation or embedding_format:
+            if text_generation or embedding_format or daily_format:
                 change_schema = RecordSchema(CHANGE.fields + (
-                    Field('billing_mode', ScalarSchema('enum', choices=('USAGE_ONLY_TRIAL',) if embedding_usage_only else ('TOKEN_METERED','SIMULATED') if embedding_format else ('TOKEN_METERED', 'SUBSCRIPTION','USAGE_ONLY_TRIAL'))),
-                    Field('currency', ScalarSchema('enum', choices=('CNY','TEST') if embedding_format else ('CNY', 'USD'))),
+                    Field('billing_mode', ScalarSchema('enum', choices=('TOKEN_METERED','USAGE_ONLY_TRIAL') if daily_format else ('USAGE_ONLY_TRIAL',) if embedding_usage_only else ('TOKEN_METERED','SIMULATED') if embedding_format else ('TOKEN_METERED', 'SUBSCRIPTION','USAGE_ONLY_TRIAL'))),
+                    Field('currency', ScalarSchema('enum', choices=('CNY',) if daily_format else ('CNY','TEST') if embedding_format else ('CNY', 'USD'))),
                     Field('quota_known', INTEGER, nullable=True), Field('quota_held', INTEGER), Field('config_snapshot_id', IDENTIFIER)))
             requirement = AuditRequirement("provider", "provider_change", event_code, 1, (reason,), change_schema)
             self.requirements[kind] = requirement
@@ -94,21 +97,26 @@ class LedgerAssembly:
                 return binding._handle(action, uow, values)
             definition = CommandDefinition("provider", kind, self.version, input_schema, 1, result_schema,
                                               (self.repository.definition,), (requirement,), handler)
-            if text_generation or embedding_format:
+            if text_generation or embedding_format or daily_format:
                 from .text_command_policy import issue
                 definition = replace(definition, input_policy=issue(self))
             commands.append(definition)
         self.commands = tuple(commands)
         self.repositories = (self.repository.definition,)
 
-    def bind(self, storage: PersistenceService, snapshot: EffectiveSnapshot | StoredTextConfiguration | StoredSemanticConfiguration) -> LedgerBinding:
+    def bind(self, storage: PersistenceService, snapshot: EffectiveSnapshot | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration) -> LedgerBinding:
         """Issue restricted statements; acquiring unique execution ownership is separate."""
         if type(storage) is not PersistenceService:
             raise TypeError("Native storage and configuration bindings are required.")
         from companion_memory.configuration.text_persistence import StoredTextConfiguration, stored_text_configuration_issue
         stored = None
         semantic = None
-        if self.embedding_format:
+        if self.daily_format:
+            from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
+            if stored_daily_configuration_issue(snapshot) is not None:raise TypeError('Native persisted daily configuration is required.')
+            semantic=cast(StoredDailyConfiguration,snapshot)
+            snapshot=semantic.candidate.foundation
+        elif self.embedding_format:
             from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration,stored_semantic_configuration_issue
             if stored_semantic_configuration_issue(snapshot) is not None:raise TypeError('Native persisted semantic configuration is required.')
             semantic=cast(StoredSemanticConfiguration,snapshot)
@@ -132,7 +140,7 @@ class LedgerAssembly:
 class LedgerBinding:
     """Private-to-service ledger capability with no arbitrary SQL or connection API."""
     def __init__(self, assembly: LedgerAssembly, storage: PersistenceService, snapshot: EffectiveSnapshot,
-                 *, text_configuration: StoredTextConfiguration | None = None, semantic_configuration: StoredSemanticConfiguration | None = None):
+                 *, text_configuration: StoredTextConfiguration | None = None, semantic_configuration: StoredSemanticConfiguration | StoredDailyConfiguration | None = None):
         self.assembly, self.storage, self.snapshot = assembly, storage, snapshot
         self.text_configuration = text_configuration
         self.semantic_configuration = semantic_configuration
@@ -164,11 +172,11 @@ class LedgerBinding:
     def release(self) -> bool:
         if self.lease is None:
             return True
-        if self.assembly._active is self:
-            self.assembly._active = None
         released = self.lease.release()
-        self.lease = None
-        self._executor = None
+        if released:
+            if self.assembly._active is self:self.assembly._active=None
+            self.lease = None
+            self._executor = None
         return released
 
     @property
@@ -244,7 +252,26 @@ class LedgerBinding:
         return {"object_id": first["object_id"], "revision": first["revision"]}
 
     def _validate_row(self, table: str, row: Record) -> None:
-        if self.assembly.embedding_format:
+        if self.assembly.daily_format:
+            from .daily_stored_schema import validate as validate_daily
+            from companion_memory.configuration import PresentValue
+            from companion_memory.persistence.semantic_records import identity
+            validate_daily(table,row)
+            stored=self.semantic_configuration
+            if stored is None:raise InvalidData()
+            values={entry.definition.key:entry.state.value for entry in stored.candidate.foundation.list_entries() if type(entry.state) is PresentValue}
+            accounts={as_record(a)['account_id']:as_record(a) for a in cast(tuple[Data,...],values['provider.accounts'])}
+            profiles={as_record(p)['profile_id']:as_record(p) for p in cast(tuple[Data,...],values['provider.profiles'])}
+            if 'account_id' in row and row['account_id'] not in accounts:raise InvalidData()
+            if table=='budget_windows' and row['policy']!=accounts[row['account_id']]:raise InvalidData()
+            if table=='attempts':
+                profile=profiles.get(row['profile_id'])
+                if profile is None or row['account_id']!=profile['account_id'] or row['capability']!=profile['capability'] or row['wire_protocol']!=profile['wire_protocol']:raise InvalidData()
+            if table=='requests':
+                evidence=as_record(row['execution_evidence'])
+                if (row['config_snapshot_id']!=stored.snapshot_id or row['profile_revision']!=identity('daily-profile',stored.snapshot_id,cast(str,row['profile_id']))
+                        or evidence['profile']!=profiles.get(row['profile_id']) or evidence['account']!=accounts[row['account_id']]):raise InvalidData()
+        elif self.assembly.embedding_format:
             from .embedding_stored_schema import validate as validate_embedding
             from companion_memory.configuration import PresentValue
             from companion_memory.persistence.semantic_records import identity
@@ -353,9 +380,13 @@ class LedgerBinding:
             if type(configured) is not PresentValue:
                 raise InvalidData()
             account = as_record(cast(tuple[Data, ...], configured.value)[0])
+            if self.assembly.daily_format:
+                account_ids={cast(str,change.current['account_id']) for change in changes if 'account_id' in change.current}
+                if len(account_ids)!=1:raise InvalidData()
+                account=next(as_record(value) for value in cast(tuple[Data,...],configured.value) if as_record(value)['account_id'] in account_ids)
             usage = next((as_record(change.current['usage']) for change in changes if change.table == 'attempts'), None)
             event['change'].update({'billing_mode': account.get('billing_mode','SIMULATED'), 'currency': account['currency'],
-                'quota_known': usage['quota_known'] if usage is not None else None if self.assembly.embedding_usage_only else 0,
+                'quota_known': usage['quota_known'] if usage is not None else None if account.get('billing_mode')=='USAGE_ONLY_TRIAL' else 0,
                 'quota_held': usage['quota_held'] if usage is not None else 0,
                 'config_snapshot_id': configuration.snapshot_id})
         frozen_event = as_record(freeze(event, 2048))

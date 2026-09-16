@@ -12,7 +12,8 @@ from companion_memory.persistence import PersistenceService, UnitOfWork
 from companion_memory.persistence.owned_statements import OwnerFailure, StatementCatalog
 from companion_memory.information.repository import OwnedRecords
 from companion_memory.information.records import Record, identity, fact, integer, text
-from .repository import LAYOUTS
+from .repository import goal_layouts
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration, stored_daily_configuration_issue
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,12 +26,14 @@ class GoalsBinding:
 class GoalsOwner:
     """Single goals data owner; metadata validation precedes every business port."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService,
-                 configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, instance_id: str):
-        if type(configuration) not in (StoredInformationConfiguration,StoredTextConfiguration) and stored_semantic_configuration_issue(configuration) is not None:
+                 configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str):
+        self.daily_format = type(configuration) is StoredDailyConfiguration
+        valid = stored_daily_configuration_issue(configuration) is None and configuration.scope_id == instance_id and catalog.definition.schema_version == 5 if type(configuration) is StoredDailyConfiguration else type(configuration) in (StoredInformationConfiguration,StoredTextConfiguration) or stored_semantic_configuration_issue(configuration) is None
+        if not valid:
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')
         self.binding = GoalsBinding(configuration.database_id, instance_id, configuration.snapshot_id)
         self.configuration = configuration
-        self._records = OwnedRecords(catalog, storage, instance_id, LAYOUTS)
+        self._records = OwnedRecords(catalog, storage, instance_id, goal_layouts(self.daily_format))
         lease = storage.claim_module_owner(catalog.definition)
         if lease is None:
             raise OwnerFailure('RESOURCE_BUSY', 'storage', 'ADMISSION_FULL')

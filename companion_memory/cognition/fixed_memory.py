@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from weakref import WeakValueDictionary
 from hashlib import sha256
 from types import MappingProxyType
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration,stored_semantic_configuration_issue
 from companion_memory.persistence import PersistenceService,UnitOfWork,Value,ResultBoundCommandDefinition
 from companion_memory.persistence.schema import InvalidValue
@@ -56,9 +57,9 @@ class FixedReviewAuthority:
 
 class FixedMemorySets:
     """Cognition's native participant; memory remains the sole source writer."""
-    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration,
+    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredDailyConfiguration,
                  memory: MemoryTransactions,review: FixedReviewGrant,establishment: ResultBoundCommandDefinition,checkpoint: Callable[[],None]):
-        if (stored_semantic_configuration_issue(configuration) is not None or type(memory) is not MemoryTransactions
+        if ((stored_daily_configuration_issue(configuration) if type(configuration) is StoredDailyConfiguration else stored_semantic_configuration_issue(configuration)) is not None or type(memory) is not MemoryTransactions
                 or memory.configuration is not configuration or memory.storage is not storage or memory.semantic is None
                 or type(review) is not FixedReviewGrant or getattr(review,'_issuer',None) is not _ISSUER
                 or type(getattr(review,'_authority',None)) is not FixedReviewAuthority or review._authority._grants.get(id(review)) is not review
@@ -70,7 +71,7 @@ class FixedMemorySets:
         self.instance=memory.instance_id;self.rows=SemanticRecords(catalog,TABLES,storage,self.instance)
         self.config=MappingProxyType({'database_id':configuration.database_id,'instance_id':self.instance,'snapshot_id':configuration.snapshot_id})
         self._recovery_root: Record|None=None;self._recovery_ordinal=0;self._recovery_digest=sha256(b'[')
-        self.expected=12 if configuration.candidate.text.record('retrieval.embedding')['qualification_profile']=='SMALL_REAL_TRIAL' else 4096
+        self.expected=12 if configuration.candidate.text.record('retrieval.embedding')['qualification_profile'] in ('SMALL_REAL_TRIAL','DAILY_INTEGRATION') else 4096
 
     def _required(self,uow: UnitOfWork,set_id: str) -> Record:
         root=self.rows.get('fixed_memory_set',uow,set_id)

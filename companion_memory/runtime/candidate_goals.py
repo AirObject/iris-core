@@ -28,7 +28,7 @@ class CandidateGoalEffects:
         self.goals, self.memory = goals, memory
 
     def apply(self, uow: UnitOfWork, candidate: Candidate, scope: ApplyScope, work: Record, now: int) -> Record:
-        if (scope.candidate_id is None or candidate.manifest['candidate_version'] != 2 or candidate.manifest['candidate_id'] != scope.candidate_id
+        if (scope.candidate_id is None or candidate.manifest['candidate_version'] != (4 if self.memory.daily_format and self.goals.daily_format else 2) or candidate.manifest['candidate_id'] != scope.candidate_id
                 or candidate.manifest['batch_id'] != scope.batch_id or scope.instance_id != self.goals.binding.instance_id):
             raise OwnerFailure('ACCESS_DENIED', 'candidate', 'BINDING_MISMATCH')
         raw = decode_content(text(work['model_binding']).encode(), 8192)
@@ -47,7 +47,7 @@ class CandidateGoalEffects:
                 raise OwnerFailure('ACCESS_DENIED', 'goal', 'OPERATION_NOT_GRANTED')
             effect = self.goals.apply('goal_inject_internal', uow, dict(goal) | {'source_id': scope.candidate_id},
                 identity('candidate_goal_effect', scope.candidate_id, leaf['target_id']), now,
-                GoalAuthority(routes, scope.candidate_id, verify_basis), trusted_goal_id=text(leaf['target_id']))
+                GoalAuthority(routes, scope.candidate_id, verify_basis,cast(str,raw.get('entry_id')) if self.memory.daily_format else None), trusted_goal_id=text(leaf['target_id']))
             effects.append(effect.summary)
         if not effects: raise OwnerFailure('PRECONDITION_FAILED', 'goal', 'NO_CHANGE')
         return fact(text(effects[0]['object_id']), None, 1, now, changed=sum(integer(effect['changed_count']) for effect in effects))

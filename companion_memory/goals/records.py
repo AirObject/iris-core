@@ -27,3 +27,9 @@ ATTEMPT = RecordSchema((Field('delivery_id', ID), Field('plan_id', ID), Field('o
     Field('attempt_no', ScalarSchema('integer', 1, 2)), Field('revision', REVISION), Field('started_at', TIME), Field('finished_at', TIME, nullable=True),
     Field('state', choice('REGISTERED', 'NOT_SENT', 'ACKNOWLEDGED', 'UNKNOWN', 'FAILED')), Field('request_digest', TEXT(64)),
     Field('reason', choice('NOT_READY', 'REMINDER_SINK_UNAVAILABLE', 'DEADLINE_EXCEEDED', 'COMMIT_UNCONFIRMED', 'INTEGRITY_FAILURE', 'OPERATION_NOT_GRANTED', 'DREAMING', 'SERVICE_CLOSED', 'NO_CHANGE'))))
+
+# Daily roots are a separate stored format; legacy schemas remain byte stable.
+DAILY_DEDUP_STATUS = choice('PENDING', 'RUNNING', 'EXACT_MERGED', 'SEMANTIC_MERGED', 'DISTINCT', 'NEEDS_SEMANTIC_REVIEW', 'FAILED')
+DAILY_GOAL = RecordSchema(tuple(Field(f.name, DAILY_DEDUP_STATUS) if f.name == 'dedup_state' else f for f in GOAL.fields)
+    + (Field('entry_id', ID),))
+DAILY_DEDUP_TASK = RecordSchema(tuple(Field(f.name, DAILY_DEDUP_STATUS) if f.name == 'status' else f for f in DEDUP_TASK.fields))

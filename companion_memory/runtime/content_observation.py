@@ -98,6 +98,15 @@ class ContentObservations:
         self.work.move_to_end(entry_id)
         while len(self.work) > self.runtime.settings.integer('management.observation_row_limit'): self.work.popitem(last=False)
 
+    def origins(self):
+        """Describe the selected native capabilities, including controlled transports."""
+        from companion_memory.provider.daily_service import DailyProvider
+        provider=self.runtime.provider
+        if type(provider) is DailyProvider:
+            return {'model_adapter':MappingProxyType({role:t.execution_kind for role,t in provider.transports.items()}),
+                'candidate_origin':'MODEL_OUTPUT_VALIDATED'}
+        return {'model_adapter':'SIMULATED','candidate_origin':'SYNTHETIC'}
+
     def bind(self, entry_ids: tuple[str, ...], instance_observe: bool = False) -> ContentObserver:
         limit = self.runtime.settings.integer('management.observation_row_limit')
         if (self.closed or len(self.grants) >= limit or type(entry_ids) is not tuple or not 1 <= len(entry_ids) <= limit or len(set(entry_ids)) != len(entry_ids)
@@ -146,7 +155,10 @@ class ContentObservations:
                     observations: dict[str, Value] = {}
                     def merge(owner, values):
                         revisions = {k: v for k, v in values.items() if k.endswith('_revision')}
-                        result.update((k, v) for k, v in values.items() if k not in revisions)
+                        from companion_memory.provider.daily_service import DailyProvider
+                        if type(r.provider) is DailyProvider:
+                            result[owner]=MappingProxyType({k:v for k,v in values.items() if k not in revisions})
+                        else:result.update((k, v) for k, v in values.items() if k not in revisions)
                         observations[owner] = MappingProxyType({'observed_at': datetime.now(timezone.utc).isoformat(),
                             'revision': MappingProxyType(revisions)})
                     if kind in ('runtime', 'entries', 'batches'):
@@ -172,7 +184,7 @@ class ContentObservations:
                         'processing_suspects': health.processing_suspects, 'processing_observed_at_us': health.processing_observed_at_us})
                     instance = MappingProxyType(cleanup)
                 value = MappingProxyType({'availability': 'AVAILABLE', 'observed_at': datetime.now(timezone.utc).isoformat(),
-                    'storage_execution': 'ACTUAL', 'model_adapter': 'SIMULATED', 'candidate_origin': 'SYNTHETIC', 'rows': tuple(rows),
+                    'storage_execution': 'ACTUAL', **self.origins(), 'rows': tuple(rows),
                     **({'instance_media': instance} if instance is not None else {}),
                     'mode': r.gate.state if port._instance else None, 'consistency': 'COMPOSITE_OBSERVATION',
                     'revision_semantics': 'MAXIMUM_OBSERVED_MEMBER_REVISION',

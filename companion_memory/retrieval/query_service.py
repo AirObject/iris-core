@@ -16,7 +16,9 @@ from types import MappingProxyType
 from typing import cast
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
+from companion_memory.self_model.daily_current import DailyCurrentPersonaPort
 from companion_memory.self_model.current import CurrentPersonaPort,Available
 from companion_memory.self_model.results import Failed as PersonaFailed
 from companion_memory.persistence import Found, Committed, NotFound, Value
@@ -91,16 +93,18 @@ class QueryPort:
 
 class QueryService:
     """Two admitted queries, zero waiting queue, and one inherited I/O deadline."""
-    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration, runtime: ContentRuntimeService, management: ManagementAssembly,
-                 index: LocalIndex, state: StateOwner, goals: GoalsService, *, test_persona: TestPersona | None = None,current_persona: CurrentPersonaPort | None = None,
+    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, runtime: ContentRuntimeService, management: ManagementAssembly,
+                 index: LocalIndex, state: StateOwner, goals: GoalsService, *, test_persona: TestPersona | None = None,current_persona: CurrentPersonaPort | DailyCurrentPersonaPort | None = None,
                  semantic:SemanticQuery|None=None):
         if test_persona is not None and type(test_persona) is not TestPersona:
             raise ValueError('Only explicitly identified test persona material is supported.')
         if type(configuration) is StoredTextConfiguration:
             if test_persona is not None or type(current_persona) is not CurrentPersonaPort or current_persona._owner.transactions.assembly is not runtime.assembly:
                 raise ValueError('Text queries require their actual native current-persona owner.')
+        elif type(configuration) is StoredDailyConfiguration:
+            if test_persona is not None or type(current_persona) is not DailyCurrentPersonaPort or not current_persona.matches(configuration,runtime.assembly.storage):raise ValueError('Daily queries require their native current-persona capability.')
         elif current_persona is not None:raise ValueError('A native text persona requires the independent text configuration.')
-        if (type(configuration) is StoredSemanticConfiguration)!=(type(semantic) is SemanticQuery):raise ValueError('Native semantic query assembly differs.')
+        if (type(configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration))!=(type(semantic) is SemanticQuery):raise ValueError('Native semantic query assembly differs.')
         self.semantic=semantic
         self.configuration, self.runtime, self.management, self.index, self.state, self.goals = configuration, runtime, management, index, state, goals
         self.test_persona = test_persona
@@ -378,7 +382,9 @@ class QueryService:
                     raise OwnerFailure('INVALID_STATE','state','NOT_READY',pending)
                 raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE',pending)
             if type(current) is Available:
-                from companion_memory.self_model.formats import query_projection
+                from companion_memory.self_model.formats import query_projection as original_projection
+                from companion_memory.self_model.daily_current import query_projection as daily_projection
+                query_projection=daily_projection if type(self.current_persona) is DailyCurrentPersonaPort else original_projection
                 sections['persona'],limited=bounded_single(query_projection(current.value),integer(settings['persona_max_bytes']),now)
             else:
                 sections['persona'], limited = bounded_single(MappingProxyType({'availability': 'AVAILABLE' if persona else 'UNAVAILABLE', 'text': persona.text if persona else None,

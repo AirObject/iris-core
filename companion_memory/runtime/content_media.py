@@ -21,6 +21,7 @@ from companion_memory.provider import WorkGrant, ResultGrant, CancellationSource
 from companion_memory.provider.values import as_record, freeze
 from companion_memory.provider.stored_media import StoredMediaAuthorized
 from companion_memory.provider.terminal_evidence import TerminalVerified
+from companion_memory.provider.service import ProviderService
 from .preparation_format import decode_preparation
 if TYPE_CHECKING:
     from .content_service import ContentRuntimeService
@@ -40,14 +41,16 @@ class ContentMedia:
         self.runtime = runtime; self.policy = policy
         media = runtime.assembly.media
         if type(media) is not MediaService: raise ValueError('Actual media owner required.')
+        if type(runtime.provider) is not ProviderService:raise ValueError('Legacy media requires its native Provider.')
+        self.provider=runtime.provider
         self.media = cast(MediaService, media)
-        self.authority = runtime.provider.bind_stored_media_authority(media, runtime.assembly.instance_id, 'media')
+        self.authority = self.provider.bind_stored_media_authority(media, runtime.assembly.instance_id, 'media')
         media.integrity.notify = runtime.gate.invalidate_current
         runtime.gate.integrity_pending = lambda: bool(media.integrity.pending or media._physical_fault)
         self._held: dict[str, tuple[object, WorkGrant, object]] = {}
 
     def fingerprint(self) -> str:
-        provider = self.runtime.provider
+        provider = self.provider
         # The trusted Provider's own immutable profile is used; no profile is
         # inferred from the event, supplied body or a freely chosen model string.
         profile = provider._profiles.get(self.policy.profile_id)
@@ -71,7 +74,7 @@ class ContentMedia:
         """Drop only process-local bytes whose actual Provider consumers ended."""
         for wid, (media, grant, port) in tuple(self._held.items()):
             if self.authority.release_media_authorization(media):
-                self.runtime.provider.revoke(port); self.runtime.gate.revoke(grant); self._held.pop(wid)
+                self.provider.revoke(port); self.runtime.gate.revoke(grant); self._held.pop(wid)
 
     async def prepare(self, preparation_id: str):
         self.release_ended_capabilities()
@@ -153,10 +156,10 @@ class ContentMedia:
                 fresh = False
                 admitted = r.gate.admit_recovery(grant)
             if not admitted: return MediaError('MODE_BLOCKED', 'prepare_media', 'state', 'DREAMING')
-            port = r.provider.bind_work(grant)
+            port = self.provider.bind_work(grant)
             authorized = await self.authority.authorize_stored_media(wid, oid)
             if type(authorized) is not StoredMediaAuthorized:
-                r.provider.revoke(port); r.gate.revoke(grant); return authorized
+                self.provider.revoke(port); r.gate.revoke(grant); return authorized
             self._held[wid] = authorized.media, grant, port
         remaining = min(r.remaining_request(), max(0.001, (cast(int, work['deadline_at_us']) - now) / 1000000)) if fresh else self.media.settings.integer('media.operation_timeout_ms') / 1000
         raw = {**descriptor, 'entry_ids': list(cast(tuple, descriptor['entry_ids'])), 'deadline': time.monotonic() + remaining,
@@ -177,9 +180,9 @@ class ContentMedia:
             work = (await self.media.rows.read('work_get', {'work_id': wid}))[0]
         elif work['provider_request_id'] != rid:
             return MediaError('STORAGE_FAILED', 'prepare_media', 'storage', 'INTEGRITY_FAILURE')
-        owner = r.provider.bind_result_owner(ResultGrant('media', (cast(str, rid),)))
+        owner = self.provider.bind_result_owner(ResultGrant('media', (cast(str, rid),)))
         try: terminal = await owner.verify_terminal(rid, descriptor)
-        finally: r.provider.revoke(owner)
+        finally: self.provider.revoke(owner)
         if type(terminal) is not TerminalVerified: return self.provider_observation(terminal, 'REMOTE_UNKNOWN', port)
         if not terminal.value.confirmed_sent or terminal.value.request['outcome'] == 'MODE_BLOCKED':
             parked = await self.close_if_unsent(work, port, raw)
@@ -231,7 +234,7 @@ class ContentMedia:
             media, grant, port = held
             if not self.authority.release_media_authorization(media):
                 return MediaError('RESOURCE_BUSY', 'prepare_media', 'state', 'OWNER_ACTIVE', True)
-            r.provider.revoke(port); r.gate.revoke(grant); self._held.pop(wid)
+            self.provider.revoke(port); r.gate.revoke(grant); self._held.pop(wid)
         rid = identity('media_ref', 'PROCESSING', wid, work['blob_id'], work['generation'], work['occurrence_id'])
         if await self.media.rows.read('references_get', {'reference_id': rid}):
             released = await r.execute('release_occurrence_processing', identity('release_processing', wid), {'work_id': wid})

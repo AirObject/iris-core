@@ -9,7 +9,7 @@ from contextlib import AsyncExitStack
 import heapq
 import time
 from types import MappingProxyType
-from typing import TYPE_CHECKING,cast,BinaryIO
+from typing import TYPE_CHECKING,cast,BinaryIO,Literal
 from companion_memory.persistence import Found,NotFound,Value
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.persistence.semantic_records import Record,identity,string,number
@@ -44,6 +44,28 @@ class SemanticQuery:
 
     async def select(self,service:QueryService,port:QueryPort,query:Record,selected:StructuralFilter,deep:bool,
                      resources:AsyncExitStack,deadline:float) -> tuple[tuple[Record,...],Record,tuple[str,...],Record]:
+        return await self._select(service.runtime.memory,port._authority.memory_port,service.index,self.partition(port),query,
+            selected,deep,resources,deadline,allow_cold=True)
+
+    async def select_readonly(self,memory,memory_port,index,partition:str,query_text:str,world:Record,resources:AsyncExitStack,deadline:float):
+        """Select current memory through a real read scope; this port never cold-sends."""
+        from companion_memory.memory.service import MemoryService,MemoryReadPort
+        from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
+        from .index import LocalIndex
+        from .lexical import WorldFilter
+        from companion_memory.memory.formats import check_world
+        from companion_memory.persistence.schema import valid_identifier
+        if (type(memory) is not MemoryService or type(memory_port) is not MemoryReadPort or type(index) is not LocalIndex
+                or type(index.configuration) is not StoredDailyConfiguration or index.configuration is not self.cache.configuration
+                or not memory.matches_configuration(index.configuration,self.work.storage) or not valid_identifier(partition)):
+            raise OwnerFailure('ACCESS_DENIED','capability','TOOL_NOT_GRANTED')
+        memory.read_grant_reference(memory_port);check_world(world)
+        selected=StructuralFilter(world_scope=WorldFilter(cast(Literal['REAL','FICTIONAL','ROLEPLAY'],world['kind']),cast(str|None,world['context_id'])))
+        return await self._select(memory,memory_port,index,partition,MappingProxyType({'query_text':query_text}),selected,
+            False,resources,deadline,allow_cold=False)
+
+    async def _select(self,memory,memory_port,index,partition:str,query:Record,selected:StructuralFilter,deep:bool,
+                      resources:AsyncExitStack,deadline:float,*,allow_cold:bool):
         reasons=[];now=time.time_ns()//1000
         def checkpoint():
             self.work.checkpoint()
@@ -51,8 +73,8 @@ class SemanticQuery:
         checkpoint();text=string(query['query_text'])
         material=normalize_material(text,byte_limit=8192,term_limit=4096)
         structural=not material.terms or bool(selected.object_ids)
-        coordinator,lexical_generation=await service.index.query_generation()
-        lexical_coverage=await service.index.memory.coverage_view()
+        coordinator,lexical_generation=await index.query_generation()
+        lexical_coverage=await index.memory.coverage_view()
         lexical_coverage=MappingProxyType(dict(lexical_coverage)|{'generation':lexical_generation['generation_id'] if lexical_generation else None,
             'preprocess_id':'LOCAL_LEXICAL_V1','unicode_version':material.unicode_version,'posting_visits':0,'candidate_count':0,'observed_at':now})
         ids:dict[str,None]={oid:None for oid in selected.object_ids}
@@ -64,28 +86,28 @@ class SemanticQuery:
                 reasons.append('INDEX_LAG_PARTIAL')
         if not selected.object_ids:
             if not structural and lexical_generation is not None:
-                candidates,visits,exhausted=await service.index.posting_candidates(string(lexical_generation['generation_id']),material.terms)
+                candidates,visits,exhausted=await index.posting_candidates(string(lexical_generation['generation_id']),material.terms)
                 ids.update((oid,None) for oid in candidates[:128])
                 lexical_coverage=MappingProxyType(dict(lexical_coverage)|{'posting_visits':visits})
                 if exhausted:reasons.append('CANDIDATE_LIMIT')
             else:
                 after=''
                 for _ in range(16):
-                    checkpoint();page=await service.index.memory.current_page(after,8)
+                    checkpoint();page=await index.memory.current_page(after,8)
                     for value in page:after=string(value['object_id']);ids[after]=None
                     if len(page)<8:break
                 else:reasons.append('CANDIDATE_LIMIT')
             if not structural:
-                gaps=await service.index.memory.gaps(128)
+                gaps=await index.memory.gaps(128)
                 for gap in gaps:
                     if gap['action']=='UPSERT' and len(ids)<128:ids[string(gap['object_id'])]=None
                 if len(gaps)==128:reasons.append('INDEX_LAG_PARTIAL')
         async def current(oid:str) -> Record|None:
             checkpoint()
-            if not service.runtime.memory.query_allowed(port._authority.memory_port,oid,deep=deep):
+            if not memory.query_allowed(memory_port,oid,deep=deep):
                 if oid in selected.object_ids:raise OwnerFailure('ACCESS_DENIED','object','OPERATION_NOT_GRANTED')
                 return None
-            result=await (port._authority.memory_port.get_for_deep_read(oid) if deep else port._authority.memory_port.get_current(oid))
+            result=await (memory_port.get_for_deep_read(oid) if deep else memory_port.get_current(oid))
             if type(result) is NotFound:return None
             if type(result) is not Found:raise OwnerFailure('STORAGE_FAILED','storage','READ_FAILED')
             value=record(result.value)
@@ -110,11 +132,11 @@ class SemanticQuery:
         vector_meta:Record=MappingProxyType({'state':'NOT_REQUIRED' if structural else 'UNAVAILABLE','space_id':None if structural else self.work.space,
             'artifact_id':None,'request_ref':None})
         if not structural:
-            cache=await resources.enter_async_context(self.cache.borrow(text,self.partition(port),now))
+            cache=await resources.enter_async_context(self.cache.borrow(text,partition,now))
             vector=None;remote_result=False
-            artifact=await self.cache.reusable(text,self.partition(port)) if cache is None else await self.work.rows.read('embedding_artifact',string(cache['artifact_id']))
-            if artifact is None and cache is None and self.cold is not None:
-                cold=await self.cold.obtain(text,self.partition(port),deadline)
+            artifact=await self.cache.reusable(text,partition) if cache is None else await self.work.rows.read('embedding_artifact',string(cache['artifact_id']))
+            if artifact is None and cache is None and allow_cold and self.cold is not None:
+                cold=await self.cold.obtain(text,partition,deadline)
                 artifact=cold.artifact;remote_result=artifact is not None
                 if cold.reason is not None:reasons.append(cold.reason)
             if artifact is None:
@@ -151,7 +173,7 @@ class SemanticQuery:
                     if lag:reasons.append('INDEX_LAG_PARTIAL')
                 except (InvalidVectorFile,OSError):semantic_coverage['state']='UNAVAILABLE';reasons.append('INTEGRITY_UNAVAILABLE')
         order=fuse(lexical_ids,semantic_ids,tuple(explicit),rrf_k=60,combined_limit=128)[:8]
-        projections=tuple([await service.runtime.memory.query_projection(port._authority.memory_port,objects[oid],deep=deep) for oid in order])
+        projections=tuple([await memory.query_projection(memory_port,objects[oid],deep=deep) for oid in order])
         lexical_coverage=MappingProxyType(dict(lexical_coverage)|{'candidate_count':len(ids)})
         detail=MappingProxyType({'actual_mode':'STRUCTURAL_ONLY' if structural else 'HYBRID' if vector_meta['state'] in ('CACHE_HIT','REUSED_ARTIFACT','REMOTE_RESULT') and semantic_coverage['state'] in ('COMPLETE','PARTIAL') else 'LEXICAL_ONLY',
             'query_vector':vector_meta,'admission':MappingProxyType({'policy':'ABSOLUTE_COSINE_LEXICAL_V1','semantic_min_millionths':700000,

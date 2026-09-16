@@ -8,6 +8,7 @@ from types import MappingProxyType
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from threading import RLock
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration,stored_semantic_configuration_issue
 from companion_memory.persistence import PersistenceService,UnitOfWork,ResultBoundCommandDefinition
 from companion_memory.persistence.owned_statements import StatementCatalog,OwnerFailure
@@ -21,10 +22,10 @@ from .semantic_material import cache_key
 
 class SemanticQueryCache:
     """One native retrieval owner's cache participant, with no independent lease."""
-    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration,instance: str,
+    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredDailyConfiguration,instance: str,
                  reception: ResultBoundCommandDefinition):
         from companion_memory.persistence.semantic_commands import declared
-        if stored_semantic_configuration_issue(configuration) is not None or catalog.definition.owner_module!='retrieval':
+        if (stored_daily_configuration_issue(configuration) if type(configuration) is StoredDailyConfiguration else stored_semantic_configuration_issue(configuration)) is not None or catalog.definition.owner_module!='retrieval':
             raise ValueError('The native semantic retrieval configuration is required.')
         if not declared(reception) or reception.operation_kind!='record_result' or reception.owner_namespace!='retrieval':
             raise ValueError('The original artifact reception command is required.')

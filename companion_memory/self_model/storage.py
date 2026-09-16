@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
 from companion_memory.configuration.text_persistence import StoredTextConfiguration,stored_text_configuration_issue
+from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.persistence import PersistenceService,UnitOfWork,Value
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import BoundStatements,StatementCatalog,OwnerFailure
@@ -25,9 +26,11 @@ class PersonaRecord:
 
 class PersonaStorage:
     """One configuration-bound self-model lease and fixed point-read catalog."""
-    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredTextConfiguration,instance_id: str):
-        if (stored_text_configuration_issue(configuration) is not None or catalog.definition.owner_module!='self_model'
-                or catalog.definition.schema_version!=1):raise InvalidValue()
+    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredTextConfiguration|StoredDailyConfiguration,instance_id: str):
+        daily=type(configuration) is StoredDailyConfiguration
+        issue=stored_daily_configuration_issue(configuration) if daily else stored_text_configuration_issue(configuration)
+        if (issue is not None or catalog.definition.owner_module!='self_model'
+                or catalog.definition.schema_version!=(2 if daily else 1)):raise InvalidValue()
         self._storage=storage;self._configuration=configuration;self._instance=instance_id
         self._rows=BoundStatements(catalog,storage,instance_id)
         self._lease=storage.claim_module_owner(catalog.definition)

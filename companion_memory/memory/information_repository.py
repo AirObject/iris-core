@@ -34,9 +34,9 @@ LAYOUTS = (
 )
 
 
-def information_memory_catalog(*, semantic_format: bool = False) -> StatementCatalog:
+def information_memory_catalog(*, semantic_format: bool = False, daily_format: bool = False) -> StatementCatalog:
     """Select a new format without silently migrating the original memory owner."""
-    original = memory_catalog(semantic_format=semantic_format)
+    original = memory_catalog(semantic_format=semantic_format,daily_format=daily_format)
     indices = (
         TableDefinition('memory_gap_order', 'CREATE INDEX memory_gap_order ON memory_index_gap(scope_id,first_uncovered_seq,object_id)'),
         TableDefinition('memory_ack_generation', 'CREATE INDEX memory_ack_generation ON memory_generation_ack(scope_id,generation_id,object_id)'),

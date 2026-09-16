@@ -38,9 +38,36 @@ TEXT_MANIFEST = RecordSchema(tuple(
     for field in MANIFEST.fields)+(Field('context_id',ID),Field('context_digest',BoundedTextSchema(64)),Field('output_schema_revision',ID)))
 
 
-def isolate_manifest(manifest: object, *, allow_goals: bool = False, text_format: bool = False) -> MappingProxyType[str, Value]:
+
+ACTION_MAPPING=RecordSchema((Field('model_ordinal',ScalarSchema('integer',0,7)),Field('local_ref',ScalarSchema('integer',0,7)),
+    Field('object_id',ID),Field('effect_ordinal',ScalarSchema('integer',0,7),nullable=True),Field('reused',ScalarSchema('boolean'))))
+DAILY_MANIFEST=RecordSchema(tuple(Field('candidate_version',ScalarSchema('integer',4,4)) if field.name=='candidate_version' else field
+    for field in TEXT_MANIFEST.fields)+(Field('reasoning_run_id',ID),Field('transcript_digest',BoundedTextSchema(64)),
+    Field('action_mapping',SequenceSchema(ACTION_MAPPING,0,8))))
+
+def model_ordinals(value: MappingProxyType[str,Value]) -> dict[int,int]:
+    """Map persisted effect order back to the unchanged original model order."""
+    if value['candidate_version']!=4:return {i:i for i in range(len(sequence(value['ordered_change_refs'])))}
+    mappings=tuple(record(item) for item in sequence(value['action_mapping']))
+    refs=tuple(record(item) for item in sequence(value['ordered_change_refs']))
+    if len({cast(int,item['local_ref']) for item in mappings})!=len(mappings):raise InvalidValue()
+    result={}
+    for ordinal,item in enumerate(mappings):
+        if item['model_ordinal']!=ordinal or (item['effect_ordinal'] is None)!=item['reused']:raise InvalidValue()
+        effect=item['effect_ordinal']
+        if effect is not None:
+            if type(effect) is not int or effect!=len(result) or effect>=len(refs) or refs[effect]['target_id']!=item['object_id']:raise InvalidValue()
+            result[effect]=ordinal
+    if len(result)!=len(refs) or value['terminal_proposal']!='SUCCEEDED' and mappings:raise InvalidValue()
+    return result
+
+
+def isolate_manifest(manifest: object, *, allow_goals: bool = False, text_format: bool = False, daily_format: bool = False) -> MappingProxyType[str, Value]:
     """The independently bound format alone accepts typed goal proposal leaves."""
-    if type(text_format) is not bool or text_format and allow_goals:raise InvalidValue()
+    if type(text_format) is not bool or type(daily_format) is not bool or text_format and allow_goals and not daily_format:raise InvalidValue()
+    if daily_format:
+        from companion_memory.persistence.text_records import isolate_record
+        return isolate_record(DAILY_MANIFEST,manifest,8192)
     if text_format:
         from companion_memory.persistence.text_records import isolate_record
         return isolate_record(TEXT_MANIFEST,manifest,4096)
@@ -62,7 +89,7 @@ def stable_identity(kind: str, database: str, batch: str, handoff: str,
 
 def manifest_digest(value: MappingProxyType[str, Value]) -> str:
     """Digest the entire candidate identity and ordered leaf references."""
-    return hashlib.sha256(encode_content(MappingProxyType({k: v for k, v in value.items() if k != 'manifest_digest'}), 4096)).hexdigest()
+    return hashlib.sha256(encode_content(MappingProxyType({k: v for k, v in value.items() if k != 'manifest_digest'}), 8192 if value['candidate_version']==4 else 4096)).hexdigest()
 
 
 def check_manifest_identity(value: MappingProxyType[str, Value]) -> None:
@@ -76,17 +103,20 @@ def check_manifest_identity(value: MappingProxyType[str, Value]) -> None:
     if value['terminal_proposal'] == 'SUCCEEDED':
         if value['handoff_ref'] is None: raise InvalidValue()
     elif refs or value['handoff_ref'] is not None: raise InvalidValue()
+    ordinals=model_ordinals(value)
     for ordinal, ref in enumerate(refs):
+        model_ordinal=ordinals[ordinal]
         action = ref['action']
         if value['candidate_version']==3 and action!='CREATE_MEMORY':raise InvalidValue()
-        if ref['ordinal'] != ordinal or action not in ('CREATE_MEMORY', 'CREATE_RELATION', 'REGISTER_SUBJECT', 'REPLACE_CURRENT', 'SET_SCORES', 'DELETE_OBJECT') + (('CREATE_GOAL',) if value['candidate_version'] == 2 else ()):
+        if ref['ordinal'] != ordinal or action not in ('CREATE_MEMORY', 'CREATE_RELATION', 'REGISTER_SUBJECT', 'REPLACE_CURRENT', 'SET_SCORES', 'DELETE_OBJECT') + (('CREATE_GOAL',) if value['candidate_version'] in (2,4) else ()):
             raise InvalidValue()
-        if action == 'CREATE_GOAL' and ref['target_id'] != stable_identity('goal', database, batch, handoff, transform, ordinal, 'GOAL'):
+        if value['candidate_version']==4 and action=='DELETE_OBJECT':raise InvalidValue()
+        if action == 'CREATE_GOAL' and ref['target_id'] != stable_identity('goal', database, batch, handoff, transform, model_ordinal, 'GOAL'):
             raise InvalidValue()
         if action in ('CREATE_MEMORY', 'CREATE_RELATION', 'REGISTER_SUBJECT'):
             kind = 'subject' if action == 'REGISTER_SUBJECT' else 'object'
             object_kind = 'SUBJECT' if kind == 'subject' else cast(str, action).removeprefix('CREATE_')
-            if ref['target_id'] != stable_identity(kind, database, batch, handoff, transform, ordinal, object_kind): raise InvalidValue()
+            if ref['target_id'] != stable_identity(kind, database, batch, handoff, transform, model_ordinal, object_kind): raise InvalidValue()
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,15 +127,15 @@ class Candidate:
 
 
 def isolate_candidate(manifest: object, leaves: object, *, item_limit: int,
-                      item_bytes: int, total_bytes: int, allow_goals: bool = False, text_format: bool = False) -> Candidate:
+                      item_bytes: int, total_bytes: int, allow_goals: bool = False, text_format: bool = False, daily_format: bool = False) -> Candidate:
     """Validate the complete manifest, original identities and all leaves at once."""
-    value = isolate_manifest(manifest, allow_goals=allow_goals, text_format=text_format)
+    value = isolate_manifest(manifest, allow_goals=allow_goals, text_format=text_format,daily_format=daily_format)
     check_manifest_identity(value)
     if type(leaves) not in (tuple, list) or not 0 <= len(cast(tuple, leaves)) <= item_limit:
         raise InvalidValue()
     from .goal_proposals import isolate_goal_change
-    items = tuple(isolate_goal_change(v, item_bytes) if value['candidate_version'] == 2 and type(v) in (dict, MappingProxyType)
-        and cast(dict, v).get('action') == 'CREATE_GOAL' else isolate_change(v, item_bytes, text_format=text_format) for v in cast(tuple, leaves))
+    items = tuple(isolate_goal_change(v, item_bytes) if value['candidate_version'] in (2,4) and type(v) in (dict, MappingProxyType)
+        and cast(dict, v).get('action') == 'CREATE_GOAL' else isolate_change(v, item_bytes, text_format=text_format or daily_format,daily_format=daily_format) for v in cast(tuple, leaves))
     refs = tuple(record(r) for r in sequence(value['ordered_change_refs']))
     if len(refs) != len(items) or len({cast(str, v['target_id']) for v in items}) != len(items):
         raise InvalidValue()
@@ -119,7 +149,7 @@ def isolate_candidate(manifest: object, leaves: object, *, item_limit: int,
             handoff, cast(str, value['transform_version']), 0, 'CANDIDATE'):
         raise InvalidValue()
     for ordinal, (ref, item) in enumerate(zip(refs, items)):
-        if text_format:
+        if text_format and not daily_format:
             obj=record(item['proposed_value']);source=record(obj['origin'])
             if (item['action']!='CREATE_MEMORY' or source['kind']!='DIRECT_LEARNING'
                     or source['model_origin']!='REMOTE_PROVIDER' or source['candidate_origin']!='MODEL_VALIDATED'
@@ -135,16 +165,16 @@ def isolate_candidate(manifest: object, leaves: object, *, item_limit: int,
             kind = 'subject' if item['action'] == 'REGISTER_SUBJECT' else 'object'
             object_kind = 'SUBJECT' if kind == 'subject' else cast(str, item['action']).removeprefix('CREATE_')
             if item['target_id'] != stable_identity(kind, cast(str, origin['database_id']), cast(str, value['batch_id']),
-                    handoff, cast(str, value['transform_version']), ordinal, object_kind):
+                    handoff, cast(str, value['transform_version']), model_ordinals(value)[ordinal], object_kind):
                 raise InvalidValue()
     if value['manifest_digest'] != manifest_digest(value):
         raise InvalidValue()
-    if len(encode_content(value, 4096)) + sum(len(encode_content(v, item_bytes)) for v in items) > total_bytes:
+    if len(encode_content(value, 8192 if daily_format else 4096)) + sum(len(encode_content(v, item_bytes)) for v in items) > total_bytes:
         raise InvalidValue()
     return Candidate(value, items)
 
 
-def candidate_catalog(*, information_format: bool = False) -> StatementCatalog:
+def candidate_catalog(*, information_format: bool = False, daily_format: bool = False) -> StatementCatalog:
     """Declare complete candidates and leaf storage, separate from formal objects."""
     tables = (
         TableDefinition('cognition_candidates', 'CREATE TABLE cognition_candidates (scope_id TEXT NOT NULL,candidate_id TEXT NOT NULL,'
@@ -155,7 +185,7 @@ def candidate_catalog(*, information_format: bool = False) -> StatementCatalog:
             'PRIMARY KEY(scope_id,candidate_id,ordinal))'),
     )
     header = RecordSchema((Field('candidate_id', ID), Field('batch_id', ID), Field('provider_request_id', ID),
-        Field('handoff_ref', ID, nullable=True), Field('state', enum('STORED', 'DISPOSED')), Field('manifest', BoundedTextSchema(4096))))
+        Field('handoff_ref', ID, nullable=True), Field('state', enum('STORED', 'DISPOSED')), Field('manifest', BoundedTextSchema(8192 if daily_format else 4096))))
     leaf = RecordSchema((Field('candidate_id', ID), Field('ordinal', ScalarSchema('integer', 0, 7)), Field('body', BoundedTextSchema(8192))))
     cid = RecordSchema((Field('candidate_id', ID),))
     declarations = (
@@ -168,13 +198,13 @@ def candidate_catalog(*, information_format: bool = False) -> StatementCatalog:
         ('dispose', StatementDefinition("UPDATE cognition_candidates SET state='DISPOSED' WHERE scope_id=:scope_id AND candidate_id=:candidate_id AND state='STORED' RETURNING candidate_id", cid, cid, True)),
         ('release_leaves', StatementDefinition('DELETE FROM cognition_candidate_leaves WHERE scope_id=:scope_id AND candidate_id=:candidate_id RETURNING ordinal', cid, RecordSchema((Field('ordinal', INT),)), True)),
     )
-    return StatementCatalog(RepositoryDefinition('cognition', 2 if information_format else 1, tables, tuple(d for _, d in declarations)), declarations)
+    return StatementCatalog(RepositoryDefinition('cognition', 5 if daily_format else 2 if information_format else 1, tables, tuple(d for _, d in declarations)), declarations)
 
 
 class CandidateBinding:
     """Cognition's typed same-UoW proposal participant; it has no commit method."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService, scope: str,
-                 database_id: str, item_limit: int, item_bytes: int, total_bytes: int, *, allow_goals: bool = False, text_format: bool = False):
+                 database_id: str, item_limit: int, item_bytes: int, total_bytes: int, *, allow_goals: bool = False, text_format: bool = False, daily_format: bool = False):
         self._rows = BoundStatements(catalog, storage, scope)
         self._lease = storage.claim_module_owner(catalog.definition)
         if self._lease is None:
@@ -183,13 +213,15 @@ class CandidateBinding:
         self.database_id = database_id
         self.allow_goals = allow_goals
         self.text_format = text_format
+        self.daily_format = daily_format
+        self.manifest_bytes=8192 if daily_format else 4096
         self._limits = {'item_limit': item_limit, 'item_bytes': item_bytes, 'total_bytes': total_bytes}
 
     def isolate(self, manifest: object, leaves: object) -> Candidate:
-        return isolate_candidate(manifest, leaves, **self._limits, allow_goals=self.allow_goals, text_format=self.text_format)
+        return isolate_candidate(manifest, leaves, **self._limits, allow_goals=self.allow_goals, text_format=self.text_format,daily_format=self.daily_format)
 
     def manifest(self, raw: object) -> MappingProxyType[str, Value]:
-        value = isolate_manifest(raw, allow_goals=self.allow_goals, text_format=self.text_format)
+        value = isolate_manifest(raw, allow_goals=self.allow_goals, text_format=self.text_format,daily_format=self.daily_format)
         check_manifest_identity(value)
         return value
 
@@ -206,8 +238,8 @@ class CandidateBinding:
                 if time.monotonic() >= deadline: return False
                 cid = metadata['candidate_id']
                 header = (await self._rows.read('get', {'candidate_id': cid}))[0]
-                manifest = self.manifest(decode_content(cast(str, header['manifest']).encode(), 4096))
-                if (encode_content(manifest, 4096).decode() != header['manifest'] or manifest_digest(manifest) != manifest['manifest_digest']
+                manifest = self.manifest(decode_content(cast(str, header['manifest']).encode(), self.manifest_bytes))
+                if (encode_content(manifest, self.manifest_bytes).decode() != header['manifest'] or manifest_digest(manifest) != manifest['manifest_digest']
                         or any(manifest[k] != header[k] for k in ('candidate_id', 'batch_id', 'provider_request_id', 'handoff_ref'))
                         or record(manifest['origin'])['database_id'] != self.database_id):
                     raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
@@ -238,7 +270,7 @@ class CandidateBinding:
             raise OwnerFailure('ACCESS_DENIED', 'candidate', 'BINDING_MISMATCH')
         self._rows.stage('insert', uow, {'candidate_id': m['candidate_id'], 'batch_id': batch_id,
             'provider_request_id': request_id, 'handoff_ref': handoff_ref, 'state': 'STORED',
-            'manifest': encode_content(m, 4096).decode()})
+            'manifest': encode_content(m, self.manifest_bytes).decode()})
         for ordinal, leaf in enumerate(candidate.leaves):
             self._rows.stage('insert_leaf', uow, {'candidate_id': m['candidate_id'], 'ordinal': ordinal,
                 'body': encode_content(leaf, self._limits['item_bytes']).decode()})
@@ -249,8 +281,8 @@ class CandidateBinding:
         if not rows or rows[0]['state'] != 'STORED':
             raise OwnerFailure('PRECONDITION_FAILED', 'candidate', 'SOURCE_CHANGED')
         row = rows[0]
-        manifest = self.manifest(decode_content(cast(str, row['manifest']).encode(), 4096))
-        if any(row[k] != manifest[k] for k in ('candidate_id', 'batch_id', 'provider_request_id', 'handoff_ref')) or encode_content(manifest, 4096).decode() != row['manifest']:
+        manifest = self.manifest(decode_content(cast(str, row['manifest']).encode(), self.manifest_bytes))
+        if any(row[k] != manifest[k] for k in ('candidate_id', 'batch_id', 'provider_request_id', 'handoff_ref')) or encode_content(manifest, self.manifest_bytes).decode() != row['manifest']:
             raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
         leaves = []
         for ordinal in range(len(sequence(manifest['ordered_change_refs']))):
@@ -282,8 +314,8 @@ class CandidateBinding:
             raise OwnerFailure('ACCESS_DENIED', 'goal', 'BINDING_MISMATCH')
         row = rows[0]
         try:
-            manifest = self.manifest(decode_content(cast(str, row['manifest']).encode(), 4096))
-            if (encode_content(manifest, 4096).decode() != row['manifest']
+            manifest = self.manifest(decode_content(cast(str, row['manifest']).encode(), self.manifest_bytes))
+            if (encode_content(manifest, self.manifest_bytes).decode() != row['manifest']
                     or any(manifest[name] != row[name] for name in ('candidate_id', 'batch_id', 'provider_request_id', 'handoff_ref'))
                     or record(manifest['origin'])['database_id'] != self.database_id):
                 raise InvalidValue()

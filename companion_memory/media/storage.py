@@ -12,7 +12,7 @@ from companion_memory.persistence.owned_statements import StatementCatalog
 from companion_memory.memory.formats import ID, INT, REVISION, enum
 
 
-def media_catalog() -> StatementCatalog:
+def media_catalog(*,daily_format:bool=False) -> StatementCatalog:
     """Declare explicit file and occurrence indices, with finite point queries."""
     tables = []; statements = []
     layouts = {
@@ -38,6 +38,12 @@ def media_catalog() -> StatementCatalog:
     }
     from .work_schema import WORK_LAYOUTS
     layouts.update(WORK_LAYOUTS)
+    if daily_format:
+        for name in ('work','work_descriptors','blobs','occurrences','references','interpretations'):
+            keys,fields=layouts[name]
+            params=RecordSchema((Field('caller_scope',ID),)+tuple(next(f for f in fields if f.name==key) for key in keys))
+            sql='SELECT '+','.join(f.name for f in fields)+' FROM media_'+name+" WHERE :scope_id='provider' AND scope_id=:caller_scope AND "+' AND '.join(key+'=:'+key for key in keys)
+            statements.append(('daily_provider_'+name,StatementDefinition(sql,params,RecordSchema(fields),False)))
     def add(name, sql, params, row, writes):
         statements.append((name, StatementDefinition(sql, params, row, writes)))
     for name, (keys, fields) in layouts.items():
