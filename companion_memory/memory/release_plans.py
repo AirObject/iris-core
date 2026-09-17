@@ -54,6 +54,22 @@ class CheckedRelease:
         return tuple(sorted({cast(str,record(blob)['blob_id']) for leaf in self._leaves.values() if leaf['media_effects'] is not None
             for blob in sequence(record(leaf['media_effects'])['blobs'])}))
 
+    def audit_targets(self,uow:UnitOfWork):
+        """Actual changed source-resource roots, never the affected memory id."""
+        from companion_memory.persistence.daily_results import target
+        payloads={cast(str,record(raw)['message_id']):record(raw) for leaf in self._leaves.values() for raw in sequence(leaf['payloads'])}
+        values={}
+        if payloads:
+            values['ingress']=tuple(target(mid,cast(int,self.ingress.event(uow,mid)['references_revision']),cast(int,payload['references_revision'])) for mid,payload in payloads.items())
+        blobs={cast(str,record(raw)['blob_id']):record(raw) for leaf in self._leaves.values() if leaf['media_effects'] is not None for raw in sequence(record(leaf['media_effects'])['blobs'])}
+        if blobs:
+            from companion_memory.media.service import MediaService
+            media=cast(MediaService|None,cast(object,self.ingress.media))
+            if type(media) is not MediaService:raise InvalidValue()
+            values['media']=tuple(dict(ref)|{'previous_revision':blobs[ref['object_id']]['references_revision']}
+                for ref in media.daily_reference_targets(uow,tuple(sorted(blobs))))
+        return values
+
     def verify(self, uow: UnitOfWork, source_id: str, references_revision: int, before_count: int,
                after_count: int, members: tuple[MappingProxyType[str, Value], ...]) -> None:
         """Recompute source and payload closure before the first business mutation."""

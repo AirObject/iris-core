@@ -125,6 +125,16 @@ def _common(raw: dict[str,object]) -> Record:
 def _action(value: object, created: dict[int,str]) -> Record:
     raw = _mapping(value)
     common = _common(raw)
+    return validate_action_body(raw, created, common)
+
+
+def validate_action_body(raw: dict[str,object], created: dict[int,str], common: Record) -> Record:
+    """Validate action semantics after the origin-specific evidence was checked.
+
+    Daily callers require target anchors; internal maintenance supplies formal
+    object references through its separate closed parser. This pure helper
+    grants neither origin authority nor permission to apply an action.
+    """
     action = raw.get('action')
     if action == 'REGISTER_SUBJECT':
         result = isolate(REGISTER,{**raw,**common},8192)
@@ -137,7 +147,8 @@ def _action(value: object, created: dict[int,str]) -> Record:
             raise InvalidValue()
         return result
     if action == 'SET_SCORES':
-        result = isolate(SET_SCORES,{**raw,**common},8192)
+        body = RecordSchema(tuple(f for f in SET_SCORES.fields if f.name not in {c.name for c in COMMON}))
+        result = MappingProxyType({**isolate(body,raw,8192),**common})
         _text(result['belief_reason']); _text(result['retention_reason'])
         return result
     if action in ('CREATE_MEMORY','CREATE_RELATION','REPLACE_CURRENT'):

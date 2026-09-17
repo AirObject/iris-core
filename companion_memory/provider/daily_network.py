@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import math
 import time
-from typing import TypeVar,Any
+from typing import TypeVar,Any,Literal
 from companion_memory.persistence.completion import retain_completion
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.persistence.schema import valid_identifier
@@ -213,6 +213,24 @@ class DailyNetwork:
         if delay:await asyncio.sleep(delay)
         if self._closed or self._paused:raise OwnerFailure('ACCESS_DENIED','request','OPERATION_NOT_GRANTED')
         if time.monotonic()>=deadline:raise OwnerFailure('TIMEOUT','request','DEADLINE_EXCEEDED')
+
+    def admission_state(self,deadline:float) -> Literal['READY','NETWORK_COOLDOWN','NETWORK_OCCUPIED','ORIGINAL_REQUEST_UNCONFIRMED']:
+        """Observe unsent admission without waiting or acquiring a physical slot.
+
+        Cooldown and an existing owner are retryable observations, not elapsed
+        request deadlines. The subsequent reserve still enforces account fences
+        and exclusive ownership; this observation grants no sending permission.
+        """
+        self._on_loop()
+        if time.monotonic()>=deadline:raise OwnerFailure('TIMEOUT','request','DEADLINE_EXCEEDED')
+        if self._closed or self._paused:raise OwnerFailure('ACCESS_DENIED','request','OPERATION_NOT_GRANTED')
+        active=self._active
+        if active is not None:
+            if active._started and active._ended is None:return 'NETWORK_OCCUPIED'
+            if active._terminal is None:return 'ORIGINAL_REQUEST_UNCONFIRMED'
+            return 'NETWORK_OCCUPIED'
+        if self._quiet_until is not None and self._clock()<self._quiet_until:return 'NETWORK_COOLDOWN'
+        return 'READY'
 
     def close(self) -> NetworkObservation:
         """Stop admission; pending actual work and confirmation remain observable."""

@@ -77,7 +77,7 @@ class DailyPersona:
 
     def key(self,kind,*parts):return identity(kind,self.configuration.database_id,self.configuration.scope_id,*parts)
     def operation(self,uow):
-        value=self.storage.daily_operation_context(uow,self.catalog.definition)
+        value=self.storage.cognition_operation_context(uow,self.catalog.definition)
         return MappingProxyType({name:getattr(value,name) for name in ('owner_namespace','operation_kind','scope_id','operation_key')})
     def participate_run(self,uow,run_id):
         found=self.owner.read(uow,'run',run_id)
@@ -199,6 +199,11 @@ class DailyPersona:
                     **{k:run[k] for k in ('self_subject_id','self_revision','prompt_ref','schema_ref','transform_ref')},
                     **{k:output[k] for k in ('requested_model_id','reported_model_id','resolved_model_id')},'generated_at_us':generated,'publication_operation':op})
                 changed.update(state='PUBLISHED',publication_id=pid);self.owner.stage_publication(uow,run,changed,publication)
+                from companion_memory.configuration.dream_persistence import StoredDreamConfiguration
+                if type(self.configuration) is StoredDreamConfiguration:
+                    from .unified_persona import initialize_pointer
+                    pointer=initialize_pointer(self,uow,pid,'INITIAL_APPROVED',op,now)
+                    targets.append(target(pointer,1))
                 records.append(publication)
                 actual=self.mode.effect(uow,'PUBLISH',run['object_id'],v['expected_epoch'],now,pid)
                 facts['runtime']={'rows_changed':1,'targets':(target('instance_mode',actual['epoch'],mode['epoch']),)}
@@ -254,7 +259,7 @@ class DailyPersona:
             metadata={key:value for key,value in original.items() if key not in ('leaf_refs','payload_digest','byte_count')}
             metadata.update(object_id=self.key('persona-result',run['object_id'],run['generation']),context_kind='PROVIDER_RESULT',created_at_us=now,updated_at_us=now,wire_digest=None,
                 reservation_input_bound=0,original_operation=op,model_binding_digest=request['fingerprint'])
-            material=freeze_material(metadata,dump(terminal.value,40960).encode())
+            material=freeze_material(metadata,dump(terminal.value,40960).encode(),dream_format=self.materials.dream_format)
         elif run['provider_request_id'] is None:
             if not self.provider.participate_unsent_daily(uow,run['provider_operation_key'],run['object_id']):raise InvalidValue()
         else:
@@ -330,7 +335,7 @@ class DailyPersona:
         matching_generation(run,candidate)
         if candidate['handoff_id']!=handoff['object_id'] or proof['kind']!='record_initial_persona_resolution_with_result' or proof['key']!=self.key('persona-resolution',run_id,run['generation']):return False
         definition=next(d for d in self.commands if d.operation_kind==proof['kind'])
-        receipt=self.storage.confirm_daily_consumer_operation(uow,definition,proof['key'],request['object_id'])
+        receipt=self.storage.confirm_cognition_consumer_operation(uow,definition,proof['key'],request['object_id'])
         if receipt is None or receipt.fingerprint!=proof['fingerprint']:return False
         self.materials.participate_material(uow,self.key('persona-result',run_id,run['generation']),handoff['checksum'],run_id)
         return True

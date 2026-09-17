@@ -5,6 +5,7 @@ use it. Native Provider results and actual tool jobs are retained through their
 consumer transaction. This owner cannot publish memory or launch HTTP itself.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 import asyncio
 from hashlib import sha256
 import time
@@ -69,8 +70,8 @@ class DailyReasoning:
         return MappingProxyType({'items':tuple(MappingProxyType({k:r[k] for k in keys}) for r in page),
             'next_after':page[-1]['object_id'] if len(page)==4 else None})
 
-    def bind(self,configuration:StoredDailyConfiguration,provider:DailyProvider,tools:DailyReadTools,verify_frozen,allowed):
-        if self.bound or stored_daily_configuration_issue(configuration) is not None or type(provider) is not DailyProvider or provider.configuration is not configuration or type(tools) is not DailyReadTools:raise InvalidValue()
+    def bind(self,configuration:StoredCognitionConfiguration,provider:DailyProvider,tools:DailyReadTools,verify_frozen,allowed):
+        if self.bound or stored_cognition_configuration_issue(configuration) is not None or type(provider) is not DailyProvider or provider.configuration is not configuration or type(tools) is not DailyReadTools:raise InvalidValue()
         self.configuration=configuration;self.provider=provider;self.tools=tools;self.storage=provider.storage
         self.verify_frozen=verify_frozen;self.allowed=allowed
         self.rows=DailyRows(self.catalog,TABLES,self.storage,configuration.database_id,configuration.scope_id,configuration.snapshot_id)
@@ -80,7 +81,7 @@ class DailyReasoning:
     def key(self,name:str,*parts) -> str:
         return identity(name,self.configuration.database_id,self.configuration.scope_id,*parts)
     def operation(self,uow):
-        value=self.storage.daily_operation_context(uow,self.catalog.definition)
+        value=self.storage.cognition_operation_context(uow,self.catalog.definition)
         return MappingProxyType({name:getattr(value,name) for name in ('owner_namespace','operation_kind','scope_id','operation_key')})
     def base(self,oid:str,now:int):
         return {'format_version':1,'object_id':oid,'revision':1,'database_id':self.configuration.database_id,'instance_id':self.configuration.scope_id,
@@ -101,7 +102,7 @@ class DailyReasoning:
         metadata.update(self.base(oid,now));metadata.update(context_kind=kind,owner_ref=run['object_id'],original_operation=self.operation(uow),terminal_operation=None,
             wire_digest=sha256(encode_daily_request(self.provider.bindings['LEARNING'],body.decode())).hexdigest() if kind=='LEARNING' else None)
         if kind!='LEARNING':metadata.update(ordered_members=(),related_objects=())
-        material=freeze_material(metadata,body)
+        material=freeze_material(metadata,body,dream_format=self.materials.dream_format)
         return material,self.materials.stage_complete(uow,material)
     def handle(self,kind:str,uow:UnitOfWork,v:Record):
         if not self.bound or self.closed:raise OwnerFailure('INVALID_STATE','state','NOT_READY')
@@ -267,7 +268,7 @@ class DailyReasoning:
         if (turn['phase'] not in ('RESULT_STORED','RELEASED') or turn['handoff_id']!=handoff['object_id'] or turn['result_digest']!=handoff['checksum']
                 or proof['key']!=self.key('reasoning-result',turn['object_id']) or as_record(request['attribution'])['run_id']!=turn['run_id']):return False
         definition=next(d for d in self.commands if d.operation_kind=='store_reasoning_result')
-        original=self.storage.confirm_daily_consumer_operation(uow,definition,proof['key'],request['object_id'])
+        original=self.storage.confirm_cognition_consumer_operation(uow,definition,proof['key'],request['object_id'])
         if original is None or original.fingerprint!=proof['fingerprint']:return False
         self.materials.participate_material(uow,cast(str,turn['result_ref']),cast(str,turn['result_digest']),cast(str,turn['run_id']))
         return True

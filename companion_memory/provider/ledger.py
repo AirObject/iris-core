@@ -5,6 +5,7 @@ revisions are checked inside the transaction. Input bodies are never copied into
 the generic receipt; only stable object references and revisions are returned.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
@@ -61,17 +62,19 @@ class Mutation:
 
 class LedgerAssembly:
     """Trusted declarations required before creating a new provider database."""
-    def __init__(self, *, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False, daily_format: bool = False) -> None:
+    def __init__(self, *, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False, daily_format: bool = False, dream_format: bool = False) -> None:
         if type(text_generation) is not bool or type(embedding_format) is not bool or text_generation and embedding_format:
             raise TypeError('An exact static provider format is required.')
         if type(embedding_usage_only) is not bool or embedding_usage_only and not embedding_format:raise TypeError('Usage-only requires embedding format.')
         if type(daily_format) is not bool or daily_format and any((text_generation,embedding_format,embedding_usage_only)):raise TypeError('Daily Provider requires an independent selection.')
+        if type(dream_format) is not bool or dream_format and not daily_format:raise TypeError('Dream Provider requires explicit native cognition format.')
+        self.dream_format=dream_format
         self.daily_format=daily_format
         self.embedding_usage_only=embedding_usage_only or daily_format
-        self.version=5 if daily_format else 4 if embedding_usage_only else 3 if embedding_format else 2 if text_generation else 1
+        self.version=6 if dream_format else 5 if daily_format else 4 if embedding_usage_only else 3 if embedding_format else 2 if text_generation else 1
         self.text_generation = text_generation
         self.embedding_format = embedding_format or daily_format
-        self.repository = create_provider_repository(text_generation=text_generation,embedding_format=embedding_format,embedding_usage_only=embedding_usage_only,daily_format=daily_format)
+        self.repository = create_provider_repository(text_generation=text_generation,embedding_format=embedding_format,embedding_usage_only=embedding_usage_only,daily_format=daily_format,dream_format=dream_format)
         self._bindings: dict[int, LedgerBinding] = {}
         self._active: LedgerBinding | None = None
         mutation_schema = RecordSchema((Field("table", ScalarSchema("enum", choices=TABLES)), Field("object_id", IDENTIFIER),
@@ -104,7 +107,7 @@ class LedgerAssembly:
         self.commands = tuple(commands)
         self.repositories = (self.repository.definition,)
 
-    def bind(self, storage: PersistenceService, snapshot: EffectiveSnapshot | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration) -> LedgerBinding:
+    def bind(self, storage: PersistenceService, snapshot: EffectiveSnapshot | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration) -> LedgerBinding:
         """Issue restricted statements; acquiring unique execution ownership is separate."""
         if type(storage) is not PersistenceService:
             raise TypeError("Native storage and configuration bindings are required.")
@@ -113,8 +116,8 @@ class LedgerAssembly:
         semantic = None
         if self.daily_format:
             from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
-            if stored_daily_configuration_issue(snapshot) is not None:raise TypeError('Native persisted daily configuration is required.')
-            semantic=cast(StoredDailyConfiguration,snapshot)
+            if (type(snapshot) is not (StoredDreamConfiguration if self.dream_format else StoredDailyConfiguration) or stored_cognition_configuration_issue(snapshot,storage=storage) is not None):raise TypeError('Native persisted daily configuration is required.')
+            semantic=cast(StoredCognitionConfiguration,snapshot)
             snapshot=semantic.candidate.foundation
         elif self.embedding_format:
             from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration,stored_semantic_configuration_issue
@@ -140,7 +143,7 @@ class LedgerAssembly:
 class LedgerBinding:
     """Private-to-service ledger capability with no arbitrary SQL or connection API."""
     def __init__(self, assembly: LedgerAssembly, storage: PersistenceService, snapshot: EffectiveSnapshot,
-                 *, text_configuration: StoredTextConfiguration | None = None, semantic_configuration: StoredSemanticConfiguration | StoredDailyConfiguration | None = None):
+                 *, text_configuration: StoredTextConfiguration | None = None, semantic_configuration: StoredSemanticConfiguration | StoredCognitionConfiguration | None = None):
         self.assembly, self.storage, self.snapshot = assembly, storage, snapshot
         self.text_configuration = text_configuration
         self.semantic_configuration = semantic_configuration
@@ -256,7 +259,7 @@ class LedgerBinding:
             from .daily_stored_schema import validate as validate_daily
             from companion_memory.configuration import PresentValue
             from companion_memory.persistence.semantic_records import identity
-            validate_daily(table,row)
+            validate_daily(table,row,dream=self.assembly.dream_format)
             stored=self.semantic_configuration
             if stored is None:raise InvalidData()
             values={entry.definition.key:entry.state.value for entry in stored.candidate.foundation.list_entries() if type(entry.state) is PresentValue}

@@ -14,9 +14,12 @@ if TYPE_CHECKING:
 
 def validate_content_relationships(foundation: EffectiveSnapshot, runtime: ContentSettingsSnapshot,
                                    content: ContentSettingsSnapshot, platforms: tuple[ContentPlatformSnapshot, ...],
-                                   directories: object, *, text_only: bool = False, embedding_only: bool = False, daily_network: bool = False) -> str | None:
+                                   directories: object, *, text_only: bool = False, embedding_only: bool = False, daily_network: bool = False,
+                                   dream_network: bool = False) -> str | None:
     """Return a fixed first failure, never a submitted key or resource path."""
     f = {e.definition.key: e.state.value for e in foundation.list_entries() if type(e.state) is PresentValue}
+    if dream_network and not daily_network:
+        return 'BUDGET_INVALID'
     n, r = content.integer, runtime.integer
     if not n('memory.forget_below') < n('memory.restore_at'):
         return 'BUDGET_INVALID'
@@ -41,7 +44,10 @@ def validate_content_relationships(foundation: EffectiveSnapshot, runtime: Conte
     roles = cast(MappingProxyType[str, tuple[str, ...]], f['provider.role_profiles'])
     media = tuple(p for p in profiles if p['profile_id'] in roles.get('MEDIA', ()) and p['capability'] == 'MEDIA_UNDERSTANDING')
     if daily_network:
-        if text_only or embedding_only or len(media)!=1 or set(roles)!={'LEARNING','MEDIA','GOAL_DEDUP','PERSONA','EMBEDDING_DOCUMENT','EMBEDDING_QUERY'} or n('media.processing_concurrency')!=1 or f['provider.max_in_flight']!=1:
+        expected_roles={'LEARNING','MEDIA','GOAL_DEDUP','PERSONA','EMBEDDING_DOCUMENT','EMBEDDING_QUERY'}
+        if dream_network:
+            expected_roles.update(('DREAM_REVIEW','PERSONA_DREAM','PERSONA_REVIEW'))
+        if text_only or embedding_only or len(media)!=1 or set(roles)!=expected_roles or n('media.processing_concurrency')!=1 or f['provider.max_in_flight']!=1:
             return 'BUDGET_INVALID'
     elif embedding_only:
         if text_only or media or set(roles) != {'EMBEDDING_DOCUMENT', 'EMBEDDING_QUERY'} or n('media.processing_concurrency') != 0:

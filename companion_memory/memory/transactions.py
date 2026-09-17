@@ -6,12 +6,14 @@ values to the logging owner in the same UoW. Source release requires a separatel
 persisted plan and an exact owner bridge; this participant never deletes files.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass
 import hashlib
 from types import MappingProxyType
 from typing import Protocol, cast, TYPE_CHECKING
 if TYPE_CHECKING:
     from .information_tracking import MemoryInformation
+    from .long_term import LongTermMemory
     from .semantic_tracking import MemorySemanticCoverage
     from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.daily_persistence import StoredDailyConfiguration, stored_daily_configuration_issue
@@ -78,12 +80,13 @@ def applied_counts(applied: AppliedChanges) -> tuple[MappingProxyType[str, Value
 class MemoryTransactions:
     """Only this participant modifies memory tables; other owners join by protocol."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService,
-                 configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str,
+                 configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str,
                  history: HistoryBinding, sources: SourceParticipants):
-        self.daily_format=type(configuration) is StoredDailyConfiguration
-        self.semantic_format=type(configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration)
-        text_format=type(configuration) in (StoredTextConfiguration,StoredSemanticConfiguration,StoredDailyConfiguration)
-        configuration_valid=(stored_daily_configuration_issue(configuration) is None and catalog.definition.schema_version==5 and cast(StoredDailyConfiguration,configuration).scope_id==instance_id) if self.daily_format else (stored_semantic_configuration_issue(configuration) is None and catalog.definition.schema_version==4) if self.semantic_format else (stored_text_configuration_issue(configuration) is None and catalog.definition.schema_version==3) if text_format else type(configuration) is StoredContentConfiguration
+        self.long_term:LongTermMemory|None=None
+        self.daily_format=type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration)
+        self.semantic_format=type(configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration,StoredDreamConfiguration)
+        text_format=type(configuration) in (StoredTextConfiguration,StoredSemanticConfiguration,StoredDailyConfiguration,StoredDreamConfiguration)
+        configuration_valid=(stored_cognition_configuration_issue(configuration,storage=storage) is None and catalog.definition.schema_version==5 and cast(StoredCognitionConfiguration,configuration).scope_id==instance_id) if self.daily_format else (stored_semantic_configuration_issue(configuration) is None and catalog.definition.schema_version==4) if self.semantic_format else (stored_text_configuration_issue(configuration) is None and catalog.definition.schema_version==3) if text_format else type(configuration) is StoredContentConfiguration
         if not configuration_valid or type(history) is not HistoryBinding or history._text_format != text_format:
             raise ValueError('Native persistent configuration and history owner are required.')
         from .source_rows import MemorySourceRows
@@ -107,7 +110,7 @@ class MemoryTransactions:
         """Expose the owning static declaration for native transaction participation."""
         return self._information_catalog.definition
 
-    def bind_information(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration) -> MemoryInformation:
+    def bind_information(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration) -> MemoryInformation:
         """Select change tracking only for the explicit independent memory format."""
         from .information_tracking import MemoryInformation
         if self.information is not None or self._information_catalog.definition.schema_version != (5 if self.daily_format else 4 if self.semantic_format else 3 if self.text_format else 2) or configuration.database_id != self.configuration.database_id or configuration.snapshot_id != self.configuration.snapshot_id:
@@ -115,8 +118,11 @@ class MemoryTransactions:
         self.information = MemoryInformation(self._information_catalog, self.storage, configuration, self.instance_id, self)
         if self.semantic_format:
             from .semantic_tracking import MemorySemanticCoverage
-            assert type(configuration) is StoredSemanticConfiguration or type(configuration) is StoredDailyConfiguration
+            if not (type(configuration) is StoredSemanticConfiguration or type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration):raise InvalidValue()
             self.semantic=MemorySemanticCoverage(self,self.information,cast(str,configuration.candidate.text.record('retrieval.semantic')['space_id']))
+        if type(configuration) is StoredDreamConfiguration:
+            from .long_term import LongTermMemory
+            self.long_term=LongTermMemory(self)
         return self.information
 
     async def read_import_self(self,subject_id:str) -> MappingProxyType[str,Value] | None:
@@ -136,7 +142,7 @@ class MemoryTransactions:
         """
         from .initial_self_storage import InitialSelfBinding
         if not self.daily_format or type(binding) is not InitialSelfBinding:raise InvalidValue()
-        command=self.storage.daily_operation_context(uow,self._information_catalog.definition)
+        command=self.storage.cognition_operation_context(uow,self._information_catalog.definition)
         if (command.owner_namespace!='self_model' or command.operation_kind!=('import_approved_persona_with_self' if create else 'import_approved_persona')):
             raise OwnerFailure('ACCESS_DENIED','capability','BINDING_MISMATCH')
         current=self.subject(uow,binding.self_subject_id)
@@ -201,7 +207,7 @@ class MemoryTransactions:
             check_anchor(anchor,member,SourcePayload(event,body,versions))
         from companion_memory.persistence import OperationIdentity,Found
         operation=record(origin['created_operation'])
-        receipt=await self.storage.read_daily_origin_receipt(OperationIdentity(self.configuration.database_id,cast(str,operation['owner_namespace']),
+        receipt=await self.storage.read_cognition_origin_receipt(OperationIdentity(self.configuration.database_id,cast(str,operation['owner_namespace']),
             cast(str,operation['operation_kind']),cast(str,operation['scope_id']),cast(str,operation['operation_key'])))
         if type(receipt) is not Found:raise InvalidValue()
         return origin
@@ -344,7 +350,7 @@ class MemoryTransactions:
 
     def apply_change_set(self, uow: UnitOfWork, scope: ApplyScope, changes: tuple[MappingProxyType[str, Value], ...],
                          new_source: MappingProxyType[str, Value] | PreparedFixedSource | None, release: SourceRelease | None,
-                         now_us: int, operation_ref: str, reason_code: str) -> AppliedChanges:
+                         now_us: int, operation_ref: str, reason_code: str, *, cause_root: str | None = None, retention_basis: object = None) -> AppliedChanges:
         """Stage an entire authorized set, or reject it before any memory write.
 
         The supplied release participant must verify the persisted source plan
@@ -361,6 +367,10 @@ class MemoryTransactions:
         if not 1 <= len(changes) <= self._settings.integer('cognition.candidate_item_limit'):
             raise InvalidValue()
         checked = tuple(isolate_change(c, self._settings.integer('cognition.candidate_item_max_bytes'), text_format=self.text_format,daily_format=self.daily_format and reason_code=='LEARNING') for c in changes)
+        preserved=None
+        if retention_basis is not None:
+            if self.long_term is None or reason_code!='MAINTENANCE' or new_source is not None:raise InvalidValue()
+            preserved=self.long_term.consume_retention_basis(retention_basis,uow,checked)
         if len({cast(str, c['target_id']) for c in checked}) != len(checked):
             raise InvalidValue()
         proposed: dict[str, MappingProxyType[str, Value]] = {}
@@ -500,7 +510,7 @@ class MemoryTransactions:
             if value['kind'] == 'MEMORY':
                 for sid in sequence(content['subject_ids']): get_subject(cast(str, sid))
                 if content['speaker_subject_id'] is not None: get_subject(cast(str, content['speaker_subject_id']))
-            else:
+            elif preserved is None or oid!=preserved.current['object_id']:
                 endpoints = []
                 for ref in (record(content['from_ref']), record(content['to_ref'])):
                     endpoint = get_subject(cast(str, ref['id'])) if ref['type'] == 'SUBJECT' else get_object(cast(str, ref['id']), cast(int, ref['expected_revision']))
@@ -536,6 +546,12 @@ class MemoryTransactions:
                 raise InvalidValue()
             bases = {cast(str, record(b)['basis_id']): record(b) for b in sequence(links['bases'])}
             for bid, basis in bases.items():
+                if preserved is not None and oid==preserved.current['object_id']:
+                    # A pure time settlement carries the exact previously owned
+                    # links. It neither reads unavailable text nor claims that
+                    # an old dependency is current supporting evidence.
+                    if old_values[oid]!=preserved.current or old_links[oid]!=preserved.links:raise InvalidValue()
+                    continue
                 target = get_object(bid, cast(int, basis['basis_revision']))
                 if record(target['content'])['world_scope'] != content['world_scope']:
                     raise OwnerFailure('PRECONDITION_FAILED', 'object', 'BASIS_UNAVAILABLE')
@@ -610,7 +626,7 @@ class MemoryTransactions:
                 from .subject_origins import TABLE
                 from companion_memory.persistence.daily_records import identity
                 link=subject_origins[sid]
-                command_identity=self.storage.daily_operation_context(uow,self._information_catalog.definition)
+                command_identity=self.storage.cognition_operation_context(uow,self._information_catalog.definition)
                 origin=TABLE.isolate({'format_version':1,'object_id':identity('subject-origin',self.configuration.database_id,self.instance_id,sid),
                     'revision':1,'database_id':self.configuration.database_id,'instance_id':self.instance_id,
                     'config_snapshot_id':self.configuration.snapshot_id,'created_at_us':now_us,'updated_at_us':now_us,
@@ -648,7 +664,7 @@ class MemoryTransactions:
             self.rows.stage('index_dirty_insert', uow, {'object_id': oid, 'revision': revision,
                 'action': 'REMOVE' if value is None or value['lifecycle'] == 'FORGOTTEN' else 'UPSERT'})
             if self.information is not None:
-                self.information.changed(uow, oid, revision, value is None)
+                self.information.changed(uow, oid, revision, value is None,cause_root=cause_root)
             reasons = ['DELETED'] if value is None else ['CONTENT_CHANGED']
             if value is not None and old is not None and value['lifecycle'] != old['lifecycle']:
                 reasons.append('FORGOTTEN' if value['lifecycle'] == 'FORGOTTEN' else 'RESTORED')

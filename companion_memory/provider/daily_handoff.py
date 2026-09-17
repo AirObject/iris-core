@@ -9,13 +9,14 @@ from companion_memory.persistence.semantic_records import isolate,make_leaf,leaf
 from .embedding_schema import PAYLOAD,HANDOFF_LEAF,validate_leaf
 from .embedding_material import HandoffMaterial
 from .daily_protocol import DailyChatBinding
+from .dream_protocol import DreamChatBinding
 from .values import Record,InvalidData,as_record,freeze,dump,load,is_identifier
 
 
-def normalized(value:object,binding:DailyChatBinding) -> Record:
+def normalized(value:object,binding:DailyChatBinding|DreamChatBinding) -> Record:
     result=as_record(freeze(value,40960,owned=True))
     if (set(result)!={'format_version','output','stop_reason','provider_response_ref','requested_model_id','reported_model_id',
-            'resolved_model_id','output_schema_ref','raw_output_digest'} or type(result['format_version']) is not int or result['format_version']!=5
+            'resolved_model_id','output_schema_ref','raw_output_digest'} or type(result['format_version']) is not int or result['format_version']!=(6 if type(binding) is DreamChatBinding else 5)
             or result['stop_reason']!='STOP' or not is_identifier(result['provider_response_ref'])
             or result['requested_model_id']!=binding.requested_model or result['reported_model_id']!=binding.requested_model
             or result['resolved_model_id'] is not None or result['output_schema_ref']!=binding.schema_ref):raise InvalidData()
@@ -28,7 +29,7 @@ def normalized(value:object,binding:DailyChatBinding) -> Record:
     return result
 
 
-def split(value:object,binding:DailyChatBinding,*,handoff_id:str,request_id:str,attempt_id:str) -> HandoffMaterial:
+def split(value:object,binding:DailyChatBinding|DreamChatBinding,*,handoff_id:str,request_id:str,attempt_id:str) -> HandoffMaterial:
     if not all(is_identifier(value) for value in (handoff_id,request_id,attempt_id)):raise InvalidData()
     raw=dump(normalized(value,binding),40960).encode()
     leaves=tuple(make_leaf(HANDOFF_LEAF,'embedding-handoff-leaf','handoff_id',handoff_id,ordinal,raw[start:start+4096],
@@ -37,7 +38,7 @@ def split(value:object,binding:DailyChatBinding,*,handoff_id:str,request_id:str,
     return HandoffMaterial(root,leaves)
 
 
-def restore(payload:object,leaves:Iterable[object],binding:DailyChatBinding,*,handoff_id:str,request_id:str,attempt_id:str) -> Record:
+def restore(payload:object,leaves:Iterable[object],binding:DailyChatBinding|DreamChatBinding,*,handoff_id:str,request_id:str,attempt_id:str) -> Record:
     root=isolate(PAYLOAD,payload);count=number(root['leaf_count']);length=number(root['byte_count'])
     if not all(is_identifier(value) for value in (handoff_id,request_id,attempt_id)) or count!=(length+4095)//4096:raise InvalidData()
     blocks=[]

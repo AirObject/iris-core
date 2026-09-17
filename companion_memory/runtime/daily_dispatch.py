@@ -22,7 +22,7 @@ class DailyEntryPort:
     entry_id:str
     def __init__(self):raise TypeError('The daily host issues entry capabilities.')
     async def accept_event(self,key:object,event:object):
-        native=self.owner.entry(self)
+        native=self.owner.entry(self,receiving=True)
         result=await native.accept_event(key,event)
         if type(result) is Committed and result.source=='NEW':
             await self.owner.threshold(self.entry_id,cast(str,key))
@@ -40,14 +40,14 @@ class DailyEntryPort:
 
 class DailyDispatch:
     """A single real learning slot; there is no periodic idle write or send."""
-    def __init__(self,runtime,schedule,normal,admitted):
-        self.runtime=runtime;self.schedule=schedule;self.normal=normal;self.admitted=admitted
+    def __init__(self,runtime,schedule,normal,admitted,receiving):
+        self.runtime=runtime;self.schedule=schedule;self.normal=normal;self.admitted=admitted;self.receiving=receiving
         self.closed=False;self._task:asyncio.Task|None=None;self._changed=False
         self._ports:dict[str,DailyEntryPort]={};self._native={};self.last_failure:OwnerFailure|None=None
         schedule.authorize=lambda entry:entry in self._ports and not self.closed
 
     def bind(self,entry_id:str):
-        self.normal()
+        self.receiving()
         return self._bind(entry_id)
 
     def restore_entries(self,entry_ids:tuple[str,...]):
@@ -61,8 +61,8 @@ class DailyDispatch:
         port=object.__new__(DailyEntryPort);object.__setattr__(port,'owner',self);object.__setattr__(port,'entry_id',entry_id)
         self._native[entry_id]=native;self._ports[entry_id]=port;return port
 
-    def entry(self,port:DailyEntryPort):
-        self.normal()
+    def entry(self,port:DailyEntryPort,*,receiving:bool=False):
+        (self.receiving if receiving else self.normal)()
         if self.closed or type(port) is not DailyEntryPort or self._ports.get(port.entry_id) is not port:raise OwnerFailure('ACCESS_DENIED','entry','BINDING_MISMATCH')
         return self._native[port.entry_id]
 

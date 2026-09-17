@@ -327,7 +327,7 @@ class PersistenceService:
     """
 
     def __init__(self, repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...],
-                 *, assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1'] = 'LEGACY'):
+                 *, assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1', 'DREAM_MAINTENANCE_V1'] = 'LEGACY'):
         self._repositories, self._commands = repositories, commands
         self._command_map = {(item.owner_namespace, item.operation_kind): item for item in commands}
         from companion_memory.logging_service.audit_materialization import validate_bindings
@@ -335,7 +335,7 @@ class PersistenceService:
             if type(definition) is ResultBoundCommandDefinition:
                 validate_bindings(definition)
         self._history_enabled = any(repo.owner_module == "logging_service" and any(t.name == "logging_object_history" for t in repo.tables) for repo in repositories)
-        self._assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1'] = assembly_format
+        self._assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1', 'DREAM_MAINTENANCE_V1'] = assembly_format
         self._assembly = assembly_value(repositories, commands, assembly_format=assembly_format)
         self._schema = _BASE_SCHEMA + tuple((table.name, table.sql.strip().rstrip(";")) for repo in repositories for table in repo.tables)
         if (len({name for name, _ in self._schema}) != len(self._schema)
@@ -374,8 +374,10 @@ class PersistenceService:
     def bind_semantic_admission(self,admission) -> None:
         """Bind the single native whole-instance monitor before opening storage."""
         from .semantic_admission import SemanticAdmission
-        if (self._assembly_format not in ('ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1') or self._lifecycle!='NEW' or self._semantic_admission is not None
-                or type(admission) is not SemanticAdmission or admission.daily!=(self._assembly_format=='DAILY_COGNITION_V1')):raise ValueError('Native unopened semantic storage admission required.')
+        if (self._assembly_format not in ('ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') or self._lifecycle!='NEW' or self._semantic_admission is not None
+                or type(admission) is not SemanticAdmission
+                or admission.daily!=(self._assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1'))
+                or admission.dream!=(self._assembly_format=='DREAM_MAINTENANCE_V1')):raise ValueError('Native unopened semantic storage admission required.')
         self._semantic_admission=admission
 
     def confirm_prior_operation(self, uow: UnitOfWork, definition: CommandSpec, key: str) -> Receipt | None:
@@ -453,10 +455,38 @@ class PersistenceService:
         if row is None or uow._identity.scope_id not in ('provider',row[0]):raise InvalidValue()
         return self._receipt(uow._job,OperationIdentity(uow._identity.database_id,'provider',definition.operation_kind,'provider',key))
 
+    def confirm_cognition_provider_operation(self,uow:UnitOfWork,definition:CommandSpec,key:str,request_id:str) -> Receipt|None:
+        """Confirm an original daily Provider receipt in its real shared scope.
+
+        Only declared native participants of this independent daily assembly can
+        read the receipt. A business caller cannot choose another instance or a
+        different database, and the operation allowlist grants no send authority.
+        """
+        if (self._assembly_format not in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') or type(uow) is not UnitOfWork or not self._valid_uow(uow,uow._identity.scope_id)
+                or not any(definition is d for d in self._commands) or definition.owner_namespace!='provider'
+                or definition.operation_kind not in ('register_daily_request','store_daily_handoff','confirm_daily_handoff','retire_daily_handoff','terminate','recover','evidence')
+                or definition.command_version!=(6 if self._assembly_format=='DREAM_MAINTENANCE_V1' else 5) or not any(r.owner_module=='provider' for r in uow._definition.participants)
+                or not valid_identifier(key) or not valid_identifier(request_id)):raise InvalidValue()
+        row=self._sql(uow._job,"SELECT caller_scope FROM provider_requests WHERE scope_id='provider' AND object_id=?",(request_id,)).fetchone()
+        if row is None or uow._identity.scope_id not in ('provider',row[0]):raise InvalidValue()
+        return self._receipt(uow._job,OperationIdentity(uow._identity.database_id,'provider',definition.operation_kind,'provider',key))
+
     def confirm_daily_consumer_operation(self,uow:UnitOfWork,definition:CommandSpec,key:str,request_id:str) -> Receipt|None:
         """Confirm one declared actual result consumer in the request's own scope."""
         allowed={('goals','store_goal_comparison'),('cognition','store_reasoning_result'),('media','store_daily_image'),('self_model','record_initial_persona_resolution_with_result')}
         if (self._assembly_format!='DAILY_COGNITION_V1' or type(uow) is not UnitOfWork or not self._valid_uow(uow,'provider')
+                or not any(definition is d for d in self._commands) or (definition.owner_namespace,definition.operation_kind) not in allowed
+                or not any(r.owner_module==definition.owner_namespace for r in uow._definition.participants)
+                or not valid_identifier(key) or not valid_identifier(request_id)):raise InvalidValue()
+        row=self._sql(uow._job,"SELECT caller_scope,json_extract(body,'$.result_owner') FROM provider_requests WHERE scope_id='provider' AND object_id=?",(request_id,)).fetchone()
+        if row is None or row[1]!=definition.owner_namespace:raise InvalidValue()
+        return self._receipt(uow._job,OperationIdentity(uow._identity.database_id,definition.owner_namespace,definition.operation_kind,row[0],key))
+
+    def confirm_cognition_consumer_operation(self,uow:UnitOfWork,definition:CommandSpec,key:str,request_id:str) -> Receipt|None:
+        """Confirm one declared actual result consumer in the request's own scope."""
+        allowed={('goals','store_goal_comparison'),('cognition','store_reasoning_result'),('media','store_daily_image'),('self_model','record_initial_persona_resolution_with_result')}
+        if self._assembly_format=='DREAM_MAINTENANCE_V1':allowed|={('dream','store_dream_review_result'),('self_model','store_periodic_generation'),('self_model','store_periodic_review'),('self_model','store_periodic_failure')}
+        if (self._assembly_format not in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') or type(uow) is not UnitOfWork or not self._valid_uow(uow,'provider')
                 or not any(definition is d for d in self._commands) or (definition.owner_namespace,definition.operation_kind) not in allowed
                 or not any(r.owner_module==definition.owner_namespace for r in uow._definition.participants)
                 or not valid_identifier(key) or not valid_identifier(request_id)):raise InvalidValue()
@@ -476,10 +506,38 @@ class PersistenceService:
             raise InvalidValue()
         return uow._identity
 
+    def accepts_cognition_configuration(self,configuration:object) -> bool:
+        """Match an exact sealed snapshot to this independent native assembly format."""
+        from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
+        from companion_memory.configuration.dream_persistence import StoredDreamConfiguration,stored_dream_configuration_issue
+        if self._assembly_format=='DAILY_COGNITION_V1':
+            return type(configuration) is StoredDailyConfiguration and stored_daily_configuration_issue(configuration) is None
+        if self._assembly_format=='DREAM_MAINTENANCE_V1':
+            return type(configuration) is StoredDreamConfiguration and stored_dream_configuration_issue(configuration) is None
+        return False
+
+    def cognition_operation_context(self,uow:UnitOfWork,repository:RepositoryDefinition) -> OperationIdentity:
+        """Select the exact native format without granting old-format dream authority."""
+        if self._assembly_format=='DREAM_MAINTENANCE_V1':
+            return self.dream_operation_context(uow,repository)
+        return self.daily_operation_context(uow,repository)
+
     def transaction_audit_owners(self, uow: UnitOfWork) -> tuple[str, ...]:
         """Read only the command's fixed owner mask from a currently active UoW."""
         self.transaction_row_changes(uow)
         return tuple(requirement.owner_module for requirement in uow._definition.required_audits)
+
+    def dream_operation_context(self, uow: UnitOfWork, repository: RepositoryDefinition) -> OperationIdentity:
+        """Identify an active participant in the independently declared dream format.
+
+        The original daily identity boundary is deliberately unchanged. This
+        does not issue a statement, a Provider permission or a new operation.
+        """
+        if (self._assembly_format != 'DREAM_MAINTENANCE_V1' or type(uow) is not UnitOfWork
+                or uow._service is not self or not uow._active
+                or not any(repository is item for item in uow._definition.participants)):
+            raise InvalidValue()
+        return uow._identity
 
     def object_history_context(self, uow: UnitOfWork, repository: RepositoryDefinition) -> tuple[OperationIdentity, str]:
         """Issue operation association only to the declared history participant.
@@ -518,6 +576,16 @@ class PersistenceService:
             return Failed(self._error('read_receipt','ACCESS_DENIED','CAPABILITY_MISMATCH','query'))
         return await self.bind_operation(definition,identity.scope_id).read_receipt(identity.operation_key)
 
+    async def read_cognition_origin_receipt(self,identity:OperationIdentity) -> ReadResult[Receipt]:
+        """Memory recovery reads only actual memory-writing daily origin receipts."""
+        if (self._assembly_format not in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') or type(identity) is not OperationIdentity or self._resources is None
+                or identity.database_id!=self._resources.expected_database_id):
+            return Failed(self._error('read_receipt','ACCESS_DENIED','CAPABILITY_MISMATCH','query'))
+        definition=self._command_map.get((identity.owner_namespace,identity.operation_kind))
+        if definition is None or not any(a.owner_module=='memory' for a in definition.required_audits):
+            return Failed(self._error('read_receipt','ACCESS_DENIED','CAPABILITY_MISMATCH','query'))
+        return await self.bind_operation(definition,identity.scope_id).read_receipt(identity.operation_key)
+
     async def read_object_history_receipt(self, identity: OperationIdentity) -> ReadResult[Receipt]:
         """Trusted logging inspection confirms the original audited operation."""
         if (type(identity) is not OperationIdentity or self._resources is None
@@ -543,7 +611,7 @@ class PersistenceService:
             "CASE WHEN length(CAST(body AS BLOB))<=8192 THEN body END,"
             "CASE WHEN length(CAST(evidence AS BLOB))<=2048 THEN evidence END "
             "FROM logging_object_history WHERE commit_id=? ORDER BY history_id LIMIT 9", (receipt.commit_id,)).fetchall()
-        check_bundle(receipt, expected, tuple(rows), text_format=self._assembly_format in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1'))
+        check_bundle(receipt, expected, tuple(rows), text_format=self._assembly_format in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1'))
 
     def get_health(self) -> Health:
         """Observe only current in-memory ownership; never perform storage I/O."""
@@ -1061,7 +1129,7 @@ class PersistenceService:
         metadata_columns = self._sql(job, "PRAGMA table_info(application_metadata)").fetchall()
         if {row[1] for row in metadata_columns} != {"singleton", "database_id", "format_version", "assembly"}:
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))
-        assembly_limit = 8388608 if self._assembly_format=='DAILY_COGNITION_V1' else 4194304 if self._assembly_format=='ASYNC_SEMANTIC_V1' else 3145728 if self._assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
+        assembly_limit = 8388608 if self._assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') else 4194304 if self._assembly_format=='ASYNC_SEMANTIC_V1' else 3145728 if self._assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
         rows = self._sql(job, "SELECT database_id, format_version, CASE WHEN typeof(assembly)='blob' AND length(assembly)<=? THEN assembly ELSE NULL END FROM application_metadata WHERE singleton=1", (assembly_limit,)).fetchall()
         if len(rows) != 1 or not valid_identifier(rows[0][0]):
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))

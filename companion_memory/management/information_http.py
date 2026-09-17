@@ -5,6 +5,7 @@ HTTP response before entering its final short mode/authorization barrier; that
 barrier starts the actual first socket write, not an intermediate native return.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 import asyncio
 from dataclasses import dataclass
 import secrets
@@ -76,8 +77,8 @@ class TestSession:
 
 class InformationHTTP:
     """One loopback listener, four connections, sixteen explicitly scoped sessions."""
-    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, gate: ContentGate):
-        if type(configuration) not in (StoredInformationConfiguration,StoredTextConfiguration) and (stored_daily_configuration_issue(configuration) if type(configuration) is StoredDailyConfiguration else stored_semantic_configuration_issue(configuration)) is not None:
+    def __init__(self, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, gate: ContentGate):
+        if type(configuration) not in (StoredInformationConfiguration,StoredTextConfiguration) and (stored_cognition_configuration_issue(configuration) if type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration) else stored_semantic_configuration_issue(configuration)) is not None:
             raise ValueError('HTTP requires the native persisted information configuration.')
         self.gate = gate
         self.settings = configuration.candidate.information.record('management.host')

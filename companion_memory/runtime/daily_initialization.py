@@ -7,6 +7,7 @@ permission is issued, and a completed database is never repaired from absence.
 """
 import time
 from types import MappingProxyType
+from dataclasses import replace
 from typing import cast
 from companion_memory.persistence import Field,RecordSchema,ResultBoundCommandDefinition,ResultBoundCommand,Committed,Found,NotFound,PersistenceService,UnitOfWork,Receipt
 from companion_memory.persistence.daily_records import BASE,DailyTable,DailyRows,ID,UINT,DIGEST,Record,enum,daily_catalog,identity
@@ -19,10 +20,12 @@ PROOF=RecordSchema((Field('owner',ID),Field('kind',ID),Field('key',ID),Field('co
 BODY=RecordSchema(BASE+(Field('binding',DIGEST),Field('state',enum('INITIALIZING','COMPLETE')),
     Field('receipts',SequenceSchema(PROOF,0,7))))
 TABLES=(DailyTable('daily_initialization',(BODY,),8192,True),)
+DREAM_BODY=RecordSchema(tuple(Field('receipts',SequenceSchema(PROOF,0,8)) if f.name=='receipts' else f for f in BODY.fields))
+DREAM_TABLES=(replace(TABLES[0],schemas=(DREAM_BODY,)),)
 
-def initialization_catalog():
+def initialization_catalog(*,dream_format:bool=False):
     """Declare bounded runtime-owned progress without extending configuration writes."""
-    return daily_catalog('runtime',5,TABLES)
+    return daily_catalog('runtime',5,DREAM_TABLES if dream_format else TABLES)
 
 class DailyInitialization:
     """Trusted startup coordinator; progress records prove original committed work."""
@@ -36,23 +39,24 @@ class DailyInitialization:
                 result_schema(('runtime',),('INITIALIZING','COMPLETE')),(catalog.definition,),required,handler,INTENT,bindings))
         self.commands=tuple(commands)
 
-    def bind(self,storage:PersistenceService,database:str,instance:str,binding:str,definitions:tuple,*,create:bool,persona:bool,configuration_key:str):
+    def bind(self,storage:PersistenceService,database:str,instance:str,binding:str,definitions:tuple,*,create:bool,persona:bool,configuration_key:str,dream_format:bool=False):
         """Acquire the runtime bootstrap lease before any content owner is bound."""
         if self.bound:raise InvalidValue()
         self.storage=storage;self.database=database;self.instance=instance;self.binding=binding;self.create=create
         self.begin_time=time.time_ns()//1000
-        self.steps=STEPS if persona else STEPS[:-1]
+        self.steps=(STEPS if persona else STEPS[:-1])+(('dream',) if dream_format else ())
         from .content_assembly import stable
-        self.expected=(('configuration','initialize_daily_configuration',configuration_key),
+        self.expected=(('configuration','initialize_dream_configuration' if dream_format else 'initialize_daily_configuration',configuration_key),
             ('runtime','initialize_daily_roots',stable('initialize_daily_roots',configuration_key)),
             ('media','initialize_media_root','media-root'),
             ('runtime','information_initialize_content_runtime',stable('initialize_runtime',instance)),
             ('information','initialize_information_owners',stable('initialize_information',instance)),
             ('runtime','initialize_daily_schedule',stable('initialize_daily_schedule',instance)),
-            ('self_model','import_approved_persona_with_self',stable('approved_persona_import',instance)))[:len(self.steps)]
+            ('self_model','import_approved_persona_with_self',stable('approved_persona_import',instance)))[:7 if persona else 6]
+        if dream_format:self.expected+= (('dream','initialize_dream_control',stable('initialize_dream_control',instance)),)
         self.lease=storage.claim_module_owner(self.catalog.definition)
         if self.lease is None or self.lease.database_id!=database:raise InvalidValue()
-        self.rows=DailyRows(self.catalog,TABLES,storage,database,instance,'initialization-intent')
+        self.rows=DailyRows(self.catalog,DREAM_TABLES if dream_format else TABLES,storage,database,instance,'initialization-intent')
         self.row_id=identity('daily-initialization',database,instance)
         self.operations={d.operation_kind:storage.bind_operation(d,instance) for d in self.commands}
         self.definitions={(d.owner_namespace,d.operation_kind):d for d in definitions}

@@ -29,6 +29,9 @@ class DailyObservations:
                 'reasoning':await self.host.combination.reasoning.observation(query.get('after', ''))})
         elif scope == 'goal_dedup':
             value = await self.host.combination.goal_comparisons.observation(query.get('after', ''))
+        elif scope in ('dream','maintenance','persona'):
+            from companion_memory.dream.observation import observe
+            value=await observe(self.host,scope,query.get('after',''))
         elif scope == 'media':
             if query:
                 raise InvalidValue()

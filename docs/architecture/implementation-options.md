@@ -36,7 +36,7 @@
 | --- | --- | --- |
 | 1．语义检索闭环 | [embedding、持久向量、异步索引及混合查询](async-embedding-semantic-retrieval.md)；合并Provider、配置、缓存、权限、恢复及观察，依赖现有正式记忆和本地查询 | 记忆提交不等模型；修订／删除不会被旧结果覆盖；可查询、可恢复、不可重复收费。真实协议效果及最大容量按各自实际证据分列；实绩与质量暂缓见[STATUS](../work/STATUS.md) |
 | 2．完整日常认知与媒体学习 | [认知加工](../modules/cognition.md)、[真实媒体理解](../modules/media.md)、学习触发、有限工具预算、记忆修订、主体／关系处理、目标建议与语义去重；使用第一阶段检索；本轮按[集中契约](daily-cognition-and-image-learning.md)以图片为验证重点，音视频测试暂缓 | 普通输入到合法认知更新贯通，不止CREATE_MEMORY；不恢复已暂缓的文本质量调优，不降低来源及权限保障 |
-| 3．梦境与长期维护 | [梦境](../modules/dream.md)、衰减／遗忘与既有删除／恢复衔接、来源影响修复、自我整理和周期persona发布、模式中止与恢复；使用前两项公开能力 | 已完成整理步骤不重复，失败不丢输入、不发布半份persona，业务门控与入口回流保持；当前状态仍归外部管理 |
+| 3．梦境与长期维护 | [已批准完整契约](dream-and-long-term-maintenance.md)，包含[梦境](../modules/dream.md)、衰减／遗忘与既有删除／恢复衔接、来源影响修复、自我整理和周期persona发布、模式中止与恢复；使用前两项公开能力 | 已完成整理步骤不重复，失败不丢输入、不发布半份persona，业务门控与入口回流保持；当前状态仍归外部管理 |
 | 4．可部署、可管理的首期产品 | [管理Web](../modules/management.md)、统一宿主、初始化与时区、权限／凭据、[配置预览与安全激活／回退](../modules/configuration.md)、日志、备份恢复、升级及[Docker交付](deployment-candidates.md) | 新环境可安装、初始化、接入宿主、持续管理并恢复；只对实际验证的部署和负载声明支持 |
 
 管理与配置、部署与发布合并为第四项，避免重复初始化、身份、目录、版本和恢复流程。前三项按依赖递进，各阶段把必要配置、公开端口、实现、持久化、测试和记录作为一项交付，不按表、命令或文件新增审批阶段。可选rerank等不在当前语义草案中的能力，仍需明确首期取舍；不能借“完整项目”自动扩展当前范围。
@@ -56,7 +56,7 @@
 | 生产部署、资源与存储资格 | [部署候选](deployment-candidates.md)、[事务与生产前置](persistence-and-transactions.md#runtime-production-prerequisites)：生产身份、G2、卷／备份／迁移、负载与介质验证 |
 | 语义检索 | [集中契约](async-embedding-semantic-retrieval.md)：小档工程及原18次真实闭环已验收，剩余质量、订阅扣额、完整大档及生产资格分别见[STATUS](../work/STATUS.md)，800GiB方案不批准；不重开已审核材料或旧调用额度 |
 | 完整认知、真实媒体与目标agent | [认知](../modules/cognition.md)、[媒体](../modules/media.md)、[目标](../modules/goals.md)：完整工具循环、供应商能力、语义去重及冲突处置 |
-| 长期维护与梦境 | [生命周期](../product/lifecycle.md)、[梦境](../product/dream.md)、[自我](../product/self-and-persona.md)：周期、扫描预算、来源影响修复、persona监管及异常管理 |
+| 长期维护与梦境 | [已批准集中契约](dream-and-long-term-maintenance.md)：周期、扫描预算、来源影响修复、persona监管及受控异常管理；当前基线与实施停点见CURRENT_TASK |
 | 初始化、配置和管理权限 | [配置](configuration.md)、[管理行为](../product/operations-and-management.md)：已批准默认时区的工程衔接、热激活／回退、生产凭据与管理确认 |
 
 已有窗口、材料预算、反馈有效期、本地目标合并与提醒时间规则按各自批准契约复用；新增范围的数值随对应完整交付集中核算，不用随意常量代替决定。容量预估、成本目标和API兼容声明均不放宽产品行为、独立Provider或远程重试边界。

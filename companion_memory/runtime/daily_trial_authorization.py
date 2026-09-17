@@ -63,14 +63,28 @@ class DailyTrialAuthorization:
     def __init__(self,root:Path,activation:DailyTrialActivation,provider):
         if type(activation) is not DailyTrialActivation or activation.authority.grant is not activation or not activation.authority.verify(activation.binding):raise InvalidValue()
         expected={'database_id':provider.configuration.database_id,'instance_id':provider.instance,'snapshot_id':provider.configuration.snapshot_id}
-        from companion_memory.configuration.daily_codec import candidate_values
-        configuration_digest=sha256(canonical(candidate_values(provider.configuration.candidate))).hexdigest()
+        self.dream=activation.binding['format']=='DREAM_TRIAL_AUTH_V1'
+        self.request_schema=REQUEST;self.entry_schema=ENTRY
+        slots=purpose_slots();filename='daily-trial-authorization.jsonl';self.journal_format='DAILY_TRIAL_JOURNAL_V1'
+        if self.dream:
+            from .dream_trial_authorization import DreamTrialAuthority,REQUEST as DREAM_REQUEST,ENTRY as DREAM_ENTRY,purpose_slots as dream_slots
+            from companion_memory.configuration.dream_persistence import StoredDreamConfiguration
+            from companion_memory.configuration.dream_codec import candidate_values as dream_values
+            if type(activation.authority) is not DreamTrialAuthority or type(provider.configuration) is not StoredDreamConfiguration:raise InvalidValue()
+            configuration_digest=sha256(canonical(dream_values(provider.configuration.candidate))).hexdigest()
+            self.request_schema=DREAM_REQUEST;self.entry_schema=DREAM_ENTRY;slots=list(dream_slots())
+            filename='dream-trial-authorization.jsonl';self.journal_format='DREAM_TRIAL_JOURNAL_V1'
+        else:
+            from companion_memory.configuration.daily_codec import candidate_values
+            configuration_digest=sha256(canonical(candidate_values(provider.configuration.candidate))).hexdigest()
         if (activation.binding['config']!=expected or activation.binding['configuration_digest']!=configuration_digest
                 or root.resolve(strict=True)!=root or any(p.is_symlink() for p in (root,*root.parents))):raise InvalidValue()
         transports=tuple(provider.transports.values())+(provider.transport,)
         if any(t is None or t.execution_kind!=activation.binding['execution'] for t in transports):raise InvalidValue()
-        self.activation=activation;self.provider=provider;self.path=root/'daily-trial-authorization.jsonl'
-        self.slots={s['slot_id']:s['role'] for s in purpose_slots()};self.entries:dict[str,Record]={}
+        self.activation=activation;self.provider=provider;self.path=root/filename
+        self.stop_path=root/'dream-trial-stop.json'
+        self.stopped=self.dream and self.stop_path.exists()
+        self.slots={s['slot_id']:s['role'] for s in slots};self.entries:dict[str,Record]={}
         self.fd=-1;self.active=False;self.closed=False;self.faulted=False;self.pending:asyncio.Task|None=None;self.digest='0'*64
         if self.path.exists():
             self.fd=os.open(self.path,os.O_RDWR|os.O_APPEND|os.O_NOFOLLOW)
@@ -83,14 +97,14 @@ class DailyTrialAuthorization:
                         raw=stream.readline(16385)
                         if not raw:break
                         if ordinal>=64 or len(raw)>16384 or not raw.endswith(b'\n'):raise InvalidValue()
-                        entry=isolate(ENTRY,decode_content(raw[:-1],16384),16384)
+                        entry=isolate(self.entry_schema,decode_content(raw[:-1],16384),16384)
                         if encode_content(entry,16384)+b'\n'!=raw or entry['previous']!=self.digest:raise InvalidValue()
                         self._accept(entry);self.digest=sha256(raw).hexdigest()
             except BaseException:
                 os.close(self.fd);self.fd=-1;raise
 
     def header(self) -> bytes:
-        return encode_content(MappingProxyType({'format':'DAILY_TRIAL_JOURNAL_V1','authorization_digest':self.activation.digest}),8192)+b'\n'
+        return encode_content(MappingProxyType({'format':self.journal_format,'authorization_digest':self.activation.digest}),8192)+b'\n'
 
     def _lock(self):
         info=os.fstat(self.fd)
@@ -137,11 +151,18 @@ class DailyTrialAuthorization:
 
     def _admit(self):
         check_deadline()
+        if self.stopped:raise OwnerFailure('ACCESS_DENIED','authorization','PACKAGE_STOPPED')
         if self.faulted:raise OwnerFailure('RESULT_UNCONFIRMED','authorization','COMMIT_UNCONFIRMED')
         if self.closed or not self.provider.ready or not self.activation.authority.verify(self.activation.binding):raise InvalidValue()
         if number(self.activation.binding['expires_at'])<=time.time_ns()//1000:raise OwnerFailure('TIMEOUT','authorization','DEADLINE_EXCEEDED')
 
     async def verify_native(self):
+        try:await self._verify_native()
+        except OwnerFailure as failure:
+            if self.dream:await self.stop('ORIGINAL_ACCOUNTING_UNCONFIRMED')
+            raise failure
+
+    async def _verify_native(self):
         """Compare both ledgers without repairing or sending any request."""
         expected={cast(Record,e['request'])['request_id']:e for e in self.entries.values()};seen=set();after=''
         while page:=await self.provider.ledger.read('requests_page',{'after':after,'limit':8}):
@@ -176,7 +197,7 @@ class DailyTrialAuthorization:
             role='EMBEDDING_'+string(cast(Record,request.description['payload'])['purpose']);account=self.provider.account['account_id']
         else:raise InvalidValue()
         if self.slots.get(slot)!=role or slot in self.entries:raise OwnerFailure('ACCESS_DENIED','authorization','OPERATION_NOT_GRANTED')
-        value=isolate(REQUEST,{'slot_id':slot,'role':role,'request_id':request.request_id,'attempt_id':request.attempt_id,
+        value=isolate(self.request_schema,{'slot_id':slot,'role':role,'request_id':request.request_id,'attempt_id':request.attempt_id,
             'operation_key':request.description['original_request_key'],'work_id':request.description['work_id'],'request_digest':request.fingerprint,
             'wire_digest':sha256(request.wire).hexdigest(),'account_id':account,'profile_id':request.description['profile_id']})
         await self._append(value,'RESERVED',None);self._admit()
@@ -189,13 +210,38 @@ class DailyTrialAuthorization:
 
     async def _append(self,request:Record,state:str,commit_id:str|None):
         if self.faulted:raise OwnerFailure('RESULT_UNCONFIRMED','authorization','COMMIT_UNCONFIRMED')
-        entry=isolate(ENTRY,{'request':request,'state':state,'commit_id':commit_id,'previous':self.digest},16384)
+        entry=isolate(self.entry_schema,{'request':request,'state':state,'commit_id':commit_id,'previous':self.digest},16384)
         raw=encode_content(entry,16384)+b'\n'
         def write():
             if state=='RESERVED':self._admit()
             if os.write(self.fd,raw)!=len(raw):raise OSError('Incomplete trial entry')
             os.fsync(self.fd);self._accept(entry);self.digest=sha256(raw).hexdigest()
         await self._io(write)
+
+    async def stop(self,reason:str,request_id:str|None=None):
+        """Fsync a permanent package stop; no original slot or duty is released."""
+        if not self.dream:return
+        allowed=('PROVIDER_FAILURE','REMOTE_UNKNOWN','MODEL_PROTOCOL_REJECTED','ORIGINAL_ACCOUNTING_UNCONFIRMED','RESOURCE_LIMIT','CLEANUP_UNFINISHED')
+        if reason not in allowed:raise InvalidValue()
+        self.active=False;self.stopped=True
+        raw=encode_content(MappingProxyType({'format':'DREAM_TRIAL_STOP_V1','authorization_digest':self.activation.digest,
+            'reason':reason,'request_id':request_id,'journal_digest':self.digest}),8192)+b'\n'
+        def persist():
+            if self.stop_path.exists():
+                previous=self.stop_path.read_bytes()
+                if len(previous)>8192:raise InvalidValue()
+                value=decode_content(previous.rstrip(b'\n'),8192)
+                if type(value) is not dict or value.get('authorization_digest')!=self.activation.digest:raise InvalidValue()
+                return
+            fd=os.open(self.stop_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+            try:
+                if os.write(fd,raw)!=len(raw):raise OSError('Incomplete stop record')
+                os.fsync(fd)
+            finally:os.close(fd)
+            directory=os.open(self.stop_path.parent,os.O_RDONLY|os.O_DIRECTORY)
+            try:os.fsync(directory)
+            finally:os.close(directory)
+        await self._io(persist)
 
     def close(self) -> bool:
         self.closed=True;self.active=False

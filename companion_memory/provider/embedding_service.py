@@ -6,6 +6,7 @@ results remain owned until their atomic handoff commits; callers cannot supply
 vectors to the completion command or turn confirmation into physical cleanup.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 import asyncio
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -80,14 +81,14 @@ class _Completion:
 
 class EmbeddingProvider:
     """Native embedding owner, with zero send queue and explicit first-send gate."""
-    def __init__(self,ledger: LedgerBinding,configuration: StoredSemanticConfiguration | StoredDailyConfiguration,instance: str,
+    def __init__(self,ledger: LedgerBinding,configuration: StoredSemanticConfiguration | StoredCognitionConfiguration,instance: str,
                  definitions: tuple[ResultBoundCommandDefinition,...],transport: ChatTransport|None,
                  checkpoint: Callable[[],None],permit: Callable[[Record,Record],bool],
                  dispatch:Callable[[Record,Record,Callable[[],asyncio.Future[WireObservation]]],asyncio.Future[WireObservation]]|None=None,*,network:DailyNetwork|None=None):
         if (type(ledger) is not LedgerBinding or not ledger.assembly.embedding_format or ledger.semantic_configuration is not configuration
                 or transport is not None and (type(transport) is not ChatTransport or transport._format!='EMBEDDING')):
             raise ValueError('Native embedding ledger and transport bindings are required.')
-        if (type(configuration) is StoredDailyConfiguration)!=(type(network) is DailyNetwork) or ledger.assembly.daily_format!=(network is not None):raise ValueError('Daily Provider requires its one native network owner.')
+        if (type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration))!=(type(network) is DailyNetwork) or ledger.assembly.daily_format!=(network is not None):raise ValueError('Daily Provider requires its one native network owner.')
         self._unknown_requests:set[str]=set()
         self.network=network;self._network_permit:NetworkPermit|None=None;self._network_work:str|None=None
         self.ledger=ledger;self.configuration=configuration;self.instance=instance;self.checkpoint=checkpoint;self.permit=permit
@@ -100,7 +101,7 @@ class EmbeddingProvider:
         account_id=next(p['account_id'] for p in self.profiles if p['profile_id']==configuration.candidate.text.record('retrieval.embedding')['document_profile'])
         self.account=next(as_record(a) for a in cast(tuple,values['provider.accounts']) if as_record(a)['account_id']==account_id) if network is not None else as_record(cast(tuple,values['provider.accounts'])[0])
         self.usage_only=self.account.get('billing_mode')=='USAGE_ONLY_TRIAL'
-        self.version=5 if network is not None else 4 if self.usage_only else 3
+        self.version=ledger.assembly.version if network is not None else 4 if self.usage_only else 3
         self.billing_mode='USAGE_ONLY_TRIAL' if self.usage_only else 'SIMULATED' if self.simulated else 'TOKEN_METERED'
         if self.usage_only!=ledger.assembly.embedding_usage_only:raise ValueError('Native metering format differs.')
         self.space=string(configuration.candidate.text.record('retrieval.semantic')['space_id'])
@@ -243,6 +244,7 @@ class EmbeddingProvider:
         if request is None:
             self.network.cancel_unregistered(permit);self._network_permit=None;self._network_work=None
         elif request['phase'] in ('TERMINAL','REMOTE_RESULT_UNKNOWN'):
+            await self.observe_network_terminal(request)
             if request['phase']=='REMOTE_RESULT_UNKNOWN':self.network.block_account(permit.account_id)
             self.network.confirm_terminal(permit)
             if request['outcome']=='SUCCEEDED':
@@ -262,6 +264,10 @@ class EmbeddingProvider:
                 failure.cleanup_pending or self._pending is not None or self._failure is not None) from None
         if type(result) is not Committed:raise LedgerFailure(self._retained_outcome(result))
         return result.receipt
+
+    async def observe_network_terminal(self,request:ModelRecord) -> None:
+        """Native mixed-purpose assemblies may persist their external trial fence."""
+        return None
 
     async def before_first_registration(self,request) -> None:
         """Optional native outer-purpose accounting; legacy hosts have none."""

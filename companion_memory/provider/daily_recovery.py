@@ -10,7 +10,7 @@ from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.persistence.semantic_records import identity
 from companion_memory.configuration import PresentValue
 from .values import as_record
-from .daily_stored_schema import OWNERS
+from .daily_stored_schema import OWNERS,DREAM_OWNERS
 
 
 async def recover_confirmed_unsent(provider):
@@ -43,6 +43,7 @@ async def recover_confirmed_unsent(provider):
 
 
 async def verify_mixed_ledger(provider):
+    owners=DREAM_OWNERS if provider.ledger.assembly.dream_format else OWNERS
     values=next(e.state.value for e in provider.configuration.candidate.foundation.list_entries()
         if e.definition.key=='provider.accounts' and type(e.state) is PresentValue)
     accounts={cast(str,a['account_id']):a for a in map(as_record,cast(tuple,values))}
@@ -70,11 +71,11 @@ async def verify_mixed_ledger(provider):
 
     async for request in pages('requests'):
         requests+=1;role=request['task_role'];profile=profiles.get(request['profile_id']);account=accounts.get(request['account_id'])
-        if profile is None or account is None or role not in OWNERS:raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
+        if profile is None or account is None or role not in owners:raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
         evidence=as_record(request['execution_evidence']);embedding=request['capability']=='EMBEDDING'
         prefix='embedding' if embedding else 'daily'
-        require(request['caller_scope']==provider.instance and request['caller_module']==OWNERS[role] and request['result_owner']==OWNERS[role]
-            and request['config_snapshot_id']==provider.configuration.snapshot_id and request['format_version']==5
+        require(request['caller_scope']==provider.instance and request['caller_module']==owners[role] and request['result_owner']==owners[role]
+            and request['config_snapshot_id']==provider.configuration.snapshot_id and request['format_version']==provider.ledger.assembly.version
             and evidence['profile']==profile and evidence['account']==account and profile['account_id']==account['account_id']
             and profile['material_role']==role and profile['capability']==request['capability']
             and request['object_id']==identity(prefix+'-request',provider.instance,request['operation_key']))

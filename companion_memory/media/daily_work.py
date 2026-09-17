@@ -126,7 +126,7 @@ class DailyImageWork:
         value=decode_interpretation(cast(str,versions[0]['body']).encode())
         if value['provider_request_id']!=request['object_id'] or value['source_ref']!=handoff['object_id']:return False
         definition=next(d for d in self.commands if d.operation_kind=='store_daily_image')
-        original=self.storage.confirm_daily_consumer_operation(uow,definition,proof['key'],cast(str,request['object_id']))
+        original=self.storage.confirm_cognition_consumer_operation(uow,definition,proof['key'],cast(str,request['object_id']))
         return original is not None and original.fingerprint==proof['fingerprint'] and proof['key']==self.key('image-result',wid,request['object_id'])
 
     async def execute(self,kind,key,payload):

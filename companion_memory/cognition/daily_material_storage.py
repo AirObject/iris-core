@@ -5,6 +5,7 @@ exact invocation and compare existing leaves before sealing the root. A stored
 root is never exposed with missing text or a caller-supplied replacement body.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 import asyncio
 import time
 from dataclasses import dataclass
@@ -19,7 +20,7 @@ from companion_memory.persistence.content_codec import encode_content,decode_con
 from companion_memory.persistence.completion import start_owned
 from companion_memory.persistence.deadlines import DeadlineScope
 from companion_memory.persistence.owned_statements import StatementCatalog,BoundStatements,OwnerFailure
-from .daily_material import FrozenDailyMaterial,restore_material,TABLES,ROOT_TABLE
+from .daily_material import FrozenDailyMaterial,restore_material,TABLES,ROOT_TABLE,DREAM_TABLES,DREAM_ROOT_TABLE
 
 @dataclass(frozen=True,slots=True,init=False)
 class DailyMaterialReadLease:
@@ -35,8 +36,11 @@ class DailyMaterialReadLease:
 
 class DailyMaterialStorage:
     """A bounded local component of the cognition owner, never a second host."""
-    def __init__(self,catalog:StatementCatalog):
+    def __init__(self,catalog:StatementCatalog, *, dream_format: bool = False):
         if catalog.definition.owner_module!='cognition' or catalog.definition.schema_version!=5:raise InvalidValue()
+        self.dream_format=dream_format
+        self.tables=DREAM_TABLES if dream_format else TABLES
+        self.root_table=DREAM_ROOT_TABLE if dream_format else ROOT_TABLE
         self.catalog=catalog;self._bound=False;self._closed=False
         self._active:FrozenDailyMaterial|None=None;self._task:asyncio.Task|None=None
         self._readers:set[asyncio.Task]=set();self._leases:dict[int,DailyMaterialReadLease]={}
@@ -71,11 +75,11 @@ class DailyMaterialStorage:
         if root['owner_ref']!=owner_ref:raise OwnerFailure('ACCESS_DENIED','material','BINDING_MISMATCH')
         return root
 
-    def bind(self,storage:PersistenceService,configuration:StoredDailyConfiguration):
+    def bind(self,storage:PersistenceService,configuration:StoredCognitionConfiguration):
         """Bind only one full native configuration; the main cognition owner retains the lease."""
-        if self._bound or stored_daily_configuration_issue(configuration) is not None:raise InvalidValue()
+        if self._bound or type(configuration) is not (StoredDreamConfiguration if self.dream_format else StoredDailyConfiguration) or stored_cognition_configuration_issue(configuration,storage=storage) is not None:raise InvalidValue()
         self.storage=storage;self.configuration=configuration
-        self.rows=DailyRows(self.catalog,TABLES,storage,configuration.database_id,configuration.scope_id,configuration.snapshot_id)
+        self.rows=DailyRows(self.catalog,self.tables,storage,configuration.database_id,configuration.scope_id,configuration.snapshot_id)
         self.operations={d.operation_kind:storage.bind_operation(d,configuration.scope_id) for d in self.commands}
         self._provider_read=BoundStatements(self.catalog,storage,'provider')
         self._bound=True
@@ -106,7 +110,7 @@ class DailyMaterialStorage:
                 leaf=self.rows.get('learning_context_leaves',uow,cast(str,raw_ref['object_id']))
                 if leaf is None:raise OwnerFailure('PRECONDITION_FAILED','material','MATERIAL_MISSING')
                 leaves.append(leaf)
-            if restore_material(root,leaves)!=active:raise InvalidValue()
+            if restore_material(root,leaves,dream_format=self.dream_format)!=active:raise InvalidValue()
             self.rows.write('learning_contexts',uow,root)
             targets.append(target(cast(str,root['object_id']),1));state='MATERIAL_STORED'
         return result(cast(str,v['operation_id']),state,{'cognition':{'rows_changed':len(targets),'targets':targets}})
@@ -118,9 +122,9 @@ class DailyMaterialStorage:
         Returning this fact does not commit and grants no Provider admission.
         """
         if self._closed or not self._bound or type(material) is not FrozenDailyMaterial:raise InvalidValue()
-        operation=self.storage.daily_operation_context(uow,self.catalog.definition)
+        operation=self.storage.cognition_operation_context(uow,self.catalog.definition)
         if operation.scope_id!=self.configuration.scope_id:raise InvalidValue()
-        checked=restore_material(material.manifest,material.leaves)
+        checked=restore_material(material.manifest,material.leaves,dream_format=self.dream_format)
         if checked!=material:raise InvalidValue()
         for leaf in material.leaves:self.rows.write('learning_context_leaves',uow,leaf)
         root=self.rows.write('learning_contexts',uow,material.manifest)
@@ -132,7 +136,7 @@ class DailyMaterialStorage:
         The static command must declare cognition as a participant. This grants
         neither write access nor a path, and a released or partial root fails.
         """
-        operation=self.storage.daily_operation_context(uow,self.catalog.definition)
+        operation=self.storage.cognition_operation_context(uow,self.catalog.definition)
         def read(name:str,key:str):
             if operation.scope_id!='provider':return self.rows.get(name,uow,key)
             if operation.owner_namespace!='provider' or operation.operation_kind not in ('register_daily_request','confirm_daily_handoff'):raise InvalidValue()
@@ -146,13 +150,13 @@ class DailyMaterialStorage:
             leaf=read('learning_context_leaves',cast(str,ref['object_id']))
             if leaf is None:raise OwnerFailure('STORAGE_FAILED','material','INTEGRITY_FAILURE')
             leaves.append(leaf)
-        return restore_material(root,leaves)
+        return restore_material(root,leaves,dream_format=self.dream_format)
 
     async def persist(self,material:FrozenDailyMaterial,deadline:float):
         """Store finite original pages and then seal; continuation reuses original receipts."""
         if (not self._bound or self._closed or type(material) is not FrozenDailyMaterial
                 or type(deadline) not in (float,int) or not time.monotonic()<deadline<float('inf')):raise InvalidValue()
-        verified=restore_material(material.manifest,material.leaves)
+        verified=restore_material(material.manifest,material.leaves,dream_format=self.dream_format)
         if verified!=material or any(material.manifest[name]!=expected for name,expected in (
                 ('database_id',self.configuration.database_id),('instance_id',self.configuration.scope_id),('config_snapshot_id',self.configuration.snapshot_id))):raise InvalidValue()
         if self._task is not None:raise OwnerFailure('RESOURCE_BUSY','resource','CLEANUP_PENDING',True)
@@ -248,7 +252,7 @@ class DailyMaterialStorage:
             removed=self.rows.rows.stage('daily_context_leaf_delete',uow,{'object_id':ref['object_id'],'context_id':context_id})
             if len(removed)!=1:raise InvalidValue()
             count+=1
-        operation=self.storage.daily_operation_context(uow,self.catalog.definition)
+        operation=self.storage.cognition_operation_context(uow,self.catalog.definition)
         changed=self.rows.write('learning_contexts',uow,dict(root)|{'state':'RELEASED','revision':cast(int,root['revision'])+1,
             'updated_at_us':max(time.time_ns()//1000,cast(int,root['updated_at_us'])),
             'terminal_operation':{name:getattr(operation,name) for name in ('owner_namespace','operation_kind','scope_id','operation_key')}},cast(int,root['revision']))
@@ -268,7 +272,7 @@ class DailyMaterialStorage:
                 if leaf is None:raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
                 leaves.append(leaf)
             if await self.rows.read('learning_contexts',context_id)!=root:raise OwnerFailure('PRECONDITION_FAILED','material','MATERIAL_CHANGED')
-            return Found(restore_material(root,leaves))
+            return Found(restore_material(root,leaves,dream_format=self.dream_format))
 
     def close(self) -> bool:
         """Refuse new pages while the current actual storage consumer retains its slot."""

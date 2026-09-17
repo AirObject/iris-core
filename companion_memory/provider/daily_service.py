@@ -5,6 +5,7 @@ worker. Native material and business authority are rechecked in registration;
 local confirmation and retirement never dispatch HTTP or create another key.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from companion_memory.persistence.schema import InvalidValue
 import asyncio
 from collections.abc import Callable
@@ -27,6 +28,8 @@ from .embedding_service import EmbeddingProvider
 from .embedding_material import HandoffMaterial
 from .daily_execution import DailyRequest,row,registration,settlement,reservation_amount,usage
 from .daily_protocol import DailyChatBinding,encode_daily_request,decode_daily_response
+from .dream_protocol import DreamChatBinding,encode_dream_request,decode_dream_response,ROLES as DREAM_ROLES
+from companion_memory.cognition.dream_resources import prompt_resource as dream_prompt, output_schema as dream_schema
 from .daily_commands import DailyProviderCommands
 from .daily_handoff import split,restore
 from .daily_network import DailyNetwork,NetworkPermit
@@ -55,21 +58,26 @@ class _Pending:
 
 class DailyProvider(EmbeddingProvider):
     """The sole ledger and transport owner for a complete native daily assembly."""
-    def __init__(self,ledger:LedgerBinding,configuration:StoredDailyConfiguration,instance:str,definitions,embedding_transport:ChatTransport,
+    def __init__(self,ledger:LedgerBinding,configuration:StoredCognitionConfiguration,instance:str,definitions,embedding_transport:ChatTransport,
                  checkpoint:Callable[[],None],embedding_permit,*,network:DailyNetwork,commands:DailyProviderCommands,
                  materials:DailyMaterialStorage,transports:dict[str,ChatTransport],
                  authorize:Callable[[DailyRequest,UnitOfWork|None],bool],received:Callable[[UnitOfWork,Record,Record,StoredRecord],bool]):
-        if (type(commands) is not DailyProviderCommands or type(materials) is not DailyMaterialStorage or set(transports)!= {'LEARNING','PERSONA','GOAL_DEDUP','MEDIA'}
+        expected_roles={'LEARNING','PERSONA','GOAL_DEDUP','MEDIA'} | (set(DREAM_ROLES) if ledger.assembly.dream_format else set())
+        if (type(commands) is not DailyProviderCommands or type(materials) is not DailyMaterialStorage or set(transports)!=expected_roles
                 or any(type(t) is not ChatTransport for t in transports.values()) or commands.handler is not None):raise InvalidData()
-        bindings={};settings=cast(tuple[StoredRecord,...],configuration.candidate.text.record('provider.transport')['roles'])
+        bindings:dict[str,DailyChatBinding]={};dream_bindings:dict[str,DreamChatBinding]={};settings=cast(tuple[StoredRecord,...],configuration.candidate.text.record('provider.transport')['roles'])
         for setting in settings:
             role=string(setting['role'])
-            if not transports[role].matches_daily(cast(Record,setting)):raise InvalidData()
+            if not (transports[role].matches_dream(cast(Record,setting)) if role in DREAM_ROLES else transports[role].matches_daily(cast(Record,setting))):raise InvalidData()
             profile=next(as_record(entry) for entry in self._profiles(configuration) if entry['profile_id']==setting['profile_id'])
-            bindings[role]=DailyChatBinding(role,cast(str,profile['model_id']),string(setting['schema_ref']),string(setting['schema_digest']),output_schema(role),
-                string(setting['prompt_digest']),prompt_resource(role))
+            if role in DREAM_ROLES:
+                dream_bindings[role]=DreamChatBinding(role,cast(str,profile['model_id']),string(setting['schema_ref']),string(setting['schema_digest']),dream_schema(role),
+                    string(setting['prompt_digest']),dream_prompt(role))
+            else:
+                bindings[role]=DailyChatBinding(role,cast(str,profile['model_id']),string(setting['schema_ref']),string(setting['schema_digest']),output_schema(role),
+                    string(setting['prompt_digest']),prompt_resource(role))
         super().__init__(ledger,configuration,instance,definitions,embedding_transport,checkpoint,embedding_permit,network=network)
-        self.chat_commands=commands;self.materials=materials;self.transports=dict(transports);self.bindings=bindings
+        self.chat_commands=commands;self.materials=materials;self.transports=dict(transports);self.bindings=bindings;self.dream_bindings=dream_bindings
         self.authorize=authorize;self.received=received
         self.chat_operations={d.operation_kind:self.storage.bind_operation(d,'provider') for d in commands.commands}
         self._chat_task:asyncio.Task|None=None;self._chat_registration:tuple[DailyRequest,tuple[Mutation,...]]|None=None
@@ -112,7 +120,7 @@ class DailyProvider(EmbeddingProvider):
         return found.value
 
     @staticmethod
-    def _profiles(configuration:StoredDailyConfiguration) -> tuple[Record,...]:
+    def _profiles(configuration:StoredCognitionConfiguration) -> tuple[Record,...]:
         state=next(entry.state for entry in configuration.candidate.foundation.list_entries() if entry.definition.key=='provider.profiles')
         if type(state) is not PresentValue:raise InvalidData()
         return cast(tuple[Record,...],state.value)
@@ -147,14 +155,23 @@ class DailyProvider(EmbeddingProvider):
             occupied,len(self._unknown_requests),self.cleanup_pending,self._chat_reconciliation_failed or authorization_fault,
             'CLEANUP_PENDING' if self.cleanup_pending else 'AUTHORIZATION_UNCONFIRMED' if authorization_fault else None)
 
+    def require_dream_exit(self,uow:UnitOfWork) -> None:
+        """Fence quiescence from a native transaction without touching loop-owned I/O."""
+        def quiet():
+            with self._lock:
+                return (self.ledger.assembly.dream_format and self.ready and not self._unknown_requests
+                    and not self.cleanup_pending and not self._chat_reconciliation_failed)
+        if not quiet():raise OwnerFailure('RESOURCE_BUSY','provider','CLEANUP_PENDING',True)
+        uow.require_commit_permission(quiet)
+
     def generation_request(self,role:str,lease:DailyMaterialReadLease,key:str,deadline_at_us:int,entry_ids:tuple[str,...]=()) -> DailyRequest:
         """Freeze generation from a retained owner-issued complete material lease."""
-        if role not in ('LEARNING','PERSONA','GOAL_DEDUP') or self._closed or self._chat_requests:raise InvalidData()
-        material=self.materials.verify_lease(lease);root=material.manifest;binding=self.bindings[role]
+        if role not in (('LEARNING','PERSONA','GOAL_DEDUP') + (DREAM_ROLES if self.ledger.assembly.dream_format else ())) or self._closed or self._chat_requests:raise InvalidData()
+        material=self.materials.verify_lease(lease);root=material.manifest;binding=self.dream_bindings[role] if role in DREAM_ROLES else self.bindings[role]
         if (root['schema_ref']!=binding.schema_ref or root['prompt_ref']!=next(s['prompt_ref'] for s in cast(tuple[StoredRecord,...],self.configuration.candidate.text.record('provider.transport')['roles']) if s['role']==role)
                 or root['context_kind']!=role):
             raise InvalidData()
-        wire=encode_daily_request(binding,material.body.decode())
+        wire=encode_dream_request(binding,material.body.decode()) if type(binding) is DreamChatBinding else encode_daily_request(cast(DailyChatBinding,binding),material.body.decode())
         if root['wire_digest']!=sha256(wire).hexdigest():raise InvalidData()
         profile=next(p for p in self.profiles if p['material_role']==role)
         state=next(e.state for e in self.configuration.candidate.foundation.list_entries() if e.definition.key=='provider.accounts')
@@ -272,7 +289,7 @@ class DailyProvider(EmbeddingProvider):
     async def execute_daily(self,kind:str,key:str,payload:object) -> object:
         """Confirm the original local command before any possible first execution."""
         definition=next(d for d in self.chat_commands.commands if d.operation_kind==kind)
-        command=ResultBoundCommand(5,plain(row({'operation_id':key,**cast(dict,payload)})), {'provider_change':{'actor':'daily_provider'}})
+        command=ResultBoundCommand(definition.command_version,plain(row({'operation_id':key,**cast(dict,payload)})), {'provider_change':{'actor':'daily_provider'}})
         port=self.chat_operations[kind];prior=await port.resolve_operation(port.recovery_handle(key,command))
         if type(prior) is not NotCommitted or prior.error is not None:return prior
         return await port.execute(key,command)
@@ -309,6 +326,11 @@ class DailyProvider(EmbeddingProvider):
                 try:await self.reconcile_daily_network()
                 except (LedgerFailure,OwnerFailure,InvalidData):self._chat_reconciliation_failed=True
 
+    async def observe_network_terminal(self,request:Record) -> None:
+        """Generation and embedding share the same durable package stop rule."""
+        if self.trial_authorization is not None and self.trial_authorization.dream and (request['phase']=='REMOTE_RESULT_UNKNOWN' or request['outcome']!='SUCCEEDED'):
+            await self.trial_authorization.stop('REMOTE_UNKNOWN' if request['phase']=='REMOTE_RESULT_UNKNOWN' else 'PROVIDER_FAILURE',cast(str,request['object_id']))
+
     async def reconcile_daily_network(self) -> None:
         permit=self._chat_permit
         if permit is None:return
@@ -317,6 +339,7 @@ class DailyProvider(EmbeddingProvider):
         if request is None:
             self.network.cancel_unregistered(permit);self._chat_permit=None;self._chat_input=None
         elif request['phase'] in ('TERMINAL','REMOTE_RESULT_UNKNOWN'):
+            await self.observe_network_terminal(request)
             if request['phase']=='REMOTE_RESULT_UNKNOWN':self.network.block_account(permit.account_id)
             self.network.confirm_terminal(permit)
             if request['outcome']=='SUCCEEDED':
@@ -351,7 +374,7 @@ class DailyProvider(EmbeddingProvider):
             budget=await self.ledger.get('budget_windows',bid)
             if budget is None:
                 budget=row({'object_id':bid,'revision':1,'account_id':account['account_id'],'window_id':account['window_id'],'policy':account,
-                    'attempt_count':0,'known_subtotal_atoms':0,'held_atoms':0,'risk_state':'CLEAR','format_version':5,
+                    'attempt_count':0,'known_subtotal_atoms':0,'held_atoms':0,'risk_state':'CLEAR','format_version':self.ledger.assembly.version,
                     'quota_reserved':0,'quota_known':None if account['billing_mode']=='USAGE_ONLY_TRIAL' else 0,'quota_held':0,'billing_mode':account['billing_mode']})
                 await self._commit('initialize_budget',identity('daily-budget-initialize',bid),(Mutation('budget_windows',None,budget),),None,None,'NONE','CLEAR',True)
             if (budget['risk_state']!='CLEAR' or budget['held_atoms']!=0 or cast(int,budget['attempt_count'])>=cast(int,account['attempt_limit'])
@@ -380,7 +403,7 @@ class DailyProvider(EmbeddingProvider):
                 wire=WireObservation('NOT_SENT',None,None,'OPERATION_NOT_GRANTED')
             if wire.state=='REMOTE_RESULT_UNKNOWN':return await self._mark_unknown(req,attempt)
             not_sent=wire.state=='NOT_SENT'
-            parsed=decode_daily_response(wire.body or b'',request.binding)
+            parsed=decode_dream_response(wire.body or b'',request.binding) if type(request.binding) is DreamChatBinding else decode_daily_response(wire.body or b'',cast(DailyChatBinding,request.binding))
             if parsed.outcome=='REMOTE_RESULT_UNKNOWN':return await self._mark_unknown(req,attempt)
             metering=usage(parsed.usage,request,not_sent=not_sent)
             value=parsed.result if wire.state=='RESPONSE' and wire.status==200 else None
@@ -400,7 +423,7 @@ class DailyProvider(EmbeddingProvider):
         terminal=(Mutation('requests',req,ended_req),Mutation('attempts',observed,ended),*settlement(budget,reservation,metering,request.attempt_id))
         if material is not None:
             handoff=row({'object_id':handoff_id,'revision':1,'request_id':request.request_id,'owner_id':req['result_owner'],'checksum':material.payload['payload_digest'],
-                'source':'REMOTE_PROVIDER','artifact_id':identity('daily-artifact',request.request_id),'format_version':5,'created_at':self._now(),
+                'source':'REMOTE_PROVIDER','artifact_id':identity('daily-artifact',request.request_id),'format_version':self.ledger.assembly.version,'created_at':self._now(),
                 'embedding_payload':material.payload,'embedding_cleanup':{'received_receipt':None,'retired_through':None,'state':'HELD'},'payload':''})
             terminal+= (Mutation('handoffs',None,handoff),)
         self._chat_pending=_Pending(request,terminal,(Mutation('attempts',attempt,observed),),material)
@@ -438,7 +461,7 @@ class DailyProvider(EmbeddingProvider):
             'cost_complete':metering['cost_complete'],'billing_mode':metering['billing_mode'],'currency':'CNY','quota_known':metering['quota_known'],'quota_held':0,'config_snapshot_id':self.configuration.snapshot_id}}
 
     def _handle_daily(self,kind:str,uow:UnitOfWork,payload:StoredRecord):
-        operation=self.storage.daily_operation_context(uow,self.ledger.assembly.repository.definition)
+        operation=self.storage.cognition_operation_context(uow,self.ledger.assembly.repository.definition)
         if operation.scope_id!='provider' or operation.operation_kind!=kind:raise InvalidData()
         if kind=='register_daily_request':
             active=self._chat_registration
@@ -493,7 +516,7 @@ class DailyProvider(EmbeddingProvider):
         async def clean():
             with DeadlineScope(deadline):
                 request=await self.ledger.get('requests',request_id)
-                if request is None or request['caller_scope']!=self.instance or request['outcome']!='SUCCEEDED' or request['task_role'] not in self.bindings:raise InvalidData()
+                if request is None or request['caller_scope']!=self.instance or request['outcome']!='SUCCEEDED' or request['task_role'] not in self.bindings and request['task_role'] not in self.dream_bindings:raise InvalidData()
                 attempts=await self.ledger.read('attempts_for_request',{'request_id':request_id})
                 if len(attempts)!=1:raise InvalidData()
                 reference={'request_id':request_id,'attempt_id':attempts[0]['object_id']}
@@ -605,7 +628,7 @@ class DailyProvider(EmbeddingProvider):
         else:kind='register_daily_request';key=identity('daily-register',rid)
         definitions=self.chat_commands.commands if kind in self.chat_operations else self.ledger.assembly.commands
         definition=next(d for d in definitions if d.operation_kind==kind)
-        receipt=self.storage.confirm_daily_provider_operation(uow,definition,key,rid)
+        receipt=self.storage.confirm_cognition_provider_operation(uow,definition,key,rid)
         if receipt is None:raise InvalidData()
         return receipt
 
@@ -625,7 +648,7 @@ class DailyProvider(EmbeddingProvider):
         with DeadlineScope(deadline):
             request=await self.ledger.get('requests',request_id)
             if (request is None or request['caller_scope']!=self.instance or request['phase']!='TERMINAL' or request['outcome']!='SUCCEEDED'
-                    or request['task_role'] not in self.bindings):raise OwnerFailure('PRECONDITION_FAILED','handoff','ORIGINAL_RESULT_UNCONFIRMED')
+                    or request['task_role'] not in self.bindings and request['task_role'] not in self.dream_bindings):raise OwnerFailure('PRECONDITION_FAILED','handoff','ORIGINAL_RESULT_UNCONFIRMED')
             attempts=await self.ledger.read('attempts_for_request',{'request_id':request_id})
             if len(attempts)!=1:raise InvalidData()
             attempt=attempts[0];handoff=await self.ledger.get('handoffs',cast(str,request['handoff_id']))
@@ -639,7 +662,7 @@ class DailyProvider(EmbeddingProvider):
                 leaf=await self.rows.read('embedding_handoff_leaf',identity('embedding-handoff-leaf',cast(str,handoff['object_id']),ordinal))
                 if leaf is None:raise InvalidData()
                 leaves.append(leaf)
-            value=restore(metadata,leaves,self.bindings[cast(str,request['task_role'])],handoff_id=cast(str,handoff['object_id']),request_id=request_id,attempt_id=cast(str,attempt['object_id']))
+            value=restore(metadata,leaves,(self.dream_bindings if request['task_role'] in DREAM_ROLES else self.bindings)[cast(str,request['task_role'])],handoff_id=cast(str,handoff['object_id']),request_id=request_id,attempt_id=cast(str,attempt['object_id']))
             found=await self.chat_operations['store_daily_handoff'].read_receipt(identity('daily-complete',request_id))
             if type(found) is Failed:raise LedgerFailure(found)
             if type(found) is not Found:raise OwnerFailure('STORAGE_FAILED','receipt','INTEGRITY_FAILURE')
@@ -662,7 +685,7 @@ class DailyProvider(EmbeddingProvider):
             roots=self._read_views.stage('transaction_'+table,uow,{'request_id':request['object_id']})
             if len(roots)!=1 or self.ledger._decode(table,roots[0])!=expected:raise InvalidData()
         definition=next(d for d in self.chat_commands.commands if d.operation_kind=='store_daily_handoff')
-        receipt=self.storage.confirm_daily_provider_operation(uow,definition,result.completion.identity.operation_key,cast(str,request['object_id']))
+        receipt=self.storage.confirm_cognition_provider_operation(uow,definition,result.completion.identity.operation_key,cast(str,request['object_id']))
         if receipt!=result.completion:raise OwnerFailure('STORAGE_FAILED','receipt','INTEGRITY_FAILURE')
 
     def release_daily_result(self,result:DailyResult) -> None:

@@ -1,6 +1,6 @@
 # 实际工作状态
 
-最新工程技术验收为2026-09-16的日常认知与图片学习，本页随`feat(cognition): 增加日常认知宿主与图片学习`归档，父提交为`c7bf865b20a67b3fc373839be7cd00ec6d0855c3`。按用户已有条件提交授权收尾，具体提交身份以Git为准，未授权推送。真实图片2次成功；真实学习重复键失败后按契约停发，后续真实链路未完成，详见[独立限制记录](DEFERRED_ISSUES.md#daily-cognition-real-output)。上一语义阶段已提交版本及质量暂缓决定保持。
+最新工程技术验收为2026-09-17的梦境与长期维护；本次提交以`abd7717393b713d4369f1b3ac4d5245d08dea0e3`为父提交，标题`feat(dream): 实现梦境调度、长期维护与周期persona`，实际提交通过Git定位。真实两轮persona已发布；学习权限拒绝后持久停发，其他真实用途未全部执行，详见[独立限制](DEFERRED_ISSUES.md#dream-real-validation)。不宣称供应商质量通过，未推送。
 
 本页只记录已交付能力、对应版本和仍有效的限制。当前实施授权及停止点见[CURRENT_TASK](CURRENT_TASK.md)，后续顺序见[剩余路线](../architecture/implementation-options.md#source-line-1202)。
 
@@ -20,7 +20,10 @@
 | 文本学习独立宿主、持久候选、记忆／来源原子终结、首次persona审核发布 | `c2be9327b80be3b3ccb12262af7ff15c4539ea2d` | macOS／Linux各890项unittest；全量Pyright零诊断，542份受测文件核对一致。此版本证明工程及本地验证，真实供应商试验见下一行 |
 | MiniMax／DeepSeek真实文本协议、受控登记／凭据／试验工具与恢复；工程已交付，质量暂缓 | `9936385d8697b7add662562c3465c041a48d76fa` | 最终macOS／Linux各17项关联回归；锁定Pyright 1.1.413全量零诊断，578份文件／570份Python。真实请求按[原报告](/private/tmp/iris-deepseek-live-jve6u6qk/continuation/report-complete.md)分版本解释，未重跑全量unittest |
 | 异步embedding、两代语义索引、混合查询／HTTP、固定来源与原键恢复；真实小包完成，质量暂缓 | `c7bf865b20a67b3fc373839be7cd00ec6d0855c3` | Docker Linux arm64 29项定点／关联通过，锁定全量Pyright零诊断；672份受测文件与提交树一致；12＋6真实调用，恢复／缓存新增发送0 |
-| 日常认知统一宿主、图片准备、有界工具、六类候选、SUBJECT来源、目标合并、persona导入与初始化续办；工程验收，真实验证有限 | 本页所在日常认知提交，父`c7bf865b20a67b3fc373839be7cd00ec6d0855c3` | 844份受测文件；本轮60个具名成功检查按版本复用，最终Pyright776文件零诊断；真实图片2成功、学习1失败后停止 |
+| 日常认知统一宿主、图片准备、有界工具、六类候选、SUBJECT来源、目标合并、persona导入与初始化续办；工程验收，真实验证有限 | `abd7717393b713d4369f1b3ac4d5245d08dea0e3` | 844份受测文件；本轮60个具名成功检查按版本复用，最终Pyright776文件零诊断；真实图片2成功、学习1失败后停止 |
+| 梦境与长期维护：原生调度、来源影响、时间衰减／到期删除、周期persona、管理控制及回流恢复 | 本次提交（父提交`abd7717393b713d4369f1b3ac4d5245d08dea0e3`） | Docker Linux arm64 37项具名检查按版本对应通过；最终Pyright867份Python零诊断；876份工程指纹一致 |
+
+2026-09-17：[梦境与长期维护](../architecture/dream-and-long-term-maintenance.md)工程范围通过监督技术验收，两项阻塞及合法触发积压关联问题已修复，集中复核未发现新的阻塞问题。[执行证据](/private/tmp/iris-dream-repair-ydi3692c/index.json)与[监督核对](/private/tmp/iris-dream-acceptance-70r3s6oi/review.json)对应876份工程指纹`a77fe11f9cf1c538f7f81702a69bd5ce89a977fe61b788d1c8af8eadb55dd59f`。37项具名成功按[版本对应](/private/tmp/iris-dream-repair-ydi3692c/version-reuse.json)解释，中间失败保留；原生两轮persona的6次回环请求间隔均不少于30秒，1002输入FIFO及四种新进程恢复通过。最后锁定Pyright1.1.413覆盖867份Python零诊断；未重跑全量unittest，Pylance未验证。历史11次真实发送、21个停止槽及未完成真实用途单列于[限制记录](DEFERRED_ISSUES.md#dream-real-validation)，本次新增真实请求0。
 
 2026-09-16：[日常认知与图片学习](../architecture/daily-cognition-and-image-learning.md)工程范围通过监督技术验收。统一宿主、六类候选、SUBJECT来源、目标合并、persona导入、图片／语义联动及可信初始化续办已交付；本轮静态复核未发现新的阻塞工程问题。[监督核对](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-daily-stage-acceptance-y3y63i5a/review.json)与[执行证据](/private/tmp/iris-daily-rerun-aczy2fsy/handoff-index.json)对应844份受测文件指纹`670ec29e674e0c1cea8d3e1551fc2a5b65c15bb5e4a67d4785ec6bab4e58680a`；文档收尾保留788份工程文件。Docker Linux arm64本轮60个具名成功检查，15组矩阵按版本复用；最终锁定Pyright1.1.413覆盖776份Python零诊断，未重跑全量unittest。新包3次实际发送、学习无有效应用、后续29槽停止，旧3次失败保留；[真实结果与未验证范围](DEFERRED_ISSUES.md#daily-cognition-real-output)不写成真实闭环或质量通过。Pylance未验证。
 
@@ -32,7 +35,7 @@
 
 - DeepSeek固定14槽已执行，两平台persona已审核发布，正式记忆分别5／12条，恢复零新增发送；这不证明学习质量达标。旧MiniMax UNKNOWN及外层保守责任仍保留，不能视作结清或自动续用额度。原请求、标注及费用估算证据保持原样。
 - 配置支持已批准装配的一次初始化与持久恢复；在线编辑、安全热激活／回退、存量迁移、持久FAULTED解除及UNKNOWN人工结案未交付。[默认时区](../product/operations-and-management.md#initial-default-timezone)已在日常宿主的可信配置准备中实现，Web首次确认／修改尚未实现。
-- 语义检索小档工程及真实闭环已技术验收，相关性问题暂缓；[日常认知与图片学习](../architecture/daily-cognition-and-image-learning.md)工程已交付，实际图片成功但质量有偏差，真实学习／工具及本宿主真实向量闭环未完成。周期梦境／persona与自动长期维护尚未交付；[音视频测试暂缓](DEFERRED_ISSUES.md#audio-video-validation)。既有模拟／合成参与者不代表这些完整能力。
+- 语义检索小档工程及真实闭环已技术验收，相关性问题暂缓；[日常认知与图片学习](../architecture/daily-cognition-and-image-learning.md)工程已交付，实际图片成功但质量有偏差，真实学习／工具及本宿主真实向量闭环未完成。周期梦境／persona与自动长期维护工程已交付，真实效果与未执行用途见[梦境限制](DEFERRED_ISSUES.md#dream-real-validation)；[音视频测试暂缓](DEFERRED_ISSUES.md#audio-video-validation)。既有模拟／合成参与者不代表这些完整能力。
 - 实际临时文件／SQLite、受控HTTP、故障注入及新进程恢复支持各自断言；后续已包含Docker Linux验证，不能继续沿用早期“Linux未测试”的全局描述，也不能据此声称生产部署完成。生产身份／鉴权、目录与G2、完整管理Web、备份升级、最大合法词项资格、P/X及长期负载、介质掉电保障仍未验证或交付。
 - 永久阻塞的底层资源在有界返回后仍保留实际占用，清理状态与提交／远程结果分开表达。历史环境不能证明新环境就绪；后续检查范围只按[统一验证规则](../CODING_STANDARDS.md#validation-environment)。Pylance未验证。
 

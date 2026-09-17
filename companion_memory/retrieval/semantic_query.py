@@ -5,6 +5,7 @@ are considered only with their current authoritative revision, permission and
 structural filters, before absolute admission and reciprocal rank fusion.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from contextlib import AsyncExitStack
 import heapq
 import time
@@ -56,7 +57,7 @@ class SemanticQuery:
         from companion_memory.memory.formats import check_world
         from companion_memory.persistence.schema import valid_identifier
         if (type(memory) is not MemoryService or type(memory_port) is not MemoryReadPort or type(index) is not LocalIndex
-                or type(index.configuration) is not StoredDailyConfiguration or index.configuration is not self.cache.configuration
+                or type(index.configuration) not in (StoredDailyConfiguration,StoredDreamConfiguration) or index.configuration is not self.cache.configuration
                 or not memory.matches_configuration(index.configuration,self.work.storage) or not valid_identifier(partition)):
             raise OwnerFailure('ACCESS_DENIED','capability','TOOL_NOT_GRANTED')
         memory.read_grant_reference(memory_port);check_world(world)

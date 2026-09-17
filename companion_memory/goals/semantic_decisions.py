@@ -5,6 +5,7 @@ One complete frozen candidate group is compared once. Any later goal, source or
 reminder race keeps the original goals and records a local unresolved outcome.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 import asyncio
 from collections.abc import Callable
 from hashlib import sha256
@@ -75,8 +76,8 @@ class GoalComparisons:
             'next_after':page[-1]['object_id'] if len(page)==4 else None,
             'cleanup_pending':self._task is not None or self._drive_task is not None or self.cleanup_failure is not None})
 
-    def bind(self,goals:GoalsService,configuration:StoredDailyConfiguration,provider:DailyProvider,normal:Callable[[],None]):
-        if self._bound or type(goals) is not GoalsService or type(provider) is not DailyProvider or stored_daily_configuration_issue(configuration) is not None or goals.configuration is not configuration or provider.configuration is not configuration:
+    def bind(self,goals:GoalsService,configuration:StoredCognitionConfiguration,provider:DailyProvider,normal:Callable[[],None]):
+        if self._bound or type(goals) is not GoalsService or type(provider) is not DailyProvider or stored_cognition_configuration_issue(configuration) is not None or goals.configuration is not configuration or provider.configuration is not configuration:
             raise InvalidValue()
         self.goals=goals;self.configuration=configuration;self.provider=provider;self.storage=provider.storage;self.normal=normal
         self.rows=DailyRows(self.catalog,(TABLE,),self.storage,configuration.database_id,configuration.scope_id,configuration.snapshot_id)
@@ -87,7 +88,7 @@ class GoalComparisons:
         self._bound=True
 
     def _operation(self,uow:UnitOfWork):
-        value=self.storage.daily_operation_context(uow,self.catalog.definition)
+        value=self.storage.cognition_operation_context(uow,self.catalog.definition)
         return MappingProxyType({'owner_namespace':value.owner_namespace,'operation_kind':value.operation_kind,'scope_id':value.scope_id,'operation_key':value.operation_key})
 
     def _identity(self,kind:str,*parts):
@@ -152,13 +153,13 @@ class GoalComparisons:
         from companion_memory.provider.values import dump
         material_id=self._identity('goal-result-context',decision['object_id'],cast(str,terminal.handoff['object_id']))
         metadata={'format_version':1,'object_id':material_id,'revision':1,'database_id':self.configuration.database_id,'instance_id':self.configuration.scope_id,
-            'config_snapshot_id':self.configuration.snapshot_id,'created_at_us':now,'updated_at_us':now,'context_version':2,'context_kind':'PROVIDER_RESULT',
+            'config_snapshot_id':self.configuration.snapshot_id,'created_at_us':now,'updated_at_us':now,'context_version':3 if self.materials.dream_format else 2,'context_kind':'PROVIDER_RESULT',
             'owner_ref':decision['object_id'],'batch_id':None,'run_id':None,'source_id':None,'state':'STORED','persona_publication_id':None,'persona_revision':None,
             'prompt_ref':None,'schema_ref':self.protocol.schema_ref,'transform_ref':None,'model_binding_digest':terminal.request['profile_revision'],
             'ordered_members':(),'related_objects':(),'wire_digest':None,'input_token_estimate':None,'reservation_input_bound':0,
             'original_operation':self._operation(uow),'terminal_operation':None}
         metadata['model_binding_digest']=sha256(cast(str,terminal.request['profile_revision']).encode()).hexdigest()
-        return self.materials.stage_complete(uow,freeze_material(metadata,dump(terminal.value,40960).encode()))
+        return self.materials.stage_complete(uow,freeze_material(metadata,dump(terminal.value,40960).encode(),dream_format=self.materials.dream_format))
 
     def verify_received(self,uow:UnitOfWork,request:ProviderRecord,handoff:ProviderRecord,proof:Record) -> bool:
         """Provider may retire only the exact complete original goals reception."""
@@ -172,7 +173,7 @@ class GoalComparisons:
                 or decision['state'] not in ('RESULT_STORED','APPLIED','UNRESOLVED') or proof['kind']!='store_goal_comparison'
                 or proof['key']!=self._identity('store-goal',decision_id)):return False
         definition=next(d for d in self.commands if d.operation_kind=='store_goal_comparison')
-        receipt=self.storage.confirm_daily_consumer_operation(uow,definition,cast(str,proof['key']),cast(str,request['object_id']))
+        receipt=self.storage.confirm_cognition_consumer_operation(uow,definition,cast(str,proof['key']),cast(str,request['object_id']))
         if receipt is None or receipt.fingerprint!=proof['fingerprint']:return False
         material_id=self._identity('goal-result-context',decision_id,cast(str,handoff['object_id']))
         self.materials.participate_material(uow,material_id,cast(str,handoff['checksum']),decision_id)
@@ -199,12 +200,12 @@ class GoalComparisons:
         wire=encode_daily_request(self.protocol,body.decode());now=cast(int,v['started_at_us']);operation=self._operation(uow)
         base={'format_version':1,'revision':1,'database_id':self.configuration.database_id,'instance_id':self.configuration.scope_id,'config_snapshot_id':self.configuration.snapshot_id,
             'created_at_us':now,'updated_at_us':now}
-        metadata={**base,'object_id':cid,'context_version':2,'context_kind':'GOAL_DEDUP','owner_ref':did,'batch_id':None,'run_id':None,'source_id':None,
+        metadata={**base,'object_id':cid,'context_version':3 if self.materials.dream_format else 2,'context_kind':'GOAL_DEDUP','owner_ref':did,'batch_id':None,'run_id':None,'source_id':None,
             'state':'STORED','persona_publication_id':None,'persona_revision':None,'prompt_ref':self.configuration.candidate.text.record('goals.semantic_deduplication')['prompt_ref'],
             'schema_ref':self.protocol.schema_ref,'transform_ref':None,'model_binding_digest':sha256(encode_content((self.protocol.requested_model,self.protocol.prompt_digest,self.protocol.schema_digest),8192)).hexdigest(),
             'ordered_members':(),'related_objects':(),'wire_digest':sha256(wire).hexdigest(),'input_token_estimate':None,'reservation_input_bound':262144,
             'original_operation':operation,'terminal_operation':None}
-        material=freeze_material(metadata,body);cognition=self.materials.stage_complete(uow,material)
+        material=freeze_material(metadata,body,dream_format=self.materials.dream_format);cognition=self.materials.stage_complete(uow,material)
         self.rows.write('semantic_decisions',uow,{**base,'object_id':did,'task_id':task['task_id'],'goal_id':goal['goal_id'],'goal_revision':goal['revision'],'state':'PREPARED',
             'candidates':tuple({'goal_id':c['goal_id'],'revision':c['revision'],'digest':digest(c)} for c in candidates),'material_id':cid,'material_digest':sha256(body).hexdigest(),
             'provider_operation_key':self._identity('goal-provider',did),'provider_request_id':None,'handoff_id':None,'decision':None,'canonical_id':None,'reason':None,

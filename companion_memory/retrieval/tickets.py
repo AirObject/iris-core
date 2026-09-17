@@ -4,6 +4,7 @@ Expiry removes only disposable payload and a real occupied slot. Consumption,
 original operation receipts and audits remain. The same data-owner transaction
 validates every unused member before any reinforcement becomes committed.
 """
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass
 from types import MappingProxyType
 from threading import RLock
@@ -74,7 +75,7 @@ class RecallTickets:
 
     def issue(self, kind: str, uow: UnitOfWork, payload: object, now: int, authority: RecallAuthority) -> TicketEffect:
         from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
-        value = checked(SEMANTIC_ISSUE if type(self.owner.configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration) else ISSUE, payload, 8192); ticket = record(value['ticket'])
+        value = checked(SEMANTIC_ISSUE if type(self.owner.configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration,StoredDreamConfiguration) else ISSUE, payload, 8192); ticket = record(value['ticket'])
         self._binding(ticket, authority)
         deep = kind == 'ticket_issue_deep'
         if (ticket['query_mode'] != ('DEEP' if deep else 'NORMAL') or ticket['issued_at_us'] != now or ticket['clock_observation'] != now
@@ -118,7 +119,7 @@ class RecallTickets:
             raise OwnerFailure('STORAGE_FAILED', 'ticket', 'INTEGRITY_FAILURE')
         tx.write('disposition', {n: ticket[n] for n in ('recall_id', 'database_id', 'principal_binding_id', 'request_key', 'intent_digest')} |
             {'expired_at_us': ticket['expires_at_us'], 'disposed_at_us': now, 'member_count': ticket['member_count'], 'outcome': 'EXPIRED', 'version': ticket['version']} |
-            ({'response_digest':ticket['response_digest']} if type(self.owner.configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration) else {}))
+            ({'response_digest':ticket['response_digest']} if type(self.owner.configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration,StoredDreamConfiguration) else {}))
         for raw in members:
             member = self.owner._records.unpack('member', raw)
             tx.remove('member', {'recall_id': ticket['recall_id'], 'object_id': member['object_id']})

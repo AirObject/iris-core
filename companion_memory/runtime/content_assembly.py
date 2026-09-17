@@ -5,6 +5,7 @@ have separate repositories. This assembly coordinates short local transactions;
 Provider execution and media file I/O must finish outside these handlers.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 import hashlib
 import time
 from collections.abc import Callable
@@ -141,7 +142,7 @@ class ContentAssembly:
     """Construct all explicit content owners; media is supplied as a real participant."""
     def __init__(self, media: ContentMediaOwnership | None = None,
                  media_repositories: tuple[RepositoryDefinition, ...] = (), *, publication=None, utc_now_us: Callable[[], int] = lambda: time.time_ns() // 1000,
-                 information_format: bool = False, text_format: bool = False, semantic_format: bool = False, daily_format: bool = False):
+                 information_format: bool = False, text_format: bool = False, semantic_format: bool = False, daily_format: bool = False, dream_format: bool = False):
         if (media is None) != (not media_repositories):
             raise ValueError('A media owner and its declarations must be supplied together.')
         self.media = media; self.publication = publication
@@ -153,6 +154,8 @@ class ContentAssembly:
         self.information_format = information_format
         self.text_format = text_format
         self.semantic_format = semantic_format or daily_format
+        if type(dream_format) is not bool or dream_format and not daily_format:raise ValueError('Explicit native dream format required.')
+        self.dream_format = dream_format
         self.daily_format = daily_format
         self.daily_input_failures: DailyImageWork | None = None
         self.goal_effects: CandidateGoalEffects | None = None
@@ -181,8 +184,13 @@ class ContentAssembly:
             from companion_memory.cognition.daily_material import context_catalog as daily_context_catalog
             from .daily_schedule_records import schedule_catalog
             from .daily_initialization import initialization_catalog
-            additions={'memory':extend_catalog(subject_origin_catalog(),application_catalog(),5),'cognition':extend_catalog(reasoning_catalog(),daily_context_catalog(),5),'runtime':extend_catalog(schedule_catalog(),initialization_catalog(),5)}
+            additions={'memory':extend_catalog(subject_origin_catalog(),application_catalog(),5),'cognition':extend_catalog(reasoning_catalog(),daily_context_catalog(dream_format=dream_format),5),'runtime':extend_catalog(schedule_catalog(),initialization_catalog(dream_format=dream_format),5)}
             self.catalogs=tuple(extend_catalog(c,additions[c.definition.owner_module],5) if c.definition.owner_module in additions else c for c in self.catalogs)
+        if dream_format:
+            from companion_memory.persistence.text_records import extend_catalog
+            from companion_memory.memory.long_term import maintenance_catalog
+            from companion_memory.cognition.dream_records import dream_catalog
+            self.catalogs=tuple(extend_catalog(c,maintenance_catalog(),5) if c.definition.owner_module=='memory' else extend_catalog(c,dream_catalog(),5) if c.definition.owner_module=='cognition' else c for c in self.catalogs)
         self.repositories = tuple(c.definition for c in self.catalogs) + media_repositories + (publication.repositories if publication is not None else ())
         self._bound = False
         self._verified_terminals = {}
@@ -291,9 +299,9 @@ class ContentAssembly:
         self._semantic_definitions[semantic_kind] = definition
         self.commands = tuple(self._semantic_definitions.values())
 
-    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str) -> ContentAssembly:
+    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str) -> ContentAssembly:
         """Bind the unique real owners after full configuration persistence is confirmed."""
-        valid=(stored_daily_configuration_issue(configuration) is None and cast(StoredDailyConfiguration,configuration).scope_id==instance_id) if self.daily_format else (stored_semantic_configuration_issue(configuration) is None) if self.semantic_format else (stored_text_configuration_issue(configuration) is None) if self.text_format else type(configuration) is StoredContentConfiguration
+        valid=(type(configuration) is (StoredDreamConfiguration if self.dream_format else StoredDailyConfiguration) and stored_cognition_configuration_issue(configuration,storage=storage) is None and cast(StoredCognitionConfiguration,configuration).scope_id==instance_id) if self.daily_format else (stored_semantic_configuration_issue(configuration) is None) if self.semantic_format else (stored_text_configuration_issue(configuration) is None) if self.text_format else type(configuration) is StoredContentConfiguration
         if self._bound or not valid:
             raise ValueError('Content assembly requires native stored configuration and one binding.')
         self.storage, self.configuration, self.instance_id = storage, configuration, instance_id

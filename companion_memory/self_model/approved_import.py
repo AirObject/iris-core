@@ -5,6 +5,7 @@ its source record commit together; the imported text never becomes a local
 Provider attempt. Original keys remain independently confirmable on recovery.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 import asyncio
 from dataclasses import dataclass
 import time
@@ -42,9 +43,13 @@ class ApprovedImportGrant:
 
 class ApprovedPersonaImport:
     """Self-model owner with two static actual-writer branches and bounded cleanup."""
-    def __init__(self,memory_catalog:StatementCatalog):
+    def __init__(self,memory_catalog:StatementCatalog,*,dream_format:bool=False):
         if memory_catalog.definition.owner_module!='memory' or memory_catalog.definition.schema_version!=5:raise InvalidValue()
         self.catalog=import_catalog();self.memory_catalog=memory_catalog
+        if dream_format:
+            from companion_memory.persistence.text_records import extend_catalog
+            from .periodic_records import periodic_catalog
+            self.catalog=extend_catalog(self.catalog,periodic_catalog(),2)
         self.commands=tuple(self._definition(create) for create in (False,True))
         self.repositories=(self.catalog.definition,)
         self._bound=False;self._closed=False;self._released=False
@@ -64,10 +69,10 @@ class ApprovedPersonaImport:
         """Whether the native import owner has acquired its original instance lease."""
         return self._bound
 
-    def bind(self,storage:PersistenceService,configuration:StoredDailyConfiguration,memory:MemoryTransactions,
+    def bind(self,storage:PersistenceService,configuration:StoredCognitionConfiguration,memory:MemoryTransactions,
              binding:InitialSelfBinding,evidence:ApprovedPersonaEvidence,*,new_synthetic_instance:bool,create_self:bool=True) -> ApprovedImportGrant|None:
         """Bind original evidence for read/recovery; only new-instance setup gets a grant."""
-        if (self._bound or stored_daily_configuration_issue(configuration) is not None or type(memory) is not MemoryTransactions
+        if (self._bound or stored_cognition_configuration_issue(configuration,storage=storage) is not None or type(memory) is not MemoryTransactions
                 or memory.configuration is not configuration or not memory.daily_format or type(binding) is not InitialSelfBinding
                 or binding.input_origin!='SYNTHETIC_FIXTURE' or not evidence_is_native(evidence)
                 or type(new_synthetic_instance) is not bool or type(create_self) is not bool):raise InvalidValue()
@@ -98,7 +103,7 @@ class ApprovedPersonaImport:
         if self.rows.rows.stage('initial_persona_runs_by_instance',uow,{}):
             raise OwnerFailure('PRECONDITION_FAILED','state','STATE_MISMATCH')
         subject=self.memory.import_self(uow,self.binding,create=create)
-        op=self.storage.daily_operation_context(uow,self.catalog.definition)
+        op=self.storage.cognition_operation_context(uow,self.catalog.definition)
         if op.operation_key!=values['operation_id']:raise InvalidValue()
         operation={key:getattr(op,key) for key in ('owner_namespace','operation_kind','scope_id','operation_key')}
         now=time.time_ns()//1000;e=self.evidence
@@ -112,6 +117,10 @@ class ApprovedPersonaImport:
             'self_subject_id':subject['subject_id'],'self_revision':subject['revision'],'publication_origin':'IMPORTED_APPROVED','model_origin':'REMOTE_PROVIDER',
             'approval_ref':e.approval_ref,'publication_operation':operation})
         facts:dict[str,object]={'self_model':{'rows_changed':2,'targets':[target(self.import_id,1),target(self.publication_id,1)]}}
+        if type(self.configuration) is StoredDreamConfiguration:
+            from .unified_persona import initialize_pointer
+            pointer=initialize_pointer(self,uow,self.publication_id,'IMPORTED_APPROVED',MappingProxyType(operation),now)
+            facts['self_model']={'rows_changed':3,'targets':[target(self.import_id,1),target(self.publication_id,1),target(pointer,1)]}
         if create:facts['memory']={'rows_changed':1,'targets':[target(cast(str,subject['subject_id']),1)]}
         return result(cast(str,values['operation_id']),'IMPORTED_APPROVED',facts)
 

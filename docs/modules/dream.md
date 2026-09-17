@@ -1,5 +1,7 @@
 # 梦境整理模块入口
 
+已批准的完整整理、周期调度、来源影响与异常管理，唯一详见[梦境与长期维护契约](../architecture/dream-and-long-term-maintenance.md)。本文端口草名由该契约细化，实施与验收分开记录。
+
 > 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
 适用主题与局部定义：梦境执行认知整理步骤；实例模式由运行模块拥有，消息暂存与回流由缓存模块拥有。
@@ -22,7 +24,7 @@
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A38](../product/acceptance.md#a38)、[A49](../product/acceptance.md#a49)、[A67](../product/acceptance.md#a67)、[A94](../product/acceptance.md#a94)、[A106](../product/acceptance.md#a106)、[A108](../product/acceptance.md#a108)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V24](../architecture/acceptance.md#v24)、[V26](../architecture/acceptance.md#v26)、[V80](../architecture/acceptance.md#v80)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
-| 尚未决定 | 专注入退场与回流见[已批准模式契约](../architecture/durable-ingress-and-batch-runtime.md#modes)；完整整理、非专注发布协调、管理员中止与恢复、扫描预算仍待细化。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 尚未决定 | 专注入退场与回流见[已批准模式契约](../architecture/durable-ingress-and-batch-runtime.md#modes)；完整整理、非专注协调、受控中止／续办及扫描预算见[已批准梦境契约](../architecture/dream-and-long-term-maintenance.md)。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

@@ -220,6 +220,34 @@ class ChatTransport:
         return transport
 
     @classmethod
+    def dream(cls,settings:Record,resolver:CredentialResolver,monotonic:Callable[[],float],*,evidence:WireEvidence|None=None) -> ChatTransport:
+        """Bind one new dream role, preserving its exact protected resource reference."""
+        from companion_memory.configuration.dream_schema import ROLE_TRANSPORT, DREAM_ROLES
+        from companion_memory.configuration.text_schema import TRANSPORT
+        from companion_memory.persistence.semantic_records import isolate
+        from types import MappingProxyType
+        bound=isolate(ROLE_TRANSPORT,settings,8192)
+        if (bound['role'] not in DREAM_ROLES or bound['protocol']!='DEEPSEEK_CHAT_JSON_V1'
+                or (bound['origin'],bound['base_path'],bound['endpoint_path'])!=('https://api.deepseek.com','','/chat/completions')):raise InvalidData()
+        transport=object.__new__(cls)
+        transport._bind_endpoint(MappingProxyType({f.name:bound[f.name] for f in TRANSPORT.fields}),resolver,monotonic,evidence)
+        transport._settings=MappingProxyType({**transport._settings,'request_max_bytes':1048576})
+        transport._format='DREAM_GENERATION';transport._daily_binding=bound
+        return transport
+
+    def matches_dream(self,settings:Record) -> bool:
+        """Observe exact new-role resource identity without exposing the credential."""
+        return self._format=='DREAM_GENERATION' and getattr(self,'_daily_binding',None)==settings
+
+    @classmethod
+    def controlled_dream_loopback(cls,settings:Record,resolver:CredentialResolver,monotonic:Callable[[],float],port:int,*,evidence:WireEvidence|None=None) -> ChatTransport:
+        """Use a literal local test endpoint with the complete native role binding."""
+        if type(port) is not int or not 1<=port<=65535:raise InvalidData()
+        transport=cls.dream(settings,resolver,monotonic,evidence=evidence)
+        transport._endpoint=_Endpoint('127.0.0.1',port,transport._endpoint.path,False,None)
+        return transport
+
+    @classmethod
     def controlled_daily_loopback(cls,settings:Record,resolver:CredentialResolver,monotonic:Callable[[],float],port:int,*,evidence:WireEvidence|None=None) -> ChatTransport:
         """Explicit local test endpoint; all original role settings stay bound."""
         if type(port) is not int or not 1<=port<=65535:raise InvalidData()

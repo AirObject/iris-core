@@ -5,7 +5,8 @@ import time
 from types import MappingProxyType
 from typing import cast
 import unittest
-from companion_memory.persistence import Committed,Found,NotCommitted
+from companion_memory.persistence import Committed,Found
+from companion_memory.runtime.results import NotCommitted
 from companion_memory.persistence.daily_records import identity
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.cognition.daily_material import freeze_material
@@ -75,7 +76,10 @@ class MaterialScheduleTests(unittest.IsolatedAsyncioTestCase):
                 if type(claim) is not Committed:raise AssertionError(claim)
                 second=next(row for row in await schedule.queued() if row['entry_id']=='entry-a')
                 collision=await schedule.execute('claim_learning','collision',{'trigger_id':second['object_id'],'expected_revision':1,'schedule_revision':3,'batch_id':'batch-other'},'bootstrap')
-                self.assertIs(type(collision),NotCommitted)
+                self.assertIs(type(collision),NotCommitted,collision)
+                if type(collision) is NotCommitted:
+                    self.assertIsNotNone(collision.error)
+                    if collision.error is not None:self.assertEqual(collision.error.reason,'WRITE_NOT_COMMITTED')
                 observed=await schedule.current()
                 if observed is None:raise AssertionError()
                 self.assertEqual(observed['revision'],3)

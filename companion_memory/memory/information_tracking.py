@@ -5,6 +5,7 @@ Acknowledgements compare the current revision and never move an uncovered start
 forward when a later edit coalesces into an already pending object.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .transactions import MemoryTransactions
@@ -24,7 +25,7 @@ INDEX_SELECTION = RecordSchema((Field('object_ids', SequenceSchema(ID, 1, 16)),)
 
 class MemoryInformation:
     """Owned by the already bound memory participant, sharing its existing lease."""
-    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str, objects: MemoryTransactions):
+    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str, objects: MemoryTransactions):
         self._records = OwnedRecords(catalog, storage, instance_id, LAYOUTS)
         self.configuration = configuration
         self.instance_id = instance_id
@@ -127,7 +128,7 @@ class MemoryInformation:
             'published_seq': cutoff, 'revision': revision + 1}, expected_revision=revision)
         return fact(self.instance_id, revision, revision + 1, now, changed=1, from_seq=cutoff, to_seq=cutoff)
 
-    def changed(self, uow: UnitOfWork, object_id: str, revision: int, deleted: bool) -> tuple[int, int]:
+    def changed(self, uow: UnitOfWork, object_id: str, revision: int, deleted: bool, *, cause_root:str|None=None, used_at:int|None=None) -> tuple[int, int]:
         """Advance actual change order and keep the earliest outstanding coverage gap."""
         if not deleted and revision == 1:
             count = integer(self._records.rows.stage('information_object_count', uow, {})[0]['count'])
@@ -145,6 +146,8 @@ class MemoryInformation:
         self._records.write('index_gap', uow, gap, expected_revision=integer(before['revision']) if before else None)
         if self._objects.semantic is not None:
             self._objects.semantic.mark(uow,object_id,revision,deleted,previous,seq)
+        if self._objects.long_term is not None:
+            self._objects.long_term.changed(uow,object_id,revision,deleted,seq,cause_root=cause_root,used_at=used_at)
         return previous, seq
 
     async def current_page(self, after: str = '', limit: int = 16) -> tuple[Record, ...]:
@@ -175,6 +178,11 @@ class MemoryInformation:
                 raise OwnerFailure('STORAGE_FAILED', 'member', 'INTEGRITY_FAILURE')
             result.append(MappingProxyType({key: current[key] for key in ('object_id', 'revision', 'forgotten_since_us')}))
         return tuple(result)
+
+    def expired_after(self, uow: UnitOfWork, cutoff: int, after_time: int, after_id: str) -> bool:
+        """Check the same native expiry index inside the cursor's committing UoW."""
+        return bool(self._records.rows.stage('information_expired_objects', uow,
+            {'cutoff': cutoff, 'after_time': after_time, 'after_id': after_id, 'limit': 1}))
 
     def current(self, uow: UnitOfWork, object_id: str) -> Record | None:
         """Authoritative object snapshot for a declared retrieval participant."""

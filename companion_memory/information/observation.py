@@ -65,6 +65,7 @@ class InformationObservations:
 
     def bind(self, scopes: frozenset[str], provider: ObserverPort | EmbeddingObserver | DailyProviderObserver | None = None) -> InformationObserver:
         allowed={'learning','media','goal_dedup'} if self.daily is not None else set()
+        if self.daily is not None and self.daily.host.combination.dream_format:allowed|={'dream','maintenance','persona'}
         if type(scopes) is not frozenset or not scopes <= allowed | {'retrieval', 'retrieval/semantic','state', 'goals', 'provider/usage', 'provider/requests', 'provider/budget'} or len(self.ports) >= 16:
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
         if provider is None and self.daily is not None and any(scope.startswith('provider/') for scope in scopes):provider=self.daily.provider
@@ -116,7 +117,7 @@ class InformationObservations:
                                 raise OwnerFailure('STORAGE_FAILED', 'storage', 'READ_FAILED', result.error.cleanup_pending)
                             if type(result) is not ProviderFound: raise InvalidValue()
                             view = owned_projection(result.value)
-                        elif scope in ('learning','media','goal_dedup'):
+                        elif scope in ('learning','media','goal_dedup','dream','maintenance','persona'):
                             if self.daily is None:raise InvalidValue()
                             view=await self.daily.read(scope,query)
                         elif scope=='retrieval/semantic':

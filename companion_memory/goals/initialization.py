@@ -4,6 +4,7 @@ Only a configuration-issued durable identity can bind the owner. Initialization
 writes one metadata row inside the caller's atomic transaction; recovery never
 creates rows, manufactures goals or invokes external work.
 """
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
@@ -26,9 +27,9 @@ class GoalsBinding:
 class GoalsOwner:
     """Single goals data owner; metadata validation precedes every business port."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService,
-                 configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str):
-        self.daily_format = type(configuration) is StoredDailyConfiguration
-        valid = stored_daily_configuration_issue(configuration) is None and configuration.scope_id == instance_id and catalog.definition.schema_version == 5 if type(configuration) is StoredDailyConfiguration else type(configuration) in (StoredInformationConfiguration,StoredTextConfiguration) or stored_semantic_configuration_issue(configuration) is None
+                 configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str):
+        self.daily_format = type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration)
+        valid = stored_cognition_configuration_issue(configuration,storage=storage) is None and configuration.scope_id == instance_id and catalog.definition.schema_version == 5 if type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration else type(configuration) in (StoredInformationConfiguration,StoredTextConfiguration) or stored_semantic_configuration_issue(configuration) is None
         if not valid:
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')
         self.binding = GoalsBinding(configuration.database_id, instance_id, configuration.snapshot_id)

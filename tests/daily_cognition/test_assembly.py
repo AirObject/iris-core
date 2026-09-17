@@ -9,8 +9,9 @@ from types import MappingProxyType
 import sqlite3
 import unittest
 from companion_memory.runtime.daily_assembly import DailyAssembly
+from companion_memory.configuration.daily_persistence import DailyConfigurationAssembly
 from companion_memory.configuration.daily_resolution import resolve_daily_configuration,DailyConfigurationOk
-from companion_memory.configuration.daily_codec import candidate_values
+from companion_memory.configuration.cognition_identity import cognition_candidate_values as candidate_values
 from companion_memory.configuration.daily_persistent_results import ConfigurationCommitted
 from companion_memory.persistence import DatabaseResources,Ready,Committed
 from companion_memory.persistence._codec import command_descriptor
@@ -69,6 +70,7 @@ class DailyAssemblyTests(unittest.IsolatedAsyncioTestCase):
                 try:
                     initialized=await storage.initialize(config.foundation,DatabaseResources('daily-assembly',lambda i,p:i=='daily-assembly' and p==str(path)),mode)
                     if type(initialized) is not Ready:raise AssertionError(initialized)
+                    assert type(assembly.configuration) is DailyConfigurationAssembly
                     binding=assembly.configuration.bind(storage,'instance',config)
                     published=await binding.persist_daily_configuration('configuration',config,actor='bootstrap',protected_directories=supplied[6])
                     if type(published) is not ConfigurationCommitted or published.configuration is None:raise AssertionError(published)

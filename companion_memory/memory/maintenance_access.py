@@ -21,6 +21,7 @@ from .release_plans import digest
 from .service import MemoryError
 if TYPE_CHECKING:
     from companion_memory.runtime.content_service import ContentRuntimeService
+    from companion_memory.dream.control import DreamControl
 
 
 @dataclass(frozen=True, slots=True, weakref_slot=True, init=False)
@@ -56,6 +57,7 @@ class MemoryMaintenance:
         self.grants: WeakValueDictionary[int, MemoryMaintenancePort] = WeakValueDictionary()
         self.jobs: dict[str, asyncio.Task] = {}
         self.closed = False
+        self.dream_control: DreamControl | None = None
 
     def bind(self, object_ids: tuple[str, ...], source_ids: tuple[str, ...] = (), *, readable_object_ids: tuple[str, ...] = (), subject_ids: tuple[str, ...] = ()):
         limit = self.runtime.assembly.configuration.candidate.content.integer('memory.read_page_size')
@@ -110,6 +112,9 @@ class MemoryMaintenance:
             plans = await rows.read('plan_for_root', {'root_id': root, 'ordinal': current['last_ordinal']})
             if not plans: raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
             plan = plans[0]
+            if cast(str,plan['command_kind']).startswith('expire_dream_memory_'):
+                if self.dream_control is None:raise OwnerFailure('CAPABILITY_UNAVAILABLE','owner','OWNER_MISSING')
+                return await self.dream_control.confirm(cast(str,plan['command_kind']),cast(str,plan['execution_key']))
             result = await r.execute(cast(str, plan['command_kind']), cast(str, plan['execution_key']), {'plan_id': plan['plan_id']})
             if type(result) is not NotCommitted or result.error is None or result.error.reason != 'OWNERSHIP_CHANGED' or result.error.cleanup_pending: return result
             previous = plan['plan_id']; ordinal = cast(int, current['last_ordinal']) + 1

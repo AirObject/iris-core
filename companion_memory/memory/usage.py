@@ -78,7 +78,7 @@ def apply_usage(owner: MemoryTransactions, uow: UnitOfWork, expected: Record, no
         owner.rows.stage('basis_edges_insert', uow, {n: b[n] for n in ('dependent_id', 'basis_id', 'dependent_revision', 'basis_revision', 'kind')})
     owner.rows.stage('index_dirty_delete', uow, {'object_id': value['object_id']})
     owner.rows.stage('index_dirty_insert', uow, {'object_id': value['object_id'], 'revision': revision, 'action': 'REMOVE' if lifecycle == 'FORGOTTEN' else 'UPSERT'})
-    tracker.changed(uow, text(value['object_id']), revision, False)
+    tracker.changed(uow, text(value['object_id']), revision, False,used_at=at)
     restored = current['lifecycle'] == 'FORGOTTEN' and lifecycle == 'ACTIVE'
     for reason in ('CONTENT_CHANGED', 'RESTORED') if restored else ('CONTENT_CHANGED',):
         owner.rows.stage('dependency_dirty_insert', uow, {'changed_id': value['object_id'], 'changed_revision': revision, 'reason': reason, 'state': 'PENDING'})

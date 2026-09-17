@@ -4,6 +4,7 @@ The coordinator has no private SQL. Each participant stages its own real root,
 and persistence derives all mandatory audits from the immutable result. Loading
 and recovery only verify the original command and never fill missing roots.
 """
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from collections.abc import Callable
 from types import MappingProxyType
 from typing import Protocol
@@ -31,7 +32,7 @@ class InformationInitialization:
         names = ('retrieval', 'state', 'goals', 'memory')
         by_owner = {r.owner_module: r for r in repositories}
         self._owners: dict[str, InitializableOwner] = {}
-        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration | None = None
+        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration | None = None
         self._instance = ''
         self._configuration_check: Callable[[UnitOfWork], bool] | None = None
         audits = tuple(AuditRequirement(owner, owner + '_initialize_information_owners', 'INITIALIZE_INFORMATION_OWNERS', 1, ('APPLY',), FACT, target_limit=16) for owner in names)
@@ -45,7 +46,7 @@ class InformationInitialization:
             tuple(by_owner[n] for n in names) + (configuration_repository,), audits, self._handle, RecordSchema((Field('actor', ID),)), bindings)
         self.commands = (self.definition,)
 
-    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str,
+    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str,
              owners: dict[str, InitializableOwner], configuration_check: Callable[[UnitOfWork], bool]) -> None:
         if self._configuration is not None or set(owners) != {'retrieval', 'state', 'goals', 'memory'}:
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')

@@ -53,12 +53,16 @@ class MaintenanceAssembly:
                 1, result_schema(owners), repos, requirements, handler, RecordSchema((Field('actor', ID),)), bindings))
         self.commands = tuple(definitions)
 
-    def handle(self, kind: str, uow: UnitOfWork, v: MappingProxyType[str, Value]):
+    def handle(self, kind: str, uow: UnitOfWork, v: MappingProxyType[str, Value], *, expiry=None):
         from companion_memory.runtime.content_assembly import stable
         content = self.content; memory = content.memory
         v = content.with_transaction_time(v)
         mode = content._get('mode', uow, 'mode_id', 'instance_mode')
-        if mode['state'] not in ('NORMAL', 'DRAINING'):
+        if expiry is not None:
+            from companion_memory.dream.expiry import DreamExpiry
+            if type(expiry) is not DreamExpiry or expiry.content is not content:raise InvalidValue()
+            expiry.verify_active(uow)
+        if expiry is None and mode['state'] not in ('NORMAL', 'DRAINING'):
             raise OwnerFailure('MODE_BLOCKED', 'state', 'DREAMING')
         if kind == 'plan_memory_change':
             change = decode_change(cast(str, v['change']), content.configuration.candidate.content.integer('cognition.candidate_item_max_bytes'), text_format=memory.text_format)
@@ -74,7 +78,7 @@ class MaintenanceAssembly:
                 previous, _ = read_plan(memory, uow, cast(str, v['previous_plan']))
                 if previous['root_id'] != root_id or previous['ordinal'] != root['last_ordinal']:
                     raise OwnerFailure('PRECONDITION_FAILED', 'source', 'OWNERSHIP_CHANGED')
-                definition = self.content.command_definition(cast(str, previous['command_kind']))
+                definition = (expiry.definition(cast(str, previous['command_kind'])) if expiry is not None else self.content.command_definition(cast(str, previous['command_kind'])))
                 confirmed = content.storage.confirm_prior_operation(uow, definition, cast(str, previous['execution_key']))
                 if confirmed is not None:
                     raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
@@ -89,10 +93,10 @@ class MaintenanceAssembly:
             leaves = observe_release(memory, uow, change)
             mask = '_'.join(part for part, present in (('INGRESS', any(sequence(leaf['payloads']) for leaf in leaves)),
                 ('MEDIA', any(leaf['has_media'] for leaf in leaves))) if present) or 'NONE'
-            command_kind = 'apply_memory_' + mask.lower()
+            command_kind = 'apply_memory_' + mask.lower() if expiry is None else 'expire_dream_memory_' + mask.lower()
             checksums = tuple(digest(leaf, 8192) for leaf in leaves)
             pid = stable('release_plan', root_id, ordinal, semantic, checksums)
-            execution_key = stable('memory_execution', root_id, ordinal, pid)
+            execution_key = stable('memory_execution', root_id, ordinal, pid) if expiry is None else cast(str,v['operation_id'])
             plan = record(freeze_value(PLAN, {
                 'plan_version': 1, 'plan_id': pid, 'root_id': root_id, 'ordinal': ordinal, 'semantic_digest': semantic,
                 'mask': mask, 'command_kind': command_kind, 'execution_key': execution_key, 'previous_plan': v['previous_plan'], 'leaf_digests': checksums}))
@@ -105,6 +109,7 @@ class MaintenanceAssembly:
                 'execution_key': execution_key, 'command_kind': command_kind, 'body': encode_content(plan, 4096).decode()})
             for i, leaf in enumerate(leaves):
                 memory.rows.stage('release_leaves_insert', uow, {'plan_id': pid, 'ordinal': i, 'body': encode_content(leaf, 8192).decode()})
+            if expiry is not None:return plan
             return content._result(uow, v, 'PLANNED', content.instance_id, operation_id=pid, audit={'memory': {
                 'references': tuple(MappingProxyType({'name': k, 'object_id': value, 'revision': None}) for k, value in (('root', root_id), ('plan', pid), ('branch', mask))),
                 'counts': (MappingProxyType({'name': 'plan_ordinal', 'count': ordinal}), MappingProxyType({'name': 'release_leaves', 'count': len(leaves)}))}})
@@ -149,6 +154,7 @@ class MaintenanceAssembly:
         applied = memory.apply_change_set(uow, scope, (change,), None, release, cast(int, v['now_us']), cast(str, plan['root_id']), 'MAINTENANCE')
         if len(memory.rows.stage('root_success', uow, {'root_id': plan['root_id'], 'plan_id': plan['plan_id'], 'ordinal': plan['ordinal']})) != 1:
             raise OwnerFailure('PRECONDITION_FAILED', 'source', 'OWNERSHIP_CHANGED')
+        if expiry is not None:return applied,release
         references = tuple(MappingProxyType({'name': name, 'object_id': plan[key], 'revision': None}) for name, key in (('root', 'root_id'), ('plan', 'plan_id'), ('branch', 'mask')))
         audit = {'memory': {'references': references, 'counts': applied_counts(applied)},
             'logging_service': {'references': references, 'counts': (MappingProxyType({'name': 'history_items', 'count': len(applied.history)}),)},

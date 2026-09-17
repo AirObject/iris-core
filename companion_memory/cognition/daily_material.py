@@ -28,12 +28,18 @@ LEAF=RecordSchema(BASE+(Field('context_id',ID),Field('ordinal',ScalarSchema('int
 ROOT_TABLE=DailyTable('learning_contexts',(MANIFEST,),16384,True,(IndexSpec('by_owner',('owner_ref',),unique=False,identity_only=True),))
 LEAF_TABLE=DailyTable('learning_context_leaves',(LEAF,),8192,False,(IndexSpec('by_context_ordinal',('context_id','ordinal'),point_read=False),))
 TABLES=(ROOT_TABLE,LEAF_TABLE)
+DREAM_MANIFEST=RecordSchema(tuple(
+    Field('context_version',ScalarSchema('integer',3,3)) if f.name=='context_version' else
+    Field('context_kind',enum('LEARNING','TOOL_RESULT','GOAL_DEDUP','PERSONA','PROVIDER_RESULT','DREAM_REVIEW','PERSONA_DREAM','PERSONA_REVIEW')) if f.name=='context_kind' else f
+    for f in MANIFEST.fields))
+DREAM_ROOT_TABLE=replace(ROOT_TABLE,schemas=(DREAM_MANIFEST,))
+DREAM_TABLES=(DREAM_ROOT_TABLE,LEAF_TABLE)
 
-def context_catalog():
+def context_catalog(*, dream_format: bool = False):
     """Bind complete root and leaf bodies to the new independent static format."""
     from companion_memory.persistence import StatementDefinition,TableDefinition
     from companion_memory.persistence.owned_statements import StatementCatalog
-    catalog=daily_catalog('cognition',5,TABLES)
+    catalog=daily_catalog('cognition',5,DREAM_TABLES if dream_format else TABLES)
     key=RecordSchema((Field('object_id',ID),Field('context_id',ID)))
     remove=StatementDefinition("DELETE FROM cognition_learning_context_leaves WHERE scope_id=:scope_id AND object_id=:object_id AND json_extract(body,'$.context_id')=:context_id RETURNING object_id",key,RecordSchema((Field('object_id',ID),)),True)
     shared_key=RecordSchema((Field('caller_scope',ID),Field('object_id',ID)))
@@ -53,8 +59,8 @@ class FrozenDailyMaterial:
     body:bytes
 
 
-def _manifest(raw:object):
-    value=ROOT_TABLE.isolate(raw)
+def _manifest(raw:object, *, dream_format: bool = False):
+    value=(DREAM_ROOT_TABLE if dream_format else ROOT_TABLE).isolate(raw)
     learning=value['context_kind']=='LEARNING'
     if learning:
         if any(value[name] is None for name in ('batch_id','run_id','source_id','persona_publication_id','persona_revision','prompt_ref','transform_ref','wire_digest')):raise InvalidValue()
@@ -73,7 +79,7 @@ def _manifest(raw:object):
     return value
 
 
-def freeze_material(metadata:dict[str,object],body:bytes) -> FrozenDailyMaterial:
+def freeze_material(metadata:dict[str,object],body:bytes, *, dream_format: bool = False) -> FrozenDailyMaterial:
     """Compute each true encoded size and retain the exact complete original bytes."""
     if type(body) is not bytes or not 1<=len(body)<=262144:raise ValueTooLarge()
     try:body.decode('utf-8')
@@ -99,13 +105,13 @@ def freeze_material(metadata:dict[str,object],body:bytes) -> FrozenDailyMaterial
             break
         leaves.append(checked);offset=end
     refs=tuple({'object_id':leaf['object_id'],'ordinal':leaf['ordinal'],'digest':leaf['digest'],'byte_count':leaf['text_bytes']} for leaf in leaves)
-    manifest=_manifest({**metadata,'leaf_refs':refs,'payload_digest':sha256(body).hexdigest(),'byte_count':len(body)})
-    return restore_material(manifest,tuple(leaves))
+    manifest=_manifest({**metadata,'leaf_refs':refs,'payload_digest':sha256(body).hexdigest(),'byte_count':len(body)}, dream_format=dream_format)
+    return restore_material(manifest,tuple(leaves),dream_format=dream_format)
 
 
-def restore_material(manifest:object,leaves:object) -> FrozenDailyMaterial:
+def restore_material(manifest:object,leaves:object, *, dream_format: bool = False) -> FrozenDailyMaterial:
     """Recompute all bytes, identities, order and aggregate hashes on every restore."""
-    root=_manifest(manifest)
+    root=_manifest(manifest,dream_format=dream_format)
     if root['state']!='STORED' or type(leaves) not in (tuple,list):raise InvalidValue()
     checked=tuple(LEAF_TABLE.isolate(leaf) for leaf in cast(tuple,leaves));refs=cast(tuple[MappingProxyType[str,Value],...],root['leaf_refs'])
     if len(checked)!=len(refs):raise InvalidValue()

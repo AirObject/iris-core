@@ -164,7 +164,7 @@ class DailyLearning:
         binding=self.runtime.provider.bindings['LEARNING'];config=a.configuration
         role=next(record(r) for r in sequence(config.candidate.text.record('provider.transport')['roles']) if record(r)['role']=='LEARNING')
         metadata={'format_version':1,'object_id':mid,'revision':1,'database_id':config.database_id,'instance_id':config.scope_id,'config_snapshot_id':config.snapshot_id,
-            'created_at_us':now,'updated_at_us':now,'context_version':2,'context_kind':'LEARNING','owner_ref':rid,'batch_id':source['batch_id'],'run_id':rid,'source_id':source['source_id'],
+            'created_at_us':now,'updated_at_us':now,'context_version':3 if self.reasoning.materials.dream_format else 2,'context_kind':'LEARNING','owner_ref':rid,'batch_id':source['batch_id'],'run_id':rid,'source_id':source['source_id'],
             'state':'STORED','persona_publication_id':persona['publication_id'],'persona_revision':persona['revision'],'prompt_ref':role['prompt_ref'],
             'schema_ref':binding.schema_ref,'transform_ref':TRANSFORM_VERSION,'model_binding_digest':sha256(body).hexdigest(),
             'ordered_members':tuple({'role':{'H':'HISTORY','T':'TARGET','R':'RECENT'}[cast(str,record(m)['role'])],'message_id':record(m)['message_id'],'payload_digest':record(m)['payload_digest']} for m in sequence(source['ordered_members'])),
@@ -172,7 +172,7 @@ class DailyLearning:
             'wire_digest':sha256(encode_daily_request(binding,body.decode())).hexdigest(),'input_token_estimate':None,'reservation_input_bound':262144,
             'original_operation':{'owner_namespace':'cognition','operation_kind':'freeze_reasoning_run','scope_id':config.scope_id,'operation_key':self.reasoning.key('reasoning-freeze',rid)},'terminal_operation':None}
         if time.monotonic()>=deadline:raise OwnerFailure('TIMEOUT','state','DEADLINE_EXCEEDED')
-        return freeze_material(metadata,body)
+        return freeze_material(metadata,body,dream_format=self.reasoning.materials.dream_format)
 
     async def learn_batch(self,source,*,fresh:bool,admission_event:str|None=None):
         if self.closed or self._task is not None:raise OwnerFailure('RESOURCE_BUSY','resource','CLEANUP_PENDING',self._task is not None)
@@ -229,13 +229,19 @@ class DailyLearning:
         """Keep a confirmed receipt independent of later cleanup or scope changes."""
         if type(applied) is not Committed:return applied
         await self.reasoning.wait_actual();await self.application.wait_actual()
+        authorization=self.runtime.provider.trial_authorization
+        if authorization is not None and authorization.dream and record(applied.receipt.result).get('state')=='FAILED_DROPPED':
+            await authorization.stop('MODEL_PROTOCOL_REJECTED')
         try:released=await self.reasoning.retire_material(run_id)
         except InvalidValue:
             failure=OwnerFailure('STORAGE_FAILED','material','INTEGRITY_FAILURE')
+            if authorization is not None and authorization.dream:await authorization.stop('CLEANUP_UNFINISHED')
             return self.failed_cleanup(run_id,applied,failure)
         except OwnerFailure as failure:
+            if authorization is not None and authorization.dream:await authorization.stop('CLEANUP_UNFINISHED')
             return self.failed_cleanup(run_id,applied,failure)
         if type(released) is not Found:
+            if authorization is not None and authorization.dream:await authorization.stop('CLEANUP_UNFINISHED')
             return self.failed_cleanup(run_id,applied,OwnerFailure('RESULT_UNCONFIRMED','material','COMMIT_UNCONFIRMED',True))
         if self.cleanup_failure is not None and self.cleanup_failure[0]==run_id:self.cleanup_failure=None
         return applied

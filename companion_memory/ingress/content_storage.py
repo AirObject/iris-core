@@ -5,6 +5,7 @@ release is rechecked against actual rows and invokes the media owner in the same
 UoW. Receipt identity and immutable acceptance facts outlive released raw text.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 import hashlib
 from types import MappingProxyType
 from typing import Protocol, cast
@@ -110,7 +111,7 @@ def information_ingress_catalog() -> StatementCatalog:
 
 class ContentIngressTransactions:
     """Only ingress mutates raw payloads or their finite ownership edges."""
-    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration,
+    def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration,
                  instance_id: str, media: ContentMediaOwnership | None):
         self.rows = BoundStatements(catalog, storage, instance_id)
         self.configuration, self.instance_id, self.media = configuration, instance_id, media
@@ -253,6 +254,18 @@ class ContentIngressTransactions:
             if self.media is None: raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'media', 'OWNER_MISSING')
             interpretations = self.media.verify_selections(uow, entry_id, mid, tuple(record(v) for v in sequence(member['media'])))
         return SourcePayload(event, body, interpretations)
+
+    def read_retained_member(self,uow:UnitOfWork,source_id:str,entry_id:str,member:MappingProxyType[str,Value]) -> SourcePayload:
+        """Read complete source-held content through ingress and media owners."""
+        holders=self.rows.stage('holder',uow,{'message_id':member['message_id'],'owner_kind':'SOURCE','owner_id':source_id})
+        if len(holders)!=1:raise OwnerFailure('PRECONDITION_FAILED','source','SOURCE_CHANGED')
+        payload=self.verify_member(uow,entry_id,member)
+        if sequence(member['media']):
+            from companion_memory.media.service import MediaService
+            if type(self.media) is not MediaService:raise OwnerFailure('CAPABILITY_UNAVAILABLE','media','OWNER_MISSING')
+            if self.media.participate_retained_interpretations(uow,source_id,member)!=payload.interpretations:
+                raise OwnerFailure('PRECONDITION_FAILED','source','SOURCE_CHANGED')
+        return payload
 
     def retain_source(self, uow: UnitOfWork, source_id: str, entry_id: str,
                       members: tuple[MappingProxyType[str, Value], ...]) -> None:

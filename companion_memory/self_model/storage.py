@@ -4,6 +4,7 @@ All writes participate in the caller's existing transaction. They neither issue
 Provider requests nor grant management authority. Coordination must verify the
 original Provider completion and runtime mode before invoking a write effect.
 """
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
@@ -26,9 +27,9 @@ class PersonaRecord:
 
 class PersonaStorage:
     """One configuration-bound self-model lease and fixed point-read catalog."""
-    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredTextConfiguration|StoredDailyConfiguration,instance_id: str):
-        daily=type(configuration) is StoredDailyConfiguration
-        issue=stored_daily_configuration_issue(configuration) if daily else stored_text_configuration_issue(configuration)
+    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredTextConfiguration|StoredCognitionConfiguration,instance_id: str):
+        daily=type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration)
+        issue=stored_cognition_configuration_issue(configuration,storage=storage) if daily else stored_text_configuration_issue(configuration)
         if (issue is not None or catalog.definition.owner_module!='self_model'
                 or catalog.definition.schema_version!=(2 if daily else 1)):raise InvalidValue()
         self._storage=storage;self._configuration=configuration;self._instance=instance_id

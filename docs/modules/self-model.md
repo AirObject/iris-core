@@ -1,5 +1,7 @@
 # 自我与persona模块入口
 
+周期视图、独立监管、统一当前指针及原子发布按[已批准周期persona契约](../architecture/dream-and-long-term-maintenance.md#persona)实施；不建立第二套自我事实库。
+
 本阶段指定合成实例的已批准persona导入能力，见[受控例外](../architecture/daily-cognition-and-image-learning.md#persona-import)；不开放通用自由编辑。
 
 > 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
@@ -26,7 +28,7 @@
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-919)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A48](../product/acceptance.md#a48)、[A49](../product/acceptance.md#a49)、[A50](../product/acceptance.md#a50)、[A51](../product/acceptance.md#a51)、[A108](../product/acceptance.md#a108)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V26](../architecture/acceptance.md#v26)、[V80](../architecture/acceptance.md#v80)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
-| 尚未决定 | 有限首次摘要整理见[已批准文本学习契约](../architecture/model-driven-text-learning.md)；常规梦境更新、变化幅度等范围外事项仍待固定。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 尚未决定 | 有限首次摘要整理见[已批准文本学习契约](../architecture/model-driven-text-learning.md)；常规梦境更新及监管见[已批准周期persona契约](../architecture/dream-and-long-term-maintenance.md#persona)，生产管理界面仍未纳入。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

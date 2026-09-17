@@ -5,6 +5,7 @@ transaction. The deletion branch has no Provider access, request descriptor or
 input leaf. Late paid results remain artifacts without clearing newer gaps.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from collections.abc import Callable
 from hashlib import sha256
 from types import MappingProxyType
@@ -29,10 +30,10 @@ from .semantic_material import render_document
 
 class SemanticWork:
     """One retrieval owner for prepared work, application and bounded recovery."""
-    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredDailyConfiguration,instance: str,
+    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredCognitionConfiguration,instance: str,
                  memory: MemorySemanticCoverage,provider: EmbeddingProvider,definitions: tuple[CommandSpec,...],
                  checkpoint: Callable[[],None],normal: Callable[[],None],authorization: Callable[[str],bool]):
-        if (type(memory) is not MemorySemanticCoverage or type(provider) is not (DailyProvider if type(configuration) is StoredDailyConfiguration else EmbeddingProvider) or memory.objects.storage is not storage
+        if (type(memory) is not MemorySemanticCoverage or type(provider) is not (DailyProvider if type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration) else EmbeddingProvider) or memory.objects.storage is not storage
                 or memory.objects.configuration is not configuration or provider.configuration is not configuration
                 or provider.instance!=instance or memory.objects.instance_id!=instance):raise ValueError('Native semantic owners must share one instance.')
         self.catalog=catalog;self.storage=storage;self.configuration=configuration;self.instance=instance;self.memory=memory;self.provider=provider
@@ -141,7 +142,7 @@ class SemanticWork:
                 if control['scheduler']=='PAUSED' and control['pause_reason']==payload['reason']:raise OwnerFailure('PRECONDITION_FAILED','state','NO_CHANGE')
                 return self._finish(uow,control,targets,(),scheduler='PAUSED',pause_reason=payload['reason'])
             self.normal()
-            if (control['scheduler']!='PAUSED' and type(self.configuration) is not StoredDailyConfiguration or control['pause_reason'] in ('UNKNOWN','INTEGRITY') or not self.authorization(string(payload['authorization_digest']))):
+            if (control['scheduler']!='PAUSED' and type(self.configuration) not in (StoredDailyConfiguration,StoredDreamConfiguration) or control['pause_reason'] in ('UNKNOWN','INTEGRITY') or not self.authorization(string(payload['authorization_digest']))):
                 raise OwnerFailure('ACCESS_DENIED','binding','BINDING_MISMATCH')
             return self._finish(uow,control,targets,(),scheduler='ENABLED',pause_reason='NONE',authorization_digest=payload['authorization_digest'])
         if kind=='prepare':

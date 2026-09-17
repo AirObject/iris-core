@@ -5,7 +5,10 @@ configuration, formal information, import, scheduling and reasoning use their
 own public transaction participants on that same persistence service.
 """
 from collections.abc import Callable
+from dataclasses import replace
 from companion_memory.configuration.daily_persistence import DailyConfigurationAssembly
+from companion_memory.configuration.dream_persistence import DreamConfigurationAssembly
+from companion_memory.dream.control import DreamControl
 from companion_memory.media.service import MediaService
 from companion_memory.provider.ledger import LedgerAssembly
 from companion_memory.provider.daily_commands import DailyProviderCommands
@@ -41,16 +44,17 @@ from companion_memory.media.daily_work import DailyImageWork
 
 class DailyAssembly:
     """One static storage graph; only the host may install native owner services."""
-    def __init__(self):
+    def __init__(self, *, dream_format: bool = False):
+        self.dream_format=dream_format
         self.media=MediaService(daily_format=True)
-        self.content=ContentAssembly(self.media,self.media.repositories,information_format=True,daily_format=True)
+        self.content=ContentAssembly(self.media,self.media.repositories,information_format=True,daily_format=True,dream_format=dream_format)
         self.retrieval_catalog=extend_catalog(retrieval_catalog(semantic_format=True),semantic_retrieval_catalog(),5)
         self.information_catalogs=(self.retrieval_catalog,state_catalog(),goals_catalog(daily_format=True))
         catalogs={c.definition.owner_module:c for c in self.content.catalogs}
-        self.configuration=DailyConfigurationAssembly(catalogs['memory'],self.retrieval_catalog)
-        self.ledger=LedgerAssembly(daily_format=True)
-        self.persona=ApprovedPersonaImport(catalogs['memory'])
-        self.materials=DailyMaterialStorage(catalogs['cognition'])
+        self.configuration=DreamConfigurationAssembly(catalogs['memory'],self.retrieval_catalog) if dream_format else DailyConfigurationAssembly(catalogs['memory'],self.retrieval_catalog)
+        self.ledger=LedgerAssembly(daily_format=True,dream_format=dream_format)
+        self.persona=ApprovedPersonaImport(catalogs['memory'],dream_format=dream_format)
+        self.materials=DailyMaterialStorage(catalogs['cognition'],dream_format=dream_format)
         self.schedule=DailySchedule(catalogs['runtime'],self.content)
         self.initialization=DailyInitialization(catalogs['runtime'])
         self.goal_comparisons=GoalComparisons(self.information_catalogs[2],self.materials,self.ledger.repository.definition)
@@ -61,11 +65,35 @@ class DailyAssembly:
         self.management=ManagementAssembly(participants)
         self.initial_self=InitialSelfCommands(catalogs['memory'])
         self.initial_subjects=subjects_definition((catalogs['memory'].definition,),self._subjects)
-        self.repositories=(self.configuration.repository.definition,)+self.content.repositories+self.ledger.repositories+domains+self.persona.repositories
+        self.dream=DreamControl() if dream_format else None
+        self.repositories=(self.configuration.repository.definition,)+self.content.repositories+self.ledger.repositories+domains+self.persona.repositories+((self.dream.catalog.definition,) if self.dream is not None else ())
+        from companion_memory.dream.maintenance import DreamMaintenance
+        self.dream_maintenance=DreamMaintenance(self.dream,self.repositories) if self.dream is not None else None
+        if self.dream is not None and self.dream_maintenance is not None:self.dream.commands+=self.dream_maintenance.commands
+        from companion_memory.dream.influence import DreamInfluence
+        self.dream_influence=DreamInfluence(self.dream,self.dream_maintenance,self.repositories) if self.dream is not None else None
+        if self.dream_influence is not None and self.dream is not None:self.dream.commands+=self.dream_influence.commands
+        from companion_memory.dream.expiry import DreamExpiry
+        self.dream_expiry=DreamExpiry(self.dream,self.content,self.repositories) if self.dream is not None else None
+        if self.dream_expiry is not None and self.dream is not None:self.dream.commands+=self.dream_expiry.commands
+        from companion_memory.self_model.periodic_persona import PeriodicPersona
+        self.periodic=PeriodicPersona(self.dream,self.persona.catalog,self.materials,self.repositories) if self.dream is not None else None
+        if self.periodic is not None and self.dream is not None:self.dream.commands+=self.periodic.commands
+        from companion_memory.cognition.dream_review import DreamReview
+        self.dream_review=DreamReview(self.dream,catalogs['cognition'],self.materials,self.repositories) if self.dream is not None else None
+        if self.dream_review is not None and self.dream is not None:self.dream.commands+=self.dream_review.commands
+        if self.periodic is not None:self.periodic.review_work=self.dream_review;self.periodic.expiry=self.dream_expiry
         self.persona_mode=DailyPersonaMode(self.content,self.repositories)
         self.initial_persona=DailyPersona(self.persona.catalog,self.materials,self.persona_mode,self.repositories)
-        self.content.replace_static_command('change_content_mode',self.persona_mode.definition)
-        self.daily_provider=DailyProviderCommands(self.ledger.repository.definition,tuple(repository for repository in self.repositories if repository.owner_module in ('cognition','media','goals','self_model')))
+        from .dream_mode import DreamMode
+        self.dream_mode=DreamMode(self.content,self.dream,self.persona_mode,self.repositories) if self.dream is not None else None
+        if self.dream_mode is not None:self.dream_mode.persona=self.periodic
+        if self.periodic is not None:self.periodic.mode=self.dream_mode
+        if self.dream is not None and self.dream_mode is not None:self.dream.commands+=self.dream_mode.commands
+        if self.dream is not None:
+            self.dream.commands=tuple(replace(d,participants=(self.dream.catalog.definition,catalogs['runtime'].definition,self.persona.catalog.definition,catalogs['cognition'].definition)) if d.operation_kind in ('resume_dream','abort_background_dream') else d for d in self.dream.commands)
+        self.content.replace_static_command('change_content_mode',self.dream_mode.definition if self.dream_mode is not None else self.persona_mode.definition)
+        self.daily_provider=DailyProviderCommands(self.ledger.repository.definition,tuple(repository for repository in self.repositories if repository.owner_module in ('cognition','media','goals','self_model','dream')),dream_format=dream_format)
         self.semantic=SemanticCommands(self.repositories,self._semantic,usage_only=True)
         self.reasoning=DailyReasoning(catalogs['cognition'],self.materials,self.repositories)
         self.application=DailyApplication(self.content,self.reasoning,self.repositories)
@@ -73,9 +101,9 @@ class DailyAssembly:
         self.content.daily_input_failures=self.image_work
         groups=(self.initialization.commands,self.configuration.commands,self.configuration.root_commands,self.content.commands,self.ledger.commands,self.media.commands,self.initializer.commands,
             self.management.commands,self.initial_self.commands,(self.initial_subjects,),self.semantic.commands,self.persona.commands,self.initial_persona.commands,
-            self.materials.commands,self.schedule.commands,self.daily_provider.commands,self.goal_comparisons.commands,self.reasoning.commands,self.application.commands,self.image_work.commands)
+            self.materials.commands,self.schedule.commands,self.daily_provider.commands,self.goal_comparisons.commands,self.reasoning.commands,self.application.commands,self.image_work.commands,self.dream.commands if self.dream is not None else ())
         self.commands=tuple(definition for group in groups for definition in group)
-        self.storage=PersistenceService(self.repositories,self.commands,assembly_format='DAILY_COGNITION_V1')
+        self.storage=PersistenceService(self.repositories,self.commands,assembly_format='DREAM_MAINTENANCE_V1' if dream_format else 'DAILY_COGNITION_V1')
         self.work:SemanticWork|None=None;self.generations:SemanticGenerations|None=None;self.cache:SemanticQueryCache|None=None
         self.embedding:EmbeddingProvider|None=None;self.fixed:FixedMemorySets|None=None
         self.subject_origin:str|None=None

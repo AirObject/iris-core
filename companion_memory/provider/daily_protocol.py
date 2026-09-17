@@ -51,17 +51,30 @@ def _string(value:object,maximum:int,*,empty:bool=False) -> str:
 def decode_daily_response(raw:bytes,binding:DailyChatBinding) -> ChatObservation:
     """Identity, exact framing fields, refusal and output are checked in that order."""
     if type(binding) is not DailyChatBinding:raise InvalidData()
-    observer=minimax_usage if binding.requested_model=='MiniMax-M3' else deepseek_usage
+    return decode_bound_response(raw,model=binding.requested_model,schema_ref=binding.schema_ref,
+        role=binding.role,format_version=5,output_limit=24576)
+
+
+def decode_bound_response(raw:bytes,*,model:str,schema_ref:str,role:str,format_version:int,output_limit:int) -> ChatObservation:
+    """Shared strict supplier envelope decoder; caller validates its native binding.
+
+    This pure parser grants no request, result-owner or publication authority.
+    Daily and dream bindings retain independent exact role/identity validation.
+    """
+    if ((format_version,output_limit) not in ((5,24576),(6,24576),(6,16384))
+            or model not in ('deepseek-flash','MiniMax-M3') or not is_identifier(schema_ref)):
+        raise InvalidData()
+    observer=minimax_usage if model=='MiniMax-M3' else deepseek_usage
     usage=observer(None)
     try:
         response=decode_wire(raw,262144);usage=observer(response.get('usage'))
-        minimax=binding.requested_model=='MiniMax-M3'
+        minimax=model=='MiniMax-M3'
         required={'id','object','created','model','choices'}|({'system_fingerprint'} if not minimax else set())
         extras={'usage','system_fingerprint','service_tier'}|({'base_resp','input_sensitive','output_sensitive','input_sensitive_type','output_sensitive_type','output_sensitive_int'} if minimax else set())
         if not required<=set(response) or set(response)-required-extras:raise InvalidData()
         if not is_identifier(response['id']) or response['object']!='chat.completion' or not is_identifier(response['model']):raise InvalidData()
         quantity(response['created'])
-        if response['model']!=binding.requested_model:return ChatObservation('MODEL_BINDING_MISMATCH',None,usage)
+        if response['model']!=model:return ChatObservation('MODEL_BINDING_MISMATCH',None,usage)
         for name in ('system_fingerprint','service_tier'):
             if response.get(name) is not None:_string(response[name],128)
         if not minimax and response['system_fingerprint'] is None:raise InvalidData()
@@ -95,13 +108,13 @@ def decode_daily_response(raw:bytes,binding:DailyChatBinding) -> ChatObservation
         if finish=='content_filter' or message.get('refusal'):return ChatObservation('OTHER_REFUSAL',None,usage)
         if finish=='length':return ChatObservation('OUTPUT_LIMIT',None,usage)
         if finish!='stop':return ChatObservation('INVALID_RESPONSE',None,usage)
-        content=_string(message['content'],24576)
-        output=decode_wire(content.encode(),24576);encode_wire(output,24576)
-        if binding.role=='MEDIA':
+        content=_string(message['content'],output_limit)
+        output=decode_wire(content.encode(),output_limit);encode_wire(output,output_limit)
+        if role=='MEDIA':
             from .image_protocol import decode_image_output
             decode_image_output(content.encode())
-        normalized=as_record(freeze({'format_version':5,'output':output,'stop_reason':'STOP','provider_response_ref':response['id'],
-            'requested_model_id':binding.requested_model,'reported_model_id':response['model'],'resolved_model_id':None,
-            'output_schema_ref':binding.schema_ref,'raw_output_digest':sha256(content.encode()).hexdigest()},40960,owned=True))
+        normalized=as_record(freeze({'format_version':format_version,'output':output,'stop_reason':'STOP','provider_response_ref':response['id'],
+            'requested_model_id':model,'reported_model_id':response['model'],'resolved_model_id':None,
+            'output_schema_ref':schema_ref,'raw_output_digest':sha256(content.encode()).hexdigest()},40960,owned=True))
         return ChatObservation('SUCCEEDED',normalized,usage)
     except (InvalidData,InvalidAmount,UnicodeError):return ChatObservation('INVALID_RESPONSE',None,usage)

@@ -34,7 +34,7 @@ class DailyMemoryApplication:
         c=self.memory.configuration
         return identity(kind,c.database_id,c.scope_id,*parts)
     def operation(self,uow):
-        original=self.memory.storage.daily_operation_context(uow,self.memory.repository_definition())
+        original=self.memory.storage.cognition_operation_context(uow,self.memory.repository_definition())
         return MappingProxyType({k:getattr(original,k) for k in ('owner_namespace','operation_kind','scope_id','operation_key')})
     @staticmethod
     def branch(candidate,leaves,source):
@@ -69,7 +69,7 @@ class DailyMemoryApplication:
         if plan['root_id']!=application_id or plan['semantic_digest']!=progress['candidate_digest'] or command_kind!=progress['command_kind'] or command_kind!=self.branch(candidate,leaves,source):raise InvalidValue()
         if observe_change_set_release(m,uow,tuple(leaf for leaf in candidate.leaves if leaf['action']!='CREATE_GOAL'))!=leaves:
             raise OwnerFailure('PRECONDITION_FAILED','source','OWNERSHIP_CHANGED')
-        operation=m.storage.daily_operation_context(uow,m.repository_definition())
+        operation=m.storage.cognition_operation_context(uow,m.repository_definition())
         if operation.operation_key!=plan['execution_key']:raise InvalidValue()
         return progress,CheckedRelease(m,m.sources,leaves)
     async def original_execution(self,progress):

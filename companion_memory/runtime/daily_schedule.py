@@ -5,6 +5,7 @@ is a separate volatile switch which only an explicit successful resume opens.
 The scheduler stores work references; it neither calls Provider nor owns media.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 import asyncio
 from collections.abc import Callable
 from dataclasses import replace
@@ -56,9 +57,9 @@ class DailySchedule:
                 schedule_result(name), (catalog.definition,) if content is None else content.repositories,requirements,handle,INTENT,bindings))
         self.commands=tuple(commands)
 
-    def bind(self,storage:PersistenceService,configuration:StoredDailyConfiguration,checkpoint:Callable[[],None]):
+    def bind(self,storage:PersistenceService,configuration:StoredCognitionConfiguration,checkpoint:Callable[[],None]):
         """Borrow only runtime-native statements; reopening leaves dispatch disabled."""
-        if self._bound or stored_daily_configuration_issue(configuration) is not None or not callable(checkpoint):raise InvalidValue()
+        if self._bound or stored_cognition_configuration_issue(configuration) is not None or not callable(checkpoint):raise InvalidValue()
         self.configuration=configuration;self.storage=storage;self.checkpoint=checkpoint
         self.rows=DailyRows(self.catalog,TABLES,storage,configuration.database_id,configuration.scope_id,configuration.snapshot_id)
         self.operations={d.operation_kind:storage.bind_operation(d,configuration.scope_id) for d in self.commands}
@@ -77,7 +78,7 @@ class DailySchedule:
             'next_after':page[-1]['object_id'] if len(page)==4 else None,'cleanup_pending':self._task is not None})
 
     def _operation(self,uow:UnitOfWork):
-        op=self.storage.daily_operation_context(uow,self.catalog.definition)
+        op=self.storage.cognition_operation_context(uow,self.catalog.definition)
         return {name:getattr(op,name) for name in ('owner_namespace','operation_kind','scope_id','operation_key')}
 
     def _base(self,object_id:str,now:int):
@@ -142,13 +143,9 @@ class DailySchedule:
                 platform=a.configuration.candidate.platform(cast(str,entry['platform_id']));count=platform.count('target_count');recent=platform.count('recent_context_count')
                 positions=a.buffers.rows.stage('fifo',uow,{'entry_id':v['entry_id'],'state':'NORMAL','limit':count+recent})
                 if len(positions)<count+recent or cast(int,positions[count-1]['entry_seq'])>cast(int,v['target_through_seq']):raise OwnerFailure('PRECONDITION_FAILED','source','WINDOW_CHANGED')
-                covered=[]
-                for raw in self.rows.rows.stage('daily_trigger_coverage',uow,{'entry_id':v['entry_id'],'target_through_seq':positions[count-1]['entry_seq']}):
-                    original=self.rows.decode('daily_learning_triggers',raw)
-                    previous=a.rows.stage('batches_get',uow,{'batch_id':original['batch_id']})
-                    if not previous or previous[0]['terminal']=='FROZEN':covered.append(raw);break
+                covered=self.covering_trigger(uow,v['entry_id'],positions[count-1]['entry_seq'])
                 from .content_assembly import stable
-                batch=self.rows.decode('daily_learning_triggers',covered[0])['batch_id'] if covered else stable('batch',stable('preparation',self.configuration.database_id,v['entry_id'],trigger))
+                batch=covered['batch_id'] if covered is not None else stable('batch',stable('preparation',self.configuration.database_id,v['entry_id'],trigger))
             record=self.rows.write('daily_learning_triggers',uow,{**self._base(trigger,now),'entry_id':v['entry_id'],'request_key':v['operation_id'],
                 'reason':v['reason'],'target_through_seq':v['target_through_seq'],'phase':'QUEUED','batch_id':batch,
                 'original_operation':operation,'terminal_operation':None})
@@ -191,6 +188,29 @@ class DailySchedule:
         value=result(cast(str,v['operation_id']),state,{'runtime':{'rows_changed':self.storage.transaction_row_changes(uow)['runtime'],'targets':targets}})
         if retired is not None:return MappingProxyType(dict(value)|{'retired':retired})
         return MappingProxyType(dict(value)|{'trigger':receipt_trigger}) if receipt_trigger is not None else value
+
+    def covering_trigger(self,uow:UnitOfWork,entry_id,through_sequence) -> Record|None:
+        """Select the oldest live batch using bounded existing record pages.
+
+        A legal trigger queue can exceed one storage result byte limit. Keep
+        only the best match while scanning pages in the same transaction, so
+        ordinary backlog cannot turn coverage lookup into a storage failure.
+        Existing statement declarations and original command identities stay
+        compatible with previously created databases.
+        """
+        from companion_memory.persistence.deadlines import check_deadline
+        if self.content is None:raise InvalidValue()
+        after='';selected:Record|None=None
+        while True:
+            check_deadline()
+            page=self.rows.rows.stage('daily_learning_triggers_recovery_page',uow,{'after':after,'limit':4})
+            if not page:return selected
+            for raw in page:
+                original=self.rows.decode('daily_learning_triggers',raw);after=cast(str,original['object_id'])
+                if original['entry_id']!=entry_id or original['target_through_seq']<through_sequence or original['phase']=='TERMINAL':continue
+                if selected is not None and (cast(int,original['created_at_us']),after)>=(cast(int,selected['created_at_us']),cast(str,selected['object_id'])):continue
+                previous=self.content.rows.stage('batches_get',uow,{'batch_id':original['batch_id']})
+                if not previous or previous[0]['terminal']=='FROZEN':selected=original
 
     async def execute(self,kind:str,key:str,values:dict[str,object],actor:str):
         """Serialize finite local control/trigger commands without releasing actual work."""

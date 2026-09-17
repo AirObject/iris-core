@@ -1,15 +1,15 @@
 # 当前任务
 
-**日常认知与图片学习已通过工程范围的监督技术验收；真实学习和本宿主的真实向量闭环未完成。** 本轮未发现新的阻塞性工程问题，不保证不存在其他缺陷。按[集中契约](../architecture/daily-cognition-and-image-learning.md)及用户既有“无问题先提交”的条件授权收尾，不追加真实请求。质量与未完成验证集中见[暂缓事项](DEFERRED_ISSUES.md#daily-cognition-real-output)。
+**梦境与长期维护已通过监督技术验收，按用户明确授权提交本阶段。** 2026-09-17集中复核未发现新的阻塞问题；自动冷却续办、持久退出及原键回流两项阻塞已关闭。批准正文见[梦境与长期维护](../architecture/dream-and-long-term-maintenance.md)，真实限制见[暂缓记录](DEFERRED_ISSUES.md#dream-real-validation)。
 
-实际基线main／父提交`c7bf865b20a67b3fc373839be7cd00ec6d0855c3`。本次拟归档193份文件：119源码、53测试／夹具、19文档、2工程配置；执行者交付192份，监督仅收尾CURRENT_TASK、STATUS、暂缓记录及路线导航。具体交付提交通过Git定位，未授权推送、部署或自动开始下一阶段。单一写入者与职责见[AGENTS](../../AGENTS.md)，里程碑见[STATUS](STATUS.md)。
+提交前实际基线：main／HEAD `abd7717393b713d4369f1b3ac4d5245d08dea0e3`，暂存原为空。拟提交本阶段164份工程变更及必要契约／验收记录；下一阶段计划与导航独立保留，不纳入本次提交。标题：`feat(dream): 实现梦境调度、长期维护与周期persona`。不推送、合并或部署。
 
-验收范围：同一DailyCognitionHost贯通图片准备、学习／有界工具循环、六类候选原子应用、SUBJECT来源、保守目标合并、指定persona原文导入及语义查询／HTTP。配置发布与业务根初始化分开；新增持久初始化意图和七步骤原回执确认，合法中断可续办至READY，完成后缺行／缺回执拒绝补造。包含跨入口持久停发、混合观察、可信环境时区准备和仅计量分支。实际118表／224索引／197命令、130键／6域；静态声明1,730,166字节，最大配置载荷1,156,246字节。
+完成范围：同一日常宿主的自动／手动梦境、增量来源影响、时间衰减／遗忘及到期删除、独立监管后周期persona原子发布、暂停／续办／中止、专注FIFO回流、权限门控、HTTP观察及原键恢复。真实正常冷却不再使调度停用；退出已提交的DRAINING按原事实本地收尾，不以新revision重放旧退出，不重新授予模型权限。
 
-最近交付：[完整索引](/private/tmp/iris-daily-rerun-aczy2fsy/handoff-index.json)、[版本与15组矩阵](/private/tmp/iris-daily-rerun-aczy2fsy/matrix-impact.json)、[命令／原始输出](/private/tmp/iris-daily-rerun-aczy2fsy/commands.json)。Docker Linux arm64本轮60个具名成功检查；原受控完整链路与最终初始化增量按文件版本分别复用，不称全部检查运行于同一最终快照。命令20的两项旧格式检查因缺Git历史对象失败，最终命令30补齐环境后两项通过。最终命令21：锁定Pyright1.1.413，全量776份Python，错误／警告／信息均0，此后工程未变。未机械重跑全量unittest；Pylance未验证。
+最近验证由执行者在Docker Linux arm64执行，监督未运行项目、测试、容器或模型。[交付索引](/private/tmp/iris-dream-repair-ydi3692c/index.json)、[版本复用范围](/private/tmp/iris-dream-repair-ydi3692c/version-reuse.json)、[监督核对](/private/tmp/iris-dream-acceptance-70r3s6oi/review.json)：37项具名成功检查，覆盖原生连续两轮persona及实际30秒间隔、1002输入真实SQLite容量／FIFO、四种新进程退出恢复、控制竞争／期限／UNKNOWN和旧库兼容。中间失败保留并逐项对应复验，不把整体失败命令标为通过。未重跑全量unittest。
 
-监督完成静态审查与文件／证据摘要核对，未运行项目、测试、容器或模型。[执行者844份受测清单](/private/tmp/iris-daily-rerun-aczy2fsy/final-files.json)聚合指纹`670ec29e674e0c1cea8d3e1551fc2a5b65c15bb5e4a67d4785ec6bab4e58680a`与收尾前工作区一致；监督文档收尾后788份工程文件须保持，聚合指纹`7855f8b2272e5fa7ba68def98b11d5471ee4a393fbc8f0a124a03cf0a1b46f9a`。算法均为路径排序后“路径＋NUL＋文件SHA256＋LF”再取SHA256。[监督核对](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-daily-stage-acceptance-y3y63i5a/review.json)记录范围与限制，原证据不改写。
+最终锁定Pyright1.1.413覆盖867份Python，错误／警告／信息均0。876份工程文件聚合`a77fe11f9cf1c538f7f81702a69bd5ce89a977fe61b788d1c8af8eadb55dd59f`，监督核对1061份证据摘要、全部工程和58份原保护文档一致后仅整理文档；Pylance未验证。未变领域的容量、衰减数学、来源权限及存储故障证据按原版本复用。
 
-本次新包图片成功2次、学习重复`action`／`basis_refs`整份拒绝1次，后续29槽停止；旧包3失败保持，累计6／35attempts。供应商本轮报告11,589 tokens；费用及实际扣额未知。远程UNKNOWN=0，本地终结确认、实际处理占用归零，新解释器恢复新增发送0；无非法候选应用，无本轮真实向量。图片把80×96矩形描述为正方形的事实保留，未正式质量评分。临时凭据副本删除、容器断网停止；详见[原键核账](/private/tmp/iris-daily-rerun-aczy2fsy/real-accounting.json)。
+真实包仍为11次历史发送：两轮persona发布至第3版，3条记忆保留50→36、相信50；学习身份／来源违规整份拒绝并持久停发。其余21槽不复用，DOCUMENT／QUERY未执行，HTTP为词法降级。usage 48,883 tokens，费用未知；原34份回执及新解释器恢复零新增发送，无UNKNOWN或待清理请求。本轮新增真实请求0，不以工程通过宣称真实效果全部通过。
 
-停止点：工程验收及获准提交收尾，不开启第三调用包、不续用已停槽。真实后续学习／工具、目标判断和本宿主向量发布／缓存复用仍未验证；音视频、4096完整资格和生产条件保持原限制。后续完整能力按[剩余路线](../architecture/implementation-options.md#source-line-1202)另行授权，当前没有执行者在实施。
+停止点：本次指定提交完成后，核对提交树与受测工程完全一致，再由监督更新实际提交和下一完整阶段计划，用户手动转交执行prompt。执行者不修改docs或AGENTS，不自动开展下一项实现。已验收里程碑与剩余验证分别见[STATUS](STATUS.md)和[暂缓事项](DEFERRED_ISSUES.md)。

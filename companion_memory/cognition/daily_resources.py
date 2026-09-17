@@ -99,8 +99,13 @@ def learning_schema() -> bytes:
         'object_id':identifier,'expected_revision':positive,'content':{'oneOf':[obj(memory),obj(relation)]}}),
         json_schema(SET_SCORES),action('CREATE_RELATION',relation),obj(goals)]
     tools=[obj({'name':{'const':name},'arguments':json_schema(arguments)}) for name,arguments in TOOL_ARGUMENTS.items()]
-    result={'oneOf':[obj({'schema_version':{'const':1},'kind':{'const':'TOOL'},'tools':{'type':'array','minItems':1,'maxItems':2,'items':{'oneOf':tools}}}),
+    result:dict[str,object]={'oneOf':[obj({'schema_version':{'const':1},'kind':{'const':'TOOL'},'tools':{'type':'array','minItems':1,'maxItems':2,'items':{'oneOf':tools}}}),
         obj({'schema_version':{'const':1},'kind':{'const':'FINAL'},'actions':{'type':'array','minItems':0,'maxItems':8,'items':{'oneOf':actions}}})]}
+    return encode_schema(result)
+
+
+def encode_schema(result:dict[str,object]) -> bytes:
+    """Deduplicate closed record schemas without changing their allowed values."""
     definitions={}
     def lift(value) -> object:
         if type(value) is list:return [lift(child) for child in value]

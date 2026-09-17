@@ -5,6 +5,7 @@ Each request owns one completion slot across every actual descendant I/O. The
 final storage permission check shares the runtime's short mode serialization.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import cast
@@ -89,7 +90,7 @@ class ManagementAssembly:
         self.semantic_format=by_owner['memory'].schema_version in (4,5)
         self.retrieval: LocalIndex | None = None
         self.goals: GoalsService | None = None; self.state: StateOwner | None = None
-        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration | None = None
+        self._configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration | None = None
         self._gate: ContentGate | None = None
         self.local_recovery: LocalGoalRecovery | None = None
         self._ports: dict[str, ManagementPort] = {}
@@ -228,7 +229,7 @@ class ManagementAssembly:
         oid = next((value[n] for n in ('goal_id', 'activity_id', 'task_id', 'plan_id', 'delivery_id', 'page_id', 'generation_id') if value.get(n) is not None), None)
         return (MappingProxyType({'object_id': oid, 'revision': value['expected_revision']}),)
 
-    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str,
+    def bind(self, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str,
              goals: GoalsService, state: StateOwner, retrieval: LocalIndex, gate: ContentGate, retain: Callable[[asyncio.Task[object]], None],
              recovering: Callable[[], bool] = lambda: False) -> None:
         if self._configuration is not None:

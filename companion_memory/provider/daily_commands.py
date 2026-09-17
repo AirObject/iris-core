@@ -15,8 +15,8 @@ FACT=RecordSchema(CHANGE.fields+(Field('billing_mode',enum('TOKEN_METERED','USAG
 
 class DailyProviderCommands:
     """Exact bounded original-key operations; none is an external-send endpoint."""
-    def __init__(self,provider:RepositoryDefinition,readers:tuple[RepositoryDefinition,...]):
-        if provider.owner_module!='provider' or provider.schema_version!=5:raise ValueError('Native daily Provider repository required.')
+    def __init__(self,provider:RepositoryDefinition,readers:tuple[RepositoryDefinition,...], *, dream_format: bool = False):
+        if provider.owner_module!='provider' or provider.schema_version!=(6 if dream_format else 5):raise ValueError('Native daily Provider repository required.')
         self.handler:Callable[[str,UnitOfWork,Record],object]|None=None
         layouts={
             'register_daily_request':record(operation_id=ID,request_ref=REQUEST,original_request_digest=H),
@@ -32,7 +32,7 @@ class DailyProviderCommands:
             def handle(uow:UnitOfWork,v:Record,action=kind):
                 if self.handler is None:raise ValueError('Native daily Provider owner is not bound.')
                 return self.handler(action,uow,v)
-            definitions.append(ResultBoundCommandDefinition('provider',kind,5,schema,1,
+            definitions.append(ResultBoundCommandDefinition('provider',kind,6 if dream_format else 5,schema,1,
                 record(operation_id=ID,state=enum('REGISTERED','STORED','RECEIVED','RETIRING','RETIRED'),targets=TARGETS,fact=FACT),
                 (provider,)+readers,(audit,),handle,record(actor=ID),bindings))
         self.commands=tuple(definitions)

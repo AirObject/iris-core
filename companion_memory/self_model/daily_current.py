@@ -5,6 +5,7 @@ Mode and publication checks fence both read delivery and candidate commitment.
 The capability provides no import, review, generation or editing operation.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass
 from types import MappingProxyType
 import time
@@ -15,6 +16,7 @@ from companion_memory.runtime.content_gate import ContentGate
 from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
 from .approved_import import ApprovedPersonaImport
 from .daily_persona import DailyPersona
+from .unified_persona import UnifiedPersona
 from .current import Available,Unavailable,Matched,Conflict
 from .results import owner_failure,rejected
 
@@ -23,7 +25,7 @@ class DailyCurrentPersonaPort:
     """An owner-issued current-only capability bound to the complete daily instance."""
     _owner:DailyCurrentPersona
     def __init__(self):raise TypeError('Trusted daily setup issues this capability.')
-    def matches(self,configuration:StoredDailyConfiguration,storage:object) -> bool:
+    def matches(self,configuration:StoredCognitionConfiguration,storage:object) -> bool:
         owner=getattr(self,'_owner',None)
         return (type(owner) is DailyCurrentPersona and owner.port is self and owner.source.configuration is configuration
             and owner.source.storage is storage and not owner.closed)
@@ -41,14 +43,19 @@ class DailyCurrentPersonaPort:
         if type(owner) is not DailyCurrentPersona or owner.port is not self or owner.closed or owner.gate.state!='RECOVERING':return rejected('verify_current','boundary')
         current=owner.source.participate_current(uow,publication_id,expected_revision)
         uow.require_commit_permission(lambda:not owner.closed and owner.gate.state=='RECOVERING')
-        return Conflict() if current is None else Matched(current)
+        return Conflict() if current is None else Matched(owner.project(current))
 
 class DailyCurrentPersona:
     """Share the actual self-model owner and runtime gate, with no extra writer."""
-    def __init__(self,source:ApprovedPersonaImport|DailyPersona,gate:ContentGate):
-        if type(source) not in (ApprovedPersonaImport,DailyPersona) or not source.bound or type(gate) is not ContentGate:raise InvalidValue()
+    def __init__(self,source:ApprovedPersonaImport|DailyPersona|UnifiedPersona,gate:ContentGate):
+        if type(source) not in (ApprovedPersonaImport,DailyPersona,UnifiedPersona) or not source.bound or type(gate) is not ContentGate:raise InvalidValue()
         self.source=source;self.gate=gate;self.closed=False
         port=object.__new__(DailyCurrentPersonaPort);object.__setattr__(port,'_owner',self);self.port=port
+    def project(self,current):
+        if type(self.source.configuration) is StoredDreamConfiguration:
+            from .periodic_projection import project_current
+            return project_current(current)
+        return current
     def checkpoint(self):
         if self.closed:raise OwnerFailure('INVALID_STATE','state','SERVICE_CLOSED')
         value=self.gate.information_checkpoint()
@@ -58,7 +65,7 @@ class DailyCurrentPersona:
         try:
             checkpoint=self.checkpoint()
             observed=await self.source.read_current(deadline)
-            if type(observed) is Found:value=Available(observed.value)
+            if type(observed) is Found:value=Available(self.project(observed.value))
             elif type(observed) is NotFound:value=Unavailable()
             else:raise InvalidValue()
             delivered=[]
@@ -76,16 +83,21 @@ class DailyCurrentPersona:
             value=self.source.participate_current(uow,publication_id,revision)
             if value is None:return Conflict()
             uow.require_commit_permission(lambda:not self.closed and self.gate.epoch==epoch and self.gate.information_operation_reason() is None)
-            return Matched(value)
+            return Matched(self.project(value))
         except OwnerFailure as failure:return owner_failure('verify_current',failure)
         except InvalidValue:return rejected('verify_current','record')
     def close(self) -> None:
         """Revoke current delivery; actual reads remain owned by self-model cleanup."""
         self.closed=True
+        if type(self.source) is UnifiedPersona:self.source.close()
 
 def query_projection(current):
     """Preserve imported origin in the public reply without claiming local generation."""
     from companion_memory.persistence.content_codec import encode_content
+    if current.get('projection_version')=='PERIODIC_PERSONA_V1':
+        from .periodic_projection import encode_projection
+        encode_projection(current)
+        return current
     if current.get('publication_origin')!='IMPORTED_APPROVED':
         from .formats import query_projection as generated_projection
         return generated_projection(current)

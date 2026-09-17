@@ -5,6 +5,7 @@ or register the SELF. The read port exposes only this instance's initial input
 and its current SELF, never arbitrary memory rows or historical sources.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass
 import time
 from types import MappingProxyType
@@ -48,7 +49,7 @@ class InitialSelfStorage:
     """Private memory participant sharing the native memory owner's real lease."""
     def __init__(self,owner: MemoryTransactions,binding: InitialSelfBinding):
         from .transactions import MemoryTransactions
-        if type(owner) is not MemoryTransactions or not owner.text_format or type(owner.configuration) not in (StoredTextConfiguration,StoredSemanticConfiguration,StoredDailyConfiguration) or type(binding) is not InitialSelfBinding:raise InvalidValue()
+        if type(owner) is not MemoryTransactions or not owner.text_format or type(owner.configuration) not in (StoredTextConfiguration,StoredSemanticConfiguration,StoredDailyConfiguration,StoredDreamConfiguration) or type(binding) is not InitialSelfBinding:raise InvalidValue()
         self._owner=owner;self._binding=binding
         self.input_id=stable_identity('self-input',owner.configuration.database_id,owner.instance_id)
 

@@ -13,6 +13,7 @@ import time
 from typing import cast
 import unittest
 from companion_memory.runtime.daily_assembly import DailyAssembly
+from companion_memory.configuration.daily_persistence import DailyConfigurationAssembly
 from companion_memory.persistence import ResultBoundCommandDefinition,DatabaseResources,Ready,Found,Committed
 from companion_memory.configuration.daily_persistent_results import ConfigurationCommitted
 from companion_memory.provider.daily_service import DailyProvider
@@ -45,6 +46,7 @@ class ProviderFixture:
     async def open(self):
         opened=await self.storage.initialize(self.value.foundation,DatabaseResources('daily-provider',lambda i,p:i=='daily-provider' and p==str(self.path),connect=self.connect),self.mode)
         if type(opened) is not Ready:raise AssertionError(opened)
+        assert type(self.c.configuration) is DailyConfigurationAssembly
         self.config=self.c.configuration.bind(self.storage,'instance',self.value)
         result=await self.config.persist_daily_configuration('configuration',self.value,actor='bootstrap',protected_directories=self.inputs[6])
         if type(result) is not ConfigurationCommitted or result.configuration is None:raise AssertionError(result)

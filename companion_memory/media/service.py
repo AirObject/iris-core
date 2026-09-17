@@ -6,6 +6,7 @@ Native finite entry grants confer no path/hash access. Timed-out file workers
 retain their actual slot and block reuse until they have ended.
 """
 from __future__ import annotations
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from companion_memory.persistence.completion import CompletionScope, finish_owned, retain_completion, start_owned
 import asyncio
 from collections.abc import Callable
@@ -205,14 +206,14 @@ class MediaService:
     def daily_reference_targets(self,uow:UnitOfWork,blob_ids:tuple[str,...]):
         """Read actual bounded blob reference revisions under the media owner."""
         from companion_memory.persistence.daily_results import target
-        if type(self.configuration) is not StoredDailyConfiguration or not 1<=len(blob_ids)<=8:raise InvalidValue()
+        if type(self.configuration) not in (StoredDailyConfiguration,StoredDreamConfiguration) or not 1<=len(blob_ids)<=8:raise InvalidValue()
         return tuple(target(bid,cast(int,self._blob(uow,bid)['references_revision'])) for bid in blob_ids)
 
-    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredDailyConfiguration, instance_id: str) -> None:
+    def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str) -> None:
         """Bind once to actual persistent configuration and an exclusive owner lease."""
         if self._bound or (type(configuration) is not StoredContentConfiguration and stored_text_configuration_issue(configuration) is not None
-                and stored_semantic_configuration_issue(configuration) is not None and stored_daily_configuration_issue(configuration) is not None): raise ValueError('Native unbound media configuration required.')
-        if type(configuration) is StoredDailyConfiguration and configuration.scope_id!=instance_id:raise ValueError('Daily media scope differs.')
+                and stored_semantic_configuration_issue(configuration) is not None and stored_cognition_configuration_issue(configuration,storage=storage) is not None): raise ValueError('Native unbound media configuration required.')
+        if (type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration) and configuration.scope_id!=instance_id:raise ValueError('Daily media scope differs.')
         self.storage, self.configuration, self.instance_id = storage, configuration, instance_id
         self.settings = configuration.candidate.content
         from .work_rows import MediaWorkRows
@@ -1057,6 +1058,19 @@ class MediaService:
         if value['origin']=='EXTERNAL' and (value['generation']!=selected['generation'] or value['event_id']!=member['message_id']):raise InvalidValue()
         if value['generation']!=selected['generation'] and value['status']!='REFUSED':raise InvalidValue()
         return value
+
+    def participate_retained_interpretations(self,uow:UnitOfWork,source_id:str,member:MappingProxyType[str,Value]):
+        """Check the actual source holder for each complete selected understanding."""
+        if not self._bound or self._closing or not valid_identifier(source_id):raise InvalidValue()
+        values=[]
+        for selected in tuple(record(v) for v in sequence(member['media'])):
+            versions=self.rows.stage('interpretations_get',uow,{'interpretation_id':selected['interpretation_id']})
+            holders=self.rows.stage('interpretation_holders_get',uow,{'holder_id':identity('interpretation_ref',source_id,selected['occurrence_id'])})
+            if len(versions)!=1 or len(holders)!=1 or holders[0]['interpretation_id']!=selected['interpretation_id'] or holders[0]['owner_kind']!='SOURCE' or holders[0]['owner_id']!=source_id:raise InvalidValue()
+            value=decode_interpretation(cast(str,versions[0]['body']).encode())
+            if value['interpretation_id']!=selected['interpretation_id'] or value['blob_id']!=selected['blob_id']:raise InvalidValue()
+            values.append(value)
+        return tuple(values)
 
     async def read_retained_interpretations(self,source_id:str,member:MappingProxyType[str,Value]):
         """Read exact source-held versions for bounded formal-source recovery."""

@@ -1,5 +1,7 @@
 # 日志等级、输出、审计隔离与背压
 
+梦境步骤、周期发布和受控管理的必要审计及观察，见[梦境事务](dream-and-long-term-maintenance.md#persistence)与[权限投影](dream-and-long-term-maintenance.md#observation)；不为只读或零业务变化制造占位。
+
 日常认知新增实际writer的必要审计及分区观察，见[集中命令表](daily-cognition-and-image-learning.md#62-完整命令族与必要审计)；零写入不制造审计。
 
 > 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。

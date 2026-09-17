@@ -10,6 +10,7 @@ from typing import cast
 from companion_memory.persistence.schema import Field,RecordSchema,SequenceSchema,ScalarSchema,InvalidValue
 from companion_memory.persistence.semantic_records import ID,N,P,B,H,Record,enum,record,isolate,number,string
 from companion_memory.configuration.daily_schema import ACCOUNT,GENERATION_PROFILE,IMAGE_PROFILE,EMBEDDING_PROFILE
+from companion_memory.configuration.dream_schema import GENERATION_PROFILE as DREAM_GENERATION_PROFILE
 from .embedding_stored_schema import schemas as embedding_schemas
 from .embedding_allocated_usage import SCHEMA as ALLOCATED_USAGE,validate as validate_allocated
 from .stored_schema import USAGE_FIELDS,TERMINALS,timestamp
@@ -18,6 +19,8 @@ from .token_costs import rounded_cost
 
 ROLES=('LEARNING','PERSONA','GOAL_DEDUP','MEDIA','EMBEDDING_DOCUMENT','EMBEDDING_QUERY')
 OWNERS={'LEARNING':'cognition','PERSONA':'self_model','GOAL_DEDUP':'goals','MEDIA':'media','EMBEDDING_DOCUMENT':'retrieval','EMBEDDING_QUERY':'retrieval'}
+DREAM_ROLES=ROLES+('DREAM_REVIEW','PERSONA_DREAM','PERSONA_REVIEW')
+DREAM_OWNERS={**OWNERS,'DREAM_REVIEW':'dream','PERSONA_DREAM':'self_model','PERSONA_REVIEW':'self_model'}
 VERSION=ScalarSchema('integer',5,5)
 ITEM=record(item=enum('input','cached_input','output'),quantity=(N,),price_numerator=N,price_denominator=ScalarSchema('integer',1000000,1000000),cost_atoms=(N,))
 
@@ -52,17 +55,21 @@ def _replace(schema:RecordSchema,**fields:object) -> RecordSchema:
     return RecordSchema(tuple(cast(list[Field],result)))
 
 
-def schemas() -> dict[str,tuple[RecordSchema,...]]:
+def schemas(*, dream: bool = False) -> dict[str,tuple[RecordSchema,...]]:
     """All variants are part of the static repository declaration and signature."""
+    version=ScalarSchema('integer',6,6) if dream else VERSION
+    owners=DREAM_OWNERS if dream else OWNERS
+    generation=DREAM_GENERATION_PROFILE if dream else GENERATION_PROFILE
+    generation_roles=ROLES[:3]+DREAM_ROLES[6:] if dream else ROLES[:3]
     original=embedding_schemas(False,usage_only=True)
     result={}
     variants=[]
-    for profile,capability,roles in ((GENERATION_PROFILE,'GENERATION',ROLES[:3]),(IMAGE_PROFILE,'MEDIA_UNDERSTANDING',('MEDIA',)),(EMBEDDING_PROFILE,'EMBEDDING',ROLES[4:])):
+    for profile,capability,roles in ((generation,'GENERATION',generation_roles),(IMAGE_PROFILE,'MEDIA_UNDERSTANDING',('MEDIA',)),(EMBEDDING_PROFILE,'EMBEDDING',ROLES[4:])):
         evidence=record(profile=profile,account=ACCOUNT,request_timeout_ms=N,retry_delay_ms=N,request_max_bytes=N,result_max_bytes=N)
         variants.append(_replace(original['requests'],execution_evidence=Field('execution_evidence',evidence),
             capability=Field('capability',enum(capability)),task_role=Field('task_role',enum(*roles)),
-            result_owner=Field('result_owner',enum(*(dict.fromkeys(OWNERS[r] for r in roles)))),
-            format_version=Field('format_version',VERSION),fingerprint_version=Field('fingerprint_version',VERSION),
+            result_owner=Field('result_owner',enum(*(dict.fromkeys(owners[r] for r in roles)))),
+            format_version=Field('format_version',version),fingerprint_version=Field('fingerprint_version',version),
             outcome=Field('outcome',enum(*TERMINALS),nullable=True)))
     result['requests']=tuple(variants)
     result['attempts']=tuple(_replace(original['attempts'],usage=Field('usage',usage),capability=Field('capability',enum(*capabilities)),
@@ -73,26 +80,29 @@ def schemas() -> dict[str,tuple[RecordSchema,...]]:
             (trial_usage(True),('GENERATION','MEDIA_UNDERSTANDING'),('DEEPSEEK_CHAT_JSON_V1','DEEPSEEK_IMAGE_JSON_V1')),
             (trial_usage(False),('MEDIA_UNDERSTANDING',),('MINIMAX_IMAGE_JSON_V1',))))
     for name in ('budget_windows','reservations','cost_items'):
-        allocated=_replace(original[name],format_version=Field('format_version',VERSION))
+        allocated=_replace(original[name],format_version=Field('format_version',version))
         if name=='budget_windows':allocated=_replace(allocated,policy=Field('policy',ACCOUNT))
         metered=_replace(allocated,billing_mode=Field('billing_mode',enum('TOKEN_METERED')),quota_known=Field('quota_known',N)) if name!='cost_items' else _replace(allocated,
             billing_mode=Field('billing_mode',enum('TOKEN_METERED')),item=Field('item',enum('input','cached_input','output')),
             price_numerator=Field('price_numerator',N),price_denominator=Field('price_denominator',P))
         trial=(_replace(allocated,item=Field('item',enum('input','cached_input','output'))) if name=='cost_items' else allocated)
         result[name]=(allocated,metered,trial) if name=='cost_items' else (allocated,metered)
-    result['handoffs']=(_replace(original['handoffs'],format_version=Field('format_version',VERSION)),)
+    result['handoffs']=(_replace(original['handoffs'],format_version=Field('format_version',version)),)
     return result
 
 LAYOUTS=schemas()
+DREAM_LAYOUTS=schemas(dream=True)
 
-def validate(table:str,value:object) -> Record:
+def validate(table:str,value:object, *, dream: bool = False) -> Record:
     """Reject incomplete variants and recompute each stored liability on both ends."""
-    if table not in LAYOUTS:raise InvalidValue()
+    layouts=DREAM_LAYOUTS if dream else LAYOUTS
+    owners=DREAM_OWNERS if dream else OWNERS
+    if table not in layouts:raise InvalidValue()
     if type(value) is MappingProxyType and 'payload' in value:
         if table!='handoffs' or value['payload']!='':raise InvalidValue()
         value={k:v for k,v in value.items() if k!='payload'}
     result=None
-    for schema in LAYOUTS[table]:
+    for schema in layouts[table]:
         try:result=isolate(schema,value,4096 if table=='handoffs' else 8192)
         except InvalidValue:continue
         break
@@ -103,7 +113,7 @@ def validate(table:str,value:object) -> Record:
     if table=='requests':
         evidence=cast(Record,result['execution_evidence']);profile=cast(Record,evidence['profile']);account=cast(Record,evidence['account'])
         role=string(result['task_role']);embedding=result['capability']=='EMBEDDING'
-        if (role!=profile['material_role'] or result['result_owner']!=OWNERS[role] or result['caller_module']!=OWNERS[role]
+        if (role!=profile['material_role'] or result['result_owner']!=owners[role] or result['caller_module']!=owners[role]
                 or result['profile_id']!=profile['profile_id'] or result['account_id']!=account['account_id']
                 or profile['account_id']!=account['account_id'] or profile['capability']!=result['capability']
                 or profile['billing_mode']!=account['billing_mode'] or result['extension_id'] is not None

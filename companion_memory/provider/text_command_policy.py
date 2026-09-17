@@ -70,7 +70,7 @@ def validate_values(definition: CommandSpec, values: MappingProxyType[str, Value
             owner=cast(LedgerAssembly,cast(TextMutationPolicy,definition.input_policy).owner)
             if owner.daily_format:
                 from .daily_stored_schema import validate as validate_daily
-                validate_daily(table,body)
+                validate_daily(table,body,dream=owner.dream_format)
             elif owner.embedding_format:
                 from .embedding_stored_schema import validate as validate_embedding
                 if owner.embedding_usage_only:validate_embedding(table,body,simulated=False,usage_only=True)

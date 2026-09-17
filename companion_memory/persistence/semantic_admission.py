@@ -15,6 +15,7 @@ import threading
 import time
 from types import MappingProxyType
 from companion_memory.configuration.daily_resolution import DailyConfigurationCandidate,daily_snapshot_issue
+from companion_memory.configuration.dream_resolution import DreamConfigurationCandidate,dream_snapshot_issue
 from companion_memory.configuration.semantic_resolution import SemanticConfigurationCandidate,semantic_snapshot_issue
 from companion_memory.configuration import PresentValue
 from .content_codec import encode_content,decode_content
@@ -33,10 +34,13 @@ COMPLETION=frozenset(('apply','record_result','record_cleanup','fail','supersede
 
 class SemanticAdmission:
     """One exclusive persistent counter covering every registered business owner."""
-    def __init__(self,configuration: SemanticConfigurationCandidate | DailyConfigurationCandidate,root: Path,mode: str):
-        if (daily_snapshot_issue(configuration) if type(configuration) is DailyConfigurationCandidate else semantic_snapshot_issue(configuration)) is not None or mode not in ('CREATE_NEW','OPEN_EXISTING'):raise InvalidValue()
+    def __init__(self,configuration: SemanticConfigurationCandidate | DailyConfigurationCandidate | DreamConfigurationCandidate,root: Path,mode: str):
+        issue=dream_snapshot_issue(configuration) if type(configuration) is DreamConfigurationCandidate else daily_snapshot_issue(configuration) if type(configuration) is DailyConfigurationCandidate else semantic_snapshot_issue(configuration)
+        if issue is not None or mode not in ('CREATE_NEW','OPEN_EXISTING'):raise InvalidValue()
         if not root.is_absolute() or root.resolve(strict=True)!=root or any(p.is_symlink() for p in (root,*root.parents)):raise InvalidValue()
-        self.daily=type(configuration) is DailyConfigurationCandidate
+        self.dream=type(configuration) is DreamConfigurationCandidate
+        self.daily=type(configuration) in (DailyConfigurationCandidate,DreamConfigurationCandidate)
+        self.format='DREAM_OPERATION_ADMISSION_V1' if self.dream else 'DAILY_OPERATION_ADMISSION_V1' if self.daily else 'SEMANTIC_OPERATION_ADMISSION_V1'
         self.root=root;self.settings=configuration.text.record('retrieval.semantic_storage');self._lock=threading.RLock()
         values={e.definition.key:e.state.value for e in configuration.foundation.list_entries() if type(e.state) is PresentValue}
         database=values['storage.database_file'];assert type(database) is str
@@ -58,7 +62,7 @@ class SemanticAdmission:
             if not stat.S_ISREG(os.fstat(fd).st_mode) or os.fstat(fd).st_nlink!=1:raise InvalidValue()
             self._fd=fd
             if mode=='CREATE_NEW':
-                header=encode_content(MappingProxyType({'format':'DAILY_OPERATION_ADMISSION_V1' if self.daily else 'SEMANTIC_OPERATION_ADMISSION_V1','binding':self._identity}),1024)+b'\n'
+                header=encode_content(MappingProxyType({'format':self.format,'binding':self._identity}),1024)+b'\n'
                 if os.write(fd,header)!=len(header):raise OSError('Admission header write incomplete.')
                 os.fsync(fd)
                 directory=os.open(root,os.O_RDONLY|os.O_DIRECTORY)
@@ -73,7 +77,7 @@ class SemanticAdmission:
         deadline=time.monotonic()+5
         with os.fdopen(os.dup(self._fd),'rb') as stream:
             stream.seek(0);header=stream.readline(1025)
-            expected=encode_content(MappingProxyType({'format':'DAILY_OPERATION_ADMISSION_V1' if self.daily else 'SEMANTIC_OPERATION_ADMISSION_V1','binding':self._identity}),1024)+b'\n'
+            expected=encode_content(MappingProxyType({'format':self.format,'binding':self._identity}),1024)+b'\n'
             if header!=expected:raise InvalidValue()
             ordinal=0
             offset=stream.tell()
@@ -136,6 +140,12 @@ class SemanticAdmission:
         daily_application=tuple('apply_daily_candidate'+('_history' if h else '')+('_media' if m else '')+('_goals' if g else '')
             for h in (False,True) for m in (False,True) for g in (False,True))
         if self.daily and kind in daily_completion+daily_application:eligible=True
+        dream_completion=('request_dream_abort','pause_dream','abort_background_dream','exit_focused_dream','finish_focused_dream',
+            'finish_background_dream','complete_dream_exit','store_dream_review_result','record_dream_review_failure','finish_dream_review',
+            'discard_dream_review','retire_dream_material','finish_dream_influence','discard_dream_influence',
+            'store_periodic_generation','store_periodic_review','store_periodic_failure','record_periodic_failure','record_periodic_unknown',
+            'keep_periodic_persona','discard_periodic_persona','retire_periodic_material')
+        if self.dream and kind in dream_completion:eligible=True
         if kind=='prepare' and type(values.get('payload')) is str:
             payload=decode_content(string(values['payload']).encode(),24576)
             eligible=type(payload) is dict and payload.get('kind')=='DELETE_LOCAL'

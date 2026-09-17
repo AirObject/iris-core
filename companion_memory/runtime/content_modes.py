@@ -15,6 +15,7 @@ from companion_memory.persistence import (AuditFieldBinding, AuditResultBinding,
     ResultBoundCommandDefinition, SequenceSchema, Committed, Found, Value, RepositoryDefinition, Unconfirmed as StorageUnconfirmed,
     PersistenceService, UnitOfWork, NotFound)
 from companion_memory.persistence.owned_statements import OwnerFailure
+from companion_memory.persistence.deadlines import current_deadline,check_deadline
 from companion_memory.persistence.schema import valid_identifier
 from companion_memory.logging_service import AuditRequirement
 from companion_memory.memory.formats import ID, INT, REVISION, enum, record
@@ -263,7 +264,7 @@ class ContentFocus:
         """Advance finite local FIFO pages; an occupied normal queue keeps DRAINING."""
         from .content_assembly import stable
         from .content_transfer import transfer_entry
-        r = self.runtime; deadline = time.monotonic() + r.settings.integer('runtime.operation_timeout_ms') / 1000
+        r = self.runtime; deadline = current_deadline(r.settings.integer('runtime.operation_timeout_ms') / 1000)
         cursor = ''
         while time.monotonic() < deadline:
             entries = await r.assembly.buffers.rows.read('page', {'after': cursor, 'limit': r.assembly.configuration.candidate.content.integer('memory.read_page_size')})
@@ -273,6 +274,7 @@ class ContentFocus:
                 cursor = entry['entry_id']
                 result = await transfer_entry(r, cursor)
                 if type(result) not in (Committed, Found): return
+        check_deadline()
         if (await r.assembly.buffers.rows.read('all_staged_count', {}))[0]['count']: return
         mode = (await r.assembly.rows.read('mode_get', {'mode_id': 'instance_mode'}))[0]
         if mode['state'] == 'DRAINING' and mode['run_id'] == run:

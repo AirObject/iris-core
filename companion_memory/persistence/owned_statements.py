@@ -98,6 +98,8 @@ class OwnerCauses:
         from .completion import CompletionScope
         prior=await port.resolve_operation(port.recovery_handle(key,command))
         if type(prior) is not NotCommitted or prior.error is not None:return prior,None
+        from .deadlines import check_deadline
+        check_deadline()
         watched,slot=self.watch(definition.operation_kind,freeze_value(definition.input_schema,command.values,owned=True))
         with CompletionScope() as completion:
             try:

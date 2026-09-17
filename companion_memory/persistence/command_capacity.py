@@ -51,6 +51,17 @@ def _issue_daily_configuration_capacity(owner: object) -> ConfigurationInitializ
     return result
 
 
+def _issue_dream_configuration_capacity(owner: object) -> ConfigurationInitializationCapacity:
+    """Issue the new publisher's exception without changing older owner identity."""
+    from companion_memory.configuration.dream_persistence import DreamConfigurationAssembly
+    if type(owner) is not DreamConfigurationAssembly:
+        raise InvalidValue()
+    result=object.__new__(ConfigurationInitializationCapacity)
+    object.__setattr__(result,'_owner',owner)
+    object.__setattr__(result,'_issuer',_ISSUER)
+    return result
+
+
 def declared_capacity(definition: CommandSpec) -> int | None:
     """Validate native identity before declaring or applying the fixed exception."""
     from .definitions import ResultBoundCommandDefinition
@@ -60,10 +71,19 @@ def declared_capacity(definition: CommandSpec) -> int | None:
     from companion_memory.configuration.text_persistence import TextConfigurationAssembly
     from companion_memory.configuration.semantic_persistence import SemanticConfigurationAssembly
     from companion_memory.configuration.daily_persistence import DailyConfigurationAssembly
+    from companion_memory.configuration.dream_persistence import DreamConfigurationAssembly
     if (type(policy) is not ConfigurationInitializationCapacity or getattr(policy, '_issuer', None) is not _ISSUER
-            or type(getattr(policy, '_owner', None)) not in (TextConfigurationAssembly,SemanticConfigurationAssembly,DailyConfigurationAssembly)):
+            or type(getattr(policy, '_owner', None)) not in (TextConfigurationAssembly,SemanticConfigurationAssembly,DailyConfigurationAssembly,DreamConfigurationAssembly)):
         raise InvalidValue()
-    owner = cast(TextConfigurationAssembly | SemanticConfigurationAssembly | DailyConfigurationAssembly, policy._owner)
+    owner = cast(TextConfigurationAssembly | SemanticConfigurationAssembly | DailyConfigurationAssembly | DreamConfigurationAssembly, policy._owner)
+    if type(owner) is DreamConfigurationAssembly:
+        if (owner.commands != (definition,) or owner.commands[0] is not definition
+                or definition.handler != owner._handle or definition.owner_namespace != 'configuration'
+                or definition.operation_kind != 'initialize_dream_configuration'
+                or definition.participants != (owner.repository.definition,)
+                or owner.repository.definition.schema_version != 7):
+            raise InvalidValue()
+        return 2097152
     daily=type(owner) is DailyConfigurationAssembly
     semantic=type(owner) is SemanticConfigurationAssembly
     if (owner.commands != (definition,) or owner.commands[0] is not definition
@@ -89,6 +109,7 @@ def validate_command_values(definition: CommandSpec, values) -> None:
     from companion_memory.configuration.semantic_codec import CONFIGURATION_BODY_LIMIT as SEMANTIC_BODY_LIMIT
     from companion_memory.configuration.semantic_schema import semantic_definitions
     daily=definition.operation_kind=='initialize_daily_configuration'
+    dream=definition.operation_kind=='initialize_dream_configuration'
     semantic=definition.operation_kind=='initialize_semantic'
     limit=SEMANTIC_BODY_LIMIT if semantic else TEXT_BODY_LIMIT
     added={d['key'] for d in semantic_definitions()} if semantic else set()
@@ -106,7 +127,7 @@ def validate_command_values(definition: CommandSpec, values) -> None:
             total+=len(entry['body'].encode('utf-8'))
             if entry['parameter_key'] not in added: inherited+=len(entry['body'].encode('utf-8'))
         if entries_digest(tuple((e['parameter_key'],e['body']) for e in entries))!=domain['digest']:raise InvalidValue()
-    if count!=(130 if daily else 124 if semantic else 118):raise InvalidValue()
+    if count!=(136 if dream else 130 if daily else 124 if semantic else 118):raise InvalidValue()
     if total>limit or inherited>TEXT_BODY_LIMIT:
         from .schema import ValueTooLarge
         raise ValueTooLarge()

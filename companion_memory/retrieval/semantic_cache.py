@@ -4,6 +4,7 @@ Cache operations never dispatch Provider work and never destroy paid artifacts.
 Bindings verify complete input and vector leaves inside the original transaction.
 Expiration removes hit eligibility; bounded collection is a separate command.
 """
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
 from types import MappingProxyType
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -22,10 +23,10 @@ from .semantic_material import cache_key
 
 class SemanticQueryCache:
     """One native retrieval owner's cache participant, with no independent lease."""
-    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredDailyConfiguration,instance: str,
+    def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredCognitionConfiguration,instance: str,
                  reception: ResultBoundCommandDefinition):
         from companion_memory.persistence.semantic_commands import declared
-        if (stored_daily_configuration_issue(configuration) if type(configuration) is StoredDailyConfiguration else stored_semantic_configuration_issue(configuration)) is not None or catalog.definition.owner_module!='retrieval':
+        if (stored_cognition_configuration_issue(configuration,storage=storage) if type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration) else stored_semantic_configuration_issue(configuration)) is not None or catalog.definition.owner_module!='retrieval':
             raise ValueError('The native semantic retrieval configuration is required.')
         if not declared(reception) or reception.operation_kind!='record_result' or reception.owner_namespace!='retrieval':
             raise ValueError('The original artifact reception command is required.')

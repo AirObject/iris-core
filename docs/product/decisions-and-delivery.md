@@ -1,5 +1,8 @@
 # 待细化契约、参数性质与实施组织
 
+
+2026-09-16梦境周期、时间衰减、周期persona及受控管理四项决定已批准，唯一取值与范围见[集中决定](../architecture/dream-and-long-term-maintenance.md#decisions)。本页旧接入补充的管理缺口继续描述旧装配，不否定新梦境装配的窄例外。
+
 日常学习的受控主体登记与保守目标语义合并已获用户明确批准；行为增量分别见[主体来源](../architecture/daily-cognition-and-image-learning.md#33-受控主体与来源)、[目标合并](../architecture/daily-cognition-and-image-learning.md#5-目标语义判断与合并)。指定合成验证实例的[persona导入](../architecture/daily-cognition-and-image-learning.md#persona-import)是独立窄例外；新真实调用授权另记。
 
 > 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
@@ -42,7 +45,7 @@
 
 ### P07. 使用反馈、来源访问与persona发布细节
 
-反馈有效期、修订匹配、幂等强化及删除竞争见[本地信息闭环](../architecture/local-information-feedback.md)；完整来源权限见[受控来源读取](../architecture/formal-memory-source-media.md#sources-candidates)，首次persona审核与原子发布见[文本学习契约](../architecture/model-driven-text-learning.md)。这些细化已批准；周期persona更新、梦境监管与生产管理界面仍待后续契约。
+反馈有效期、修订匹配、幂等强化及删除竞争见[本地信息闭环](../architecture/local-information-feedback.md)；完整来源权限见[受控来源读取](../architecture/formal-memory-source-media.md#sources-candidates)，首次persona审核与原子发布见[文本学习契约](../architecture/model-driven-text-learning.md)。这些细化已批准；周期persona更新与梦境监管见[已批准集中契约](../architecture/dream-and-long-term-maintenance.md#persona)，生产管理界面仍待后续交付。
 
 <a id="source-line-1178"></a>
 
@@ -82,13 +85,13 @@
 | 敏感拒学 | 只清理该轮独占未提交内容；新S3为空；媒体仍定时清理 |
 | 学习事件 | 默认集合、关注信号、内部主动事件；专注梦境暂停普通触发 |
 | 相信程度 | 暂采统一0—100接受量表；50未定，非客观概率 |
-| 保留强度 | 已批准分数、初值与使用反馈见[对象契约](../architecture/formal-memory-source-media.md#objects)和[本地信息闭环](../architecture/local-information-feedback.md)；自动衰减仍待细化 |
+| 保留强度 | 已批准分数、初值与使用反馈见[对象契约](../architecture/formal-memory-source-media.md#objects)和[本地信息闭环](../architecture/local-information-feedback.md)；自动衰减见[已批准长期维护](../architecture/dream-and-long-term-maintenance.md#maintenance) |
 | 遗忘／恢复阈值 | H必须大于F；20／35仅行为示例 |
 | 防抖 | 双阈值；可加保持期和周期降幅限制，数值待配置 |
 | 遗忘保留期 | 可配置；30天仅示例 |
 | persona | 统一摘要，常规更新仅梦境；首次生成纳入初始化 |
 | persona监督 | 外部目标和监管prompt；默认稳定发言风格与充分认识自我 |
-| 梦境周期 | 低频；具体周期、工作预算与异常退出契约待定 |
+| 梦境周期 | 低频；本组合周期、预算及退出见[已批准梦境契约](../architecture/dream-and-long-term-maintenance.md) |
 | 专注期业务访问 | 除原始缓存输入外全部拒绝，明确返回正在梦境中；Web只读状态例外 |
 | 梦境缓存 | 各入口独立，无业务条数上限，只暂存不学习、不媒体理解 |
 | 梦境回流 | 梦境结束后按各入口顺序转正常路径，采用相同三段及终结规则 |

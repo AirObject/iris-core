@@ -41,12 +41,12 @@ def freeze_initial(configuration,provider,initial,run_id,generation,operation,no
     binding=provider.bindings['PERSONA']
     binding_digest=digest(MappingProxyType({'profile':profile,'account':account,'prompt_digest':binding.prompt_digest,'schema_digest':binding.schema_digest,'input_digest':source['input_digest']}))
     metadata={'format_version':1,'object_id':material_id(configuration,run_id,generation),'revision':1,'database_id':configuration.database_id,'instance_id':configuration.scope_id,
-        'config_snapshot_id':configuration.snapshot_id,'created_at_us':now,'updated_at_us':now,'context_version':2,'context_kind':'PERSONA','owner_ref':run_id,
+        'config_snapshot_id':configuration.snapshot_id,'created_at_us':now,'updated_at_us':now,'context_version':3 if provider.ledger.assembly.dream_format else 2,'context_kind':'PERSONA','owner_ref':run_id,
         'batch_id':None,'run_id':run_id,'source_id':None,'state':'STORED','persona_publication_id':None,'persona_revision':None,
         'prompt_ref':role['prompt_ref'],'schema_ref':binding.schema_ref,'transform_ref':settings['transform_ref'],'model_binding_digest':binding_digest,
         'ordered_members':(),'related_objects':(),'wire_digest':sha256(encode_daily_request(binding,body.decode())).hexdigest(),
         'input_token_estimate':None,'reservation_input_bound':262144,'original_operation':operation,'terminal_operation':None}
-    return freeze_material(metadata,body),account,binding_digest
+    return freeze_material(metadata,body,dream_format=provider.ledger.assembly.dream_format),account,binding_digest
 
 def first_run(configuration,provider,initial,epoch,operation,now):
     source=isolate_initial_self(initial);run_id=stable_identity('persona-run',configuration.database_id,configuration.scope_id)
