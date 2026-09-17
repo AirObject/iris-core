@@ -35,7 +35,7 @@ class ContentTransfer:
         if mode['state'] not in ('NORMAL', 'DRAINING'): raise OwnerFailure('MODE_BLOCKED', 'state', 'DREAMING')
         if state['transfer_cursor'] != v['expected_cursor']: raise OwnerFailure('PRECONDITION_FAILED', 'state', 'TRANSFER_CURSOR_CHANGED')
         entry = a.ingress.rows.stage('entry', uow, {'entry_id': eid})[0]
-        platform = a.configuration.candidate.platform(entry['platform_id'])
+        platform = a.execution_configuration.platform(entry['platform_id'])
         count = a.buffers.rows.stage('state_count', uow, {'entry_id': eid, 'state': 'NORMAL'})[0]['count']
         limit = min(a.configuration.candidate.runtime.integer('runtime.transfer_page_size'), platform.count('normal_soft_limit') - count)
         if limit <= 0: raise OwnerFailure('RESOURCE_BUSY', 'state', 'BUFFER_FULL')

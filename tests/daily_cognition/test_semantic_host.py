@@ -97,6 +97,7 @@ class DailySemanticHostTests(unittest.IsolatedAsyncioTestCase):
                 queries=({'query_id':'query-real','text':'合成展板有哪些颜色和形状？','partition_id':partition},
                     {'query_id':'query-fiction','text':'雾港故事里的展板有什么图形？','partition_id':'unused-fiction-partition'})
                 actual=sha256(Path(__file__).read_bytes()).hexdigest()
+                assert host.resources.review is not None
                 activation={'format':'DAILY_SEMANTIC_AUTH_V1','package_id':'daily-fixture','set_id':'fixed-set','instance_id':'instance',
                     'database_id':host.stored.database_id,'config_snapshot_id':host.stored.snapshot_id,'code_digest':actual,
                     'material_digest':sha256(json.dumps((documents,queries),ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'review_digest':host.resources.review.claims['review_digest'],

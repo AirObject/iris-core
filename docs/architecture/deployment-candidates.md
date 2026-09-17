@@ -2,11 +2,11 @@
 
 > 本文件是本主题的现行正文，在此唯一维护。既有要求、已批准契约、建议和待批准事项保持各自状态；迁移不新增产品决定或实现授权。文档关系见[总入口](../INDEX.md)。
 
-适用主题与局部定义：已给定工程约束、容量推导与待验证候选在正文分别保留；一个逻辑模块不等于一个进程或容器。本文不能作为生产选型已获批准或性能已验证的证明；本阶段SQLite验证采用的批准范围见[验证采用契约](#sqlite-validation-candidate)。
+适用主题与局部定义：已给定工程约束、容量推导与待验证候选在正文分别保留；一个逻辑模块不等于一个进程或容器。首期生产选型的批准范围唯一见[部署与管理集中计划](managed-runtime-and-deployment.md#decisions)，不再由本文候选推定；历史SQLite验证范围见[验证采用契约](#sqlite-validation-candidate)。选型批准不等于性能或介质已验证。
 
 设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
-按关联工作联合阅读：[持久化承诺](persistence-and-transactions.md)；[正式决定待批准](implementation-options.md#source-line-1216)；[参考标记](references.md)。
+按关联工作联合阅读：[持久化承诺](persistence-and-transactions.md)；[正式决定及剩余边界](implementation-options.md#source-line-1216)；[参考标记](references.md)。
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 

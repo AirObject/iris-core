@@ -13,6 +13,8 @@ import hashlib
 
 import asyncio
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import replace
 import fcntl
 import os
@@ -36,6 +38,7 @@ from ._codec import (
 from ._settings import Settings, read_settings
 from .definitions import CommandSpec, CommandDefinition, LocalCommand, RepositoryDefinition, StatementDefinition, ResultBoundCommand, ResultBoundCommandDefinition
 from .resources import DatabaseResources
+from .request_effects import current_effects
 from .deadlines import bounded_deadline
 from .results import (
     CloseReport, Committed, ErrorCode, ErrorField, ExecutionResult, Failed, Found,
@@ -47,6 +50,7 @@ from .schema import InvalidValue, Value, ValueTooLarge, decode_value, encode_val
 
 _APPLICATION_ID = 0x49524953
 _FORMAT_VERSION = 1
+_managed_authorization: ContextVar[tuple[object, object, Callable] | None] = ContextVar('managed_authorization', default=None)
 _BASE_SCHEMA = (
     ("application_metadata", "CREATE TABLE application_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton=1), database_id TEXT NOT NULL, format_version INTEGER NOT NULL, assembly BLOB NOT NULL)"),
     ("operation_receipts", "CREATE TABLE operation_receipts (owner_namespace TEXT NOT NULL, operation_kind TEXT NOT NULL, scope_id TEXT NOT NULL, operation_key TEXT NOT NULL, commit_id TEXT NOT NULL UNIQUE, receipt BLOB NOT NULL, PRIMARY KEY(owner_namespace, operation_kind, scope_id, operation_key))"),
@@ -86,6 +90,9 @@ class _Job:
         self.evidence: Committed | None = None
         self.application_identified = False
         self.target_bound = False
+        self.authorization = _managed_authorization.get()
+        self.request_effects = current_effects()
+        self.authorization_repository: RepositoryDefinition | None = None
 
 
 class UnitOfWork:
@@ -327,7 +334,7 @@ class PersistenceService:
     """
 
     def __init__(self, repositories: tuple[RepositoryDefinition, ...], commands: tuple[CommandSpec, ...],
-                 *, assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1', 'DREAM_MAINTENANCE_V1'] = 'LEGACY'):
+                 *, assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1', 'DREAM_MAINTENANCE_V1', 'MANAGED_RUNTIME_V1'] = 'LEGACY'):
         self._repositories, self._commands = repositories, commands
         self._command_map = {(item.owner_namespace, item.operation_kind): item for item in commands}
         from companion_memory.logging_service.audit_materialization import validate_bindings
@@ -335,7 +342,7 @@ class PersistenceService:
             if type(definition) is ResultBoundCommandDefinition:
                 validate_bindings(definition)
         self._history_enabled = any(repo.owner_module == "logging_service" and any(t.name == "logging_object_history" for t in repo.tables) for repo in repositories)
-        self._assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1', 'DREAM_MAINTENANCE_V1'] = assembly_format
+        self._assembly_format: Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1', 'DREAM_MAINTENANCE_V1', 'MANAGED_RUNTIME_V1'] = assembly_format
         self._assembly = assembly_value(repositories, commands, assembly_format=assembly_format)
         self._schema = _BASE_SCHEMA + tuple((table.name, table.sql.strip().rstrip(";")) for repo in repositories for table in repo.tables)
         if (len({name for name, _ in self._schema}) != len(self._schema)
@@ -374,11 +381,30 @@ class PersistenceService:
     def bind_semantic_admission(self,admission) -> None:
         """Bind the single native whole-instance monitor before opening storage."""
         from .semantic_admission import SemanticAdmission
-        if (self._assembly_format not in ('ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') or self._lifecycle!='NEW' or self._semantic_admission is not None
+        if (self._assembly_format not in ('ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') or self._lifecycle!='NEW' or self._semantic_admission is not None
                 or type(admission) is not SemanticAdmission
-                or admission.daily!=(self._assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1'))
-                or admission.dream!=(self._assembly_format=='DREAM_MAINTENANCE_V1')):raise ValueError('Native unopened semantic storage admission required.')
+                or admission.daily!=(self._assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1'))
+                or admission.dream!=(self._assembly_format in ('DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1'))):raise ValueError('Native unopened semantic storage admission required.')
         self._semantic_admission=admission
+
+    def bind_managed_business(self, snapshot: EffectiveSnapshot, admission: object) -> None:
+        """Attach fully validated business resources after protected bootstrap.
+
+        The managed format alone permits this transition. Storage paths and
+        limits must remain identical; no owner, receipt, or database is replaced.
+        The trusted caller first closes new HTTP admission and waits for reads.
+        """
+        from .semantic_admission import SemanticAdmission
+        with self._lock:
+            settings = read_settings(snapshot, managed_paths=True)
+            if (self._assembly_format != 'MANAGED_RUNTIME_V1' or self._lifecycle != 'READY'
+                    or self._writer is not None or self._reads or self._semantic_admission is not None
+                    or type(admission) is not SemanticAdmission or not admission.daily or not admission.dream
+                    or type(settings) is not Settings or settings != self._settings
+                    or any(owner not in ('management', 'backup') for owner in self._module_owners)):
+                raise ValueError('Managed bootstrap is not at its business attachment boundary.')
+            self._snapshot = snapshot
+            self._semantic_admission = admission
 
     def confirm_prior_operation(self, uow: UnitOfWork, definition: CommandSpec, key: str) -> Receipt | None:
         """Confirm one saved prior operation under the current exclusive writer.
@@ -462,10 +488,10 @@ class PersistenceService:
         read the receipt. A business caller cannot choose another instance or a
         different database, and the operation allowlist grants no send authority.
         """
-        if (self._assembly_format not in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') or type(uow) is not UnitOfWork or not self._valid_uow(uow,uow._identity.scope_id)
+        if (self._assembly_format not in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') or type(uow) is not UnitOfWork or not self._valid_uow(uow,uow._identity.scope_id)
                 or not any(definition is d for d in self._commands) or definition.owner_namespace!='provider'
                 or definition.operation_kind not in ('register_daily_request','store_daily_handoff','confirm_daily_handoff','retire_daily_handoff','terminate','recover','evidence')
-                or definition.command_version!=(6 if self._assembly_format=='DREAM_MAINTENANCE_V1' else 5) or not any(r.owner_module=='provider' for r in uow._definition.participants)
+                or definition.command_version!=(6 if self._assembly_format in ('DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') else 5) or not any(r.owner_module=='provider' for r in uow._definition.participants)
                 or not valid_identifier(key) or not valid_identifier(request_id)):raise InvalidValue()
         row=self._sql(uow._job,"SELECT caller_scope FROM provider_requests WHERE scope_id='provider' AND object_id=?",(request_id,)).fetchone()
         if row is None or uow._identity.scope_id not in ('provider',row[0]):raise InvalidValue()
@@ -485,8 +511,8 @@ class PersistenceService:
     def confirm_cognition_consumer_operation(self,uow:UnitOfWork,definition:CommandSpec,key:str,request_id:str) -> Receipt|None:
         """Confirm one declared actual result consumer in the request's own scope."""
         allowed={('goals','store_goal_comparison'),('cognition','store_reasoning_result'),('media','store_daily_image'),('self_model','record_initial_persona_resolution_with_result')}
-        if self._assembly_format=='DREAM_MAINTENANCE_V1':allowed|={('dream','store_dream_review_result'),('self_model','store_periodic_generation'),('self_model','store_periodic_review'),('self_model','store_periodic_failure')}
-        if (self._assembly_format not in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') or type(uow) is not UnitOfWork or not self._valid_uow(uow,'provider')
+        if self._assembly_format in ('DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1'):allowed|={('dream','store_dream_review_result'),('self_model','store_periodic_generation'),('self_model','store_periodic_review'),('self_model','store_periodic_failure')}
+        if (self._assembly_format not in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') or type(uow) is not UnitOfWork or not self._valid_uow(uow,'provider')
                 or not any(definition is d for d in self._commands) or (definition.owner_namespace,definition.operation_kind) not in allowed
                 or not any(r.owner_module==definition.owner_namespace for r in uow._definition.participants)
                 or not valid_identifier(key) or not valid_identifier(request_id)):raise InvalidValue()
@@ -512,13 +538,20 @@ class PersistenceService:
         from companion_memory.configuration.dream_persistence import StoredDreamConfiguration,stored_dream_configuration_issue
         if self._assembly_format=='DAILY_COGNITION_V1':
             return type(configuration) is StoredDailyConfiguration and stored_daily_configuration_issue(configuration) is None
+        if self._assembly_format=='MANAGED_RUNTIME_V1':
+            from companion_memory.configuration.managed_persistence import StoredManagedConfiguration,stored_managed_configuration_issue
+            return type(configuration) is StoredManagedConfiguration and stored_managed_configuration_issue(configuration) is None
         if self._assembly_format=='DREAM_MAINTENANCE_V1':
             return type(configuration) is StoredDreamConfiguration and stored_dream_configuration_issue(configuration) is None
         return False
 
+    def accepts_managed_paths(self) -> bool:
+        """Expose only the fixed format capability, without resource paths or identities."""
+        return self._assembly_format == 'MANAGED_RUNTIME_V1'
+
     def cognition_operation_context(self,uow:UnitOfWork,repository:RepositoryDefinition) -> OperationIdentity:
         """Select the exact native format without granting old-format dream authority."""
-        if self._assembly_format=='DREAM_MAINTENANCE_V1':
+        if self._assembly_format in ('DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1'):
             return self.dream_operation_context(uow,repository)
         return self.daily_operation_context(uow,repository)
 
@@ -533,7 +566,7 @@ class PersistenceService:
         The original daily identity boundary is deliberately unchanged. This
         does not issue a statement, a Provider permission or a new operation.
         """
-        if (self._assembly_format != 'DREAM_MAINTENANCE_V1' or type(uow) is not UnitOfWork
+        if (self._assembly_format not in ('DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') or type(uow) is not UnitOfWork
                 or uow._service is not self or not uow._active
                 or not any(repository is item for item in uow._definition.participants)):
             raise InvalidValue()
@@ -578,7 +611,7 @@ class PersistenceService:
 
     async def read_cognition_origin_receipt(self,identity:OperationIdentity) -> ReadResult[Receipt]:
         """Memory recovery reads only actual memory-writing daily origin receipts."""
-        if (self._assembly_format not in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') or type(identity) is not OperationIdentity or self._resources is None
+        if (self._assembly_format not in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') or type(identity) is not OperationIdentity or self._resources is None
                 or identity.database_id!=self._resources.expected_database_id):
             return Failed(self._error('read_receipt','ACCESS_DENIED','CAPABILITY_MISMATCH','query'))
         definition=self._command_map.get((identity.owner_namespace,identity.operation_kind))
@@ -611,7 +644,7 @@ class PersistenceService:
             "CASE WHEN length(CAST(body AS BLOB))<=8192 THEN body END,"
             "CASE WHEN length(CAST(evidence AS BLOB))<=2048 THEN evidence END "
             "FROM logging_object_history WHERE commit_id=? ORDER BY history_id LIMIT 9", (receipt.commit_id,)).fetchall()
-        check_bundle(receipt, expected, tuple(rows), text_format=self._assembly_format in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1'))
+        check_bundle(receipt, expected, tuple(rows), text_format=self._assembly_format in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1'))
 
     def get_health(self) -> Health:
         """Observe only current in-memory ownership; never perform storage I/O."""
@@ -620,6 +653,62 @@ class PersistenceService:
                        or any(job.cleanup_pending for job in (*self._reads, *((self._writer,) if self._writer else ()))))
             return Health(self._lifecycle, self._reason, int(self._writer is not None), len(self._reads),
                           pending, self._checkpoint_pending, len(self._unresolved))
+
+    @contextmanager
+    def managed_request_permission(self, lease: ModuleOwnerLease, repository: RepositoryDefinition,
+                                   check: Callable[[UnitOfWork], bool]):
+        """Bind trusted request authority to submitted work, including owned timeouts.
+
+        Only the managed identity owner can issue this read capability. During
+        verification its predeclared read statements may inspect the same writer
+        snapshot. No business handler gains access to identity records or writes.
+        SQLite's write lock serializes confirmed revocations with this boundary.
+        """
+        if (self._assembly_format != 'MANAGED_RUNTIME_V1' or not self._owner_valid(lease)
+                or lease._owner != 'management' or repository.owner_module != 'management'
+                or not any(repository is item for item in self._repositories) or not callable(check)):
+            raise ValueError('Managed identity owner required.')
+        token = _managed_authorization.set((self, repository, check))
+        try:
+            yield
+        finally:
+            _managed_authorization.reset(token)
+
+    async def reconcile_managed_provider(self, lease: ModuleOwnerLease, port: OperationPort,
+                                         key: str, command: object) -> ExecutionResult:
+        """Complete only Provider-owned original facts after request authority ends.
+
+        This capability cannot register an attempt, reserve another budget or
+        write a business object. Native Provider handlers still verify original
+        request state, evidence and required audit within the transaction.
+        """
+        allowed = ('evidence', 'settle', 'terminate', 'recover', 'store_daily_handoff',
+                   'confirm_daily_handoff', 'retire_daily_handoff',
+                   'store_embedding_handoff', 'confirm_embedding_handoff', 'retire_embedding_handoff')
+        if (self._assembly_format != 'MANAGED_RUNTIME_V1' or not self._owner_valid(lease)
+                or lease._owner != 'provider' or type(port) is not OperationPort
+                or port._service is not self or self._ports.get(id(port)) is not port
+                or port._definition.owner_namespace != 'provider'
+                or port._definition.operation_kind not in allowed):
+            raise ValueError('An owned original Provider reconciliation is required.')
+        token = _managed_authorization.set(None)
+        try:
+            return await port.execute(key, command)
+        finally:
+            _managed_authorization.reset(token)
+
+    def _check_managed_permission(self, job: _Job, uow: UnitOfWork) -> None:
+        if job.authorization is None:
+            return
+        service, repository, check = job.authorization
+        if service is not self or self._assembly_format != 'MANAGED_RUNTIME_V1':
+            raise _StorageFault(self._error('execute', 'ACCESS_DENIED', 'CAPABILITY_MISMATCH', 'operation'))
+        job.authorization_repository = cast(RepositoryDefinition, repository)
+        try:
+            if check(uow) is not True:
+                raise _StorageFault(self._error('execute', 'ACCESS_DENIED', 'CAPABILITY_MISMATCH', 'operation'))
+        finally:
+            job.authorization_repository = None
 
     def claim_module_owner(self, repository: RepositoryDefinition) -> ModuleOwnerLease | None:
         """Exclusively bind a ready repository owner; no automatic lease stealing."""
@@ -743,12 +832,22 @@ class PersistenceService:
             if not completion.done():
                 completion.set_result(None)
 
+        from companion_memory.configuration.execution_versions import selected_execution
+        execution = selected_execution()
+
         def worker() -> None:
             job.owner = threading.get_ident()
             try:
                 if job.operation != "close":
                     self._check_deadline(job)
-                job.result = work()
+                if execution is not None:
+                    binding = execution.issuer.versions.binding
+                    if self._assembly_format != 'MANAGED_RUNTIME_V1' or binding is None or binding._storage is not self:
+                        raise _StorageFault(self._error(job.operation, 'ACCESS_DENIED', 'CAPABILITY_MISMATCH', 'operation'))
+                    with execution.issuer.use(execution):
+                        job.result = work()
+                else:
+                    job.result = work()
             except _StorageFault as failure:
                 error = self._record_failure(job, failure.error)
                 job.result = Failed(error)
@@ -1039,7 +1138,7 @@ class PersistenceService:
                     or type(mode) is not str or mode not in ("CREATE_NEW", "OPEN_EXISTING")):
                 return Rejected(self._error("initialize", "INVALID_INPUT", "INVALID_SHAPE"))
             started = resources.monotonic()
-            settings = read_settings(snapshot)
+            settings = read_settings(snapshot, managed_paths=self._assembly_format=='MANAGED_RUNTIME_V1')
             if isinstance(settings, PersistenceError):
                 return Rejected(settings)
             if self._writer is not None:
@@ -1129,7 +1228,7 @@ class PersistenceService:
         metadata_columns = self._sql(job, "PRAGMA table_info(application_metadata)").fetchall()
         if {row[1] for row in metadata_columns} != {"singleton", "database_id", "format_version", "assembly"}:
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))
-        assembly_limit = 8388608 if self._assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') else 4194304 if self._assembly_format=='ASYNC_SEMANTIC_V1' else 3145728 if self._assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
+        assembly_limit = 8388608 if self._assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') else 4194304 if self._assembly_format=='ASYNC_SEMANTIC_V1' else 3145728 if self._assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
         rows = self._sql(job, "SELECT database_id, format_version, CASE WHEN typeof(assembly)='blob' AND length(assembly)<=? THEN assembly ELSE NULL END FROM application_metadata WHERE singleton=1", (assembly_limit,)).fetchall()
         if len(rows) != 1 or not valid_identifier(rows[0][0]):
             raise _StorageFault(self._error(job.operation, "FORMAT_UNSUPPORTED", "INITIALIZATION_INCOMPLETE", "format"))
@@ -1320,8 +1419,12 @@ class PersistenceService:
         error = self._state_error("participate")
         if error is not None:
             return self._participant_failure(error)
-        if (type(port) is not StatementPort or self._ports.get(id(port)) is not port or port._service is not self or not self._valid_uow(uow, port._scope)
-                or not any(port._repository is item for item in cast(UnitOfWork, uow)._definition.participants)):
+        permission_read = (type(uow) is UnitOfWork and type(port) is StatementPort and not port._definition.writes
+            and port._repository is uow._job.authorization_repository)
+        checked_scope = uow._identity.scope_id if permission_read and type(uow) is UnitOfWork else port._scope
+        if (type(port) is not StatementPort or self._ports.get(id(port)) is not port or port._service is not self or not self._valid_uow(uow, checked_scope)
+                or not (any(port._repository is item for item in cast(UnitOfWork, uow)._definition.participants)
+                    or (not port._definition.writes and port._repository is cast(UnitOfWork, uow)._job.authorization_repository))):
             return self._participant_failure(self._error("participate", "ACCESS_DENIED", "CAPABILITY_MISMATCH", "operation"))
         assert type(uow) is UnitOfWork
         try:
@@ -1424,6 +1527,11 @@ class PersistenceService:
                 self._configure(job)
                 self._sql(job, "BEGIN IMMEDIATE")
                 job.phase = "transaction"
+                if job.authorization is not None:
+                    permission = UnitOfWork._create(self, job, port._definition, handle.identity, 'permission-check', events)
+                    job.uow = permission
+                    self._check_managed_permission(job, permission)
+                    permission._active = False
                 existing = self._receipt(job, handle.identity)
                 if existing is not None:
                     if (existing.fingerprint != handle.fingerprint or existing.command_version != handle.command_version
@@ -1431,6 +1539,8 @@ class PersistenceService:
                         conflict = True
                         raise _StorageFault(self._error("execute", "IDEMPOTENCY_CONFLICT", "CONTENT_MISMATCH", "operation"))
                     committed = Committed(existing, "EXISTING")
+                    if job.request_effects is not None:
+                        job.request_effects.possible_commit = True
                     with self._lock:
                         job.evidence = committed
                     self._rollback(job)
@@ -1505,7 +1615,14 @@ class PersistenceService:
                     self._check_deadline(job)
                     if any(check() is not True for check in uow._commit_permissions):
                         raise _StorageFault(self._error("execute", "TRANSACTION_FAILED", "PARTICIPANT_REJECTED", "transaction"))
+                    # Management may intentionally consume its own session by
+                    # logout or password rotation. Its pre-handler check holds
+                    # the same exclusive writer lock through COMMIT.
+                    if port._definition.owner_namespace != 'management':
+                        self._check_managed_permission(job, uow)
                     job.phase = "commit"
+                    if job.request_effects is not None:
+                        job.request_effects.possible_commit = True
                     self._sql(job, "COMMIT")
                     job.commit_confirmed = True
                     committed = Committed(receipt, "NEW")

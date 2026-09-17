@@ -111,7 +111,11 @@ class DreamMode:
                 'updated_at_us':max(now,cast(int,run['updated_at_us'])),'last_operation':op}),previous)
         counts=control.storage.transaction_row_changes(uow)
         facts['dream']={'rows_changed':counts['dream'],'targets':targets}
-        if kind not in ('complete_dream_exit','finish_background_dream'):facts['runtime']={'rows_changed':counts['runtime'],'targets':(target('instance_mode',cast(int,mode['epoch'])+1,cast(int,mode['epoch'])),)}
+        if kind not in ('complete_dream_exit','finish_background_dream'):
+            runtime_targets = [target('instance_mode', cast(int, mode['epoch']) + 1, cast(int, mode['epoch']))]
+            if kind == 'start_focused_dream' and control.work_configuration is not None:
+                runtime_targets.append(target(control.work_configuration.key('DREAM', v['run_id']), 1))
+            facts['runtime'] = {'rows_changed': counts['runtime'], 'targets': runtime_targets}
         return result(v['operation_id'],state,facts)
 
     def handle_mode(self,uow,v):

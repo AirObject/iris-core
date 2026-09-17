@@ -68,7 +68,7 @@ def command_descriptor(definition: CommandSpec) -> Value:
     from .command_capacity import declared_capacity
     capacity = declared_capacity(definition)
     if capacity is not None:
-        result['frozen_carrier_policy'] = MappingProxyType({'kind': 'DREAM_CONFIGURATION_INITIALIZATION' if definition.operation_kind=='initialize_dream_configuration' else 'DAILY_CONFIGURATION_INITIALIZATION' if definition.operation_kind=='initialize_daily_configuration' else 'SEMANTIC_CONFIGURATION_INITIALIZATION' if definition.operation_kind=='initialize_semantic' else 'TEXT_CONFIGURATION_INITIALIZATION', 'max_bytes': capacity})
+        result['frozen_carrier_policy'] = MappingProxyType({'kind': 'MANAGED_CONFIGURATION_INITIALIZATION' if definition.operation_kind=='initialize_managed_configuration' else 'DREAM_CONFIGURATION_INITIALIZATION' if definition.operation_kind=='initialize_dream_configuration' else 'DAILY_CONFIGURATION_INITIALIZATION' if definition.operation_kind=='initialize_daily_configuration' else 'SEMANTIC_CONFIGURATION_INITIALIZATION' if definition.operation_kind=='initialize_semantic' else 'TEXT_CONFIGURATION_INITIALIZATION', 'max_bytes': capacity})
     from companion_memory.provider.text_command_policy import declared
     if declared(definition):
         result['input_policy'] = 'TEXT_PROVIDER_MUTATIONS_V3'
@@ -78,7 +78,7 @@ def command_descriptor(definition: CommandSpec) -> Value:
     return MappingProxyType(result)
 
 
-type AssemblyFormat = Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1', 'DREAM_MAINTENANCE_V1']
+type AssemblyFormat = Literal['LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1', 'DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1']
 
 
 def table_descriptor(table: TableDefinition) -> Value:
@@ -97,20 +97,20 @@ def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tup
     and enforces independent descriptor, repository and enclosing byte budgets.
     Readers compare this complete canonical value when opening an existing file.
     """
-    if type(assembly_format) is not str or assembly_format not in ('LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1'):
+    if type(assembly_format) is not str or assembly_format not in ('LEGACY', 'LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1', 'ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1'):
         raise InvalidValue()
     from .command_capacity import declared_capacity
     policies = sum(declared_capacity(command) is not None for command in commands)
     from companion_memory.provider.text_command_policy import declared
     from .semantic_commands import declared as semantic_declared
-    if assembly_format not in ('ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') and any(semantic_declared(command) for command in commands):
+    if assembly_format not in ('ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') and any(semantic_declared(command) for command in commands):
         raise InvalidValue()
-    if assembly_format not in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') and any(declared(command) for command in commands):
+    if assembly_format not in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') and any(declared(command) for command in commands):
         raise InvalidValue()
-    if policies != (1 if assembly_format in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') else 0):
+    if policies != (1 if assembly_format in ('MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') else 0):
         raise InvalidValue()
     expected_initialization={'MODEL_TEXT_LEARNING_V1':'initialize_text_learning',
-        'ASYNC_SEMANTIC_V1':'initialize_semantic','DAILY_COGNITION_V1':'initialize_daily_configuration','DREAM_MAINTENANCE_V1':'initialize_dream_configuration'}.get(assembly_format)
+        'ASYNC_SEMANTIC_V1':'initialize_semantic','DAILY_COGNITION_V1':'initialize_daily_configuration','DREAM_MAINTENANCE_V1':'initialize_dream_configuration','MANAGED_RUNTIME_V1':'initialize_managed_configuration'}.get(assembly_format)
     if any(declared_capacity(c) is not None and c.operation_kind!=expected_initialization for c in commands):
         raise InvalidValue()
     contents: dict[str, Value] = {
@@ -122,11 +122,11 @@ def assembly_value(repositories: tuple[RepositoryDefinition, ...], commands: tup
     if assembly_format == 'LEGACY':
         return encode_value(MappingProxyType(contents), 1048576)
     contents['static_format'] = assembly_format
-    if assembly_format in ('ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1'):
+    if assembly_format in ('ASYNC_SEMANTIC_V1','DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1'):
         for repository in repositories:
             for table in repository.tables:
-                if table.record_schemas:encode_value(table_descriptor(table),8388608 if assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') else 32768)
-        return encode_value(MappingProxyType(contents),8388608 if assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') else 4194304)
+                if table.record_schemas:encode_value(table_descriptor(table),8388608 if assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') else 32768)
+        return encode_value(MappingProxyType(contents),8388608 if assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') else 4194304)
     encoded = encode_value(MappingProxyType(contents), 3145728)
     descriptors = sum(len(encode_value(command_descriptor(command), 1048576)) for command in commands)
     repository_size = len(encode_value(contents['repositories'], 131072))
@@ -140,15 +140,15 @@ def valid_assembly_encoding(data: object, assembly_format: AssemblyFormat) -> bo
     """Validate the chosen bounded canonical carrier before identity comparison."""
     if type(data) is not bytes:
         return False
-    limit = 8388608 if assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') else 4194304 if assembly_format=='ASYNC_SEMANTIC_V1' else 3145728 if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
+    limit = 8388608 if assembly_format in ('DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') else 4194304 if assembly_format=='ASYNC_SEMANTIC_V1' else 3145728 if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1') else 1048576
     try:
         value = decode_value(data, limit)
         keys = {'repositories', 'commands'}
-        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1'):
+        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1'):
             keys.add('static_format')
         if type(value) is not dict or set(value) != keys:
             return False
-        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1') and value['static_format'] != assembly_format:
+        if assembly_format in ('LOCAL_INFORMATION_V1', 'MODEL_TEXT_LEARNING_V1','ASYNC_SEMANTIC_V1', 'DAILY_COGNITION_V1','DREAM_MAINTENANCE_V1','MANAGED_RUNTIME_V1') and value['static_format'] != assembly_format:
             return False
         # The stored blob is compared with the trusted canonical declaration by
         # the caller; decoding here additionally bounds and rejects malformed JSON.

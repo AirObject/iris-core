@@ -20,6 +20,7 @@ def make_dream_host(root,port,credentials,*,with_self=False,connection_factory=N
         from hashlib import sha256
         from companion_memory.persistence.content_codec import encode_content
         from companion_memory.cognition.fixed_memory import FixedReviewAuthority
+        assert resources.review is not None
         claims=dict(resources.review.claims)|{'manifest_digest':sha256(encode_content(tuple(m['content_digest'] for m in self_material()),8192)).hexdigest()}
         resources=replace(resources,review=FixedReviewAuthority(lambda value:dict(value)==claims).grant(claims))
     parsed=resolve_dream_configuration(*inputs(root))

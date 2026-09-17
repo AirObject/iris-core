@@ -26,7 +26,7 @@ class DreamScheduler:
         self.host.checkpoint()
         if self.host.state!='READY' or self.host.combination.dream is None:raise InvalidValue()
         if self.task is not None and not self.task.done():raise OwnerFailure('RESOURCE_BUSY','resource','CLEANUP_PENDING',True)
-        if not self.host.configuration.text.record('dream.schedule')['enabled']:raise OwnerFailure('ACCESS_DENIED','configuration','OPERATION_NOT_GRANTED')
+        if not self.host.execution_configuration.text.record('dream.schedule')['enabled']:raise OwnerFailure('ACCESS_DENIED','configuration','OPERATION_NOT_GRANTED')
         self.enabled=True;self.failure=None;self.wake.clear()
         self.task=asyncio.create_task(self.run())
 
@@ -37,7 +37,7 @@ class DreamScheduler:
         return self.task is None or self.task.done()
 
     async def run(self):
-        settings=self.host.configuration.text.record('dream.schedule')
+        settings=self.host.execution_configuration.text.record('dream.schedule')
         while self.enabled:
             try:await self.tick()
             except OwnerFailure as failure:
@@ -58,7 +58,7 @@ class DreamScheduler:
         if self.busy:raise OwnerFailure('RESOURCE_BUSY','resource','CLEANUP_PENDING',True)
         self.busy=True
         try:
-            with DeadlineScope(time.monotonic()+cast(int,self.host.configuration.text.record('dream.resources')['operation_timeout_ms'])/1000):
+            with DeadlineScope(time.monotonic()+cast(int,self.host.execution_configuration.text.record('dream.resources')['operation_timeout_ms'])/1000):
                 await self.advance()
         finally:self.busy=False
 
@@ -77,8 +77,8 @@ class DreamScheduler:
             # even while a pause, abort or process restart has revoked dispatch.
             if self.enabled:await host.advance_dream()
             return
-        settings=host.configuration.text.record('dream.schedule')
-        due=due_date(control.now(),ZoneInfo(cast(str,host.configuration.text.value('runtime.timezone'))),
+        settings=host.execution_configuration.text.record('dream.schedule')
+        due=due_date(control.now(),ZoneInfo(cast(str,host.execution_configuration.text.value('runtime.timezone'))),
             cast(str,settings['local_time']),cast(str|None,root['last_local_date']))
         if due is None:return
         current=await mode.synchronize();check_deadline()

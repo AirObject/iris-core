@@ -54,6 +54,10 @@ class ContentEntryPort:
     async def accept_event(self, key: object, event: object):
         return await _entry_call(self, 'accept_event', key, event)
 
+    async def confirm_acceptance(self, key: object, event: object):
+        """Read only the original receipt with its exact original event fingerprint."""
+        return await _entry_call(self, 'confirm_acceptance', key, event)
+
     async def run_learning(self, key: object):
         """Prepare media, freeze FIFO input and settle the one original learning work."""
         return await _entry_call(self, 'run_learning', key, None)
@@ -186,6 +190,11 @@ class ContentRuntimeService:
 
     async def execute(self, kind: str, key: str, values: dict[str, object]) -> object:
         """Run a typed original command, retaining only its actual completion."""
+        if self.assembly.work_configuration is not None:
+            versions = self.assembly.work_configuration
+            selected = await versions.command_version(kind, values)
+            with versions.versions.use(selected):
+                return await self._command(kind, key, values, confirm_only=False)
         return await self._command(kind, key, values, confirm_only=False)
 
     async def reply_entry_status(self, entry_id: str, host_id: str) -> MappingProxyType[str, Value]:
@@ -277,7 +286,8 @@ class ContentRuntimeService:
         async def run():
             deadline = self._request_deadline.set(admitted_deadline)
             try:
-                if operation == 'accept_event': return await self.accept(port._entry, cast(str, key), argument)
+                if operation in ('accept_event', 'confirm_acceptance'):
+                    return await self.accept(port._entry, cast(str, key), argument, confirm_only=operation == 'confirm_acceptance')
                 result = await self.learn_entry(port._entry, cast(str, key))
                 self.observations.record_work(port._entry, result)
                 return result
@@ -307,11 +317,11 @@ class ContentRuntimeService:
     def remaining_request(self) -> float:
         return max(0.0, self.request_deadline() - time.monotonic())
 
-    async def accept(self, entry_id: str, key: str, event: object):
+    async def accept(self, entry_id: str, key: str, event: object, *, confirm_only: bool = False):
         value = isolate_media_event(event, self.settings.integer('ingress.event_max_bytes'),
             occurrence_limit=self.assembly.configuration.candidate.content.integer('media.event_occurrence_limit'),
             text_limit=self.assembly.configuration.candidate.content.integer('media.interpretation_text_max_bytes'))
-        if sequence(value['media']) and self.assembly.media is not None:
+        if not confirm_only and sequence(value['media']) and self.assembly.media is not None:
             from companion_memory.media.service import MediaService
             from companion_memory.ingress.events import event_identity
             media = self.assembly.media
@@ -320,7 +330,7 @@ class ContentRuntimeService:
                 message_id, _, _ = event_identity((self.assembly.instance_id, cast(str, entry['host_id']), entry_id), value)
                 await cast(MediaService, media).validate_event_reports(entry_id, message_id, value)
         kind = 'accept_media_event_with_media' if sequence(value['media']) else 'accept_media_event'
-        return await self.execute(kind, stable('acceptance', entry_id, key), {'entry_id': entry_id, 'event': canonical_event(value).decode()})
+        return await (self.confirm_command if confirm_only else self.execute)(kind, stable('acceptance', entry_id, key), {'entry_id': entry_id, 'event': canonical_event(value).decode()})
 
     async def window_has_media(self, entry_id: str) -> bool:
         """Observe the fixed FIFO membership only to choose a predeclared audit mask."""
@@ -329,7 +339,7 @@ class ContentRuntimeService:
         if type(media) is not MediaService: return False
         media = cast(MediaService, media)
         entry = (await self.assembly.ingress.rows.read('entry', {'entry_id': entry_id}))[0]
-        platform = self.assembly.configuration.candidate.platform(cast(str, entry['platform_id']))
+        platform = self.assembly.execution_configuration.platform(cast(str, entry['platform_id']))
         state = (await self.assembly.buffers.rows.read('get', {'entry_id': entry_id}))[0]
         positions = await self.assembly.buffers.rows.read('fifo', {'entry_id': entry_id, 'state': 'NORMAL',
             'limit': platform.count('target_count') + platform.count('recent_context_count')})
@@ -345,7 +355,7 @@ class ContentRuntimeService:
         a=self.assembly;state=(await a.buffers.rows.read('get',{'entry_id':entry_id}))[0]
         if upper is not None and upper>=cast(int,state['next_sequence']):raise InvalidValue()
         entry=(await a.ingress.rows.read('entry',{'entry_id':entry_id}))[0]
-        platform=a.configuration.candidate.platform(cast(str,entry['platform_id']))
+        platform=a.execution_configuration.platform(cast(str,entry['platform_id']))
         positions=await a.buffers.rows.read('fifo',{'entry_id':entry_id,'state':'NORMAL','limit':platform.count('target_count')+platform.count('recent_context_count')})
         if len(positions)<platform.count('target_count')+platform.count('recent_context_count'):return None
         end=cast(int,positions[platform.count('target_count')-1]['entry_seq'])

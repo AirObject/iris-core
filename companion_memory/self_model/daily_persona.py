@@ -199,8 +199,9 @@ class DailyPersona:
                     **{k:run[k] for k in ('self_subject_id','self_revision','prompt_ref','schema_ref','transform_ref')},
                     **{k:output[k] for k in ('requested_model_id','reported_model_id','resolved_model_id')},'generated_at_us':generated,'publication_operation':op})
                 changed.update(state='PUBLISHED',publication_id=pid);self.owner.stage_publication(uow,run,changed,publication)
+                from companion_memory.configuration.managed_persistence import StoredManagedConfiguration
                 from companion_memory.configuration.dream_persistence import StoredDreamConfiguration
-                if type(self.configuration) is StoredDreamConfiguration:
+                if (type(self.configuration) is StoredDreamConfiguration or type(self.configuration) is StoredManagedConfiguration):
                     from .unified_persona import initialize_pointer
                     pointer=initialize_pointer(self,uow,pid,'INITIAL_APPROVED',op,now)
                     targets.append(target(pointer,1))

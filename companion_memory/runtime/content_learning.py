@@ -65,6 +65,10 @@ async def _learn_batch(runtime: ContentRuntimeService, source: MappingProxyType[
     if assembly.daily_format:
         if r.daily_learning is None:
             return Rejected(RuntimeError('CAPABILITY_UNAVAILABLE','run_learning','state','BUSINESS_NOT_IMPLEMENTED'))
+        if assembly.work_configuration is not None:
+            frozen = await assembly.work_configuration.load('BATCH', bid)
+            with assembly.work_configuration.versions.use(frozen):
+                return await r.daily_learning.learn_batch(source,fresh=fresh,admission_event=admission_event)
         return await r.daily_learning.learn_batch(source,fresh=fresh,admission_event=admission_event)
     if assembly.text_format:
         from .text_learning import learn_text

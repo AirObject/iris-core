@@ -1,0 +1,2 @@
+# Linux arm64 CPython 3.12 wheel, matching uv.lock.
+pillow==12.3.0 --hash=sha256:d9c7f76c0673154f044e9d78c8655fb4213f6ca31a836df48b40fe5d187717b9

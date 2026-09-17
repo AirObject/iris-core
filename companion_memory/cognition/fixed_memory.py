@@ -5,7 +5,7 @@ be established. Each member has its own original receipt; a partially completed
 sealed set remains valid across process exits. Creation never writes history.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from collections.abc import Callable
 from dataclasses import dataclass
 from weakref import WeakValueDictionary
@@ -60,7 +60,7 @@ class FixedMemorySets:
     """Cognition's native participant; memory remains the sole source writer."""
     def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredCognitionConfiguration,
                  memory: MemoryTransactions,review: FixedReviewGrant,establishment: ResultBoundCommandDefinition,checkpoint: Callable[[],None]):
-        if ((stored_cognition_configuration_issue(configuration,storage=storage) if type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration) else stored_semantic_configuration_issue(configuration)) is not None or type(memory) is not MemoryTransactions
+        if ((stored_cognition_configuration_issue(configuration,storage=storage) if (type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration) else stored_semantic_configuration_issue(configuration)) is not None or type(memory) is not MemoryTransactions
                 or memory.configuration is not configuration or memory.storage is not storage or memory.semantic is None
                 or type(review) is not FixedReviewGrant or getattr(review,'_issuer',None) is not _ISSUER
                 or type(getattr(review,'_authority',None)) is not FixedReviewAuthority or review._authority._grants.get(id(review)) is not review

@@ -188,7 +188,7 @@ class HistoryBinding:
         self._item_limit, self._item_bytes = item_limit, item_bytes
         self._grants: WeakValueDictionary[int, HistoryInspection] = WeakValueDictionary()
         from companion_memory.persistence._settings import read_settings, Settings
-        selected = read_settings(foundation)
+        selected = read_settings(foundation, managed_paths=storage.accepts_managed_paths())
         if type(selected) is not Settings: raise ValueError('Validated storage query settings are required.')
         self._settings = selected
         self._tasks: set[asyncio.Task] = set()

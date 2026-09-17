@@ -39,14 +39,14 @@ class DailyInitialization:
                 result_schema(('runtime',),('INITIALIZING','COMPLETE')),(catalog.definition,),required,handler,INTENT,bindings))
         self.commands=tuple(commands)
 
-    def bind(self,storage:PersistenceService,database:str,instance:str,binding:str,definitions:tuple,*,create:bool,persona:bool,configuration_key:str,dream_format:bool=False):
+    def bind(self,storage:PersistenceService,database:str,instance:str,binding:str,definitions:tuple,*,create:bool,persona:bool,configuration_key:str,dream_format:bool=False,managed_format:bool=False):
         """Acquire the runtime bootstrap lease before any content owner is bound."""
         if self.bound:raise InvalidValue()
         self.storage=storage;self.database=database;self.instance=instance;self.binding=binding;self.create=create
         self.begin_time=time.time_ns()//1000
         self.steps=(STEPS if persona else STEPS[:-1])+(('dream',) if dream_format else ())
         from .content_assembly import stable
-        self.expected=(('configuration','initialize_dream_configuration' if dream_format else 'initialize_daily_configuration',configuration_key),
+        self.expected=(('configuration','initialize_managed_configuration' if managed_format else 'initialize_dream_configuration' if dream_format else 'initialize_daily_configuration',configuration_key),
             ('runtime','initialize_daily_roots',stable('initialize_daily_roots',configuration_key)),
             ('media','initialize_media_root','media-root'),
             ('runtime','information_initialize_content_runtime',stable('initialize_runtime',instance)),

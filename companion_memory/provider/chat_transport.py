@@ -276,6 +276,26 @@ class ChatTransport:
             value._endpoint.path, context is not None, context)
         return value
 
+    def validate_credential_reference(self) -> bool:
+        """Prepare one protected reference locally; never open a socket or retain bytes.
+
+        Availability is not a remote connectivity, protocol or billing claim.
+        An actual request resolves its own fresh lease before transmission.
+        """
+        if not self._slot.acquire(blocking=False):
+            return False
+        try:
+            result = self._resolver.resolve(*(cast(str, self._settings[key])
+                for key in ('secret_ref', 'secret_revision', 'account_ref')))
+            if type(result) is not Available:
+                return False
+            try:
+                return not result.lease.released
+            finally:
+                result.lease.release()
+        finally:
+            self._slot.release()
+
     def exchange(self, body: bytes, deadline: float, cancellation: CancellationToken) -> WireObservation:
         """Perform one POST; only full framed responses return bounded raw bytes."""
         if self._evidence is not None:self._evidence.request(body)

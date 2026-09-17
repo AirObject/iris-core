@@ -114,7 +114,7 @@ class DreamExpiry:
         run=c.require_dispatch(uow,v['run_id'],v['expected_revision'],v['mode_epoch'])
         if not c.settled(run):raise OwnerFailure('RESOURCE_BUSY','run','RUN_ACTIVE')
         if v['observed_at_us']>now or now>=run['deadline_at_us']:raise OwnerFailure('TIMEOUT','run','DEADLINE_EXCEEDED')
-        if run['objects_used']>=c.configuration.candidate.text.record('dream.resources')['objects_per_run']:
+        if run['objects_used']>=c.execution_configuration().text.record('dream.resources')['objects_per_run']:
             raise OwnerFailure('RESOURCE_BUSY','run','CAPACITY_REACHED')
         self._active=(uow,v,now)
         try:

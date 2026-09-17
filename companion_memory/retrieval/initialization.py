@@ -3,7 +3,7 @@
 The coordinator binds the same durable configuration as every ticket and index
 generation. Recovery checks actual roots and never expires payload implicitly.
 """
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from companion_memory.configuration.information_persistence import StoredInformationConfiguration
 from companion_memory.configuration.text_persistence import StoredTextConfiguration
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
@@ -18,7 +18,7 @@ from .repository import layouts
 class RetrievalOwner:
     """Own all retrieval rows and keep their lease until actual work has ended."""
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService, configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str):
-        self._records = OwnedRecords(catalog, storage, instance_id, layouts(type(configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration,StoredDreamConfiguration)))
+        self._records = OwnedRecords(catalog, storage, instance_id, layouts((type(configuration) is StoredSemanticConfiguration or type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration)))
         self.configuration = configuration
         self.instance_id = instance_id
         lease = storage.claim_module_owner(catalog.definition)

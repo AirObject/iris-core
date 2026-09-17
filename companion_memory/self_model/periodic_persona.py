@@ -152,10 +152,10 @@ class PeriodicPersona:
         facts:dict[str,object]={};targets:list[dict[str,object]]=[];dream_targets:list[dict[str,object]]=[];changed=dict(run);work=None
         if kind==PREPARE:
             if not control.settled(run) or now>=cast(int,run['deadline_at_us']):raise OwnerFailure('PRECONDITION_FAILED','run','RUN_NOT_RESUMABLE')
-            if cast(int,run['model_calls_used'])+2>cast(int,control.configuration.candidate.text.record('dream.resources')['model_calls_per_run']):raise OwnerFailure('RESOURCE_BUSY','run','CAPACITY_REACHED')
+            if cast(int,run['model_calls_used'])+2>cast(int,control.execution_configuration().text.record('dream.resources')['model_calls_per_run']):raise OwnerFailure('RESOURCE_BUSY','run','CAPACITY_REACHED')
             from .periodic_deferral import collect
             pointer,supplied,watermark,cursor,body=collect(self,uow,run)
-            policy=self.configuration.candidate.text.record('self_model.initial_persona')
+            policy=self.control.execution_configuration().text.record('self_model.initial_persona')
             material=freeze_periodic(self,'PERSONA_DREAM',run,body,op,now)
             sid=self.key('dream-step',run['run_id'],run['steps_completed']);wid=self.work_id(run['run_id']);vid=self.key('self-view',wid)
             policy_digest=sha256(encode_content(policy,8192)).hexdigest()

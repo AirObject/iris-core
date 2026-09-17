@@ -11,6 +11,14 @@ from .semantic_management import SemanticManagementPort
 from .semantic_results import outcome,LocalConfirmation
 
 class DailySemanticManagement(SemanticManagementPort):
+    async def run_work(self,work_id:str,*,slot_id:str|None=None,_request_deadline_at:int|None=None,_admission_deadline:float|None=None):
+        from .managed_semantic_authorization import ManagedSemanticAuthorization
+        authorization = self.host.authorization
+        if type(authorization) is ManagedSemanticAuthorization and slot_id is None:
+            slot_id = authorization.slot(work_id)
+        return await super().run_work(work_id, slot_id=slot_id, _request_deadline_at=_request_deadline_at,
+            _admission_deadline=_admission_deadline)
+
     @outcome
     async def resume(self,key:str) -> Receipt:
         self.host.normal()

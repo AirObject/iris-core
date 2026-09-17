@@ -5,7 +5,7 @@ Mode and publication checks fence both read delivery and candidate commitment.
 The capability provides no import, review, generation or editing operation.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass
 from types import MappingProxyType
 import time
@@ -33,6 +33,19 @@ class DailyCurrentPersonaPort:
         owner=getattr(self,'_owner',None)
         if type(owner) is not DailyCurrentPersona or owner.port is not self:return rejected('read_current','boundary')
         return await owner.read(deadline)
+    async def has_publication(self, deadline: float) -> bool:
+        """Observe publication availability during focus without releasing text."""
+        owner = getattr(self, '_owner', None)
+        if type(owner) is not DailyCurrentPersona or owner.port is not self or owner.closed:
+            raise OwnerFailure('INVALID_STATE', 'persona', 'NOT_READY')
+        current = await owner.source.read_current(deadline)
+        if owner.closed or time.monotonic() >= deadline:
+            raise OwnerFailure('TIMEOUT', 'persona', 'DEADLINE_EXCEEDED')
+        if type(current) is Found:
+            return True
+        if type(current) is NotFound:
+            return False
+        raise OwnerFailure('STORAGE_FAILED', 'persona', 'READ_FAILED')
     def verify_current(self,uow:UnitOfWork,publication_id:str,expected_revision:int):
         owner=getattr(self,'_owner',None)
         if type(owner) is not DailyCurrentPersona or owner.port is not self:return rejected('verify_current','boundary')
@@ -52,7 +65,7 @@ class DailyCurrentPersona:
         self.source=source;self.gate=gate;self.closed=False
         port=object.__new__(DailyCurrentPersonaPort);object.__setattr__(port,'_owner',self);self.port=port
     def project(self,current):
-        if type(self.source.configuration) is StoredDreamConfiguration:
+        if (type(self.source.configuration) is StoredDreamConfiguration or type(self.source.configuration) is StoredManagedConfiguration):
             from .periodic_projection import project_current
             return project_current(current)
         return current

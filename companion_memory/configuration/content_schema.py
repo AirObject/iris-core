@@ -71,12 +71,12 @@ CONTENT_REQUIREMENTS = tuple(
 )
 
 
-def matches_content_definition(definition: ParameterDefinition, required: RuntimeRequirement) -> bool:
+def matches_content_definition(definition: ParameterDefinition, required: RuntimeRequirement, *, sensitivity: str = 'public') -> bool:
     """Check exact numeric or path metadata without evaluating submitted hooks."""
     if required.limits is not None:
-        return matches_runtime_definition(definition, required, False)
+        return matches_runtime_definition(definition, required, False, sensitivity=sensitivity)
     if definition.type != 'string' or type(definition.unit) is not NotApplicable or type(definition.range) is not NotApplicable:
         return False
     # Boolean and path declarations have identical non-numeric metadata. Compare
     # that metadata through the shared checker after an internal immutable copy.
-    return matches_runtime_definition(replace(definition, type='boolean'), required, False)
+    return matches_runtime_definition(replace(definition, type='boolean'), required, False, sensitivity=sensitivity)

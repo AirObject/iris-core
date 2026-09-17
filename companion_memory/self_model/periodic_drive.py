@@ -53,7 +53,7 @@ async def step(o,deadline,*,finishing_abort=False):
         if not control.dispatch_enabled:return Found(MappingProxyType({'state':'PAUSED','new_sends':0}))
         information=o.memory.information
         if information is None or o.memory.long_term is None:raise InvalidValue()
-        limits=control.configuration.candidate.text.record('dream.resources')
+        limits=control.execution_configuration().text.record('dream.resources')
         if run['objects_used']<limits['objects_per_run']:
             if o.expiry is not None:
                 expired=await o.expiry.next_due(run);check_deadline()

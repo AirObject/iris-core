@@ -4,7 +4,7 @@ The Provider borrows this capability; it never reads paths or reconstructs a
 media owner. Original file work and decode run on the existing media worker.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 from dataclasses import dataclass
 from hashlib import sha256
@@ -36,7 +36,7 @@ class DailyImages:
     """One original image lease with its own actual completion registry."""
     def __init__(self,media:MediaService):
         from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
-        if type(media) is not MediaService or type(media.configuration) not in (StoredDailyConfiguration,StoredDreamConfiguration):raise InvalidValue()
+        if type(media) is not MediaService or (type(media.configuration) is not StoredDailyConfiguration and type(media.configuration) is not StoredDreamConfiguration and type(media.configuration) is not StoredManagedConfiguration):raise InvalidValue()
         self.media=media;self.views=BoundStatements(media.catalog,media.storage,'provider');self._lease:DailyImageLease|None=None;self._task:asyncio.Task|None=None;self.closed=False
         self._rejection:tuple[Record,ImageRejected]|None=None
 

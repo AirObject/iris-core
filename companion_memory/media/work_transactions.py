@@ -6,7 +6,7 @@ Ordinary oversized success becomes a separately bounded fixed failure; sensitive
 refusal ignores variable response text and can never become an ordinary failure.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 from companion_memory.persistence import UnitOfWork, Value
@@ -145,7 +145,7 @@ class MediaWorkTransactions:
         """Apply only a native daily consumer's already verified original result."""
         owner=self.media;work=owner._get('work',uow,'work_id',work_id)
         from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
-        if type(owner.configuration) not in (StoredDailyConfiguration,StoredDreamConfiguration) or work['revision']!=expected_revision or work['phase'] not in ('REQUEST_ASSOCIATED','REMOTE_UNKNOWN'):
+        if (type(owner.configuration) is not StoredDailyConfiguration and type(owner.configuration) is not StoredDreamConfiguration and type(owner.configuration) is not StoredManagedConfiguration) or work['revision']!=expected_revision or work['phase'] not in ('REQUEST_ASSOCIATED','REMOTE_UNKNOWN'):
             raise OwnerFailure('PRECONDITION_FAILED','revision','WORK_FENCED')
         if request['operation_key']!=work['original_operation_key'] or request['object_id']!=work['provider_request_id'] or request['phase']!='TERMINAL':raise InvalidValue()
         return self._store_effects(uow,work,request,output,request['outcome']=='SENSITIVE_REFUSAL',now_us)

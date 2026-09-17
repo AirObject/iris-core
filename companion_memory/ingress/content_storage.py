@@ -5,7 +5,7 @@ release is rechecked against actual rows and invokes the media owner in the same
 UoW. Receipt identity and immutable acceptance facts outlive released raw text.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import hashlib
 from types import MappingProxyType
 from typing import Protocol, cast

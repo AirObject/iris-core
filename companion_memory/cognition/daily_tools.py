@@ -5,7 +5,7 @@ read grant and one actual operation. Results contain complete selected current
 values and explicit omissions; neither recalls nor model requests are created.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
@@ -46,7 +46,7 @@ class DailyReadTools:
     """One actual local read slot sharing native memory, goals and retrieval owners."""
     def __init__(self,memory:MemoryService,index:LocalIndex,semantic:SemanticQuery,goals:GoalsService,checkpoint):
         if (type(memory) is not MemoryService or type(index) is not LocalIndex or type(semantic) is not SemanticQuery or type(goals) is not GoalsService
-                or type(index.configuration) not in (StoredDailyConfiguration,StoredDreamConfiguration) or index.configuration is not goals.configuration
+                or (type(index.configuration) is not StoredDailyConfiguration and type(index.configuration) is not StoredDreamConfiguration and type(index.configuration) is not StoredManagedConfiguration) or index.configuration is not goals.configuration
                 or index.configuration is not semantic.cache.configuration or not memory.matches_configuration(index.configuration,semantic.work.storage)):
             raise InvalidValue()
         self.memory=memory;self.index=index;self.semantic=semantic;self.goals=goals;self.checkpoint=checkpoint

@@ -6,7 +6,7 @@ values to the logging owner in the same UoW. Source release requires a separatel
 persisted plan and an exact owner bridge; this participant never deletes files.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass
 import hashlib
 from types import MappingProxyType
@@ -83,9 +83,9 @@ class MemoryTransactions:
                  configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str,
                  history: HistoryBinding, sources: SourceParticipants):
         self.long_term:LongTermMemory|None=None
-        self.daily_format=type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration)
-        self.semantic_format=type(configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration,StoredDreamConfiguration)
-        text_format=type(configuration) in (StoredTextConfiguration,StoredSemanticConfiguration,StoredDailyConfiguration,StoredDreamConfiguration)
+        self.daily_format=(type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration)
+        self.semantic_format=(type(configuration) is StoredSemanticConfiguration or type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration)
+        text_format=(type(configuration) is StoredTextConfiguration or type(configuration) is StoredSemanticConfiguration or type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration)
         configuration_valid=(stored_cognition_configuration_issue(configuration,storage=storage) is None and catalog.definition.schema_version==5 and cast(StoredCognitionConfiguration,configuration).scope_id==instance_id) if self.daily_format else (stored_semantic_configuration_issue(configuration) is None and catalog.definition.schema_version==4) if self.semantic_format else (stored_text_configuration_issue(configuration) is None and catalog.definition.schema_version==3) if text_format else type(configuration) is StoredContentConfiguration
         if not configuration_valid or type(history) is not HistoryBinding or history._text_format != text_format:
             raise ValueError('Native persistent configuration and history owner are required.')
@@ -118,9 +118,9 @@ class MemoryTransactions:
         self.information = MemoryInformation(self._information_catalog, self.storage, configuration, self.instance_id, self)
         if self.semantic_format:
             from .semantic_tracking import MemorySemanticCoverage
-            if not (type(configuration) is StoredSemanticConfiguration or type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration):raise InvalidValue()
+            if not (type(configuration) is StoredSemanticConfiguration or type(configuration) is StoredDailyConfiguration or (type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration)):raise InvalidValue()
             self.semantic=MemorySemanticCoverage(self,self.information,cast(str,configuration.candidate.text.record('retrieval.semantic')['space_id']))
-        if type(configuration) is StoredDreamConfiguration:
+        if (type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration):
             from .long_term import LongTermMemory
             self.long_term=LongTermMemory(self)
         return self.information

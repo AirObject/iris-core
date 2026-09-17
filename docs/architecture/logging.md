@@ -14,7 +14,7 @@
 
 返回[文档总入口](../INDEX.md)；实际进度见[工作状态](../work/STATUS.md)。
 
-已批准契约：[统一运行诊断日志：控制台与文件](#runtime-diagnostics-contract)；[集中决定](#runtime-diagnostics-decisions)。[配置补充契约](configuration.md#configuration-additional-validation-contract)已另行批准；实施前仍须落实[Schema与目录规格](#runtime-diagnostics-schema)，G1已批准，G2见[待定事项](#runtime-diagnostics-prerequisite-decisions)。本文件为唯一维护正文。
+已批准契约：[统一运行诊断日志：控制台与文件](#runtime-diagnostics-contract)；[集中决定](#runtime-diagnostics-decisions)。[配置补充契约](configuration.md#configuration-additional-validation-contract)已另行批准；实施前仍须落实[Schema与目录规格](#runtime-diagnostics-schema)，G1已批准，G2见[生产前置状态](#runtime-diagnostics-prerequisite-decisions)。本文件为唯一维护正文。
 
 已批准契约：[同事务审计详细契约](#transactional-audit-contract)，已随[持久化事务基础整体决定](persistence-and-transactions.md#persistence-foundation-decisions)获批；运行诊断L1–L4的批准范围不变。
 
@@ -244,7 +244,7 @@ M15的受限、静态白名单验证能力已另行获批：执行明确标识�
 
 <a id="runtime-diagnostics-schema"></a>
 
-**日志实施前置规格：共同Schema元信息与逐项差异。** 上表20个完整键、类型、默认值、范围和日志行为已批准，配置§11.11的C1–C4也已另行批准；本段不改它们。下列具体表示及定义匹配细节已作为G1成组批准；目录事实、分级与资源核验仍归待定G2，不阻止明确合成夹具的纯内存验证。说明性文字已在本轮补齐，不作为逐项审批清单。每项定义由上表对应键、下列共同元信息及差异行组成，字段没有隐含省略；存在待定字段不等于可注册完整生产Schema，不能将文档中的“待定”传入注册表。
+**日志实施前置规格：共同Schema元信息与逐项差异。** 上表20个完整键、类型、默认值、范围和日志行为已批准，配置§11.11的C1–C4也已另行批准；本段不改它们。下列具体表示及定义匹配细节已作为G1成组批准；目录事实、分级与资源核验仍归G2，不阻止明确合成夹具的纯内存验证。说明性文字已在本轮补齐，不作为逐项审批清单。每项定义由上表对应键、下列共同元信息及差异行组成，字段没有隐含省略；存在待定字段不等于可注册完整生产Schema，不能将文档中的“待定”传入注册表。
 
 | §11.9字段 | 共同定义及逐项取值位置 | 依据／状态 |
 | --- | --- | --- |
@@ -252,7 +252,7 @@ M15的受限、静态白名单验证能力已另行获批：执行明确标识�
 | owner_module、consumers | 分别为`logging_service`和`["logging_service"]` | 既有owner／consumer；列表是完整生产定义建议，消费权限并不由自报声明授予 |
 | schema_revision | 建议统一`runtime_logging`，仅作不透明Schema标识；不含任务编号，不代表配置值、快照或激活revision | G1已批准该表示；匹配不依赖这个具体字符串 |
 | required、nullable、scope、override_policy | 分别为true、false、`["instance"]`、`no_override` | 已批准；file_enabled=false也不豁免必需值 |
-| sensitivity | 除file_directory外统一`public`，其中module_levels仅含已限定的模块名与等级，不接收任意对象字段；file_directory须经G2确认，不预填public | 普通数值／枚举public及G1完整逐类型表示已批准；目录分级仍待定 |
+| sensitivity | 除file_directory外统一`public`，其中module_levels仅含已限定的模块名与等级，不接收任意对象字段；file_directory须经G2确认，不预填public | 普通数值／枚举public及G1完整逐类型表示已批准；生产分级见G2 |
 | read_roles、write_roles | 两者均为`["trusted_operator"]`，仅表示既定“可信运维读写”；G1已批准该标识，不声明成员、不建立角色继承或权限实现 | 角色范围及G1具体绑定标识已批准；不可用空列表冒充决定 |
 | apply_mode、activation_group | 采用`INITIALIZE_ONLY`及NotApplicable("日志服务仅在初始化时取得完整配置，不参与在线激活分组。")；前者表示重建日志服务实例后方可采用新值，不要求或声称执行进程重启 | 初始化生效行为及G1表示已批准，不扩充全局apply_mode封闭枚举 |
 | unit | 差异表有单位者用Declared(对应标识)；其余为NotApplicable("该参数为开关或文本选择，不使用计量单位。") | 量纲承接已批准行为，G1标识拼写已批准 |
@@ -291,28 +291,28 @@ M15的受限、静态白名单验证能力已另行获批：执行明确标识�
 
 <a id="runtime-diagnostics-directory-sources"></a>
 
-**五类受保护目录的来源核对。** [现行部署候选§2.3](deployment-candidates.md#source-line-123)是一份候选容器布局，并非真实挂载清单或目录存在性证明；下表路径仅复述候选，不成为默认值。资源持久化归[I01](ownership.md#i01)，可信启动装配方须从最终确认的同一部署布局提供§11.11的完整清单；不从日志参数推算或反向发现业务路径。
+**五类受保护目录的来源核对。** 首期生产布局与安全分级已批准，唯一见[生产目录契约](managed-runtime-and-deployment.md#storage)。布局批准不是真实挂载或目录存在性证明。资源持久化归[I01](ownership.md#i01)，可信装配方须提供§11.11的实际完整清单；不从日志参数反向推算业务路径。
 
-| 输入类别 | 现行来源及可知内容 | 缺少的信息与最小建议（待确认G2） |
+| 输入类别 | 来源与关系 | 装配时必须核实 |
 | --- | --- | --- |
-| media | 候选有`/data/blobs/sha256/`及`/data/upload_staging/`；前者为原始媒体，后者为未提交上传 | 实际媒体根、暂存及其他媒体落地目录未确认；建议同时覆盖正式blob与上传暂存，不能只保护hash叶目录 |
-| database | 候选`/data/db/`容纳权威库及WAL等伴随文件，SQLite仍为候选 | 实际库所在目录与其他伴随／临时落地位置未确认；建议由基础设施给出完整受保护目录，不要求本轮选择数据库实现 |
-| audit | [审计事务](persistence-and-transactions.md#t13)要求同业务事务保存；I01承载审计持久化，候选另有可选`/data/audit_exports/` | 实际审计存放目录及是否启用导出未确认；若同库则复用已确认database目录，并加入实际启用的导出目录，不能只填导出目录代替审计正文所在目录 |
-| provider_usage | [Provider拥有持久账本](../modules/provider.md#contract)，I01承载其持久化；候选没有独立账本目录 | 实际是否同库及其他账本落地目录未确认；若同库可重复列入database目录，不凭空创建usage专属路径 |
-| backup | [备份边界](persistence-and-transactions.md#source-line-226)要求覆盖数据库、媒体与必要配置；候选目录树未列备份目的地 | 备份目的目录、暂存／导出位置及是否只有远端存储均未知；建议明确提供所有本地备份落地目录。仅远端或尚无布局不能伪填空列表，须先解决与已批准非空目录输入的衔接 |
+| media | 生产布局的原始媒体与上传暂存 | 全部实际落地根，不只hash叶目录 |
+| database | 权威SQLite及WAL／SHM／临时位置 | 完整同命名空间清单、文件身份及单进程占用 |
+| audit | [同事务审计](persistence-and-transactions.md#t13)复用业务数据库 | 同库事实、可选导出是否禁用；启用时另纳入实际导出位置 |
+| provider_usage | [Provider账本](../modules/provider.md#contract)复用权威数据库 | 同库事实及其他实际落地位置，不凭空制造独立usage目录 |
+| backup | 生产布局的完成备份与暂存 | 全部本地落地位置，不以空列表或共同父目录代替 |
 
-此外，日志自己的候选位置为`/data/logs/runtime/`，仍不是file_directory的默认或已选生产值。最终清单须提供日志服务实际使用的同一文件系统命名空间中的绝对目录；候选的尾部斜线只是目录展示，不直接当作§11.11的规范输入。宿主挂载、真实存在性、符号链接／别名、可写与独占均未在本轮核验；原有资源准备检查不减免。不能将整个共同数据父目录填作某一类别来掩盖未知布局，否则可能与合法兄弟目录的日志位置产生祖先重合。
+日志自身路径同样由上述生产布局提供；最终清单使用日志实际可见命名空间中的规范绝对目录。真实存在性、符号链接／别名、可写与独占仍须逐项核验，不能将共同数据父目录填作某一类别来掩盖未知布局。旧public合成路径格式仍按原批准规则验证，不能作为新生产路径的安全分级。
 
 <a id="runtime-diagnostics-prerequisite-decisions"></a>
 
-**前置事项状态（G1已批准，G2待定）：**
+**前置事项状态（G1已批准；G2生产方案已批准，实际资格仍待验证）：**
 
 | 事项 | 最小建议与界限 |
 | --- | --- |
 | G1 Schema表示与定义匹配（已批准） | 已成组批准上述标识表示、非路径字段分级和可信运维角色绑定，以及[LOGGING_DEFINITION_MISMATCH比较口径](configuration.md#configuration-logging-definition-match)。采用runtime_logging、INITIALIZE_ONLY、trusted_operator及差异表单位标识；不逐条批准普通说明文字，不将不透明schema_revision变成准入版本号，不收紧已批准依赖语义 |
-| G2 部署目录与路径安全分级（待定） | 由部署方提供日志目录及五类受保护目录的真实清单，确认同库关系、可选导出、备份／暂存和同一命名空间；候选可供选择但本轮不选生产路径。确认file_directory是否确属可按public处理的非秘密路径；若需非public，保持真实分级并另补能力，不降低标签通过解析 |
+| G2 部署目录与路径安全分级（已批准） | [生产目录与非public路径能力](managed-runtime-and-deployment.md#storage)是唯一方案；实际清单、同库关系、权限／别名／资源核验仍为交付前置，不能把批准写成已验证 |
 
-G1已批准；G2真实目录、路径敏感分级及真实资源核验仍是生产装配前置。本轮授权范围仅为配置模块的纯内存校验，可用明确非秘密的public合成路径、完整合成Schema与五类目录清单验证，不创建这些目录，不把夹具变为生产默认或真实安全分级。已批准默认及匹配依据在配置模块内统一维护，不从文档读取运行规则、不建日志私有配置副本、不自动注册参数。未授权日志服务、真实资源准备、生产装配、加载、持久化、权限或热修改；日志服务验收例子仍不代表已执行。
+G1既有public合成验证范围保持；新生产实现使用独立明确的格式与能力，不放宽旧定义匹配。已批准默认及匹配依据仍在配置模块唯一维护，不从文档读取运行规则、不建日志私有配置副本、不把夹具变为生产证明。具体实施前置见[CURRENT_TASK](../work/CURRENT_TASK.md)。
 
 <a id="runtime-diagnostics-results"></a>
 

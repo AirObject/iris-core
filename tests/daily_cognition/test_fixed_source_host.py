@@ -22,6 +22,7 @@ class FixedSourceHostTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIs(type(await host.initialize('CREATE_NEW')),Found)
                 self.assertIs(type(await host.register_entry('register','entry','host','sample_platform','external')),Committed)
                 if host.fixed is None or host.stored is None:raise AssertionError()
+                assert host.resources.review is not None
                 fixed=host.fixed;claims=host.resources.review.claims
                 def envelope(kind,key,payload):return fixed.envelope(kind,key,MappingProxyType(payload),1)
                 config={'database_id':host.stored.database_id,'instance_id':'instance','snapshot_id':host.stored.snapshot_id}

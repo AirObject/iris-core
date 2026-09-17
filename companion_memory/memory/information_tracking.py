@@ -5,7 +5,7 @@ Acknowledgements compare the current revision and never move an uncovered start
 forward when a later edit coalesces into an already pending object.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .transactions import MemoryTransactions

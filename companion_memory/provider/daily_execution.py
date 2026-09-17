@@ -18,6 +18,8 @@ from .chat_protocol import UsageObservation
 if TYPE_CHECKING:
     from .daily_service import DailyProvider
     from companion_memory.media.daily_image import DailyImageLease
+    from companion_memory.configuration.execution_versions import ExecutionVersion
+    from .chat_transport import ChatTransport
 
 @dataclass(frozen=True,slots=True,init=False)
 class DailyRequest:
@@ -32,6 +34,8 @@ class DailyRequest:
     binding:DailyChatBinding|DreamChatBinding
     account:Record
     profile:Record
+    execution_version:ExecutionVersion|None
+    transport:ChatTransport
 
 
 def row(value:object) -> Record:
@@ -70,7 +74,7 @@ def registration(request:DailyRequest,budget:Record,now:str) -> tuple[Mutation,.
         'attribution':{'run_id':description['work_id'],'entry_ids':description['entry_ids'],'parent_request_id':None,'trace_id':None,
             'batch_id':request.batch_id,'dream_run_id':description['work_id'] if type(request.binding) is DreamChatBinding else None,'prompt_revision':request.binding.prompt_digest},
         'source':'REMOTE_PROVIDER','configuration_origin':'PERSISTED_CONFIGURATION','config_snapshot_id':config['snapshot_id'],
-        'profile_revision':identity('daily-profile',config['snapshot_id'],cast(str,profile['profile_id'])),
+        'profile_revision':request.execution_version.version_id if request.execution_version is not None else identity('daily-profile',config['snapshot_id'],cast(str,profile['profile_id'])),
         'price_revision':None if account['price'] is None else as_record(account['price'])['revision_ref'],'execution_evidence':{'profile':profile,'account':account,
             'request_timeout_ms':60000,'retry_delay_ms':0,
             'request_max_bytes':2097152 if role=='MEDIA' else 1048576,'result_max_bytes':40960},

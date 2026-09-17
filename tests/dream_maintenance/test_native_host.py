@@ -53,6 +53,7 @@ class NativeDreamHostTests(unittest.IsolatedAsyncioTestCase):
                 from companion_memory.self_model.current import Available
                 self.assertIs(type(current),Available,current)
                 if type(current) is Available:self.assertEqual(current.value['projection_version'],'PERIODIC_PERSONA_V1')
+                assert host.resources.review is not None
                 fixed=host.fixed;claims=host.resources.review.claims
                 def envelope(kind,key,payload):return fixed.envelope(kind,key,MappingProxyType(payload),1)
                 config={'database_id':host.stored.database_id,'instance_id':'instance','snapshot_id':host.stored.snapshot_id}

@@ -23,6 +23,7 @@ async def run(root:Path,mode:str):
             if type(await host.register_entry('register','entry','host','sample_platform','external')) is not Committed:raise AssertionError('Entry')
             fixed=host.fixed
             if fixed is None:raise AssertionError('Missing fixed owner')
+            assert host.resources.review is not None
             claims=host.resources.review.claims
             def env(kind,key,payload):return fixed.envelope(kind,key,MappingProxyType(payload),1)
             config={'database_id':host.stored.database_id,'instance_id':'instance','snapshot_id':host.stored.snapshot_id}

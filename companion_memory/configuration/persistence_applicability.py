@@ -13,7 +13,7 @@ from .snapshots import EffectiveSnapshot, PresentValue
 type PersistenceApplicabilityIssue = Literal["SNAPSHOT_REQUIRED", "DEFINITION_MISMATCH", "CAPABILITY_MISSING", "VALUE_INVALID"]
 
 
-def persistence_snapshot_issue(snapshot: object, *, audit_only: bool = False) -> PersistenceApplicabilityIssue | None:
+def persistence_snapshot_issue(snapshot: object, *, audit_only: bool = False, managed_paths: bool = False) -> PersistenceApplicabilityIssue | None:
     """Inspect native entries in definition, capability, then value order.
 
     audit_only selects the audit consumer's two declared parameters. This does
@@ -28,7 +28,11 @@ def persistence_snapshot_issue(snapshot: object, *, audit_only: bool = False) ->
         if entry is None or not _matches_persistence_definition(entry.definition, requirement):
             return "DEFINITION_MISMATCH"
     definitions = tuple(entries[item.key].definition for item in requirements)
-    if _check_persistence_capabilities(definitions) is not None:
+    if managed_paths:
+        from .managed_resolution import _managed_common
+        if any(_managed_common(d) is not None for d in definitions):
+            return "CAPABILITY_MISSING"
+    elif _check_persistence_capabilities(definitions) is not None:
         return "CAPABILITY_MISSING"
     for requirement in requirements:
         entry = entries[requirement.key]

@@ -43,6 +43,7 @@
 
 ## 当前跨模块契约
 
+[可部署、可管理的首期产品](architecture/managed-runtime-and-deployment.md)：四组产品／存储决定已批准，将引导、身份、管理Web、配置激活、备份恢复及兼容升级合为一个交付；现行范围见正文，验收、提交及停止点只在CURRENT_TASK维护。
 
 [梦境整理、长期维护与周期persona](architecture/dream-and-long-term-maintenance.md)：用户已批准完整实施、四项产品决定及必要真实请求；包含统一宿主、增量影响、衰减／删除、周期发布、管理例外、恢复及集中验收。当前实施范围与基线以CURRENT_TASK为准。
 
@@ -58,7 +59,7 @@
 
 ## 工作记录
 
-[剩余交付路线](architecture/implementation-options.md#source-line-1202)只在实施顺序正文维护。语义检索工程及真实小包已完成技术验收，已批准技术规则与固定材料保留于[集中契约](architecture/async-embedding-semantic-retrieval.md)，结果和限制见STATUS。[日常认知与图片学习](architecture/daily-cognition-and-image-learning.md)已提交并保留真实验证限制；[梦境与长期维护](architecture/dream-and-long-term-maintenance.md)已完成工程技术验收，实施进度与下一动作只在CURRENT_TASK维护。音视频测试及旧质量问题仍暂缓。协作分工只维护于[AGENTS.md](../AGENTS.md)。
+[剩余交付路线](architecture/implementation-options.md#source-line-1202)只在实施顺序正文维护。语义检索工程及真实小包已完成技术验收，已批准技术规则与固定材料保留于[集中契约](architecture/async-embedding-semantic-retrieval.md)，结果和限制见STATUS。[日常认知与图片学习](architecture/daily-cognition-and-image-learning.md)已提交并保留真实验证限制；[梦境与长期维护](architecture/dream-and-long-term-maintenance.md)已验收提交，部署与管理工程范围见[集中契约](architecture/managed-runtime-and-deployment.md)，实施进度与下一动作只在CURRENT_TASK维护。音视频测试及旧质量问题仍暂缓。协作分工只维护于[AGENTS.md](../AGENTS.md)。
 
 [暂缓问题](work/DEFERRED_ISSUES.md)是暂缓事项状态、事实及后续建议的唯一维护位置。
 

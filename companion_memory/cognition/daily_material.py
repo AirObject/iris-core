@@ -35,11 +35,13 @@ DREAM_MANIFEST=RecordSchema(tuple(
 DREAM_ROOT_TABLE=replace(ROOT_TABLE,schemas=(DREAM_MANIFEST,))
 DREAM_TABLES=(DREAM_ROOT_TABLE,LEAF_TABLE)
 
-def context_catalog(*, dream_format: bool = False):
+def context_catalog(*, dream_format: bool = False, managed_format: bool = False):
     """Bind complete root and leaf bodies to the new independent static format."""
     from companion_memory.persistence import StatementDefinition,TableDefinition
     from companion_memory.persistence.owned_statements import StatementCatalog
-    catalog=daily_catalog('cognition',5,DREAM_TABLES if dream_format else TABLES)
+    from .managed_material_versions import TABLE as VERSION_TABLE
+    if managed_format and not dream_format:raise ValueError('Managed materials require dream format.')
+    catalog=daily_catalog('cognition',5,(DREAM_TABLES if dream_format else TABLES) + ((VERSION_TABLE,) if managed_format else ()))
     key=RecordSchema((Field('object_id',ID),Field('context_id',ID)))
     remove=StatementDefinition("DELETE FROM cognition_learning_context_leaves WHERE scope_id=:scope_id AND object_id=:object_id AND json_extract(body,'$.context_id')=:context_id RETURNING object_id",key,RecordSchema((Field('object_id',ID),)),True)
     shared_key=RecordSchema((Field('caller_scope',ID),Field('object_id',ID)))

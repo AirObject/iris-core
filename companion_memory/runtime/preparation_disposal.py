@@ -69,7 +69,7 @@ class PreparationDisposal:
         source = decode_preparation(preparation['manifest'])
         if a.daily_format and a.daily_input_failures is not None and a.daily_input_failures.rejected_preparation(uow,sequence(source['ordered_members'])):
             return 'INVALIDATED'
-        platform = a.configuration.candidate.platform(source['platform_id'])
+        platform = a.execution_configuration.platform(source['platform_id'])
         selected = a.buffers.select(uow, preparation['entry_id'], platform.count('history_context_count'), platform.count('target_count'), platform.count('recent_context_count'))
         if selected != tuple((record(member)['role'], record(member)['message_id']) for member in sequence(source['ordered_members'])):
             return 'INVALIDATED'

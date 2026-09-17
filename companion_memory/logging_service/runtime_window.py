@@ -14,9 +14,11 @@ import secrets
 from threading import RLock
 import time
 from types import MappingProxyType
-from typing import cast
+from typing import cast, TYPE_CHECKING
 
 from companion_memory.configuration import ConfigurationCandidate,runtime_snapshot_issue
+if TYPE_CHECKING:
+    from companion_memory.configuration.managed_resolution import ManagedConfigurationCandidate
 from companion_memory.persistence.schema import valid_identifier
 from ._encoding import _EncodedEvent
 from ._events import _Record
@@ -84,8 +86,10 @@ def _reader_window(reader:object):
 
 class RuntimeLogWindow:
     """One current-process bounded window with independent output/query lifecycle."""
-    def __init__(self,candidate:ConfigurationCandidate,instance_id:str):
-        if runtime_snapshot_issue(candidate) is not None or not valid_identifier(instance_id):
+    def __init__(self,candidate:ConfigurationCandidate | ManagedConfigurationCandidate,instance_id:str):
+        from companion_memory.configuration.managed_resolution import ManagedConfigurationCandidate, managed_snapshot_issue
+        issue = managed_snapshot_issue(candidate) if type(candidate) is ManagedConfigurationCandidate else runtime_snapshot_issue(candidate)
+        if issue is not None or not valid_identifier(instance_id):
             raise ValueError('A complete runtime configuration and instance binding are required.')
         settings=candidate.runtime
         self._capacity=settings.integer('logging.web_window_events')

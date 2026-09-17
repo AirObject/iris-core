@@ -71,6 +71,10 @@ async def verify_mixed_ledger(provider):
 
     async for request in pages('requests'):
         requests+=1;role=request['task_role'];profile=profiles.get(request['profile_id']);account=accounts.get(request['account_id'])
+        if provider.managed_versions is not None:
+            # Ledger decoding has already verified this immutable evidence
+            # against its configuration-owner-issued original version.
+            profile=as_record(as_record(request['execution_evidence'])['profile'])
         if profile is None or account is None or role not in owners:raise OwnerFailure('STORAGE_FAILED','storage','INTEGRITY_FAILURE')
         evidence=as_record(request['execution_evidence']);embedding=request['capability']=='EMBEDDING'
         prefix='embedding' if embedding else 'daily'

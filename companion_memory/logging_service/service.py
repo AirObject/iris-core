@@ -129,6 +129,20 @@ class Service:
                 return LoggingErr(LoggingError(checked.code, checked.operation, checked.field, checked.reason))
             return LoggingOk(Logger(self, checked))
 
+    def attach_observation_window(self, window: RuntimeLogWindow) -> None:
+        """Trusted one-time attachment after protected bootstrap gains business settings.
+
+        Collection starts at attachment; it never backfills raw files or promises
+        earlier coverage. Replacing a generation requires closing this service.
+        """
+        if type(window) is not RuntimeLogWindow:
+            raise TypeError('A native diagnostic window is required.')
+        with self._lock:
+            if self._state != 'READY' or self._execution is None or self._observation_window is not None:
+                raise ValueError('Diagnostic attachment is unavailable.')
+            self._observation_window = window
+            self._execution.queues.observation_window = window
+
     def _emit(self, module: str, event: object) -> LoggingResult[EmitReceipt]:
         with self._lock:
             error = self._state_error("emit")

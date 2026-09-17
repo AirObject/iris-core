@@ -11,6 +11,7 @@ import asyncio
 import time
 from typing import cast
 from types import MappingProxyType
+from companion_memory.configuration.managed_persistence import StoredManagedConfiguration, stored_managed_configuration_issue
 from companion_memory.configuration.dream_persistence import StoredDreamConfiguration
 from companion_memory.persistence import Found,NotFound,UnitOfWork
 from companion_memory.persistence.daily_records import DailyRows,identity
@@ -31,7 +32,7 @@ from .daily_persona import DailyPersona
 def initialize_pointer(source,uow:UnitOfWork,publication_id:str,origin:str,operation:Record,now:int):
     """Join the first actual publication; absence on reopen never authorizes repair."""
     config=source.configuration
-    if type(config) is not StoredDreamConfiguration:raise InvalidValue()
+    if (type(config) is not StoredDreamConfiguration and type(config) is not StoredManagedConfiguration):raise InvalidValue()
     rows=DailyRows(source.catalog,TABLES,source.storage,config.database_id,config.scope_id,config.snapshot_id)
     key=identity('current-persona',config.database_id,config.scope_id)
     if rows.get('current_persona',uow,key) is not None:raise OwnerFailure('PRECONDITION_FAILED','persona','ALREADY_PUBLISHED')
@@ -43,7 +44,7 @@ def initialize_pointer(source,uow:UnitOfWork,publication_id:str,origin:str,opera
 
 class UnifiedPersona:
     def __init__(self,source:ApprovedPersonaImport|DailyPersona,memory):
-        if type(source) not in (ApprovedPersonaImport,DailyPersona) or not source.bound or type(source.configuration) is not StoredDreamConfiguration:raise InvalidValue()
+        if type(source) not in (ApprovedPersonaImport,DailyPersona) or not source.bound or (type(source.configuration) is not StoredDreamConfiguration and type(source.configuration) is not StoredManagedConfiguration):raise InvalidValue()
         self.source=source;self.memory=memory;self.configuration=source.configuration;self.storage=source.storage
         self.catalog=source.catalog;self.rows=DailyRows(self.catalog,TABLES,self.storage,self.configuration.database_id,self.configuration.scope_id,self.configuration.snapshot_id)
         self.pointer_id=identity('current-persona',self.configuration.database_id,self.configuration.scope_id)

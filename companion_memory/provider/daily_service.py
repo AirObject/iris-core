@@ -5,7 +5,7 @@ worker. Native material and business authority are rechecked in registration;
 local confirmation and retirement never dispatch HTTP or create another key.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from companion_memory.persistence.schema import InvalidValue
 import asyncio
 from collections.abc import Callable
@@ -58,6 +58,16 @@ class _Pending:
 
 class DailyProvider(EmbeddingProvider):
     """The sole ledger and transport owner for a complete native daily assembly."""
+    @property
+    def profiles(self) -> tuple[Record,...]:
+        from .managed_versions import profiles
+        versions = getattr(self, 'managed_versions', None)
+        return profiles(versions.versions.current.candidate) if versions is not None else self._birth_profiles
+
+    @profiles.setter
+    def profiles(self, value: tuple[Record,...]) -> None:
+        self._birth_profiles = value
+
     def __init__(self,ledger:LedgerBinding,configuration:StoredCognitionConfiguration,instance:str,definitions,embedding_transport:ChatTransport,
                  checkpoint:Callable[[],None],embedding_permit,*,network:DailyNetwork,commands:DailyProviderCommands,
                  materials:DailyMaterialStorage,transports:dict[str,ChatTransport],
@@ -77,6 +87,9 @@ class DailyProvider(EmbeddingProvider):
                 bindings[role]=DailyChatBinding(role,cast(str,profile['model_id']),string(setting['schema_ref']),string(setting['schema_digest']),output_schema(role),
                     string(setting['prompt_digest']),prompt_resource(role))
         super().__init__(ledger,configuration,instance,definitions,embedding_transport,checkpoint,embedding_permit,network=network)
+        self.execution_configuration=lambda:configuration.candidate
+        from .managed_versions import ManagedProviderVersions
+        self.managed_versions:ManagedProviderVersions|None=None
         self.chat_commands=commands;self.materials=materials;self.transports=dict(transports);self.bindings=bindings;self.dream_bindings=dream_bindings
         self.authorize=authorize;self.received=received
         self.chat_operations={d.operation_kind:self.storage.bind_operation(d,'provider') for d in commands.commands}
@@ -86,11 +99,15 @@ class DailyProvider(EmbeddingProvider):
         self._chat_requests:dict[int,DailyRequest]={}
         self._chat_input:DailyRequest|None=None
         self.trial_authorization:DailyTrialAuthorization|None=None
+        self.managed_dispatch:Callable[[],bool]|None=None
         commands.handler=self._handle_daily
 
     async def before_first_registration(self,request) -> None:
         if self.trial_authorization is not None:
             await self.trial_authorization.reserve(request)
+        elif type(self.configuration) is StoredManagedConfiguration and self.managed_dispatch is not None:
+            if not self.managed_dispatch():
+                raise OwnerFailure('ACCESS_DENIED','authorization','OPERATION_NOT_GRANTED')
         elif any(t.execution_kind=='REAL' for t in (*self.transports.values(),self.transport) if t is not None):
             raise OwnerFailure('ACCESS_DENIED','authorization','OPERATION_NOT_GRANTED')
 
@@ -173,19 +190,28 @@ class DailyProvider(EmbeddingProvider):
             raise InvalidData()
         wire=encode_dream_request(binding,material.body.decode()) if type(binding) is DreamChatBinding else encode_daily_request(cast(DailyChatBinding,binding),material.body.decode())
         if root['wire_digest']!=sha256(wire).hexdigest():raise InvalidData()
-        profile=next(p for p in self.profiles if p['material_role']==role)
+        from .managed_versions import profiles
+        version = lease.execution_version
+        candidate = version.candidate if version is not None else self.configuration.candidate
+        profile=next(p for p in profiles(candidate) if p['material_role']==role)
+        transport = self.managed_versions.transports(version)[role] if self.managed_versions is not None and version is not None else self.transports[role]
         state=next(e.state for e in self.configuration.candidate.foundation.list_entries() if e.definition.key=='provider.accounts')
         if type(state) is not PresentValue:raise InvalidData()
         account=next(as_record(a) for a in cast(tuple[Record,...],state.value) if a['account_id']==profile['account_id'])
         from companion_memory.persistence.semantic_records import record,ID,H,N,SequenceSchema,isolate
         schema=record(config=record(database_id=ID,instance_id=ID,snapshot_id=ID),work_id=ID,original_request_key=ID,role=ID,
             profile_id=ID,material_id=ID,material_digest=H,wire_digest=H,deadline_at_us=N,entry_ids=SequenceSchema(ID,0,1))
+        if version is not None:
+            from companion_memory.persistence import Field,RecordSchema
+            schema=RecordSchema(schema.fields+(Field('execution_version_id',ID),))
         description=isolate(schema,{'config':{'database_id':self.configuration.database_id,'instance_id':self.instance,'snapshot_id':self.configuration.snapshot_id},
             'work_id':root['owner_ref'],'original_request_key':key,'role':role,'profile_id':profile['profile_id'],'material_id':root['object_id'],
-            'material_digest':root['payload_digest'],'wire_digest':sha256(wire).hexdigest(),'deadline_at_us':deadline_at_us,'entry_ids':entry_ids})
+            'material_digest':root['payload_digest'],'wire_digest':sha256(wire).hexdigest(),'deadline_at_us':deadline_at_us,'entry_ids':entry_ids,
+            **({'execution_version_id':version.version_id} if version is not None else {})})
         request=object.__new__(DailyRequest);rid=identity('daily-request',self.instance,key)
         for name,value in dict(owner=self,description=description,request_id=rid,attempt_id=identity('daily-attempt',rid,1),
-                fingerprint=sha256(encode_content(description,8192)).hexdigest(),wire=wire,material=lease,batch_id=root['batch_id'],binding=binding,account=account,profile=profile).items():object.__setattr__(request,name,value)
+                fingerprint=sha256(encode_content(description,8192)).hexdigest(),wire=wire,material=lease,batch_id=root['batch_id'],binding=binding,account=account,profile=profile,
+                execution_version=version,transport=transport).items():object.__setattr__(request,name,value)
         self._chat_requests[id(request)]=request
         return request
 
@@ -215,7 +241,8 @@ class DailyProvider(EmbeddingProvider):
             'descriptor_digest':sha256(cast(str,work['original_request_descriptor']).encode()).hexdigest()})
         rid=identity('daily-request',self.instance,key);request=object.__new__(DailyRequest)
         for name,value in dict(owner=self,description=description,request_id=rid,attempt_id=identity('daily-attempt',rid,1),
-                fingerprint=sha256(encode_content(description,8192)).hexdigest(),wire=wire,material=lease,batch_id=None,binding=binding,account=account,profile=profile).items():object.__setattr__(request,name,value)
+                fingerprint=sha256(encode_content(description,8192)).hexdigest(),wire=wire,material=lease,batch_id=None,binding=binding,account=account,profile=profile,
+                execution_version=None,transport=self.transports['MEDIA']).items():object.__setattr__(request,name,value)
         self._chat_requests[id(request)]=request;return request
 
     def verify_request_material(self,request:DailyRequest,uow:UnitOfWork|None=None):
@@ -292,6 +319,9 @@ class DailyProvider(EmbeddingProvider):
         command=ResultBoundCommand(definition.command_version,plain(row({'operation_id':key,**cast(dict,payload)})), {'provider_change':{'actor':'daily_provider'}})
         port=self.chat_operations[kind];prior=await port.resolve_operation(port.recovery_handle(key,command))
         if type(prior) is not NotCommitted or prior.error is not None:return prior
+        if self.ledger.assembly.managed_format and kind != 'register_daily_request':
+            if self.ledger.lease is None:raise InvalidData()
+            return await self.storage.reconcile_managed_provider(self.ledger.lease,port,key,command)
         return await port.execute(key,command)
 
     async def send_generation(self,request:DailyRequest) -> object:
@@ -394,7 +424,7 @@ class DailyProvider(EmbeddingProvider):
             metering=usage(observe_usage(None),request,not_sent=True);outcome='FAILED' if authorization_failure else 'MODE_BLOCKED';reason='COMMIT_UNCONFIRMED' if authorization_failure else 'OPERATION_NOT_GRANTED';value=None;not_sent=True
         else:
             if self.network is None or self._chat_permit is None:raise InvalidData()
-            transport=self.transports[request.binding.role]
+            transport=request.transport
             try:
                 self.executions+=1
                 wire=await self.network.start(self._chat_permit,lambda:transport.exchange(request.wire,min(deadline,start+30),self._cancel.token))
@@ -469,8 +499,11 @@ class DailyProvider(EmbeddingProvider):
             request,changes=active
             if payload['original_request_digest']!=request.fingerprint or payload['request_ref']!={'request_id':request.request_id,'attempt_id':request.attempt_id}:raise InvalidData()
             self.verify_request_material(request,uow)
+            if type(self.configuration) is StoredManagedConfiguration and (self.managed_dispatch is None or not self.managed_dispatch()):raise OwnerFailure('ACCESS_DENIED','authorization','OPERATION_NOT_GRANTED')
             if not self.authorize(request,uow):raise OwnerFailure('ACCESS_DENIED','request','OPERATION_NOT_GRANTED')
-            uow.require_commit_permission(lambda:not self._closed and self.authorize(request,None) and time.time_ns()//1000<cast(int,request.description['deadline_at_us']))
+            uow.require_commit_permission(lambda:not self._closed and self.authorize(request,None)
+                and (type(self.configuration) is not StoredManagedConfiguration or self.managed_dispatch is not None and self.managed_dispatch())
+                and time.time_ns()//1000<cast(int,request.description['deadline_at_us']))
             self._apply_daily_changes(uow,changes)
             return self._daily_result(string(payload['operation_id']),'REGISTERED',changes,changes[0].current,changes[1].current)
         if kind=='store_daily_handoff':

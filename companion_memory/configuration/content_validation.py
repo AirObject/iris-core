@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 def validate_content_relationships(foundation: EffectiveSnapshot, runtime: ContentSettingsSnapshot,
                                    content: ContentSettingsSnapshot, platforms: tuple[ContentPlatformSnapshot, ...],
                                    directories: object, *, text_only: bool = False, embedding_only: bool = False, daily_network: bool = False,
-                                   dream_network: bool = False) -> str | None:
+                                   dream_network: bool = False, managed_paths: bool = False) -> str | None:
     """Return a fixed first failure, never a submitted key or resource path."""
     f = {e.definition.key: e.state.value for e in foundation.list_entries() if type(e.state) is PresentValue}
     if dream_network and not daily_network:
@@ -66,7 +66,8 @@ def validate_content_relationships(foundation: EffectiveSnapshot, runtime: Conte
     for path in (root, staging):
         if not path.startswith('/') or '\x00' in path or any(part in ('.', '..') for part in path.split('/')) or path == '/':
             return 'BUDGET_INVALID'
-    if root == staging or not PurePosixPath(staging).is_relative_to(PurePosixPath(root)):
+    if root == staging or not (PurePosixPath(staging).is_relative_to(PurePosixPath(root)) or
+            managed_paths and PurePosixPath(staging).parent == PurePosixPath(root).parent):
         return 'BUDGET_INVALID'
     if directories is not None:
         if type(directories) is not dict or any(type(k) is not str for k in directories):

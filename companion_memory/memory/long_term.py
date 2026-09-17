@@ -10,6 +10,7 @@ from companion_memory.persistence.daily_records import BASE,DailyRows,DailyTable
 from companion_memory.persistence.semantic_records import Record,ID,N,P,fields,enum
 from companion_memory.persistence.schema import RecordSchema,InvalidValue
 from companion_memory.persistence.owned_statements import OwnerFailure
+from companion_memory.configuration.managed_persistence import StoredManagedConfiguration, stored_managed_configuration_issue
 from companion_memory.configuration.dream_persistence import StoredDreamConfiguration
 from companion_memory.runtime.dream_clock import settle_decay
 if TYPE_CHECKING:
@@ -46,14 +47,18 @@ class PreservedProvenance:
 class LongTermMemory:
     """A participant of the existing memory owner, using its current source checks."""
     def __init__(self, memory: 'MemoryTransactions'):
-        if type(memory.configuration) is not StoredDreamConfiguration:raise InvalidValue()
+        if (type(memory.configuration) is not StoredDreamConfiguration and type(memory.configuration) is not StoredManagedConfiguration):raise InvalidValue()
         self.memory=memory;self.configuration=memory.configuration
         from .influence import TABLES as INFLUENCE_TABLES,Influence
         self.rows=DailyRows(memory._information_catalog,TABLES+INFLUENCE_TABLES,memory.storage,self.configuration.database_id,
                             self.configuration.scope_id,self.configuration.snapshot_id)
-        self.settings=self.configuration.candidate.text.record('memory.long_term_maintenance')
+        self.execution_configuration=lambda:self.configuration.candidate
         self._retention_basis:PreservedProvenance|None=None
         self.influence=Influence(self)
+
+    @property
+    def settings(self):
+        return self.execution_configuration().text.record('memory.long_term_maintenance')
 
     def base(self,key:str,now:int):
         return {'format_version':1,'object_id':key,'revision':1,'database_id':self.configuration.database_id,

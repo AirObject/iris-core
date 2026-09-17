@@ -18,8 +18,9 @@ from typing import cast
 from companion_memory.configuration import PresentValue
 from companion_memory.configuration.daily_resolution import DailyConfigurationCandidate,daily_snapshot_issue
 from companion_memory.configuration.daily_persistent_results import ConfigurationCommitted
+from companion_memory.configuration.managed_persistent_results import ConfigurationCommitted as ManagedConfigurationCommitted
 from companion_memory.configuration.dream_persistent_results import ConfigurationCommitted as DreamConfigurationCommitted
-from companion_memory.configuration.cognition_identity import (CognitionCandidate, DreamConfigurationCandidate, StoredDreamConfiguration, cognition_candidate_issue, cognition_candidate_values, bind_cognition_configuration, persist_cognition_configuration, initialize_cognition_roots, participate_cognition_snapshot)
+from companion_memory.configuration.cognition_identity import (CognitionCandidate, DreamConfigurationCandidate, ManagedConfigurationCandidate, StoredDreamConfiguration, StoredManagedConfiguration, cognition_candidate_issue, cognition_candidate_values, bind_cognition_configuration, persist_cognition_configuration, initialize_cognition_roots, participate_cognition_snapshot)
 from companion_memory.persistence import DatabaseResources,Ready,Found,NotFound,Committed,UnitOfWork
 from companion_memory.persistence.deadlines import DeadlineScope
 from companion_memory.persistence.owned_statements import OwnerFailure
@@ -72,26 +73,31 @@ class DailyHostResources:
     protected_directories:dict[str,tuple[str,...]|list[str]]
     initial_self:InitialSelfBinding
     persona_evidence:ApprovedPersonaEvidence|None
-    review:FixedReviewGrant
+    review:FixedReviewGrant|None
     embedding_transport:ChatTransport
     transports:dict[str,ChatTransport]
     send_authorized:Callable[[str],bool]=lambda key:False
     embedding_authorized:Callable[[object,object],bool]=lambda description,intent:False
+    birth_resource_identity:tuple[int,int]|None=None
+    version_transports:Callable[[object],dict[str,ChatTransport]]|None=None
 
 class DailyCognitionHost:
     """One public owner graph for learning, images, goals and semantic queries."""
-    def __init__(self,configuration:CognitionCandidate,resources:DailyHostResources):
+    def __init__(self,configuration:CognitionCandidate,resources:DailyHostResources,*,managed_assembly:DailyAssembly|None=None):
         if cognition_candidate_issue(configuration) is not None or type(resources) is not DailyHostResources:raise ValueError('Complete daily resources required.')
         if (type(resources.database) is not DatabaseResources or type(resources.media) is not MediaResources or type(resources.initial_self) is not InitialSelfBinding
-                or type(resources.review) is not FixedReviewGrant or resources.review.claims['instance_id']!=resources.instance_id):raise ValueError('Native daily resource identities differ.')
-        self.configuration=configuration;self.resources=resources;self.combination=DailyAssembly(dream_format=type(configuration) is DreamConfigurationCandidate);self.storage=self.combination.storage
+                or not (type(resources.review) is FixedReviewGrant and resources.review.claims['instance_id']==resources.instance_id
+                    or type(configuration) is ManagedConfigurationCandidate and resources.review is None)):
+            raise ValueError('Native daily resource identities differ.')
+        self.configuration=configuration;self.resources=resources;self.combination=managed_assembly or DailyAssembly(dream_format=type(configuration) in (DreamConfigurationCandidate,ManagedConfigurationCandidate),managed_format=type(configuration) is ManagedConfigurationCandidate);self.storage=self.combination.storage
         self.assembly=self.combination.content;self.media=self.combination.media;self.management=self.combination.management
         self.state='NEW';self.phase='STORAGE';self._mode=None;self._closing=False;self._initialization:asyncio.Task|None=None;self._close_task:asyncio.Task|None=None
         self.admission=None;self.config=None;self.stored=None;self.runtime:ContentRuntimeService|None=None;self.provider:DailyProvider|None=None;self.network:DailyNetwork|None=None
         self.goals=None;self.current_state=None;self.retrieval=None;self.files=None;self.current_persona=None;self.initial_persona=None;self.learning=None;self.tools=None;self.images:DailyMedia|None=None
         self.queries=None;self.business=None;self.http=None;self.observations=None;self.fixed=None;self.initial=None;self.dispatch=None
         self._semantic_recovery=None;self._import_grant=None;self._information_at=time.time_ns()//1000;self._closed_owners:set[str]=set()
-        self.authorization:SemanticAuthorization|None=None;self.semantic:SemanticManagementPort|None=None
+        from .managed_semantic_authorization import ManagedSemanticAuthorization
+        self.authorization:SemanticAuthorization|ManagedSemanticAuthorization|None=None;self.semantic:SemanticManagementPort|None=None
         self._semantic_enabled=False
         self.dream_ports=None
         from .dream_scheduler import DreamScheduler
@@ -102,6 +108,11 @@ class DailyCognitionHost:
         if self._closing or self.state in ('NEW','CLOSED') or self.admission is None:raise OwnerFailure('INVALID_STATE','state','NOT_READY')
         self.admission.checkpoint()
 
+    @property
+    def execution_configuration(self) -> CognitionCandidate:
+        work = self.assembly.work_configuration
+        return work.versions.current.candidate if work is not None else self.configuration
+
     def receiving(self):
         """Raw reception remains available while native focus queues own routing."""
         self.checkpoint()
@@ -109,9 +120,12 @@ class DailyCognitionHost:
 
     def normal(self):
         self.checkpoint()
+        if self.assembly.work_configuration is not None and self.assembly.work_configuration.fenced:
+            raise OwnerFailure('RESOURCE_BUSY','configuration','ACTIVATION_PENDING')
         if self.state!='READY' or self.runtime is None or self.runtime.gate.information_checkpoint() is None:raise OwnerFailure('MODE_BLOCKED','state','NOT_READY')
 
     def scheduling(self):
+        if self.assembly.work_configuration is not None and self.assembly.work_configuration.fenced:return False
         if self.combination.dream_format and (self.runtime is None or self.runtime.gate.information_checkpoint() is None):return False
         trial=self.provider.trial_authorization if self.provider is not None else None
         return not self._closing and self.state=='READY' and self.combination.schedule.enabled and (self.learning is None or self.learning.cleanup_failure is None) and self.combination.initial_persona.cleanup_failure is None and self.combination.goal_comparisons.cleanup_failure is None and (trial is None or trial.active and not trial.faulted)
@@ -137,7 +151,7 @@ class DailyCognitionHost:
     def bind_activation(self,activation:SemanticActivation) -> None:
         """Bind reviewed original semantic slots; binding and reopening never send."""
         self.normal()
-        if type(activation) is not SemanticActivation or self.authorization is not None or self.stored is None or self.admission is None:raise InvalidValue()
+        if type(activation) is not SemanticActivation or self.authorization is not None or self.stored is None or self.admission is None or self.resources.review is None:raise InvalidValue()
         b=activation.binding;claims=self.resources.review.claims
         if (b['format']!='DAILY_SEMANTIC_AUTH_V1' or b['instance_id']!=self.resources.instance_id or b['database_id']!=self.stored.database_id
                 or b['config_snapshot_id']!=self.stored.snapshot_id or b['set_id']!=claims['set_id'] or b['review_digest']!=claims['review_digest']
@@ -154,8 +168,15 @@ class DailyCognitionHost:
 
     def _normal_transaction(self,uow:UnitOfWork):
         self.normal()
+        self._configuration_transaction(uow)
+        uow.require_commit_permission(lambda:self.assembly.work_configuration is None or not self.assembly.work_configuration.fenced)
+
+    def _configuration_transaction(self,uow:UnitOfWork):
+        """Configuration recovery retains its barrier while checking native focus."""
+        self.checkpoint()
         if not (self.runtime is not None):raise InvalidValue()
         observed=self.runtime.gate.information_checkpoint()
+        if self.state!='READY' or observed is None:raise OwnerFailure('MODE_BLOCKED','state','NOT_READY')
         uow.require_commit_permission(lambda:not self._closing and self.runtime is not None and self.runtime.gate.information_checkpoint()==observed)
 
     def configure_entry(self,entry_id:str,partition_id:str,subjects:tuple[str,...],worlds:tuple,*,object_ids:tuple[str,...]|None=None,
@@ -194,16 +215,23 @@ class DailyCognitionHost:
         if not (self._mode is not None):raise InvalidValue()
         if self.phase=='STORAGE':
             if self.admission is None:
-                self.admission=SemanticAdmission(self.configuration,r.root,self._mode);self.storage.bind_semantic_admission(self.admission)
-            opened=await self.storage.initialize(self.configuration.foundation,r.database,self._mode)
-            if type(opened) is not Ready:return opened
+                admission_mode='OPEN_EXISTING' if c.managed_format and (r.root/'semantic-admission.jsonl').exists() else self._mode
+                self.admission=SemanticAdmission(self.configuration,r.root,admission_mode)
+                if c.managed_format and self.storage.get_health().lifecycle=='READY':
+                    self.storage.bind_managed_business(self.configuration.foundation,self.admission)
+                else:self.storage.bind_semantic_admission(self.admission)
+            if not (c.managed_format and self.storage.get_health().lifecycle=='READY'):
+                opened=await self.storage.initialize(self.configuration.foundation,r.database,self._mode)
+                if type(opened) is not Ready:return opened
             from companion_memory.configuration.cognition_identity import cognition_candidate_values as candidate_values
+            physical_birth = (r.birth_resource_identity if c.managed_format and r.birth_resource_identity is not None
+                else (r.root.stat().st_dev, r.root.stat().st_ino))
             binding={'configuration':candidate_values(self.configuration),'instance':instance,'configuration_key':r.configuration_key,
-                'root':str(r.root),'root_device':r.root.stat().st_dev,'root_inode':r.root.stat().st_ino,'media':r.media.root_id,
+                'root':str(r.root),'root_device':physical_birth[0],'root_inode':physical_birth[1],'media':r.media.root_id,
                 'initial_self':asdict(r.initial_self),'persona':{k:getattr(r.persona_evidence,k) for k in r.persona_evidence.__dataclass_fields__ if not k.startswith('_')} if r.persona_evidence is not None else None,
-                'review':dict(r.review.claims)}
+                'review':dict(r.review.claims) if r.review is not None else None}
             digest=sha256(json.dumps(binding,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-            c.initialization.bind(self.storage,r.database.expected_database_id,instance,digest,c.commands,create=self._mode=='CREATE_NEW',persona=r.persona_evidence is not None,configuration_key=r.configuration_key,dream_format=c.dream_format)
+            c.initialization.bind(self.storage,r.database.expected_database_id,instance,digest,c.commands,create=self._mode=='CREATE_NEW',persona=r.persona_evidence is not None,configuration_key=r.configuration_key,dream_format=c.dream_format,managed_format=c.managed_format)
             self.phase='INTENT'
         if self.phase=='INTENT':
             intent=await c.initialization.load()
@@ -213,7 +241,7 @@ class DailyCognitionHost:
         if self.phase=='CONFIGURATION':
             if not (self.config is not None):raise InvalidValue()
             value=await persist_cognition_configuration(self.config,r.configuration_key,self.configuration,actor='daily_cognition',protected_directories=r.protected_directories)
-            if (type(value) is not ConfigurationCommitted and type(value) is not DreamConfigurationCommitted) or value.configuration is None:return value
+            if (type(value) is not ConfigurationCommitted and type(value) is not DreamConfigurationCommitted and type(value) is not ManagedConfigurationCommitted) or value.configuration is None:return value
             self.stored=stored=value.configuration
             progress=await c.initialization.step('configuration',value.receipt)
             if type(progress) is not Committed:return progress
@@ -224,12 +252,25 @@ class DailyCognitionHost:
             if not self.config.release_bootstrap_writers():raise OwnerFailure('RESOURCE_BUSY','resource','CLEANUP_PENDING',True)
             if not c.initialization.release_bootstrap():raise OwnerFailure('RESOURCE_BUSY','resource','CLEANUP_PENDING',True)
             self.media.bind(self.storage,stored,instance);self.assembly.bind(self.storage,stored,instance);c.materials.bind(self.storage,stored)
+            if type(stored) is StoredManagedConfiguration:
+                from companion_memory.configuration.managed_persistence import ManagedConfigurationAssembly
+                from companion_memory.configuration.execution_versions import ExecutionVersions
+                from .managed_work_configuration import ManagedWorkConfiguration
+                if type(c.configuration) is not ManagedConfigurationAssembly or c.configuration.versions is None:raise InvalidValue()
+                self.assembly.work_configuration=ManagedWorkConfiguration(self.assembly,
+                    ExecutionVersions(c.configuration.versions,stored.snapshot_id,stored.candidate))
+                from companion_memory.cognition.managed_material_versions import ManagedMaterialVersions
+                c.materials.versions=ManagedMaterialVersions(c.materials.rows,self.assembly.work_configuration.versions)
             self.goals=GoalsService(c.information_catalogs[2],self.storage,stored,instance);self.current_state=StateOwner(c.information_catalogs[1],self.storage,stored,instance)
             self.retrieval=LocalIndex(c.retrieval_catalog,self.storage,stored,instance);memory=self.assembly.memory.bind_information(stored);self.retrieval.bind_memory(memory)
             if c.dream is not None and c.dream_maintenance is not None:
-                if type(stored) is not StoredDreamConfiguration:raise InvalidValue()
+                if (type(stored) is not StoredDreamConfiguration and type(stored) is not StoredManagedConfiguration):raise InvalidValue()
                 c.dream.bind(self.storage,stored,checkpoint=self.checkpoint,now=self.assembly.utc_now_us)
+                c.dream.execution_configuration=lambda:cast(DreamConfigurationCandidate | ManagedConfigurationCandidate,self.execution_configuration)
+                c.dream.work_configuration=self.assembly.work_configuration
                 c.dream_maintenance.bind(self.assembly.memory)
+                if self.assembly.memory.long_term is not None:
+                    self.assembly.memory.long_term.execution_configuration=c.dream.execution_configuration
             self.assembly.goal_effects=CandidateGoalEffects(self.goals,self.assembly.memory)
             accounts=next(e.state.value for e in self.configuration.foundation.list_entries() if e.definition.key=='provider.accounts' and type(e.state) is PresentValue)
             self.network=DailyNetwork(lambda key:not self._closing and self.state=='READY' and (self.scheduling() or c.initial_persona.explicit_send(key) or c.periodic is not None and c.periodic.explicit_send(key) or c.dream_review is not None and c.dream_review.explicit_send(key)) and r.send_authorized(key),tuple(cast(str,as_record(a)['account_id']) for a in cast(tuple,accounts)))
@@ -252,12 +293,22 @@ class DailyCognitionHost:
             self.provider=DailyProvider(c.ledger.bind(self.storage,stored),stored,instance,c.semantic.commands,r.embedding_transport,self.checkpoint,
                 self.permit_embedding,network=self.network,commands=c.daily_provider,
                 materials=c.materials,transports=r.transports,authorize=authorize,received=received)
+            self.provider.execution_configuration=lambda:self.execution_configuration
+            if type(stored) is StoredManagedConfiguration:
+                self.provider.managed_dispatch=lambda:r.send_authorized('managed-dispatch')
+                from companion_memory.provider.managed_versions import ManagedProviderVersions
+                if self.assembly.work_configuration is None or r.version_transports is None:raise InvalidValue()
+                self.provider.managed_versions=ManagedProviderVersions(self.assembly.work_configuration.versions,r.version_transports)
+                self.provider.ledger.managed_versions=self.provider.managed_versions
             c.embedding=self.provider;self.runtime=ContentRuntimeService(self.assembly,self.provider,None,cast(str,next(record(p)['profile_id'] for p in sequence(stored.candidate.text.record('provider.transport')['roles']) if record(p)['role']=='LEARNING')),None,embedding=self.provider)
             if c.dream_mode is not None:
                 from companion_memory.dream.port import DreamPorts
                 c.dream_mode.bind(self.runtime);self.dream_ports=DreamPorts(self)
                 self.runtime.maintenance.dream_control=c.dream
             c.admit_normal=self._normal_transaction;c.initial_self.admit=self._normal_transaction
+            if c.configuration_activation is not None:
+                c.configuration_activation.bind(self.assembly,self._configuration_transaction)
+            if c.memory_administration is not None:c.memory_administration.admit=self._normal_transaction
             publisher=self.config
             c.initializer.bind(self.storage,stored,instance,{'goals':self.goals,'state':self.current_state,'retrieval':self.retrieval,'memory':memory},lambda uow:participate_cognition_snapshot(publisher,uow,stored))
             self.management.bind(self.storage,stored,instance,self.goals,self.current_state,self.retrieval,self.runtime.gate,self.runtime.retain_external_work,lambda:self.state=='RECOVERING' and self.phase=='RECOVERY')
@@ -268,8 +319,10 @@ class DailyCognitionHost:
             c.cache=SemanticQueryCache(c.retrieval_catalog,self.storage,stored,instance,next(d for d in c.semantic.commands if d.operation_kind=='record_result'))
             self._semantic_recovery=SemanticRecovery(c.work,c.generations)
             fixed_catalog=next(cat for cat in self.assembly.catalogs if cat.definition.owner_module=='cognition')
-            c.fixed=FixedMemorySets(fixed_catalog,self.storage,stored,self.assembly.memory,r.review,next(d for d in c.semantic.commands if d.operation_kind=='fixed_establish'),self.normal)
-            self.fixed=FixedMemoryPort(c.fixed,c.semantic.commands,self.normal);self.initial=c.initial_self.bind(self.assembly.memory,r.initial_self);c.subject_origin=r.initial_self.input_origin
+            if r.review is not None:
+                c.fixed=FixedMemorySets(fixed_catalog,self.storage,stored,self.assembly.memory,r.review,next(d for d in c.semantic.commands if d.operation_kind=='fixed_establish'),self.normal)
+                self.fixed=FixedMemoryPort(c.fixed,c.semantic.commands,self.normal)
+            self.initial=c.initial_self.bind(self.assembly.memory,r.initial_self);c.subject_origin=r.initial_self.input_origin
             self._import_grant=None
             if r.persona_evidence is not None:
                 self._import_grant=c.persona.bind(self.storage,stored,self.assembly.memory,r.initial_self,r.persona_evidence,new_synthetic_instance=c.initialization.unfinished)
@@ -362,6 +415,9 @@ class DailyCognitionHost:
             from .daily_observation import bind_daily_observations
             self.observations=InformationObservations(self.runtime,self.management.tickets,self.current_state,self.goals,semantic=c.work,cache=c.cache,daily=bind_daily_observations(self))
             self.semantic=DailySemanticManagement(self)
+            if c.managed_format:
+                from .managed_semantic_authorization import ManagedSemanticAuthorization
+                self.authorization=ManagedSemanticAuthorization(self)
             progress=await c.initialization.finish()
             if type(progress) not in (Found,Committed):return progress
             self.phase='COMPLETE';self.state='READY'
@@ -467,6 +523,15 @@ class DailyCognitionHost:
         self.checkpoint()
         if self.state!='READY' or self.combination.periodic is None:raise InvalidValue()
         from companion_memory.self_model.periodic_drive import advance
+        work = self.assembly.work_configuration
+        if work is not None:
+            control = self.combination.dream
+            if control is None:raise InvalidValue()
+            root = await control.schedule()
+            if root is not None and type(root['active_run_id']) is str:
+                version = await work.load('DREAM', root['active_run_id'])
+                with work.versions.use(version):
+                    return await advance(self.combination.periodic)
         return await advance(self.combination.periodic)
 
     async def bind_dream(self,identity:HostIdentity):

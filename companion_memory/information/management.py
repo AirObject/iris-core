@@ -5,7 +5,7 @@ Each request owns one completion slot across every actual descendant I/O. The
 final storage permission check shares the runtime's short mode serialization.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import cast

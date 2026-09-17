@@ -56,7 +56,7 @@ class DreamMaintenance:
         now=control._ready(uow)
         if cast(int,v['observed_at_us'])>now or now>=cast(int,run['deadline_at_us']):
             raise OwnerFailure('TIMEOUT','run','DEADLINE_EXCEEDED')
-        limits=control.configuration.candidate.text.record('dream.resources')
+        limits=control.execution_configuration().text.record('dream.resources')
         if cast(int,run['objects_used'])>=cast(int,limits['objects_per_run']):raise OwnerFailure('RESOURCE_BUSY','run','CAPACITY_REACHED')
         oid=cast(str,v['memory_id']);revision=cast(int,v['memory_revision']);run_id=cast(str,run['run_id'])
         current,anchor,elapsed=memory.long_term.preview(uow,oid,revision,run_id,cast(int,v['observed_at_us']))

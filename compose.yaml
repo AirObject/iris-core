@@ -1,0 +1,31 @@
+name: iris-memory
+services:
+  iris:
+    image: ${IRIS_IMAGE:-iris-memory:managed}
+    build:
+      context: .
+    platform: linux/arm64
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      IRIS_DEPLOYMENT: '{"deployment.origin":"http://127.0.0.1:8080"}'
+    volumes:
+      - iris-data:/data
+      - iris-secrets:/run/secrets:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=67108864,mode=1777
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 2
+volumes:
+  iris-data:
+  iris-secrets:
+    external: true
+    name: ${IRIS_SECRETS_VOLUME:-iris-memory-secrets}

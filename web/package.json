@@ -1,0 +1,17 @@
+{
+  "name": "iris-management-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "tsc && node build.mjs",
+    "check:browser": "tsc --project tsconfig.tests.json",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.20.3",
+    "typescript": "5.9.3"
+  }
+}

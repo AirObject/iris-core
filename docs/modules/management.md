@@ -26,7 +26,7 @@
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A66](../product/acceptance.md#a66)、[A67](../product/acceptance.md#a67)、[A68](../product/acceptance.md#a68)、[A93](../product/acceptance.md#a93)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V24](../architecture/acceptance.md#v24)、[V35](../architecture/acceptance.md#v35)、[V36](../architecture/acceptance.md#v36)、[V38](../architecture/acceptance.md#v38)、[V54](../architecture/acceptance.md#v54)、[V61](../architecture/acceptance.md#v61)、[V68](../architecture/acceptance.md#v68)、[V69](../architecture/acceptance.md#v69)、[V76](../architecture/acceptance.md#v76)、[V81](../architecture/acceptance.md#v81)、[V89](../architecture/acceptance.md#v89)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
-| 尚未决定 | 完整来源及审计历史隔离见[已批准读取契约](../architecture/formal-memory-source-media.md)；生产账号、管理确认、Web写入、备份及恢复流程仍待细化。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 后续完整交付 | 完整来源及审计历史隔离见[已批准读取契约](../architecture/formal-memory-source-media.md)；生产账号、管理确认、Web写入与备份恢复见[已批准集中计划](../architecture/managed-runtime-and-deployment.md)，实施前置见[当前任务](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

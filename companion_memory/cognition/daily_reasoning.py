@@ -5,7 +5,7 @@ use it. Native Provider results and actual tool jobs are retained through their
 consumer transaction. This owner cannot publish memory or launch HTTP itself.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 from hashlib import sha256
 import time
@@ -299,6 +299,15 @@ class DailyReasoning:
         return logical.result() if done else Found(MappingProxyType({'state':'PENDING','cleanup_pending':True}))
 
     async def _process(self,run_id,grant,allow_first_send):
+        if self.materials.versions is not None:
+            run = await self.rows.read('reasoning_runs', run_id)
+            if run is None:raise InvalidValue()
+            version = await self.materials.versions.required(cast(str, run['context_id']), run_id)
+            with self.materials.versions.versions.use(version):
+                return await self._process_selected(run_id, grant, allow_first_send)
+        return await self._process_selected(run_id, grant, allow_first_send)
+
+    async def _process_selected(self,run_id,grant,allow_first_send):
         from companion_memory.persistence import NotFound
         for _ in range(24):
             run=await self.rows.read('reasoning_runs',run_id)

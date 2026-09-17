@@ -26,8 +26,8 @@ class Settings:
     logging_directory: str | None
 
 
-def read_settings(snapshot: object) -> Settings | PersistenceError:
-    issue = persistence_snapshot_issue(snapshot)
+def read_settings(snapshot: object, *, managed_paths: bool = False) -> Settings | PersistenceError:
+    issue = persistence_snapshot_issue(snapshot, managed_paths=managed_paths)
     if issue is not None:
         return PersistenceError("CONFIGURATION_UNSUPPORTED", "initialize", "configuration", issue)
     assert type(snapshot) is EffectiveSnapshot

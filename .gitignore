@@ -4,3 +4,7 @@ __pycache__/
 
 # Local Provider test configuration and credentials.
 /.local/provider-tests/
+
+# Compiled management assets and local frontend dependencies.
+/web/node_modules/
+/web/dist/

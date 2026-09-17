@@ -5,7 +5,7 @@ One complete frozen candidate group is compared once. Any later goal, source or
 reminder race keeps the original goals and records a local unresolved outcome.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 from collections.abc import Callable
 from hashlib import sha256
@@ -341,6 +341,15 @@ class GoalComparisons:
         return logical.result()
 
     async def _drive(self,decision_id:str,allow_first_send:bool):
+        if self.materials.versions is not None:
+            decision = await self.rows.read('semantic_decisions', decision_id)
+            if decision is None:raise InvalidValue()
+            version = await self.materials.versions.required(cast(str, decision['material_id']), decision_id)
+            with self.materials.versions.versions.use(version):
+                return await self._drive_selected(decision_id, allow_first_send)
+        return await self._drive_selected(decision_id, allow_first_send)
+
+    async def _drive_selected(self,decision_id:str,allow_first_send:bool):
         from companion_memory.persistence import NotFound
         decision=await self.rows.read('semantic_decisions',decision_id)
         if decision is None:raise InvalidValue()

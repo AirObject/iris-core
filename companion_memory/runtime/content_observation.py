@@ -163,6 +163,8 @@ class ContentObservations:
                             'revision': MappingProxyType(revisions)})
                     if kind in ('runtime', 'entries', 'batches'):
                         merge('runtime', (await r.assembly.rows.read('observe_entry', {'entry_id': eid}))[0])
+                    if r.assembly.daily_format and kind in ('runtime', 'entries'):
+                        merge('buffers', await r.assembly.buffers.observation(eid))
                     if kind in ('runtime', 'memory'):
                         merge('memory', (await r.assembly.memory.rows.read('observe_entry', {'entry_id': eid}))[0])
                     if kind in ('runtime', 'media'):

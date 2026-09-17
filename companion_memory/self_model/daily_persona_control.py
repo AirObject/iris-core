@@ -120,6 +120,14 @@ class DailyPersonaControl:
         return logical.result() if done else Found(MappingProxyType({'state':'PENDING','cleanup_pending':True}))
 
     async def drive(self,run,*,allow_first_send):
+        versions = self.owner.materials.versions
+        if versions is not None:
+            version = await versions.required(material_id(self.owner.configuration, run['object_id'], run['generation']), run['object_id'])
+            with versions.versions.use(version):
+                return await self._drive_selected(run, allow_first_send=allow_first_send)
+        return await self._drive_selected(run, allow_first_send=allow_first_send)
+
+    async def _drive_selected(self,run,*,allow_first_send):
         o=self.owner;provider=o.provider
         if run['state'] in ('WAITING_REVIEW','APPROVED','KNOWN_FAILED','USER_REJECTED','PUBLISHED'):
             await self.cleanup(run)

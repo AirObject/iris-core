@@ -1,5 +1,7 @@
 # 统一配置注册表、快照与安全热修改
 
+新托管格式的受保护引导参数、非public路径、配置版本与原子激活／回退见[部署与管理计划](managed-runtime-and-deployment.md#configuration)及[启动边界](managed-runtime-and-deployment.md#assembly)。既有装配的精确Schema与初始化保证不追溯放宽；新格式的完整参数声明由实现生成并实际核算。
+
 梦境新组合的136键／6域、调度、维护、周期persona和资源参数，见[完整配置](dream-and-long-term-maintenance.md#configuration)；仅新装配采用，旧组合不变。
 
 日常认知新组合的130键、角色配置、时区、并发／期限及容量分支，统一见[集中契约§7](daily-cognition-and-image-learning.md#7-完整配置与容量)；旧组合定义保持。
@@ -646,7 +648,7 @@ j／d是注册表排序下标／依赖声明下标。所有路径只含上述固
 | C3 路径隔离输入 | 可信装配方提供五类完整目录清单；规范POSIX文本和组件隔离，真实资源核验仍归日志准备，不引入加载或秘密识别能力 |
 | C4 发布、错误与验收 | 上述确定首错顺序、独立安全错误、完整校验后一次发布、深不可变与输入隔离，以及上述合成验收预期 |
 
-日志完整字段的落点、目录来源核对及剩余决定见[日志实施前置规格](logging.md#runtime-diagnostics-schema)。本补充及G1表示／匹配细化已批准；真实目录布局、安全分级与资源核验仍按[G2待定事项](logging.md#runtime-diagnostics-prerequisite-decisions)处理，不能把候选布局或合成夹具当作真实部署；若路径需非public则另定对应支持。本节限定纯内存校验，不自动注册参数、不选择或创建生产路径；生产装配范围见G2，日志服务契约在[日志正文](logging.md)维护。本节不扩展加载、持久化、秘密解析、权限、热修改、配置计算引擎或后续日志能力。
+日志完整字段的落点、目录来源核对及剩余决定见[日志实施前置规格](logging.md#runtime-diagnostics-schema)。本补充及G1表示／匹配细化已批准；真实目录布局、安全分级与资源核验仍按[G2生产前置](logging.md#runtime-diagnostics-prerequisite-decisions)处理，不能把候选布局或合成夹具当作真实部署；新生产非public路径支持由托管格式补齐，旧纯内存格式保持。本节限定纯内存校验，不自动注册参数、不选择或创建生产路径；生产装配范围见G2，日志服务契约在[日志正文](logging.md)维护。本节不扩展加载、持久化、秘密解析、权限、热修改、配置计算引擎或后续日志能力。
 
 <a id="configuration-persistence-validation-contract"></a>
 

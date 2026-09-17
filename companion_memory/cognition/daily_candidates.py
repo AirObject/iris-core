@@ -5,7 +5,7 @@ while staging the candidate; the application transaction must recheck that
 mapping and every observed revision before any formal owner writes.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from dataclasses import dataclass
 from hashlib import sha256
 from types import MappingProxyType
@@ -37,7 +37,7 @@ class DailyAuthority:
 class DailyCandidateTransform:
     """Pure IDs and complete values; native originals are supplied by the collector."""
     def __init__(self,configuration:StoredCognitionConfiguration):
-        if type(configuration) not in (StoredDailyConfiguration,StoredDreamConfiguration):raise InvalidValue()
+        if (type(configuration) is not StoredDailyConfiguration and type(configuration) is not StoredDreamConfiguration and type(configuration) is not StoredManagedConfiguration):raise InvalidValue()
         self.configuration=configuration
 
     def build(self,source:Record,work:Record,run:Record,turn:Record,output:Record|None,

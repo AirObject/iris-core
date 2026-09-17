@@ -79,6 +79,7 @@ class ProtocolStopHostTests(unittest.IsolatedAsyncioTestCase):
                         await later.accept_event('later-accept-'+str(n),value)
                     await later.run_learning('later-learning')
                     assert host.stored is not None and host.semantic is not None
+                    assert host.resources.review is not None
                     binding={'format':'DAILY_SEMANTIC_AUTH_V1','package_id':'blocked-query','set_id':'fixed-set','instance_id':'instance',
                         'database_id':host.stored.database_id,'config_snapshot_id':host.stored.snapshot_id,'code_digest':'f'*64,
                         'material_digest':'f'*64,'review_digest':host.resources.review.claims['review_digest'],'protocol_digest':'f'*64,'sdk_digest':'f'*64,

@@ -25,7 +25,7 @@
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-837)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A20](../product/acceptance.md#a20)、[A67](../product/acceptance.md#a67)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V73](../architecture/acceptance.md#v73)、[V74](../architecture/acceptance.md#v74)、[V75](../architecture/acceptance.md#v75)、[V76](../architecture/acceptance.md#v76)、[V77](../architecture/acceptance.md#v77)、[V78](../architecture/acceptance.md#v78)、[V79](../architecture/acceptance.md#v79)、[V80](../architecture/acceptance.md#v80)、[V81](../architecture/acceptance.md#v81)、[V82](../architecture/acceptance.md#v82)、[V83](../architecture/acceptance.md#v83)、[V84](../architecture/acceptance.md#v84)、[V85](../architecture/acceptance.md#v85)、[V86](../architecture/acceptance.md#v86)、[V87](../architecture/acceptance.md#v87)、[V88](../architecture/acceptance.md#v88)、[V89](../architecture/acceptance.md#v89)、[V90](../architecture/acceptance.md#v90)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
-| 尚未决定 | 已批准Schema、解析、持久身份与文本凭据边界见[配置正文](../architecture/configuration.md)及[文本契约](../architecture/model-driven-text-learning.md)；生产bootstrap、迁移、在线编辑／激活和管理权限仍待细化。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 后续完整交付 | 已批准Schema、解析、持久身份与文本凭据边界见[配置正文](../architecture/configuration.md)及[文本契约](../architecture/model-driven-text-learning.md)；生产身份、在线编辑／激活与管理权限见[已批准集中计划](../architecture/managed-runtime-and-deployment.md#configuration)，不自动迁移试验库；实施前置见[当前任务](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 

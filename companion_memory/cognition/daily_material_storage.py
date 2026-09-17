@@ -5,7 +5,7 @@ exact invocation and compare existing leaves before sealing the root. A stored
 root is never exposed with missing text or a caller-supplied replacement body.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 import time
 from dataclasses import dataclass
@@ -21,6 +21,8 @@ from companion_memory.persistence.completion import start_owned
 from companion_memory.persistence.deadlines import DeadlineScope
 from companion_memory.persistence.owned_statements import StatementCatalog,BoundStatements,OwnerFailure
 from .daily_material import FrozenDailyMaterial,restore_material,TABLES,ROOT_TABLE,DREAM_TABLES,DREAM_ROOT_TABLE
+from .managed_material_versions import ManagedMaterialVersions, TABLE as VERSION_TABLE
+from companion_memory.configuration.execution_versions import ExecutionVersion
 
 @dataclass(frozen=True,slots=True,init=False)
 class DailyMaterialReadLease:
@@ -32,14 +34,18 @@ class DailyMaterialReadLease:
     issuer:DailyMaterialStorage
     material:FrozenDailyMaterial
     deadline:float
+    execution_version:ExecutionVersion|None
 
 
 class DailyMaterialStorage:
     """A bounded local component of the cognition owner, never a second host."""
-    def __init__(self,catalog:StatementCatalog, *, dream_format: bool = False):
+    def __init__(self,catalog:StatementCatalog, *, dream_format: bool = False, managed_format: bool = False):
         if catalog.definition.owner_module!='cognition' or catalog.definition.schema_version!=5:raise InvalidValue()
         self.dream_format=dream_format
-        self.tables=DREAM_TABLES if dream_format else TABLES
+        self.managed_format=managed_format
+        if managed_format and not dream_format:raise ValueError("Managed storage requires dream owners.")
+        self.tables=(DREAM_TABLES if dream_format else TABLES) + ((VERSION_TABLE,) if managed_format else ())
+        self.versions:ManagedMaterialVersions|None=None
         self.root_table=DREAM_ROOT_TABLE if dream_format else ROOT_TABLE
         self.catalog=catalog;self._bound=False;self._closed=False
         self._active:FrozenDailyMaterial|None=None;self._task:asyncio.Task|None=None
@@ -77,7 +83,7 @@ class DailyMaterialStorage:
 
     def bind(self,storage:PersistenceService,configuration:StoredCognitionConfiguration):
         """Bind only one full native configuration; the main cognition owner retains the lease."""
-        if self._bound or type(configuration) is not (StoredDreamConfiguration if self.dream_format else StoredDailyConfiguration) or stored_cognition_configuration_issue(configuration,storage=storage) is not None:raise InvalidValue()
+        if self._bound or type(configuration) is not (StoredManagedConfiguration if self.managed_format else StoredDreamConfiguration if self.dream_format else StoredDailyConfiguration) or stored_cognition_configuration_issue(configuration,storage=storage) is not None:raise InvalidValue()
         self.storage=storage;self.configuration=configuration
         self.rows=DailyRows(self.catalog,self.tables,storage,configuration.database_id,configuration.scope_id,configuration.snapshot_id)
         self.operations={d.operation_kind:storage.bind_operation(d,configuration.scope_id) for d in self.commands}
@@ -89,6 +95,7 @@ class DailyMaterialStorage:
         if self._closed or active is None:raise OwnerFailure('ACCESS_DENIED','material','BINDING_MISMATCH')
         uow.require_commit_permission(lambda:not self._closed)
         targets=[];root=active.manifest
+        version_target = self.versions.stage(uow, cast(str, root['object_id']), cast(str, root['owner_ref'])) if self.versions is not None else None
         if kind=='stage_material_page':
             if v['context_id']!=root['object_id'] or self.rows.get('learning_contexts',uow,cast(str,root['object_id'])) is not None:raise InvalidValue()
             values=cast(tuple[str,...],v['leaves'])
@@ -113,7 +120,7 @@ class DailyMaterialStorage:
             if restore_material(root,leaves,dream_format=self.dream_format)!=active:raise InvalidValue()
             self.rows.write('learning_contexts',uow,root)
             targets.append(target(cast(str,root['object_id']),1));state='MATERIAL_STORED'
-        return result(cast(str,v['operation_id']),state,{'cognition':{'rows_changed':len(targets),'targets':targets}})
+        return result(cast(str,v['operation_id']),state,{'cognition':{'rows_changed':len(targets) + int(version_target is not None),'targets':targets}})
 
     def stage_complete(self,uow:UnitOfWork,material:FrozenDailyMaterial) -> dict[str,object]:
         """Atomically store one complete owner material with its enclosing business root.
@@ -126,9 +133,10 @@ class DailyMaterialStorage:
         if operation.scope_id!=self.configuration.scope_id:raise InvalidValue()
         checked=restore_material(material.manifest,material.leaves,dream_format=self.dream_format)
         if checked!=material:raise InvalidValue()
+        version_target = self.versions.stage(uow, cast(str, material.manifest['object_id']), cast(str, material.manifest['owner_ref'])) if self.versions is not None else None
         for leaf in material.leaves:self.rows.write('learning_context_leaves',uow,leaf)
         root=self.rows.write('learning_contexts',uow,material.manifest)
-        return {'rows_changed':len(material.leaves)+1,'targets':(target(cast(str,root['object_id']),1),)}
+        return {'rows_changed':len(material.leaves)+1+int(version_target is not None),'targets':(target(cast(str,root['object_id']),1),)}
 
     def participate_material(self,uow:UnitOfWork,context_id:str,digest:str,owner_ref:str) -> FrozenDailyMaterial:
         """Read the exact complete durable material in another owner's atomic command.
@@ -154,6 +162,13 @@ class DailyMaterialStorage:
 
     async def persist(self,material:FrozenDailyMaterial,deadline:float):
         """Store finite original pages and then seal; continuation reuses original receipts."""
+        if self.versions is not None:
+            version = await self.versions.existing(cast(str, material.manifest['object_id']), cast(str, material.manifest['owner_ref']))
+            with self.versions.versions.use(version or self.versions.versions.current):
+                return await self._persist_selected(material, deadline)
+        return await self._persist_selected(material, deadline)
+
+    async def _persist_selected(self,material:FrozenDailyMaterial,deadline:float):
         if (not self._bound or self._closed or type(material) is not FrozenDailyMaterial
                 or type(deadline) not in (float,int) or not time.monotonic()<deadline<float('inf')):raise InvalidValue()
         verified=restore_material(material.manifest,material.leaves,dream_format=self.dream_format)
@@ -196,8 +211,9 @@ class DailyMaterialStorage:
         if type(found) is not Found or found.value.manifest['payload_digest']!=digest or found.value.manifest['owner_ref']!=owner_ref:
             raise OwnerFailure('PRECONDITION_FAILED','material','MATERIAL_CHANGED')
         if self._closed or time.monotonic()>=deadline:raise OwnerFailure('TIMEOUT','material','DEADLINE_EXCEEDED')
+        version = await self.versions.required(context_id, owner_ref) if self.versions is not None else None
         lease=object.__new__(DailyMaterialReadLease)
-        for name,value in (('issuer',self),('material',found.value),('deadline',deadline)):object.__setattr__(lease,name,value)
+        for name,value in (('issuer',self),('material',found.value),('deadline',deadline),('execution_version',version)):object.__setattr__(lease,name,value)
         self._leases[id(lease)]=lease
         return lease
 

@@ -4,7 +4,7 @@ The coordinator has no private SQL. Each participant stages its own real root,
 and persistence derives all mandatory audits from the immutable result. Loading
 and recovery only verify the original command and never fill missing roots.
 """
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from collections.abc import Callable
 from types import MappingProxyType
 from typing import Protocol

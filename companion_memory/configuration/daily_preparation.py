@@ -42,6 +42,17 @@ def _process_zone() -> str | None:
     return None
 
 
+def environment_timezone() -> str | None:
+    """Return a trusted unambiguous installed zone for a new management form.
+
+    An abbreviation such as EST is not interpreted as a geographic region.
+    Existing explicit configuration and the input timestamp protocol are untouched.
+    A missing result requires the operator to enter and confirm a valid zone.
+    """
+    zone = _process_zone()
+    return zone if zone is not None and (zone == 'UTC' or '/' in zone) else None
+
+
 def prepare_daily_configuration(foundation: object, runtime: object, platforms: object,
                                 content: object, information: object, daily: object,
                                 protected_directories: object, material_contracts: object):

@@ -123,10 +123,10 @@ def validate_inherited_vector(candidate) -> bool:
     return all(_matches(p.parameter(key),value) for p in candidate.platforms for key,value in selected.items())
 
 
-def validate_relationships(candidate,directories,*,dream_network:bool=False) -> bool:
+def validate_relationships(candidate,directories,*,dream_network:bool=False,managed_paths:bool=False) -> bool:
     from .content_validation import validate_content_relationships
     if validate_content_relationships(candidate.foundation,candidate.runtime,candidate.content,candidate.platforms,
-            directories,daily_network=True,dream_network=dream_network) is not None:return False
+            directories,daily_network=True,dream_network=dream_network,managed_paths=managed_paths) is not None:return False
     n=candidate.runtime.integer
     if n('logging.web_query_row_limit')>n('management.observation_row_limit') or n('logging.web_query_max_bytes')>n('management.observation_max_bytes') or n('logging.web_query_timeout_ms')>n('management.observation_timeout_ms'):return False
     text=candidate.text

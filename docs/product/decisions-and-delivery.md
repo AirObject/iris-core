@@ -1,5 +1,6 @@
 # 待细化契约、参数性质与实施组织
 
+2026-09-16首期管理身份、受控人工管理、新实例及备份升级、生产存储四组决定已批准，唯一行为及范围见[集中计划](../architecture/managed-runtime-and-deployment.md#decisions)；实施前置与状态见CURRENT_TASK，不以批准代称部署完成。
 
 2026-09-16梦境周期、时间衰减、周期persona及受控管理四项决定已批准，唯一取值与范围见[集中决定](../architecture/dream-and-long-term-maintenance.md#decisions)。本页旧接入补充的管理缺口继续描述旧装配，不否定新梦境装配的窄例外。
 

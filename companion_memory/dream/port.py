@@ -56,6 +56,11 @@ class DreamPorts:
         self.ports[identity.binding_id]=port
         return port
 
+    def revoke(self, port: DreamPort) -> None:
+        """Withdraw a native control handle; its already owned tasks remain tracked."""
+        if type(port) is DreamPort and port.owner is self and self.ports.get(port.identity.binding_id) is port:
+            self.ports.pop(port.identity.binding_id)
+
     def check(self,port:DreamPort,operation:str):
         if (self.closed or type(port) is not DreamPort or self.ports.get(port.identity.binding_id) is not port
                 or operation not in port.identity.operations or time.monotonic()>=port.identity.expires_at

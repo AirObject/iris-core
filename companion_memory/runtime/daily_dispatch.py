@@ -27,6 +27,9 @@ class DailyEntryPort:
         if type(result) is Committed and result.source=='NEW':
             await self.owner.threshold(self.entry_id,cast(str,key))
         return result
+    async def confirm_acceptance(self,key:object,event:object):
+        """Confirm locally without re-enqueueing learning or accepting new input."""
+        return await self.owner.entry(self,receiving=True).confirm_acceptance(key,event)
     async def request_learning(self,key:object,*,target_through_seq:int|None=None):
         self.owner.entry(self)
         return await self.owner.request(self.entry_id,key,'FOCUS',target_through_seq)

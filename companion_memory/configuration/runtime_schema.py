@@ -60,12 +60,12 @@ def platform_requirements(platform_id: str) -> tuple[RuntimeRequirement, ...]:
     ))
 
 
-def matches_runtime_definition(d: ParameterDefinition, r: RuntimeRequirement, platform: bool) -> bool:
+def matches_runtime_definition(d: ParameterDefinition, r: RuntimeRequirement, platform: bool, *, sensitivity: str = 'public') -> bool:
     if (d.key != r.key or d.type != ('boolean' if r.limits is None else 'integer')
             or d.owner_module != r.owner or not set(r.consumers) <= set(d.consumers)
             or not d.required or d.nullable or type(d.default) is not NoDefault
             or d.scope != (('platform',) if platform else ('instance',))
-            or d.override_policy != 'no_override' or d.sensitivity != 'public'
+            or d.override_policy != 'no_override' or d.sensitivity != sensitivity
             or set(d.read_roles) != {'trusted_operator'} or set(d.write_roles) != {'trusted_operator'}
             or d.apply_mode != ('NEXT_BATCH' if platform else 'INITIALIZE_ONLY')
             or type(d.activation_group) is not NotApplicable or type(d.enum) is not NotApplicable

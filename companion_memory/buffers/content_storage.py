@@ -72,6 +72,20 @@ class ContentBufferTransactions:
         if not rows: raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
         return rows[0]
 
+    async def observation(self, entry_id: str) -> MappingProxyType[str, Value]:
+        """Expose bounded queue counts without raw content or reservation identities.
+
+        Counts are separate owner reads, not a transactional business snapshot.
+        The caller retains the composite observation label and timestamp.
+        """
+        state = await self.rows.read('get', {'entry_id': entry_id})
+        if not state:
+            raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
+        normal = (await self.rows.read('state_count', {'entry_id': entry_id, 'state': 'NORMAL'}))[0]['count']
+        staged = (await self.rows.read('state_count', {'entry_id': entry_id, 'state': 'STAGED'}))[0]['count']
+        return MappingProxyType({'normal_pending': normal, 'focus_pending': staged,
+            'buffer_revision': state[0]['revision'], 'reserved': state[0]['reservation_id'] is not None})
+
     def update(self, uow: UnitOfWork, previous: MappingProxyType[str, Value], **changes: Value) -> MappingProxyType[str, Value]:
         """Advance a nonwrapping entry revision with exact old-state fencing."""
         rows = self.rows.stage('update', uow, {**previous, **changes, 'revision': cast(int, previous['revision']) + 1, 'expected_revision': previous['revision']})

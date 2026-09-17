@@ -17,7 +17,7 @@ def collect(owner,uow,run):
     previous=owner.current.participate_current(uow,pointer['publication_id'],pointer['revision'])
     if previous is None:raise InvalidValue()
     refs,selected,watermark,cursor,excluded=eligible_self_page(owner.memory,uow,cast(str,run['self_cursor']))
-    policy=owner.configuration.candidate.text.record('self_model.initial_persona')
+    policy=owner.control.execution_configuration().text.record('self_model.initial_persona')
     body={'previous_persona':previous,'evidence':selected,'generation_goal':policy['generation_goal'],
         'supervision_prompt':policy['supervision_prompt'],'coverage':{'watermark':watermark,'complete':False,'next_after':cursor,'excluded':excluded}}
     return pointer,refs,watermark,cursor,body

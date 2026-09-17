@@ -6,7 +6,7 @@ still discard an encoded response before its first delivery. Old keys return
 confirmation metadata only, including when ticket payload has been disposed.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, replace
@@ -102,10 +102,10 @@ class QueryService:
         if type(configuration) is StoredTextConfiguration:
             if test_persona is not None or type(current_persona) is not CurrentPersonaPort or current_persona._owner.transactions.assembly is not runtime.assembly:
                 raise ValueError('Text queries require their actual native current-persona owner.')
-        elif type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration:
+        elif type(configuration) is StoredDailyConfiguration or (type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration):
             if test_persona is not None or type(current_persona) is not DailyCurrentPersonaPort or not current_persona.matches(configuration,runtime.assembly.storage):raise ValueError('Daily queries require their native current-persona capability.')
         elif current_persona is not None:raise ValueError('A native text persona requires the independent text configuration.')
-        if (type(configuration) in (StoredSemanticConfiguration,StoredDailyConfiguration,StoredDreamConfiguration))!=(type(semantic) is SemanticQuery):raise ValueError('Native semantic query assembly differs.')
+        if ((type(configuration) is StoredSemanticConfiguration or type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration))!=(type(semantic) is SemanticQuery):raise ValueError('Native semantic query assembly differs.')
         self.semantic=semantic
         self.configuration, self.runtime, self.management, self.index, self.state, self.goals = configuration, runtime, management, index, state, goals
         self.test_persona = test_persona

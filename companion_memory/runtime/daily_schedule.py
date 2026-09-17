@@ -5,7 +5,7 @@ is a separate volatile switch which only an explicit successful resume opens.
 The scheduler stores work references; it neither calls Provider nor owns media.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 from collections.abc import Callable
 from dataclasses import replace
@@ -28,8 +28,8 @@ def schedule_result(kind):
 
 class DailySchedule:
     """Finite runtime commands share the runtime owner's repository and gate."""
-    def __init__(self,catalog:StatementCatalog,content=None):
-        if catalog.definition.owner_module!='runtime' or catalog.definition.schema_version!=5:raise InvalidValue()
+    def __init__(self,catalog:StatementCatalog,content=None,*,managed_format:bool=False):
+        if catalog.definition.owner_module!='runtime' or catalog.definition.schema_version!=(8 if managed_format else 5):raise InvalidValue()
         self.catalog=catalog;self.content=content;self._bound=False;self._closed=False;self.enabled=False;self._task:asyncio.Task|None=None
         self.authorize:Callable[[str],bool]=lambda entry:False
         self._command_gate=asyncio.Lock();self._waiters=0
@@ -140,7 +140,7 @@ class DailySchedule:
                 state=self.content.buffers.current(uow,cast(str,v['entry_id']))
                 if not 0<cast(int,v['target_through_seq'])<cast(int,state['next_sequence']):raise InvalidValue()
                 a=self.content;entry=a.ingress.rows.stage('entry',uow,{'entry_id':v['entry_id']})[0]
-                platform=a.configuration.candidate.platform(cast(str,entry['platform_id']));count=platform.count('target_count');recent=platform.count('recent_context_count')
+                platform=a.execution_configuration.platform(cast(str,entry['platform_id']));count=platform.count('target_count');recent=platform.count('recent_context_count')
                 positions=a.buffers.rows.stage('fifo',uow,{'entry_id':v['entry_id'],'state':'NORMAL','limit':count+recent})
                 if len(positions)<count+recent or cast(int,positions[count-1]['entry_seq'])>cast(int,v['target_through_seq']):raise OwnerFailure('PRECONDITION_FAILED','source','WINDOW_CHANGED')
                 covered=self.covering_trigger(uow,v['entry_id'],positions[count-1]['entry_seq'])

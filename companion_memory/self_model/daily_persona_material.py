@@ -29,7 +29,7 @@ def freeze_initial(configuration,provider,initial,run_id,generation,operation,no
     source=isolate_initial_self(initial)
     if (source['database_id']!=configuration.database_id or source['instance_id']!=configuration.scope_id or source['config_snapshot_id']!=configuration.snapshot_id
             or source['object_id']!=stable_identity('self-input',configuration.database_id,configuration.scope_id) or not 1<=generation<=3):raise InvalidValue()
-    settings=configuration.candidate.text.record('self_model.initial_persona')
+    settings=provider.execution_configuration().text.record('self_model.initial_persona')
     profile=next(p for p in provider.profiles if p['material_role']=='PERSONA')
     state=next(e.state for e in configuration.candidate.foundation.list_entries() if e.definition.key=='provider.accounts')
     if type(state) is not PresentValue:raise InvalidValue()

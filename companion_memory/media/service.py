@@ -6,7 +6,7 @@ Native finite entry grants confer no path/hash access. Timed-out file workers
 retain their actual slot and block reuse until they have ended.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from companion_memory.persistence.completion import CompletionScope, finish_owned, retain_completion, start_owned
 import asyncio
 from collections.abc import Callable
@@ -43,6 +43,7 @@ from .physical_paths import PhysicalDirectories
 from .health import MediaHealth
 from .processing_bytes import ProcessingRead
 from .interpretations import isolate_interpretation, decode_interpretation
+from .restore_resources import MediaRestoreResources
 
 
 def identity(kind: str, *parts: Value) -> str:
@@ -83,6 +84,7 @@ class MediaResources:
     """Expected root identity is retained independently before initialization."""
     root_id: str
     retained_identity_check: Callable[[str, str, str], bool]
+    restoration: MediaRestoreResources | None = None
 
 
 @dataclass(frozen=True, slots=True, weakref_slot=True, init=False)
@@ -126,7 +128,7 @@ class MediaUploadPort:
 
 class MediaService:
     """Static media owner and lifecycle service, using exclusively configured limits."""
-    def __init__(self,*,daily_format:bool=False):
+    def __init__(self,*,daily_format:bool=False,managed_format:bool=False):
         self.daily_format = daily_format
         self.catalog = media_catalog(daily_format=daily_format); self.repositories = (self.catalog.definition,)
         self.files: PhysicalDirectories
@@ -165,6 +167,10 @@ class MediaService:
         from .integrity import MediaIntegrity
         self.integrity = MediaIntegrity(self)
         self._definitions()
+        from .managed_restore import ManagedMediaRestore
+        self.restoration = ManagedMediaRestore(self) if managed_format else None
+        if self.restoration is not None:
+            self.commands += self.restoration.commands
 
     def _definitions(self) -> None:
         change = RecordSchema((Field('resource_id', ID), Field('generation', INT), Field('state', ID),
@@ -206,14 +212,14 @@ class MediaService:
     def daily_reference_targets(self,uow:UnitOfWork,blob_ids:tuple[str,...]):
         """Read actual bounded blob reference revisions under the media owner."""
         from companion_memory.persistence.daily_results import target
-        if type(self.configuration) not in (StoredDailyConfiguration,StoredDreamConfiguration) or not 1<=len(blob_ids)<=8:raise InvalidValue()
+        if (type(self.configuration) is not StoredDailyConfiguration and type(self.configuration) is not StoredDreamConfiguration and type(self.configuration) is not StoredManagedConfiguration) or not 1<=len(blob_ids)<=8:raise InvalidValue()
         return tuple(target(bid,cast(int,self._blob(uow,bid)['references_revision'])) for bid in blob_ids)
 
     def bind(self, storage: PersistenceService, configuration: StoredContentConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str) -> None:
         """Bind once to actual persistent configuration and an exclusive owner lease."""
         if self._bound or (type(configuration) is not StoredContentConfiguration and stored_text_configuration_issue(configuration) is not None
                 and stored_semantic_configuration_issue(configuration) is not None and stored_cognition_configuration_issue(configuration,storage=storage) is not None): raise ValueError('Native unbound media configuration required.')
-        if (type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration) and configuration.scope_id!=instance_id:raise ValueError('Daily media scope differs.')
+        if (type(configuration) is StoredDailyConfiguration or (type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration)) and configuration.scope_id!=instance_id:raise ValueError('Daily media scope differs.')
         self.storage, self.configuration, self.instance_id = storage, configuration, instance_id
         self.settings = configuration.candidate.content
         from .work_rows import MediaWorkRows
@@ -225,6 +231,8 @@ class MediaService:
         self.root = Path(cast(str, self.settings.value('media.root_directory')))
         self.staging = Path(cast(str, self.settings.value('media.staging_directory')))
         self.published = self.root / 'published'
+        self.managed_sibling = (type(configuration) is StoredManagedConfiguration and
+            self.root.parent == self.staging.parent and self.root != self.staging)
         self._executor = ThreadPoolExecutor(max_workers=self.settings.integer('media.file_worker_capacity'), thread_name_prefix='media-files')
         self._bound = True
 
@@ -548,11 +556,12 @@ class MediaService:
                 fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 root = os.fstat(root_fd)
                 if mode == 'CREATE_NEW':
-                    allowed = {'.owner', self.staging.relative_to(self.root).parts[0]}
+                    allowed = {'.owner'} if self.managed_sibling else {'.owner', self.staging.relative_to(self.root).parts[0]}
                     if continue_empty:allowed.add('published')
                     if any(name not in allowed for name in os.listdir(root_fd)):
                         raise OSError(errno.EEXIST, 'Media root is not empty.')
-                    stage_fd = PhysicalDirectories.open_child(root_fd, self.staging.relative_to(self.root), True)
+                    stage_fd = (PhysicalDirectories.open_sibling(self.staging) if self.managed_sibling else
+                        PhysicalDirectories.open_child(root_fd, self.staging.relative_to(self.root), True))
                     try:
                         if os.listdir(stage_fd): raise OSError(errno.EEXIST, 'Media staging is not empty.')
                     finally: os.close(stage_fd)
@@ -564,7 +573,8 @@ class MediaService:
                         try:
                             if os.listdir(published_fd):raise OSError(errno.EEXIST,'Unfinished media publication directory contains content.')
                         finally:os.close(published_fd)
-                self.files = PhysicalDirectories(self.root, root_fd, (self.staging, self.published), owner, self._invalidate_directories)
+                self.files = PhysicalDirectories(self.root, root_fd, (self.staging, self.published), owner, self._invalidate_directories,
+                    siblings=(self.staging,) if self.managed_sibling else ())
                 self._root_fd, self._owner_fd = root_fd, owner
                 return root.st_dev, root.st_ino
             except BaseException:
@@ -578,6 +588,10 @@ class MediaService:
                 result = await self._execute('initialize_media_root', 'media-root', {'root_id': resources.root_id, 'device': device, 'inode': inode, **children})
                 if type(result) is not Committed: return result
             else:
+                if resources.restoration is not None:
+                    if self.restoration is None:
+                        raise OwnerFailure('ACCESS_DENIED', 'restore', 'BINDING_MISMATCH')
+                    await self.restoration.apply(resources.restoration, resources.root_id)
                 rows = await self.rows.read('roots_get', {'root_id': resources.root_id})
                 if not rows or (rows[0]['device'], rows[0]['inode'], rows[0]['database_id']) != (device, inode, self.configuration.database_id) or any(rows[0][key] != value for key, value in children.items()):
                     raise OwnerFailure('FILE_FAILED', 'media', 'RESOURCE_IDENTITY_MISMATCH')

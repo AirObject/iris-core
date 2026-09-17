@@ -5,7 +5,7 @@ revisions are checked inside the transaction. Input bodies are never copied into
 the generic receipt; only stable object references and revisions are returned.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
@@ -13,6 +13,7 @@ from typing import cast, TYPE_CHECKING
 
 from companion_memory.configuration import EffectiveSnapshot
 if TYPE_CHECKING:
+    from .managed_versions import ManagedProviderVersions
     from companion_memory.configuration.text_persistence import StoredTextConfiguration
     from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration
     from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
@@ -62,13 +63,15 @@ class Mutation:
 
 class LedgerAssembly:
     """Trusted declarations required before creating a new provider database."""
-    def __init__(self, *, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False, daily_format: bool = False, dream_format: bool = False) -> None:
+    def __init__(self, *, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False, daily_format: bool = False, dream_format: bool = False, managed_format: bool = False) -> None:
         if type(text_generation) is not bool or type(embedding_format) is not bool or text_generation and embedding_format:
             raise TypeError('An exact static provider format is required.')
         if type(embedding_usage_only) is not bool or embedding_usage_only and not embedding_format:raise TypeError('Usage-only requires embedding format.')
         if type(daily_format) is not bool or daily_format and any((text_generation,embedding_format,embedding_usage_only)):raise TypeError('Daily Provider requires an independent selection.')
         if type(dream_format) is not bool or dream_format and not daily_format:raise TypeError('Dream Provider requires explicit native cognition format.')
         self.dream_format=dream_format
+        self.managed_format=managed_format
+        if managed_format and not dream_format:raise ValueError("Managed storage requires dream owners.")
         self.daily_format=daily_format
         self.embedding_usage_only=embedding_usage_only or daily_format
         self.version=6 if dream_format else 5 if daily_format else 4 if embedding_usage_only else 3 if embedding_format else 2 if text_generation else 1
@@ -116,7 +119,7 @@ class LedgerAssembly:
         semantic = None
         if self.daily_format:
             from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
-            if (type(snapshot) is not (StoredDreamConfiguration if self.dream_format else StoredDailyConfiguration) or stored_cognition_configuration_issue(snapshot,storage=storage) is not None):raise TypeError('Native persisted daily configuration is required.')
+            if (type(snapshot) is not (StoredManagedConfiguration if self.managed_format else StoredDreamConfiguration if self.dream_format else StoredDailyConfiguration) or stored_cognition_configuration_issue(snapshot,storage=storage) is not None):raise TypeError('Native persisted daily configuration is required.')
             semantic=cast(StoredCognitionConfiguration,snapshot)
             snapshot=semantic.candidate.foundation
         elif self.embedding_format:
@@ -147,6 +150,7 @@ class LedgerBinding:
         self.assembly, self.storage, self.snapshot = assembly, storage, snapshot
         self.text_configuration = text_configuration
         self.semantic_configuration = semantic_configuration
+        self.managed_versions: ManagedProviderVersions | None = None
         self.statements = {name: storage.bind_statement(assembly.repository.definition, statement, "provider")
                            for name, statement in assembly.repository.statements}
         self.operations = {definition.operation_kind: storage.bind_operation(definition, "provider") for definition in assembly.commands}
@@ -272,7 +276,10 @@ class LedgerBinding:
                 if profile is None or row['account_id']!=profile['account_id'] or row['capability']!=profile['capability'] or row['wire_protocol']!=profile['wire_protocol']:raise InvalidData()
             if table=='requests':
                 evidence=as_record(row['execution_evidence'])
-                if (row['config_snapshot_id']!=stored.snapshot_id or row['profile_revision']!=identity('daily-profile',stored.snapshot_id,cast(str,row['profile_id']))
+                if self.managed_versions is not None:
+                    from .managed_versions import profiles as version_profiles
+                    profiles = {p['profile_id']: p for p in version_profiles(self.managed_versions.candidate(row))}
+                if (row['config_snapshot_id']!=stored.snapshot_id or self.managed_versions is None and row['profile_revision']!=identity('daily-profile',stored.snapshot_id,cast(str,row['profile_id']))
                         or evidence['profile']!=profiles.get(row['profile_id']) or evidence['account']!=accounts[row['account_id']]):raise InvalidData()
         elif self.assembly.embedding_format:
             from .embedding_stored_schema import validate as validate_embedding
@@ -347,6 +354,8 @@ class LedgerBinding:
                 table = "attempts"
             if statement == "usage_aggregate":
                 table = statement
+            if table == 'requests' and self.managed_versions is not None:
+                await self.managed_versions.preload(load(raw['body']))
             record = self._decode(table, raw)
             collected.append(record)
         rows = tuple(collected)
@@ -402,5 +411,10 @@ class LedgerBinding:
             port=self.operations[kind]
             prior=await port.resolve_operation(port.recovery_handle(key,command))
             if type(prior) is not NotCommitted or prior.error is not None:return prior,command
-        result = await self.operations[kind].execute(key, command)
+        if self.assembly.managed_format and kind in ('evidence', 'settle', 'terminate', 'recover'):
+            if self.lease is None:
+                raise InvalidData()
+            result = await self.storage.reconcile_managed_provider(self.lease, self.operations[kind], key, command)
+        else:
+            result = await self.operations[kind].execute(key, command)
         return result, command

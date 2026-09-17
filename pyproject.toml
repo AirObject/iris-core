@@ -11,7 +11,7 @@ dependencies = [
 package = false
 
 [tool.pyright]
-include = ["companion_memory", "tests"]
+include = ["companion_memory", "tests", "deployment"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 venvPath = "."

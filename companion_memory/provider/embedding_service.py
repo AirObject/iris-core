@@ -6,7 +6,7 @@ results remain owned until their atomic handoff commits; callers cannot supply
 vectors to the completion command or turn confirmation into physical cleanup.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -88,7 +88,7 @@ class EmbeddingProvider:
         if (type(ledger) is not LedgerBinding or not ledger.assembly.embedding_format or ledger.semantic_configuration is not configuration
                 or transport is not None and (type(transport) is not ChatTransport or transport._format!='EMBEDDING')):
             raise ValueError('Native embedding ledger and transport bindings are required.')
-        if (type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration))!=(type(network) is DailyNetwork) or ledger.assembly.daily_format!=(network is not None):raise ValueError('Daily Provider requires its one native network owner.')
+        if ((type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration))!=(type(network) is DailyNetwork) or ledger.assembly.daily_format!=(network is not None):raise ValueError('Daily Provider requires its one native network owner.')
         self._unknown_requests:set[str]=set()
         self.network=network;self._network_permit:NetworkPermit|None=None;self._network_work:str|None=None
         self.ledger=ledger;self.configuration=configuration;self.instance=instance;self.checkpoint=checkpoint;self.permit=permit
@@ -504,6 +504,9 @@ class EmbeddingProvider:
         port=self.operations[kind]
         prior=await port.resolve_operation(port.recovery_handle(key,command))
         if type(prior) is not NotCommitted or prior.error is not None:return prior
+        if self.ledger.assembly.managed_format:
+            if self.ledger.lease is None:raise InvalidData()
+            return await self.storage.reconcile_managed_provider(self.ledger.lease,port,key,command)
         return await port.execute(key,command)
 
     def handle(self,kind: str,uow: UnitOfWork,envelope: Record,payload: Record) -> object:

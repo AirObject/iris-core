@@ -13,18 +13,34 @@ from companion_memory.persistence.owned_statements import OwnerFailure
 
 class PhysicalDirectories:
     """Own finite directory descriptors, never follow replacement path components."""
-    def __init__(self, root: Path, root_fd: int, directories: tuple[Path, ...], owner_fd: int, invalidated: Callable[[], None]):
+    def __init__(self, root: Path, root_fd: int, directories: tuple[Path, ...], owner_fd: int, invalidated: Callable[[], None], *, siblings: tuple[Path, ...] = ()):
         self.invalidated = invalidated
         self.root = root; self.root_fd = root_fd; self.owner_fd = owner_fd; self.fds: dict[Path, int] = {}
+        self.siblings = siblings
+        if any(path.parent != root.parent or path == root or path not in directories for path in siblings):
+            self.fail()
         try:
             for path in directories:
-                relative = path.relative_to(root)
-                fd = self.open_child(root_fd, relative)
+                fd = self.open_sibling(path) if path in siblings else self.open_child(root_fd, path.relative_to(root))
                 self.fds[path] = fd
                 if os.fstat(fd).st_dev != os.fstat(root_fd).st_dev: self.fail()
             self.validate()
         except BaseException:
             self.close(); raise
+
+    @staticmethod
+    def open_sibling(path: Path) -> int:
+        """Traverse an explicit sibling from the filesystem root without aliases."""
+        root = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            fd = PhysicalDirectories.open_child(root, path.relative_to('/'))
+            info = os.fstat(fd)
+            if info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                os.close(fd)
+                PhysicalDirectories.fail()
+            return fd
+        finally:
+            os.close(root)
 
     @staticmethod
     def open_child(root_fd: int, relative: Path, create: bool = False) -> int:
@@ -54,7 +70,7 @@ class PhysicalDirectories:
             owner = os.stat('.owner', dir_fd=self.root_fd, follow_symlinks=False); expected_owner = os.fstat(self.owner_fd)
             if not stat.S_ISREG(owner.st_mode) or (owner.st_dev, owner.st_ino) != (expected_owner.st_dev, expected_owner.st_ino): self.fail()
             for path, fd in self.fds.items():
-                current_fd = self.open_child(self.root_fd, path.relative_to(self.root))
+                current_fd = self.open_sibling(path) if path in self.siblings else self.open_child(self.root_fd, path.relative_to(self.root))
                 try: current = os.fstat(current_fd)
                 finally: os.close(current_fd)
                 expected = os.fstat(fd)

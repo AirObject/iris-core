@@ -62,6 +62,17 @@ def _issue_dream_configuration_capacity(owner: object) -> ConfigurationInitializ
     return result
 
 
+def _issue_managed_configuration_capacity(owner: object) -> ConfigurationInitializationCapacity:
+    """Issue only the managed publisher's initial complete configuration carrier."""
+    from companion_memory.configuration.managed_persistence import ManagedConfigurationAssembly
+    if type(owner) is not ManagedConfigurationAssembly:
+        raise InvalidValue()
+    result=object.__new__(ConfigurationInitializationCapacity)
+    object.__setattr__(result, '_owner', owner)
+    object.__setattr__(result, '_issuer', _ISSUER)
+    return result
+
+
 def declared_capacity(definition: CommandSpec) -> int | None:
     """Validate native identity before declaring or applying the fixed exception."""
     from .definitions import ResultBoundCommandDefinition
@@ -72,9 +83,19 @@ def declared_capacity(definition: CommandSpec) -> int | None:
     from companion_memory.configuration.semantic_persistence import SemanticConfigurationAssembly
     from companion_memory.configuration.daily_persistence import DailyConfigurationAssembly
     from companion_memory.configuration.dream_persistence import DreamConfigurationAssembly
+    from companion_memory.configuration.managed_persistence import ManagedConfigurationAssembly
     if (type(policy) is not ConfigurationInitializationCapacity or getattr(policy, '_issuer', None) is not _ISSUER
-            or type(getattr(policy, '_owner', None)) not in (TextConfigurationAssembly,SemanticConfigurationAssembly,DailyConfigurationAssembly,DreamConfigurationAssembly)):
+            or type(getattr(policy, '_owner', None)) not in (TextConfigurationAssembly,SemanticConfigurationAssembly,DailyConfigurationAssembly,DreamConfigurationAssembly,ManagedConfigurationAssembly)):
         raise InvalidValue()
+    if type(policy._owner) is ManagedConfigurationAssembly:
+        managed = policy._owner
+        if (managed.commands != (definition,) or managed.commands[0] is not definition
+                or definition.handler != managed._handle or definition.owner_namespace != 'configuration'
+                or definition.operation_kind != 'initialize_managed_configuration'
+                or definition.participants != (managed.repository.definition,)
+                or managed.repository.definition.schema_version != 8):
+            raise InvalidValue()
+        return 2097152
     owner = cast(TextConfigurationAssembly | SemanticConfigurationAssembly | DailyConfigurationAssembly | DreamConfigurationAssembly, policy._owner)
     if type(owner) is DreamConfigurationAssembly:
         if (owner.commands != (definition,) or owner.commands[0] is not definition
@@ -109,7 +130,7 @@ def validate_command_values(definition: CommandSpec, values) -> None:
     from companion_memory.configuration.semantic_codec import CONFIGURATION_BODY_LIMIT as SEMANTIC_BODY_LIMIT
     from companion_memory.configuration.semantic_schema import semantic_definitions
     daily=definition.operation_kind=='initialize_daily_configuration'
-    dream=definition.operation_kind=='initialize_dream_configuration'
+    dream=definition.operation_kind in ('initialize_dream_configuration','initialize_managed_configuration')
     semantic=definition.operation_kind=='initialize_semantic'
     limit=SEMANTIC_BODY_LIMIT if semantic else TEXT_BODY_LIMIT
     added={d['key'] for d in semantic_definitions()} if semantic else set()

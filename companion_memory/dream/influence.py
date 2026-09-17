@@ -29,7 +29,7 @@ class DreamInfluence:
         run=c.require_dispatch(uow,v['run_id'],v['expected_revision'],v['mode_epoch']);now=c._ready(uow)
         if not c.settled(run):raise OwnerFailure('RESOURCE_BUSY','run','RUN_ACTIVE')
         if now>=run['deadline_at_us']:raise OwnerFailure('TIMEOUT','run','DEADLINE_EXCEEDED')
-        limits=c.configuration.candidate.text.record('dream.resources')
+        limits=c.execution_configuration().text.record('dream.resources')
         if run['edges_used']+4>limits['dependency_edges_per_run']:raise OwnerFailure('RESOURCE_BUSY','run','CAPACITY_REACHED')
         influence=memory.long_term.influence
         raw=influence.rows.rows.stage('influence_next',uow,{'after':run['impact_cursor']})
@@ -55,7 +55,7 @@ class DreamInfluence:
         run=c.require_dispatch(uow,v['run_id'],v['expected_revision'],v['mode_epoch']);now=c._ready(uow)
         if not c.settled(run):raise OwnerFailure('RESOURCE_BUSY','run','RUN_ACTIVE')
         if now>=run['deadline_at_us']:raise OwnerFailure('TIMEOUT','run','DEADLINE_EXCEEDED')
-        if run['edges_used']>=c.configuration.candidate.text.record('dream.resources')['dependency_edges_per_run']:
+        if run['edges_used']>=c.execution_configuration().text.record('dream.resources')['dependency_edges_per_run']:
             raise OwnerFailure('RESOURCE_BUSY','run','CAPACITY_REACHED')
         queue=memory.long_term.influence;work=queue.rows.get('influence_work',uow,v['influence_id'])
         if work is None:raise InvalidValue()

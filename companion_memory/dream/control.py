@@ -13,8 +13,12 @@ import time
 from hashlib import sha256
 from collections.abc import Callable,Awaitable
 from types import MappingProxyType
-from typing import cast
+from typing import cast, TYPE_CHECKING
+if TYPE_CHECKING:
+    from companion_memory.runtime.managed_work_configuration import ManagedWorkConfiguration
+from companion_memory.persistence import RepositoryDefinition
 
+from companion_memory.configuration.managed_persistence import StoredManagedConfiguration, stored_managed_configuration_issue
 from companion_memory.configuration.dream_persistence import StoredDreamConfiguration, stored_dream_configuration_issue
 from companion_memory.persistence import (Committed, Found, NotCommitted, NotFound, PersistenceService,
     ResultBoundCommand, ResultBoundCommandDefinition, UnitOfWork)
@@ -53,8 +57,10 @@ class ControlIntent:
 class DreamControl:
     """One finite owner, with retained actual tasks and immutable original keys."""
 
-    def __init__(self):
+    def __init__(self, managed_runtime: RepositoryDefinition | None = None):
         self.catalog = dream_catalog()
+        self.work_configuration: ManagedWorkConfiguration | None = None
+        self.managed_runtime = managed_runtime
         self.causes = OwnerCauses()
         self.bound = False
         self.closed = False
@@ -84,7 +90,9 @@ class DreamControl:
         }
         definitions = []
         for name, parameters in layouts.items():
-            requirements, bindings = audits(name, ('dream',))
+            owners = ('dream', 'runtime') if managed_runtime is not None and name == 'start_background_dream' else ('dream',)
+            participants = (self.catalog.definition, managed_runtime) if managed_runtime is not None and len(owners) == 2 else (self.catalog.definition,)
+            requirements, bindings = audits(name, owners)
 
             def handle(uow: UnitOfWork, values: Record, operation: str = name):
                 try:
@@ -95,18 +103,19 @@ class DreamControl:
 
             definitions.append(ResultBoundCommandDefinition('dream', name, 1,
                 RecordSchema((Field('operation_id', ID),) + parameters), 1,
-                result_schema(('dream',), ('INITIALIZED', *RUN_STATES)),
-                (self.catalog.definition,), requirements, handle, INTENT, bindings))
+                result_schema(owners, ('INITIALIZED', *RUN_STATES)),
+                participants, requirements, handle, INTENT, bindings))
         self.commands = tuple(definitions)
 
-    def bind(self, storage: PersistenceService, configuration: StoredDreamConfiguration,
+    def bind(self, storage: PersistenceService, configuration: StoredDreamConfiguration | StoredManagedConfiguration,
              *, checkpoint: Callable[[], None], now: Callable[[], int]) -> None:
         """Bind the exact new configuration; reconstructing never enables sends."""
-        if (self.bound or self.closed or stored_dream_configuration_issue(configuration) is not None
+        if (self.bound or self.closed or (stored_managed_configuration_issue(configuration) if type(configuration) is StoredManagedConfiguration else stored_dream_configuration_issue(configuration)) is not None
                 or not callable(checkpoint) or not callable(now)):
             raise InvalidValue()
         self.storage = storage
         self.configuration = configuration
+        self.execution_configuration = lambda: self.configuration.candidate
         self.checkpoint = checkpoint
         self.now = now
         self.rows = DailyRows(self.catalog, TABLES, storage, configuration.database_id,
@@ -305,8 +314,12 @@ class DreamControl:
                 'updated_at_us': max(now, cast(int, run['updated_at_us'])), 'last_operation': original})
             self.rows.write('runs', uow, changed, revision)
             targets.append(target(cast(str, run['run_id']), revision + 1, revision))
-        return result(cast(str, values['operation_id']), state, {'dream': {
-            'rows_changed': self.storage.transaction_row_changes(uow)['dream'], 'targets': targets}})
+        counts = self.storage.transaction_row_changes(uow)
+        facts: dict[str, object] = {'dream': {'rows_changed': counts['dream'], 'targets': targets}}
+        if kind == 'start_background_dream' and self.work_configuration is not None:
+            facts['runtime'] = {'rows_changed': counts['runtime'], 'targets': [target(
+                self.work_configuration.key('DREAM', cast(str, values['run_id'])), 1)]}
+        return result(cast(str, values['operation_id']), state, facts)
 
 
     def start_run(self,uow:UnitOfWork,values:Record,now:int,original,root,*,mode:str,state:str,epoch:int):
@@ -315,15 +328,17 @@ class DreamControl:
             raise OwnerFailure('PRECONDITION_FAILED', 'revision', 'REVISION_CONFLICT')
         if root['active_run_id'] is not None:
             raise OwnerFailure('RESOURCE_BUSY', 'run', 'RUN_ACTIVE')
+        if self.work_configuration is not None:
+            self.work_configuration.freeze(uow, 'DREAM', cast(str, values['run_id']))
         if values['trigger'] == 'SCHEDULED':
             from zoneinfo import ZoneInfo
             from companion_memory.runtime.dream_clock import due_date
-            schedule=self.configuration.candidate.text.record('dream.schedule')
-            due=due_date(now,ZoneInfo(cast(str,self.configuration.candidate.text.value('runtime.timezone'))),
+            schedule=self.execution_configuration().text.record('dream.schedule')
+            due=due_date(now,ZoneInfo(cast(str,self.execution_configuration().text.value('runtime.timezone'))),
                 cast(str,schedule['local_time']),cast(str|None,root['last_local_date']))
             if not schedule['enabled'] or due is None or values['local_date']!=due.local_date:
                 raise OwnerFailure('PRECONDITION_FAILED', 'date', 'STATE_MISMATCH')
-        limits = self.configuration.candidate.text.record('dream.resources')
+        limits = self.execution_configuration().text.record('dream.resources')
         run = validate_run(self._base(cast(str, values['run_id']), now) | {
             'run_id': values['run_id'], 'scope': self.configuration.scope_id,
             'schedule_revision': root['schedule_revision'], 'local_date': values['local_date'],
@@ -345,10 +360,20 @@ class DreamControl:
         return run,targets
 
     async def execute(self, kind: str, key: str, values: dict[str, object], *, actor: str, intent:ControlIntent|None=None):
+        work = self.work_configuration
+        if work is not None:
+            run_id = values.get('run_id')
+            version = (await work.load('DREAM', run_id) if type(run_id) is str and
+                kind not in ('start_background_dream', 'start_focused_dream') else work.versions.active)
+            with work.versions.use(version):
+                return await self._execute(kind, key, values, actor=actor, intent=intent)
+        return await self._execute(kind, key, values, actor=actor, intent=intent)
+
+    async def _execute(self, kind: str, key: str, values: dict[str, object], *, actor: str, intent:ControlIntent|None=None):
         """Trusted host invocation; a timed-out actual job retains the only slot."""
         if not self.bound or self.closed or kind not in self.operations:
             raise OwnerFailure('INVALID_STATE', 'state', 'NOT_READY')
-        resources = self.configuration.candidate.text.record('dream.resources')
+        resources = self.execution_configuration().text.record('dream.resources')
         deadline = current_deadline(cast(int, resources['operation_timeout_ms']) / 1000)
         definition = next(d for d in self.commands if d.operation_kind == kind)
         command = ResultBoundCommand(1, {'operation_id': key, **values},

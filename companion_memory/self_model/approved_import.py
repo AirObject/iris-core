@@ -5,7 +5,7 @@ its source record commit together; the imported text never becomes a local
 Provider attempt. Original keys remain independently confirmable on recovery.
 """
 from __future__ import annotations
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 from dataclasses import dataclass
 import time
@@ -117,7 +117,7 @@ class ApprovedPersonaImport:
             'self_subject_id':subject['subject_id'],'self_revision':subject['revision'],'publication_origin':'IMPORTED_APPROVED','model_origin':'REMOTE_PROVIDER',
             'approval_ref':e.approval_ref,'publication_operation':operation})
         facts:dict[str,object]={'self_model':{'rows_changed':2,'targets':[target(self.import_id,1),target(self.publication_id,1)]}}
-        if type(self.configuration) is StoredDreamConfiguration:
+        if (type(self.configuration) is StoredDreamConfiguration or type(self.configuration) is StoredManagedConfiguration):
             from .unified_persona import initialize_pointer
             pointer=initialize_pointer(self,uow,self.publication_id,'IMPORTED_APPROVED',MappingProxyType(operation),now)
             facts['self_model']={'rows_changed':3,'targets':[target(self.import_id,1),target(self.publication_id,1),target(pointer,1)]}

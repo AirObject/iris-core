@@ -4,7 +4,7 @@ Only current memory acknowledgments and complete retained artifacts supply
 members. Publication rechecks the entire authoritative set in one UoW. File
 preparation runs outside transactions and never advances publication itself.
 """
-from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, stored_cognition_configuration_issue
+from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 import time
 from collections.abc import Callable
@@ -31,7 +31,7 @@ class SemanticGenerations:
     """One retrieval owner's bounded index participant and retained file proofs."""
     def __init__(self,catalog: StatementCatalog,storage: PersistenceService,configuration: StoredSemanticConfiguration | StoredCognitionConfiguration,
                  instance: str,memory: MemorySemanticCoverage,files: VectorFiles,checkpoint: Callable[[],None]):
-        if ((stored_cognition_configuration_issue(configuration,storage=storage) if type(configuration) in (StoredDailyConfiguration,StoredDreamConfiguration) else stored_semantic_configuration_issue(configuration)) is not None or catalog.definition.owner_module!='retrieval'
+        if ((stored_cognition_configuration_issue(configuration,storage=storage) if (type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration) else stored_semantic_configuration_issue(configuration)) is not None or catalog.definition.owner_module!='retrieval'
                 or type(memory) is not MemorySemanticCoverage or type(files) is not VectorFiles
                 or memory.objects.storage is not storage or memory.objects.instance_id!=instance
                 or memory.objects.configuration is not configuration):

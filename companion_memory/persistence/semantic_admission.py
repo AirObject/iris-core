@@ -15,6 +15,7 @@ import threading
 import time
 from types import MappingProxyType
 from companion_memory.configuration.daily_resolution import DailyConfigurationCandidate,daily_snapshot_issue
+from companion_memory.configuration.managed_resolution import ManagedConfigurationCandidate,managed_snapshot_issue
 from companion_memory.configuration.dream_resolution import DreamConfigurationCandidate,dream_snapshot_issue
 from companion_memory.configuration.semantic_resolution import SemanticConfigurationCandidate,semantic_snapshot_issue
 from companion_memory.configuration import PresentValue
@@ -34,13 +35,14 @@ COMPLETION=frozenset(('apply','record_result','record_cleanup','fail','supersede
 
 class SemanticAdmission:
     """One exclusive persistent counter covering every registered business owner."""
-    def __init__(self,configuration: SemanticConfigurationCandidate | DailyConfigurationCandidate | DreamConfigurationCandidate,root: Path,mode: str):
-        issue=dream_snapshot_issue(configuration) if type(configuration) is DreamConfigurationCandidate else daily_snapshot_issue(configuration) if type(configuration) is DailyConfigurationCandidate else semantic_snapshot_issue(configuration)
+    def __init__(self,configuration: SemanticConfigurationCandidate | DailyConfigurationCandidate | DreamConfigurationCandidate | ManagedConfigurationCandidate,root: Path,mode: str):
+        issue=managed_snapshot_issue(configuration) if type(configuration) is ManagedConfigurationCandidate else dream_snapshot_issue(configuration) if type(configuration) is DreamConfigurationCandidate else daily_snapshot_issue(configuration) if type(configuration) is DailyConfigurationCandidate else semantic_snapshot_issue(configuration)
         if issue is not None or mode not in ('CREATE_NEW','OPEN_EXISTING'):raise InvalidValue()
         if not root.is_absolute() or root.resolve(strict=True)!=root or any(p.is_symlink() for p in (root,*root.parents)):raise InvalidValue()
-        self.dream=type(configuration) is DreamConfigurationCandidate
-        self.daily=type(configuration) in (DailyConfigurationCandidate,DreamConfigurationCandidate)
-        self.format='DREAM_OPERATION_ADMISSION_V1' if self.dream else 'DAILY_OPERATION_ADMISSION_V1' if self.daily else 'SEMANTIC_OPERATION_ADMISSION_V1'
+        self.dream=type(configuration) in (DreamConfigurationCandidate,ManagedConfigurationCandidate)
+        self.daily=type(configuration) in (DailyConfigurationCandidate,DreamConfigurationCandidate,ManagedConfigurationCandidate)
+        self.managed=type(configuration) is ManagedConfigurationCandidate
+        self.format='MANAGED_OPERATION_ADMISSION_V1' if self.managed else 'DREAM_OPERATION_ADMISSION_V1' if self.dream else 'DAILY_OPERATION_ADMISSION_V1' if self.daily else 'SEMANTIC_OPERATION_ADMISSION_V1'
         self.root=root;self.settings=configuration.text.record('retrieval.semantic_storage');self._lock=threading.RLock()
         values={e.definition.key:e.state.value for e in configuration.foundation.list_entries() if type(e.state) is PresentValue}
         database=values['storage.database_file'];assert type(database) is str
@@ -96,6 +98,13 @@ class SemanticAdmission:
         if self._faulted:raise OwnerFailure('RESOURCE_BUSY','storage','CLEANUP_PENDING',True)
         deadline=time.monotonic()+1;total=database=wal=backup=temporary=index=0
         aliases={};physical=set()
+        def media_pair(path: Path) -> tuple[Path, Path]:
+            if self.managed:
+                relative = path.relative_to(self.root)
+                if len(relative.parts) >= 5 and relative.parts[0] in ('backups', 'backup_staging') and relative.parts[2] == 'files':
+                    copy = self.root.joinpath(*relative.parts[:3])
+                    return copy / self.staging.relative_to(self.root), copy / self.media_published.relative_to(self.root)
+            return self.staging, self.media_published
         def files(directory: Path):
             if time.monotonic()>=deadline:raise TimeoutError('Resource observation incomplete.')
             with os.scandir(directory) as entries:
@@ -106,7 +115,7 @@ class SemanticAdmission:
                     elif stat.S_ISREG(st.st_mode):
                         path=Path(entry.path);inode=(st.st_dev,st.st_ino)
                         if st.st_nlink!=1:
-                            if not self.daily or path.parent not in (self.staging,self.media_published):raise OSError('Owned resource alias or special file.')
+                            if not self.daily or path.parent not in media_pair(path):raise OSError('Owned resource alias or special file.')
                             paths,links=aliases.setdefault(inode,([],st.st_nlink))
                             if links!=st.st_nlink:raise OSError('Media publication changed during observation.')
                             paths.append(path)
@@ -117,11 +126,13 @@ class SemanticAdmission:
                 if inode not in physical:total+=size;physical.add(inode)
                 if path==self.database:database+=size
                 elif str(path)==str(self.database)+'-wal':wal+=size
-                elif path.is_relative_to(self.root/'backup'):backup+=size
+                elif path.is_relative_to(self.root/('backups' if self.managed else 'backup')):backup+=size
                 elif path.is_relative_to(Path(string(self.settings['index_root']))):index+=size
-                elif path.is_relative_to(self.root/'temporary') or path.is_relative_to(self.staging):temporary+=size
+                elif path.is_relative_to(self.root/'temporary') or path.is_relative_to(self.staging) or self.managed and path.is_relative_to(self.root/'backup_staging'):temporary+=size
             for paths,links in aliases.values():
-                if len(paths)!=links or sum(path.parent==self.media_published for path in paths)!=1 or not any(path.parent==self.staging for path in paths):
+                staging, published = media_pair(paths[0])
+                if (len(paths)!=links or any(media_pair(path) != (staging, published) for path in paths)
+                        or sum(path.parent==published for path in paths)!=1 or not any(path.parent==staging for path in paths)):
                     raise OSError('Media publication links escape the owned publication pair.')
             free=os.statvfs(self.root)
             if (free.f_bavail*free.f_frsize<number(self.settings['free_reserve_bytes'])
