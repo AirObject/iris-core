@@ -6,6 +6,7 @@ the scheduler never cancels a late worker or accumulates missed timer ticks.
 """
 from __future__ import annotations
 import asyncio
+from collections.abc import Callable, Awaitable
 from contextvars import Context
 import time
 from companion_memory.goals.loopback import TestReminderRoute
@@ -26,13 +27,17 @@ from .index_worker import LocalIndexWorker
 
 class InformationScheduler:
     """A single interruptible timer; no network capability exists by default."""
-    def __init__(self, runtime: ContentRuntimeService, management: ManagementAssembly, goals: GoalsService, memory: MemoryInformation, index: LocalIndex):
+    def __init__(self, runtime: ContentRuntimeService, management: ManagementAssembly, goals: GoalsService, memory: MemoryInformation, index: LocalIndex, *, goals_only: bool = False):
         self.runtime, self.management, self.goals = runtime, management, goals
+        self.goals_only = goals_only
         settings = goals.configuration.candidate.information
         self.interval = integer(settings.record('goals.delivery')['scan_interval_ms']) / 1000
         self.cleanup_interval = integer(settings.record('retrieval.tickets')['cleanup_interval_ms']) / 1000
         self.expiry_interval = integer(settings.record('memory.usage')['expiry_scan_interval_ms']) / 1000
         self.worker_id = identity('information_worker', goals.binding.database_id, goals.binding.instance_id)
+        self.route_source: Callable[[], Awaitable[tuple[str, ...]]] | None = None
+        self.communication_round: Callable[[], Awaitable[None]] | None = None
+        self.registered_routes: tuple[str, ...] = ()
         self.port = self._issue(())
         self.local = LocalMaintenance(runtime, goals, management.tickets, self.port, self.worker_id)
         self.expiry = ForgottenExpiry(runtime, memory)
@@ -40,6 +45,8 @@ class InformationScheduler:
         self.index = LocalIndexWorker(runtime, index, self.port, self.worker_id)
         self._index_turn = 0
         self.closed = False
+        self.may_start: Callable[[], bool] = lambda: True
+        self.busy = False
         self.task: asyncio.Task[None] | None = None
         self.wake = asyncio.Event()
         self.last_error: InformationError | None = None
@@ -83,22 +90,40 @@ class InformationScheduler:
         # Rotation preserves the stable host binding and original command keys.
         # Actual descendants have drained before their old handle is revoked.
         self.management.revoke(self.port)
-        self.port = self._issue(tuple(sorted(self.reminders.routes)))
+        self.port = self._issue(self.registered_routes if self.route_source is not None else tuple(sorted(self.reminders.routes)))
         self.local.port = self.port; self.reminders.port = self.port
         self.index.port = self.port
         self._renew_at = time.monotonic() + 1800
 
     async def _round(self) -> None:
-        if self.runtime.gate.information_operation_reason() is not None: return
+        if self.runtime.gate.information_operation_reason() is not None:
+            if self.communication_round is not None: await self.communication_round()
+            return
+        if self.route_source is not None:
+            routes = await self.route_source()
+            if routes != self.registered_routes:
+                if self.local.jobs or self.reminders.jobs or self.index.jobs:
+                    return
+                self.registered_routes = routes
+                self.reminders.registered_routes = routes
+                self._renew_at = 0
         self._renew()
         now = time.monotonic()
         if not self.local.jobs:
             cleanup = now >= self._cleanup_at
             if cleanup: self._cleanup_at = now + self.cleanup_interval
-            result = await self.local.run(reclaim_tickets=cleanup)
+            result = await self.local.run(reclaim_tickets=cleanup and not self.goals_only)
             if type(result) is InformationRejected or type(result) is InformationNotCommitted or type(result) is InformationUnconfirmed:
                 self.last_error = result.error
         if self.closed: return
+        if self.communication_round is not None:
+            await self.communication_round()
+            if self.goals_only: return
+        if self.goals_only:
+            if self.registered_routes and not self.reminders.jobs:
+                result = await self.reminders.dispatch_due_intent()
+                if type(result) is InformationRejected: self.last_error = result.error
+            return
         if not self.index.jobs:
             coordinator, _ = await self.index.index.query_generation()
             generations = tuple(value for value in (coordinator['building_generation'], coordinator['active_generation']) if type(value) is str)
@@ -127,7 +152,7 @@ class InformationScheduler:
             result = await self.expiry.run()
             if type(result) is InformationRejected: self.last_error = result.error
         if self.closed: return
-        if self.reminders.routes and not self.reminders.jobs:
+        if (self.reminders.routes or self.registered_routes) and not self.reminders.jobs:
             result = await self.reminders.dispatch_due_intent()
             if type(result) is InformationRejected: self.last_error = result.error
 
@@ -138,9 +163,12 @@ class InformationScheduler:
             except TimeoutError: pass
             if self.closed: break
             self.wake.clear()
+            if not self.may_start(): continue
+            self.busy = True
             try: await self._round()
             except OwnerFailure as failure:
                 self.last_error = rejected('local_maintenance', failure).error
+            finally: self.busy = False
 
     def stop(self) -> None:
         """Close admission synchronously; retain timer and actual worker tasks."""

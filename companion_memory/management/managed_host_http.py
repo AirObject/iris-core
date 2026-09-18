@@ -35,7 +35,8 @@ ROUTES = {
 class ManagedHostHTTP:
     def __init__(self, business: ManagedBusiness, identity: IdentityAuthority):
         self.business, self.identity = business, identity
-        self.ports: dict[tuple[str, str, str], InformationPort] = {}
+        from .port_cache import PortCache
+        self.cache = PortCache()
         self.adapter: InformationHTTP | None = None
 
     async def dispatch(self, principal: Principal, method: str, path: str, payload: dict[str, object]):
@@ -43,6 +44,31 @@ class ManagedHostHTTP:
         from .managed_application import fields, text
         if principal.kind != 'host' or method != 'POST' or not path.startswith('/api/host/'):
             raise OwnerFailure('ACCESS_DENIED', 'scope', 'OPERATION_NOT_GRANTED')
+        if path == '/api/host/capabilities':
+            fields(payload, set())
+            return {'protocol_version': 1, 'http_envelope_version': 1,
+                'entries': tuple(principal.entries), 'operations': tuple(principal.operations),
+                'route_ids': tuple(principal.route_ids), 'event_types': tuple(principal.event_types),
+                'media': {'blob_max_bytes': 1048576, 'chunk_max_bytes': 65536,
+                    'progress_durable': False, 'ready_before_reference': True},
+                'websocket': {'path': '/api/host/ws', 'subprotocol': 'iris.communication.v1'},
+                'confirmation': 'ORIGINAL_KEY_AND_INPUT', 'unknown_retry': False}
+        if path == '/api/host/notifications/status':
+            fields(payload, {'route_ids'})
+            if type(payload['route_ids']) is not list or not 1 <= len(payload['route_ids']) <= 16:
+                raise OwnerFailure('INVALID_INPUT', 'route', 'INVALID_SHAPE')
+            from .communication_observation import status
+            return await status(self.business, principal, tuple(text(item) for item in payload['route_ids']))
+        if path == '/api/host/notifications/results':
+            fields(payload, {'route_id', 'after'})
+            from companion_memory.persistence.schema import freeze_value, InvalidValue, ValueTooLarge
+            from .communication_http_schema import NOTIFICATION_RESULTS
+            try:
+                freeze_value(NOTIFICATION_RESULTS, payload)
+            except (InvalidValue, ValueTooLarge):
+                raise OwnerFailure('INVALID_INPUT', 'cursor', 'INVALID_SHAPE') from None
+            from .communication_observation import delivery_results
+            return await delivery_results(self.business, principal, text(payload['route_id']), str(payload['after']))
         fields(payload, {'entry_id', 'input'})
         entry = text(payload['entry_id'])
         supplied = payload['input']
@@ -50,6 +76,12 @@ class ManagedHostHTTP:
             raise OwnerFailure('INVALID_INPUT', 'input', 'INVALID_SHAPE')
         route = path.removeprefix('/api/host/')
         capability = 'accept' if route in ('accept', 'accept/resolve') else ROUTES.get(route, ('', '', '', ''))[0]
+        if route == 'memory/deep-recall' and self.identity.communication_format:
+            capability = 'deep_recall'
+        if route.startswith('media/'):
+            capability = {'media/begin': 'media_upload', 'media/chunk': 'media_upload',
+                'media/finish': 'media_upload', 'media/resolve': 'confirm',
+                'media/inspect': 'media_inspect'}.get(route, '')
         special: tuple[str, str, str] | None = None
         if route == 'operations/resolve':
             fields(supplied, {'operation', 'input'})
@@ -73,6 +105,10 @@ class ManagedHostHTTP:
         if not await host.assembly.ingress.verify_host_entry(entry, principal.host_id):
             raise OwnerFailure('ACCESS_DENIED', 'binding', 'BINDING_MISMATCH')
         with self.identity.permission(principal, capability, entry):
+            if route.startswith('media/'):
+                host.receiving()
+                from .media_http import dispatch_media
+                return await dispatch_media(host.media.bind_upload(entry), route.removeprefix('media/'), supplied)
             if route in ('accept', 'accept/resolve'):
                 fields(supplied, {'key', 'event'})
                 port = host.bind_entry(entry)
@@ -83,20 +119,25 @@ class ManagedHostHTTP:
             operation, native_method, native_path = special or ROUTES[route][1:]
             if host.business is None or host.stored is None or host.runtime is None:
                 raise OwnerFailure('INVALID_STATE', 'host', 'NOT_READY')
-            # Actual descendants retain native authority until they finish. Idle
-            # adapters have no durable state and can be retired before rebinding.
-            if not host.business.jobs:
-                for previous in self.ports.values():
-                    host.business.revoke(previous)
-                self.ports.clear()
-            key = (principal.host_id, entry, operation)
-            native = self.ports.get(key)
-            if native is None:
-                native = await host.bind_business(HostIdentity(stable('managed-host-binding', host.resources.instance_id, principal.host_id, entry, operation),
-                    stable('managed-host-principal', host.resources.instance_id, principal.host_id),
-                    principal.host_id, entry, frozenset((operation,)), (), time.monotonic() + 30),
-                    include_forgotten=operation == 'deep_recall')
-                self.ports[key] = native
-            if self.adapter is None:
-                self.adapter = InformationHTTP(host.stored, host.runtime.gate)
-            return await self.adapter.dispatch(native, native_method, native_path, supplied)
+            return await self.native(principal.host_id, entry, operation, native_method, native_path, supplied, principal=principal)
+
+    async def native(self, host_id: str, entry: str, operation: str, method: str, path: str,
+                     supplied: dict[str, object], *, administrator: bool = False, principal: Principal | None = None):
+        """Borrow one exact native port without revoking another request's work."""
+        host = self.business.host
+        if host is None or host.business is None or host.stored is None or host.runtime is None:
+            raise OwnerFailure('INVALID_STATE', 'host', 'NOT_READY')
+        from .notification_routes import NotificationRoutes
+        routes = await NotificationRoutes(self.identity).candidates(host_id, entry, principal)
+        key = (id(host), host_id, entry, 'state-goals' if administrator else operation, administrator, routes)
+        operations = frozenset(ROUTES[name][1] for name in (
+            'state', 'state/set', 'state/update', 'state/end', 'goals', 'goals/inject', 'goals/status', 'goals/deadline')) if administrator else frozenset((operation,))
+        async def bind(expires: float) -> InformationPort:
+            return await host.bind_business(HostIdentity(
+                stable('managed-administrator-port', host.resources.instance_id, 'state-goals') if administrator else
+                stable('managed-host-binding', host.resources.instance_id, host_id, entry, operation),
+                'administrator' if administrator else stable('managed-host-principal', host.resources.instance_id, host_id),
+                host_id, entry, operations, routes, expires), include_forgotten=operation == 'deep_recall')
+        async with self.cache.lease(key, bind, host.business.revoke) as native:
+            adapter = InformationHTTP(host.stored, host.runtime.gate)
+            return await adapter.dispatch(native, method, path, supplied)

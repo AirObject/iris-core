@@ -6,6 +6,7 @@ their native owners. Resource migrations remain explicit preparation failures.
 from __future__ import annotations
 from dataclasses import dataclass
 import asyncio
+import time
 from hashlib import sha256
 from typing import cast, Any
 
@@ -33,7 +34,7 @@ class NativeConfigurationConsumer:
 
     async def prepare(self, version_id: str, candidate: ManagedConfigurationCandidate) -> object:
         manager = self.manager
-        manager.require_safe_boundary(candidate)
+        await manager.wait_safe_boundary(candidate)
         version = await manager.work.versions.load(version_id)
         if candidate_values(version.candidate) != candidate_values(candidate):
             raise OwnerFailure('STORAGE_FAILED', 'configuration', 'CONTENT_MISMATCH')
@@ -53,7 +54,7 @@ class NativeConfigurationConsumer:
     async def publish(self, version_id: str, resource: object) -> None:
         if type(resource) is not PreparedConfiguration or resource.owner is not self.manager or resource.consumer != self.consumer or resource.version.version_id != version_id:
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')
-        self.manager.require_safe_boundary(resource.version.candidate)
+        await self.manager.wait_safe_boundary(resource.version.candidate)
         if self.consumer == 'provider':
             provider = self.manager.host.provider
             if provider is None or provider.managed_versions is None:
@@ -61,6 +62,9 @@ class NativeConfigurationConsumer:
             provider.managed_versions.publish(resource.resource)
         if self.consumer == 'logging_service' and self.manager.business.logging is not None:
             self.manager.business.logging.publish(resource.resource)
+        if self.consumer == 'runtime' and self.manager.host.combination.communication_format:
+            from companion_memory.configuration.communication_configuration import policy
+            self.manager.business.communication.publish(version_id, dict(policy(resource.version.candidate)))
         self.manager.prepared_version = resource.version
 
     async def dispose(self, resource: object) -> bool:
@@ -84,7 +88,20 @@ class ManagedConfiguration:
         self.prepared_version: ExecutionVersion | None = None
         self.previous_state = business.bootstrap.state
         consumers: dict[str, ConfigurationConsumer] = {name: NativeConfigurationConsumer(self, name) for name in CONSUMERS}
-        self.coordinator = ManagedActivation(self.versions, consumers, self.fence)
+        self.coordinator = ManagedActivation(self.versions, consumers, self.fence, self.maintenance_clock)
+
+    async def maintenance_clock(self, activation_id: str, closed: bool) -> None:
+        clock = self.host.assembly.communication_gate
+        if clock is None: return
+        # Startup publication of an already applied version is recovery, not a
+        # fresh maintenance window. An interrupted original closure is retained.
+        activation = await self.versions.rows.read('managed_activations', activation_id)
+        if closed and activation is not None and activation['state'] == 'APPLIED': return
+        if not closed and clock.rows is not None:
+            root = await clock.rows.read('communication_gate', 'communication-gate')
+            from companion_memory.memory.formats import record
+            if root is not None and record(record(root['handoff'])['clock'])['maintenance_key'] not in (None, activation_id): return
+        await clock.maintenance(activation_id, closed)
 
     def fence(self, closed: bool):
         if closed:
@@ -108,11 +125,12 @@ class ManagedConfiguration:
             prior = {entry['parameter_key']: entry['body'] for entry in old[domain['domain_id']]['entries']}
             for entry in domain['entries']:
                 key = entry['parameter_key']
-                if prior[key] == entry['body']:
+                if prior.get(key) == entry['body']:
                     continue
                 definition, _, value, _ = decode_content_entry(entry['body'])
-                _, _, previous, _ = decode_content_entry(prior[key])
+                previous = decode_content_entry(prior[key])[2] if key in prior else None
                 boundary = ('NEXT_BATCH' if key.startswith('platforms.') else
+                    'NEW_COMMUNICATION_WORK' if key.startswith('communication.') else
                     'NEXT_DREAM' if key in ('dream.schedule', 'runtime.timezone', 'memory.long_term_maintenance', 'self_model.initial_persona') else
                     'NEXT_REQUEST' if key in ('provider.profiles', 'provider.transport') else
                     'LOGGER_REBUILD' if key.startswith('logging.') and key != 'logging.file_directory' else
@@ -122,17 +140,33 @@ class ManagedConfiguration:
                     'consumers': list(definition['consumers'])})
         return tuple(changed)
 
+    async def wait_safe_boundary(self, candidate: ManagedConfigurationCandidate) -> None:
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                self.require_safe_boundary(candidate)
+                return
+            except OwnerFailure as failure:
+                if failure.reason != 'WORK_PENDING' or time.monotonic() >= deadline:
+                    raise
+                # Admission is fenced by the owning activation. Already owned
+                # work drains naturally; timeout never cancels its cleanup.
+                await asyncio.sleep(.02)
+
     def require_safe_boundary(self, candidate: ManagedConfigurationCandidate):
         host = self.host
         runtime = host.runtime
         if runtime is None or runtime.gate.information_checkpoint() is None:
             raise OwnerFailure('MODE_BLOCKED', 'configuration', 'DREAMING')
         if (runtime._jobs or runtime._commands or runtime.external_work_pending or
+                self.business.goal_scheduler is not None and self.business.goal_scheduler.busy or
                 host.dream_scheduler.busy or host.business is not None and host.business.jobs or
                 host.provider is not None and host.provider.cleanup_pending):
             raise OwnerFailure('RESOURCE_BUSY', 'configuration', 'WORK_PENDING', True)
         changed = self.changes(self.work.versions.birth.candidate, candidate)
-        if any(not (change['key'].startswith('platforms.') or (self.business.logging is not None and change['key'].startswith('logging.') and change['key'] != 'logging.file_directory') or change['key'] in ('dream.schedule', 'runtime.timezone', 'memory.long_term_maintenance', 'self_model.initial_persona', 'provider.profiles', 'provider.transport')) for change in changed):
+        if any(not (change['key'].startswith('platforms.') or
+                self.host.combination.communication_format and change['key'].startswith('communication.') or
+                (self.business.logging is not None and change['key'].startswith('logging.') and change['key'] != 'logging.file_directory') or change['key'] in ('dream.schedule', 'runtime.timezone', 'memory.long_term_maintenance', 'self_model.initial_persona', 'provider.profiles', 'provider.transport')) for change in changed):
             raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'configuration', 'CONSUMER_PREPARATION_UNAVAILABLE')
         if host.provider is None or host.provider.managed_versions is None:
             raise OwnerFailure('INVALID_STATE', 'provider', 'NOT_READY')
@@ -166,6 +200,10 @@ class ManagedConfiguration:
 
     async def preview(self, expected_revision: int, patch: dict[str, object]):
         self.host.normal()
+        text_patch = patch.get('text')
+        if (type(text_patch) is dict and any(str(key).startswith('communication.') for key in text_patch)
+                and not self.host.combination.communication_format):
+            raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'configuration', 'FORMAT_UNSUPPORTED')
         status = await self.status()
         if status['revision'] != expected_revision:
             raise OwnerFailure('PRECONDITION_FAILED', 'configuration', 'REVISION_CONFLICT')
@@ -177,6 +215,10 @@ class ManagedConfiguration:
     def patch(current: ManagedConfigurationCandidate, patch: dict[str, object]) -> ManagedConfigurationCandidate:
         if type(patch) is not dict or not patch or set(patch) - {'foundation', 'runtime', 'content', 'platform', 'information', 'text'}:
             raise OwnerFailure('INVALID_INPUT', 'configuration', 'INVALID_SHAPE')
+        changes = patch.get('text')
+        if type(changes) is dict and any(str(key).startswith('communication.') for key in changes):
+            from companion_memory.configuration.communication_configuration import extend_candidate
+            current = extend_candidate(current)
         raw = cast(list[Any], list(candidate_inputs(current, dict(current._directories))))
         domains = {'foundation': raw[0], 'runtime': raw[1], 'platform': raw[2][0], 'content': raw[3], 'information': raw[4], 'text': raw[5]}
         for name, changes in patch.items():
@@ -242,5 +284,16 @@ class ManagedConfiguration:
             timeout_seconds=self.business.bootstrap.settings.integer('management.maintenance_timeout_seconds'))
 
     async def recover(self):
+        clock = self.host.assembly.communication_gate
+        if clock is not None and clock.rows is not None:
+            root = await clock.rows.read('communication_gate', 'communication-gate')
+            from companion_memory.memory.formats import record
+            key = record(record(root['handoff'])['clock'])['maintenance_key'] if root else None
+            activation = await self.versions.rows.read('managed_activations', cast(str, key)) if key else None
+            if activation is not None:
+                result = await self.coordinator.activate(cast(str, key),
+                    timeout_seconds=self.business.bootstrap.settings.integer('management.maintenance_timeout_seconds'))
+                if result['state'] not in ('APPLIED', 'PREPARATION_FAILED', 'SUPERSEDED'):
+                    return result
         return await self.coordinator.recover(
             timeout_seconds=self.business.bootstrap.settings.integer('management.maintenance_timeout_seconds'))

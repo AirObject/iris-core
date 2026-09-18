@@ -25,6 +25,7 @@ class LocalMaintenance:
         self.runtime, self.goals, self.tickets, self.port, self.worker_id = runtime, goals, tickets, port, worker_id
         self.jobs: set[asyncio.Task[object]] = set()
         self.closed = False
+        self.advance_reminders = True
 
     async def run(self, *, reclaim_tickets: bool = True):
         if self.closed: return rejected('local_maintenance', OwnerFailure('INVALID_STATE', 'state', 'SERVICE_CLOSED'))
@@ -52,7 +53,7 @@ class LocalMaintenance:
                         if type(result) is not Committed: return result
                         counts['dedup_finished'] += 1
                     now = int(time.time() * 1000000)
-                    for plan in await self.goals.due_plans(now):
+                    for plan in await self.goals.due_plans(now) if self.advance_reminders else ():
                         result = await self.port.execute('goal_plan_advance', identity('advance_reminder_plan', plan['plan_id'], plan['revision']),
                             {'plan_id': plan['plan_id'], 'expected_revision': plan['revision']})
                         if type(result) is Committed: counts['plans_advanced'] += 1

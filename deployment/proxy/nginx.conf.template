@@ -1,0 +1,42 @@
+worker_processes 1;
+pid /tmp/nginx.pid;
+error_log /dev/stderr warn;
+events { worker_connections 128; }
+http {
+    access_log off;
+    client_body_temp_path /tmp/client_body;
+    proxy_temp_path /tmp/proxy;
+    map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+    server {
+        listen 8443 ssl;
+        server_name ${IRIS_EXTERNAL_HOST};
+        ssl_certificate /run/tls/server.crt;
+        ssl_certificate_key /run/tls/server.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        client_max_body_size 1m;
+        client_header_buffer_size 8k;
+        large_client_header_buffers 2 8k;
+        client_header_timeout 15s;
+        client_body_timeout 15s;
+        keepalive_timeout 15s;
+        location / {
+            proxy_pass http://iris:8080;
+            proxy_http_version 1.1;
+            proxy_set_header Host $http_host;
+            # Preserve original Origin headers, including duplicates for Core rejection.
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Forwarded "";
+            proxy_set_header X-Forwarded-For "";
+            proxy_set_header X-Forwarded-Proto "";
+            proxy_set_header X-Forwarded-Host "";
+            proxy_set_header X-Real-IP "";
+            proxy_buffering off;
+            proxy_request_buffering off;
+            proxy_next_upstream off;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 60s;
+            proxy_send_timeout 15s;
+        }
+    }
+}

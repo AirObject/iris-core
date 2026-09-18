@@ -38,7 +38,8 @@ async def serve(*, resource_factory: ResourceFactory = host_resources) -> int:
         await application.business.recover()
         await logging.attach(application)
         http = ManagedHTTP(settings, application.identity, application.dispatch, application.health,
-            Path(__file__).resolve().parents[2] / 'web/dist', identity_source=lambda: application.identity, audit_source=lambda: application.audit)
+            Path(__file__).resolve().parents[2] / 'web/dist', identity_source=lambda: application.identity,
+            audit_source=lambda: application.audit, communication_source=lambda: application.business.communication)
         await http.start()
         await shutdown.wait()
         return 0

@@ -7,6 +7,7 @@ business admission or model dispatch.
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo
@@ -56,10 +57,14 @@ class ManagedApplication:
         self.observer = None
         from .managed_operations import ManagedOperations
         self.operations = ManagedOperations(self)
-        self.control_lock = asyncio.Lock()
+        from .request_admission import RequestAdmission
+        self.admission = RequestAdmission(bootstrap.settings.integer('management.http_connections'),
+            bootstrap.settings.integer('management.maintenance_timeout_seconds'))
+        self.logging_lock = asyncio.Lock()
         self.logging: ManagedLogging | None = None
         from companion_memory.runtime.managed_maintenance import ManagedMaintenance
         self.maintenance = ManagedMaintenance(self)
+        self.business.resume_maintenance = self.maintenance.resume_clock
         from .developer_audit import DeveloperAudit
         self.audit = DeveloperAudit(self)
 
@@ -67,30 +72,39 @@ class ManagedApplication:
         health = self.bootstrap.assembly.storage.get_health()
         return {'state': self.bootstrap.state, 'business_ready': self.bootstrap.state == 'READY',
             'model_dispatch': 'ENABLED' if self.business.sends_enabled else 'PAUSED', 'cleanup_pending': health.cleanup_pending,
-            'initialized': self.business.initialized}
+            'initialized': self.business.initialized, 'listener_alive': True,
+            'persistent_recovery_complete': health.lifecycle == 'READY',
+            'ws_available': self.business.communication.available(),
+            'notifications_paused': self.business.host is None or self.business.host.runtime is None or self.business.host.runtime.gate.information_operation_reason() is not None}
 
     async def dispatch(self, principal: Principal | None, method: str, path: str, payload: dict[str, object]) -> object:
         if path.startswith('/api/audit/'):
             # Independent committed-evidence readers retain their native limits
             # and permission checks while ordinary management work is waiting.
             return await self.audit.dispatch(principal, method, path, payload)
-        async with self.control_lock:
-            if self.logging is not None:
+        exclusive = path in ('/api/backups/create', '/api/configuration/activate', '/api/wizard/initialize')
+        return await self.admission.run(lambda: self._logged_dispatch(principal, method, path, payload), exclusive=exclusive)
+
+    async def _logged_dispatch(self, principal: Principal | None, method: str, path: str, payload: dict[str, object]) -> object:
+        if self.logging is not None:
+            async with self.logging_lock:
                 await self.logging.attach(self)
-            try:
-                result = await self._dispatch(principal, method, path, payload)
-            except Exception:
-                if self.logging is not None:
-                    self.logging.event('OPERATION_FAILED', False)
-                raise
+        try:
+            result = await self._dispatch(principal, method, path, payload)
+        except Exception:
             if self.logging is not None:
+                self.logging.event('OPERATION_FAILED', False)
+            raise
+        if self.logging is not None:
+            async with self.logging_lock:
                 await self.logging.attach(self)
-                observed = result.get('result', result) if type(result) is dict else result
-                successful = type(observed) not in (NotCommitted, Rejected, Unconfirmed, Failed)
-                if type(observed) is dict and observed.get('state') in ('FAILED', 'UNCONFIRMED', 'RECOVERING', 'PREPARATION_FAILED'):
-                    successful = False
-                self.logging.event('OPERATION_COMPLETED' if successful else 'OPERATION_FAILED', successful)
-            return result
+            observed = result.get('result', result) if type(result) is dict else result
+            successful = type(observed) not in (NotCommitted, Rejected, Unconfirmed, Failed)
+            if type(observed) is dict and observed.get('state') in ('FAILED', 'UNCONFIRMED', 'RECOVERING', 'PREPARATION_FAILED'):
+                successful = False
+            self.logging.event('OPERATION_COMPLETED' if successful else 'OPERATION_FAILED', successful)
+        return result
+
 
     async def _dispatch(self, principal: Principal | None, method: str, path: str, payload: dict[str, object]) -> object:
         if path.startswith('/api/audit/'):
@@ -107,8 +121,7 @@ class ManagedApplication:
                     return result
                 return {'result': result, 'session': secret}
             raise OwnerFailure('ACCESS_DENIED', 'credential', 'AUTHENTICATION_REQUIRED')
-        async with self.identity.delivery_lock:
-            return await self._authenticated(principal, method, path, payload)
+        return await self._authenticated(principal, method, path, payload)
 
     async def _authenticated(self, principal: Principal, method: str, path: str, payload: dict[str, object]):
         await self.identity.recheck(principal)
@@ -175,12 +188,19 @@ class ManagedApplication:
             assert expected is not None
             return await identity.update_password(text(payload['key']), expected,
                 text(payload['current_password'], maximum=1024), text(payload['password'], maximum=1024))
+        if method == 'POST' and path.startswith('/api/connections/'):
+            from .connection_management import request_connections
+            return await request_connections(self, path.removeprefix('/api/connections/'), payload, principal)
         if method == 'POST' and path == '/api/tokens/create':
-            fields(payload, {'key', 'host_id', 'entries', 'operations', 'expires_at_us'})
-            if type(payload['entries']) is not list or type(payload['operations']) is not list or type(payload['expires_at_us']) is not int:
+            base = {'key', 'host_id', 'entries', 'operations', 'expires_at_us'}
+            fields(payload, base | (set(payload) & {'route_ids', 'event_types'}))
+            if (type(payload['entries']) is not list or type(payload['operations']) is not list or type(payload['expires_at_us']) is not int
+                    or type(payload.get('route_ids', [])) is not list or type(payload.get('event_types', [])) is not list):
                 raise OwnerFailure('INVALID_INPUT', 'scope', 'INVALID_SHAPE')
             result, token = await identity.create_token(text(payload['key']), text(payload['host_id']),
-                tuple(text(item) for item in payload['entries']), tuple(text(item) for item in payload['operations']), payload['expires_at_us'])
+                tuple(text(item) for item in payload['entries']), tuple(text(item) for item in payload['operations']), payload['expires_at_us'],
+                route_ids=tuple(text(item) for item in cast(list, payload.get('route_ids', []))),
+                event_types=tuple(text(item) for item in cast(list, payload.get('event_types', []))))
             return {'result': result, 'token': token}
         if method == 'POST' and path == '/api/tokens/revoke':
             fields(payload, {'key', 'token_id', 'expected_revision'})
@@ -193,7 +213,8 @@ class ManagedApplication:
                 raise OwnerFailure('INVALID_INPUT', 'cursor', 'INVALID_SHAPE')
             rows = await identity.rows.page('host_tokens', payload['after'])
             await identity.recheck(principal)
-            return {'items': [{key: row[key] for key in ('object_id', 'revision', 'host_id', 'entries', 'operations', 'expires_at_us', 'revoked')} for row in rows],
+            return {'items': [{key: row[key] for key in ('object_id', 'revision', 'host_id', 'entries', 'operations', 'expires_at_us', 'revoked')} | {'route_ids': row.get('route_ids', ()), 'event_types': row.get('event_types', ()),
+                    'state': 'REVOKED' if row['revoked'] else 'EXPIRED' if cast(int, row['expires_at_us']) <= time.time_ns() // 1000 else 'VALID'} for row in rows],
                 'after': rows[-1]['object_id'] if rows else None}
         if method == 'POST' and path == '/api/wizard/save':
             fields(payload, {'key', 'expected_revision', 'draft'})

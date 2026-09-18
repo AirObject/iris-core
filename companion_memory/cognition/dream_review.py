@@ -3,6 +3,7 @@ from hashlib import sha256
 from types import MappingProxyType
 from typing import cast
 import asyncio
+from collections.abc import Callable, Awaitable
 from companion_memory.provider.daily_service import DailyResult
 from companion_memory.persistence import ResultBoundCommandDefinition,UnitOfWork,Found,Field,RecordSchema,SequenceSchema
 from companion_memory.persistence.daily_records import DailyRows
@@ -38,6 +39,7 @@ class DreamReview:
     def __init__(self,control,catalog,materials,participants):
         self.control=control;self.catalog=catalog;self.materials=materials;self.bound=False;self.closed=False
         self.receiving:DailyResult|None=None;self.sending:tuple[Record,Record]|None=None;self.job:asyncio.Task|None=None;self.scopes={}
+        self.route_source: Callable[[str], Awaitable[tuple[str, ...]]] | None = None
         common=fields(run_id=ID,expected_revision=P,mode_epoch=N)
         layouts=[(IMPACT_PREPARE,('cognition','dream','memory'),fields(object_id=ID,object_revision=P,influence_id=ID)),
             (IMPACT_DEFER,('dream','memory'),fields(object_id=ID,object_revision=P,influence_id=ID)),
@@ -240,9 +242,11 @@ class DreamReview:
         if 'influence' in body:self.memory.long_term.influence.require_current(uow,body['influence']['event_id'],work['object_ref']['object_id'])
         selected,subjects,entry_id,routes=collect(self,uow,work['object_ref']['object_id'],work['object_ref']['revision'],influence='influence' in body)
         from companion_memory.memory.dream_view import same_evidence
-        if not same_evidence(selected,body['evidence']) or subjects!=body['subjects'] or routes!=body['routes'] or entry_id!=body['entry_id']:raise OwnerFailure('PRECONDITION_FAILED','source','SOURCE_CHANGED')
+        frozen_routes = tuple(body['routes'])
+        routes_valid = set(frozen_routes) <= set(routes) if self.route_source is not None else frozen_routes == routes
+        if not same_evidence(selected,body['evidence']) or subjects!=body['subjects'] or not routes_valid or entry_id!=body['entry_id']:raise OwnerFailure('PRECONDITION_FAILED','source','SOURCE_CHANGED')
         if self.current.participate_current(uow,body['current_persona']['publication_id'],body['current_persona']['revision']) is None:raise OwnerFailure('PRECONDITION_FAILED','persona','REVISION_CONFLICT')
-        return selected,subjects,entry_id,routes
+        return selected,subjects,entry_id,frozen_routes
 
     def resume_readiness(self,uow,run):
         work=self.rows.get('dream_work',uow,self.work_id(run['active_step_id']))

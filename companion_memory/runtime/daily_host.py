@@ -6,7 +6,7 @@ resume opens the volatile network gate; original confirmation never does.
 """
 from __future__ import annotations
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Awaitable
 from dataclasses import dataclass
 from dataclasses import asdict
 from hashlib import sha256
@@ -89,6 +89,7 @@ class DailyCognitionHost:
                 or not (type(resources.review) is FixedReviewGrant and resources.review.claims['instance_id']==resources.instance_id
                     or type(configuration) is ManagedConfigurationCandidate and resources.review is None)):
             raise ValueError('Native daily resource identities differ.')
+        self.route_source: Callable[[str], Awaitable[tuple[str, ...]]] | None = None
         self.configuration=configuration;self.resources=resources;self.combination=managed_assembly or DailyAssembly(dream_format=type(configuration) in (DreamConfigurationCandidate,ManagedConfigurationCandidate),managed_format=type(configuration) is ManagedConfigurationCandidate);self.storage=self.combination.storage
         self.assembly=self.combination.content;self.media=self.combination.media;self.management=self.combination.management
         self.state='NEW';self.phase='STORAGE';self._mode=None;self._closing=False;self._initialization:asyncio.Task|None=None;self._close_task:asyncio.Task|None=None
@@ -262,6 +263,8 @@ class DailyCognitionHost:
                 from companion_memory.cognition.managed_material_versions import ManagedMaterialVersions
                 c.materials.versions=ManagedMaterialVersions(c.materials.rows,self.assembly.work_configuration.versions)
             self.goals=GoalsService(c.information_catalogs[2],self.storage,stored,instance);self.current_state=StateOwner(c.information_catalogs[1],self.storage,stored,instance)
+            if c.communication_ledger is not None:
+                c.communication_ledger.bind(self.goals)
             self.retrieval=LocalIndex(c.retrieval_catalog,self.storage,stored,instance);memory=self.assembly.memory.bind_information(stored);self.retrieval.bind_memory(memory)
             if c.dream is not None and c.dream_maintenance is not None:
                 if (type(stored) is not StoredDreamConfiguration and type(stored) is not StoredManagedConfiguration):raise InvalidValue()
@@ -339,12 +342,18 @@ class DailyCognitionHost:
                 c.periodic.bind(unified,self.provider)
                 if c.dream_review is None:raise InvalidValue()
                 c.dream_review.bind(c.periodic,self.goals,{entry:(scope[2],scope[3],scope[6]) for entry,scope in self._scope_setup.items()})
+                c.dream_review.route_source = self.route_source
             semantic=SemanticQuery(c.work,c.cache,c.generations)
             self.tools=DailyReadTools(self.runtime.memory,self.retrieval,semantic,self.goals,self.normal)
             self.learning=DailyLearning(self.runtime,c.reasoning,c.application,self.tools,self.current_persona.port,self.scheduling)
+            self.learning.route_source = self.route_source
             self.images=DailyMedia(self.runtime,c.image_work,self.scheduling);self.runtime.media=self.images
+            shared_reads = {}
             for entry_id,(object_ids,partition,subjects,worlds,related,writable,routes) in self._scope_setup.items():
-                port=self.runtime.memory.bind_query_scope(include_forgotten=False,object_ids=object_ids)
+                port = shared_reads.get(object_ids) if c.communication_format else None
+                if port is None:
+                    port=self.runtime.memory.bind_query_scope(include_forgotten=False,object_ids=object_ids)
+                    shared_reads[object_ids] = port
                 self.learning.bind_entry(entry_id,DailyEntryScope(port,partition,subjects,worlds,related,writable,routes))
             c.goal_comparisons.bind(self.goals,stored,self.provider,self.normal);c.schedule.bind(self.storage,stored,self.checkpoint)
             from .daily_dispatch import DailyDispatch
@@ -431,6 +440,39 @@ class DailyCognitionHost:
         if not (self.runtime is not None):raise InvalidValue()
         return await self.runtime.execute('register_content_entry',key,{'entry_id':entry_id,'host_id':host_id,'platform_id':platform_id,'external_entry_id':external_entry_id})
 
+    async def attach_registered_entry(self, entry_id: str, host_id: str) -> None:
+        """Attach a committed binding using the same limited SELF scope as bootstrap.
+
+        Registration grants no additional subjects, worlds or current-state writer.
+        A busy learner retains its existing scope; the original registration can
+        be confirmed and attachment retried after actual work ends.
+        """
+        self.normal()
+        if not self.combination.communication_format or not await self.assembly.ingress.verify_host_entry(entry_id, host_id):
+            raise OwnerFailure('ACCESS_DENIED', 'binding', 'BINDING_MISMATCH')
+        if entry_id in self._scope_setup:
+            return
+        if self.runtime is None or self.learning is None or self.dispatch is None:
+            raise OwnerFailure('INVALID_STATE', 'entry', 'NOT_READY')
+        from companion_memory.persistence.schema import freeze_value, SequenceSchema
+        from companion_memory.memory.formats import WORLD
+        worlds = cast(tuple, freeze_value(SequenceSchema(WORLD, 1, 16), ({'kind': 'REAL', 'context_id': None},), owned=True))
+        port = next((scope.memory for name, scope in self.learning.scopes.items()
+            if self._scope_setup[name][0] is None), None)
+        owned = port is None
+        if port is None:
+            port = self.runtime.memory.bind_query_scope(include_forgotten=False, object_ids=None)
+        try:
+            self.learning.bind_entry(entry_id, DailyEntryScope(port, entry_id, ('self',), worlds, writable=('self',)))
+        except BaseException:
+            if owned:
+                self.runtime.memory.release_query_scope(port)
+            raise
+        self._scope_setup[entry_id] = (None, entry_id, ('self',), worlds, (), ('self',), ())
+        if self.combination.dream_review is not None:
+            self.combination.dream_review.scopes[entry_id] = (('self',), worlds, ())
+        self.dispatch.bind(entry_id)
+
     async def register_initial_subjects(self,key:str,subjects:object,input_origin:str):
         """Register the bounded trusted initial roster through memory's native command."""
         from companion_memory.persistence import ResultBoundCommand
@@ -498,8 +540,28 @@ class DailyCognitionHost:
         if type(prepared) is not Committed:return prepared
         return await comparisons.drive(comparisons.decision_id(task_id),allow_first_send=self.scheduling())
 
-    async def bind_business(self,identity:HostIdentity,*,include_forgotten:bool=False,object_ids:tuple[str,...]|None=None):
+    async def bind_formed_goal_work(self, identity: HostIdentity, key: str, payload: object, memory_port):
+        """Bind a real cognition source and memory basis to registered entry routes."""
+        from dataclasses import replace
+        from companion_memory.information.formed_goals import FormedGoalAuthority, FormedGoalWorkPort
         self.normal()
+        if (self.route_source is None or self.goals is None or self.runtime is None
+                or type(identity) is not HostIdentity or identity.operations != frozenset(('goal_inject_internal',))
+                or not await self.assembly.ingress.verify_host_entry(identity.entry_id, identity.host_id)):
+            raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
+        registered = await self.route_source(identity.entry_id)
+        work = FormedGoalAuthority.bind(payload, key, self.goals.binding.config_snapshot_id,
+            self.assembly.cognition, self.runtime.memory, memory_port)
+        port = self.management.issue(replace(identity, route_ids=registered))
+        try:
+            self.management.bind_formed_goal(port, work)
+            return FormedGoalWorkPort.bind(port, work)
+        except BaseException:
+            self.management.revoke(port)
+            raise
+
+    async def bind_business(self,identity:HostIdentity,*,include_forgotten:bool=False,object_ids:tuple[str,...]|None=None):
+        self.checkpoint()
         if not (self.business is not None):raise InvalidValue()
         if type(identity) is not HostIdentity or not await self.assembly.ingress.verify_host_entry(identity.entry_id,identity.host_id):raise ValueError('Registered host identity required.')
         return self.business.bind(identity,include_forgotten=include_forgotten,object_ids=object_ids)

@@ -42,7 +42,7 @@ class FormedGoalAuthority:
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
         return cls(checked(INTERNAL, payload, 4096), key, snapshot_id, candidates, memory, memory_port)
 
-    def verified(self, value: Record, key: str, route_ids: tuple[str, ...]) -> GoalAuthority:
+    def verified(self, value: Record, key: str, route_ids: tuple[str, ...], entry_id: str | None = None, *, resolve_default_route: bool = False) -> GoalAuthority:
         """Create only an exact-payload callback; both facts are read in its UoW."""
         if value != self.payload or key != self.key:
             raise OwnerFailure('ACCESS_DENIED', 'goal', 'BINDING_MISMATCH')
@@ -52,7 +52,7 @@ class FormedGoalAuthority:
             subjects = self.payload['subject_ids']
             if type(subjects) is not tuple: return False
             return self.memory.verify_goal_basis(self.memory_port, uow, object_id, text(manifest['source_id']), tuple(text(s) for s in subjects))
-        return GoalAuthority(route_ids, text(self.payload['source_id']), verify)
+        return GoalAuthority(route_ids, text(self.payload['source_id']), verify, entry_id, resolve_default_route)
 
 
 @dataclass(frozen=True, slots=True, init=False)

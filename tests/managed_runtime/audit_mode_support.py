@@ -87,8 +87,11 @@ async def exercise_audit_modes(test, app, http, call, grant_path, reference, his
     try:
         test.assertEqual(gate.state, 'NORMAL')
         test.assertIsNone(gate.information_checkpoint())
-        async with app.control_lock:
+        app.admission.exclusive = True
+        try:
             await asyncio.wait_for(inspect_committed(), 10)
+        finally:
+            app.admission.exclusive = False
         test.assertIsNone(gate.information_checkpoint(), 'Audit cannot release the business writer slot.')
     finally:
         gate.finish_information_change('audit-concurrent-writer')

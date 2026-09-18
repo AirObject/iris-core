@@ -102,6 +102,7 @@ async def cleanup_staging(media: MediaService, upload: MappingProxyType[str, Val
         media.files.unlink(path); media._sync_directory(media.staging)
     await media._io(uid, cleanup)
     media._cleanup_pending.discard(uid); media._uploads.discard(uid); media._offsets.pop(uid, None); media._upload_deadlines.pop(uid, None)
+    media._begin_inputs.pop(uid, None)
 
 
 async def recover_publication(media: MediaService, upload: MappingProxyType[str, Value]):
@@ -164,6 +165,23 @@ async def maintain_uploads(media: MediaService):
     from .service import identity
     pending = await media.integrity.flush()
     if pending is not None: return pending
+    # A timed-out registration can finish definitively without committing a
+    # row. Such an intent is absent from the persistent upload page. Its finite
+    # slot is released only after the original total deadline, actual owner
+    # completion, and explicit confirmation that this exact command did not
+    # commit. Unknown confirmation continues to retain the slot.
+    from companion_memory.persistence import NotCommitted, RecoveryHandle, ResultBoundCommand
+    now = time.time_ns() // 1000
+    for uid, values in tuple(media._begin_inputs.items()):
+        if (uid in media._upload_owners or uid in media._jobs or media.storage.get_health().writes_in_flight
+                or now < cast(int, values['started_at_us']) + media.settings.integer('media.upload_total_timeout_ms') * 1000):
+            continue
+        operation = media.operations['begin_media_upload']
+        handle = operation.recovery_handle(uid, ResultBoundCommand(1, values, {'media_changed': {'actor': 'media_owner'}}))
+        if type(handle) is RecoveryHandle and type(await operation.resolve_operation(handle)) is NotCommitted:
+            media._begin_inputs.pop(uid, None)
+            media._uploads.discard(uid)
+            media._upload_deadlines.pop(uid, None)
     rows = await media.rows.read('upload_page', {'after': media._upload_cursor, 'limit': media.settings.integer('media.gc_page_size')})
     if not rows:
         media._upload_cursor = ''

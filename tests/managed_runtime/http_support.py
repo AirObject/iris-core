@@ -31,12 +31,18 @@ async def request(port: int, path: str, payload: dict, token: str, *, origin: st
 async def exercise_host_http(test, bootstrap, business, root: Path):
     """Exercise actual scoped reads/writes and revoke the same bearer afterward."""
     identity = bootstrap.assembly.identity
+    # These sequential protocol assertions require a quiescent background owner.
+    # Scheduler concurrency and busy outcomes are exercised separately.
+    if business.goal_scheduler is not None:
+        test.assertTrue(await business.goal_scheduler.close(5))
     assert identity is not None
     # This test controller attaches to the already initialized synthetic host.
     application = object.__new__(ManagedApplication)
     application.bootstrap, application.identity, application.resources = bootstrap, identity, bootstrap.resources
     application.business = business
-    application.control_lock = asyncio.Lock()
+    from companion_memory.management.request_admission import RequestAdmission
+    application.admission = RequestAdmission(16, 30)
+    application.logging_lock = asyncio.Lock()
     from companion_memory.runtime.managed_logging import ManagedLogging
     application.logging = ManagedLogging()
     application.logging.open(bootstrap)
@@ -133,7 +139,8 @@ async def exercise_administrator_http(test, application, port: int):
     status, completed = await call('/api/administration/goals/status', {'operation_key': 'admin-goal-complete',
         'goal_id': goal['goal_id'], 'expected_revision': goal['revision'], 'status': 'COMPLETED'})
     test.assertEqual(status, 200, completed)
-    _, goals = await call('/api/administration/goals', {})
+    status, goals = await call('/api/administration/goals', {})
+    test.assertEqual(status, 200, goals)
     test.assertEqual(goals['data']['value']['items'], [])
     log_query = {'cursor': None, 'limit': 8, 'start': None, 'end': None, 'minimum_level': None,
         'modules': [], 'event_codes': [], 'entry_id': None, 'run_id': None, 'request_id': None, 'attempt_id': None}
@@ -151,6 +158,8 @@ async def exercise_administrator_http(test, application, port: int):
     test.assertGreaterEqual(queue['normal_pending'], 1)
     test.assertEqual(queue['focus_pending'], 0)
     test.assertNotIn('合成宿主输入', json.dumps(content, ensure_ascii=False))
+    from .communication_route_support import exercise_routes
+    await exercise_routes(test, application, port, call)
     host = application.business.host
     assert host is not None and host.runtime is not None and host.combination.dream is not None
     root = await host.combination.dream.schedule()

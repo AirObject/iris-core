@@ -1,0 +1,6 @@
+{
+  "request_key": "example-query-original", "entry_id": "entry",
+  "query_text": "synthetic", "subject_ids": [], "object_ids": [], "category": null,
+  "world_scope": "REAL", "time_range": null, "allow_partial": true, "require_complete": false,
+  "retrieval_mode": "LOCAL_LEXICAL_V1", "rerank": false, "include_state": false, "include_goals": false
+}

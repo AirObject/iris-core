@@ -29,6 +29,7 @@ class GoalsOwner:
     def __init__(self, catalog: StatementCatalog, storage: PersistenceService,
                  configuration: StoredInformationConfiguration | StoredTextConfiguration | StoredSemanticConfiguration | StoredCognitionConfiguration, instance_id: str):
         self.daily_format = (type(configuration) is StoredDailyConfiguration or type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration)
+        self.resolve_default_route = any(name == 'route_due_plan' for name, _ in catalog.statements)
         valid = stored_cognition_configuration_issue(configuration,storage=storage) is None and configuration.scope_id == instance_id and catalog.definition.schema_version == 5 if type(configuration) is StoredDailyConfiguration or (type(configuration) is StoredDreamConfiguration or type(configuration) is StoredManagedConfiguration) else type(configuration) in (StoredInformationConfiguration,StoredTextConfiguration) or stored_semantic_configuration_issue(configuration) is None
         if not valid:
             raise OwnerFailure('ACCESS_DENIED', 'configuration', 'BINDING_MISMATCH')

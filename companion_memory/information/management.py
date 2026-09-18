@@ -86,6 +86,7 @@ class ManagementPort:
 class ManagementAssembly:
     """Static owner handlers declared before storage is constructed."""
     def __init__(self, repositories: tuple[RepositoryDefinition, ...]):
+        self.resolve_default_routes = False
         by_owner = {r.owner_module: r for r in repositories}
         self.semantic_format=by_owner['memory'].schema_version in (4,5)
         self.retrieval: LocalIndex | None = None
@@ -201,12 +202,13 @@ class ManagementAssembly:
                     if self.goals is None:
                         raise OwnerFailure('INVALID_STATE', 'goal', 'NOT_READY')
                     owner = 'goals'
-                    goal_authority = GoalAuthority(grant.route_ids, text(values['request_key']),entry_id=grant.entry_id if self.goals.daily_format else None)
+                    goal_authority = GoalAuthority(grant.route_ids, text(values['request_key']),entry_id=grant.entry_id if self.goals.daily_format else None, resolve_default_route=self.resolve_default_routes)
                     if kind == 'goal_inject_internal':
                         work = self._formed_goals.get(binding_id)
                         if work is None or values['request_key'] != self.operation_key(port, kind, work.key):
                             raise OwnerFailure('ACCESS_DENIED', 'goal', 'OPERATION_NOT_GRANTED')
-                        goal_authority = work.verified(value, work.key, grant.route_ids)
+                        goal_authority = work.verified(value, work.key, grant.route_ids, grant.entry_id if self.goals.daily_format else None,
+                            resolve_default_route=self.resolve_default_routes)
                     effect = self.goals.apply(kind, uow, value, text(values['request_key']), now,
                         goal_authority)
                     summary = effect.summary

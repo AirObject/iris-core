@@ -76,7 +76,19 @@ class VolatileProgress:
     state: str = 'VOLATILE_PROGRESS'
 
 
-MediaUploadResult = Committed | Found[Receipt] | MediaError | MediaUnconfirmed | VolatileProgress
+@dataclass(frozen=True, slots=True)
+class UploadInspection:
+    """Entry-scoped observation without paths, hashes or original-file authority."""
+    upload_id: str
+    state: str
+    volatile_offset: int | None
+    reupload_required: bool
+    completion: Value
+    observed_at_us: int
+    progress_durable: bool = False
+
+
+MediaUploadResult = Committed | Found[Receipt] | MediaError | MediaUnconfirmed | VolatileProgress | UploadInspection
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +137,12 @@ class MediaUploadPort:
         if owner is None: return MediaError('ACCESS_DENIED', 'resolve_upload', 'capability', 'BINDING_MISMATCH')
         return await owner.bounded_upload(self, 'resolve_upload', (key, modality))
 
+    async def inspect_upload(self, key: object, modality: object) -> MediaUploadResult:
+        """Observe only this entry's upload, without granting original-file access."""
+        owner = MediaUploadPort._native(self)
+        if owner is None: return MediaError('ACCESS_DENIED', 'inspect_upload', 'capability', 'BINDING_MISMATCH')
+        return await owner.bounded_upload(self, 'inspect_upload', (key, modality))
+
 
 class MediaService:
     """Static media owner and lifecycle service, using exclusively configured limits."""
@@ -140,6 +158,7 @@ class MediaService:
         self._root_fd: int | None = None; self._owner_fd: int | None = None
         self._executor: ThreadPoolExecutor | None = None
         self._jobs: dict[str, asyncio.Future] = {}; self._uploads: set[str] = set()
+        self._begin_inputs: dict[str, dict[str, object]] = {}
         self._grants: WeakValueDictionary[int, MediaUploadPort] = WeakValueDictionary()
         self._publishing = False
         self._upload_owners: set[str] = set()
@@ -397,9 +416,9 @@ class MediaService:
         if len(self._upload_jobs) >= self.settings.integer('media.file_worker_capacity'):
             return MediaError('RESOURCE_BUSY', operation, 'state', 'ADMISSION_FULL', True)
         upload_identity = (identity('upload', self.configuration.database_id, port._entry_id, arguments[0])
-            if operation in ('begin_upload', 'resolve_upload') and type(arguments[0]) is str else arguments[0])
+            if operation in ('begin_upload', 'resolve_upload', 'inspect_upload') and type(arguments[0]) is str else arguments[0])
         if type(upload_identity) is not str: return MediaError('INVALID_INPUT', operation, 'input', 'INVALID_SHAPE')
-        if operation == 'resolve_upload': upload_identity = 'resolve:' + upload_identity
+        if operation in ('resolve_upload', 'inspect_upload'): upload_identity = operation + ':' + upload_identity
         if upload_identity in self._upload_owners or upload_identity in self._jobs:
             return MediaError('RESOURCE_BUSY', operation, 'state', 'OWNER_ACTIVE', True)
         self._upload_owners.add(upload_identity)
@@ -642,6 +661,9 @@ class MediaService:
             return MediaError('INVALID_INPUT', operation, 'upload', 'INVALID_SHAPE')
         uid = identity('upload', self.configuration.database_id, port._entry_id, cast(str, key))
         try:
+            retained = self._begin_inputs.get(uid)
+            if retained is not None and retained['modality'] != modality:
+                return MediaError('IDEMPOTENCY_CONFLICT', operation, 'input', 'CONTENT_MISMATCH')
             existing = await self.rows.read('uploads_get', {'upload_id': uid})
             if existing:
                 row = existing[0]
@@ -649,27 +671,54 @@ class MediaService:
                     return MediaError('IDEMPOTENCY_CONFLICT', operation, 'input', 'CONTENT_MISMATCH')
                 if row['state'] == 'REUPLOAD_REQUIRED':
                     return MediaError('PRECONDITION_FAILED', operation, 'upload', 'REUPLOAD_REQUIRED')
-                return await self._upload_receipt('begin_media_upload', uid, operation, as_commit=True)
-            if uid in self._uploads: return MediaError('RESOURCE_BUSY', operation, 'state', 'OWNER_ACTIVE', True)
-            if len(self._uploads) >= self.settings.integer('media.upload_concurrency'):
+                original = await self._upload_receipt('begin_media_upload', uid, operation, as_commit=True)
+                if type(original) is Committed and row['state'] == 'UPLOADING' and uid in self._uploads:
+                    self.limit_upload_request(uid, cast(int, row['started_at_us']))
+                    bound = await self._ensure_staging(uid, row)
+                    if type(bound) is not Committed: return bound
+                return original
+            if uid in self._uploads and uid not in self._begin_inputs: return MediaError('RESOURCE_BUSY', operation, 'state', 'OWNER_ACTIVE', True)
+            if uid not in self._uploads and len(self._uploads) >= self.settings.integer('media.upload_concurrency'):
                 return MediaError('RESOURCE_BUSY', operation, 'state', 'ADMISSION_FULL')
             self._uploads.add(uid)
-            started = time.time_ns() // 1000
-            self.limit_upload_request(uid, started)
-            result = await self._execute('begin_media_upload', uid, {'upload_id': uid, 'entry_id': port._entry_id, 'modality': modality, 'started_at_us': started})
+            values = self._begin_inputs.setdefault(uid, {'upload_id': uid, 'entry_id': port._entry_id,
+                'modality': modality, 'started_at_us': time.time_ns() // 1000})
+            self.limit_upload_request(uid, cast(int, values['started_at_us']))
+            result = await self._execute('begin_media_upload', uid, values)
             if type(result) is not Committed:
                 if type(result) is not MediaUnconfirmed:
                     self._uploads.discard(uid); self._upload_deadlines.pop(uid, None)
+                    self._begin_inputs.pop(uid, None)
                 return result
-            def create():
-                fd = self.files.open(self.staging / uid, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-                try: meta = os.fstat(fd); return meta.st_dev, meta.st_ino
-                finally: os.close(fd)
-            dev, ino = cast(tuple[int, int], await self._io(uid, create)); self._offsets[uid] = 0
-            bound = await self._execute('bind_media_staging', identity('staging', uid, 1),
-                {'upload_id': uid, 'writer_generation': 1, 'staging_device': dev, 'staging_inode': ino})
+            upload = await self._upload(port, uid)
+            bound = await self._ensure_staging(uid, upload)
             return result if type(bound) is Committed else bound
         except (OwnerFailure, OSError) as failure: return self._failure(operation, failure)
+
+    async def _ensure_staging(self, uid: str, upload: MappingProxyType[str, Value]):
+        """Continue a confirmed original begin without resetting its start time.
+
+        The bounded upload owner excludes a concurrent descendant. Only this
+        process's retained upload slot may finish an unbound staging creation;
+        a restarted process follows durable REUPLOAD_REQUIRED instead.
+        """
+        generation = cast(int, upload['writer_generation'])
+        if upload['staging_inode'] is not None:
+            self._begin_inputs.pop(uid, None)
+            return await self._upload_receipt('bind_media_staging', identity('staging', uid, generation), 'begin_upload', as_commit=True)
+        def create():
+            if uid in self._offsets:
+                meta = self.files.stat(self.staging / uid)
+                return meta.st_dev, meta.st_ino
+            fd = self.files.open(self.staging / uid, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            try: meta = os.fstat(fd); return meta.st_dev, meta.st_ino
+            finally: os.close(fd)
+        dev, ino = cast(tuple[int, int], await self._io(uid, create))
+        self._offsets.setdefault(uid, 0)
+        bound = await self._execute('bind_media_staging', identity('staging', uid, generation),
+            {'upload_id': uid, 'writer_generation': generation, 'staging_device': dev, 'staging_inode': ino})
+        if type(bound) is Committed: self._begin_inputs.pop(uid, None)
+        return bound
 
     async def _upload(self, port: MediaUploadPort, uid: object) -> MappingProxyType[str, Value]:
         if not valid_identifier(uid): raise OwnerFailure('INVALID_INPUT', 'upload', 'INVALID_IDENTIFIER')
@@ -860,6 +909,28 @@ class MediaService:
             if upload['modality'] != modality: return MediaError('IDEMPOTENCY_CONFLICT', operation, 'input', 'CONTENT_MISMATCH')
             if upload['blob_id'] is not None and upload['state'] in ('READY', 'ABANDONED'): return await self._upload_receipt('publish_media_upload', identity('ready', uid), operation, as_commit=False)
             return await self._upload_receipt('begin_media_upload', uid, operation, as_commit=False)
+        except OwnerFailure as failure: return self._failure(operation, failure)
+
+    async def inspect_upload(self, port: object, key: object, modality: object):
+        """Return a bounded upload projection; offsets are explicitly process-local."""
+        operation = 'inspect_upload'
+        error = self._authorized(port, operation)
+        if error: return error
+        assert type(port) is MediaUploadPort
+        if not valid_identifier(key) or type(modality) is not str or modality not in ('IMAGE', 'AUDIO', 'VIDEO'):
+            return MediaError('INVALID_INPUT', operation, 'input', 'INVALID_SHAPE')
+        uid = identity('upload', self.configuration.database_id, port._entry_id, cast(str, key))
+        try:
+            upload = await self._upload(port, uid)
+            if upload['modality'] != modality:
+                return MediaError('IDEMPOTENCY_CONFLICT', operation, 'input', 'CONTENT_MISMATCH')
+            receipt = None
+            if upload['state'] in ('READY', 'ABANDONED') and upload['blob_id'] is not None:
+                original = await self._upload_receipt('publish_media_upload', identity('ready', uid), operation, as_commit=False)
+                if type(original) is not Found: return original
+                receipt = original.value.result
+            return UploadInspection(uid, cast(str, upload['state']), self._offsets.get(uid),
+                upload['state'] == 'REUPLOAD_REQUIRED', receipt, time.time_ns() // 1000)
         except OwnerFailure as failure: return self._failure(operation, failure)
 
     def acceptance_fact(self, uow: UnitOfWork, entry_id: str, message_id: str) -> MappingProxyType[str, Value]:

@@ -6,7 +6,8 @@ send. The actual job keeps its read grant until all child operations have ended.
 """
 from __future__ import annotations
 import asyncio
-from dataclasses import dataclass
+from collections.abc import Callable, Awaitable
+from dataclasses import dataclass, replace
 from hashlib import sha256
 import time
 from types import MappingProxyType
@@ -40,6 +41,7 @@ class DailyLearning:
     def __init__(self,runtime,reasoning,application,tools,persona,admitted):
         if not runtime.assembly.daily_format or runtime.daily_learning is not None:raise InvalidValue()
         self.runtime=runtime;self.reasoning=reasoning;self.application=application;self.tools=tools;self.persona=persona;self.admitted=admitted
+        self.route_source: Callable[[str], Awaitable[tuple[str, ...]]] | None = None
         self.scopes:dict[str,DailyEntryScope]={};self.closed=False;self._task:asyncio.Task|None=None;self._grant=None;self._frozen=None
         self.cleanup_failure:tuple[str,OwnerFailure]|None=None
         self._original_entry:tuple[str,str]|None=None
@@ -182,6 +184,20 @@ class DailyLearning:
             if run is not None and run['phase']=='TERMINAL':
                 applied=await self.application.apply(rid)
                 return await self.finish_cleanup(rid,applied)
+            if self.route_source is not None:
+                entry_id = cast(str, source['entry_id'])
+                selected = await self.route_source(entry_id)
+                if run is not None:
+                    material = await self.reasoning.materials.read(cast(str, run['context_id']), time.monotonic() + 5)
+                    original = restore_candidate_material(material.body, ())
+                    frozen_routes = tuple(cast(str, item) for item in sequence(record(original.original['authority'])['route_ids']))
+                    if not set(frozen_routes) <= set(selected):
+                        raise OwnerFailure('ACCESS_DENIED', 'route', 'BINDING_MISMATCH')
+                    selected = frozen_routes
+                scope = self.scopes.get(entry_id)
+                if scope is None:
+                    raise OwnerFailure('ACCESS_DENIED', 'entry', 'BINDING_MISMATCH')
+                self.scopes[entry_id] = replace(scope, routes=selected)
             if run is not None and not self.scope_matches(run,cast(str,source['entry_id'])):
                 return await self.finish_cleanup(rid,await self.application.reject_scope(rid))
             if run is None:

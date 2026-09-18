@@ -142,7 +142,7 @@ class ContentAssembly:
     """Construct all explicit content owners; media is supplied as a real participant."""
     def __init__(self, media: ContentMediaOwnership | None = None,
                  media_repositories: tuple[RepositoryDefinition, ...] = (), *, publication=None, utc_now_us: Callable[[], int] = lambda: time.time_ns() // 1000,
-                 information_format: bool = False, text_format: bool = False, semantic_format: bool = False, daily_format: bool = False, dream_format: bool = False, managed_format: bool = False):
+                 information_format: bool = False, text_format: bool = False, semantic_format: bool = False, daily_format: bool = False, dream_format: bool = False, managed_format: bool = False, communication_format: bool = False):
         if (media is None) != (not media_repositories):
             raise ValueError('A media owner and its declarations must be supplied together.')
         self.media = media; self.publication = publication
@@ -157,13 +157,14 @@ class ContentAssembly:
         if type(dream_format) is not bool or dream_format and not daily_format:raise ValueError('Explicit native dream format required.')
         self.dream_format = dream_format
         self.managed_format = managed_format
+        self.communication_format = communication_format
         from .managed_work_configuration import ManagedWorkConfiguration
         self.work_configuration: ManagedWorkConfiguration | None = None
         self.daily_format = daily_format
         self.daily_input_failures: DailyImageWork | None = None
         self.goal_effects: CandidateGoalEffects | None = None
         from companion_memory.memory.information_repository import information_memory_catalog
-        self.catalogs = (information_ingress_catalog() if information_format else ingress_content_catalog(), buffer_content_catalog(), runtime_content_catalog(daily_format=daily_format),
+        self.catalogs = (information_ingress_catalog(communication_format=communication_format) if information_format else ingress_content_catalog(), buffer_content_catalog(), runtime_content_catalog(daily_format=daily_format),
                          candidate_catalog(information_format=information_format,daily_format=daily_format), information_memory_catalog(semantic_format=self.semantic_format,daily_format=daily_format) if information_format else memory_catalog(), history_catalog())
         if self.semantic_format:
             from companion_memory.persistence.text_records import extend_catalog
@@ -199,6 +200,14 @@ class ContentAssembly:
             from companion_memory.configuration.activation_records import runtime_catalog
             from companion_memory.persistence.text_records import extend_catalog
             self.catalogs=tuple(extend_catalog(c,runtime_catalog(),8) if c.definition.owner_module=='runtime' else c for c in self.catalogs)
+        from .communication_gate import CommunicationGate
+        self.communication_gate: CommunicationGate | None = None
+        if communication_format:
+            from .communication_gate import catalog as communication_catalog
+            from companion_memory.persistence.text_records import extend_catalog
+            self.catalogs = tuple(extend_catalog(c, communication_catalog(), 8)
+                if c.definition.owner_module == 'runtime' else c for c in self.catalogs)
+            self.communication_gate = CommunicationGate(self)
         self.repositories = tuple(c.definition for c in self.catalogs) + media_repositories + (publication.repositories if publication is not None else ())
         self._bound = False
         self._verified_terminals = {}
@@ -328,9 +337,14 @@ class ContentAssembly:
         self.memory = MemoryTransactions(catalogs['memory'], storage, configuration, instance_id, self.history, self.ingress)
         self.cognition = CandidateBinding(catalogs['cognition'], storage, instance_id, configuration.database_id,
             settings.integer('cognition.candidate_item_limit'), settings.integer('cognition.candidate_item_max_bytes'), settings.integer('cognition.candidate_max_bytes'),
-            allow_goals=self.information_format and not self.text_format,text_format=self.text_format,daily_format=self.daily_format)
+            allow_goals=self.information_format and not self.text_format or self.communication_format,text_format=self.text_format,daily_format=self.daily_format)
         from .source_rows import RuntimeSourceRows
         self.rows = RuntimeSourceRows(catalogs['runtime'], storage, instance_id)
+        if self.communication_gate is not None:
+            from .communication_gate import CommunicationRuntimeRows
+            self.communication_gate.bind()
+            self.rows = CommunicationRuntimeRows(catalogs['runtime'], storage, instance_id)
+            self.rows.clock = self.communication_gate
         self._lease = storage.claim_module_owner(catalogs['runtime'].definition)
         if self._lease is None: raise ValueError('Runtime owner is unavailable.')
         self.operations = {name: storage.bind_operation(d, instance_id) for name, d in self._semantic_definitions.items()}
@@ -425,6 +439,10 @@ class ContentAssembly:
         if name == 'register_content_entry':
             eid = cast(str, v['entry_id'])
             self.execution_configuration.platform(cast(str, v['platform_id']))
+            if self.communication_format:
+                count = self.ingress.rows.stage('registered_entry_count', uow, {})
+                if len(count) != 1 or cast(int, count[0]['count']) >= 16:
+                    raise OwnerFailure('RESOURCE_BUSY', 'entry', 'CAPACITY_REACHED')
             self.ingress.register(uow, eid, cast(str, v['host_id']), cast(str, v['platform_id']), cast(str, v['external_entry_id']))
             self.buffers.rows.stage('register', uow, {'entry_id': eid})
             return self._result(uow, v, 'REGISTERED', eid)

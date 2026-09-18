@@ -79,9 +79,8 @@ class BackupDownload:
     async def stream(self, write: Callable[[bytes], None], drain: Callable[[], Awaitable[None]]) -> None:
         async def send(chunk: bytes):
             authority = self.application.identity
-            async with authority.delivery_lock:
-                await authority.recheck(self.principal)
-                write(chunk)
+            await authority.recheck(self.principal)
+            authority.start_delivery(self.principal, lambda: write(chunk))
             await drain()
         await send((f'HTTP/1.1 200 OK\r\nContent-Type: application/x-tar\r\nContent-Length: {self.length}\r\n'
             f'Content-Disposition: attachment; filename="{self.filename}"\r\n'

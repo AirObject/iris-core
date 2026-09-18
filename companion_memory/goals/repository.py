@@ -30,7 +30,7 @@ LAYOUTS = (
 )
 
 
-def goals_catalog(*, daily_format: bool = False) -> StatementCatalog:
+def goals_catalog(*, daily_format: bool = False, communication_format: bool = False) -> StatementCatalog:
     """Declare all goal writes and bounded scans before database creation."""
     layouts = goal_layouts(daily_format)
     indices = (
@@ -82,6 +82,15 @@ def goals_catalog(*, daily_format: bool = False) -> StatementCatalog:
     select('dedup_task', 'pending_dedup', "status IN ('PENDING','RUNNING')", RecordSchema(()), 'created_at,task_id', 16)
     select('dedup_task', 'running_dedup', "status='RUNNING'", RecordSchema(()), 'created_at,task_id', 16)
     select('reminder_plan', 'due_plans', "status IN ('WAIT_DEDUP','PENDING') AND due_at<=:now", RecordSchema((Field('now', TIME),)), 'due_at,plan_id', 16)
+    if communication_format:
+        select('reminder_plan', 'route_plan_page', "json_extract(body,'$.route_id')=:route_id AND plan_id>:after",
+            RecordSchema((Field('route_id', ID), Field('after', TEXT(128)))), 'plan_id', 4)
+        extra.append(('route_open_count', StatementDefinition("SELECT count(*) AS count FROM goals_goal WHERE scope_id=:scope_id AND status='OPEN' AND canonical_id=goal_id AND json_extract(body,'$.route_id')=:route_id",
+            RecordSchema((Field('route_id', ID),)), RecordSchema((Field('count', COUNT),)), False)))
+        indices += (TableDefinition('goals_reminder_route_due', "CREATE INDEX goals_reminder_route_due ON goals_reminder_plan(scope_id,json_extract(body,'$.route_id'),status,due_at,plan_id)"),)
+        select('reminder_plan', 'route_due_plan', "status IN ('WAIT_DEDUP','PENDING') AND due_at<=:now AND json_extract(body,'$.route_id')=:route_id",
+            RecordSchema((Field('now', TIME), Field('route_id', ID))), 'due_at,plan_id', 1)
+
     select('attempt', 'unresolved_attempts', "state='REGISTERED'", RecordSchema(()), 'delivery_id', 16)
     extra.append(('observation', StatementDefinition("SELECT (SELECT count(*) FROM goals_goal WHERE scope_id=:scope_id AND status='OPEN' AND canonical_id=goal_id) AS open_goals,(SELECT count(*) FROM goals_goal WHERE scope_id=:scope_id AND status='OPEN' AND canonical_id=goal_id AND json_extract(body,'$.deadline')<=:now) AS expired_goals,(SELECT count(*) FROM goals_dedup_task WHERE scope_id=:scope_id AND status IN ('PENDING','RUNNING')) AS dedup_pending,(SELECT count(*) FROM goals_dedup_task WHERE scope_id=:scope_id AND status='NEEDS_SEMANTIC_REVIEW') AS semantic_review,(SELECT count(*) FROM goals_reminder_plan WHERE scope_id=:scope_id AND status='UNSENT_UNAVAILABLE') AS unsent_unavailable,(SELECT count(*) FROM goals_attempt WHERE scope_id=:scope_id AND state='REGISTERED') AS unresolved_attempts,(SELECT count(*) FROM goals_attempt WHERE scope_id=:scope_id AND state='UNKNOWN') AS unknown_attempts",
         RecordSchema((Field('now', TIME),)), RecordSchema(tuple(Field(name, COUNT) for name in ('open_goals', 'expired_goals', 'dedup_pending', 'semantic_review', 'unsent_unavailable', 'unresolved_attempts', 'unknown_attempts'))), False)))
@@ -108,6 +117,10 @@ def goals_catalog(*, daily_format: bool = False) -> StatementCatalog:
         from companion_memory.persistence.text_records import extend_catalog
         from .semantic_records import semantic_catalog
         catalog = extend_catalog(catalog, semantic_catalog(), 5)
+    if communication_format:
+        from companion_memory.persistence.text_records import extend_catalog
+        from .communication_records import communication_catalog
+        catalog = extend_catalog(catalog, communication_catalog(), 5)
     return catalog
 
 

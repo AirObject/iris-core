@@ -36,8 +36,8 @@ def release() -> dict[str, object]:
     for path in files:
         digest.update(path.relative_to(base).as_posix().encode() + b'\0' + hashlib.sha256(path.read_bytes()).digest())
     return {'format': 'MANAGED_BUILD_V1', 'code_digest': digest.hexdigest(),
-        'storage_format': 'MANAGED_RUNTIME_V1', 'assembly_digest': bootstrap.assembly_digest,
-        'compatible_assembly_digests': [bootstrap.assembly_digest], 'migration_supported': False,
+        'storage_format': bootstrap.storage_format, 'assembly_digest': bootstrap.assembly_digest,
+        'compatible_assembly_digests': [bootstrap.assembly_digest], 'migration_supported': True, 'explicit_predecessor': 'MANAGED_RUNTIME_V1',
         'python': platform.python_version(), 'sqlite': sqlite3.sqlite_version,
         'platform': platform.system().lower() + '/' + platform.machine(), 'source_files': len(files)}
 
@@ -76,7 +76,7 @@ def verify_current_database(resources: ManagedResources) -> None:
         raise ValueError('SQLite runtime is below the admitted version.')
     from companion_memory.persistence._codec import assembly_value
     assembly = ManagedBootstrap(resources.settings).assembly
-    expected = assembly_value(assembly.repositories, assembly.commands, assembly_format='MANAGED_RUNTIME_V1')
+    expected = assembly_value(assembly.repositories, assembly.commands, assembly_format='MANAGED_COMMUNICATION_V1')
     database = resources.root / 'db/memory.sqlite3'
     with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as connection:
         metadata = connection.execute('SELECT database_id, CASE WHEN length(assembly)<=8388608 THEN assembly ELSE NULL END FROM application_metadata WHERE singleton=1').fetchall()
@@ -120,6 +120,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='受控本地安装、备份与兼容版本检查；不会发送模型请求。')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('release', help='输出当前代码及兼容格式声明')
+    for action in ('upgrade-prepare', 'upgrade-activate', 'upgrade-abort'):
+        upgrade = commands.add_parser(action, help='显式升级当前已提交托管格式；停止实例，保留原键、原库与完整备份')
+        upgrade.add_argument('operation_key')
     commands.add_parser('health', help='只读检查同一服务健康')
     commands.add_parser('preflight', help='停止服务后核对当前卷与此构建兼容；不迁移、不改写业务数据')
     backup = commands.add_parser('create-backup', help='停止服务后按原操作键创建一致备份；重复执行确认原结果')
@@ -143,6 +146,14 @@ def main() -> None:
     try:
         if args.command == 'release':
             value = release()
+        elif args.command in ('upgrade-prepare', 'upgrade-activate', 'upgrade-abort'):
+            from .managed_upgrade import CommunicationUpgrade
+            upgrade = CommunicationUpgrade(environment_settings())
+            try:
+                value = (upgrade.prepare(args.operation_key) if args.command == 'upgrade-prepare' else
+                    upgrade.abort(args.operation_key) if args.command == 'upgrade-abort' else upgrade.activate(args.operation_key))
+            finally:
+                upgrade.close()
         elif args.command == 'health':
             raise SystemExit(health())
         elif args.command == 'audit-issue':

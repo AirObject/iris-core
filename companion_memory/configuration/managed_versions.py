@@ -211,7 +211,10 @@ class ManagedVersions:
         # The complete declared key set is fixed by this managed format. Point
         # loads prevent an unbounded scan of every retained historical version.
         domains = []
-        for domain in candidate_values(self.binding._bootstrap)['domains']:
+        from .communication_configuration import extend_candidate
+        import json
+        layout = extend_candidate(self.binding._bootstrap) if json.loads(cast(str, version['catalog'])).get('version') == 9 else self.binding._bootstrap
+        for domain in candidate_values(layout)['domains']:
             entries = []
             for entry in domain['entries']:
                 row = await self.rows.read('managed_entries', self.entry_id(version_id, domain['domain_id'], entry['parameter_key']))

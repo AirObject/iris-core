@@ -7,7 +7,7 @@ first persona remains on its generation, review and publication protocol.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Awaitable
 import time
 from typing import cast, TYPE_CHECKING
 
@@ -24,6 +24,7 @@ from .managed_resources import ManagedResources
 
 if TYPE_CHECKING:
     from .managed_logging import ManagedLogging
+    from companion_memory.information.scheduling import InformationScheduler
 
 ResourceFactory = Callable[[ManagedResources, ManagedConfigurationCandidate, str, str, Callable[[str], bool]], DailyHostResources]
 
@@ -35,9 +36,15 @@ class ManagedBusiness:
         self.task: asyncio.Task | None = None
         self.sends_enabled = False
         self.initialized = False
+        self.resume_maintenance: Callable[[], Awaitable[None]] | None = None
         self.logging: ManagedLogging | None = None
+        self.goal_scheduler: InformationScheduler | None = None
         from .managed_configuration import ManagedConfiguration
         self.configuration: ManagedConfiguration | None = None
+        from companion_memory.management.communication_sessions import CommunicationSessions
+        self.communication = CommunicationSessions(self)
+        from .communication_dispatch import CommunicationDispatcher
+        self.communication_dispatcher: CommunicationDispatcher | None = None
 
     async def initialize(self, key: str, expected_revision: int):
         """Start or confirm one immutable setup; never substitute another key."""
@@ -87,8 +94,19 @@ class ManagedBusiness:
             candidate = self.candidate(draft)
             native = self.resource_factory(resources, candidate, original, cast(str, draft['role_name']), lambda key: self.sends_enabled)
             self.host = DailyCognitionHost(candidate, native, managed_assembly=self.bootstrap.assembly)
+            if self.bootstrap.assembly.communication_format:
+                from companion_memory.management.notification_routes import NotificationRoutes
+                self.host.route_source = NotificationRoutes(self.identity).for_entry
             self.host.configure_entry(cast(str, draft['entry_id']), cast(str, draft['entry_id']), ('self',),
                 ({'kind': 'REAL', 'context_id': None},), writable=('self',))
+            if self.bootstrap.assembly.communication_format:
+                from companion_memory.ingress.content_storage import read_registered_bindings
+                catalog = next(c for c in self.host.assembly.catalogs if c.definition.owner_module == 'ingress')
+                for entry in await read_registered_bindings(catalog, self.host.storage, resources.instance_id):
+                    entry_id = cast(str, entry['entry_id'])
+                    if entry_id != draft['entry_id']:
+                        self.host.configure_entry(entry_id, entry_id, ('self',),
+                            ({'kind': 'REAL', 'context_id': None},), writable=('self',))
         host = self.host
         self.bootstrap.state = 'RECOVERING'
         if host.state != 'READY':
@@ -110,22 +128,54 @@ class ManagedBusiness:
                 cast(int, current['revision']), 'AWAITING_REVIEW', original)
             if type(progressed) is not Committed:
                 return progressed
+        self.identity.verify_binding = host.assembly.ingress.verify_host_entry
         self.initialized = True
         if self.configuration is None:
             from .managed_configuration import ManagedConfiguration
             self.configuration = ManagedConfiguration(self)
         if self.logging is not None:
             await self.logging.bind(self.configuration.work.versions.active, cast(str, draft['entry_id']))
+        if self.resume_maintenance is not None:
+            await self.resume_maintenance()
         activated = await self.configuration.recover()
         if activated['state'] not in ('APPLIED', 'BIRTH_CONFIGURATION'):
             self.bootstrap.state = 'RECOVERING'
             return {'state': 'RECOVERING', 'configuration': activated, 'startup_sends': 0}
+        from companion_memory.configuration.communication_configuration import policy
+        active_version = self.configuration.work.versions.active
+        self.communication.publish(active_version.version_id, dict(policy(active_version.candidate)))
+        if self.bootstrap.assembly.communication_format and self.communication_dispatcher is None:
+            from .communication_dispatch import CommunicationDispatcher
+            self.communication_dispatcher = CommunicationDispatcher(self)
+            if not await self.communication_dispatcher.recover():
+                self.bootstrap.state = 'RECOVERING'
+                return {'state': 'RECOVERING', 'communication': 'CONFIRMATION_PENDING', 'startup_sends': 0}
         ready = await self.business_ready()
         if ready and not await self.complete_wizard():
             self.bootstrap.state = 'RECOVERING'
             return {'state': 'RECOVERING', 'startup_sends': 0, 'business_ready': False}
         self.bootstrap.state = 'READY' if ready else 'AWAITING_REVIEW'
+        if ready:
+            self.start_goal_scheduler()
         return {'state': self.bootstrap.state, 'startup_sends': 0, 'business_ready': ready}
+
+    def start_goal_scheduler(self) -> None:
+        """Local goal work is independent of permission to start model requests."""
+        host = self.host
+        if not self.bootstrap.assembly.communication_format or self.goal_scheduler is not None:
+            return
+        if host is None or host.runtime is None or host.goals is None or host.retrieval is None:
+            raise OwnerFailure('INVALID_STATE', 'goal', 'NOT_READY')
+        from companion_memory.information.scheduling import InformationScheduler
+        from companion_memory.management.notification_routes import NotificationRoutes
+        self.goal_scheduler = InformationScheduler(host.runtime, host.management, host.goals,
+            host.retrieval.memory, host.retrieval, goals_only=True)
+        self.goal_scheduler.may_start = lambda: self.configuration is not None and not self.configuration.work.fenced
+        self.goal_scheduler.route_source = NotificationRoutes(self.identity).all_ids
+        if self.communication_dispatcher is not None:
+            self.goal_scheduler.local.advance_reminders = False
+            self.goal_scheduler.communication_round = self.communication_dispatcher.tick
+        self.goal_scheduler.start()
 
     def dispatch_disclosure(self) -> dict[str, object]:
         """Describe every configured remote role without retrieving credentials."""
@@ -206,6 +256,8 @@ class ManagedBusiness:
         result = await port.publish(*args, payload['epoch'])
         if type(result) is Committed and await self.business_ready():
             self.bootstrap.state = 'READY' if await self.complete_wizard() else 'RECOVERING'
+            if self.bootstrap.state == 'READY':
+                self.start_goal_scheduler()
         return result
 
     async def complete_wizard(self) -> bool:
@@ -226,6 +278,12 @@ class ManagedBusiness:
 
     async def close(self) -> bool:
         self.sends_enabled = False
+        if self.communication_dispatcher is not None and not await self.communication_dispatcher.close():
+            return False
+        if not await self.communication.close():
+            return False
+        if self.goal_scheduler is not None and not await self.goal_scheduler.close(5):
+            return False
         if self.configuration is not None and not await self.configuration.coordinator.close():
             return False
         if self.task is not None and not self.task.done():

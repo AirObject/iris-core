@@ -44,14 +44,16 @@ from companion_memory.media.daily_work import DailyImageWork
 
 class DailyAssembly:
     """One static storage graph; only the host may install native owner services."""
-    def __init__(self, *, dream_format: bool = False, managed_format: bool = False):
+    def __init__(self, *, dream_format: bool = False, managed_format: bool = False, communication_format: bool = False):
         self.dream_format=dream_format
         self.managed_format=managed_format
+        self.communication_format=communication_format
+        if communication_format and not managed_format:raise ValueError("Communication requires managed owners.")
         if managed_format and not dream_format:raise ValueError("Managed format requires dream owners.")
         self.media=MediaService(daily_format=True,managed_format=managed_format)
-        self.content=ContentAssembly(self.media,self.media.repositories,information_format=True,daily_format=True,dream_format=dream_format,managed_format=managed_format)
+        self.content=ContentAssembly(self.media,self.media.repositories,information_format=True,daily_format=True,dream_format=dream_format,managed_format=managed_format,communication_format=communication_format)
         self.retrieval_catalog=extend_catalog(retrieval_catalog(semantic_format=True),semantic_retrieval_catalog(),5)
-        self.information_catalogs=(self.retrieval_catalog,state_catalog(),goals_catalog(daily_format=True))
+        self.information_catalogs=(self.retrieval_catalog,state_catalog(),goals_catalog(daily_format=True, communication_format=communication_format))
         catalogs={c.definition.owner_module:c for c in self.content.catalogs}
         from companion_memory.configuration.managed_persistence import ManagedConfigurationAssembly
         self.configuration=ManagedConfigurationAssembly(catalogs['memory'],self.retrieval_catalog) if managed_format else DreamConfigurationAssembly(catalogs['memory'],self.retrieval_catalog) if dream_format else DailyConfigurationAssembly(catalogs['memory'],self.retrieval_catalog)
@@ -66,6 +68,7 @@ class DailyAssembly:
         participants=self.content.repositories+domains
         self.initializer=InformationInitialization(participants,self.configuration.repository.definition)
         self.management=ManagementAssembly(participants)
+        self.management.resolve_default_routes=communication_format
         self.initial_self=InitialSelfCommands(catalogs['memory'])
         self.initial_subjects=subjects_definition((catalogs['memory'].definition,),self._subjects)
         self.dream=DreamControl(catalogs['runtime'].definition if managed_format else None) if dream_format else None
@@ -110,6 +113,8 @@ class DailyAssembly:
         self.memory_administration=None
         self.backup=None
         self.configuration_activation=None
+        from companion_memory.goals.communication_ledger import CommunicationLedger
+        self.communication_ledger: CommunicationLedger | None = None
         if managed_format:
             from .configuration_activation import RuntimeConfigurationActivation
             from companion_memory.configuration.managed_versions import ManagedVersions
@@ -119,14 +124,19 @@ class DailyAssembly:
             self.commands+=self.configuration.versions.commands
             from companion_memory.management.identity import IdentityAuthority
             from companion_memory.persistence.backup_control import BackupControl
-            self.identity=IdentityAuthority()
+            self.identity=IdentityAuthority(communication_format=communication_format)
             self.backup=BackupControl()
             self.backup_catalog=self.backup.catalog
             self.repositories+=(self.identity.catalog.definition,self.backup_catalog.definition)
             from companion_memory.memory.administration import MemoryAdministration
             self.memory_administration=MemoryAdministration(self.content,self.identity,self.repositories)
             self.commands+=self.identity.commands+self.memory_administration.commands+self.backup.commands
-        self.storage=PersistenceService(self.repositories,self.commands,assembly_format='MANAGED_RUNTIME_V1' if managed_format else 'DREAM_MAINTENANCE_V1' if dream_format else 'DAILY_COGNITION_V1')
+            if communication_format:
+                self.communication_ledger = CommunicationLedger(self.content, self.information_catalogs[2], self.identity)
+                self.commands += self.communication_ledger.commands
+                assert self.content.communication_gate is not None
+                self.commands += self.content.communication_gate._commands
+        self.storage=PersistenceService(self.repositories,self.commands,assembly_format='MANAGED_COMMUNICATION_V1' if communication_format else 'MANAGED_RUNTIME_V1' if managed_format else 'DREAM_MAINTENANCE_V1' if dream_format else 'DAILY_COGNITION_V1')
         self.work:SemanticWork|None=None;self.generations:SemanticGenerations|None=None;self.cache:SemanticQueryCache|None=None
         self.embedding:EmbeddingProvider|None=None;self.fixed:FixedMemorySets|None=None
         self.subject_origin:str|None=None

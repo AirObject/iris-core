@@ -18,9 +18,11 @@ async def exercise_history_audit(test, business, deleted: Committed, object_id: 
     resources = bootstrap.resources; host = business.host
     assert resources is not None and host is not None
     app = object.__new__(ManagedApplication)
+    from companion_memory.management.request_admission import RequestAdmission
+    app.admission = RequestAdmission(16, 30)
     app.bootstrap, app.resources, app.business = bootstrap, resources, business
     identity = bootstrap.assembly.identity; assert identity is not None
-    app.identity, app.control_lock, app.logging = identity, asyncio.Lock(), None
+    app.identity, app.logging = identity, None
     app.audit = DeveloperAudit(app)
     operation = deleted.receipt.identity
     reference = {name: getattr(operation, name) for name in ('owner_namespace', 'operation_kind', 'operation_key')}

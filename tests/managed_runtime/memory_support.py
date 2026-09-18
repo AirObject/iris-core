@@ -63,6 +63,9 @@ async def exercise_memory(test, business, dispatch_revision: int = 1, dispatch_k
     current = objects[0]
     shared = objects[1]
     oid = current['object_id']
+    if host.route_source is not None and await host.route_source('entry'):
+        from .communication_route_support import exercise_internal_route
+        await exercise_internal_route(test, host, learned, oid)
     links_row = (await host.assembly.memory.rows.read('links_get', {'object_id': oid}))[0]
     links = isolate_links(decode_content(links_row['body'].encode(), 2048), oid, current['revision'])
     now = time.time_ns() // 1000

@@ -61,11 +61,16 @@ class ManagedMaintenance:
             previous = await owner.rows.read('backups', backup_id)
             if previous is not None and previous['state'] in ('COMPLETE', 'FAILED'):
                 return {'state': previous['state'], 'backup_id': backup_id, 'reason': previous['failure'], 'new_sends': 0}
+            clock = app.bootstrap.assembly.content.communication_gate
+            if clock is not None and clock.rows is not None:
+                await clock.maintenance(backup_id, True)
             self.key = key
             app.bootstrap.state = 'MAINTENANCE'
             # A durable maintenance request now owns local close/reopen work.
             # Expiring HTTP authority must not strand its already owned cleanup.
             self.task = asyncio.create_task(self._copy_and_reopen(backup_id, key, actor), context=contextvars.Context())
+        from companion_memory.persistence.completion import retain_completion
+        retain_completion(self.task)
         done, _ = await asyncio.wait((self.task,), timeout=self.application.bootstrap.settings.integer('management.maintenance_timeout_seconds'))
         if not done:
             return {'state': 'UNCONFIRMED', 'operation_key': key, 'cleanup_pending': True}
@@ -82,6 +87,7 @@ class ManagedMaintenance:
         while True:
             rows = await owner.rows.page('backups', after)
             if not rows:
+                await self.resume_clock()
                 return
             for row in rows:
                 if row['state'] != 'REQUESTED':
@@ -105,6 +111,20 @@ class ManagedMaintenance:
                     if type(failed) is not Committed:
                         raise OwnerFailure('STORAGE_FAILED', 'backup', 'CONFIRMATION_PENDING', True)
             after = cast(str, rows[-1]['object_id'])
+
+    async def resume_clock(self) -> None:
+        clock = self.application.bootstrap.assembly.content.communication_gate
+        if clock is None or clock.rows is None: return
+        root = await clock.rows.read('communication_gate', 'communication-gate')
+        if root is None: return
+        value = record(record(root['handoff'])['clock'])
+        key = value['maintenance_key']
+        if key is None: return
+        owner = self.application.bootstrap.assembly.backup
+        assert owner is not None
+        backup = await owner.rows.read('backups', cast(str, key))
+        if backup is not None and backup['state'] in ('COMPLETE', 'FAILED'):
+            await clock.maintenance(cast(str, key), False)
 
     async def _copy_and_reopen(self, backup_id: str, key: str, actor: str):
         app = self.application
@@ -143,6 +163,7 @@ class ManagedMaintenance:
         app.identity = reopened.assembly.identity
         app.resources = resources
         app.business = ManagedBusiness(reopened, app.identity, resource_factory=factory)
+        app.business.resume_maintenance = self.resume_clock
         from companion_memory.management.managed_host_http import ManagedHostHTTP
         app.host_http = ManagedHostHTTP(app.business, app.identity)
         app.observer = None
@@ -163,6 +184,7 @@ class ManagedMaintenance:
             assert owner is not None
             outcome = await owner.execute('fail_backup', backup_id, {'backup_id': backup_id,
                 'expected_revision': 1, 'failure': 'COPY_NOT_VERIFIED'}, actor)
+            if type(outcome) is Committed: await self.resume_clock()
             return {'state': 'FAILED' if type(outcome) is Committed else 'UNCONFIRMED',
                 'backup_id': backup_id, 'reason': 'COPY_NOT_VERIFIED', 'result': outcome, 'startup_sends': 0}
         return await self._complete(backup_id, actor, manifest)
@@ -178,5 +200,6 @@ class ManagedMaintenance:
         outcome = await owner.execute('complete_backup', backup_id, {'backup_id': backup_id, 'expected_revision': 1,
             'manifest_digest': manifest_digest, 'file_count': len(files),
             'total_bytes': sum(cast(int, item['bytes']) for item in files)}, actor)
+        if type(outcome) is Committed: await self.resume_clock()
         return {'state': 'COMPLETE' if type(outcome) is Committed else 'UNCONFIRMED', 'backup_id': backup_id,
             'result': outcome, 'startup_sends': 0}

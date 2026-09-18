@@ -84,6 +84,7 @@ def definitions() -> tuple[ParameterDefinitionInput, ...]:
         definition('deployment.secret_root', kind='string', default='/run/secrets', sensitivity='administrator'),
         definition('deployment.origin', kind='string', default='http://127.0.0.1:8080'),
         definition('deployment.bind', kind='string', default='0.0.0.0'),
+        definition('deployment.trusted_proxy_peers', kind='string', default=''),
         *(definition(key, kind='integer', default=value, limits=(lower, upper), unit=unit)
           for key, (value, lower, upper, unit) in LIMITS.items()),
     )
@@ -115,7 +116,7 @@ class DeploymentSettings:
 
 def resolve_deployment(explicit: dict[str, MetadataValue]) -> DeploymentSettings:
     """Reject unknown fields and invalid origins without opening files or sockets."""
-    from urllib.parse import urlsplit
+    from .network_origin import parse_origin
     builder = create_registry_builder()
     for item in definitions():
         if type(builder.register(item)) is not Ok:
@@ -137,10 +138,15 @@ def resolve_deployment(explicit: dict[str, MetadataValue]) -> DeploymentSettings
     root, secret = (PurePosixPath(settings.text(k)) for k in ('deployment.data_root', 'deployment.secret_root'))
     if root == PurePosixPath('/') or root.is_relative_to(secret) or secret.is_relative_to(root):
         raise ValueError('Protected resources overlap.')
-    origin = urlsplit(settings.text('deployment.origin'))
-    if (origin.scheme not in ('http', 'https') or not origin.hostname or origin.username or origin.password
-            or origin.path or origin.query or origin.fragment or origin.port != settings.integer('deployment.port')):
-        raise ValueError('An exact service origin with explicit port is required.')
+    origin = parse_origin(settings.text('deployment.origin'))
+    import ipaddress
+    peers = settings.text('deployment.trusted_proxy_peers')
+    if peers:
+        items = peers.split(',')
+        if len(items) > 8 or len(set(items)) != len(items) or any(str(ipaddress.ip_address(item)) != item for item in items):
+            raise ValueError('Trusted proxy peers require at most eight exact canonical IP addresses.')
+    if origin.scheme == 'https' and not peers:
+        raise ValueError('TLS termination requires explicit actual proxy peers.')
     if settings.text('deployment.bind') not in ('0.0.0.0', '127.0.0.1'):
         raise ValueError('Unsupported local listener.')
     return settings

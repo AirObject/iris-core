@@ -97,7 +97,7 @@ def ingress_content_catalog() -> StatementCatalog:
     return StatementCatalog(RepositoryDefinition('ingress', 2, (entries, events, payloads, refs), tuple(s for _, s in statements)), tuple(statements))
 
 
-def information_ingress_catalog() -> StatementCatalog:
+def information_ingress_catalog(*, communication_format: bool = False) -> StatementCatalog:
     """Extend only the explicit information assembly with a bounded recovery read."""
     from dataclasses import replace
     original = ingress_content_catalog()
@@ -106,7 +106,21 @@ def information_ingress_catalog() -> StatementCatalog:
         RecordSchema((Field('source_id', ID), Field('message_ids', BoundedTextSchema(1024)))),
         RecordSchema((Field('message_id', ID), Field('body', BoundedTextSchema(8192)), Field('source_holder', ID, nullable=True))), False)
     statements = original.statements + (('information_source_payloads', statement),)
+    if communication_format:
+        entry_schema = RecordSchema((Field('entry_id', ID), Field('host_id', ID), Field('platform_id', ID),
+            Field('external_entry_id', BoundedTextSchema(512))))
+        statements += (('registered_entries', StatementDefinition(
+            'SELECT entry_id,host_id,platform_id,external_entry_id FROM ingress_content_entries WHERE scope_id=:scope_id AND entry_id>:after ORDER BY entry_id LIMIT 16',
+            RecordSchema((Field('after', BoundedTextSchema(128)),)), entry_schema, False)),)
+        statements += (('registered_entry_count', StatementDefinition(
+            'SELECT count(*) AS count FROM ingress_content_entries WHERE scope_id=:scope_id',
+            RecordSchema(()), RecordSchema((Field('count', INT),)), False)),)
     return StatementCatalog(replace(original.definition, statements=tuple(value for _, value in statements)), statements)
+
+
+async def read_registered_bindings(catalog: StatementCatalog, storage: PersistenceService, instance_id: str):
+    """Recover bounded registration facts before runtime scopes are constructed."""
+    return await BoundStatements(catalog, storage, instance_id).read('registered_entries', {'after': ''})
 
 
 class ContentIngressTransactions:
@@ -131,6 +145,10 @@ class ContentIngressTransactions:
             result.extend(await self.rows.read('information_source_payloads', {'source_id': source_id,
                 'message_ids': encode_content(members[offset:offset + 2], 1024).decode()}))
         return tuple(result)
+
+    async def registered_entries(self, after: str = '') -> tuple[MappingProxyType[str, Value], ...]:
+        """Return bounded trusted bindings without event bodies or query authority."""
+        return await self.rows.read('registered_entries', {'after': after})
 
     async def verify_host_entry(self, entry_id: str, host_id: str) -> bool:
         """Verify a registered local binding without exposing events or payloads."""

@@ -1,0 +1,43 @@
+# Apply with: docker compose -f compose.yaml -f compose.tls.yaml config
+# IRIS_EXTERNAL_ORIGIN includes scheme and external port; certificate SAN must match.
+services:
+  iris:
+    ports: !reset []
+    environment:
+      IRIS_DEPLOYMENT: '{"deployment.origin":"${IRIS_EXTERNAL_ORIGIN:?set HTTPS origin}","deployment.trusted_proxy_peers":"172.29.97.3"}'
+    networks:
+      communication:
+        ipv4_address: 172.29.97.2
+  tls:
+    image: iris-communication-proxy:1.22.1-deb12u9
+    build:
+      context: .
+      dockerfile: deployment/proxy/Dockerfile
+    platform: linux/arm64
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['envsubst ''$${IRIS_EXTERNAL_HOST}'' < /etc/iris/nginx.conf.template > /tmp/nginx.conf && exec /usr/sbin/nginx -c /tmp/nginx.conf -g "daemon off;"']
+    environment:
+      IRIS_EXTERNAL_HOST: ${IRIS_EXTERNAL_HOST:?set certificate host}
+    ports:
+      - "${IRIS_TLS_BIND:-127.0.0.1}:${IRIS_TLS_PORT:-8443}:8443"
+    volumes:
+      - ./deployment/proxy/nginx.conf.template:/etc/iris/nginx.conf.template:ro
+      - ${IRIS_TLS_DIRECTORY:?set private certificate directory}:/run/tls:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=33554432,mode=1777
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.5
+    stop_grace_period: 60s
+    networks:
+      communication:
+        ipv4_address: 172.29.97.3
+networks:
+  communication:
+    ipam:
+      config:
+        - subnet: 172.29.97.0/29

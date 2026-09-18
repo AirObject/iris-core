@@ -1,3 +1,5 @@
+import {renderConnections,closeConnectionPage} from './external_connections.js';
+import {configurationOperation} from './configuration_operation.js';
 /** Local administration of one protected instance; all writes keep their original request key. */
 type RecordValue = Record<string, unknown>;
 const page = document.querySelector<HTMLDivElement>('#page')!;
@@ -58,17 +60,18 @@ function bind(id: string, action: (form: HTMLFormElement) => Promise<void>): voi
 }
 function menu(active: string): void {
   renderPendingOperations();
-  const items = auditing ? [['audit','审计读取'],['audit-login','重新验证审计能力'],['audit-logout','退出审计']] : authenticated ? [['overview','概览'],['wizard','初始化向导'],['persona','首次 persona'],['dispatch','模型工作'],['configuration','配置版本'],['daily','日常观察'],['memory','记忆与来源'],['state','当前状态'],['goals','目标管理'],['logs','运行日志'],['dream','梦境管理'],['backups','备份恢复'],['tokens','宿主接入'],['account','管理员口令'],['audit-login','独立审计登录'],['logout','退出登录']] : [['login','管理员登录'],['bootstrap','首次建立管理员'],['audit-login','独立审计登录']];
+  const items = auditing ? [['audit','审计读取'],['audit-login','重新验证审计能力'],['audit-logout','退出审计']] : authenticated ? [['overview','概览'],['wizard','初始化向导'],['persona','首次 persona'],['dispatch','模型工作'],['configuration','配置版本'],['daily','日常观察'],['memory','记忆与来源'],['state','当前状态'],['goals','目标管理'],['logs','运行日志'],['dream','梦境管理'],['backups','备份恢复'],['connections','外部连接'],['account','管理员口令'],['audit-login','独立审计登录'],['logout','退出登录']] : [['login','管理员登录'],['bootstrap','首次建立管理员'],['audit-login','独立审计登录']];
   navigation.innerHTML = items.map(([id,label]) => `<button data-page="${id}" ${id === active ? 'aria-current="page"' : ''}>${label}</button>`).join('');
   navigationBusy(0);
   for (const button of navigation.querySelectorAll<HTMLButtonElement>('button')) button.addEventListener('click', () => {if(!activePageWork)void render(button.dataset.page!).catch(error => show(String(error),true));});
 }
 async function render(name:string):Promise<void> {
   // A pending write or page read owns its DOM until its response is handled.
-  navigationBusy(1);page.innerHTML='<p>正在读取…</p>';
+  closeConnectionPage();navigationBusy(1);page.innerHTML='<p>正在读取…</p>';
   try{await renderPage(name);}finally{navigationBusy(-1);}
 }
 async function renderPage(name: string): Promise<void> {
+  if(name==='connections'||name==='tokens'){menu('connections');await renderConnections({page,api,object,escape,show,bind,write:originalWrite,configuration:configurationOperation(api,object,instanceId,definitiveRejection)});return;}
   const pages:Record<string,()=>Promise<void>>={'audit-login':renderAuditLogin,audit:renderAudit,'audit-logout':async()=>{await api('/api/audit/logout',{});auditing=false;await render('login');},daily:renderDaily,memory:renderMemory,state:renderState,goals:renderGoals,logs:renderLogs,dream:renderDream,backups:renderBackups,account:renderAccount};
   if (pages[name]) {page.innerHTML='<p>正在读取…</p>';notice.textContent='';menu(name);await pages[name]!();return;}
   if (name === 'configuration') { page.innerHTML='<p>正在读取…</p>';notice.textContent='';menu(name); await renderConfiguration(); return; }
@@ -265,7 +268,7 @@ async function renderConfiguration(): Promise<void> {
   const status = object(read.status), values = object(read.values), platform = object(values.platform), textValues = object(values.text);
   const schedule = object(textValues['dream.schedule']);
   const instance = object(await api('/api/status'));
-  const storageKey = `iris.configuration.pending.${String(instance.instance_id)}`;
+  const operation = configurationOperation(api,object,String(instance.instance_id),definitiveRejection);
   const wizard=object(await api('/api/wizard'));
   const schema=object(await api('/api/configuration/schema',{platform_id:object(wizard.draft).platform_id}));
   const names: Record<string,string> = {history_context_count:'历史上下文条数',target_count:'本次总结条数',recent_context_count:'最近上下文条数'};
@@ -284,40 +287,24 @@ async function renderConfiguration(): Promise<void> {
   }
   const readPolicy=configurationEditor(document.querySelector('#policy-version-fields')!,selectedDomains,values);
   document.querySelector('#configuration-refresh')!.addEventListener('click',()=>{void renderConfiguration().catch(error=>show(String(error),true));});
-  async function resume(saved: RecordValue, firstAttempt=false): Promise<void> {
-    if (!saved.activation_id) {
-      let committed:RecordValue;
-      try {committed=object(await api(String(saved.path),object(saved.request)));}
-      catch(error){if(firstAttempt&&definitiveRejection(error)){sessionStorage.removeItem(storageKey);await renderConfiguration();}throw error;}
-      if (!committed.receipt) throw new Error('配置候选尚未确认，请保留原操作重试。');
-      saved.activation_id = object(object(committed.receipt).result).activation_id;
-      sessionStorage.setItem(storageKey,JSON.stringify(saved));
-    }
-    const applied = object(await api('/api/configuration/activate',{activation_id:saved.activation_id}));
-    if (applied.state === 'APPLIED' || applied.state === 'SUPERSEDED') {
-      sessionStorage.removeItem(storageKey); await renderConfiguration(); show('配置激活已确认。');
-    } else if (applied.state === 'PREPARATION_FAILED' && !applied.cleanup_pending) {
-      sessionStorage.removeItem(storageKey); await renderConfiguration(); show('资源准备失败，原有效配置继续使用。',true);
-    } else throw new Error('激活尚未完成。原版本决定与操作已保留，请读取原状态后继续。');
+  async function finish(work:()=>Promise<string>):Promise<void>{
+    let result:string;
+    try{result=await work();}catch(error){await renderConfiguration();throw error;}
+    await renderConfiguration();
+    show(result==='PREPARATION_FAILED'?'资源准备失败，原有效配置继续使用。':result==='SUPERSEDED'?'原配置已被更新版本替代。':'配置激活已确认。',result==='PREPARATION_FAILED');
   }
-  const retained = sessionStorage.getItem(storageKey);
-  if (retained) {
-    const saved = object(JSON.parse(retained));
-    const panel = document.querySelector<HTMLElement>('#configuration-pending')!;
-    panel.hidden = false;
-    panel.innerHTML = '<h2>有一项待确认操作</h2><p>保留原操作继续确认。完成前暂不发起另一项配置修改。</p><form id="configuration-resume"><button>继续原配置操作</button></form>';
-    document.querySelector<HTMLFormElement>('#configuration-edit')!.hidden = true;
-    bind('#configuration-resume',async()=>resume(saved));
+  if(operation.pending()){
+    const panel=document.querySelector<HTMLElement>('#configuration-pending')!;
+    panel.hidden=false;
+    panel.innerHTML='<h2>有一项待确认操作</h2><p>保留原操作继续确认。完成前暂不发起另一项配置修改。</p><form id="configuration-resume"><button>继续原配置操作</button></form>';
+    document.querySelector<HTMLFormElement>('#configuration-edit')!.hidden=true;
+    bind('#configuration-resume',async()=>finish(()=>operation.resume()));
   }
   function showPlan(plan: RecordValue, request: RecordValue, savePath: string): void {
     const changes = Array.isArray(plan.changes) ? plan.changes.map(object) : [];
     const boundaries: Record<string,string> = {NEXT_REQUEST:'下一新请求；已冻结材料保留原版本',LOGGER_REBUILD:'重建日志服务；窗口从新代开始',NEXT_BATCH:'下一批次',NEXT_DREAM:'下一轮梦境',RESTART_REQUIRED:'需要受控重启',MIGRATION_REQUIRED:'需要迁移，本版不支持',RESOURCE_PREPARATION_REQUIRED:'需要准备资源'};
     document.querySelector('#configuration-preview')!.innerHTML = `<form id="configuration-confirm" class="card"><h2>确认本次变更</h2><div class="table-scroll"><table><thead><tr><th>配置项</th><th>原值</th><th>新值</th><th>生效时点</th></tr></thead><tbody>${changes.map(change=>`<tr><td>${escape(change.key)}</td><td><pre>${escape(JSON.stringify(change.before,null,2))}</pre></td><td><pre>${escape(JSON.stringify(change.after,null,2))}</pre></td><td>${escape(boundaries[String(change.boundary)] ?? change.boundary)}</td></tr>`).join('')}</tbody></table></div><p>保存完整候选后，系统准备资源并记录激活决定。所有消费者完成接入后才报告生效。</p><label class="check"><input type="checkbox" required>我确认这些差异及其生效时点</label><button>保存并激活此版本</button></form>`;
-    const saved: RecordValue = {path:savePath,request:{...request,key:key(),plan_digest:plan.plan_digest}};
-    bind('#configuration-confirm',async()=>{
-      if (sessionStorage.getItem(storageKey)) throw new Error('请先确认已有原操作。');
-      sessionStorage.setItem(storageKey,JSON.stringify(saved)); await resume(saved,true);
-    });
+    bind('#configuration-confirm',async()=>finish(()=>operation.start(savePath,{...request,plan_digest:plan.plan_digest})));
     document.querySelector('#configuration-preview')!.scrollIntoView({block:'start'});
   }
   bind('#configuration-edit',async form=>{
@@ -332,7 +319,7 @@ async function renderConfiguration(): Promise<void> {
     showPlan(plan,request,'/api/configuration/save');
   });
   async function rollback(target: string): Promise<void> {
-    if (sessionStorage.getItem(storageKey)) throw new Error('请先确认已有原操作。');
+    if (operation.pending()) throw new Error('请先确认已有原操作。');
     const request = {expected_revision:status.revision,target_version:target};
     const plan = object(await api('/api/configuration/rollback/preview',request));
     showPlan(plan,{...request,reason:'管理员确认回退到历史配置'},'/api/configuration/rollback/save');
@@ -370,10 +357,10 @@ function describe(data: unknown, depth = 0): string {
 }
 function unbox(value: unknown): RecordValue { if(Array.isArray(value))return {items:value}; const data=object(value); return Array.isArray(data.value)?{items:data.value}:data.value && typeof data.value==='object' ? object(data.value) : data; }
 function operationConfirmed(result:RecordValue):boolean {
-  return Boolean(result.receipt || (result.result && typeof result.result==='object' && object(result.result).receipt))||result.cleanup_pending!==true&&['COMPLETE','FAILED','COMPLETED','APPLIED','KNOWN_FAILED','NOT_SENT','REMOTE_UNKNOWN','SUPERSEDED','AWAITING_REVIEW','READY'].includes(String(result.state));
+  return Boolean(result.registration && operationConfirmed(object(result.registration))) || Boolean(result.receipt || (result.result && typeof result.result==='object' && object(result.result).receipt))||result.cleanup_pending!==true&&['COMPLETE','FAILED','COMPLETED','APPLIED','KNOWN_FAILED','NOT_SENT','REMOTE_UNKNOWN','SUPERSEDED','AWAITING_REVIEW','READY'].includes(String(result.state));
 }
 function definitiveRejection(error:unknown):boolean {
-  return error instanceof OperationFailure && ['REJECTED','NOT_COMMITTED'].includes(error.outcome) && !error.cleanupPending;
+  return error instanceof OperationFailure && ['REJECTED','NOT_COMMITTED'].includes(error.outcome) && !error.cleanupPending && !['ADMISSION_BUSY','ADMISSION_FULL','READ_FAILED','LOCK_DEADLINE','OWNER_ACTIVE'].includes(error.reason);
 }
 async function originalWrite(slot: string, path: string, input: RecordValue, keyField='key'): Promise<RecordValue> {
   const storageKey=`iris.pending.${instanceId}.${slot}`;
@@ -422,7 +409,7 @@ async function renderDaily(): Promise<void> {
   const scopeField=document.querySelector<HTMLSelectElement>('#daily-query select')!;
   function extraFields():void {
     const scope=scopeField.value;
-    document.querySelector('#daily-extra-fields')!.innerHTML=scope==='provider/requests'?'<label>原请求标识<input name="request_id" required maxlength="128"></label>':scope==='provider/usage'?'<label>计量开始时间（UTC）<input name="start" type="datetime-local" required></label><label>计量结束时间（UTC）<input name="end" type="datetime-local" required></label><label>分组<select name="group_by"><option value="ACCOUNT">账户</option><option value="TASK_ROLE">用途</option><option value="PROFILE">模型配置</option><option value="NONE">总计</option></select></label>':scope==='learning'?'<label>学习调度继续读取位置（可留空）<input name="schedule_after" maxlength="128"></label>':'';
+    document.querySelector('#daily-extra-fields')!.innerHTML=scope==='provider/requests'?'<label>原请求标识<input name="request_id" required maxlength="128"></label>':scope==='provider/usage'?'<label>计量开始时间（UTC）<input name="start" type="datetime-local" step="1" required></label><label>计量结束时间（UTC）<input name="end" type="datetime-local" step="1" required></label><label>分组<select name="group_by"><option value="ACCOUNT">账户</option><option value="TASK_ROLE">用途</option><option value="PROFILE">模型配置</option><option value="NONE">总计</option></select></label>':scope==='learning'?'<label>学习调度继续读取位置（可留空）<input name="schedule_after" maxlength="128"></label>':'';
     document.querySelector<HTMLInputElement>('#daily-query input[name="after"]')!.disabled=['provider/requests','provider/usage','provider/budget','persona/current','media','dream','persona'].includes(scope);
   }
   scopeField.addEventListener('change',extraFields);extraFields();
@@ -518,18 +505,25 @@ async function renderDream():Promise<void> {
 }
 
 async function renderGoals():Promise<void> {
-  page.innerHTML='<h1>目标管理</h1><p class="intro">管理明确注入的目标、截止时间与完成状态。完成或放弃须人工确认；本实例未启用外部提醒通道。</p><form id="goal-new" class="card"><h2>添加目标</h2><label>目标内容<textarea name="content" maxlength="2048" required></textarea></label><label>截止时间（UTC，可留空）<input name="deadline" type="datetime-local"></label><label class="check"><input type="checkbox" required>确认将此内容作为新的目标注入</label><button>添加目标</button></form><div id="goals-list"></div><button id="goals-more" class="secondary">读取下一页</button>';
+  const connectionView=object(await api('/api/connections/overview',{}));
+  const routes=(connectionView.routes as unknown[]).map(object);
+  const routeOptions=(selected:unknown=null)=>`<label>通知路由<select aria-label="通知路由" name="route_id"><option value="">无期限时可不选</option>${routes.map(r=>`<option value="${escape(r.object_id)}" ${r.object_id===(selected??(routes.length===1?routes[0]!.object_id:null))?'selected':''}>${escape(r.object_id)} · ${escape(r.host_id)} · ${r.enabled?'已启用':'禁用'} · ${r.online?'在线':'离线'}</option>`).join('')}</select></label><p>离线或禁用路由仍可保存目标，提醒可能无法送达。可在外部连接页配置。</p>`;
+  page.innerHTML='<h1>目标管理</h1><p class="intro">管理明确注入的目标、截止时间与完成状态。完成或放弃须人工确认；有期限目标需要绑定合法路由。</p><form id="goal-new" class="card"><h2>添加目标</h2><label>目标内容<textarea name="content" maxlength="2048" required></textarea></label><label>截止时间（UTC，可留空）<input name="deadline" type="datetime-local" step="1"></label><label>提醒提前秒数（0 表示仅到期）<input name="lead_seconds" type="number" min="0" max="31536000" step="1" value="0" required></label><label class="check"><input type="checkbox" required>确认将此内容作为新的目标注入</label><button>添加目标</button></form><div id="goals-list"></div><button id="goals-more" class="secondary">读取下一页</button>';
+  document.querySelector('#goal-new button')!.insertAdjacentHTML('beforebegin',routeOptions());
   let frozen:RecordValue|undefined;
   bind('#goal-new',async form=>{const content=value(form,'content'),deadline=value(form,'deadline')?new Date(value(form,'deadline')+'Z').toISOString():null;
-    if(frozen&&(frozen.content!==content||frozen.deadline!==deadline))throw new Error('请先确认已保留的原目标操作。');
-    frozen??={content,subject_ids:['self'],world_scope:'REAL',deadline,reminder_lead_seconds:null,route_id:null,source_id:key()};
+    if(frozen&&(frozen.content!==content||frozen.deadline!==deadline||frozen.route_id!==(value(form,'route_id')||null)))throw new Error('请先确认已保留的原目标操作。');
+    const route_id=value(form,'route_id')||null;if(deadline&&!route_id)throw new Error('有期限的目标需要选择通知路由。');
+    const reminder_lead_seconds=deadline?Number(value(form,'lead_seconds')):null;
+    if(frozen&&frozen.reminder_lead_seconds!==reminder_lead_seconds)throw new Error('请保持原提醒提前量以确认原操作。');
+    frozen??={content,subject_ids:['self'],world_scope:'REAL',deadline,reminder_lead_seconds,route_id,source_id:key()};
     let result:RecordValue;try{result=await originalWrite('goals.inject','/api/administration/goals/inject',frozen,'operation_key');}catch(error){if(!sessionStorage.getItem(`iris.pending.${instanceId}.goals.inject`))frozen=undefined;throw error;}if(!result.receipt)throw new Error('目标注入尚未确认。');await renderGoals();});
   let cursor:unknown=null;
   async function more():Promise<void> {
     const data=unbox(await api('/api/administration/goals',cursor?{cursor}:{}));const items=Array.isArray(data.items)?data.items.map(object):[];
     if(!items.length&&!cursor)document.querySelector('#goals-list')!.textContent='暂无未完成目标。';
-    for(const goal of items){const card=document.createElement('section');card.className='card';card.innerHTML=describe(goal)+`<form class="goal-status"><label>目标状态<select name="status"><option value="COMPLETED">已完成</option><option value="ABANDONED">已放弃</option></select></label><label class="check"><input type="checkbox" required>确认更新这一目标及当前修订</label><button>确认状态</button></form><form class="goal-deadline"><label>新的截止时间（UTC，留空清除）<input type="datetime-local" name="deadline"></label><label class="check"><input type="checkbox" required>确认变更截止时间</label><button class="secondary">变更截止时间</button></form>`;
-      for(const action of ['status','deadline']){const form=card.querySelector<HTMLFormElement>(`.goal-${action}`)!;form.addEventListener('submit',event=>{event.preventDefault();const change=action==='status'?{status:value(form,'status')}:{deadline:value(form,'deadline')?new Date(value(form,'deadline')+'Z').toISOString():null,reminder_lead_seconds:null,route_id:null};void originalWrite(`goal.${String(goal.goal_id)}.${action}`,`/api/administration/goals/${action}`,{goal_id:goal.goal_id,expected_revision:goal.revision,...change},'operation_key').then(result=>{if(!result.receipt)throw new Error('目标变更尚未确认。');return renderGoals();}).catch(error=>show(String(error),true));});}
+    for(const goal of items){const card=document.createElement('section');card.className='card';card.innerHTML=describe(goal)+`<form class="goal-status"><label>目标状态<select name="status"><option value="COMPLETED">已完成</option><option value="ABANDONED">已放弃</option></select></label><label class="check"><input type="checkbox" required>确认更新这一目标及当前修订</label><button>确认状态</button></form><form class="goal-deadline">${routeOptions(goal.route_id)}<label>新的截止时间（UTC，留空清除）<input type="datetime-local" step="1" name="deadline"></label><label>提醒提前秒数（0 表示仅到期）<input name="lead_seconds" type="number" min="0" max="31536000" step="1" value="${escape(goal.reminder_lead_seconds??0)}" required></label><label class="check"><input type="checkbox" required>确认变更截止时间</label><button class="secondary">变更截止时间</button></form>`;
+      for(const action of ['status','deadline']){const form=card.querySelector<HTMLFormElement>(`.goal-${action}`)!;form.addEventListener('submit',event=>{event.preventDefault();const change=action==='status'?{status:value(form,'status')}:{deadline:value(form,'deadline')?new Date(value(form,'deadline')+'Z').toISOString():null,reminder_lead_seconds:value(form,'deadline')?Number(value(form,'lead_seconds')):null,route_id:value(form,'route_id')||null};if(action==='deadline'&&change.deadline&&!change.route_id){show('有期限的目标需要选择通知路由。',true);return;}void originalWrite(`goal.${String(goal.goal_id)}.${action}`,`/api/administration/goals/${action}`,{goal_id:goal.goal_id,expected_revision:goal.revision,...change},'operation_key').then(result=>{if(!result.receipt)throw new Error('目标变更尚未确认。');return renderGoals();}).catch(error=>show(String(error),true));});}
       document.querySelector('#goals-list')!.append(card);
     }
     cursor=data.next_cursor;document.querySelector<HTMLButtonElement>('#goals-more')!.disabled=!data.has_more;

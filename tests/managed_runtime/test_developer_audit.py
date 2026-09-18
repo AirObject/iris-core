@@ -43,7 +43,7 @@ class AuditTests(unittest.IsolatedAsyncioTestCase):
         self.root = Path(self.temporary.name)
         self.operator_directory = TemporaryDirectory()
         self.operator_root = Path(self.operator_directory.name)
-        self.bootstrap = ManagedBootstrap(resolve_deployment({'deployment.data_root': str(self.root)}))
+        self.bootstrap = ManagedBootstrap(resolve_deployment({'deployment.data_root': str(self.root)}), communication_format=False)
         self.assertIs(type(await self.bootstrap.open()), Ready)
         self.app = ManagedApplication(self.bootstrap)
         self.resources = self.app.resources
@@ -196,3 +196,24 @@ class AuditTests(unittest.IsolatedAsyncioTestCase):
         for zone, expected in (('UTC', 'UTC'), ('America/New_York', 'America/New_York'), ('EST', None), ('Invalid/Zone', None)):
             with patch.dict('os.environ', {'TZ': zone}):
                 self.assertEqual(environment_timezone(), expected)
+
+    async def test_independent_audit_while_ordinary_control_is_exclusively_held(self):
+        from companion_memory.management.identity import digest
+        entered=asyncio.Event();release=asyncio.Event()
+        async def long_control():
+            entered.set()
+            await release.wait()
+            return {'complete':True}
+        control=asyncio.create_task(self.app.admission.run(long_control,exclusive=True))
+        try:
+            await entered.wait()
+            started=time.monotonic()
+            code,body,_=await asyncio.wait_for(wire(self.http,'/api/audit/operation',self.reference,
+                cookie='iris_audit='+self.credential,csrf=digest('audit-csrf:'+self.credential)),1)
+            self.assertEqual(code,200,body)
+            self.assertEqual(body['data']['status'],'FOUND')
+            self.assertFalse(control.done())
+            print({'audit_during_exclusive_control_ms':(time.monotonic()-started)*1000,'ordinary_control_still_held':True})
+        finally:
+            release.set()
+            await control

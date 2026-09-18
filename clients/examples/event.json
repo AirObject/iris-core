@@ -1,0 +1,12 @@
+{
+  "key": "example-event-original",
+  "event": {
+    "event_version": 2,
+    "client_event_key": "example-event-identity",
+    "event_kind": "MESSAGE",
+    "sender": {"subject_id": "self", "display_name": null, "role": "USER", "identity_source": "HOST"},
+    "occurred_at": null,
+    "body": "Explicit synthetic client example.",
+    "quotation": [], "media": [], "correlation": null, "extensions": {}
+  }
+}

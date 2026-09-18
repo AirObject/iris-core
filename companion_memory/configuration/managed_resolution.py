@@ -136,7 +136,13 @@ def _foundation_definitions(definitions) -> bool:
 def _domain_definitions(kind,identity,definitions) -> bool:
     if kind=='foundation':return _foundation_definitions(definitions)
     if kind=='information':return len(definitions)==8 and all(matches_information_definition(d) for d in definitions)
-    if kind=='text':return tuple(d.key for d in definitions)==tuple(sorted(d['key'] for d in material_definitions())) and all(matches_material_definition(d) for d in definitions)
+    if kind=='text':
+        from .communication_schema import VALUES, matches
+        material = tuple(d for d in definitions if not d.key.startswith('communication.'))
+        communication = tuple(d for d in definitions if d.key.startswith('communication.'))
+        return (tuple(d.key for d in material)==tuple(sorted(d['key'] for d in material_definitions()))
+            and all(matches_material_definition(d) for d in material)
+            and (not communication or {d.key for d in communication} == set(VALUES) and all(matches(d) for d in communication)))
     requirements=DAILY_RUNTIME_REQUIREMENTS if kind=='runtime' else DAILY_CONTENT_REQUIREMENTS if kind=='content' else platform_requirements(identity)
     if {d.key for d in definitions}!={r.key for r in requirements}:return False
     by_key={d.key:d for d in definitions}
@@ -226,7 +232,7 @@ def resolve_managed_configuration(foundation:object,runtime:object,platforms:obj
             if kind=='platform':object.__setattr__(view,'platform_id',identity)
         built[kind]=view
     all_states={e.definition.key:e.state for view in built.values() for e in view.list_entries()}
-    if len(all_states)!=136 or any(type(all_states.get(dep)) is not PresentValue for view in built.values() for e in view.list_entries() for dep in e.definition.dependencies):
+    if len(all_states) not in (136,140) or any(type(all_states.get(dep)) is not PresentValue for view in built.values() for e in view.list_entries() for dep in e.definition.dependencies):
         return fail('VALUE_INVALID','value','DEPENDENCY_MISSING')
     from .logging_validation import _prepare_directories
     from .checked_resolution_results import CheckedResolutionOk
@@ -241,6 +247,9 @@ def resolve_managed_configuration(foundation:object,runtime:object,platforms:obj
         if not _foundation_values(candidate.foundation,protected_directories) or not valid_information_entries(candidate.information.list_entries()):
             return fail('VALUE_INVALID','foundation','BUDGET_INVALID')
         validate_managed_values(candidate.foundation,candidate.text)
+        if len(all_states) == 140:
+            from .communication_schema import VALUES, validate
+            validate({key: dict(candidate.text.record(key)) for key in VALUES})
         if not _runtime_capacity(candidate) or not validate_relationships(candidate,protected_directories,dream_network=True,managed_paths=True):return fail('VALUE_INVALID','value','BUDGET_INVALID')
         from .managed_codec import candidate_values
         candidate_values(candidate)

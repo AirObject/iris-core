@@ -6,7 +6,7 @@ actual completion. Neither a timeout nor a failed consumer reverses a decision.
 """
 from __future__ import annotations
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Awaitable
 from typing import Protocol, cast
 
 from companion_memory.configuration.activation_records import CONSUMERS
@@ -32,7 +32,7 @@ class ConfigurationConsumer(Protocol):
 
 class ManagedActivation:
     def __init__(self, versions: ManagedVersions, consumers: dict[str, ConfigurationConsumer],
-                 fence: Callable[[bool], None]):
+                 fence: Callable[[bool], None], gate: Callable[[str, bool], Awaitable[None]] | None = None):
         if set(consumers) != set(CONSUMERS):
             raise ValueError('Every declared configuration consumer is required.')
         self.versions, self.consumers, self.fence = versions, dict(consumers), fence
@@ -43,6 +43,7 @@ class ManagedActivation:
         self.published_version: str | None = None
         self.activation_id: str | None = None
         self.closed = False
+        self.gate = gate
 
     def key(self, activation: str, step: str) -> str:
         return identity('configuration-step', self.versions.rows.database, self.versions.rows.instance, activation, step)
@@ -81,6 +82,11 @@ class ManagedActivation:
         self.cleanup_pending = bool(self.prepared)
         return not self.cleanup_pending
 
+    async def _fence(self, activation_id: str, closed: bool) -> None:
+        if self.gate is not None:
+            await self.gate(activation_id, closed)
+        self.fence(closed)
+
     async def _activate(self, activation_id: str):
         versions = self.versions
         activation = await versions.rows.read('managed_activations', activation_id)
@@ -90,7 +96,7 @@ class ManagedActivation:
         state = activation['state']
         if state == 'PREPARATION_FAILED':
             if await self._dispose():
-                self.fence(False)
+                await self._fence(activation_id, False)
             return {'state': state, 'cleanup_pending': self.cleanup_pending}
         active = await versions.rows.read('managed_active', 'active-configuration')
         if state in ('DECIDED', 'APPLIED') and (active is None or active['activation_id'] != activation_id):
@@ -99,7 +105,7 @@ class ManagedActivation:
             if state == 'APPLIED':
                 return {'state': 'SUPERSEDED', 'version_id': version_id, 'cleanup_pending': False}
             raise OwnerFailure('STORAGE_FAILED', 'activation', 'DECISION_CHANGED')
-        self.fence(True)
+        await self._fence(activation_id, True)
         self.failure = None
         candidate = await versions.load(version_id)
         try:
@@ -119,7 +125,7 @@ class ManagedActivation:
                     extra={'plan_digest': activation['plan_digest']})
                 await self._dispose()
                 if type(failed) is Committed and not self.cleanup_pending:
-                    self.fence(False)
+                    await self._fence(activation_id, False)
                 return {'state': 'PREPARATION_FAILED' if type(failed) is Committed else 'UNCONFIRMED',
                     'cleanup_pending': self.cleanup_pending, 'failure': self.failure, 'decision': failed}
             return {'state': 'RECOVERING', 'cleanup_pending': bool(self.prepared), 'failure': self.failure}
@@ -167,7 +173,7 @@ class ManagedActivation:
         self.prepared.clear()
         self.cleanup_pending = False
         versions.prepared = None
-        self.fence(False)
+        await self._fence(activation_id, False)
         return {'state': 'APPLIED', 'version_id': version_id, 'decision': finished, 'cleanup_pending': False}
 
     async def recover(self, *, timeout_seconds: float):

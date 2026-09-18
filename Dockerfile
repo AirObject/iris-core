@@ -5,6 +5,8 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY web/tsconfig.json web/build.mjs ./
 COPY web/src ./src
 COPY web/public ./public
+COPY protocol /protocol
+COPY clients /clients
 RUN npm run build
 
 FROM python:3.12.14-slim-bookworm@sha256:d04f49f5882f49a3b91f874e75e19f0c265f7222da8659741a9d7eab148f22a9 AS sqlite
@@ -24,6 +26,8 @@ RUN pip install --no-cache-dir --require-hashes --only-binary=:all: -r /opt/iris
     mkdir -p /data /run/secrets && chown iris:iris /data /run/secrets && chmod 700 /data /run/secrets
 WORKDIR /opt/iris
 COPY companion_memory ./companion_memory
+COPY protocol ./protocol
+COPY clients ./clients
 COPY deployment/provision.py ./deployment/provision.py
 COPY --from=frontend /build/dist ./web/dist
 RUN python -m companion_memory.runtime.managed_cli release > /opt/iris/release.json

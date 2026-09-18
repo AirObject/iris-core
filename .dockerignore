@@ -16,3 +16,8 @@
 !web/public/**
 **/__pycache__
 **/*.pyc
+
+!protocol/
+!protocol/**
+!clients/
+!clients/**

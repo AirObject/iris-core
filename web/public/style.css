@@ -3,3 +3,7 @@
 .table-scroll{overflow-x:auto}dl{margin:0}dl>div{padding:.55rem 0;border-bottom:1px solid #e3e7ee}dt{font-size:.8rem;color:#596775}dd{margin:.2rem 0 0;overflow-wrap:anywhere}dd>dl{padding-left:1rem;border-left:2px solid #dbe3ed}.record-list>article{padding:.75rem 0;border-bottom:1px solid #e3e7ee}select{font:inherit;max-width:100%;padding:.65rem;border:1px solid #b7c4d0;border-radius:8px;background:white}.danger{background:#a73138;color:white}pre{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#255bb0}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #4784df;outline-offset:3px}
 /* Opaque backup and audit references remain readable inside narrow cards. */
 #backup-list p,#audit-operations p,#audit-histories p{overflow-wrap:anywhere}
+/* Long opaque connection references wrap within narrow management cards. */
+#connection-panel,#connection-panel fieldset,#connection-panel label{min-width:0}
+#connection-panel p,#connection-panel h2,#connection-panel label,#connection-panel li{overflow-wrap:anywhere}
+#connection-panel input,#connection-panel select{min-width:0;max-width:100%}

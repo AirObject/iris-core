@@ -118,6 +118,11 @@ class ManagedResources:
                 raise ValueError('Invalid retained birth resource identity.')
             if self.identity['state'] == 'RETIRED' and not retired_for_restore:
                 raise ValueError('This resource no longer owns instance startup.')
+            upgrade_path = self.root / 'bootstrap/communication-upgrade.json'
+            if upgrade_path.exists() and not retired_for_restore:
+                upgrade = read_record(upgrade_path)
+                if upgrade.get('state') not in ('PREPARING', 'PREPARED', 'ACTIVE', 'ABORTED'):
+                    raise ValueError('An explicit upgrade retains startup authority; resume its original key.')
             restore_path = self.root / 'bootstrap/restore-switch.json'
             if restore_path.exists() and self.identity['state'] != 'RETIRED':
                 restored = read_record(restore_path)

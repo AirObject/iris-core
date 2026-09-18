@@ -24,6 +24,7 @@ class GoalAuthority:
     basis_id: str
     internal_basis: Callable[[UnitOfWork, str], bool] | None = None
     entry_id: str | None = None
+    resolve_default_route: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +136,11 @@ class GoalsService(GoalsOwner):
         value = checked(SCHEMAS[kind], payload, 4096)
         if trusted_goal_id is not None and kind != 'goal_inject_internal':
             raise OwnerFailure('ACCESS_DENIED', 'goal', 'OPERATION_NOT_GRANTED')
+        if ((authority.resolve_default_route or self.resolve_default_route) and kind in ('goal_inject_external', 'goal_inject_internal', 'goal_deadline')
+                and value['deadline'] is not None and value['route_id'] is None):
+            if len(authority.route_ids) != 1:
+                raise OwnerFailure('ACCESS_DENIED', 'goal', 'BINDING_MISMATCH')
+            value = MappingProxyType(dict(value, route_id=authority.route_ids[0]))
         tx = GoalTransaction(self, uow, now)
         before: Record | None = None
         direct: tuple[Record, ...] | None = None
@@ -421,6 +427,35 @@ class GoalsService(GoalsOwner):
 
     async def due_plans(self, now: int) -> tuple[Record, ...]:
         return tuple(self._records.unpack('reminder_plan', row) for row in await self._records.rows.read('due_plans', {'now': now}))
+
+    async def route_due_plan(self, route_id: str, now: int) -> Record | None:
+        """Select at most one due plan for an explicitly registered recipient."""
+        rows = await self._records.rows.read('route_due_plan', {'now': now, 'route_id': route_id})
+        return self._records.unpack('reminder_plan', rows[0]) if rows else None
+
+    async def route_plans(self, route_id: str, after: str = '') -> tuple[Record, ...]:
+        return tuple(self._records.unpack('reminder_plan', row) for row in await self._records.rows.read('route_plan_page', {'route_id': route_id, 'after': after}))
+
+    async def route_delivery_results(self, route_id: str, after: str = '') -> tuple[dict[str, object], ...]:
+        """Observe four persisted plans and at most two attempts each, without replay.
+
+        The caller supplies an authorized immutable route. No goal content,
+        source, operation key or request digest leaves this observation port.
+        Pages are current observations, not a retained subscription cursor.
+        """
+        items: list[dict[str, object]] = []
+        for plan in await self.route_plans(route_id, after):
+            attempts = tuple(self._records.unpack('attempt', row) for row in
+                await self._records.rows.read('attempt_children', {'plan_id': plan['plan_id']}))
+            projected: dict[str, object] = {key: plan[key] for key in ('plan_id', 'route_id', 'kind', 'status', 'updated_at')}
+            projected['attempts'] = tuple({key: attempt[key] for key in
+                ('delivery_id', 'state', 'started_at', 'finished_at', 'reason')} for attempt in attempts)
+            items.append(projected)
+        return tuple(items)
+
+    async def route_open_count(self, route_id: str) -> int:
+        rows = await self._records.rows.read('route_open_count', {'route_id': route_id})
+        return integer(rows[0]['count'])
 
     async def observation(self, now: int) -> Record:
         """Aggregate only; observation conveys no goal, source or route authority."""

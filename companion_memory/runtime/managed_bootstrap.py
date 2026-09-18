@@ -19,10 +19,12 @@ from .managed_resources import ManagedResources
 
 class ManagedBootstrap:
     """One owner of bootstrap storage; business assembly is attached exactly once."""
-    def __init__(self, settings: DeploymentSettings):
+    def __init__(self, settings: DeploymentSettings, *, communication_format: bool = True):
         self.settings = settings
-        self.assembly = DailyAssembly(dream_format=True, managed_format=True)
-        encoded = assembly_value(self.assembly.repositories, self.assembly.commands, assembly_format='MANAGED_RUNTIME_V1')
+        self.assembly = DailyAssembly(dream_format=True, managed_format=True, communication_format=communication_format)
+        from companion_memory.persistence._codec import AssemblyFormat
+        self.storage_format: AssemblyFormat = 'MANAGED_COMMUNICATION_V1' if communication_format else 'MANAGED_RUNTIME_V1'
+        encoded = assembly_value(self.assembly.repositories, self.assembly.commands, assembly_format=self.storage_format)
         self.assembly_digest = sha256(encoded).hexdigest()
         self.resources: ManagedResources | None = None
         self.state = 'NEW'

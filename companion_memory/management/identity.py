@@ -10,6 +10,9 @@ import asyncio
 import hmac
 import secrets
 import time
+from threading import RLock
+from weakref import ref
+from collections.abc import Callable, Awaitable
 from dataclasses import dataclass
 from typing import cast
 
@@ -35,7 +38,7 @@ def password_digest(password: str, salt: str) -> str:
                           maxmem=64 * 1024 * 1024, dklen=64).hex()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class Principal:
     """Verified request capability; expiry and revocation still require rechecking."""
     kind: str
@@ -47,16 +50,28 @@ class Principal:
     operations: tuple[str, ...]
     csrf_digest: str | None
     expires_at_us: int = 0
+    route_ids: tuple[str, ...] = ()
+    event_types: tuple[str, ...] = ()
 
 
 class IdentityAuthority:
     """Management owner for bounded credentials, sessions, wizard and previews."""
-    def __init__(self):
-        self.catalog = management_catalog()
+    def __init__(self, *, communication_format: bool = False):
+        from .communication_records import communication_catalog, COMMUNICATION_TABLES
+        self.communication_format = communication_format
+        self.catalog = communication_catalog() if communication_format else management_catalog()
+        self.tables = COMMUNICATION_TABLES if communication_format else TABLES
+        self.verify_binding: Callable[[str, str], Awaitable[bool]] | None = None
         self.bound = False
         self.closed = False
         self.login_lock = asyncio.Lock()
-        self.delivery_lock = asyncio.Lock()
+        self.delivery_lock = RLock()
+        self._issued: dict[int, ref[Principal]] = {}
+        self._withdrawn: set[int] = set()
+        self._identity_changes: dict[str, int] = {}
+        self._permission_revision = 0
+        self._route_generations: dict[str, int] = {}
+        self._route_changes: dict[str, int] = {}
         self.commands = tuple(self._definition(kind, table, schema) for kind, table, schema in (
             ('establish_administrator', 'account', ACCOUNT), ('record_login', 'account', ACCOUNT),
             ('change_password', 'account', ACCOUNT), ('create_session', 'sessions', SESSION),
@@ -67,12 +82,22 @@ class IdentityAuthority:
             ('prepare_object_confirmation', 'confirmations', CONFIRMATION),
             ('consume_object_confirmation', 'confirmations', CONFIRMATION),
         ))
+        if communication_format:
+            from .communication_records import SCOPED_TOKEN, ROUTE, PROBE
+            self.commands += tuple(self._definition(kind, table, schema) for kind, table, schema in (
+                ('create_scoped_host_token', 'host_tokens', SCOPED_TOKEN),
+                ('revoke_scoped_host_token', 'host_tokens', SCOPED_TOKEN),
+                ('create_notification_route', 'notification_routes', ROUTE),
+                ('update_notification_route', 'notification_routes', ROUTE),
+                ('register_communication_probe', 'communication_probes', PROBE),
+                ('finish_communication_probe', 'communication_probes', PROBE),
+            ))
 
     def _definition(self, kind: str, table: str, schema: RecordSchema) -> ResultBoundCommandDefinition:
         # Retired verification rows are bounded ephemeral resources. Their exact
         # identities/revisions stay in the necessary audit and original receipt.
         fact = RecordSchema(FACT.fields + (Field('retired', SequenceSchema(
-            RecordSchema((Field('object_id', ID), Field('revision', UINT))), 0, 4)),)) if kind in ('create_session', 'create_host_token') else FACT
+            RecordSchema((Field('object_id', ID), Field('revision', UINT))), 0, 4)),)) if kind in ('create_session', 'create_host_token', 'create_scoped_host_token') else FACT
         requirement = AuditRequirement('management', 'management_changed', kind.upper(), 1, ('APPLY',), fact)
         binding = AuditResultBinding('management_changed', 1, (
             AuditFieldBinding('actor_kind', 'CONSTANT', constant='SYSTEM'),
@@ -99,7 +124,7 @@ class IdentityAuthority:
         self.lease = storage.claim_module_owner(self.catalog.definition)
         if self.lease is None:
             raise ValueError('Management authority is already owned.')
-        self.rows = DailyRows(self.catalog, TABLES, storage, database, instance, 'managed-bootstrap')
+        self.rows = DailyRows(self.catalog, self.tables, storage, database, instance, 'managed-bootstrap')
         self.operations = {d.operation_kind: storage.bind_operation(d, instance) for d in self.commands}
         self.bound = True
 
@@ -128,8 +153,30 @@ class IdentityAuthority:
             account = self.rows.get('account', uow, 'administrator')
             if account is None or value['credential_revision'] != account['credential_revision']:
                 raise OwnerFailure('ACCESS_DENIED', 'identity', 'CREDENTIAL_CHANGED')
+        if table == 'notification_routes':
+            if old is not None and any(value[name] != old[name] for name in ('host_id', 'entries', 'event_types')):
+                raise OwnerFailure('ACCESS_DENIED', 'route', 'BINDING_MISMATCH')
+            if old is None:
+                count = self.rows.rows.stage('notification_routes_count', uow, {})
+                if len(count) != 1 or cast(int, count[0]['count']) >= 16:
+                    raise OwnerFailure('RESOURCE_BUSY', 'route', 'CAPACITY_REACHED')
+        if kind == 'register_communication_probe':
+            if value['state'] != 'REGISTERED' or (old is not None and (old['state'] == 'REGISTERED'
+                    or cast(int, value['registered_us']) < cast(int, old['registered_us']) + 60000000)):
+                raise OwnerFailure('RESOURCE_BUSY', 'probe', 'PROBE_RATE_LIMIT')
+            for name in ('acknowledged_count', 'not_sent_count', 'unknown_count'):
+                if value[name] != (old[name] if old else 0):
+                    raise OwnerFailure('INVALID_INPUT', 'probe', 'BINDING_MISMATCH')
+            if value['registered_count'] != (cast(int, old['registered_count']) + 1 if old else 1):
+                raise OwnerFailure('INVALID_INPUT', 'probe', 'BINDING_MISMATCH')
+        elif kind == 'finish_communication_probe':
+            if old is None or old['state'] != 'REGISTERED' or value['state'] == 'REGISTERED':
+                raise OwnerFailure('PRECONDITION_FAILED', 'probe', 'REVISION_CONFLICT')
+            counter = {'ACKNOWLEDGED': 'acknowledged_count', 'NOT_SENT': 'not_sent_count', 'UNKNOWN': 'unknown_count'}[cast(str, value['state'])]
+            if any(value[name] != old[name] for name in old if name not in ('state', 'revision', 'updated_at_us', counter)) or value[counter] != cast(int, old[counter]) + 1:
+                raise OwnerFailure('INVALID_INPUT', 'probe', 'BINDING_MISMATCH')
         retired: tuple[Record, ...] = ()
-        if kind in ('create_session', 'create_host_token'):
+        if kind in ('create_session', 'create_host_token', 'create_scoped_host_token'):
             criteria: dict[str, object] = {'now': time.time_ns() // 1000}
             if kind == 'create_session':
                 criteria['credential_revision'] = value['credential_revision']
@@ -173,7 +220,7 @@ class IdentityAuthority:
         saved = self.rows.write(table, uow, value, cast(int | None, expected))
         targets = (target(cast(str, saved['object_id']), cast(int, saved['revision']), cast(int | None, expected)),)
         fact_value: dict[str, object] = {'rows_changed': changed + len(retired), 'targets': targets}
-        if kind in ('create_session', 'create_host_token'):
+        if kind in ('create_session', 'create_host_token', 'create_scoped_host_token'):
             fact_value['retired'] = retired
         return {'request_digest': values['request_digest'], 'targets': targets, 'fact': fact_value}
 
@@ -186,9 +233,64 @@ class IdentityAuthority:
             'config_snapshot_id': 'managed-bootstrap',
             'created_at_us': now if old is None else old['created_at_us'], 'updated_at_us': now, **fields})
 
+    def notification_route(self, uow: UnitOfWork, route_id: str) -> Record | None:
+        """Expose only the management-owned route in an enlisted short transaction."""
+        if not self.communication_format or not self.bound or self.closed:
+            raise OwnerFailure('INVALID_STATE', 'route', 'NOT_READY')
+        return self.rows.get('notification_routes', uow, route_id)
+
+    def route_generation(self, route_id: str) -> int | None:
+        """Short first-write fence, independent for every logical recipient."""
+        with self.delivery_lock:
+            return None if route_id in self._route_changes else self._route_generations.get(route_id, 0)
+
     async def write(self, kind: str, key: str, row: dict[str, object], expected: int | None,
                     request_digest: str, actor: str = 'administrator', *, parts: tuple[dict[str, object], ...] | None = None):
         """Keep original request identity; a duplicate key never mints new secrets."""
+        if kind == 'update_notification_route':
+            from companion_memory.persistence.completion import start_owned, retain_completion
+            route_id = str(row['object_id'])
+            with self.delivery_lock:
+                self._route_generations[route_id] = self._route_generations.get(route_id, 0) + 1
+                self._route_changes[route_id] = self._route_changes.get(route_id, 0) + 1
+            task, outcome = start_owned(self._write(kind, key, row, expected, request_digest, actor, parts=parts))
+            retain_completion(task)
+            def route_finished(job: asyncio.Task) -> None:
+                with self.delivery_lock:
+                    count = self._route_changes[route_id] - 1
+                    if count: self._route_changes[route_id] = count
+                    else: self._route_changes.pop(route_id)
+                if not job.cancelled(): job.exception()
+            task.add_done_callback(route_finished)
+            return await asyncio.shield(outcome)
+        if kind not in ('revoke_host_token', 'revoke_scoped_host_token', 'revoke_session', 'change_password'):
+            return await self._write(kind, key, row, expected, request_digest, actor, parts=parts)
+        from companion_memory.persistence.completion import start_owned, retain_completion
+        selector = 'administrator' if kind == 'change_password' else str(row['object_id'])
+        with self.delivery_lock:
+            self._permission_revision += 1
+            self._identity_changes[selector] = self._identity_changes.get(selector, 0) + 1
+            self._withdrawn.update(identity for identity, reference in self._issued.items()
+                if (p := reference()) is not None and (p.identity == selector or p.kind == selector))
+        async def change():
+            return await self._write(kind, key, row, expected, request_digest, actor, parts=parts)
+        task, outcome = start_owned(change())
+        retain_completion(task)
+        def finished(task: asyncio.Task) -> None:
+            with self.delivery_lock:
+                count = self._identity_changes[selector] - 1
+                if count:
+                    self._identity_changes[selector] = count
+                else:
+                    del self._identity_changes[selector]
+                self._permission_revision += 1
+            if not task.cancelled():
+                task.exception()
+        task.add_done_callback(finished)
+        return await asyncio.shield(outcome)
+
+    async def _write(self, kind: str, key: str, row: dict[str, object], expected: int | None,
+                     request_digest: str, actor: str, *, parts: tuple[dict[str, object], ...] | None = None):
         definition = next(d for d in self.commands if d.operation_kind == kind)
         prior = await self.confirm_request(kind, key, request_digest)
         if prior is not None:
@@ -226,6 +328,7 @@ class IdentityAuthority:
         """Lookup by one-way bearer identity; no principal is accepted from JSON."""
         if type(credential) is not str or not 32 <= len(credential) <= 256:
             raise OwnerFailure('ACCESS_DENIED', 'credential', 'AUTHENTICATION_REQUIRED')
+        generation = self._permission_revision
         verifier = digest(credential)
         row = await self.rows.read('host_tokens' if host else 'sessions', verifier)
         account = None if host else await self.rows.read('account', 'administrator')
@@ -234,9 +337,33 @@ class IdentityAuthority:
                 or not hmac.compare_digest(cast(str, row['verifier']), verifier)
                 or not host and (account is None or row['credential_revision'] != account['credential_revision'])):
             raise OwnerFailure('ACCESS_DENIED', 'credential', 'AUTHENTICATION_REQUIRED')
-        return Principal('host' if host else 'administrator', verifier, verifier, cast(int, row['revision']),
+        principal = Principal('host' if host else 'administrator', verifier, verifier, cast(int, row['revision']),
             cast(str, row['host_id']) if host else None, cast(tuple[str, ...], row['entries']) if host else (),
-            cast(tuple[str, ...], row['operations']) if host else (), None if host else cast(str, row['csrf_digest']), cast(int, row['expires_at_us']))
+            cast(tuple[str, ...], row['operations']) if host else (), None if host else cast(str, row['csrf_digest']), cast(int, row['expires_at_us']),
+            cast(tuple[str, ...], row.get('route_ids', ())), cast(tuple[str, ...], row.get('event_types', ())))
+        with self.delivery_lock:
+            if generation != self._permission_revision:
+                raise OwnerFailure('ACCESS_DENIED', 'credential', 'CREDENTIAL_CHANGED')
+            self.authorize_delivery(principal)
+            identity = id(principal)
+            def released(reference: ref[Principal]) -> None:
+                with self.delivery_lock:
+                    self._issued.pop(identity, None)
+                    self._withdrawn.discard(identity)
+            self._issued[identity] = ref(principal, released)
+        return principal
+
+    def authorize_delivery(self, principal: Principal) -> None:
+        """Synchronous last check; callers hold delivery_lock through first write."""
+        if (self.closed or id(principal) in self._withdrawn or principal.identity in self._identity_changes
+                or principal.kind in self._identity_changes or principal.expires_at_us <= time.time_ns() // 1000):
+            raise OwnerFailure('ACCESS_DENIED', 'credential', 'AUTHENTICATION_REQUIRED')
+
+    def start_delivery(self, principal: Principal, write: Callable[[], None]) -> None:
+        """Serialize only current authority checking and the actual synchronous write."""
+        with self.delivery_lock:
+            self.authorize_delivery(principal)
+            write()
 
     def check_commit(self, principal: Principal, uow: UnitOfWork, operation: str, entry: str | None) -> bool:
         """Recheck current authority in the writer transaction immediately before commit."""
@@ -304,32 +431,60 @@ class IdentityAuthority:
         prior = await self.confirm_request(kind, key, request)
         if prior is not None:
             return prior
+        if host and self.communication_format:
+            prior = await self.confirm_request('revoke_scoped_host_token', key, request)
+            if prior is not None:
+                return prior
         old = await self.rows.read(table, identity)
         if old is None or old['revision'] != expected_revision:
             raise OwnerFailure('PRECONDITION_FAILED', 'revision', 'REVISION_CONFLICT')
+        if host and 'route_ids' in old:
+            kind = 'revoke_scoped_host_token'
         return await self.write(kind, key, self.row(identity, {'revoked': True}, old), expected_revision, request)
 
     async def create_token(self, key: str, host_id: str, entries: tuple[str, ...],
-                           operations: tuple[str, ...], expires_at_us: int):
+                           operations: tuple[str, ...], expires_at_us: int, *, route_ids: tuple[str, ...] = (), event_types: tuple[str, ...] = ()):
         """Issue independent authority with explicit finite host, entry and operation sets."""
         from .records import HOST_OPERATIONS
+        from .communication_records import COMMUNICATION_OPERATIONS, EVENT_TYPES
+        allowed = COMMUNICATION_OPERATIONS if self.communication_format else HOST_OPERATIONS
+        scoped = bool(route_ids or event_types or not set(operations) <= set(HOST_OPERATIONS))
+        kind = 'create_scoped_host_token' if scoped else 'create_host_token'
         from companion_memory.persistence.schema import valid_identifier
         if (not valid_identifier(host_id) or not 1 <= len(entries) <= 64 or len(set(entries)) != len(entries)
                 or any(not valid_identifier(entry) for entry in entries) or not operations
-                or len(set(operations)) != len(operations) or not set(operations) <= set(HOST_OPERATIONS)
+                or len(set(operations)) != len(operations) or not set(operations) <= set(allowed)
                 or type(expires_at_us) is not int):
             raise OwnerFailure('INVALID_INPUT', 'scope', 'INVALID_SHAPE')
         import json
-        request = digest(json.dumps([host_id, entries, operations, expires_at_us], separators=(',', ':')))
-        prior = await self.confirm_request('create_host_token', key, request)
+        if (not self.communication_format and scoped or len(route_ids) > 16 or len(set(route_ids)) != len(route_ids)
+                or any(not valid_identifier(route) for route in route_ids)
+                or len(set(event_types)) != len(event_types) or not set(event_types) <= set(EVENT_TYPES)):
+            raise OwnerFailure('INVALID_INPUT', 'scope', 'INVALID_SHAPE')
+        request = digest(json.dumps([host_id, entries, operations, expires_at_us] +
+            ([route_ids, event_types] if scoped else []), separators=(',', ':')))
+        prior = await self.confirm_request(kind, key, request)
         if prior is not None:
             return prior, None
         if not time.time_ns() // 1000 < expires_at_us <= time.time_ns() // 1000 + self.settings.integer('management.token_max_seconds') * 1000000:
             raise OwnerFailure('INVALID_INPUT', 'scope', 'INVALID_SHAPE')
+        if self.communication_format:
+            if self.verify_binding is None:
+                raise OwnerFailure('INVALID_STATE', 'binding', 'NOT_READY')
+            for entry in entries:
+                if not await self.verify_binding(entry, host_id):
+                    raise OwnerFailure('ACCESS_DENIED', 'binding', 'BINDING_MISMATCH')
+            for route_id in route_ids:
+                route = await self.rows.read('notification_routes', route_id)
+                if (route is None or route['host_id'] != host_id or not set(cast(tuple[str, ...], route['entries'])) <= set(entries)
+                        or not set(event_types) <= set(cast(tuple[str, ...], route['event_types']))):
+                    raise OwnerFailure('ACCESS_DENIED', 'route', 'BINDING_MISMATCH')
         raw = secrets.token_urlsafe(48)
         value = self.row(digest(raw), {'verifier': digest(raw), 'host_id': host_id,
             'entries': entries, 'operations': operations, 'expires_at_us': expires_at_us, 'revoked': False})
-        outcome = await self.write('create_host_token', key, value, None, request)
+        if scoped:
+            value.update(route_ids=route_ids, event_types=event_types)
+        outcome = await self.write(kind, key, value, None, request)
         return outcome, raw if type(outcome) is Committed and outcome.source == 'NEW' else None
 
     async def update_password(self, key: str, expected_revision: int, current_password: str, password: str):

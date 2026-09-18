@@ -15,6 +15,7 @@ from .dream_review import PREPARE,DEFER,STORE,PLAN,DISPOSE,RETIRE,FAIL,DISCARD,I
 
 async def select(owner,run,deadline):
     """Review each actually visited object before moving the fair memory cursor."""
+    await refresh_routes(owner)
     c=owner.control
     sid=run['active_step_id']
     if sid is None and run['steps_completed']:
@@ -154,6 +155,7 @@ async def retire(o,run,work,values,deadline):
 
 async def influence(owner,run,deadline):
     """Claim pending work fairly, then enumerate one fixed dependency page."""
+    await refresh_routes(owner)
     c=owner.control;memory=owner.memory
     if memory.long_term is None or not c.dispatch_enabled or not c.settled(run):return None
     queue=memory.long_term.influence;limits=owner.configuration.candidate.text.record('dream.resources')
@@ -192,3 +194,19 @@ async def retire_run(owner,run,deadline):
             work=owner.rows.decode('dream_work',row)
             await cleanup(owner,work,deadline);await retire(owner,run,work,values,deadline);check_deadline()
             after=work['object_id']
+
+
+async def refresh_routes(owner):
+    """Snapshot registered entry authority before a native transaction starts.
+
+    Existing materials retain their own route set; registry additions cannot
+    enlarge an already frozen candidate's authority during recovery.
+    """
+    if owner.route_source is None:
+        return
+    scopes = dict(owner.scopes)
+    for entry_id, (subjects, worlds, _) in scopes.items():
+        routes = await owner.route_source(entry_id)
+        check_deadline()
+        scopes[entry_id] = (subjects, worlds, routes)
+    owner.scopes = scopes

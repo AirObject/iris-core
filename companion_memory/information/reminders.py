@@ -39,6 +39,8 @@ class ReminderDispatcher:
         self.routes = {route.route_id: route for route in routes}
         self.jobs: set[asyncio.Task[object]] = set()
         self.closed = False
+        self.registered_routes: tuple[str, ...] | None = None
+        self.route_turn = 0
 
     async def dispatch_due_intent(self):
         if self.closed: return rejected('dispatch_due_intent', OwnerFailure('INVALID_STATE', 'state', 'SERVICE_CLOSED'))
@@ -51,9 +53,8 @@ class ReminderDispatcher:
                 try:
                     reason = self.runtime.gate.information_operation_reason()
                     if reason is not None: raise OwnerFailure('MODE_BLOCKED', 'state', reason)
-                    plans = await self.goals.due_plans(int(time.time() * 1000000))
-                    if not plans: return Found(MappingProxyType({'status': 'ABSENT'}))
-                    plan = plans[0]
+                    plan = await self.select_plan(int(time.time() * 1000000))
+                    if plan is None: return Found(MappingProxyType({'status': 'ABSENT'}))
                     if self.goals.configuration.candidate.information.record('goals.delivery')['sink_mode'] == 'DISABLED':
                         return await self.port.execute('goal_plan_advance', identity('disabled_reminder', plan['plan_id'], plan['revision']),
                             {'plan_id': plan['plan_id'], 'expected_revision': plan['revision']})
@@ -94,6 +95,31 @@ class ReminderDispatcher:
         done, _ = await asyncio.wait((outcome,), timeout=max(0, deadline - time.monotonic()))
         if not done: return ReminderPending(delivery, InformationError('TIMEOUT', 'dispatch_due_intent', 'route', 'DEADLINE_EXCEEDED', True))
         return outcome.result()
+
+    async def select_plan(self, now: int) -> Record | None:
+        """Round-robin registered recipients so an offline head cannot starve peers."""
+        disabled = self.goals.configuration.candidate.information.record('goals.delivery')['sink_mode'] == 'DISABLED'
+        if self.registered_routes is not None:
+            routes = self.registered_routes
+            for _ in range(len(routes)):
+                route_id = routes[self.route_turn % len(routes)]
+                self.route_turn += 1
+                if not disabled and route_id not in self.routes:
+                    continue
+                plan = await self.goals.route_due_plan(route_id, now)
+                if plan is not None:
+                    return plan
+            return None
+        plans = await self.goals.due_plans(now)
+        if disabled:
+            return plans[0] if plans else None
+        candidates = tuple(plan for plan in plans if plan['route_id'] in self.routes)
+        if not candidates:
+            return None
+        routes = tuple(dict.fromkeys(text(plan['route_id']) for plan in candidates))
+        selected = routes[self.route_turn % len(routes)]
+        self.route_turn += 1
+        return next(plan for plan in candidates if plan['route_id'] == selected)
 
     async def recover_local(self):
         """No transport path is reachable during recovery of a registered attempt."""

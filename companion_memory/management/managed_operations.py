@@ -26,6 +26,8 @@ class ManagedOperations:
         self.dream_port: DreamPort | None = None
         self.business_expires = 0.0
         self.content_port = None
+        import asyncio
+        self.dream_binding_lock = asyncio.Lock()
 
     async def ready(self):
         app = self.application
@@ -51,18 +53,16 @@ class ManagedOperations:
         host, draft = await self.ready()
         if host.business is None or host.stored is None:
             raise OwnerFailure('INVALID_STATE', 'instance', 'NOT_READY')
-        if self.business_port is None or time.monotonic() >= self.business_expires:
-            if host.business.jobs:
-                raise OwnerFailure('RESOURCE_BUSY', 'resource', 'CLEANUP_PENDING', True)
-            if self.business_port is not None:
-                host.business.revoke(self.business_port)
-            self.business_expires = time.monotonic() + 3600
-            self.business_port = await host.bind_business(self.identity(host, draft,
-                (ROUTES[name][1] for name in BUSINESS), 'state-goals'))
-        adapter = InformationHTTP(host.stored, host.runtime.gate)
-        _, _, method, path = ROUTES[route]
-        assert self.business_port is not None
-        return await adapter.dispatch(self.business_port, method, path, payload)
+        host_id, entry_id = draft['host_id'], draft['entry_id']
+        if set(payload) == {'entry_id', 'host_id', 'input'}:
+            from .managed_application import text
+            host_id, entry_id = text(payload['host_id']), text(payload['entry_id'])
+            if type(payload['input']) is not dict or not await host.assembly.ingress.verify_host_entry(entry_id, host_id):
+                raise OwnerFailure('ACCESS_DENIED', 'binding', 'BINDING_MISMATCH')
+            payload = payload['input']
+        _, operation, method, path = ROUTES[route]
+        return await self.application.host_http.native(host_id, entry_id, operation,
+            method, path, payload, administrator=True)
 
     async def dream(self, action: str, payload: dict[str, object]):
         from .managed_application import fields, text, revision
@@ -72,12 +72,13 @@ class ManagedOperations:
         if action == 'status':
             fields(payload, set())
             return {'schedule': await host.combination.dream.schedule(), 'mode_epoch': host.runtime.gate.epoch}
-        if self.dream_port is None or time.monotonic() >= self.dream_port.identity.expires_at:
-            if host.dream_ports.tasks:
-                raise OwnerFailure('RESOURCE_BUSY', 'dream', 'CLEANUP_PENDING', True)
-            if self.dream_port is not None:
-                host.dream_ports.revoke(self.dream_port)
-            self.dream_port = await host.bind_dream(self.identity(host, draft, OPERATIONS, 'dream', time.monotonic() + 3600))
+        async with self.dream_binding_lock:
+            if self.dream_port is None or time.monotonic() >= self.dream_port.identity.expires_at:
+                if host.dream_ports.tasks:
+                    raise OwnerFailure('RESOURCE_BUSY', 'dream', 'CLEANUP_PENDING', True)
+                if self.dream_port is not None:
+                    host.dream_ports.revoke(self.dream_port)
+                self.dream_port = await host.bind_dream(self.identity(host, draft, OPERATIONS, 'dream', time.monotonic() + 3600))
         port = self.dream_port
         assert port is not None
         if action == 'inspect':

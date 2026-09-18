@@ -39,9 +39,10 @@ class InitializationValues(TypedDict):
 
 def candidate_values(candidate: ManagedConfigurationCandidate) -> InitializationValues:
     domains: list[EncodedDomain]=[];total=0;count=0
+    communication = any(e.definition.key == 'communication.ws' for e in candidate.text.list_entries())
     selected=[('foundation',candidate.foundation,40),('runtime',candidate.runtime,22),('content',candidate.content,36),
               *((platform_domain_id(p.platform_id),p,7) for p in candidate.platforms),
-              ('information',candidate.information,8),('daily_cognition',candidate.text,23)]
+              ('information',candidate.information,8),('daily_cognition',candidate.text,27 if communication else 23)]
     for name,view,expected in selected:
         try:
             entries=tuple((e.definition.key,encode_content_entry(e)) for e in view.list_entries())
@@ -51,9 +52,9 @@ def candidate_values(candidate: ManagedConfigurationCandidate) -> Initialization
         total+=sum(len(body.encode('utf-8')) for _,body in entries);count+=len(entries)
         domains.append({'domain_id':name,'digest':entries_digest(entries),
                         'entries':[{'parameter_key':key,'body':body} for key,body in entries]})
-    if count!=136 or len(domains)!=6 or total>CONFIGURATION_BODY_LIMIT:
+    if count!=(140 if communication else 136) or len(domains)!=6 or total>CONFIGURATION_BODY_LIMIT:
         raise ConfigurationCapacityExceeded()
-    catalog=dump({'version':8,'domains':[{'domain_id':d['domain_id'],'revision':1} for d in domains],
+    catalog=dump({'version':9 if communication else 8,'domains':[{'domain_id':d['domain_id'],'revision':1} for d in domains],
                   'materials':[{f.name:getattr(m,f.name) for f in fields(m)} for m in candidate.material_contracts]})
     if len(catalog.encode('utf-8'))>8192:raise ConfigurationCapacityExceeded()
     return {'domains':domains,'catalog':catalog}
@@ -76,6 +77,10 @@ def restore_candidate(values: InitializationValues, bootstrap: ManagedConfigurat
     """Reconstruct a whole immutable version, retaining definition and value provenance."""
     from .managed_resolution import resolve_managed_configuration, ManagedConfigurationOk
     from .daily_resolution import freeze_daily_domains
+    from .communication_configuration import extend_candidate
+    import json
+    if json.loads(values['catalog']).get('version') == 9:
+        bootstrap = extend_candidate(bootstrap)
     if values['catalog'] != candidate_values(bootstrap)['catalog']:
         raise ValueError('Configuration layout or material binding changed.')
     definitions, explicit, encoded = {}, {}, {}
