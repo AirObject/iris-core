@@ -36,7 +36,7 @@
 
 ### M10 多目标与意图
 
-**拥有**：多个并行目标、来源、期限/提前量、状态、去重任务、合并别名、提醒计划和投递结果。
+**拥有**：多个并行目标、来源、期限/提前量、状态、去重任务、合并别名、提醒计划、宽限计时和投递结果。
 
 外部注入以短事务先建立目标，随后进行相似去重。简单的完全相同管理命令先用幂等键去重；语义重复再用本地候选和必要agent判断，避免每个目标和全库逐对比较。字段冲突尤其涉及不同对象、期限和场景时，不无条件合并。
 
@@ -45,3 +45,5 @@
 提醒的计划必须持久化；投递仍是有限尽力，不构建业务无限重发。已发出但结果未知时记录未知，不将其当作目标完成。专注期暂停投递；本地包的跨期处理见[已批准提醒时序](../architecture/local-information-feedback.md#state-goals)。
 
 **建议端口**：`inject_goal`、`create_internal_goal`、`deduplicate_goal`、`update_goal_status`、`change_deadline`、`list_open_goals`、`dispatch_due_intent`。
+
+生产WS的路由贯通、有限发送、ACK与UNKNOWN、计时／暂停／恢复唯一见[已批准提醒增量](../architecture/local-information-feedback.md#ws-reminders)。goals只消费受控路由能力、门控转换及传输结果；连接协议、按路由接管和在线会话归[通信适配](../architecture/external-communication.md#ws)，不得另存第二份目标或发送真相。

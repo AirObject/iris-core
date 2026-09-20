@@ -29,6 +29,7 @@
 | --- | --- | --- |
 | 范围与模块协作 | [产品概览](product/overview.md)、[模块所有权](architecture/ownership.md) | [待定产品决定](product/decisions-and-delivery.md)、[工程候选及顺序](architecture/implementation-options.md) |
 | 接入 | [入口模块](modules/ingress.md)、[输入与媒体](product/input-and-media.md) | [持久化与事务](architecture/persistence-and-transactions.md) |
+| 外部通信与Web接入配置 | [已批准通信契约与实施路径](architecture/external-communication.md) | [现有管理部署](architecture/managed-runtime-and-deployment.md)、[信息与提醒](architecture/local-information-feedback.md)、[媒体发布](architecture/formal-memory-source-media.md#files-gc) |
 | 模式、缓存与学习批次 | [运行模块](modules/runtime.md)、[缓存模块](modules/buffers.md)、[批次规则](product/batches-and-learning.md) | [梦境门控](product/dream.md)、[事务与恢复](architecture/persistence-and-transactions.md) |
 | 配置 | [配置模块](modules/configuration.md)、[配置正文](architecture/configuration.md) | 已批准[注册表](architecture/configuration.md#configuration-registry-contract)、[解析与快照](architecture/configuration.md#configuration-resolution-contract)；[激活事务](architecture/persistence-and-transactions.md#t12)仅在任务触及时读 |
 | 日志 | [日志模块](modules/logging.md)、[日志正文](architecture/logging.md) | [已批准运行诊断契约](architecture/logging.md#runtime-diagnostics-contract)、[事务审计](architecture/persistence-and-transactions.md#t13) |
@@ -42,6 +43,8 @@
 | 验收与技术资料 | [产品验收](product/acceptance.md)、[工程验收](architecture/acceptance.md) | [技术参考](architecture/references.md)；外部资料不自动批准工程方案 |
 
 ## 当前跨模块契约
+
+[Core外部通信重构与补全](architecture/external-communication.md)：完整方案及范围内工程实施已批准，包含HTTP业务／媒体、WS主动通知、可信路由、Web外部连接页面、配置激活、TLS代理及当前托管格式必要升级。规则按其[唯一正文导航](architecture/external-communication.md#decisions)分别维护；连续完成全部补全后统一验收，实际授权与最终停止点见[CURRENT_TASK](work/CURRENT_TASK.md)。
 
 [可部署、可管理的首期产品](architecture/managed-runtime-and-deployment.md)：四组产品／存储决定已批准，将引导、身份、管理Web、配置激活、备份恢复及兼容升级合为一个交付；现行范围见正文，验收、提交及停止点只在CURRENT_TASK维护。
 

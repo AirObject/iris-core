@@ -1,6 +1,6 @@
 # 实际工作状态
 
-最新工程技术验收为2026-09-17的[可部署、可管理首期产品](../architecture/managed-runtime-and-deployment.md)，已按用户明确授权提交到main。该管理交付的父提交为`e37e2f7bb467246d4d34ea7a43a75ca5df991f00`，标题为`feat(management): 增加受控管理Web与部署维护闭环`；精确版本及收尾核对见[提交记录](/private/tmp/iris-managed-acceptance-qgz7gulo/commit-confirmation.json)。未推送或部署；工程验收不等于供应商质量通过，旧真实请求及停止状态继续保留。
+最新工程技术验收为2026-09-18的[Core外部通信补全](../architecture/external-communication.md)，四项阻塞复验关闭；工程仍在`/Users/cassia/.codex/worktrees/5b4a/iris_memory_core`的detached工作区，未提交、推送、合并或部署。基线为已提交main的管理交付`71e9a122f67e06c4f8ce478862d5315f840ebd34`；该管理交付的精确版本及收尾依据见[提交记录](/private/tmp/iris-managed-acceptance-qgz7gulo/commit-confirmation.json)。工程验收不等于生产性能或供应商质量通过，旧真实请求及停止状态继续保留。
 
 本页只记录已交付能力、对应版本和仍有效的限制。当前实施授权及停止点见[CURRENT_TASK](CURRENT_TASK.md)，后续顺序见[剩余路线](../architecture/implementation-options.md#source-line-1202)。
 
@@ -23,6 +23,9 @@
 | 日常认知统一宿主、图片准备、有界工具、六类候选、SUBJECT来源、目标合并、persona导入与初始化续办；工程验收，真实验证有限 | `abd7717393b713d4369f1b3ac4d5245d08dea0e3` | 844份受测文件；本轮60个具名成功检查按版本复用，最终Pyright776文件零诊断；真实图片2成功、学习1失败后停止 |
 | 梦境与长期维护：原生调度、来源影响、时间衰减／到期删除、周期persona、管理控制及回流恢复 | `e37e2f7bb467246d4d34ea7a43a75ca5df991f00` | Docker Linux arm64 37项具名检查按版本对应通过；最终Pyright867份Python零诊断；876份工程指纹一致 |
 | 受保护引导、本地管理员／独立宿主令牌、管理Web／独立审计、配置激活回退、一致备份恢复及兼容升级 | 管理交付提交（父`e37e2f7`，精确版本见本页提交记录） | 973份工程指纹核对；本轮8项定点通过，关联结果及同版本复跑分别记录；锁定全量Pyright零诊断，实际浏览器及前轮版本化证据复用 |
+| Core外部通信：HTTP媒体／协议客户端、WS／ACK／可信路由与恢复、Web外部连接／配置续办、TLS代理及显式托管升级 | 基线`71e9a122`上的未提交工程，集合指纹见下文 | 75项托管、13项关联、3项最终浏览器；锁定全量Pyright及前端类型／构建通过，30分钟混合负载；四项修复与前轮证据按版本核对 |
+
+2026-09-18：[外部通信](../architecture/external-communication.md)完整工程范围通过最终监督技术验收。[最终清单](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-repair-ngfuvuwq/manifest.json)的1092份文件、154份证据和46份命令日志摘要一致；[监督验收](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-repair-review-_7qauid1/review.json)保存1033份工程文件集合指纹`b2ecf46968922eb6d70318b59224409b7a5c324b3c92ef59082b5d88d9571565`。WAL陈旧候选拒绝、控制帧有界背压、授权路由持久终态分页及Web原激活续办均复验关闭，未发现新的阻塞问题；前轮完整审查及未受影响证据按版本复用，历史失败保留。75项托管、13项关联和3项浏览器通过；托管回归期间仅两份浏览器文件变化，最终浏览器已覆盖，运行源码不变。Pyright1.1.413全量零诊断，前端类型／构建通过；未重跑全仓unittest，Pylance未验证。监督只做静态和证据审查，真实供应商请求0；仍未提交或实切生产。
 
 2026-09-17：[可部署、可管理的首期产品](../architecture/managed-runtime-and-deployment.md)通过整阶段工程技术验收，集中复核未发现新的阻塞问题。[最新交付](/private/tmp/iris-audit-mode-5h29kbzi/execution-index.json)的1031份快照及1101份证据摘要一致；[监督验收](/private/tmp/iris-managed-acceptance-qgz7gulo/review.json)对应文档收尾后973份工程指纹`5a54955232f54386fc08633e0feaec330f8d1da64a1b6a035692d34f847545a3`。本轮8项定点通过，关联28项中27通过、1项ADMISSION_BUSY失败保留，同版本独立复跑2项通过；不据此证明并行负载稳定或根因已排除。最终锁定Pyright1.1.413全量零诊断，真实浏览器覆盖专注审计、390／600像素及键盘；未变前端构建／类型检查及原十组验收按版本复用，未重跑全量unittest。模拟适配器与合成材料，真实请求0，Pylance未验证；本阶段已提交，未实切生产。
 
@@ -36,6 +39,7 @@
 
 ## 当前限制与验证边界
 
+- 外部通信30分钟负载在4 CPU／4GiB、正常后台调度下，3582次查询中1782次一秒内成功（49.75%）；60次上传最终确认、120次发送且无重发，90个持久ACK／30个UNKNOWN。客户端89个确认及1个UNCONFIRMED均按delivery_id核对，后者不计作客户端确认。准入／后台争用及原错误分布保留；本轮与其他验证有重叠，不据此宣称较前轮48.16%改善、生产性能或长期稳定性通过。新格式仅支持精确托管前身显式升级，fencing后向前恢复，旧备份不能无损回退；Web原操作续办不覆盖跨设备或已清除会话存储。
 - DeepSeek固定14槽已执行，两平台persona已审核发布，正式记忆分别5／12条，恢复零新增发送；这不证明学习质量达标。旧MiniMax UNKNOWN及外层保守责任仍保留，不能视作结清或自动续用额度。原请求、标注及费用估算证据保持原样。
 - 新托管装配已交付受控配置编辑、版本激活／回退及Web首次时区确认／修改，旧格式仍遵守各自能力边界。兼容构建切换保留新增数据，不等于任意存量迁移；持久FAULTED强制解除及UNKNOWN人工结案未开放。
 - 语义检索小档工程及真实闭环已技术验收，相关性问题暂缓；[日常认知与图片学习](../architecture/daily-cognition-and-image-learning.md)工程已交付，实际图片成功但质量有偏差，真实学习／工具及本宿主真实向量闭环未完成。周期梦境／persona与自动长期维护工程已交付，真实效果与未执行用途见[梦境限制](DEFERRED_ISSUES.md#dream-real-validation)；[音视频测试暂缓](DEFERRED_ISSUES.md#audio-video-validation)。既有模拟／合成参与者不代表这些完整能力。

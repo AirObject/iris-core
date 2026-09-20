@@ -271,6 +271,18 @@ media独立持久`occurrence_work_id`，唯一键为`instance_id + occurrence_id
 
 发布顺序固定为：持久上传意图 → 自有临时文件写完 → 校验和文件同步 → 短事务封口意图 → 同文件系统不可覆盖发布 → 发布目录同步 → 短事务建立READY代次、上传保护和必要审计／原回执。封口持久保存精确长度／SHA-256、临时资源身份、稳定blob_id、拟议generation和原发布键；取得COMMITTED后才发布，未知先原键确认。封口后不再追加或更换字节；未封口退出可要求完整重传，不能把新字节当作旧已确认内容。不能在数据库事务中等待文件I/O，不能先READY后补文件。已有目标只在完整核验确属同blob时复用；不得覆盖未知文件、符号链接或其他库资源。
 
+<a id="host-media-upload"></a>
+
+#### 6.1.1 宿主HTTP上传与观察（已批准）
+
+新增begin／chunk／finish／resolve／inspect五类公开能力，实际路径在正式Schema冻结时确定。begin／finish／resolve／inspect使用小JSON请求；chunk采用明确长度的二进制HTTP请求，不使用base64放大普通JSON封套，不依赖WS或无界multipart缓存。
+
+begin复用稳定上传键与模态；chunk固定`upload_id`、offset及字节数，授权绑定原宿主与入口，重复块只允许完全相同字节。inspect须由media新增受控投影（如现有端口不足），只返回该上传状态、当前易失偏移、是否要求从0重传及完成回执，不泄漏路径或同hash其他上传。finish返回READY的持久事实后，事件才能引用；finish响应丢失按原上传确认，不能因连接断开新建重复附件。
+
+沿用[媒体参数与发布协议](configuration.md#formal-memory-media-configuration)：当前支持上界为单blob 1MiB、块64KiB，推荐上传并发2；实际限制取已激活配置与profile中更严格者。本增量不扩大媒体大小、模态资格或供应商预算。chunk进度仍是易失事实；进程恢复可能要求从0重传，不能宣称任意断点持久续传。开始、上传、发布中断、事件附着与GC竞争均须验证。
+
+媒体上传权限独立于查询与通知；获取blob标识不授予跨入口使用权。专注期保持原始输入附件接收边界，不触发理解。HTTP断线／撤销不释放实际在途文件工作；新增上层准入须保留media自己的并发、时限与清理责任。
+
 ### 6.2 发布中断与恢复
 
 | 中断窗口 | 恢复与承诺 |

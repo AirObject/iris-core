@@ -45,6 +45,8 @@
 
 [已暂缓质量问题](../work/DEFERRED_ISSUES.md)不作为推进前置。最大容量、长期负载及生产介质资格按实际资源单列，未完成不能称通过，也不据保守预算立即要求采购。以上四项是首期能力的交付划分，不表示四轮对话或全部生产资格已经获得批准；后续只推进尚未验收的完整能力，不因本表保留历史条目而重做已交付工程。
 
+**首期产品之后的已批准交付：**[Core外部通信重构与补全](external-communication.md)，依赖第四项已交付的托管身份、配置、Web及部署能力，覆盖HTTP媒体接入、目标路由修复、WS主动通知、Web连接配置、受控网络部署及当前托管格式必要升级。按[连续实施路径](external-communication.md#implementation)完成全部工作、自查及范围内修复，中途不等待阶段验收，最终统一交付监督技术验收；授权与当前状态只见CURRENT_TASK。
+
 <a id="source-line-1216"></a>
 
 ### 15.2 剩余工程决定入口
@@ -53,6 +55,7 @@
 
 | 主题 | 唯一正文及剩余边界 |
 | --- | --- |
+| 外部通信与接入配置 | [已批准完整方案](external-communication.md#decisions)：HTTP／WS分工、通知保障、Web连接配置、生产传输及当前托管格式升级；既有协议与权限保障保持 |
 | 生产部署、资源与存储资格 | [已批准首期部署计划](managed-runtime-and-deployment.md#storage)、[事务与生产前置](persistence-and-transactions.md#runtime-production-prerequisites)；批准方案不代表目录、备份或介质已经实测 |
 | 语义检索 | [集中契约](async-embedding-semantic-retrieval.md)：小档工程及原18次真实闭环已验收，剩余质量、订阅扣额、完整大档及生产资格分别见[STATUS](../work/STATUS.md)，800GiB方案不批准；不重开已审核材料或旧调用额度 |
 | 完整认知、真实媒体与目标agent | [认知](../modules/cognition.md)、[媒体](../modules/media.md)、[目标](../modules/goals.md)：完整工具循环、供应商能力、语义去重及冲突处置 |

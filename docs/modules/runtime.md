@@ -51,3 +51,11 @@
 任务类型要区分新学习、梦境步骤、索引更新、本地事务恢复、回流、媒体理解和提醒投递。已终结失败学习不因重新启动scheduler再次执行。索引本地重建、事务恢复与首次处理尚未执行任务，不是业务重试失败批次。
 
 **建议端口**：`check_gate`、`schedule_work`、`claim_work`、`enter_focus`、`finish_focus`、`recover_runtime`。
+
+<a id="communication-gate-clock"></a>
+
+### 通信门控与宽限计时交接（已批准）
+
+runtime拥有模式及派发门控转换事实；管理维护的所有者经受控端口交接维护关闭／开放事实。goals拥有[宽限计时与恢复](../architecture/local-information-feedback.md#ws-grace)，不能由通信连接、管理页面或轮询时间推断模式转换。关闭、开放及重叠门控原因必须有可信服务端时间、稳定转换标识和可确认的持久依据；具体有界checkpoint表示与参与端口在[实施步骤0](../architecture/external-communication.md#implementation)冻结，不把无限事件历史当作必需依赖。
+
+进入暂停先关闭相应新派发，转换依据与必要恢复意图原子保留；goals按原键确认消费，不在门控锁内等待网络或扫描全库。恢复先核对原门控与计时交接，未知时只关闭受影响的新派发并续办，不能给宽限重置时长或伪造暂停。关闭／恢复是否完成与实际在途I/O责任分开，已登记尝试继续按原配置与终态规则收尾。运行模式提示的最小事件及专注边界见[通知契约](../architecture/external-communication.md#notifications)，不建立第二套模式真相。

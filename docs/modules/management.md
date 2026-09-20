@@ -16,6 +16,8 @@
 
 本次最小只读状态及日志观察见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#observation)（契约已批准；实际验证见[STATUS](../work/STATUS.md)）；本模块原职责和既有批准状态不变。
 
+Web“外部连接”、宿主权限多选、通知路由、连接诊断、联调与配置生效已批准；页面唯一见[管理部署正文](../architecture/managed-runtime-and-deployment.md#external-connections)，协议及实施顺序见[通信契约](../architecture/external-communication.md)。
+
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
 | 关注点 | 阅读位置与边界 |
@@ -36,10 +38,12 @@
 
 ### M12 Web与管理入口
 
-**拥有**：初始化向导的流程状态、管理会话、RBAC授权、页面视图组合及管理操作回执。配置实体属于[M15](configuration.md#contract)，模型请求和费用属于[M13](provider.md#contract)，日志与审计属于[M14](logging.md#contract)；Web不直接改这些表或扫描任意文件。
+**拥有**：初始化向导的流程状态、管理会话、RBAC授权、逻辑通知路由／事件权限与撤销revision、受控联调探针事实、页面视图组合及管理操作回执。配置实体属于[M15](configuration.md#contract)，模型请求和费用属于[M13](provider.md#contract)，日志与审计属于[M14](logging.md#contract)；Web不直接改这些表或扫描任意文件。
 
 初始化用图形说明自我/稳定persona/当前状态/目标和S3/S2/S1。提供Provider配置及测试入口、按能力/角色的用量统计、运行日志实时与历史视图、审计视图、配置Schema表单与变更预览。
 
 权限至少区分只读运行观察、Provider用量查询、敏感审计读取、配置编辑、密钥更新和备份恢复。账号体系复杂度可从单管理员开始，但权限端口和数据脱敏不能省略。专注梦境中只开放既定的只读运行观察：脱敏运行日志、已持久化Provider统计、配置生效状态均可读，不因此开放完整原始请求或记忆审计正文；配置写入、连接测试和模型试调用仍被门控拒绝。
 
 **建议端口**：`initialize_role`、`read_runtime_dashboard`、`read_provider_dashboard`、`read_log_view`、`read_config_view`、`submit_management_command`、`create_backup`、`verify_restore`。
+
+外部连接写入通过[管理身份／路由端口](../architecture/managed-runtime-and-deployment.md#communication-identity)；Web只组合[各所有者的受限投影](../architecture/ownership.md#external-communication-ownership)。部署地址／可信代理来源只读，配置策略经唯一配置模块；在线订阅与连接不成为可备份恢复的身份凭据。

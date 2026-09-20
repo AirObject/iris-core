@@ -16,6 +16,8 @@
 
 本次详细接口及联合验收见[持久接入与批次运行契约](../architecture/durable-ingress-and-batch-runtime.md#ingress)（契约已批准；实际验证见[STATUS](../work/STATUS.md)）；本模块原职责和既有批准状态不变。
 
+外部HTTP／WS、媒体上传、可信通知路由和宿主接入页面的增量已批准，见[通信契约与实施路径](../architecture/external-communication.md)及[本模块端口](#external-communication)；当前执行段见CURRENT_TASK。
+
 下表仅作导航；模块职责与端口正文在本文件后半部，共享事务和详细契约链接到各自唯一正文。
 
 | 关注点 | 阅读位置与边界 |
@@ -26,7 +28,7 @@
 | 配置生效 | [统一快照及本模块相关参数](../architecture/configuration.md#source-line-878)；[命名空间与消费者](../architecture/configuration.md#source-line-858)。具体键按Schema固定，不自行填写默认值 |
 | 产品验收定位 | [A01](../product/acceptance.md#a01)、[A02](../product/acceptance.md#a02)、[A03](../product/acceptance.md#a03)、[A17](../product/acceptance.md#a17)、[A61](../product/acceptance.md#a61)（任务范围扩大时按完整表补充） |
 | 工程验收定位 | [V01](../architecture/acceptance.md#v01)、[V03](../architecture/acceptance.md#v03)（验收要求；实际覆盖见[STATUS](../work/STATUS.md)） |
-| 尚未决定 | 输入、原键和错误格式已在[整体契约](../architecture/durable-ingress-and-batch-runtime.md#ports)批准；生产身份来源与鉴权装配仍待批准。 [产品剩余契约](../product/decisions-and-delivery.md#section-22)；[工程冻结点](../architecture/implementation-options.md#source-line-1216)；[当前任务与阻塞](../work/CURRENT_TASK.md) |
+| 批准边界与后续增量 | 输入、原键和错误格式已在[整体契约](../architecture/durable-ingress-and-batch-runtime.md#ports)批准；本地管理员与宿主令牌见[已批准身份契约](../architecture/managed-runtime-and-deployment.md#identity)。WS、正式通知路由与外部媒体接入补全见[已批准决定](../architecture/external-communication.md#decisions)；实际授权见[当前任务](../work/CURRENT_TASK.md) |
 
 <a id="contract"></a>
 
@@ -46,3 +48,11 @@
 内部人物关联交给[M06](memory.md#contract)/[M05](cognition.md#contract)，入口注册不因昵称一样合并平台主体。文本中自称管理员、provider拒学或目标完成，不自动升级为控制命令。
 
 **建议端口**：`accept_event`、`resolve_entry`、`authorize_operation`、`dispatch_request`。
+
+<a id="external-communication"></a>
+
+### 外部通信端口增量（已批准）
+
+宿主／入口注册提供受控管理端口，登记、读取与原键确认由ingress维护绑定，management核验管理身份并编排；既有平台Schema、单绑定当前状态写宿主和入口隔离保持。身份签发、逻辑路由及默认候选规则唯一见[管理身份](../architecture/managed-runtime-and-deployment.md#communication-identity)。
+
+宿主HTTP补齐[媒体上传／inspect](../architecture/formal-memory-source-media.md#host-media-upload)、能力发现和本身份通知状态查询；HTTP旧POST封套、版本和原确认规则见[外部协议](../architecture/external-communication.md#http)。WS仅提供[通知、订阅与ACK](../architecture/external-communication.md#ws)，与HTTP共享身份、领域端口和门控，不提供第二套业务RPC。新增操作权限默认空，外层适配不得直接访问其他owner的表或私有状态。

@@ -97,10 +97,12 @@ rerank默认关闭，开启后只处理有上限的候选集合；远程失败�
 
 路径仅示例，正式OpenAPI/SDK在接口阶段冻结。
 
+托管产品当前实际宿主协议由[已批准管理接入](managed-runtime-and-deployment.md#web)及其实现提供；下表不替代真实方法与封套。正式HTTP说明、媒体上传与WS通知按[已批准通信契约](external-communication.md#http)补全；精确路径与消息Schema在实现中冻结，实际完成情况见CURRENT_TASK。
+
 | 能力 | 草拟行为 | 专注模式 |
 | --- | --- | --- |
 | 输入接收 | 事件持久化，返回event_id与NORMAL_QUEUED/DREAM_QUEUED | 允许，仅暂存 |
-| 媒体上传 | 流式保存原件，返回blob_id与持久化状态，不运行理解 | 作为原始输入附件接收允许 |
+| 媒体上传 | [受控上传／inspect](formal-memory-source-media.md#host-media-upload)区分易失进度和持久READY回执，事件使用授权reference绑定，不把裸blob_id当权限 | 作为原始输入附件接收允许 |
 | 回复准备 | 返回persona、相关记忆、本入口近期输入、状态、目标及数量/时间提示 | 拒绝 |
 | 普通查询 | 仅有效正式记忆 | 拒绝 |
 | 深度召回 | 可含遗忘对象，读取不恢复 | 拒绝 |

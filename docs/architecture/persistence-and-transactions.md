@@ -111,6 +111,16 @@
 
 这些操作只包含本地可事务化数据，不在事务中等待LLM、embedding、rerank或HTTP通知。索引文件和媒体文件采用独立的阶段协议，不声称它们自动被SQLite事务回滚。
 
+<a id="communication-transactions"></a>
+
+#### 外部通信事务与恢复增量（已批准）
+
+新通信装配的配置版本／有效指针／runtime消费者切换事实及必要审计沿T12原子提交；连接与队列本身不进入持久快照。路由禁用、权限撤销沿所属owner的revision端口提交，发送前重查，不把这些管理实体混成配置patch。消费者失败保留已提交激活决定并关闭受影响准入，不能删除旧计划、冻结引用或UNKNOWN来回退。
+
+目标路由变更与未发计划调整沿T08由goals同UoW处理；门控转换由原owner保留稳定时间／代次及计时交接恢复依据，goals以原键持久保存其[宽限状态](local-information-feedback.md#ws-grace)。具体固定参与者与命令分支在新装配声明中冻结；每个必要审计slot必须对应真实owner变更，不以占位revision凑事务。交接待确认时按原键续办，不能重选计时起点。
+
+尝试登记确认先于WS发送；匹配ACK与相应计划／尝试的终态在短事务中确认。网络写入、ACK等待、连接接管和关闭不声称由SQLite回滚；未确认提交、真实I/O占用和发送UNKNOWN分别表达。只允许[当前托管格式显式升级](managed-runtime-and-deployment.md#communication-deployment)所声明的新记录，不就地放宽旧存储格式或自动迁移试验库。
+
 <a id="source-line-501"></a>
 
 ### 7.3 学习提交的具体流程

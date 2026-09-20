@@ -1,25 +1,32 @@
 # 当前任务
 
-**可部署、可管理的首期产品：2026-09-17通过整阶段工程技术验收，并按用户明确授权提交。** 现行范围见[集中契约](../architecture/managed-runtime-and-deployment.md)，分工见[AGENTS](../../AGENTS.md)。执行者已停止；监督完成静态审查、Git及证据核对，没有运行项目、测试、构建、容器或模型。
+**Core外部通信完整补全于2026-09-18通过最终监督工程技术验收；四项阻塞均关闭，当前停于交付收尾。** 批准范围见[通信方案](../architecture/external-communication.md)，分工见[AGENTS](../../AGENTS.md)，已验收能力与限制见[STATUS](STATUS.md)。未授权提交、推送、合并、生产部署或下一项实现。
 
-本阶段交付分支main，父提交`e37e2f7bb467246d4d34ea7a43a75ca5df991f00`；提交标题`feat(management): 增加受控管理Web与部署维护闭环`，精确SHA及提交后核对见[提交记录](/private/tmp/iris-managed-acceptance-qgz7gulo/commit-confirmation.json)。提交范围195份文件：182份工程、13份监督文档。提交前全部工程文件与验收版本一致，监督仅做文档收尾；未推送或部署。
+## 工程位置与验收版本
 
-## 完成范围与结论
+监督主仓库为`/Users/cassia/Local/Code/iris_memory_core`（main）；工程仍在`/Users/cassia/.codex/worktrees/5b4a/iris_memory_core`（detached），共同HEAD为`71e9a122f67e06c4f8ce478862d5315f840ebd34`。最终清单含110份未提交工程变更，其中本轮修复21份。最新AGENTS及docs从监督主仓库读取；worktree文档保留原交接快照。工程未复制回主仓库，不另建空基线，保全原修改及证据。
 
-本地管理员与独立宿主令牌、受保护引导、完整管理Web、受控对象／状态／目标管理、配置版本激活／回退、一致备份恢复、兼容构建升级／回退已完成工程验收。当前装配291命令、16仓储；完整配置136键，实物容量验证范围以交付为准，不宣称最大合法值资格。
+[最终执行清单](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-repair-ngfuvuwq/manifest.json)SHA256为`ac4181e0a0d7a4dca506e4f2e416f20919197b380466fa76b5c42936f7b5590a`；1092份文件、154份证据、46份命令日志及源码归档摘要全部核对一致。[监督验收清单](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-repair-review-_7qauid1/review.json)保留1033份工程文件映射（排除docs／AGENTS），集合指纹为`b2ecf46968922eb6d70318b59224409b7a5c324b3c92ef59082b5d88d9571565`。
 
-原操作确认、备份分页、可信默认时区、独立审计及其模式门控问题均已关闭。审计不再等待普通管理控制锁或套用业务检索checkpoint；原生日志／历史的权限、完整性、故障和真实清理检查保留。专注期间有效独立审计可读，普通召回仍拒绝，历史不回灌、不强化。本轮集中复核未发现新的阻塞问题；详见[技术验收记录](/private/tmp/iris-managed-acceptance-qgz7gulo/review.json)。
+## 四项修复与复验
 
-## 最近有效验证
+| 已关闭问题 | 静态与执行证据 |
+| --- | --- |
+| 升级遗漏WAL | 独占资源下恢复／checkpoint、确认日志关闭后核对指纹；旧实例原生提交、主文件未变、强制退出后，陈旧候选在fencing前拒绝，原提交可确认 |
+| WS控制帧无界写入 | 所有实际写出共用缓冲预算，控制帧等待drain，超限abort并清理；真实不读socket的Ping洪泛峰值32698字节，关闭后缓冲归零 |
+| 宿主持久终态不可查询 | 原goals所有者按授权宿主／入口／路由投影，每页4计划、每计划至多2尝试；ACK回执丢失、三终态、分页、越权及独立进程重启核对通过，无新发送；协议与客户端同步 |
+| Web激活刷新丢失 | 两配置页面共用实例内原请求／激活ID续办；丢请求、超时、丢响应、消费者失败及双向切页均保持同一ID、单次保存 |
 
-[最新执行交付](/private/tmp/iris-audit-mode-5h29kbzi/execution-index.json)的1031份文件及1101份证据摘要均经监督核对。执行者8项审计定点通过；关联28项中27通过、1项旧专注用例返回ADMISSION_BUSY，同版本独立复跑该模块2项通过。失败与其他验证并行时段重叠，但未证明确切因果，不将复跑通过写成根因已修复或负载稳定性通过。
+[前次审查](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-review-87y5g6c9/review.json)与[前轮交付](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-complete-i_00r3lt/manifest.json)原样保留；原390份证据和109份命令日志再次核对一致。结合前轮完整审查与本轮21份修复差异，未发现新的阻塞问题。
 
-锁定Pyright1.1.413全量覆盖源码、测试及deployment，零错误／警告／信息，输入与最终文件一致。实际Chromium在最终Linux arm64镜像中验证专注审计、390／600像素及键盘。未变前端复用匹配的构建／类型检查；安装、业务、备份恢复及两实际构建切换按[版本映射](/private/tmp/iris-audit-mode-5h29kbzi/prior-version-map.json)和先前审查复用，不把全部历史检查称为当前重新执行。
+## 最近验证与能力限制
 
-收到交付时1031份集合聚合`d9c8548848282d9aa0d00b2de490ffbda5c0de71c03d0d5dc7c9685f3c550aa1`；算法为“排序路径＋NUL＋文件SHA256＋LF”再取SHA256。文档收尾后保持973份[工程清单](/private/tmp/iris-managed-acceptance-qgz7gulo/engineering-files.json)，聚合`5a54955232f54386fc08633e0feaec330f8d1da64a1b6a035692d34f847545a3`。不将文档收尾后的完整集合称为原样。
+执行者在同一Docker Linux arm64环境完成75项托管、13项关联及3项最终浏览器检查；锁定Pyright1.1.413全量0错误／警告，前端类型、浏览器类型和构建退出0。最终Pyright命令为`uv run --offline --no-sync python -m pyright --project pyproject.toml --pythonpath .venv/bin/python`。托管回归与负载期间仅浏览器夹具／测试两文件变化，运行源码及受测模块不变；最终浏览器已覆盖这两文件，46项命令的前后版本映射均核对。历史失败保留，不宣称全仓unittest或Pylance通过。
 
-## 停止点与限制
+30分钟混合负载使用4 CPU／4GiB、正常后台调度：3582次查询中1782次一秒内成功（49.75%）；60次上传最终确认；120次发送及唯一接收，90个持久ACK、30个UNKNOWN，无重发。客户端89个COMMITTED及1个UNCONFIRMED回执按delivery_id与90个持久ACK逐项对应，不将未确认回执写成客户端确认。真实供应商请求0。负载与回归／浏览器／类型构建有重叠，不与前轮48.16%作隔离性能比较；准入和后台争用、原错误分布继续保留，不宣称生产性能或长期稳定性通过。
 
-用户已明确授权提交本阶段已审产物。提交不包含私有凭据、临时证据或试验库；本阶段停止于本地提交，推送、正式部署和下一阶段实施未自动获权。提交前复用同版本有效验证，仅检查文档、完整范围及工程指纹，不重跑项目或测试。
+升级仅覆盖精确当前托管前身；fencing前可中止准备，之后向前恢复，旧备份不是无损回退。浏览器续办限同一实例的保留会话存储，不外推跨设备或清除存储。清理证据记录本轮自有容器、秘密卷及镜像已移除。
 
-本阶段真实供应商请求0，使用模拟适配器、合成材料和显式测试审核参与者；Pylance、第二架构、硬件掉电、长期并行负载及正式生产切换未验证。旧UNKNOWN、停止包、[质量及音视频暂缓事项](DEFERRED_ISSUES.md)不因本次验收解除。容器已清理、历史私有证据卷保留；具体版本与资源记录见执行交付。
+## 停止点
+
+本轮监督只核对源码、Git、原始证据和文档，未运行项目、测试、构建、容器或模型。仅维护CURRENT_TASK／STATUS；工程、原证据及其他既有文档差异保留。主仓库及worktree的git diff --check、17份差异文档的887处本地链接／锚点通过，工程1092份文件及154份证据再次核对一致。停止，不自动开展下一项工作或调度其他会话。
