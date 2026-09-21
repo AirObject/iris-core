@@ -6,8 +6,8 @@ owner-local tables are selected only by the explicit information assembly.
 from dataclasses import replace
 from companion_memory.persistence import Field, RecordSchema, StatementDefinition, TableDefinition, ScalarSchema
 from companion_memory.persistence.owned_statements import StatementCatalog
-from companion_memory.information.records import ID, COUNT, REVISION, TIME, VERSION, TEXT, choice
-from companion_memory.information.repository import Layout, declarations
+from companion_memory.persistence.record_primitives import ID, COUNT, REVISION, TIME, VERSION, TEXT, choice
+from companion_memory.persistence.record_repository import Layout, declarations
 from companion_memory.retrieval.records import USAGE
 from .repository import memory_catalog
 

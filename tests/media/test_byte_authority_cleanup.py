@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 from companion_memory.cognition.synthetic_input import SyntheticCandidateInput
-from companion_memory.media.service import MediaService, MediaError
+from companion_memory.media.service import MediaService
+from companion_memory.provider.media_input import MediaInputError
 from companion_memory.memory.formats import record
 from companion_memory.persistence import Committed
 from companion_memory.provider.stored_media import StoredMediaAuthorized
@@ -66,7 +67,7 @@ class ByteAuthorityCleanupTests(unittest.IsolatedAsyncioTestCase):
                     reading = asyncio.create_task(authority.authorize_stored_media(wid, occurrence))
                     self.assertTrue(await asyncio.to_thread(entered.wait, 3))
                     blocked = await authority.authorize_stored_media(wid, occurrence)
-                    assert type(blocked) is MediaError, blocked
+                    assert type(blocked) is MediaInputError, blocked
                     self.assertEqual(blocked.code, 'RESOURCE_BUSY')
                     closed = await fixture.provider.close()
                     self.assertTrue(closed.cleanup_pending)
@@ -76,7 +77,7 @@ class ByteAuthorityCleanupTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIsNotNone(media._owner_fd)
                     release.set()
                     result = await asyncio.wait_for(reading, 3)
-                    assert type(result) is MediaError, result
+                    assert type(result) is MediaInputError, result
                     self.assertEqual(result.code, 'INVALID_STATE')
                     self.assertEqual(fixture.provider.get_health().lifecycle, 'CLOSED')
                     self.assertFalse(fixture.provider._stored_pending)

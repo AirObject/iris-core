@@ -17,7 +17,7 @@ from .text_accounting import normalize,liability
 from .chat_protocol import UsageObservation
 if TYPE_CHECKING:
     from .daily_service import DailyProvider
-    from companion_memory.media.daily_image import DailyImageLease
+    from .media_input import ImageInput
     from companion_memory.configuration.execution_versions import ExecutionVersion
     from .chat_transport import ChatTransport
 
@@ -29,7 +29,7 @@ class DailyRequest:
     attempt_id:str
     fingerprint:str
     wire:bytes
-    material:DailyMaterialReadLease|DailyImageLease
+    material:DailyMaterialReadLease|ImageInput
     batch_id:str|None
     binding:DailyChatBinding|DreamChatBinding
     account:Record

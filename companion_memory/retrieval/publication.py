@@ -6,7 +6,7 @@ neither the mutable memory revision nor remaining index pages supplies a count.
 """
 from companion_memory.persistence import OperationPort, Found, NotFound
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import record, text, integer
+from companion_memory.persistence.record_primitives import record, text, integer
 from .index import LocalIndex
 from .recovery import require
 

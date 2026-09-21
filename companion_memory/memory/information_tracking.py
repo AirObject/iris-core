@@ -16,8 +16,8 @@ from companion_memory.configuration.daily_persistence import StoredDailyConfigur
 from companion_memory.persistence import PersistenceService, UnitOfWork, Value, SequenceSchema, RecordSchema, Field
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import StatementCatalog, OwnerFailure
-from companion_memory.information.records import Record, ID, checked, fact, identity, integer, text
-from companion_memory.information.repository import OwnedRecords
+from companion_memory.persistence.record_primitives import Record, ID, checked, fact, identity, integer, text
+from companion_memory.persistence.record_repository import OwnedRecords
 from .information_repository import LAYOUTS
 
 INDEX_SELECTION = RecordSchema((Field('object_ids', SequenceSchema(ID, 1, 16)),))

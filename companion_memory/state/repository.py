@@ -1,7 +1,7 @@
 """State-owned activity rows and a single CAS current-activity pointer."""
 from companion_memory.persistence import Field, RecordSchema, StatementDefinition, BoundedTextSchema
 from companion_memory.persistence.owned_statements import StatementCatalog
-from companion_memory.information.repository import Layout, declarations
+from companion_memory.persistence.record_repository import Layout, declarations
 from .records import ACTIVITY, POINTER
 
 

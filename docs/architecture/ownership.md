@@ -40,6 +40,23 @@
 
 上述所有权是逻辑上的唯一修改入口，允许多个模块的数据存在同一数据库内。跨模块原子操作由应用编排层建立一个Unit of Work，让各模块加入同一事务；不要求每个模块建立自己的数据库连接后单独提交。
 
+<a id="implementation-packages"></a>
+
+#### 逻辑模块与实现包的对应
+
+Python包、命令命名空间、配置域及测试目录不与M01—M15一一对应；数量不能用来判定新增逻辑模块。`information`是[已批准本地信息闭环](local-information-feedback.md)的应用协调包，不登记为M16，也不获得独立业务表所有权。其代码中的`owner_namespace='information'`标识跨模块命令及幂等身份，不能据此取得参与者表的修改权，重构不能改写既有持久命令身份。
+
+| 实现职责 | 唯一数据所有者／边界 |
+| --- | --- |
+| information业务查询、初始化、反馈及维护协调 | 应用编排建立同一UoW；retrieval持有索引、凭据和协调根，memory持有正式对象及强化收据，state持有外部状态；没有information私有业务仓储 |
+| information提醒和定时唤醒 | goals持有目标、计划及attempt；runtime持有模式、租约和门控；协调器不以发送调用或内存定时器代替持久事实 |
+| information管理能力及宿主绑定 | management负责认证／权限，ingress负责入口绑定；协调器只能调用绑定后的有限端口 |
+| runtime宿主、assembly和各特性用例 | 属于图中的“用例编排”与启动装配；它们读取多个公开端口，不因此扩大M02的模式／调度数据所有权 |
+| cognition中的梦境材料、模型审查和候选 | M05持有认知材料与候选；M11持有梦境运行、检查点和发布请求；不能因同属梦境功能就把两种数据所有权合并 |
+| configuration的各类快照、编解码和持久适配 | M15统一拥有配置；文件数量及不同已批准格式不构成新模块或第二份配置真相 |
+
+共享闭合记录与固定仓储声明由I01的[record_primitives](../../companion_memory/persistence/record_primitives.py)、[record_repository](../../companion_memory/persistence/record_repository.py)承载；information原路径只作兼容导出，生产调用方直接依赖I01。Provider所需的输入端口由Provider自身定义，媒体业务对象仍属于media，无需新增共享契约包。
+
 <a id="external-communication-ownership"></a>
 
 #### 外部通信所有权（已批准）
@@ -88,6 +105,18 @@ HTTP/Web入口 → 用例编排 → 领域模块公开端口 → Repository/Inde
 模型网络出口用导入约束、客户端注入和架构测试限制；禁止[M04](../modules/media.md#contract)/[M05](../modules/cognition.md#contract)/[M07](../modules/self-model.md#contract)/[M08](../modules/retrieval.md#contract)/[M10](../modules/goals.md#contract)/[M11](../modules/dream.md#contract)及agent框架自行实例化模型SDK或访问模型端点。可信扩展只能取得带`caller_module/extension_id`的ProviderPort，不取得密钥或裸客户端。此为受支持代码的架构约束，不宣称能在同进程内沙箱化任意恶意Python代码；不可信扩展需另行进程/网络隔离。
 
 共享部分仅保留ID、时间、错误、事务接口等小型契约。禁止出现万能`MemoryManager`、全模块可访问的数据库对象或带任意SQL/文件读取能力的agent工具。
+
+<a id="executable-boundaries"></a>
+
+#### 可执行的依赖边界
+
+[架构测试](../../tests/architecture/test_import_boundaries.py)扫描生产源码的绝对／相对导入、函数内导入、TYPE_CHECKING及字面量动态导入；[允许边清单](../../tests/architecture/rules.py)限制包间协作，并对共享工具和持久层配置接入施加更窄的文件级约束。新增包、允许边或动态加载方式须连同职责说明审查，不能运行扫描后自动把现有违规边全部加入清单。它是静态防线，不证明Python进程内任意反射或恶意代码隔离，也不宣称整个现有文件依赖图已经无环。
+
+Provider定义[媒体输入端口](../../companion_memory/provider/media_input.py)，仅依赖事务与实际完成通知的基础契约。[媒体适配器](../../companion_memory/media/provider_source.py)在可信装配处核验实际MediaService或图片租约，转换为Provider需要的不可变字节、请求归属与有限校验回调；MediaError、ProcessingRead、CheckedImage、DailyImageLease及完整媒体记录继续由media定义和管理。Provider不导入媒体实现、读取媒体路径或获取媒体SQL／租约释放能力。
+
+输入转换复用原字节和实际完成通知；图片校验回调每次回到原所有者验证原租约及必要的事务证据，原租约释放后输入即失效。原库／scope校验、PROCESSING保护、请求持久标识和占用释放边界保持不变。goals通过[只读路由端口](../../companion_memory/goals/notification_port.py)参加原权限所有者的事务，不依赖management的具体IdentityAuthority类。
+
+`persistence ↔ configuration`须按文件职责判断：配置持久适配调用I01；I01读取已验证快照，并在现有显式格式／容量能力处核验原配置签发者。这些接入在允许清单逐项限定，不能把整个configuration包作为任意反向依赖口。网络规则限制模型客户端与外连；管理CLI的本地健康请求和goals的显式回环测试接收器单列，不将HTTP服务端或纯URL解析误判为模型出口。
 
 
 图示／代码框中的文档标记定位：[M13](../modules/provider.md#contract)、[M14](../modules/logging.md#contract)、[M15](../modules/configuration.md#contract)。这些标记仅用于本文阅读，不能进入未来实现。

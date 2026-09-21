@@ -232,7 +232,7 @@ class GoalComparisons:
         original=self.materials.participate_material(uow,cast(str,decision['material_id']),cast(str,decision['material_digest']),cast(str,decision['object_id']))
         raw=decode_content(original.body,262144)
         if type(raw) is not dict:raise InvalidValue()
-        from companion_memory.information.records import checked
+        from companion_memory.persistence.record_primitives import checked
         from .records import DAILY_GOAL,DAILY_DEDUP_TASK
         original_task=checked(DAILY_DEDUP_TASK,raw['task'],4096);original_goal=checked(DAILY_GOAL,raw['target']['goal'],4096)
         tx=GoalTransaction(self.goals,uow,now);task=tx.get('dedup_task',{'task_id':decision['task_id']});goal=tx.get('goal',{'goal_id':decision['goal_id']})

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from companion_memory.persistence import Value
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import Record, integer, text, decode
+from companion_memory.persistence.record_primitives import Record, integer, text, decode
 from .information_repository import LAYOUTS
 from .formats import TOMBSTONE_SCHEMA
 if TYPE_CHECKING:

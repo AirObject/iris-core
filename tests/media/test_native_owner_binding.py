@@ -28,8 +28,15 @@ class NativeOwnerBindingTests(unittest.IsolatedAsyncioTestCase):
             try:
                 self.assertEqual(first.expected_id, second.expected_id)
                 self.assertIsNot(first.storage, second.storage)
+                # A consumer cannot accept the concrete owner or a duck-typed
+                # substitute in place of the explicitly bound byte capability.
                 with self.assertRaises(ValueError):
-                    first.provider.bind_stored_media_authority(second.media, 'instance', 'media')
+                    first.provider.bind_stored_media_authority(first.media, 'instance', 'media')
+                with self.assertRaises(ValueError):
+                    first.provider.bind_stored_media_authority(object(), 'instance', 'media')
+                with self.assertRaises(ValueError):
+                    from companion_memory.media.provider_source import stored_media_source
+                    first.provider.bind_stored_media_authority(stored_media_source(second.media), 'instance', 'media')
                 with self.assertRaises(ValueError): second.media.work.retain_terminal(object.__new__(VerifiedTerminal))
                 retain = first.media.work.retain_terminal
                 def inspect(evidence):

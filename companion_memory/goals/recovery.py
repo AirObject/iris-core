@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from companion_memory.persistence import Value
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import integer, identity, text
+from companion_memory.persistence.record_primitives import integer, identity, text
 from .repository import goal_layouts
 if TYPE_CHECKING:
     from .service import GoalsService

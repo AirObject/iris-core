@@ -6,6 +6,8 @@
 
 适用主题与局部定义：模式及epoch（门控代次）、工作租约和调度归属；队列归缓存模块，模型准入账本归Provider。
 
+代码中的宿主／用例编排与M02数据所有权的区别，见[逻辑模块与实现包](../architecture/ownership.md#implementation-packages)。
+
 设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[全部实现表达规范](../CODING_STANDARDS.md)；[产品：梦境整理、专注隔离与入口回流](../product/dream.md)。

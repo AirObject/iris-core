@@ -124,7 +124,7 @@ class DreamExpiry:
             expiry_time=cast(int,current['forgotten_since_us'])
             if (expiry_time,cast(str,v['memory_id']))<=(cast(int,run['expiry_after_us']),cast(str,run['expiry_after_id'])):
                 raise OwnerFailure('PRECONDITION_FAILED','revision','REVISION_CONFLICT')
-            from companion_memory.information.records import identity
+            from companion_memory.persistence.record_primitives import identity
             original=identity('expired_memory',v['memory_id'],v['memory_revision'])
             root=stable('memory_root',c.configuration.database_id,v['memory_id'],original)
             change=MappingProxyType({'change_version':1,'action':'DELETE_OBJECT','target_id':v['memory_id'],

@@ -14,7 +14,7 @@ from types import MappingProxyType
 from companion_memory.persistence import Field, RecordSchema
 from companion_memory.persistence.content_codec import encode_content, decode_content
 from companion_memory.persistence.schema import InvalidValue, valid_identifier
-from companion_memory.information.records import Record, ID, REVISION, TIME, checked, text, choice
+from companion_memory.persistence.record_primitives import Record, ID, REVISION, TIME, checked, text, choice
 
 INTENT = RecordSchema((Field('delivery_id', ID), Field('canonical_goal_id', ID), Field('revision', REVISION),
     Field('kind', choice('UPCOMING', 'DUE')), Field('deadline', TIME), Field('observed_at', TIME),

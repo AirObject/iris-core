@@ -20,7 +20,7 @@ from .errors import InformationError, InformationRejected, InformationNotCommitt
 from .expiry import ForgottenExpiry
 from .maintenance import LocalMaintenance
 from .management import HostIdentity, ManagementAssembly, ManagementPort
-from .records import identity, integer
+from companion_memory.persistence.record_primitives import identity, integer
 from .reminders import ReminderDispatcher
 from .index_worker import LocalIndexWorker
 

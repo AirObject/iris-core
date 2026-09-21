@@ -1,7 +1,7 @@
 """Retrieval-owned ticket and index tables with bounded indexed access paths."""
 from companion_memory.persistence import Field, RecordSchema, StatementDefinition, TableDefinition, ScalarSchema
-from companion_memory.information.records import ID, TEXT, TIME, COUNT
-from companion_memory.information.repository import Layout, declarations
+from companion_memory.persistence.record_primitives import ID, TEXT, TIME, COUNT
+from companion_memory.persistence.record_repository import Layout, declarations
 from companion_memory.persistence.owned_statements import StatementCatalog
 from .records import TICKET,SEMANTIC_TICKET, MEMBER, USAGE, DISPOSITION,SEMANTIC_DISPOSITION, GENERATION, PAGE, INDEX_OBJECT, POSTING, LEASE, COORDINATOR
 from dataclasses import replace

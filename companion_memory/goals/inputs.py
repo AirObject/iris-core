@@ -4,7 +4,7 @@ External timestamps are converted by the host adapter before these native
 records enter a command. Trusted internal origins require a verified basis port.
 """
 from companion_memory.persistence import Field, RecordSchema, SequenceSchema, ScalarSchema
-from companion_memory.information.records import ID, REVISION, TIME, TEXT, choice
+from companion_memory.persistence.record_primitives import ID, REVISION, TIME, TEXT, choice
 
 TERMS = (Field('deadline', TIME, nullable=True), Field('reminder_lead_seconds', ScalarSchema('integer', 0, 31536000), nullable=True), Field('route_id', ID, nullable=True))
 INJECT = RecordSchema((Field('content', TEXT(2048)), Field('subject_ids', SequenceSchema(ID, 0, 4)), Field('world_scope', ID), *TERMS, Field('source_id', ID)))

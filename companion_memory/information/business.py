@@ -20,7 +20,7 @@ from companion_memory.retrieval.query_service import QueryPort, QueryService, Qu
 from companion_memory.retrieval.tickets import CONSUME
 from companion_memory.retrieval.delivery import deliver
 from .management import HostIdentity, ManagementPort, ManagementAssembly, SCHEMAS
-from .records import ID, TEXT, Record, checked, record, text
+from companion_memory.persistence.record_primitives import ID, TEXT, Record, checked, record, text
 from .errors import InformationResult, information_result, InformationError, InformationRejected, InformationNotCommitted, InformationUnconfirmed, rejected
 
 QUERY_OPERATIONS = frozenset(('search_memory', 'deep_recall', 'prepare_reply', 'resolve_recall'))

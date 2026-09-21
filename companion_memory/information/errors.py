@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
-from .records import Record
+from companion_memory.persistence.record_primitives import Record
 from companion_memory.persistence import RecoveryHandle, Receipt, Committed, Found, NotFound
 from companion_memory.persistence.results import PersistenceError
 from companion_memory.persistence.owned_statements import OwnerFailure

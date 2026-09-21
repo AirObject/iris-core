@@ -4,10 +4,10 @@ Business rows and the initialization binding have different closed formats;
 source and alias identities remain independent from visible goal bodies.
 """
 from companion_memory.persistence import Field, RecordSchema, StatementDefinition, TableDefinition
-from companion_memory.information.records import ID, COUNT, TIME, TEXT
+from companion_memory.persistence.record_primitives import ID, COUNT, TIME, TEXT
 from companion_memory.persistence.owned_statements import StatementCatalog
 from companion_memory.persistence import ScalarSchema
-from companion_memory.information.repository import Layout, declarations
+from companion_memory.persistence.record_repository import Layout, declarations
 from dataclasses import replace
 from .records import DAILY_GOAL, DAILY_DEDUP_TASK
 from .records import METADATA, GOAL, SOURCE, ALIAS, DEDUP_TASK, DEDUP_CANDIDATE, PLAN, ATTEMPT

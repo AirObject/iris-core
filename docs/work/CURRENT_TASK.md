@@ -1,32 +1,25 @@
 # 当前任务
 
-**Core外部通信完整补全于2026-09-18通过最终监督工程技术验收；四项阻塞均关闭，当前停于交付收尾。** 批准范围见[通信方案](../architecture/external-communication.md)，分工见[AGENTS](../../AGENTS.md)，已验收能力与限制见[STATUS](STATUS.md)。未授权提交、推送、合并、生产部署或下一项实现。
+**2026-09-21：核查并修复结构性依赖问题；定点代码、测试及文档纳入本次本地提交，runtime目录迁移待用户明确答复。** 本轮用户明确授权不受原监督／执行分工限制，同时修复代码后处理文档，并在修复后明确授权提交commit；该例外仅用于本任务，不改写[AGENTS](../../AGENTS.md)的一般协作分工。不使用子代理，不推送、部署或调用真实模型。
 
-## 工程位置与验收版本
+## 基线与核查结论
 
-监督主仓库为`/Users/cassia/Local/Code/iris_memory_core`（main）；工程仍在`/Users/cassia/.codex/worktrees/5b4a/iris_memory_core`（detached），共同HEAD为`71e9a122f67e06c4f8ce478862d5315f840ebd34`。最终清单含110份未提交工程变更，其中本轮修复21份。最新AGENTS及docs从监督主仓库读取；worktree文档保留原交接快照。工程未复制回主仓库，不另建空基线，保全原修改及证据。
+工作区为`/Users/cassia/Local/Code/iris_memory_core`，分支main，起点`9d483c7384836b94e5433a9bd1045a16b6a56bc8`，开始时工作树干净。外部通信源码已在`1f2cc1e`、相应文档已在`9d483c7`提交；旧工作记录中的“另一个worktree未提交”不是当前状态。原验收全过程及独有信息均可从该基线的CURRENT_TASK／STATUS追溯，不复制旧过程记录。
 
-[最终执行清单](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-repair-ngfuvuwq/manifest.json)SHA256为`ac4181e0a0d7a4dca506e4f2e416f20919197b380466fa76b5c42936f7b5590a`；1092份文件、154份证据、46份命令日志及源码归档摘要全部核对一致。[监督验收清单](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-repair-review-_7qauid1/review.json)保留1033份工程文件映射（排除docs／AGENTS），集合指纹为`b2ecf46968922eb6d70318b59224409b7a5c324b3c92ef59082b5d88d9571565`。
+- information是已批准的跨模块协调实现，命令命名空间不等于业务表所有者；原有retrieval／state／goals／memory等归属保持。已在[所有权正文](../architecture/ownership.md#implementation-packages)补齐实现包映射，不新增M16。
+- 共享记录原语及固定仓储声明移入persistence；原information路径保留同一符号的兼容导出，生产代码不再依赖兼容路径。
+- 用户进一步选择由Provider定义输入端口；已移除本轮新增的contracts包，输入端口放在provider/media_input.py，media适配器交接所需字节和有限校验能力，保留业务对象、原租约及实际完成通知。goals改用只读通知路由端口，移除对IdentityAuthority的具体依赖。
+- [架构测试](../../tests/architecture/test_import_boundaries.py)及[允许清单](../../tests/architecture/rules.py)约束导入、共享工具、媒体方向、权限方向及模型网络出口；持久层配置接入作为明确文件级例外，不宣称全部依赖图无环。
+- cognition中的梦境认知候选和dream运行控制职责不同；configuration文件数本身不能证明违反所有权。未合并数据所有者或改动持久格式。
 
-## 四项修复与复验
+## 目录整理的待答复事项
 
-| 已关闭问题 | 静态与执行证据 |
-| --- | --- |
-| 升级遗漏WAL | 独占资源下恢复／checkpoint、确认日志关闭后核对指纹；旧实例原生提交、主文件未变、强制退出后，陈旧候选在fencing前拒绝，原提交可确认 |
-| WS控制帧无界写入 | 所有实际写出共用缓冲预算，控制帧等待drain，超限abort并清理；真实不读socket的Ping洪泛峰值32698字节，关闭后缓冲归零 |
-| 宿主持久终态不可查询 | 原goals所有者按授权宿主／入口／路由投影，每页4计划、每计划至多2尝试；ACK回执丢失、三终态、分页、越权及独立进程重启核对通过，无新发送；协议与客户端同步 |
-| Web激活刷新丢失 | 两配置页面共用实例内原请求／激活ID续办；丢请求、超时、丢响应、消费者失败及双向切页均保持同一ID、单次保存 |
+自动审批拒绝了一次整库批量迁移，理由为大量移动／删除及导入重写缺乏分步验证。其余修复已按小范围独立修改推进。已提供[56个runtime文件的具体迁移清单](/private/tmp/iris-structure-repair/runtime-move-proposal.json)，建议进入`runtime/application/`的content、daily、managed、semantic、text、information、communication、dream八个子包；门控和持久调度记录等保留。已请求用户明确授权按该清单逐包迁移、同步导入／入口／文档并验证，答复前不执行该部分，不把目录问题写成已修复。
 
-[前次审查](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-review-87y5g6c9/review.json)与[前轮交付](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-complete-i_00r3lt/manifest.json)原样保留；原390份证据和109份命令日志再次核对一致。结合前轮完整审查与本轮21份修复差异，未发现新的阻塞问题。
+## 验证与交付
 
-## 最近验证与能力限制
+验证使用现有`iris-s2-z4e8arar:core` Linux arm64镜像、Python3.12.14／SQLite3.53.4及锁定Pyright1.1.413。源码只读挂载，以非root运行，外网关闭；本次输入端口复验无需秘密卷。
 
-执行者在同一Docker Linux arm64环境完成75项托管、13项关联及3项最终浏览器检查；锁定Pyright1.1.413全量0错误／警告，前端类型、浏览器类型和构建退出0。最终Pyright命令为`uv run --offline --no-sync python -m pyright --project pyproject.toml --pythonpath .venv/bin/python`。托管回归与负载期间仅浏览器夹具／测试两文件变化，运行源码及受测模块不变；最终浏览器已覆盖这两文件，46项命令的前后版本映射均核对。历史失败保留，不宣称全仓unittest或Pylance通过。
+Provider输入端口的最终回归18项通过，覆盖架构方向、跨库拒绝、内部媒体工作、取消后实际占用、门控竞争、完整材料、拒绝保护、图片编码／拒绝及宿主学习闭环；增加原生租约直接输入拒绝、原字节身份及释放后输入失效断言。全量Pyright1.1.413覆盖999文件、0错误／警告，退出0；初轮两处类型收窄诊断已修复，原始输出保留。未跑全仓unittest、真实供应商或Pylance。
 
-30分钟混合负载使用4 CPU／4GiB、正常后台调度：3582次查询中1782次一秒内成功（49.75%）；60次上传最终确认；120次发送及唯一接收，90个持久ACK、30个UNKNOWN，无重发。客户端89个COMMITTED及1个UNCONFIRMED回执按delivery_id与90个持久ACK逐项对应，不将未确认回执写成客户端确认。真实供应商请求0。负载与回归／浏览器／类型构建有重叠，不与前轮48.16%作隔离性能比较；准入和后台争用、原错误分布继续保留，不宣称生产性能或长期稳定性通过。
-
-升级仅覆盖精确当前托管前身；fencing前可中止准备，之后向前恢复，旧备份不是无损回退。浏览器续办限同一实例的保留会话存储，不外推跨设备或清除存储。清理证据记录本轮自有容器、秘密卷及镜像已移除。
-
-## 停止点
-
-本轮监督只核对源码、Git、原始证据和文档，未运行项目、测试、构建、容器或模型。仅维护CURRENT_TASK／STATUS；工程、原证据及其他既有文档差异保留。主仓库及worktree的git diff --check、17份差异文档的887处本地链接／锚点通过，工程1092份文件及154份证据再次核对一致。停止，不自动开展下一项工作或调度其他会话。
+当前输入端口版本的日志、命令、退出码、文件指纹与限制见[交付清单](/private/tmp/iris-provider-input-fj5l3f6v/manifest.json)。此前结构修复的39项不同成功检查、2项TLS跳过、1000文件类型检查及导入对比保留在[前版证据](/private/tmp/iris-structure-repair/manifest.json)，不作为当前版本重新执行结果。Provider→media保持零导入，不宣称全库无环。提交前核对工程文件与验证版本一致，仅更新提交授权及工作记录；本地提交后停止，runtime目录迁移仍待答复。

@@ -51,10 +51,14 @@ def make_host(root:Path,port:int,credentials:list,*,configuration_input=None,ent
 class DailyHostTests(unittest.IsolatedAsyncioTestCase):
     async def test_original_image_and_learning_share_one_host_and_complete_processing_cleanup(self):
         from io import BytesIO
+        from unittest.mock import patch
         from PIL import Image
         from companion_memory.ingress.events import event_identity
         from companion_memory.ingress.media_events import isolate_media_event
         from companion_memory.media.service import identity
+        from companion_memory.media.provider_source import image_input
+        from companion_memory.persistence.schema import InvalidValue
+        from companion_memory.provider.values import InvalidData
         image=BytesIO();Image.new('RGB',(48,32),(20,70,180)).save(image,format='PNG');raw_image=image.getvalue()
         outputs=({'schema_version':1,'text':'蓝色矩形。'},{'schema_version':1,'kind':'FINAL','actions':[]})
         credentials=[]
@@ -76,8 +80,24 @@ class DailyHostTests(unittest.IsolatedAsyncioTestCase):
                         value['media']=[{'reference_id':uid,'occurrence_id':identity('occurrence',mid,0),'modality':'IMAGE','interpretation':None}]
                     accepted=await entry.accept_event('accept-'+str(n),value);self.assertIs(type(accepted),Committed,accepted)
                 self.assertIs(type(await host.resume_learning('resume')),Committed)
-                learned=await entry.run_learning('learn')
+                supplied_inputs=[]
+                def adapt(lease):
+                    source=image_input(lease)
+                    self.assertIs(source.verify(None).data,lease.image.data)
+                    self.assertTrue(source.reader_active())
+                    for private in ('owner','work','blob','occurrence','reference','release'):
+                        self.assertFalse(hasattr(source,private),private)
+                    assert host.provider is not None
+                    with self.assertRaises(InvalidData):
+                        host.provider.image_request(lease,source.binding.operation_key)
+                    supplied_inputs.append(source)
+                    return source
+                with patch('companion_memory.runtime.daily_media.image_input',side_effect=adapt):
+                    learned=await entry.run_learning('learn')
                 self.assertIs(type(learned),Committed,learned);self.assertEqual(len(requests),2);self.assertFalse(failures)
+                self.assertEqual(len(supplied_inputs),1)
+                self.assertFalse(supplied_inputs[0].reader_active())
+                with self.assertRaises(InvalidValue):supplied_inputs[0].verify(None)
                 first=json.loads(requests[0]);second=json.loads(requests[1]);import base64
                 self.assertEqual(base64.b64decode(first['messages'][1]['content'][1]['image_url']['url'].split(',',1)[1]),raw_image)
                 material=json.loads(second['messages'][1]['content'])

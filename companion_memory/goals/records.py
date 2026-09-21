@@ -4,7 +4,7 @@ Initialization metadata binds the owner to a real database and configuration;
 empty business state is represented without manufacturing a goal or reminder.
 """
 from companion_memory.persistence import Field, RecordSchema, SequenceSchema, ScalarSchema
-from companion_memory.information.records import ID, COUNT, REVISION, TIME, VERSION, TEXT, choice
+from companion_memory.persistence.record_primitives import ID, COUNT, REVISION, TIME, VERSION, TEXT, choice
 
 METADATA = RecordSchema((Field('metadata_id', ID), Field('database_id', ID), Field('instance_id', ID),
     Field('config_snapshot_id', ID), Field('format_version', VERSION), Field('revision', VERSION), Field('initialized_at_us', TIME)))

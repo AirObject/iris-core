@@ -32,7 +32,7 @@ from companion_memory.retrieval.tickets import RecallAuthority, RecallTickets, T
 from companion_memory.retrieval.index import LocalIndex
 from companion_memory.retrieval.index_inputs import SCHEMAS as INDEX_SCHEMAS
 from companion_memory.state.service import StateOwner, SET_INPUT, UPDATE_INPUT, END_INPUT
-from .records import Record, ID, FACT, TARGETS, ITEMS, COMMAND_INPUT, choice, checked, integer, text, record, identity
+from companion_memory.persistence.record_primitives import Record, ID, FACT, TARGETS, ITEMS, COMMAND_INPUT, choice, checked, integer, text, record, identity
 from .errors import InformationResult, information_result, InformationError, InformationNotCommitted, InformationUnconfirmed, InformationRejected, RecallCommitted, rejected, storage_error
 from .formed_goals import FormedGoalAuthority
 from .local_recovery import LocalGoalRecovery
@@ -249,7 +249,7 @@ class ManagementAssembly:
                 or any(not valid_identifier(v) for v in (identity.binding_id, identity.principal_id, identity.host_id, identity.entry_id, *identity.route_ids))
                 or not time.monotonic() < identity.expires_at <= time.monotonic() + 3600):
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')
-        from .records import identity as stable_binding
+        from companion_memory.persistence.record_primitives import identity as stable_binding
         identity = replace(identity, binding_id=stable_binding('host_binding', self._configuration.database_id, self.goals.binding.instance_id if self.goals else '', identity.principal_id, identity.host_id, identity.entry_id, identity.binding_id))
         if identity.binding_id in self._ports:
             raise OwnerFailure('ACCESS_DENIED', 'capability', 'BINDING_MISMATCH')

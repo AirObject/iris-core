@@ -17,6 +17,8 @@ from companion_memory.persistence.content_codec import encode_content
 from companion_memory.memory.formats import record,sequence
 from companion_memory.media.daily_image import DailyImages,DailyImageLease
 from companion_memory.media.image_validation import ImageRejected
+from companion_memory.media.provider_source import image_input
+from companion_memory.provider.media_input import ImageInput
 from companion_memory.provider.daily_service import DailyProvider
 from .content_media import ContentMedia,MediaPolicy
 
@@ -29,6 +31,7 @@ class DailyMedia(ContentMedia):
         settings=runtime.assembly.configuration.candidate.text.record('media.image_understanding')
         self.policy=MediaPolicy(runtime.assembly.instance_id,cast(str,settings['profile_id']),cast(str,settings['prompt_ref']))
         self.images=DailyImages(self.media);self.closed=False;self._sending=None;self._task=None
+        self._sending_input: ImageInput | None = None
         self.media.integrity.notify=runtime.gate.invalidate_current
         image_work.bind(self.provider)
         image_work.images=self.images
@@ -44,10 +47,11 @@ class DailyMedia(ContentMedia):
     def authorize_request(self,request,uow):
         work=self._sending
         if self.closed or work is None or request.binding.role!='MEDIA' or not self.admitted() or self.runtime.gate.information_checkpoint() is None:return False
+        if request.material is not self._sending_input:return False
         description=request.description
         if (work['phase']!='READY_TO_REQUEST' or work['original_operation_key']!=description['original_request_key'] or work['work_id']!=description['work_id']
                 or work['deadline_at_us']!=description['deadline_at_us'] or time.time_ns()//1000>=cast(int,work['deadline_at_us'])):return False
-        try:self.images.verify(request.material,uow)
+        try:self.provider.verify_request_material(request,uow)
         except (InvalidValue,OwnerFailure):return False
         return True
 
@@ -94,14 +98,15 @@ class DailyMedia(ContentMedia):
             if type(lease) is not DailyImageLease:raise InvalidValue()
             request=None
             try:
-                request=provider.image_request(lease,key);self._sending=work
+                supplied=image_input(lease)
+                request=provider.image_request(supplied,key);self._sending=work;self._sending_input=supplied
                 sent=await provider.send_generation(request)
                 original=await provider.read_daily_request(key,'MEDIA',wid,time.monotonic()+5)
                 if type(original) is not Found:return sent
             finally:
                 if request is not None:
                     await provider.wait_generation_actual(request);provider.release_unused_generation(request)
-                self._sending=None;await self.images.wait_actual();self.images.release(lease)
+                self._sending=None;self._sending_input=None;await self.images.wait_actual();self.images.release(lease)
                 await provider.reconcile_daily_network()
         if type(original) is not Found:raise InvalidValue()
         request=original.value;rid=cast(str,request['object_id']);digest=cast(str,request['fingerprint'])

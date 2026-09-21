@@ -7,7 +7,7 @@ not in this protocol. Goal text and credentials never occur in notifications.
 """
 from types import MappingProxyType
 from companion_memory.persistence import Field, RecordSchema, SequenceSchema, ScalarSchema, BoundedTextSchema
-from companion_memory.information.records import ID, TIME, REVISION, VERSION, choice
+from companion_memory.persistence.record_primitives import ID, TIME, REVISION, VERSION, choice
 from .communication_records import EVENTS
 
 SUBPROTOCOL = 'iris.communication.v1'

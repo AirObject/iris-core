@@ -8,7 +8,7 @@ The listener installs the media adapters separately from these declarations.
 from dataclasses import dataclass
 from types import MappingProxyType
 from companion_memory.persistence import Field, RecordSchema, ScalarSchema, SequenceSchema, BoundedTextSchema
-from companion_memory.information.records import ID, TIME, REVISION, choice
+from companion_memory.persistence.record_primitives import ID, TIME, REVISION, choice
 from companion_memory.information.business import WRITE_KINDS, wire_schema
 from companion_memory.information.management import SCHEMAS as NATIVE
 from companion_memory.retrieval.tickets import CONSUME

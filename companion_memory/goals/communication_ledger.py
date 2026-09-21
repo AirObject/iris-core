@@ -16,15 +16,15 @@ from companion_memory.persistence.daily_results import FACT, target
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.logging_service import AuditRequirement
-from companion_memory.information.records import identity
+from companion_memory.persistence.record_primitives import identity
 from companion_memory.runtime.communication_gate import clock_from
 from .communication_records import TABLES, ATTEMPT_BINDING
 from .grace_clock import GraceWindow
+from .notification_port import NotificationRouteReader
 from .service import GoalsService, GoalTransaction, GoalAuthority, reminder_intent
 
 if TYPE_CHECKING:
     from companion_memory.runtime.content_assembly import ContentAssembly
-    from companion_memory.management.identity import IdentityAuthority
 
 INTENT = RecordSchema((Field('delivery_id', ID), Field('canonical_goal_id', ID), Field('revision', UINT),
     Field('kind', enum('UPCOMING', 'DUE')), Field('deadline', UINT), Field('observed_at', UINT),
@@ -40,7 +40,7 @@ def grace_from(value: Record) -> GraceWindow:
 
 class CommunicationLedger:
     """Static declarations and bounded participant access under existing owner leases."""
-    def __init__(self, content: ContentAssembly, goal_catalog, identity_owner: IdentityAuthority):
+    def __init__(self, content: ContentAssembly, goal_catalog, identity_owner: NotificationRouteReader):
         self.content, self.catalog, self.identity = content, goal_catalog, identity_owner
         self.goals: GoalsService | None = None
         self.active_policy: Callable[[], tuple[str, Record]] | None = None

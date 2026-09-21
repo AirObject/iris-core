@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, cast
 from companion_memory.persistence import Field, RecordSchema, ResultBoundCommandDefinition, UnitOfWork, Value
 from companion_memory.persistence.schema import freeze_value
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import COUNT, Record, record, integer
+from companion_memory.persistence.record_primitives import COUNT, Record, record, integer
 from companion_memory.persistence.semantic_records import ID,N,integer as bounded_integer
 if TYPE_CHECKING:
     from .content_assembly import ContentAssembly

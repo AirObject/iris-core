@@ -36,6 +36,7 @@ from .daily_network import DailyNetwork,NetworkPermit
 from .ledger import LedgerBinding,LedgerFailure,Mutation
 from .chat_transport import ChatTransport
 from .values import Record,as_record,dump,InvalidData,plain
+from .media_input import ImageInput
 if TYPE_CHECKING:
     from companion_memory.runtime.daily_trial_authorization import DailyTrialAuthorization
 
@@ -215,19 +216,17 @@ class DailyProvider(EmbeddingProvider):
         self._chat_requests[id(request)]=request
         return request
 
-    def image_request(self,lease,key:str) -> DailyRequest:
-        """Encode only a native media-issued, fully decoded original image lease."""
-        from companion_memory.media.daily_image import DailyImageLease
-        from companion_memory.memory.formats import record as native_record
+    def image_request(self,lease: ImageInput,key:str) -> DailyRequest:
+        """Encode only an adapter-bound, fully decoded original image input."""
         from .image_protocol import encode_deepseek_image,encode_minimax_image,IMAGE_SYSTEM,IMAGE_USER
-        if type(lease) is not DailyImageLease or self._closed or self._chat_requests:raise InvalidData()
-        if not lease.owner.media.matches_provider(self.storage,self.configuration.database_id,self.instance):raise InvalidData()
-        image=lease.owner.verify(lease);work=native_record(lease.work);binding=self.bindings['MEDIA']
-        if work['original_operation_key']!=key or work['prompt_revision']!=next(s['prompt_ref'] for s in cast(tuple[StoredRecord,...],self.configuration.candidate.text.record('provider.transport')['roles']) if s['role']=='MEDIA'):raise InvalidData()
+        if type(lease) is not ImageInput or self._closed or self._chat_requests:raise InvalidData()
+        if not lease.matches_provider(self.storage,self.configuration.database_id,self.instance):raise InvalidData()
+        image=lease.verify(None);work=lease.binding;binding=self.bindings['MEDIA']
+        if work.operation_key!=key or work.prompt_revision!=next(s['prompt_ref'] for s in cast(tuple[StoredRecord,...],self.configuration.candidate.text.record('provider.transport')['roles']) if s['role']=='MEDIA'):raise InvalidData()
         encoder=encode_minimax_image if binding.requested_model=='MiniMax-M3' else encode_deepseek_image
         wire=encoder(image,system=IMAGE_SYSTEM,text=IMAGE_USER)
         profile=next(p for p in self.profiles if p['material_role']=='MEDIA')
-        if profile['profile_id']!=work['profile_id']:raise InvalidData()
+        if profile['profile_id']!=work.profile_id:raise InvalidData()
         accounts=next(e.state.value for e in self.configuration.candidate.foundation.list_entries() if e.definition.key=='provider.accounts' and type(e.state) is PresentValue)
         account=next(as_record(a) for a in cast(tuple,accounts) if as_record(a)['account_id']==profile['account_id'])
         from companion_memory.persistence.semantic_records import record,ID,H,N,SequenceSchema,isolate
@@ -235,10 +234,10 @@ class DailyProvider(EmbeddingProvider):
             profile_id=ID,material_id=ID,material_digest=H,wire_digest=H,deadline_at_us=N,entry_ids=SequenceSchema(ID,1,1),
             occurrence_id=ID,blob_id=ID,generation=N,byte_count=N,descriptor_digest=H)
         description=isolate(shape,{'config':{'database_id':self.configuration.database_id,'instance_id':self.instance,'snapshot_id':self.configuration.snapshot_id},
-            'work_id':work['work_id'],'original_request_key':key,'role':'MEDIA','profile_id':profile['profile_id'],'material_id':lease.artifact_id,
-            'material_digest':image.sha256,'wire_digest':sha256(wire).hexdigest(),'deadline_at_us':work['deadline_at_us'],'entry_ids':(work['entry_id'],),
-            'occurrence_id':work['occurrence_id'],'blob_id':work['blob_id'],'generation':work['generation'],'byte_count':len(image.data),
-            'descriptor_digest':sha256(cast(str,work['original_request_descriptor']).encode()).hexdigest()})
+            'work_id':work.work_id,'original_request_key':key,'role':'MEDIA','profile_id':profile['profile_id'],'material_id':lease.artifact_id,
+            'material_digest':image.sha256,'wire_digest':sha256(wire).hexdigest(),'deadline_at_us':work.deadline_at_us,'entry_ids':(work.entry_id,),
+            'occurrence_id':work.occurrence_id,'blob_id':work.blob_id,'generation':work.generation,'byte_count':len(image.data),
+            'descriptor_digest':work.descriptor_digest})
         rid=identity('daily-request',self.instance,key);request=object.__new__(DailyRequest)
         for name,value in dict(owner=self,description=description,request_id=rid,attempt_id=identity('daily-attempt',rid,1),
                 fingerprint=sha256(encode_content(description,8192)).hexdigest(),wire=wire,material=lease,batch_id=None,binding=binding,account=account,profile=profile,
@@ -247,11 +246,10 @@ class DailyProvider(EmbeddingProvider):
 
     def verify_request_material(self,request:DailyRequest,uow:UnitOfWork|None=None):
         """Each native material owner rechecks its own actual immutable lease."""
-        from companion_memory.media.daily_image import DailyImageLease
         lease=request.material
-        if type(lease) is DailyImageLease:
+        if type(lease) is ImageInput:
             if request.binding.role!='MEDIA':raise InvalidData()
-            return lease.owner.verify(lease,uow)
+            return lease.verify(uow)
         if type(lease) is not DailyMaterialReadLease or request.binding.role=='MEDIA':raise InvalidData()
         return self.materials.verify_lease(lease,uow)
 
@@ -377,9 +375,8 @@ class DailyProvider(EmbeddingProvider):
                 if handoff is None or as_record(handoff['embedding_cleanup'])['state']!='RETIRED':return
             if self._chat_pending or self._chat_readers or self._chat_results or self._chat_cleanup:return
             if self._chat_input is not None:
-                from companion_memory.media.daily_image import DailyImageLease
                 lease=self._chat_input.material
-                if type(lease) is DailyImageLease:active=lease.owner.reader_active(lease)
+                if type(lease) is ImageInput:active=lease.reader_active()
                 elif type(lease) is DailyMaterialReadLease:active=lease.issuer.reader_active(lease)
                 else:raise InvalidData()
                 if active:return
@@ -740,10 +737,9 @@ class DailyProvider(EmbeddingProvider):
             await self.reconcile_daily_network()
             if self._chat_permit is not None:
                 if self.network is None:return False
-                from companion_memory.media.daily_image import DailyImageLease
                 if self._chat_input is not None:
                     lease=self._chat_input.material
-                    if type(lease) is DailyImageLease:active=lease.owner.reader_active(lease)
+                    if type(lease) is ImageInput:active=lease.reader_active()
                     elif type(lease) is DailyMaterialReadLease:active=lease.issuer.reader_active(lease)
                     else:raise InvalidData()
                     if active:return False

@@ -11,8 +11,8 @@ from companion_memory.configuration.text_persistence import StoredTextConfigurat
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration,stored_semantic_configuration_issue
 from companion_memory.persistence import PersistenceService, UnitOfWork
 from companion_memory.persistence.owned_statements import OwnerFailure, StatementCatalog
-from companion_memory.information.repository import OwnedRecords
-from companion_memory.information.records import Record, identity, fact, integer, text
+from companion_memory.persistence.record_repository import OwnedRecords
+from companion_memory.persistence.record_primitives import Record, identity, fact, integer, text
 from .repository import goal_layouts
 from companion_memory.configuration.daily_persistence import StoredDailyConfiguration, stored_daily_configuration_issue
 

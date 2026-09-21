@@ -8,7 +8,7 @@ from typing import cast, Literal
 from companion_memory.persistence import Field, RecordSchema, SequenceSchema
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import ID, TEXT, BOOL, Record, checked, record, text, choice
+from companion_memory.persistence.record_primitives import ID, TEXT, BOOL, Record, checked, record, text, choice
 from companion_memory.state.time_values import parse_reported_time
 from .lexical import StructuralFilter, WorldFilter
 

@@ -4,6 +4,8 @@
 
 适用主题与局部定义：逻辑请求与网络attempt分开。Provider拥有准入、尝试、usage、费用和预算执行状态；profile与价格配置真相属于配置模块。
 
+由Provider定义的媒体输入端口、media适配与可信装配、可执行导入限制统一见[依赖边界](../architecture/ownership.md#executable-boundaries)。
+
 设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[全部实现表达规范](../CODING_STANDARDS.md)；[详细工程设计：Provider能力、调用控制、计量与安全](../architecture/provider.md)；[详细工程设计：内部上下文、批处理与成本控制](../architecture/context-and-cost.md)。

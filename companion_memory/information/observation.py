@@ -30,7 +30,7 @@ from companion_memory.goals.service import GoalsService
 from companion_memory.state.service import StateOwner
 from companion_memory.retrieval.tickets import RecallTickets
 from companion_memory.runtime.content_service import ContentRuntimeService
-from .records import Record
+from companion_memory.persistence.record_primitives import Record
 from .errors import InformationError, InformationRejected, rejected
 
 

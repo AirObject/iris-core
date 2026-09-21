@@ -17,7 +17,7 @@ from companion_memory.logging_service import AuditRequirement
 from companion_memory.cognition.candidates import Candidate
 from companion_memory.goals.service import GoalsService, GoalAuthority
 from companion_memory.memory.transactions import MemoryTransactions, ApplyScope
-from companion_memory.information.records import Record, FACT, ID, record, text, integer, identity, fact
+from companion_memory.persistence.record_primitives import Record, FACT, ID, record, text, integer, identity, fact
 if TYPE_CHECKING:
     from .content_assembly import ContentAssembly
 

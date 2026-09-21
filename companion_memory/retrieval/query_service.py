@@ -31,7 +31,7 @@ from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.runtime.content_service import ContentRuntimeService
 from companion_memory.state.service import StateOwner
 from companion_memory.goals.service import GoalsService
-from companion_memory.information.records import Record, integer, text, record
+from companion_memory.persistence.record_primitives import Record, integer, text, record
 from companion_memory.information.management import ManagementAssembly, ManagementPort, HostIdentity
 from companion_memory.information.errors import InformationResult, information_result, InformationError, InformationNotCommitted, RecallCommitted, InformationUnconfirmed, rejected
 from .index import LocalIndex

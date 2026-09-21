@@ -17,7 +17,7 @@ from companion_memory.persistence.deadlines import DeadlineScope,current_deadlin
 from companion_memory.persistence.completion import CompletionScope,start_owned
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.persistence.semantic_records import Record,identity,isolate,string,number
-from companion_memory.information.records import COMMAND_INPUT
+from companion_memory.persistence.record_primitives import COMMAND_INPUT
 from companion_memory.memory.formats import record
 from companion_memory.ingress.events import plain
 from companion_memory.retrieval.semantic_commands import PAYLOADS

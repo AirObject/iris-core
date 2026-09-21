@@ -17,7 +17,7 @@ from types import MappingProxyType
 from typing import cast, TYPE_CHECKING
 if TYPE_CHECKING:
     from .stored_media import StoredMediaAuthority, StoredMediaAuthorized
-    from companion_memory.media.service import MediaError
+    from .media_input import MediaInputError
 
 from companion_memory.configuration import EffectiveSnapshot, PresentValue, provider_snapshot_issue
 from companion_memory.logging_service import Logger
@@ -554,11 +554,11 @@ class ProviderService:
 
     def bind_stored_media_authority(self, media: object, caller_scope: str, result_owner: str) -> StoredMediaAuthority:
         """Trusted assembly binds the actual same-database media owner exclusively."""
-        from companion_memory.media.service import MediaService
+        from .media_input import StoredMediaSource
         from .stored_media import StoredMediaAuthority
-        if (self._state != 'READY' or type(media) is not MediaService or self._binding is None
+        if (self._state != 'READY' or type(media) is not StoredMediaSource or self._binding is None
                 or not media.matches_provider(self._ledger.storage, self._ledger.database_id, caller_scope) or result_owner != 'media'
-                or len(self._stored_authorities) >= media.settings.integer('media.processing_concurrency')):
+                or len(self._stored_authorities) >= media.capacity()):
             raise ValueError('The native media owner, database, scope and result owner must match.')
         authority = object.__new__(StoredMediaAuthority)
         for name, value in (('_provider', self), ('_media', media), ('_scope', caller_scope), ('_owner', result_owner)):
@@ -566,19 +566,19 @@ class ProviderService:
         self._stored_authorities[id(authority)] = authority
         return authority
 
-    async def _authorize_stored(self, authority: StoredMediaAuthority, work_id: object, occurrence_id: object) -> StoredMediaAuthorized | MediaError:
-        from companion_memory.media.processing_bytes import read_processing_bytes, ProcessingBytes
-        from companion_memory.media.service import MediaError
+    async def _authorize_stored(self, authority: StoredMediaAuthority, work_id: object, occurrence_id: object) -> StoredMediaAuthorized | MediaInputError:
+        from .media_input import MediaBytes
+        from .media_input import MediaInputError
         from .stored_media import StoredMediaAuthorized
-        if self._state != 'READY': return MediaError('INVALID_STATE', 'authorize_stored_media', 'state', 'NOT_READY')
+        if self._state != 'READY': return MediaInputError('INVALID_STATE', 'authorize_stored_media', 'state', 'NOT_READY')
         if not is_identifier(work_id) or not is_identifier(occurrence_id):
-            return MediaError('ACCESS_DENIED', 'authorize_stored_media', 'capability', 'BINDING_MISMATCH')
+            return MediaInputError('ACCESS_DENIED', 'authorize_stored_media', 'capability', 'BINDING_MISMATCH')
         for handle, (binding, work, occurrence) in self._stored_media.items():
             if binding is authority and work == work_id and occurrence == occurrence_id:
                 return StoredMediaAuthorized(handle, handle._artifact)
         pending_key = (id(authority), cast(str, work_id), cast(str, occurrence_id))
-        if pending_key in self._stored_pending or len(self._stored_media) + len(self._stored_pending) >= authority._media.settings.integer('media.processing_concurrency'):
-            return MediaError('RESOURCE_BUSY', 'authorize_stored_media', 'state', 'ADMISSION_FULL')
+        if pending_key in self._stored_pending or len(self._stored_media) + len(self._stored_pending) >= authority._media.capacity():
+            return MediaInputError('RESOURCE_BUSY', 'authorize_stored_media', 'state', 'ADMISSION_FULL')
         self._stored_pending.add(pending_key)
         completion = CompletionScope()
         def ended() -> None:
@@ -592,10 +592,10 @@ class ProviderService:
             # descendants still notify this owner after their actual completion.
             completion.when_ended(ended)
         data = read.result
-        if type(data) is MediaError: return data
-        assert type(data) is ProcessingBytes
+        if type(data) is MediaInputError: return data
+        assert type(data) is MediaBytes
         if self._state != 'READY' or self._stored_authorities.get(id(authority)) is not authority:
-            return MediaError('INVALID_STATE', 'authorize_stored_media', 'state', 'SERVICE_CLOSED')
+            return MediaInputError('INVALID_STATE', 'authorize_stored_media', 'state', 'SERVICE_CLOSED')
         handle = object.__new__(AuthorizedMedia)
         for name, value in (('_issuer', self), ('_scope', authority._scope), ('_owner', authority._owner),
                 ('_artifact', data.artifact_id), ('_content', data.content), ('_modality', data.modality)):

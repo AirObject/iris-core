@@ -17,7 +17,7 @@ from companion_memory.persistence import Committed, Found, NotFound, UnitOfWork
 from companion_memory.persistence.owned_statements import OwnerFailure
 from companion_memory.persistence.schema import valid_identifier
 from .errors import InformationRejected, InformationNotCommitted, InformationUnconfirmed, rejected
-from .records import Record, checked, text
+from companion_memory.persistence.record_primitives import Record, checked, text
 if TYPE_CHECKING:
     from .management import ManagementPort
 

@@ -1,6 +1,6 @@
 """Closed externally reported activity state and the sole current pointer."""
 from companion_memory.persistence import Field, RecordSchema, ScalarSchema
-from companion_memory.information.records import ID, REVISION, TIME, TEXT
+from companion_memory.persistence.record_primitives import ID, REVISION, TIME, TEXT
 OFFSET = ScalarSchema('integer', -1439, 1439)
 STATE_FIELD = RecordSchema((Field('value', TEXT(512)), Field('started_at', TIME, nullable=True),
     Field('first_reported_at', TIME), Field('updated_at', TIME), Field('offset_minutes', OFFSET)))

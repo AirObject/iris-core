@@ -1,6 +1,6 @@
 # 实际工作状态
 
-最新工程技术验收为2026-09-18的[Core外部通信补全](../architecture/external-communication.md)，四项阻塞复验关闭；工程仍在`/Users/cassia/.codex/worktrees/5b4a/iris_memory_core`的detached工作区，未提交、推送、合并或部署。基线为已提交main的管理交付`71e9a122f67e06c4f8ce478862d5315f840ebd34`；该管理交付的精确版本及收尾依据见[提交记录](/private/tmp/iris-managed-acceptance-qgz7gulo/commit-confirmation.json)。工程验收不等于生产性能或供应商质量通过，旧真实请求及停止状态继续保留。
+最新整阶段工程技术验收仍为2026-09-18的[Core外部通信补全](../architecture/external-communication.md)。截至本轮开始，外部通信源码已提交为`1f2cc1e`，文档为`9d483c7384836b94e5433a9bd1045a16b6a56bc8`；主仓库main包含两者，不再处于旧记录所述的独立worktree未提交状态。2026-09-21结构问题核查与定点修复经用户授权纳入本次本地提交（父提交`9d483c7`，精确版本见本页Git提交记录）；用户选择的Provider自定义输入端口已替代新增contracts包，18项回归及全量类型检查通过。授权、版本证据及待答复目录迁移见[CURRENT_TASK](CURRENT_TASK.md)，不记作完整结构重构验收。旧真实请求与性能限制保持。
 
 本页只记录已交付能力、对应版本和仍有效的限制。当前实施授权及停止点见[CURRENT_TASK](CURRENT_TASK.md)，后续顺序见[剩余路线](../architecture/implementation-options.md#source-line-1202)。
 
@@ -23,7 +23,7 @@
 | 日常认知统一宿主、图片准备、有界工具、六类候选、SUBJECT来源、目标合并、persona导入与初始化续办；工程验收，真实验证有限 | `abd7717393b713d4369f1b3ac4d5245d08dea0e3` | 844份受测文件；本轮60个具名成功检查按版本复用，最终Pyright776文件零诊断；真实图片2成功、学习1失败后停止 |
 | 梦境与长期维护：原生调度、来源影响、时间衰减／到期删除、周期persona、管理控制及回流恢复 | `e37e2f7bb467246d4d34ea7a43a75ca5df991f00` | Docker Linux arm64 37项具名检查按版本对应通过；最终Pyright867份Python零诊断；876份工程指纹一致 |
 | 受保护引导、本地管理员／独立宿主令牌、管理Web／独立审计、配置激活回退、一致备份恢复及兼容升级 | 管理交付提交（父`e37e2f7`，精确版本见本页提交记录） | 973份工程指纹核对；本轮8项定点通过，关联结果及同版本复跑分别记录；锁定全量Pyright零诊断，实际浏览器及前轮版本化证据复用 |
-| Core外部通信：HTTP媒体／协议客户端、WS／ACK／可信路由与恢复、Web外部连接／配置续办、TLS代理及显式托管升级 | 基线`71e9a122`上的未提交工程，集合指纹见下文 | 75项托管、13项关联、3项最终浏览器；锁定全量Pyright及前端类型／构建通过，30分钟混合负载；四项修复与前轮证据按版本核对 |
+| Core外部通信：HTTP媒体／协议客户端、WS／ACK／可信路由与恢复、Web外部连接／配置续办、TLS代理及显式托管升级 | 源码`1f2cc1e`／文档`9d483c7`；原验收集合指纹见下文 | 75项托管、13项关联、3项最终浏览器；锁定全量Pyright及前端类型／构建通过，30分钟混合负载；四项修复与前轮证据按版本核对 |
 
 2026-09-18：[外部通信](../architecture/external-communication.md)完整工程范围通过最终监督技术验收。[最终清单](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-repair-ngfuvuwq/manifest.json)的1092份文件、154份证据和46份命令日志摘要一致；[监督验收](/var/folders/vr/xq2gyj_j1w5f2rbw5h06rtqw0000gn/T/iris-communication-repair-review-_7qauid1/review.json)保存1033份工程文件集合指纹`b2ecf46968922eb6d70318b59224409b7a5c324b3c92ef59082b5d88d9571565`。WAL陈旧候选拒绝、控制帧有界背压、授权路由持久终态分页及Web原激活续办均复验关闭，未发现新的阻塞问题；前轮完整审查及未受影响证据按版本复用，历史失败保留。75项托管、13项关联和3项浏览器通过；托管回归期间仅两份浏览器文件变化，最终浏览器已覆盖，运行源码不变。Pyright1.1.413全量零诊断，前端类型／构建通过；未重跑全仓unittest，Pylance未验证。监督只做静态和证据审查，真实供应商请求0；仍未提交或实切生产。
 

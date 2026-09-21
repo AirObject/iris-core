@@ -58,7 +58,8 @@ class InternalWorkTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(descriptor_leaf['body'], work['original_request_descriptor'])
                     self.assertLessEqual(len(cast(str, descriptor_leaf['body']).encode()), 4096)
                     descriptor = as_record(freeze(decode_content(cast(str, work['original_request_descriptor']).encode(), 8192), 8192))
-                    authority = fixture.provider.bind_stored_media_authority(media, 'instance', 'media')
+                    from companion_memory.media.provider_source import stored_media_source
+                    authority = fixture.provider.bind_stored_media_authority(stored_media_source(media), 'instance', 'media')
                     authorized = await authority.authorize_stored_media(wid, occurrence_id)
                     assert type(authorized) is StoredMediaAuthorized, authorized
                     grant = WorkGrant('media', 'instance', None, 'MEDIA', ('sample_media',), ('MEDIA_UNDERSTANDING',), 'media', 'scheduler', ('run',), ('entry',), prompt_revisions=('describe:1',))

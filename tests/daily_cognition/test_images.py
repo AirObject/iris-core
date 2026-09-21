@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from PIL import Image
 from companion_memory.media.image_validation import ImageLimits,CheckedImage,ImageRejected,validate_image
+from companion_memory.media.provider_source import image_content
 from companion_memory.provider.image_protocol import IMAGE_SYSTEM,IMAGE_USER,encode_deepseek_image,encode_minimax_image,decode_image_output
 from companion_memory.provider.values import InvalidData
 from .materials import png_bytes,pixel,_chunk,write_materials
@@ -36,8 +37,8 @@ class ImageTests(unittest.TestCase):
         for raw in (buffer.getvalue(),png_bytes('A')):
             image=validate_image(raw,LIMITS);self.assertIsInstance(image,CheckedImage)
             if type(image) is not CheckedImage:raise AssertionError(image)
-            deep=json.loads(encode_deepseek_image(image,system=IMAGE_SYSTEM,text=IMAGE_USER))
-            mini=json.loads(encode_minimax_image(image,system=IMAGE_SYSTEM,text=IMAGE_USER))
+            deep=json.loads(encode_deepseek_image(image_content(image),system=IMAGE_SYSTEM,text=IMAGE_USER))
+            mini=json.loads(encode_minimax_image(image_content(image),system=IMAGE_SYSTEM,text=IMAGE_USER))
             self.assertEqual(set(deep),{'model','messages','max_tokens','stream','thinking','response_format'})
             self.assertEqual(set(mini),{'model','messages','max_completion_tokens','stream','thinking','reasoning_split'})
             self.assertIn('json',deep['messages'][0]['content'].lower())
@@ -52,7 +53,7 @@ class ImageTests(unittest.TestCase):
         self.assertEqual(len(raw),1048576)
         image=validate_image(raw,LIMITS);self.assertIsInstance(image,CheckedImage)
         if type(image) is not CheckedImage:raise AssertionError(image)
-        wire=encode_deepseek_image(image,system=IMAGE_SYSTEM,text=IMAGE_USER)
+        wire=encode_deepseek_image(image_content(image),system=IMAGE_SYSTEM,text=IMAGE_USER)
         self.assertLessEqual(len(wire),2097152)
         self.assertEqual(sha256(base64.b64decode(json.loads(wire)['messages'][1]['content'][1]['image_url']['url'].split(',')[1])).hexdigest(),sha256(raw).hexdigest())
         self.assertEqual(validate_image(raw+b'x',LIMITS),ImageRejected('IMAGE_LIMIT_EXCEEDED'))

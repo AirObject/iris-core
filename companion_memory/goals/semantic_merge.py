@@ -9,7 +9,7 @@ from types import MappingProxyType
 from companion_memory.persistence import UnitOfWork
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import Record,integer,text
+from companion_memory.persistence.record_primitives import Record,integer,text
 from .service import GoalsService,GoalTransaction
 
 STRUCTURE=('entry_id','subject_ids','world_scope','deadline','reminder_lead_seconds','route_id')

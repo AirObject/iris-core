@@ -15,7 +15,7 @@ from urllib.parse import parse_qsl
 from companion_memory.information.observation import InformationObserver
 from companion_memory.information.business import InformationPort, BusinessPending
 from companion_memory.information.errors import InformationError, InformationRejected, InformationNotCommitted, InformationUnconfirmed
-from companion_memory.information.records import Record
+from companion_memory.persistence.record_primitives import Record
 from companion_memory.persistence import Found, NotFound, Committed, Value
 from companion_memory.persistence.content_codec import encode_content, decode_content
 from companion_memory.persistence.deadlines import DeadlineScope

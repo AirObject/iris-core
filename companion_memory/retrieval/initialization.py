@@ -10,8 +10,8 @@ from companion_memory.configuration.semantic_persistence import StoredSemanticCo
 from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
 from companion_memory.persistence import PersistenceService, UnitOfWork
 from companion_memory.persistence.owned_statements import StatementCatalog, OwnerFailure
-from companion_memory.information.records import Record, fact, integer
-from companion_memory.information.repository import OwnedRecords
+from companion_memory.persistence.record_primitives import Record, fact, integer
+from companion_memory.persistence.record_repository import OwnedRecords
 from .repository import layouts
 
 

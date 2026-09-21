@@ -1,7 +1,7 @@
 """Owner-issued image bytes tied to actual PROCESSING references and full decode.
 
-The Provider borrows this capability; it never reads paths or reconstructs a
-media owner. Original file work and decode run on the existing media worker.
+The input adapter retains this capability and exposes finite checks to Provider.
+Original file work and decode run on the existing media worker.
 """
 from __future__ import annotations
 from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
@@ -13,6 +13,7 @@ from typing import cast
 from companion_memory.persistence.completion import start_owned
 from companion_memory.persistence.owned_statements import BoundStatements,OwnerFailure
 from companion_memory.persistence.schema import InvalidValue
+from companion_memory.persistence import PersistenceService, UnitOfWork
 from companion_memory.persistence.daily_records import Record
 from companion_memory.persistence.content_codec import decode_content
 from companion_memory.memory.formats import record
@@ -39,6 +40,10 @@ class DailyImages:
         if type(media) is not MediaService or (type(media.configuration) is not StoredDailyConfiguration and type(media.configuration) is not StoredDreamConfiguration and type(media.configuration) is not StoredManagedConfiguration):raise InvalidValue()
         self.media=media;self.views=BoundStatements(media.catalog,media.storage,'provider');self._lease:DailyImageLease|None=None;self._task:asyncio.Task|None=None;self.closed=False
         self._rejection:tuple[Record,ImageRejected]|None=None
+
+    def matches_provider(self, storage: PersistenceService, database_id: str, instance_id: str) -> bool:
+        """Expose only the original owner/database binding check to the consumer."""
+        return self.media.matches_provider(storage, database_id, instance_id)
 
     async def acquire(self,work_id:str,deadline:float):
         if self.closed or self._lease is not None or self._task is not None or self._rejection is not None:raise OwnerFailure('RESOURCE_BUSY','media','CLEANUP_PENDING',True)
@@ -112,7 +117,7 @@ class DailyImages:
         if self._task is not None:raise OwnerFailure('RESOURCE_BUSY','media','CLEANUP_PENDING',True)
         self._rejection=None
 
-    def verify(self,lease:DailyImageLease,uow=None):
+    def verify(self,lease:DailyImageLease,uow: UnitOfWork | None = None):
         if self.closed or type(lease) is not DailyImageLease or lease is not self._lease or lease.owner is not self or sha256(lease.image.data).hexdigest()!=lease.image.sha256:raise InvalidValue()
         if uow is not None:
             work=record(lease.work)

@@ -8,7 +8,7 @@ from types import MappingProxyType
 from companion_memory.persistence import Value
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.schema import ValueTooLarge
-from companion_memory.information.records import Record
+from companion_memory.persistence.record_primitives import Record
 
 
 def bounded_items(items: tuple[Record, ...], budget: int, metadata: dict[str, Value] | None = None) -> tuple[tuple[Record, ...], int]:

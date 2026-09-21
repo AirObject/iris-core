@@ -17,7 +17,7 @@ from companion_memory.persistence import (AuditFieldBinding, AuditResultBinding,
     ResultBoundCommandDefinition, ResultBoundCommand, UnitOfWork, PersistenceService, Committed, Found, NotFound, NotCommitted,
     Rejected, Failed, Unconfirmed, RecoveryHandle)
 from companion_memory.persistence.owned_statements import OwnerFailure
-from .records import Record, ID, TIME, TEXT, FACT, TARGETS, integer, text, record, checked, choice, COMMAND_INPUT, ITEMS
+from companion_memory.persistence.record_primitives import Record, ID, TIME, TEXT, FACT, TARGETS, integer, text, record, checked, choice, COMMAND_INPUT, ITEMS
 
 
 class InitializableOwner(Protocol):

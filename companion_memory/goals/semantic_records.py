@@ -2,7 +2,7 @@
 from companion_memory.persistence.daily_records import BASE,DailyTable,Field,RecordSchema,ScalarSchema,ID,UINT,REVISION,DIGEST,OPERATION,IndexSpec,enum,daily_catalog
 from companion_memory.persistence.schema import BoundedTextSchema,InvalidValue,SequenceSchema
 from companion_memory.persistence.content_codec import decode_content
-from companion_memory.information.records import checked
+from companion_memory.persistence.record_primitives import checked
 
 CHOICE=enum('DISTINCT','UNSURE','MERGE')
 OUTPUT=RecordSchema((Field('schema_version',ScalarSchema('integer',1,1)),Field('decision',CHOICE),

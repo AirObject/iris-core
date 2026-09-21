@@ -6,7 +6,7 @@ retained by the single Provider owner, never supplied as a caller's mutation.
 from collections.abc import Callable
 from companion_memory.persistence import ResultBoundCommandDefinition,RepositoryDefinition,UnitOfWork,Field,RecordSchema,AuditFieldBinding,AuditResultBinding
 from companion_memory.persistence.semantic_records import ID,H,P,N,REQUEST,RECEIPT,Record,record,enum
-from companion_memory.information.records import TARGETS
+from companion_memory.persistence.record_primitives import TARGETS
 from companion_memory.logging_service import AuditRequirement
 from .ledger import CHANGE
 

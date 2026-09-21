@@ -10,7 +10,7 @@ from companion_memory.persistence.daily_records import Record
 from companion_memory.persistence.completion import start_owned
 from companion_memory.persistence.deadlines import DeadlineScope
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import identity
+from companion_memory.persistence.record_primitives import identity
 from companion_memory.management.communication_sessions import Delivery, Subscription
 from companion_memory.configuration.communication_configuration import policy
 

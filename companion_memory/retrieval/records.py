@@ -4,7 +4,7 @@ Ticket payload expiry does not remove consumption or confirmation evidence.
 Index postings contain no previous memory text and do not authorize a read.
 """
 from companion_memory.persistence import Field, RecordSchema, ScalarSchema
-from companion_memory.information.records import ID, COUNT, REVISION, TIME, VERSION, TEXT, choice
+from companion_memory.persistence.record_primitives import ID, COUNT, REVISION, TIME, VERSION, TEXT, choice
 
 TICKET = RecordSchema(tuple(Field(n, ID) for n in ('recall_id', 'database_id', 'instance_id', 'principal_binding_id', 'host_id', 'entry_id', 'config_snapshot_id', 'request_key')) +
     (Field('version', VERSION), Field('query_mode', choice('NORMAL', 'DEEP')), Field('issued_at_us', TIME), Field('expires_at_us', TIME), Field('clock_observation', TIME),

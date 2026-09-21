@@ -1,6 +1,6 @@
 """Finite index step payloads; no SQL, expression or unbounded object list."""
 from companion_memory.persistence import Field, RecordSchema, SequenceSchema
-from companion_memory.information.records import ID, REVISION, BOOL, TEXT, choice
+from companion_memory.persistence.record_primitives import ID, REVISION, BOOL, TEXT, choice
 
 BEGIN = RecordSchema((Field('expected_generation', ID, nullable=True),))
 CLAIM = RecordSchema((Field('generation_id', ID), Field('expected_revision', REVISION), Field('owner_id', ID)))

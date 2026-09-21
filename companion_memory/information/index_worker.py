@@ -21,7 +21,7 @@ from companion_memory.retrieval.lexical import normalize_material, object_text
 from companion_memory.runtime.content_service import ContentRuntimeService
 from .errors import InformationError, InformationRejected, InformationNotCommitted, rejected
 from .management import ManagementPort
-from .records import Record, checked, identity, integer, text
+from companion_memory.persistence.record_primitives import Record, checked, identity, integer, text
 from companion_memory.retrieval.index_inputs import SCHEMAS
 
 

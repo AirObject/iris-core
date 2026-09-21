@@ -15,7 +15,7 @@ from companion_memory.runtime.content_service import ContentRuntimeService
 from companion_memory.goals.service import GoalsService
 from companion_memory.retrieval.tickets import RecallTickets
 from .management import ManagementPort
-from .records import Record, record, text, identity
+from companion_memory.persistence.record_primitives import Record, record, text, identity
 from .errors import InformationError, InformationRejected, InformationNotCommitted, rejected
 
 

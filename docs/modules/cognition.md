@@ -6,6 +6,8 @@
 
 适用主题与局部定义：认知加工提出候选变更；正式状态转换由记忆等数据所有者执行，Provider持有尝试账本。
 
+梦境认知候选与梦境运行控制的归属，见[实现包对应](../architecture/ownership.md#implementation-packages)；不能只按文件前缀合并所有权。
+
 设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[全部实现表达规范](../CODING_STANDARDS.md)；[产品：入口队列、冻结批次、终结与学习](../product/batches-and-learning.md)；[产品：批次来源、正式记忆与关系](../product/provenance-and-memory.md)；[详细工程设计：内部上下文、批处理与成本控制](../architecture/context-and-cost.md)；[详细工程设计：Provider能力、调用控制、计量与安全](../architecture/provider.md)。

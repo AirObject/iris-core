@@ -14,7 +14,7 @@ from companion_memory.configuration.content_persistence import StoredContentConf
 from companion_memory.provider.terminal_evidence import VerifiedTerminal
 from companion_memory.memory.formats import ID, VERSION, enum, isolate
 from companion_memory.goals.inputs import INJECT
-from companion_memory.information.records import Record, record
+from companion_memory.persistence.record_primitives import Record, record
 from .synthetic_mutations import SyntheticMutationInput
 from .synthetic_mixed import SyntheticMixedInput
 from .candidates import Candidate, isolate_candidate, manifest_digest, stable_identity

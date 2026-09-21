@@ -17,7 +17,7 @@ from companion_memory.goals.service import GoalsService
 from companion_memory.goals.loopback import TestReminderRoute, send_test_intent
 from companion_memory.runtime.content_service import ContentRuntimeService
 from .management import ManagementAssembly, ManagementPort
-from .records import Record, identity, integer, text
+from companion_memory.persistence.record_primitives import Record, identity, integer, text
 from .errors import InformationError, rejected
 
 

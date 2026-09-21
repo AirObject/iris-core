@@ -11,8 +11,8 @@ from companion_memory.configuration.semantic_persistence import StoredSemanticCo
 from companion_memory.configuration.daily_persistence import StoredDailyConfiguration
 from companion_memory.persistence import Field, RecordSchema, PersistenceService, UnitOfWork, Value
 from companion_memory.persistence.owned_statements import StatementCatalog, OwnerFailure
-from companion_memory.information.records import Record, ID, TIME, TEXT, REVISION, BOOL, checked, fact, identity, integer, text, record, decode
-from companion_memory.information.repository import OwnedRecords
+from companion_memory.persistence.record_primitives import Record, ID, TIME, TEXT, REVISION, BOOL, checked, fact, identity, integer, text, record, decode
+from companion_memory.persistence.record_repository import OwnedRecords
 from .records import ACTIVITY, POINTER, STATE_FIELD, OFFSET
 from .repository import LAYOUTS
 from .time_values import duration_view

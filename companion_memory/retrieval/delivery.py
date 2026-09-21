@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-from companion_memory.information.records import Record
+from companion_memory.persistence.record_primitives import Record
 import time
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure

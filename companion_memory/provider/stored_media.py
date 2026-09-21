@@ -8,30 +8,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from companion_memory.media.service import MediaService
+    from .media_input import StoredMediaSource
     from .resources import AuthorizedMedia
     from .service import ProviderService
-    from companion_memory.media.service import MediaError
+    from .media_input import MediaInputError
 
 
 @dataclass(frozen=True, slots=True, weakref_slot=True, init=False)
 class StoredMediaAuthority:
     """Trusted media owner binding for one database, scope and result owner."""
     _provider: ProviderService
-    _media: MediaService
+    _media: StoredMediaSource
     _scope: str
     _owner: str
 
     def __init__(self): raise TypeError('Stored byte authority requires native trusted assembly.')
 
-    async def authorize_stored_media(self, work_id: object, occurrence_id: object) -> StoredMediaAuthorized | MediaError:
+    async def authorize_stored_media(self, work_id: object, occurrence_id: object) -> StoredMediaAuthorized | MediaInputError:
         """Read and verify protected bytes; no caller-supplied hash grants access."""
         from .service import ProviderService
-        from companion_memory.media.service import MediaError
+        from .media_input import MediaInputError
         try: provider = object.__getattribute__(self, '_provider')
         except AttributeError: provider = None
         if type(self) is not StoredMediaAuthority or type(provider) is not ProviderService or provider._stored_authorities.get(id(self)) is not self:
-            return MediaError('ACCESS_DENIED', 'authorize_stored_media', 'capability', 'BINDING_MISMATCH')
+            return MediaInputError('ACCESS_DENIED', 'authorize_stored_media', 'capability', 'BINDING_MISMATCH')
         return await provider._authorize_stored(self, work_id, occurrence_id)
 
     def release_media_authorization(self, media: object) -> bool:

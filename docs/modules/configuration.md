@@ -4,6 +4,8 @@
 
 适用主题与局部定义：注册表定义参数元信息；版本、不可变快照与生效计划不同。当前状态、目标、已使用预算属于业务对象。
 
+配置持久适配与I01读取快照／核验原签发者的文件级接入限制，见[可执行依赖边界](../architecture/ownership.md#executable-boundaries)。
+
 设计／审核参考：[冻结原始文档](../reference/companion_memory_module_design_provider_logging_config.md)。仅供追溯，不作为现行约束。
 
 按关联工作联合阅读：[全部实现表达规范](../CODING_STANDARDS.md)；[产品：待细化契约、参数性质与实施组织](../product/decisions-and-delivery.md)；[详细工程设计：统一配置注册表、快照与安全热修改](../architecture/configuration.md)。

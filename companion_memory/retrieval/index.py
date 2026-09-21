@@ -11,7 +11,7 @@ from threading import RLock
 from companion_memory.persistence import UnitOfWork, Value, OperationPort
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import Record, checked, record, text, integer, identity, fact
+from companion_memory.persistence.record_primitives import Record, checked, record, text, integer, identity, fact
 from companion_memory.memory.information_tracking import MemoryInformation
 from .initialization import RetrievalOwner
 from .index_inputs import SCHEMAS

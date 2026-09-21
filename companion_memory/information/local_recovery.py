@@ -8,7 +8,7 @@ from companion_memory.persistence import Committed, Found
 from companion_memory.persistence.completion import CompletionScope
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure
-from .records import Record, checked, identity, text
+from companion_memory.persistence.record_primitives import Record, checked, identity, text
 from .errors import InformationResult, rejected
 if TYPE_CHECKING:
     from .management import ManagementAssembly, ManagementPort

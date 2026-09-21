@@ -11,7 +11,7 @@ from threading import RLock
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence import UnitOfWork, Field, RecordSchema, SequenceSchema, Value
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import Record, ID, REVISION, TIME, checked, integer, text, record, fact
+from companion_memory.persistence.record_primitives import Record, ID, REVISION, TIME, checked, integer, text, record, fact
 from companion_memory.memory.service import MemoryReadPort, MemoryService
 from companion_memory.configuration.daily_persistence import StoredDailyConfiguration,stored_daily_configuration_issue
 from companion_memory.configuration.semantic_persistence import StoredSemanticConfiguration

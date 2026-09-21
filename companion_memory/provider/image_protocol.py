@@ -7,7 +7,7 @@ must bind the resulting digest to the native media lease and Provider ledger.
 from base64 import b64encode
 from hashlib import sha256
 from types import MappingProxyType
-from companion_memory.media.image_validation import CheckedImage
+from .media_input import ImageContent
 from .chat_json import encode_wire,decode_wire
 from .values import as_record,freeze,InvalidData
 
@@ -20,8 +20,8 @@ IMAGE_USER = 'Briefly describe the visible image.'
 IMAGE_SCHEMA = b'{"additionalProperties":false,"properties":{"schema_version":{"const":1},"text":{"maxLength":512,"type":"string"}},"required":["schema_version","text"],"type":"object"}'
 
 
-def _messages(image: CheckedImage, system: str, text: str):
-    if (type(image) is not CheckedImage or type(image.data) is not bytes or image.format not in ('PNG','JPEG')
+def _messages(image: ImageContent, system: str, text: str):
+    if (type(image) is not ImageContent or type(image.data) is not bytes or image.format not in ('PNG','JPEG')
             or not 1<=len(image.data)<=1048576 or sha256(image.data).hexdigest()!=image.sha256
             or not 1<=image.width<=2048 or not 1<=image.height<=2048 or image.width*image.height>4194304
             or type(system) is not str or not 1<=len(system.encode())<=8192
@@ -31,7 +31,7 @@ def _messages(image: CheckedImage, system: str, text: str):
         {'type':'text','text':text},{'type':'image_url','image_url':{'url':'data:'+mime+';base64,'+b64encode(image.data).decode('ascii')}}]}]
 
 
-def encode_deepseek_image(image: CheckedImage, *, system: str, text: str) -> bytes:
+def encode_deepseek_image(image: ImageContent, *, system: str, text: str) -> bytes:
     """Encode only DeepSeek's declared nonthinking, JSON-object image request."""
     # JSON-object mode requires this literal marker even when a JSON example
     # already appears in the approved image instructions.
@@ -40,7 +40,7 @@ def encode_deepseek_image(image: CheckedImage, *, system: str, text: str) -> byt
         'max_tokens':512,'stream':False,'thinking':{'type':'disabled'},'response_format':{'type':'json_object'}},2097152)),2097152)
 
 
-def encode_minimax_image(image: CheckedImage, *, system: str, text: str) -> bytes:
+def encode_minimax_image(image: ImageContent, *, system: str, text: str) -> bytes:
     """Encode only MiniMax's completion-token and separate-reasoning parameters."""
     return encode_wire(as_record(freeze({'model':'MiniMax-M3','messages':_messages(image,system,text),
         'max_completion_tokens':512,'stream':False,'thinking':{'type':'disabled'},'reasoning_split':True},2097152)),2097152)

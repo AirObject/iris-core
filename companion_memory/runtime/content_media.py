@@ -44,7 +44,8 @@ class ContentMedia:
         if type(runtime.provider) is not ProviderService:raise ValueError('Legacy media requires its native Provider.')
         self.provider=runtime.provider
         self.media = cast(MediaService, media)
-        self.authority = self.provider.bind_stored_media_authority(media, runtime.assembly.instance_id, 'media')
+        from companion_memory.media.provider_source import stored_media_source
+        self.authority = self.provider.bind_stored_media_authority(stored_media_source(media), runtime.assembly.instance_id, 'media')
         media.integrity.notify = runtime.gate.invalidate_current
         runtime.gate.integrity_pending = lambda: bool(media.integrity.pending or media._physical_fault)
         self._held: dict[str, tuple[object, WorkGrant, object]] = {}
@@ -159,7 +160,10 @@ class ContentMedia:
             port = self.provider.bind_work(grant)
             authorized = await self.authority.authorize_stored_media(wid, oid)
             if type(authorized) is not StoredMediaAuthorized:
-                self.provider.revoke(port); r.gate.revoke(grant); return authorized
+                from companion_memory.media.provider_source import media_input_error
+                from companion_memory.provider.media_input import MediaInputError
+                assert type(authorized) is MediaInputError
+                self.provider.revoke(port); r.gate.revoke(grant); return media_input_error(authorized)
             self._held[wid] = authorized.media, grant, port
         remaining = min(r.remaining_request(), max(0.001, (cast(int, work['deadline_at_us']) - now) / 1000000)) if fresh else self.media.settings.integer('media.operation_timeout_ms') / 1000
         raw = {**descriptor, 'entry_ids': list(cast(tuple, descriptor['entry_ids'])), 'deadline': time.monotonic() + remaining,

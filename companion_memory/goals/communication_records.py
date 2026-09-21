@@ -5,7 +5,7 @@ owned by goals. Exact matching revisions make the handoff recoverable without
 retaining an event stream. These declarations do not activate WS delivery.
 """
 from companion_memory.persistence import Field, RecordSchema, SequenceSchema, ScalarSchema
-from companion_memory.information.records import ID, REVISION, TIME, VERSION, choice
+from companion_memory.persistence.record_primitives import ID, REVISION, TIME, VERSION, choice
 
 GATE_CLOCK = RecordSchema((Field('format_version', VERSION), Field('instance_id', ID),
     Field('transition_id', ID), Field('previous_transition_id', ID, nullable=True),

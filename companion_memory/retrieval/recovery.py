@@ -10,7 +10,7 @@ import unicodedata
 from companion_memory.persistence import Value
 from companion_memory.persistence.content_codec import encode_content
 from companion_memory.persistence.owned_statements import OwnerFailure
-from companion_memory.information.records import Record, integer, text
+from companion_memory.persistence.record_primitives import Record, integer, text
 from companion_memory.memory.information_tracking import MemoryInformation
 from .repository import LAYOUTS
 from .lexical import PREPROCESS_ID, UNICODE_VERSION

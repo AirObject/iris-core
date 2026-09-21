@@ -17,7 +17,7 @@ from companion_memory.memory.information_tracking import MemoryInformation
 from companion_memory.memory.service import MemoryError
 from companion_memory.runtime.results import NotCommitted
 from .errors import InformationError, InformationRejected, rejected
-from .records import identity, integer, text
+from companion_memory.persistence.record_primitives import identity, integer, text
 
 
 class ForgottenExpiry:

@@ -15,7 +15,7 @@ from .semantic_records import Record,ID,N,P,H,record,integer,enum,isolate
 from .content_codec import decode_content,encode_content
 from .service import UnitOfWork
 from companion_memory.logging_service import AuditRequirement
-from companion_memory.information.records import COMMAND_INPUT,TARGETS
+from companion_memory.persistence.record_primitives import COMMAND_INPUT,TARGETS
 
 _ISSUER=object()
 Handler=Callable[[str,UnitOfWork,Record,Record],object]
