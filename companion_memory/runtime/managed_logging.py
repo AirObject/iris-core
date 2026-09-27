@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import sys
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from companion_memory.configuration.managed_bootstrap import bootstrap_snapshot
@@ -50,7 +50,7 @@ class ManagedLogging:
         self.current = LogGeneration(create_logging_service(), None, None)
         self.pending: LogReplacement | None = None
         self.bootstrap: ManagedBootstrap | None = None
-        self.entry_id: str | None = None
+        self.entry_ids: tuple[str, ...] = ()
         self.started = False
 
     @property
@@ -72,11 +72,9 @@ class ManagedLogging:
         directories = bootstrap.resources.protected_directories()
         candidate = generation.candidate
         if candidate is not None:
-            if self.entry_id is None:
-                raise ValueError('Logging requires initialized entry scope.')
             generation.window = RuntimeLogWindow(candidate, bootstrap.resources.instance_id)
             generation.reader = generation.window.bind_runtime_log_reader(ObservationGrant(
-                bootstrap.resources.instance_id, (self.entry_id,), True, True))
+                bootstrap.resources.instance_id, self.entry_ids, True, True))
             generation.service = create_logging_service(observation_window=generation.window)
         snapshot = candidate.foundation if candidate is not None else bootstrap_snapshot(bootstrap.settings, directories)
         result = generation.service.initialize(snapshot, LoggingResources(
@@ -94,9 +92,9 @@ class ManagedLogging:
         self.started = True
         self._initialize(self.current)
 
-    async def bind(self, version: ExecutionVersion, entry_id: str) -> None:
+    async def bind(self, version: ExecutionVersion, entry_ids: str | tuple[str, ...]) -> None:
         """Apply initial business settings before exposing business readiness."""
-        self.entry_id = entry_id
+        self.refresh_entries((entry_ids,) if isinstance(entry_ids, str) else entry_ids)
         if self.current.version_id == version.version_id and self.current.ready and not self.current.closed:
             return
         from .managed_activation import PreparationFailure
@@ -105,6 +103,16 @@ class ManagedLogging:
                 raise PreparationFailure(self.pending)
         resource = await self.prepare(version)
         self.publish(resource)
+
+    def refresh_entries(self, entry_ids: tuple[str, ...]) -> None:
+        """Update the diagnostic reader after a trusted entry registration."""
+        self.entry_ids = entry_ids
+        if self.current.window is not None:
+            if self.current.reader is not None:
+                self.current.window.revoke(self.current.reader)
+            assert self.bootstrap is not None and self.bootstrap.resources is not None
+            self.current.reader = self.current.window.bind_runtime_log_reader(ObservationGrant(
+                self.bootstrap.resources.instance_id, entry_ids, True, True))
 
     async def prepare(self, version: ExecutionVersion) -> LogReplacement:
         from .managed_activation import PreparationFailure
@@ -170,8 +178,7 @@ class ManagedLogging:
         if host is None or host.assembly.work_configuration is None or not application.business.initialized:
             return
         if self.current.candidate is None:
-            draft = cast(dict[str, object], (await application.identity.read_draft())['draft'])
-            await self.bind(host.assembly.work_configuration.versions.active, cast(str, draft['entry_id']))
+            await self.bind(host.assembly.work_configuration.versions.active, host.configured_entries())
 
     def event(self, code: str, success: bool) -> None:
         logger = self.service.get_logger('management')

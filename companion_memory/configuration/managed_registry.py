@@ -24,6 +24,22 @@ from .registry import ReadOnlyRegistry
 from companion_memory.persistence.schema import valid_identifier
 
 
+DEFAULT_PLATFORM_ID = 'default_platform'
+
+
+def initial_values(settings: DeploymentSettings, directories: dict[str, tuple[str, ...]],
+                   timezone: str, platform_id: str = DEFAULT_PLATFORM_ID, *, product: bool = False) -> dict[str, object]:
+    """Fill a setup draft from declared defaults without claiming it is valid."""
+    from .managed_form import form_view
+    form = form_view(registries(settings, directories, platform_id),
+        bootstrap_snapshot(settings, directories), settings.text('deployment.data_root'), product=product)
+    values: dict[str, object] = {}
+    for name, entries in cast(dict[str, list[dict[str, object]]], form['domains']).items():
+        values[name] = {cast(str, entry['key']): entry['initial'] for entry in entries}
+    cast(dict[str, object], values['text'])['runtime.timezone'] = timezone
+    return values
+
+
 def runtime_definition(requirement: RuntimeRequirement, *, platform: bool = False, content: bool = False) -> ParameterDefinitionInput:
     kind = 'integer' if requirement.limits is not None else 'string' if content else 'boolean'
     result = definition(requirement.key, kind=kind, limits=requirement.limits, unit=requirement.unit,
@@ -60,7 +76,7 @@ def registries(settings: DeploymentSettings, directories: dict[str, tuple[str, .
 
 
 def resolve_values(settings: DeploymentSettings, directories: dict[str, tuple[str, ...]],
-                   platform_id: str, values: dict[str, object]):
+                   platform_id: str, values: dict[str, object], *, require_price_evidence: bool = False):
     """Resolve a complete value document with deployment paths fixed by startup."""
     if set(values) != {'foundation', 'runtime', 'content', 'platform', 'information', 'text'}:
         raise ValueError('All six configuration domains are required.')
@@ -85,9 +101,24 @@ def resolve_values(settings: DeploymentSettings, directories: dict[str, tuple[st
         if entry.definition.key.startswith(('storage.', 'audit.')) and type(entry.state) is PresentValue:
             if foundation.get(entry.definition.key) != entry.state.value:
                 raise ValueError('Business storage settings must match trusted startup.')
-    return resolve_managed_configuration(domains['foundation'], domains['runtime'],
+    resolved = resolve_managed_configuration(domains['foundation'], domains['runtime'],
         [{'platform_id': platform_id, **domains['platform']}], domains['content'], domains['information'],
         domains['text'], directories, [bind_managed_material(platform_id)])
+    # New submissions require usable price provenance. Existing persisted values
+    # retain their original bounded-text metadata interpretation during recovery.
+    from .managed_resolution import ManagedConfigurationOk, configuration_failure
+    from .managed_validation import token_price_issue
+    if require_price_evidence and type(resolved) is ManagedConfigurationOk:
+        accounts = foundation['provider.accounts']
+        assert type(accounts) is list or type(accounts) is tuple
+        for index, account in enumerate(accounts):
+            if account['billing_mode'] != 'TOKEN_METERED':
+                continue
+            for field in ('source_url', 'checked_date'):
+                reason = token_price_issue(field, account['price'][field])
+                if reason is not None:
+                    return configuration_failure('VALUE_INVALID', f'provider.accounts[{index}].price.{field}', reason)
+    return resolved
 
 
 def schema_view(settings: DeploymentSettings, directories: dict[str, tuple[str, ...]], platform_id: str) -> dict[str, object]:

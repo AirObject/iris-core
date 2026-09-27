@@ -13,8 +13,8 @@ from companion_memory.persistence.semantic_records import Record, ID, N, P, B, H
 
 PROJECTION = record(projection_version=enum('PERIODIC_PERSONA_V1'), availability=enum('AVAILABLE'),
     text=BoundedTextSchema(6144), revision=P, publication_id=ID, generated_at=N,
-    review_status=enum('APPROVED','MODEL_REVIEWED'), origin=enum('REMOTE_PROVIDER'),
-    publication_origin=enum('IMPORTED_APPROVED','INITIAL_APPROVED','PERIODIC_REVIEWED'), stale=B,
+    review_status=enum('APPROVED','MODEL_REVIEWED','USER_CONFIRMED'), origin=enum('REMOTE_PROVIDER','LOCAL_CONFIGURATION'),
+    publication_origin=enum('IMPORTED_APPROVED','INITIAL_APPROVED','PERIODIC_REVIEWED','LOCAL_DEFAULT'), stale=B,
     original_database_id=(ID,), original_publication_id=(ID,), original_candidate_id=(ID,),
     review_evidence_digest=(H,))
 MAX_PROJECTION_BYTES = 8192
@@ -24,7 +24,10 @@ def encode_projection(value: object) -> bytes:
     """Validate full provenance/status combinations and encode without truncation."""
     current = isolate(PROJECTION,value,MAX_PROJECTION_BYTES)
     imported = current['publication_origin']=='IMPORTED_APPROVED'
+    local = current['publication_origin']=='LOCAL_DEFAULT'
     if ((current['publication_origin']=='PERIODIC_REVIEWED') != (current['review_status']=='MODEL_REVIEWED')
+            or local != (current['review_status']=='USER_CONFIRMED')
+            or local != (current['origin']=='LOCAL_CONFIGURATION')
             or any((current[key] is not None)!=imported for key in
                 ('original_database_id','original_publication_id','original_candidate_id','review_evidence_digest'))
             or not cast(str,current['text']).strip()):

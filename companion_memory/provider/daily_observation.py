@@ -63,7 +63,7 @@ class DailyProviderObserver:
                 raise OwnerFailure('STORAGE_FAILED', 'storage', 'INTEGRITY_FAILURE')
             policy = as_record(budget['policy'])
             rows.append(MappingProxyType({k: budget[k] for k in keys} | {'cost_limit_atoms': policy['cost_limit_atoms'],
-                'available_atoms': None if policy['billing_mode'] == 'USAGE_ONLY_TRIAL' else cast(int, policy['cost_limit_atoms']) - cast(int, budget['known_subtotal_atoms']) - cast(int, budget['held_atoms'])}))
+                'available_atoms': None if policy['billing_mode'] in ('USAGE_ONLY_TRIAL','USAGE_ONLY') else cast(int, policy['cost_limit_atoms']) - cast(int, budget['known_subtotal_atoms']) - cast(int, budget['held_atoms'])}))
         self.ready()
         return Found(tuple(rows))
 

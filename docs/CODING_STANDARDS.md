@@ -228,7 +228,7 @@ HTTP 状态码、协议版本、数据库迁移版本、模型名称、标准日
 
 Python 实现交付、验收和提交前必须执行静态类型检查，覆盖源码、测试以及新增和未跟踪的 Python 文件。单元测试、compileall、AST 或命名扫描均不能替代类型检查；只检查新增的几个文件不能宣称全项目通过。
 
-VS Code 使用 Microsoft Pylance（`ms-python.vscode-pylance`）；命令行使用项目开发依赖中锁定的 Pyright。两者共享[pyproject.toml](../pyproject.toml)中的`[tool.pyright]`配置：Python 3.12、`standard`模式，当前范围为`companion_memory/`和`tests/`。新增其他受维护的 Python 目录时应同步纳入范围，不重复维护另一份pyrightconfig.json。
+VS Code 使用 Microsoft Pylance（`ms-python.vscode-pylance`）；命令行使用项目开发依赖中锁定的 Pyright。两者共享[pyproject.toml](../pyproject.toml)中的`[tool.pyright]`配置：Python 3.12、`standard`模式，当前范围为`companion_memory/`、`tests/`、`deployment/`、`clients/`和`protocol/`。新增其他受维护的 Python 目录时应同步纳入范围，不重复维护另一份pyrightconfig.json。
 
 [VS Code工作区配置](../.vscode/settings.json)启用workspace诊断并提供`.venv`解释器默认位置；若编辑器已保存其他解释器，须通过“Python: Select Interpreter”选择项目`.venv`。不能因只打开少量文件或使用错误解释器而漏查。Pylance与命令行Pyright的版本、类型存根和编辑器附加诊断可能不同，结果须分别说明；没有实际查看Pylance诊断时，不得将Pyright通过写成“Pylance已确认无错误”。参考[官方差异说明](https://github.com/microsoft/pylance-release/blob/main/USING_WITH_PYRIGHT.md)。
 

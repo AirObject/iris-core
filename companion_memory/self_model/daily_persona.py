@@ -31,7 +31,7 @@ RECORD_DIGEST=RecordSchema((Field('object_id',ID),Field('revision',REVISION),Fie
 
 class DailyPersona:
     """One native self-model owner for generated originals and explicit review."""
-    def __init__(self,catalog,materials,mode,participants):
+    def __init__(self,catalog,materials,mode,participants,*,product_format:bool=False):
         self.catalog=catalog;self.materials=materials;self.mode=mode;self.bound=False;self.closed=False
         self.causes=OwnerCauses()
         self._receiving:DailyResult|None=None
@@ -51,6 +51,9 @@ class DailyPersona:
             'publish_initial_persona':(('self_model','runtime'),{'run_id':ID,'expected_revision':REVISION,'candidate_id':ID,'candidate_revision':REVISION,'candidate_digest':DIGEST,'expected_epoch':REVISION}),
             'retire_initial_persona_material':(('cognition',),{'run_id':ID,'context_id':ID,'page_offset':UINT}),
         }
+        self.product_format = product_format
+        if product_format:
+            layouts['publish_local_persona'] = (('self_model',), {'input_id': ID, 'expected_self_revision': REVISION})
         definitions=[]
         for kind,(owners,fields) in layouts.items():
             required,bindings=audits(kind,owners)
@@ -59,11 +62,13 @@ class DailyPersona:
                 except OwnerFailure as failure:
                     self.causes.record(action,values,failure)
                     raise
-            base=result_schema(owners,('PREPARED','REQUEST_ASSOCIATED','WAITING_REVIEW','APPROVED','KNOWN_FAILED','USER_REJECTED','REMOTE_UNKNOWN','PUBLISHED','MATERIAL_RELEASED'))
+            base=result_schema(owners,('PREPARED','REQUEST_ASSOCIATED','WAITING_REVIEW','APPROVED','KNOWN_FAILED','USER_REJECTED','REMOTE_UNKNOWN','PUBLISHED','MATERIAL_RELEASED') + (('PUBLISHED_LOCAL',) if product_format else ()))
             definitions.append(ResultBoundCommandDefinition('self_model',kind,1,RecordSchema((Field('operation_id',ID),)+tuple(Field(name,shape) for name,shape in fields.items())),1,
                 RecordSchema(base.fields+(Field('records',SequenceSchema(RECORD_DIGEST,0,3)),)),
                 participants,required,handle,INTENT,bindings))
         self.commands=tuple(definitions)
+        from .local_persona import LocalPersona
+        self.local = LocalPersona(self) if product_format else None
 
     def bind(self,storage,configuration,runtime,initial,provider,actor):
         if self.bound or runtime.assembly.configuration is not configuration or runtime.provider is not provider:raise InvalidValue()
@@ -111,11 +116,16 @@ class DailyPersona:
 
     def handle(self,kind,uow,v):
         if not self.bound or self.closed:raise OwnerFailure('INVALID_STATE','state','NOT_READY')
-        if kind in ('prepare_initial_persona','review_initial_persona','retry_initial_persona','publish_initial_persona'):
+        if kind in ('prepare_initial_persona','review_initial_persona','retry_initial_persona','publish_initial_persona','publish_local_persona'):
             if self.control.closed:raise OwnerFailure('INVALID_STATE','state','SERVICE_CLOSED')
             uow.require_commit_permission(lambda:not self.control.closed)
         now=time.time_ns()//1000;op=self.operation(uow);facts={};targets=[];records=[]
+        if kind == 'publish_local_persona':
+            if self.local is None: raise OwnerFailure('ACCESS_DENIED', 'persona', 'OPERATION_NOT_GRANTED')
+            return self.local.handle(uow, v, now, op)
         if kind=='prepare_initial_persona':
+            if self.local is not None and self.local.rows().get('local_persona_publications', uow, self.local.publication_id()) is not None:
+                raise OwnerFailure('PRECONDITION_FAILED', 'persona', 'ALREADY_PUBLISHED')
             found=self.initial.participate_initial(uow,v['input_id'])
             if found.subject['revision']!=v['expected_self_revision']:raise OwnerFailure('PRECONDITION_FAILED','self','REVISION_CONFLICT')
             if self.owner.current_publication(uow) is not None:raise OwnerFailure('PRECONDITION_FAILED','persona','ALREADY_PUBLISHED')
@@ -288,6 +298,9 @@ class DailyPersona:
         return MappingProxyType({name:getattr(receipt.identity,name) for name in ('owner_namespace','operation_kind','scope_id','operation_key')})
 
     def participate_publication(self,uow):
+        if self.local is not None:
+            current = self.local.participate_current(uow, self.local.publication_id(), 1)
+            if current is not None: return current
         found=self.owner.current_publication(uow)
         if found is None:return None
         self.verify_record_receipt(self.confirm_local(uow,record(found.value['publication_operation'])),found.value)
@@ -300,6 +313,9 @@ class DailyPersona:
 
     async def read_current(self,deadline=None):
         deadline=time.monotonic()+5 if deadline is None else deadline
+        if self.local is not None:
+            current = await self.local.read_current(deadline)
+            if type(current) is Found: return current
         found=await self.owner.current_original(deadline)
         if found is not None:await self.verify_record_original(record(found.value['publication_operation']),found.value)
         return NotFound() if found is None else Found(projection(found.value,await self.initial.publication_stale_original(found.value,deadline)))

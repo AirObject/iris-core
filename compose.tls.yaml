@@ -1,5 +1,6 @@
 # Apply with: docker compose -f compose.yaml -f compose.tls.yaml config
 # IRIS_EXTERNAL_ORIGIN includes scheme and external port; certificate SAN must match.
+# The application inherits its private Provider credential volume from compose.yaml.
 services:
   iris:
     ports: !reset []

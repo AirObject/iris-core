@@ -33,11 +33,14 @@ class PreparedTransports:
     owner: ManagedProviderVersions
     version: ExecutionVersion
     transports: dict[str, ChatTransport]
+    embedding: ChatTransport | None = None
 
 
 class ManagedProviderVersions:
-    def __init__(self, versions: ExecutionVersions, factory: Callable[[ManagedConfigurationCandidate], dict[str, ChatTransport]]):
+    def __init__(self, versions: ExecutionVersions, factory: Callable[[ManagedConfigurationCandidate], dict[str, ChatTransport]],
+                 embedding_factory: Callable[[ManagedConfigurationCandidate], ChatTransport] | None = None):
         self.versions, self.factory = versions, factory
+        self.embedding_factory = embedding_factory
         self.cache: OrderedDict[str, ExecutionVersion] = OrderedDict()
         self.active: PreparedTransports | None = None
 
@@ -57,9 +60,14 @@ class ManagedProviderVersions:
         for role in cast(tuple, new_wire['roles']):
             role = as_record(role)
             previous = old_roles[role['role']]
-            editable = ('secret_ref', 'secret_revision') if role['role'] != 'MEDIA' else ()
+            editable = ('secret_ref', 'secret_revision')
             if any(role[key] != previous[key] for key in previous if key not in editable):
                 raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'configuration', 'PROTOCOL_RESOURCE_MIGRATION_UNAVAILABLE')
+        old_embedding = birth.text.record('provider.embedding_transport')
+        new_embedding = candidate.text.record('provider.embedding_transport')
+        if (any(new_embedding[key] != old_embedding[key] for key in old_embedding if key not in ('secret_ref', 'secret_revision'))
+                or self.embedding_factory is None and old_embedding != new_embedding):
+            raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'configuration', 'PROTOCOL_RESOURCE_MIGRATION_UNAVAILABLE')
 
     def remember(self, version: ExecutionVersion) -> None:
         if type(version) is not ExecutionVersion or version.issuer is not self.versions:
@@ -67,8 +75,7 @@ class ManagedProviderVersions:
         self.compatible(version.candidate)
         self.cache[version.version_id] = version
         self.cache.move_to_end(version.version_id)
-        # There are at most 32 registered attempts under the complete account
-        # policy. Extra entries cover bounded failed preparations; point reads
+        # Keep at most 64 decoded execution versions in memory. Point reads
         # reload an evicted version from its immutable owner before decoding.
         while len(self.cache) > 64:
             self.cache.popitem(last=False)
@@ -77,13 +84,13 @@ class ManagedProviderVersions:
         return identity('daily-profile', self.versions.birth.version_id, cast(str, row['profile_id']))
 
     async def preload(self, row: Record) -> None:
-        if row.get('capability') == 'EMBEDDING' or row.get('profile_revision') == self.birth_revision(row):
+        if row.get('profile_revision') == self.birth_revision(row):
             return
         version = await self.versions.load(cast(str, row['profile_revision']))
         self.remember(version)
 
     def candidate(self, row: Record):
-        if row['capability'] == 'EMBEDDING' or row['profile_revision'] == self.birth_revision(row):
+        if row['profile_revision'] == self.birth_revision(row):
             return self.versions.birth.candidate
         version = self.cache.get(cast(str, row['profile_revision']))
         if version is None:
@@ -106,6 +113,23 @@ class ManagedProviderVersions:
                 raise InvalidData()
         return values
 
+    def embedding_transport(self, version: ExecutionVersion) -> ChatTransport | None:
+        """Bind an immutable embedding credential version without sending."""
+        self.remember(version)
+        if self.active is not None and self.active.version.version_id == version.version_id:
+            return self.active.embedding
+        if self.embedding_factory is None:
+            return None
+        transport = self.embedding_factory(version.candidate)
+        if type(transport) is not ChatTransport or transport._format != 'EMBEDDING':
+            raise InvalidData()
+        settings = version.candidate.text.record('provider.embedding_transport')
+        account = next(profile['account_id'] for profile in profiles(version.candidate)
+            if profile['material_role'] == 'EMBEDDING_DOCUMENT')
+        if any(transport._settings[key] != settings[key] for key in ('origin', 'endpoint_path', 'secret_ref', 'secret_revision')) or transport._settings['account_ref'] != account:
+            raise InvalidData()
+        return transport
+
     def prepare(self, version: ExecutionVersion) -> PreparedTransports:
         transports = self.transports(version)
         previous = self.active.version.candidate if self.active is not None else self.versions.birth.candidate
@@ -116,7 +140,13 @@ class ManagedProviderVersions:
             if any(role[key] != old[key] for key in ('secret_ref', 'secret_revision', 'account_ref')):
                 if not transports[cast(str, role['role'])].validate_credential_reference():
                     raise OwnerFailure('RESOURCE_UNAVAILABLE', 'credential', 'CREDENTIAL_UNAVAILABLE')
-        return PreparedTransports(self, version, transports)
+        embedding = self.embedding_transport(version)
+        previous_embedding = previous.text.record('provider.embedding_transport')
+        next_embedding = version.candidate.text.record('provider.embedding_transport')
+        if any(previous_embedding[key] != next_embedding[key] for key in ('secret_ref', 'secret_revision')):
+            if embedding is None or not embedding.validate_credential_reference():
+                raise OwnerFailure('RESOURCE_UNAVAILABLE', 'credential', 'CREDENTIAL_UNAVAILABLE')
+        return PreparedTransports(self, version, transports, embedding)
 
     def publish(self, resource: object) -> None:
         if type(resource) is not PreparedTransports or resource.owner is not self:

@@ -43,7 +43,7 @@ def row(value:object) -> Record:
 
 
 def usage(observation:UsageObservation,request:DailyRequest,*,not_sent:bool=False) -> Record:
-    if request.account['billing_mode']=='USAGE_ONLY_TRIAL':
+    if request.account['billing_mode'] in ('USAGE_ONLY_TRIAL','USAGE_ONLY'):
         from .daily_usage import normalize as normalize_daily
         return normalize_daily(observation,request.account,request.profile,not_sent=not_sent)
     reserved,_=liability(request.account,request.profile)
@@ -55,7 +55,7 @@ def usage(observation:UsageObservation,request:DailyRequest,*,not_sent:bool=Fals
 
 
 def reservation_amount(request:DailyRequest) -> int:
-    if request.account['billing_mode']=='USAGE_ONLY_TRIAL':return 0
+    if request.account['billing_mode'] in ('USAGE_ONLY_TRIAL','USAGE_ONLY'):return 0
     amount,_=liability(request.account,request.profile)
     return max(amount,cast(int,as_record(request.account['price'])['per_attempt_money_bound']) or 0) if as_record(request.account['price'])['per_attempt_money_bound'] is not None else amount
 
@@ -86,7 +86,7 @@ def registration(request:DailyRequest,budget:Record,now:str) -> tuple[Mutation,.
         'result_fingerprint':None,'evidence_revision':0})
     reserved=row({'object_id':identity('daily-reservation',request.attempt_id),'revision':1,'attempt_id':request.attempt_id,
         'account_id':account['account_id'],'budget_id':budget['object_id'],'reserved_atoms':amount,'known_subtotal_atoms':0,'held_atoms':amount,
-        'known_cost_atoms':None,'cost_complete':False,'format_version':version,'quota_reserved':0,'quota_known':None if account['billing_mode']=='USAGE_ONLY_TRIAL' else 0,'quota_held':0,'billing_mode':account['billing_mode']})
+        'known_cost_atoms':None,'cost_complete':False,'format_version':version,'quota_reserved':0,'quota_known':None if account['billing_mode'] in ('USAGE_ONLY_TRIAL','USAGE_ONLY') else 0,'quota_held':0,'billing_mode':account['billing_mode']})
     advanced=row(dict(budget)|{'revision':cast(int,budget['revision'])+1,'attempt_count':cast(int,budget['attempt_count'])+1,
         'held_atoms':cast(int,budget['held_atoms'])+amount})
     return (Mutation('requests',None,req),Mutation('attempts',None,attempt),Mutation('budget_windows',budget,advanced),Mutation('reservations',None,reserved))

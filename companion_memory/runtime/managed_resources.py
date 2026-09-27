@@ -123,6 +123,11 @@ class ManagedResources:
                 upgrade = read_record(upgrade_path)
                 if upgrade.get('state') not in ('PREPARING', 'PREPARED', 'ACTIVE', 'ABORTED'):
                     raise ValueError('An explicit upgrade retains startup authority; resume its original key.')
+            product_upgrade_path = self.root / 'bootstrap/product-upgrade.json'
+            if product_upgrade_path.exists() and not retired_for_restore:
+                upgrade = read_record(product_upgrade_path)
+                if upgrade.get('state') not in ('PREPARING', 'PREPARED', 'ACTIVE', 'ABORTED'):
+                    raise ValueError('An explicit product upgrade retains startup authority; resume its original key.')
             restore_path = self.root / 'bootstrap/restore-switch.json'
             if restore_path.exists() and self.identity['state'] != 'RETIRED':
                 restored = read_record(restore_path)
@@ -186,6 +191,37 @@ class ManagedResources:
             return value
         finally:
             os.close(directory)
+
+    def provider_credentials(self):
+        """Bind the optional separate key store without affecting legacy startup."""
+        from companion_memory.provider.managed_credentials import ManagedCredentials
+        return ManagedCredentials(Path(self.settings.text('deployment.provider_secret_root')), self.instance_id)
+
+    def read_provider_secret(self, reference: str, revision: str) -> bytes:
+        """Resolve reserved web references exclusively in the writable key store."""
+        from companion_memory.provider.managed_credentials import REFERENCE
+        if REFERENCE.fullmatch(reference) is not None:
+            return self.provider_credentials().read(reference, revision)
+        return self.read_secret(reference + '__' + revision)
+
+    def provider_secret_configured(self, reference: str, revision: str) -> bool:
+        """Observe safe key metadata, without retrieving or returning key bytes."""
+        from companion_memory.provider.managed_credentials import REFERENCE
+        if REFERENCE.fullmatch(reference) is not None:
+            return self.provider_credentials().configured(reference, revision)
+        name = reference + '__' + revision
+        if not name or len(name) > 128 or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in name):
+            return False
+        try:
+            directory = os.open(self.secret_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                return (stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.geteuid()
+                    and not info.st_mode & 0o077 and 32 <= info.st_size <= 4097)
+            finally:
+                os.close(directory)
+        except OSError:
+            return False
 
     def protected_directories(self) -> dict[str, tuple[str, ...]]:
         """Enumerate actual protected roots, including same-database aliases."""

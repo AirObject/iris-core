@@ -1,8 +1,8 @@
 """Finite form descriptions derived from the same native value validators.
 
 The scaffold is an incomplete draft, not a resolved candidate or supplier
-attestation. Only declared defaults, fixed protocol values and trusted resource
-bindings are filled. Operator choices remain empty until explicitly provided.
+attestation. Declared defaults, shipped model resources and supported protocol
+links are filled. Genuine account facts remain empty until explicitly provided.
 """
 from __future__ import annotations
 from types import MappingProxyType
@@ -10,10 +10,13 @@ from typing import Any
 from companion_memory.persistence.schema import ScalarSchema, BoundedTextSchema, RecordSchema, SequenceSchema
 from .definitions import Declared, LiteralDefault, Bound
 from .managed_schema import MATERIAL_VALUES
-from .dream_schema import GENERATION_PROFILE, ROLE_PROFILES, ROLES
+from .dream_schema import ROLE_PROFILES, ROLES
+from .dream_schema import GENERATION_PROFILE
 from .daily_schema import ACCOUNT, IMAGE_PROFILE, EMBEDDING_PROFILE
 from .information_schema import SUPPORTED_VALUES
 from .snapshots import PresentValue
+from .managed_defaults import initial_override, complete_initial
+from .managed_setup import populate_initial_values, setup_presentation
 
 
 def plain(value):
@@ -51,16 +54,17 @@ def fixed(value):
     return {'type': 'boolean' if type(value) is bool else 'integer' if type(value) is int else 'string', 'constant': value}
 
 
-def parameter_shape(definition):
+def parameter_shape(definition, *, product: bool = False):
+    from . import managed_product_schema as product_schema
     key = definition.key
     if key in MATERIAL_VALUES:
         return shape(MATERIAL_VALUES[key])
     if key in SUPPORTED_VALUES:
         return fixed(plain(SUPPORTED_VALUES[key]))
     if key == 'provider.accounts':
-        return shape(SequenceSchema(ACCOUNT, 2, 3))
+        return shape(SequenceSchema(product_schema.ACCOUNT if product else ACCOUNT, 2, 3))
     if key == 'provider.profiles':
-        items = [shape(IMAGE_PROFILE if role == 'MEDIA' else EMBEDDING_PROFILE if role.startswith('EMBEDDING') else GENERATION_PROFILE) for role in ROLES]
+        items = [shape((product_schema.IMAGE_PROFILE if role == 'MEDIA' else product_schema.EMBEDDING_PROFILE if role.startswith('EMBEDDING') else product_schema.GENERATION_PROFILE) if product else (IMAGE_PROFILE if role == 'MEDIA' else EMBEDDING_PROFILE if role.startswith('EMBEDDING') else GENERATION_PROFILE)) for role in ROLES]
         for role, item in zip(ROLES, items):
             for field in item['fields']:
                 if field['name'] == 'material_role':
@@ -97,7 +101,7 @@ def scaffold(schema):
     return None
 
 
-def form_view(domains, bootstrap, root: str):
+def form_view(domains, bootstrap, root: str, *, product: bool = False):
     """Supply editable schema plus explicitly incomplete unvalidated draft values."""
     paths = {'media.root_directory': root + '/blobs', 'media.staging_directory': root + '/upload_staging'}
     protected = {entry.definition.key: plain(entry.state.value) for entry in bootstrap.list_entries() if type(entry.state) is PresentValue}
@@ -105,10 +109,18 @@ def form_view(domains, bootstrap, root: str):
     for name, registry in domains.items():
         parameters = []
         for definition in registry.list_definitions():
-            schema = parameter_shape(definition)
+            schema = parameter_shape(definition, product=product)
+            setup_default = initial_override(name, definition.key)
             initial = (protected[definition.key] if definition.key in protected else paths[definition.key] if definition.key in paths
-                else plain(definition.default.value) if type(definition.default) is LiteralDefault else scaffold(schema))
-            parameters.append({'key': definition.key, 'schema': schema, 'initial': initial,
+                else plain(definition.default.value) if type(definition.default) is LiteralDefault else
+                setup_default if setup_default is not None else scaffold(schema))
+            parameters.append({'key': definition.key, 'schema': schema,
+                'initial': complete_initial(name, definition.key, initial, root),
                 'boundary': definition.apply_mode, 'sensitivity': definition.sensitivity})
         output[name] = parameters
-    return {'domains': output, 'complete': False, 'business_ready': False}
+    values = {domain: {entry['key']: entry['initial'] for entry in entries} for domain, entries in output.items()}
+    populate_initial_values(values, product=product)
+    for domain, entries in output.items():
+        for entry in entries:
+            entry['initial'] = values[domain][entry['key']]
+    return {'domains': output, 'setup': setup_presentation(), 'complete': False, 'business_ready': False}

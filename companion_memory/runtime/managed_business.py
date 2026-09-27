@@ -2,7 +2,7 @@
 
 The original initialization key and immutable wizard bytes precede root writes.
 No send occurs on attach or recovery. Initial input uses memory's public port;
-first persona remains on its generation, review and publication protocol.
+simple setup publishes that operator-confirmed local role without model output.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from collections.abc import Callable, Awaitable
 import time
 from typing import cast, TYPE_CHECKING
 
-from companion_memory.configuration.managed_registry import resolve_values
+from companion_memory.configuration.managed_registry import DEFAULT_PLATFORM_ID, resolve_values
 from companion_memory.configuration.managed_resolution import ManagedConfigurationOk, ManagedConfigurationCandidate
 from companion_memory.persistence import Found, Committed
 from companion_memory.persistence.owned_statements import OwnerFailure
@@ -47,12 +47,32 @@ class ManagedBusiness:
         self.communication_dispatcher: CommunicationDispatcher | None = None
 
     async def initialize(self, key: str, expected_revision: int):
-        """Start or confirm one immutable setup; never substitute another key."""
+        """Confirm local setup, then start business roots when configuration is valid."""
+        prior = await self.identity.confirm_initialization(key, expected_revision)
+        if prior is not None:
+            if type(prior) is not tuple:
+                return prior
+            original_state, _ = prior
+            if original_state == 'VALIDATED':
+                return {'state': 'CONFIGURATION_REQUIRED', 'business_ready': False, 'startup_sends': 0}
+            return await self.recover()
         current = await self.identity.read_draft()
-        if current['state'] == 'DRAFT':
+        if current['state'] in ('DRAFT', 'VALIDATED'):
             if current['revision'] != expected_revision:
                 raise OwnerFailure('PRECONDITION_FAILED', 'revision', 'REVISION_CONFLICT')
-            self.candidate(cast(dict[str, object], current['draft']))
+            draft = cast(dict[str, object], current['draft'])
+            from companion_memory.management.managed_application import ManagedApplication
+            ManagedApplication.draft_shape(draft, complete=True)
+            try:
+                self.candidate(draft, require_price_evidence=True)
+            except OwnerFailure as failure:
+                if current['state'] != 'DRAFT' or failure.field != 'configuration':
+                    raise
+                confirmed = await self.identity.advance_wizard(key, expected_revision, 'VALIDATED', key)
+                if type(confirmed) is not Committed:
+                    return confirmed
+                self.bootstrap.state = 'CONFIGURATION_REQUIRED'
+                return {'state': 'CONFIGURATION_REQUIRED', 'business_ready': False, 'startup_sends': 0}
             started = await self.identity.advance_wizard(key, expected_revision, 'INITIALIZING', key)
             if type(started) is not Committed:
                 return started
@@ -60,14 +80,18 @@ class ManagedBusiness:
             raise OwnerFailure('IDEMPOTENCY_CONFLICT', 'wizard', 'CONTENT_MISMATCH')
         return await self.recover()
 
-    def candidate(self, draft: dict[str, object]) -> ManagedConfigurationCandidate:
+    def candidate(self, draft: dict[str, object], *, require_price_evidence: bool = False) -> ManagedConfigurationCandidate:
         from companion_memory.management.managed_application import ManagedApplication
         ManagedApplication.draft_shape(draft, complete=True)
         resources = self.bootstrap.resources
         if resources is None:
             raise OwnerFailure('INVALID_STATE', 'resources', 'NOT_READY')
-        parsed = resolve_values(self.bootstrap.settings, resources.protected_directories(),
-            cast(str, draft['platform_id']), cast(dict[str, object], draft['configuration']))
+        try:
+            parsed = resolve_values(self.bootstrap.settings, resources.protected_directories(),
+                cast(str, draft.get('platform_id', DEFAULT_PLATFORM_ID)), cast(dict[str, object], draft['configuration']),
+                require_price_evidence=require_price_evidence)
+        except ValueError:
+            raise OwnerFailure('INVALID_INPUT', 'configuration', 'CONFIGURATION_INVALID') from None
         if type(parsed) is not ManagedConfigurationOk:
             raise OwnerFailure('INVALID_INPUT', 'configuration', 'CONFIGURATION_INVALID')
         return parsed.value
@@ -85,6 +109,9 @@ class ManagedBusiness:
         current = await self.identity.read_draft()
         if current['state'] == 'DRAFT':
             return {'state': 'BOOTSTRAP', 'startup_sends': 0}
+        if current['state'] == 'VALIDATED':
+            self.bootstrap.state = 'CONFIGURATION_REQUIRED'
+            return {'state': 'CONFIGURATION_REQUIRED', 'business_ready': False, 'startup_sends': 0}
         draft = cast(dict[str, object], current['draft'])
         resources = self.bootstrap.resources
         if resources is None:
@@ -97,14 +124,15 @@ class ManagedBusiness:
             if self.bootstrap.assembly.communication_format:
                 from companion_memory.management.notification_routes import NotificationRoutes
                 self.host.route_source = NotificationRoutes(self.identity).for_entry
-            self.host.configure_entry(cast(str, draft['entry_id']), cast(str, draft['entry_id']), ('self',),
-                ({'kind': 'REAL', 'context_id': None},), writable=('self',))
+            if 'entry_id' in draft:
+                self.host.configure_entry(cast(str, draft['entry_id']), cast(str, draft['entry_id']), ('self',),
+                    ({'kind': 'REAL', 'context_id': None},), writable=('self',))
             if self.bootstrap.assembly.communication_format:
                 from companion_memory.ingress.content_storage import read_registered_bindings
                 catalog = next(c for c in self.host.assembly.catalogs if c.definition.owner_module == 'ingress')
                 for entry in await read_registered_bindings(catalog, self.host.storage, resources.instance_id):
                     entry_id = cast(str, entry['entry_id'])
-                    if entry_id != draft['entry_id']:
+                    if entry_id != draft.get('entry_id'):
                         self.host.configure_entry(entry_id, entry_id, ('self',),
                             ({'kind': 'REAL', 'context_id': None},), writable=('self',))
         host = self.host
@@ -114,10 +142,11 @@ class ManagedBusiness:
             if type(result) is not Found or host.state != 'READY':
                 return result
         if current['state'] == 'INITIALIZING':
-            registered = await host.register_entry(stable_identity('managed-entry', original), cast(str, draft['entry_id']),
-                cast(str, draft['host_id']), cast(str, draft['platform_id']), cast(str, draft['conversation_id']))
-            if type(registered) is not Committed:
-                return registered
+            if 'entry_id' in draft:
+                registered = await host.register_entry(stable_identity('managed-entry', original), cast(str, draft['entry_id']),
+                    cast(str, draft['host_id']), cast(str, draft.get('platform_id', DEFAULT_PLATFORM_ID)), cast(str, draft['conversation_id']))
+                if type(registered) is not Committed:
+                    return registered
             if host.initial is None:
                 raise OwnerFailure('INVALID_STATE', 'wizard', 'NOT_READY')
             initial = await host.initial.register_initial_self(stable_identity('managed-self', original), 'PRESET',
@@ -134,7 +163,7 @@ class ManagedBusiness:
             from .managed_configuration import ManagedConfiguration
             self.configuration = ManagedConfiguration(self)
         if self.logging is not None:
-            await self.logging.bind(self.configuration.work.versions.active, cast(str, draft['entry_id']))
+            await self.logging.bind(self.configuration.work.versions.active, host.configured_entries())
         if self.resume_maintenance is not None:
             await self.resume_maintenance()
         activated = await self.configuration.recover()
@@ -150,6 +179,19 @@ class ManagedBusiness:
             if not await self.communication_dispatcher.recover():
                 self.bootstrap.state = 'RECOVERING'
                 return {'state': 'RECOVERING', 'communication': 'CONFIRMATION_PENDING', 'startup_sends': 0}
+        if draft.get('setup_mode') == 'SIMPLE':
+            if host.initial_persona is None:
+                raise OwnerFailure('INVALID_STATE', 'persona', 'NOT_READY')
+            from companion_memory.persistence.text_records import stable_identity as native_id
+            local = await host.initial_persona.publish_local(stable_identity('managed-local-persona', original),
+                native_id('self-input', resources.database_id, resources.instance_id), 1)
+            if type(local) is not Committed:
+                return local
+        local_owner = host.combination.initial_persona.local
+        if local_owner is not None and type(await local_owner.read_current(time.monotonic() + 5)) is Found:
+            workspace = await self.ensure_local_workspace()
+            if workspace is not None:
+                return workspace
         ready = await self.business_ready()
         if ready and not await self.complete_wizard():
             self.bootstrap.state = 'RECOVERING'
@@ -158,6 +200,53 @@ class ManagedBusiness:
         if ready:
             self.start_goal_scheduler()
         return {'state': self.bootstrap.state, 'startup_sends': 0, 'business_ready': ready}
+
+    async def ensure_local_workspace(self):
+        """Attach one native local binding when no workspace has been registered.
+
+        The stable registration key survives partial initialization. This issues
+        no host token and creates no notification route or external connection.
+        """
+        host = self.host
+        if host is None or host.stored is None:
+            raise OwnerFailure('INVALID_STATE', 'entry', 'NOT_READY')
+        if await host.assembly.ingress.registered_entries():
+            return None
+        instance = host.resources.instance_id
+        entry = stable_identity('local-workspace', instance)
+        recipient = stable_identity('local-administrator', instance)
+        result = await host.register_entry(stable_identity('register-local-workspace', instance),
+            entry, recipient, host.stored.candidate.platforms[0].platform_id, 'local-workspace')
+        if type(result) is not Committed:
+            return result
+        await host.attach_registered_entry(entry, recipient)
+        if self.logging is not None:
+            self.logging.refresh_entries(host.configured_entries())
+        return None
+
+    async def use_local_persona(self, key: str):
+        """Explicitly publish retained local settings for an unstarted first role.
+
+        Existing generated runs, including unknown requests, remain untouched.
+        Reusing the same key confirms the original publication and local finish.
+        """
+        host = self.host
+        if not self.initialized or host is None or host.initial_persona is None or host.stored is None:
+            raise OwnerFailure('INVALID_STATE', 'persona', 'NOT_READY')
+        from companion_memory.persistence.text_records import stable_identity as native_id
+        result = await host.initial_persona.publish_local(key,
+            native_id('self-input', host.stored.database_id, host.resources.instance_id), 1)
+        if type(result) is not Committed:
+            return result
+        workspace = await self.ensure_local_workspace()
+        if workspace is not None:
+            return workspace
+        if not await self.complete_wizard():
+            self.bootstrap.state = 'RECOVERING'
+            return {'state': 'RECOVERING', 'cleanup_pending': True, 'startup_sends': 0, 'business_ready': False}
+        self.bootstrap.state = 'READY'
+        self.start_goal_scheduler()
+        return result
 
     def start_goal_scheduler(self) -> None:
         """Local goal work is independent of permission to start model requests."""

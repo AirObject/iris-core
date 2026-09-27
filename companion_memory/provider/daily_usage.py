@@ -11,7 +11,7 @@ from .token_costs import quantity, add, InvalidAmount
 
 
 def normalize(observation: UsageObservation, account: Record, profile: Record, *, not_sent: bool = False) -> Record:
-    if (account['billing_mode'] != 'USAGE_ONLY_TRIAL' or account['price'] is not None
+    if (account['billing_mode'] not in ('USAGE_ONLY_TRIAL','USAGE_ONLY') or account['price'] is not None
             or account['cost_limit_atoms'] is not None or account['quota'] is not None):
         raise InvalidData()
     deepseek = cast(str, profile['wire_protocol']).startswith('DEEPSEEK_')

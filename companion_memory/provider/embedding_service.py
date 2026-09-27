@@ -6,6 +6,7 @@ results remain owned until their atomic handoff commits; callers cannot supply
 vectors to the completion command or turn confirmation into physical cleanup.
 """
 from __future__ import annotations
+from .account_policy import attempt_limit_reached
 from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 import asyncio
 from collections.abc import Callable
@@ -39,6 +40,7 @@ from .embedding_usage import usage
 from .embedding_allocated_usage import observe as allocated_usage
 from .chat_transport import ChatTransport,WireObservation
 from .resources import CancellationSource
+from companion_memory.configuration.execution_versions import ExecutionVersion
 
 
 @dataclass(frozen=True,slots=True,init=False)
@@ -50,6 +52,8 @@ class EmbeddingRequest:
     request_id: str
     attempt_id: str
     wire: bytes
+    execution_version: ExecutionVersion | None
+    transport: ChatTransport | None
 
 
 @dataclass(frozen=True,slots=True,init=False)
@@ -100,9 +104,9 @@ class EmbeddingProvider:
         self.profiles=tuple(as_record(v) for v in cast(tuple,values['provider.profiles']))
         account_id=next(p['account_id'] for p in self.profiles if p['profile_id']==configuration.candidate.text.record('retrieval.embedding')['document_profile'])
         self.account=next(as_record(a) for a in cast(tuple,values['provider.accounts']) if as_record(a)['account_id']==account_id) if network is not None else as_record(cast(tuple,values['provider.accounts'])[0])
-        self.usage_only=self.account.get('billing_mode')=='USAGE_ONLY_TRIAL'
+        self.usage_only=self.account.get('billing_mode') in ('USAGE_ONLY_TRIAL','USAGE_ONLY')
         self.version=ledger.assembly.version if network is not None else 4 if self.usage_only else 3
-        self.billing_mode='USAGE_ONLY_TRIAL' if self.usage_only else 'SIMULATED' if self.simulated else 'TOKEN_METERED'
+        self.billing_mode=cast(str,self.account['billing_mode']) if self.usage_only else 'SIMULATED' if self.simulated else 'TOKEN_METERED'
         if self.usage_only!=ledger.assembly.embedding_usage_only:raise ValueError('Native metering format differs.')
         self.space=string(configuration.candidate.text.record('retrieval.semantic')['space_id'])
         self.catalog=StatementCatalog(ledger.assembly.repository.definition,ledger.assembly.repository.statements)
@@ -141,9 +145,14 @@ class EmbeddingProvider:
         wire=encode_content(payload,65536) if self.simulated else request_bytes(as_record(freeze(payload,16384,owned=True)))
         fingerprint=sha256(encode_content(description,65536)).hexdigest()
         result=object.__new__(EmbeddingRequest)
+        versions = self.ledger.managed_versions
+        version = versions.versions.current if versions is not None else None
+        transport = versions.embedding_transport(version) if versions is not None and version is not None else self.transport
+        if transport is None and not self.simulated:
+            transport = self.transport
         rid=identity('embedding-request',self.instance,work['original_request_key'])
         for name,value in dict(owner=self,description=description,fingerprint=fingerprint,request_id=rid,
-                attempt_id=identity('embedding-attempt',rid,1),wire=wire).items():object.__setattr__(result,name,value)
+                attempt_id=identity('embedding-attempt',rid,1),wire=wire,execution_version=version,transport=transport).items():object.__setattr__(result,name,value)
         return result
 
     async def initialize(self) -> None:
@@ -284,13 +293,15 @@ class EmbeddingProvider:
     def _usage(self,*,reserved:int,rate:int,price_revision:str|None,reported:EmbeddingUsage|None=None,
                simulated:bool=False,simulated_reported:bool=False,not_sent:bool=False) -> Record:
         """Use the frozen account branch; null money is never an estimate."""
-        return allocated_usage() if self.usage_only else usage(reserved=reserved,rate=rate,price_revision=price_revision,reported=reported,
+        return allocated_usage(billing_mode=self.billing_mode) if self.usage_only else usage(reserved=reserved,rate=rate,price_revision=price_revision,reported=reported,
             simulated=simulated,simulated_reported=simulated_reported,not_sent=not_sent)
 
     async def _check_allocated_stop(self) -> None:
         """A zero monetary hold cannot bypass an open, unknown or failed request."""
-        if self.usage_only and await self.ledger.read('requests_blocked',{'account_id':self.account['account_id']}):
-            raise OwnerFailure('RESOURCE_BUSY','account','ORIGINAL_RESULT_UNCONFIRMED')
+        if self.usage_only:
+            blocked=await self.ledger.read('requests_blocked',{'account_id':self.account['account_id']})
+            if any(self.billing_mode!='USAGE_ONLY' or row['phase']!='TERMINAL' for row in blocked):
+                raise OwnerFailure('RESOURCE_BUSY','account','ORIGINAL_RESULT_UNCONFIRMED')
 
     async def check_budget(self,work:Record) -> None:
         """Observe current whole-account liability before reserving a new slot."""
@@ -302,7 +313,7 @@ class EmbeddingProvider:
         if price is not None and price['per_attempt_money_bound'] is not None:reserve=max(reserve,cast(int,price['per_attempt_money_bound']))
         budget=await self.ledger.get('budget_windows',identity('embedding-budget',cast(str,self.account['account_id']),cast(str,self.account['window_id'])))
         await self._check_allocated_stop()
-        if budget is not None and (budget['held_atoms']!=0 or cast(int,budget['attempt_count'])>=cast(int,self.account['attempt_limit'])
+        if budget is not None and (budget['held_atoms']!=0 or attempt_limit_reached(self.account,cast(int,budget['attempt_count']))
                 or not self.usage_only and cast(int,budget['known_subtotal_atoms'])+reserve>cast(int,self.account['cost_limit_atoms'])):
             raise OwnerFailure('RESOURCE_BUSY','budget','CAPACITY_REACHED')
 
@@ -329,7 +340,7 @@ class EmbeddingProvider:
                     'quota_reserved':0,'quota_known':None if self.usage_only else 0,'quota_held':0,**({'billing_mode':self.billing_mode} if self.usage_only else {})},8192,owned=True))
                 check_deadline()
                 await self._commit('initialize_budget',identity('embedding-budget-initialize',budget_id),(Mutation('budget_windows',None,budget),),None,None,'NONE','CLEAR',not self.usage_only)
-            if (budget['held_atoms']!=0 or cast(int,budget['attempt_count'])>=cast(int,self.account['attempt_limit'])
+            if (budget['held_atoms']!=0 or attempt_limit_reached(self.account,cast(int,budget['attempt_count']))
                     or not self.usage_only and cast(int,budget['known_subtotal_atoms'])+reserve>cast(int,self.account['cost_limit_atoms'])):
                 raise OwnerFailure('RESOURCE_BUSY','budget','CAPACITY_REACHED')
             now=self._now();price_revision=None if price is None else cast(str,price['revision_ref'])
@@ -340,7 +351,7 @@ class EmbeddingProvider:
                 'format_version':self.version,'fingerprint_version':self.version,'attribution':{'run_id':request.description['work_id'],'entry_ids':(),
                     'parent_request_id':None,'trace_id':None,'batch_id':None,'dream_run_id':None,'prompt_revision':None},
                 'source':'SIMULATED' if self.simulated else 'REMOTE_PROVIDER','configuration_origin':'PERSISTED_CONFIGURATION','config_snapshot_id':self.configuration.snapshot_id,
-                'profile_revision':identity('daily-profile' if self.network is not None else 'embedding-profile',self.configuration.snapshot_id,cast(str,profile['profile_id'])),'price_revision':price_revision,
+                'profile_revision':request.execution_version.version_id if request.execution_version is not None else identity('daily-profile' if self.network is not None else 'embedding-profile',self.configuration.snapshot_id,cast(str,profile['profile_id'])),'price_revision':price_revision,
                 'execution_evidence':{'profile':profile,'account':self.account,'request_timeout_ms':60000,'retry_delay_ms':0,'request_max_bytes':65536,'result_max_bytes':40960},
                 'fingerprint':request.fingerprint,'phase':'OPEN','outcome':None,'first_error':None,'attempt_count':1,'ever_unknown':False,'handoff_id':None},8192,owned=True))
             attempt=as_record(freeze({'object_id':request.attempt_id,'revision':1,'request_id':request.request_id,'ordinal':1,'state':'PREPARED','logical_outcome':None,
@@ -370,15 +381,15 @@ class EmbeddingProvider:
                 'space_id':self.space,'model_id':'synthetic_dense','input_items':1},40960,owned=True))
             reported=self._usage(reserved=reserve,rate=rate,price_revision=None,simulated=True,simulated_reported=True)
         else:
-            assert self.transport is not None
+            assert request.transport is not None
             def begin():
-                assert self.transport is not None
+                assert request.transport is not None
                 if self.network is not None:
                     permit=self._network_permit
                     if permit is None:raise OwnerFailure('ACCESS_DENIED','request','BINDING_MISMATCH')
-                    transport=self.transport
+                    transport=request.transport
                     return self.network.start(permit,lambda:transport.exchange(request.wire,min(deadline,start+30),self._cancel.token))
-                return asyncio.get_running_loop().run_in_executor(self._executor,self.transport.exchange,request.wire,min(deadline,start+30),self._cancel.token)
+                return asyncio.get_running_loop().run_in_executor(self._executor,request.transport.exchange,request.wire,min(deadline,start+30),self._cancel.token)
             try:wire=await (self.dispatch(request.description,intent,begin) if self.dispatch is not None else begin())
             except OwnerFailure:return await self._fail_terminal(req,attempt,advanced,reservation,
                 self._usage(reserved=reserve,rate=rate,price_revision=price_revision,not_sent=True),True,'MODE_BLOCKED')
@@ -389,7 +400,7 @@ class EmbeddingProvider:
             if wire.body is None:
                 return await self._fail_terminal(req,attempt,advanced,reservation,metering,False,'PROTOCOL')
             parsed=parse_response(wire.body,space_id=self.space,expected_models=cast(tuple[str,...],self.configuration.candidate.text.record('provider.embedding_transport')['expected_reported_models']),usage_only=self.usage_only)
-            reported=allocated_usage(wire.body) if self.usage_only else metering
+            reported=allocated_usage(wire.body,billing_mode=self.billing_mode) if self.usage_only else metering
             try:
                 if parsed.usage is not None and not self.usage_only:
                     parsed.usage.estimate(cast(int,profile['max_input_units']),rate)

@@ -43,13 +43,19 @@ class ApprovedImportGrant:
 
 class ApprovedPersonaImport:
     """Self-model owner with two static actual-writer branches and bounded cleanup."""
-    def __init__(self,memory_catalog:StatementCatalog,*,dream_format:bool=False):
+    def __init__(self,memory_catalog:StatementCatalog,*,dream_format:bool=False,product_format:bool=False):
         if memory_catalog.definition.owner_module!='memory' or memory_catalog.definition.schema_version!=5:raise InvalidValue()
         self.catalog=import_catalog();self.memory_catalog=memory_catalog
         if dream_format:
             from companion_memory.persistence.text_records import extend_catalog
             from .periodic_records import periodic_catalog
-            self.catalog=extend_catalog(self.catalog,periodic_catalog(),2)
+            self.catalog=extend_catalog(self.catalog,periodic_catalog(product_format=product_format),2)
+        if product_format:
+            if not dream_format: raise InvalidValue()
+            from companion_memory.persistence.daily_records import daily_catalog
+            from companion_memory.persistence.text_records import extend_catalog
+            from .local_persona import LOCAL_TABLE
+            self.catalog = extend_catalog(self.catalog, daily_catalog('self_model', 2, (LOCAL_TABLE,)), 2)
         self.commands=tuple(self._definition(create) for create in (False,True))
         self.repositories=(self.catalog.definition,)
         self._bound=False;self._closed=False;self._released=False

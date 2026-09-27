@@ -32,7 +32,7 @@ class SemanticInputPolicy:
 
 class SemanticCommands:
     """Construct all declared schemas and mandatory writers before storage opens."""
-    def __init__(self,repositories: tuple[RepositoryDefinition,...],handler: Handler, *, usage_only:bool=False):
+    def __init__(self,repositories: tuple[RepositoryDefinition,...],handler: Handler, *, usage_only:bool=False, product_format:bool=False):
         from companion_memory.retrieval import semantic_commands as retrieval
         from companion_memory.provider import embedding_commands as provider
         from companion_memory.cognition import fixed_memory_commands as cognition
@@ -48,7 +48,7 @@ class SemanticCommands:
                     facts['memory']=RecordSchema(facts['memory'].fields+(Field('semantic_root',ID),Field('semantic_from_seq',N),
                         Field('semantic_to_seq',N),Field('semantic_gap_delta',integer(-8,8))))
                 if namespace=='provider':
-                    facts['provider']=RecordSchema(CHANGE.fields+(Field('billing_mode',enum('USAGE_ONLY_TRIAL') if usage_only else enum('TOKEN_METERED','SIMULATED')),
+                    facts['provider']=RecordSchema(CHANGE.fields+(Field('billing_mode',enum('USAGE_ONLY_TRIAL','USAGE_ONLY') if product_format else enum('USAGE_ONLY_TRIAL') if usage_only else enum('TOKEN_METERED','SIMULATED')),
                         Field('currency',enum('CNY','TEST')),Field('quota_known',N,nullable=True),Field('quota_held',N),Field('config_snapshot_id',ID)))
                 result=record(outcome=enum('APPLIED'),targets=TARGETS,items=SequenceSchema(ID,0,16),
                     facts=RecordSchema(tuple(Field(owner,facts[owner]) for owner in owners)))

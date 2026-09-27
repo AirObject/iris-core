@@ -55,17 +55,19 @@ def _replace(schema:RecordSchema,**fields:object) -> RecordSchema:
     return RecordSchema(tuple(cast(list[Field],result)))
 
 
-def schemas(*, dream: bool = False) -> dict[str,tuple[RecordSchema,...]]:
+def schemas(*, dream: bool = False, product: bool = False) -> dict[str,tuple[RecordSchema,...]]:
     """All variants are part of the static repository declaration and signature."""
     version=ScalarSchema('integer',6,6) if dream else VERSION
+    from companion_memory.configuration import managed_product_schema as product_schema
+    account=product_schema.ACCOUNT if product else ACCOUNT
     owners=DREAM_OWNERS if dream else OWNERS
-    generation=DREAM_GENERATION_PROFILE if dream else GENERATION_PROFILE
+    generation=product_schema.GENERATION_PROFILE if product else DREAM_GENERATION_PROFILE if dream else GENERATION_PROFILE
     generation_roles=ROLES[:3]+DREAM_ROLES[6:] if dream else ROLES[:3]
     original=embedding_schemas(False,usage_only=True)
     result={}
     variants=[]
-    for profile,capability,roles in ((generation,'GENERATION',generation_roles),(IMAGE_PROFILE,'MEDIA_UNDERSTANDING',('MEDIA',)),(EMBEDDING_PROFILE,'EMBEDDING',ROLES[4:])):
-        evidence=record(profile=profile,account=ACCOUNT,request_timeout_ms=N,retry_delay_ms=N,request_max_bytes=N,result_max_bytes=N)
+    for profile,capability,roles in ((generation,'GENERATION',generation_roles),(product_schema.IMAGE_PROFILE if product else IMAGE_PROFILE,'MEDIA_UNDERSTANDING',('MEDIA',)),(product_schema.EMBEDDING_PROFILE if product else EMBEDDING_PROFILE,'EMBEDDING',ROLES[4:])):
+        evidence=record(profile=profile,account=account,request_timeout_ms=N,retry_delay_ms=N,request_max_bytes=N,result_max_bytes=N)
         variants.append(_replace(original['requests'],execution_evidence=Field('execution_evidence',evidence),
             capability=Field('capability',enum(capability)),task_role=Field('task_role',enum(*roles)),
             result_owner=Field('result_owner',enum(*(dict.fromkeys(owners[r] for r in roles)))),
@@ -81,21 +83,36 @@ def schemas(*, dream: bool = False) -> dict[str,tuple[RecordSchema,...]]:
             (trial_usage(False),('MEDIA_UNDERSTANDING',),('MINIMAX_IMAGE_JSON_V1',))))
     for name in ('budget_windows','reservations','cost_items'):
         allocated=_replace(original[name],format_version=Field('format_version',version))
-        if name=='budget_windows':allocated=_replace(allocated,policy=Field('policy',ACCOUNT))
+        if name=='budget_windows':allocated=_replace(allocated,policy=Field('policy',account))
         metered=_replace(allocated,billing_mode=Field('billing_mode',enum('TOKEN_METERED')),quota_known=Field('quota_known',N)) if name!='cost_items' else _replace(allocated,
             billing_mode=Field('billing_mode',enum('TOKEN_METERED')),item=Field('item',enum('input','cached_input','output')),
             price_numerator=Field('price_numerator',N),price_denominator=Field('price_denominator',P))
         trial=(_replace(allocated,item=Field('item',enum('input','cached_input','output'))) if name=='cost_items' else allocated)
         result[name]=(allocated,metered,trial) if name=='cost_items' else (allocated,metered)
     result['handoffs']=(_replace(original['handoffs'],format_version=Field('format_version',version)),)
+    if product:
+        result={name:tuple(product_usage_schema(schema) for schema in variants) for name,variants in result.items()}
     return result
+
+
+def product_usage_schema(schema: RecordSchema) -> RecordSchema:
+    """Expand only the new graph's ordinary usage mode, recursively."""
+    result=[]
+    for field in schema.fields:
+        nested=field.schema
+        if type(nested) is RecordSchema:nested=product_usage_schema(nested)
+        elif type(nested) is SequenceSchema and type(nested.item) is RecordSchema:nested=replace(nested,item=product_usage_schema(nested.item))
+        elif field.name=='billing_mode' and type(nested) is ScalarSchema and 'USAGE_ONLY_TRIAL' in nested.choices and 'USAGE_ONLY' not in nested.choices:nested=replace(nested,choices=(*nested.choices,'USAGE_ONLY'))
+        result.append(replace(field,schema=nested))
+    return RecordSchema(tuple(result))
 
 LAYOUTS=schemas()
 DREAM_LAYOUTS=schemas(dream=True)
+PRODUCT_LAYOUTS=schemas(dream=True,product=True)
 
-def validate(table:str,value:object, *, dream: bool = False) -> Record:
+def validate(table:str,value:object, *, dream: bool = False, product: bool = False) -> Record:
     """Reject incomplete variants and recompute each stored liability on both ends."""
-    layouts=DREAM_LAYOUTS if dream else LAYOUTS
+    layouts=PRODUCT_LAYOUTS if product else DREAM_LAYOUTS if dream else LAYOUTS
     owners=DREAM_OWNERS if dream else OWNERS
     if table not in layouts:raise InvalidValue()
     if type(value) is MappingProxyType and 'payload' in value:
@@ -123,7 +140,7 @@ def validate(table:str,value:object, *, dream: bool = False) -> Record:
                 or evidence['result_max_bytes']!=40960
                 or (result['phase']=='TERMINAL')!=(result['outcome'] is not None)):
             raise InvalidValue()
-        if account['billing_mode']=='USAGE_ONLY_TRIAL':
+        if account['billing_mode'] in ('USAGE_ONLY_TRIAL','USAGE_ONLY'):
             if account['price'] is not None or account['cost_limit_atoms'] is not None or result['price_revision'] is not None:raise InvalidValue()
         elif type(account['price']) is not MappingProxyType or result['price_revision']!=account['price']['revision_ref']:raise InvalidValue()
     elif table=='attempts':
@@ -132,8 +149,8 @@ def validate(table:str,value:object, *, dream: bool = False) -> Record:
         # terminal transaction. Its PREPARED row already carries exact zero
         # liability, while a still-unobserved registration remains conservative.
         not_sent=result['state']=='NOT_SENT' or (result['state']=='PREPARED' and result['confirmed_started'] is False and result['evidence_revision']==1)
-        if result['capability']=='EMBEDDING':validate_allocated(usage)
-        elif usage['billing_mode']=='USAGE_ONLY_TRIAL':
+        if result['capability']=='EMBEDDING':validate_allocated(usage,product=product)
+        elif usage['billing_mode'] in ('USAGE_ONLY_TRIAL','USAGE_ONLY'):
             from .daily_usage import validate as validate_daily
             validate_daily(usage,deepseek=string(result['wire_protocol']).startswith('DEEPSEEK_'),not_sent=not_sent)
         else:validate_usage(usage,not_sent=not_sent)
@@ -144,10 +161,10 @@ def validate(table:str,value:object, *, dream: bool = False) -> Record:
         elif terminal and (result['terminal_error'] is None or result['first_error'] is None):raise InvalidValue()
         elif not terminal and result['terminal_error'] is not None:raise InvalidValue()
     elif table in ('budget_windows','reservations','cost_items'):
-        trial=result['billing_mode']=='USAGE_ONLY_TRIAL'
+        trial=result['billing_mode'] in ('USAGE_ONLY_TRIAL','USAGE_ONLY')
         if table=='budget_windows':
             policy=cast(Record,result['policy'])
-            if policy['billing_mode']!=result['billing_mode'] or policy['account_id']!=result['account_id'] or policy['window_id']!=result['window_id'] or number(result['attempt_count'])>number(policy['attempt_limit']):raise InvalidValue()
+            if policy['billing_mode']!=result['billing_mode'] or policy['account_id']!=result['account_id'] or policy['window_id']!=result['window_id'] or policy['attempt_limit'] is not None and number(result['attempt_count'])>number(policy['attempt_limit']):raise InvalidValue()
         for name in ('quota_reserved','quota_known','quota_held'):
             if name in result and result[name]!=(None if trial and name=='quota_known' else 0):raise InvalidValue()
         if trial:

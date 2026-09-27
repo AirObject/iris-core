@@ -25,7 +25,7 @@ class CommunicationUpgrade:
     """One retained resource lease; only exact additive physical schemas qualify."""
     def __init__(self, settings: DeploymentSettings):
         self.old = ManagedBootstrap(settings, communication_format=False)
-        self.new = ManagedBootstrap(settings, communication_format=True)
+        self.new = ManagedBootstrap(settings, communication_format=True, product_format=False)
         if self.old.assembly_digest != '6c23faee15efaa705935c8d8c81e5b0372cb9e97a1a6d3829e72334bbb322d1a':
             raise ValueError('Committed predecessor declaration changed; upgrade is not qualified.')
         root = Path(settings.text('deployment.data_root'))

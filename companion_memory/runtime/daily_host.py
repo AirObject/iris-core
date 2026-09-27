@@ -80,6 +80,7 @@ class DailyHostResources:
     embedding_authorized:Callable[[object,object],bool]=lambda description,intent:False
     birth_resource_identity:tuple[int,int]|None=None
     version_transports:Callable[[object],dict[str,ChatTransport]]|None=None
+    version_embedding_transport:Callable[[object],ChatTransport]|None=None
 
 class DailyCognitionHost:
     """One public owner graph for learning, images, goals and semantic queries."""
@@ -189,6 +190,10 @@ class DailyCognitionHost:
         if not all(valid_identifier(v) for v in (entry_id,partition_id,*subjects,*related,*writable,*routes)) or len(self._scope_setup)>=self.configuration.runtime.integer('runtime.read_page_size'):raise ValueError('Invalid entry scope.')
         frozen=freeze_value(SequenceSchema(WORLD,1,16),worlds,owned=True)
         self._scope_setup[entry_id]=(object_ids,partition_id,subjects,cast(tuple,frozen),related,writable,routes)
+
+    def configured_entries(self) -> tuple[str, ...]:
+        """Return entry scopes attached to this host, including recovered bindings."""
+        return tuple(self._scope_setup)
 
     async def initialize(self,mode:str):
         """Join bounded local opening; no phase activates network or reads credentials."""
@@ -301,7 +306,8 @@ class DailyCognitionHost:
                 self.provider.managed_dispatch=lambda:r.send_authorized('managed-dispatch')
                 from companion_memory.provider.managed_versions import ManagedProviderVersions
                 if self.assembly.work_configuration is None or r.version_transports is None:raise InvalidValue()
-                self.provider.managed_versions=ManagedProviderVersions(self.assembly.work_configuration.versions,r.version_transports)
+                self.provider.managed_versions=ManagedProviderVersions(self.assembly.work_configuration.versions,r.version_transports,
+                    r.version_embedding_transport)
                 self.provider.ledger.managed_versions=self.provider.managed_versions
             c.embedding=self.provider;self.runtime=ContentRuntimeService(self.assembly,self.provider,None,cast(str,next(record(p)['profile_id'] for p in sequence(stored.candidate.text.record('provider.transport')['roles']) if record(p)['role']=='LEARNING')),None,embedding=self.provider)
             if c.dream_mode is not None:

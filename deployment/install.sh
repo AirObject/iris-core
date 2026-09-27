@@ -13,4 +13,4 @@ else
     "$image" python /opt/iris/deployment/provision.py
 fi
 docker compose up --detach --wait --wait-timeout 60 iris
-printf '%s\n' '本地服务：http://127.0.0.1:8080。完成引导和首次审核前不会开放业务。'
+printf '%s\n' '本地服务：http://127.0.0.1:8080。在页面填写基础资料和 Provider API key 即可创建工作区；模型请求默认暂停。'

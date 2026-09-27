@@ -1,8 +1,8 @@
 """Administrator adapters over issued native state, goal and dream ports.
 
-The registered host/entry comes from the immutable initialization record. HTTP
-input selects an operation and its closed native payload, never an identity or
-an owner repository. Stable administrator bindings preserve original receipts.
+Administrator operations select only registered host/entry bindings. HTTP input
+selects an operation and its closed native payload, never an unverified identity
+or owner repository. Stable administrator bindings preserve original receipts.
 """
 from __future__ import annotations
 import time
@@ -26,6 +26,7 @@ class ManagedOperations:
         self.dream_port: DreamPort | None = None
         self.business_expires = 0.0
         self.content_port = None
+        self.content_entries: tuple[str, ...] = ()
         import asyncio
         self.dream_binding_lock = asyncio.Lock()
 
@@ -39,13 +40,67 @@ class ManagedOperations:
             self.business_port = None
             self.dream_port = None
             self.content_port = None
+            self.content_entries = ()
         host.checkpoint()
         draft = (await app.identity.read_draft())['draft']
         return host, draft
 
-    def identity(self, host, draft, operations, kind, expires=None):
+    async def bindings(self, payload: dict[str, object]) -> dict[str, object]:
+        """Read one bounded ingress page without requiring notification support.
+
+        Administrator authentication and final revocation checks belong to the
+        application. This projection contains no event data or issued rights and
+        remains readable during focus, like other management observations.
+        """
+        from .managed_application import fields
+        fields(payload, {'after'})
+        after = payload['after']
+        if type(after) is not str:
+            raise OwnerFailure('INVALID_INPUT', 'cursor', 'INVALID_SHAPE')
+        try:
+            cursor_bytes = len(after.encode('utf-8'))
+        except UnicodeError:
+            raise OwnerFailure('INVALID_INPUT', 'cursor', 'INVALID_SHAPE') from None
+        if cursor_bytes > 128:
+            raise OwnerFailure('INVALID_INPUT', 'cursor', 'INVALID_SHAPE')
+        host, draft = await self.ready()
+        if not self.application.identity.communication_format:
+            # The immutable legacy draft supplies candidates; ingress still
+            # owns the binding and must confirm it before any ID is exposed.
+            host_id, entry_id = draft.get('host_id'), draft.get('entry_id')
+            if (type(host_id) is not str or type(entry_id) is not str
+                    or not await host.assembly.ingress.verify_host_entry(entry_id, host_id)):
+                raise OwnerFailure('ACCESS_DENIED', 'binding', 'BINDING_MISMATCH')
+            items = ({'host_id': host_id, 'entry_id': entry_id},) if entry_id > after else ()
+            return {'items': items, 'after': entry_id if items else None}
+        rows = await host.assembly.ingress.registered_entries(after)
+        return {'items': tuple({'host_id': row['host_id'], 'entry_id': row['entry_id']} for row in rows),
+            'after': rows[-1]['entry_id'] if rows else None}
+
+    async def default_binding(self, host, draft) -> tuple[str, str]:
+        if 'host_id' in draft and 'entry_id' in draft:
+            host_id, entry_id = cast(str, draft['host_id']), cast(str, draft['entry_id'])
+            if await host.assembly.ingress.verify_host_entry(entry_id, host_id):
+                return host_id, entry_id
+        bindings = await host.assembly.ingress.registered_entries()
+        if len(bindings) != 1:
+            raise OwnerFailure('PRECONDITION_FAILED', 'entry', 'BINDING_REQUIRED')
+        return cast(str, bindings[0]['host_id']), cast(str, bindings[0]['entry_id'])
+
+    async def selected_binding(self, host, draft, payload: dict[str, object]) -> tuple[str, str, dict[str, object]]:
+        """Resolve an explicit registered binding or the sole unambiguous entry."""
+        if set(payload) != {'entry_id', 'host_id', 'input'}:
+            host_id, entry_id = await self.default_binding(host, draft)
+            return host_id, entry_id, payload
+        from .managed_application import text
+        host_id, entry_id = text(payload['host_id']), text(payload['entry_id'])
+        if type(payload['input']) is not dict or not await host.assembly.ingress.verify_host_entry(entry_id, host_id):
+            raise OwnerFailure('ACCESS_DENIED', 'binding', 'BINDING_MISMATCH')
+        return host_id, entry_id, cast(dict[str, object], payload['input'])
+
+    def identity(self, host, host_id, entry_id, operations, kind, expires=None):
         return HostIdentity(stable('managed-administrator-port', host.resources.instance_id, kind),
-            'administrator', draft['host_id'], draft['entry_id'], frozenset(operations), (), self.business_expires if expires is None else expires)
+            'administrator', host_id, entry_id, frozenset(operations), (), self.business_expires if expires is None else expires)
 
     async def state_goals(self, route: str, payload: dict[str, object]):
         if route not in BUSINESS:
@@ -53,13 +108,7 @@ class ManagedOperations:
         host, draft = await self.ready()
         if host.business is None or host.stored is None:
             raise OwnerFailure('INVALID_STATE', 'instance', 'NOT_READY')
-        host_id, entry_id = draft['host_id'], draft['entry_id']
-        if set(payload) == {'entry_id', 'host_id', 'input'}:
-            from .managed_application import text
-            host_id, entry_id = text(payload['host_id']), text(payload['entry_id'])
-            if type(payload['input']) is not dict or not await host.assembly.ingress.verify_host_entry(entry_id, host_id):
-                raise OwnerFailure('ACCESS_DENIED', 'binding', 'BINDING_MISMATCH')
-            payload = payload['input']
+        host_id, entry_id, payload = await self.selected_binding(host, draft, payload)
         _, operation, method, path = ROUTES[route]
         return await self.application.host_http.native(host_id, entry_id, operation,
             method, path, payload, administrator=True)
@@ -72,13 +121,15 @@ class ManagedOperations:
         if action == 'status':
             fields(payload, set())
             return {'schedule': await host.combination.dream.schedule(), 'mode_epoch': host.runtime.gate.epoch}
+        host_id, entry_id, payload = await self.selected_binding(host, draft, payload)
         async with self.dream_binding_lock:
-            if self.dream_port is None or time.monotonic() >= self.dream_port.identity.expires_at:
+            if (self.dream_port is None or time.monotonic() >= self.dream_port.identity.expires_at
+                    or (self.dream_port.identity.host_id, self.dream_port.identity.entry_id) != (host_id, entry_id)):
                 if host.dream_ports.tasks:
                     raise OwnerFailure('RESOURCE_BUSY', 'dream', 'CLEANUP_PENDING', True)
                 if self.dream_port is not None:
                     host.dream_ports.revoke(self.dream_port)
-                self.dream_port = await host.bind_dream(self.identity(host, draft, OPERATIONS, 'dream', time.monotonic() + 3600))
+                self.dream_port = await host.bind_dream(self.identity(host, host_id, entry_id, OPERATIONS, 'dream', time.monotonic() + 3600))
         port = self.dream_port
         assert port is not None
         if action == 'inspect':
@@ -102,9 +153,11 @@ class ManagedOperations:
         return await method(key, run, expected, epoch)
 
     async def content(self, action: str, query: dict[str, object]):
-        host, draft = await self.ready()
-        if self.content_port is None:
-            self.content_port = host.runtime.observations.bind((draft['entry_id'],), instance_observe=True)
+        host, _ = await self.ready()
+        entries = host.configured_entries()
+        if self.content_port is None or entries != self.content_entries:
+            self.content_entries = entries
+            self.content_port = host.runtime.observations.bind(entries, instance_observe=True)
         methods = {'runtime': self.content_port.read_runtime_view, 'entries': self.content_port.read_entry_status,
             'batches': self.content_port.read_batch_status, 'memory': self.content_port.read_memory_status,
             'media': self.content_port.read_media_status}

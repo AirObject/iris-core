@@ -5,6 +5,7 @@ worker. Native material and business authority are rechecked in registration;
 local confirmation and retirement never dispatch HTTP or create another key.
 """
 from __future__ import annotations
+from .account_policy import attempt_limit_reached
 from companion_memory.configuration.cognition_identity import StoredCognitionConfiguration, StoredDreamConfiguration, StoredManagedConfiguration, stored_cognition_configuration_issue
 from companion_memory.persistence.schema import InvalidValue
 import asyncio
@@ -292,7 +293,7 @@ class DailyProvider(EmbeddingProvider):
             rows=self._read_views.stage('transaction_reservations',uow,{'request_id':rid})
             if len(rows)!=1:raise InvalidData()
             reservation=self.ledger._decode('reservations',rows[0])
-            if reservation['held_atoms']!=0 or reservation['billing_mode']!='USAGE_ONLY_TRIAL' and reservation['cost_complete'] is not True:
+            if reservation['held_atoms']!=0 or reservation['billing_mode'] not in ('USAGE_ONLY_TRIAL','USAGE_ONLY') and reservation['cost_complete'] is not True:
                 raise OwnerFailure('RESOURCE_BUSY','budget','LIABILITY_UNRESOLVED')
             if request['outcome']=='SUCCEEDED':
                 rows=self._read_views.stage('transaction_handoffs',uow,{'request_id':rid})
@@ -305,10 +306,10 @@ class DailyProvider(EmbeddingProvider):
             budget=self.ledger._decode('budget_windows',rows[0]);account=as_record(budget['policy'])
             from .text_accounting import liability
             profile=next(p for p in self.profiles if p['material_role']=='PERSONA')
-            amount=0 if account['billing_mode']=='USAGE_ONLY_TRIAL' else liability(account,profile)[0]
+            amount=0 if account['billing_mode'] in ('USAGE_ONLY_TRIAL','USAGE_ONLY') else liability(account,profile)[0]
             explicit=None if account['price'] is None else as_record(account['price'])['per_attempt_money_bound']
             if explicit is not None:amount=max(amount,cast(int,explicit))
-            if budget['risk_state']!='CLEAR' or budget['held_atoms']!=0 or cast(int,budget['attempt_count'])>=cast(int,account['attempt_limit']) or account['billing_mode']!='USAGE_ONLY_TRIAL' and cast(int,budget['known_subtotal_atoms'])+amount>cast(int,account['cost_limit_atoms']):
+            if budget['risk_state']!='CLEAR' or budget['held_atoms']!=0 or attempt_limit_reached(account,cast(int,budget['attempt_count'])) or account['billing_mode'] not in ('USAGE_ONLY_TRIAL','USAGE_ONLY') and cast(int,budget['known_subtotal_atoms'])+amount>cast(int,account['cost_limit_atoms']):
                 raise OwnerFailure('RESOURCE_BUSY','budget','CAPACITY_REACHED')
 
     async def execute_daily(self,kind:str,key:str,payload:object) -> object:
@@ -402,10 +403,10 @@ class DailyProvider(EmbeddingProvider):
             if budget is None:
                 budget=row({'object_id':bid,'revision':1,'account_id':account['account_id'],'window_id':account['window_id'],'policy':account,
                     'attempt_count':0,'known_subtotal_atoms':0,'held_atoms':0,'risk_state':'CLEAR','format_version':self.ledger.assembly.version,
-                    'quota_reserved':0,'quota_known':None if account['billing_mode']=='USAGE_ONLY_TRIAL' else 0,'quota_held':0,'billing_mode':account['billing_mode']})
+                    'quota_reserved':0,'quota_known':None if account['billing_mode'] in ('USAGE_ONLY_TRIAL','USAGE_ONLY') else 0,'quota_held':0,'billing_mode':account['billing_mode']})
                 await self._commit('initialize_budget',identity('daily-budget-initialize',bid),(Mutation('budget_windows',None,budget),),None,None,'NONE','CLEAR',True)
-            if (budget['risk_state']!='CLEAR' or budget['held_atoms']!=0 or cast(int,budget['attempt_count'])>=cast(int,account['attempt_limit'])
-                    or account['billing_mode']!='USAGE_ONLY_TRIAL' and cast(int,budget['known_subtotal_atoms'])+amount>cast(int,account['cost_limit_atoms'])):raise OwnerFailure('RESOURCE_BUSY','budget','CAPACITY_REACHED')
+            if (budget['risk_state']!='CLEAR' or budget['held_atoms']!=0 or attempt_limit_reached(account,cast(int,budget['attempt_count']))
+                    or account['billing_mode'] not in ('USAGE_ONLY_TRIAL','USAGE_ONLY') and cast(int,budget['known_subtotal_atoms'])+amount>cast(int,account['cost_limit_atoms'])):raise OwnerFailure('RESOURCE_BUSY','budget','CAPACITY_REACHED')
             changes=registration(request,budget,self._now());self._chat_registration=request,changes
             await self.before_first_registration(request)
             check_deadline()

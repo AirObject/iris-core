@@ -106,7 +106,7 @@ class ManagedHTTP:
         self.identity_source = identity_source or (lambda: identity)
         self.assets = {path: (static_root / name).read_bytes() for path, name in
                        (('/', 'index.html'), ('/app.js', 'app.js'), ('/style.css', 'style.css'))}
-        for name in ('external_connections.js', 'configuration_operation.js', 'protocol/http.json', 'protocol/ws.json', 'protocol/iris_client.py',
+        for name in ('external_connections.js', 'configuration_operation.js', 'setup_configuration.js', 'onboarding.js', 'protocol/http.json', 'protocol/ws.json', 'protocol/iris_client.py',
                      'protocol/http_client.py', 'protocol/reconnect.py', 'protocol/event.json', 'protocol/query.json'):
             if (static_root / name).is_file(): self.assets['/' + name] = (static_root / name).read_bytes()
         self.server: asyncio.Server | None = None

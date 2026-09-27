@@ -31,7 +31,7 @@ def host_resources(resources: ManagedResources, candidate: ManagedConfigurationC
         if (reference, revision, account) not in declared:
             return CredentialUnavailable('UNAVAILABLE')
         try:
-            return Available(CredentialLease(resources.read_secret(reference + '__' + revision)))
+            return Available(CredentialLease(resources.read_provider_secret(reference, revision)))
         except (OSError, ValueError):
             return CredentialUnavailable('UNAVAILABLE')
     resolver = CredentialResolver(resolve)
@@ -51,4 +51,6 @@ def host_resources(resources: ManagedResources, candidate: ManagedConfigurationC
         embedding_transport, transports, send_authorized,
         birth_resource_identity=(cast(int, resources.identity['birth_device']), cast(int, resources.identity['birth_inode'])),
         version_transports=lambda version: host_resources(resources, cast(ManagedConfigurationCandidate, version),
-            configuration_key, role_name, send_authorized).transports)
+            configuration_key, role_name, send_authorized).transports,
+        version_embedding_transport=lambda version: host_resources(resources, cast(ManagedConfigurationCandidate, version),
+            configuration_key, role_name, send_authorized).embedding_transport)

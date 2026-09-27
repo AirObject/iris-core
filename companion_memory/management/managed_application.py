@@ -82,7 +82,8 @@ class ManagedApplication:
             # Independent committed-evidence readers retain their native limits
             # and permission checks while ordinary management work is waiting.
             return await self.audit.dispatch(principal, method, path, payload)
-        exclusive = path in ('/api/backups/create', '/api/configuration/activate', '/api/wizard/initialize')
+        exclusive = path in ('/api/backups/create', '/api/configuration/activate', '/api/wizard/initialize', '/api/setup/save', '/api/persona/use-local',
+            '/api/setup/providers', '/api/setup/providers/operation')
         return await self.admission.run(lambda: self._logged_dispatch(principal, method, path, payload), exclusive=exclusive)
 
     async def _logged_dispatch(self, principal: Principal | None, method: str, path: str, payload: dict[str, object]) -> object:
@@ -139,6 +140,15 @@ class ManagedApplication:
 
     async def _administrator(self, principal: Principal, method: str, path: str, payload: dict[str, object]) -> object:
         identity = self.identity
+        if method == 'POST' and path in ('/api/setup/providers', '/api/setup/providers/operation'):
+            from .provider_credentials import rotate_credentials
+            return await rotate_credentials(self, path, payload)
+        if path == '/api/setup' or path.startswith('/api/setup/'):
+            from .simple_setup import setup_request
+            return await setup_request(self, method, path, payload)
+        if method == 'POST' and path == '/api/persona/use-local':
+            fields(payload, {'key'})
+            return await self.business.use_local_persona(text(payload['key']))
         if method == 'POST' and path.startswith('/api/provider/probe/'):
             from .provider_probe import request
             return await request(self, path.removeprefix('/api/provider/probe/'), payload)
@@ -148,6 +158,8 @@ class ManagedApplication:
                 raise OwnerFailure('INVALID_STATE', 'logging', 'NOT_READY')
             return {'page': await self.logging.reader.query_runtime_logs(payload['query']),
                 'window': self.logging.reader.read_window_health(), 'sinks': self.logging.service.get_sink_health()}
+        if method == 'POST' and path == '/api/administration/bindings':
+            return await self.operations.bindings(payload)
         if method == 'POST' and path.startswith('/api/administration/'):
             return await self.operations.state_goals(path.removeprefix('/api/administration/'), payload)
         if method == 'POST' and path.startswith('/api/dream/'):
@@ -221,15 +233,21 @@ class ManagedApplication:
             if type(payload['draft']) is not dict:
                 raise OwnerFailure('INVALID_INPUT', 'wizard', 'INVALID_SHAPE')
             self.draft_shape(payload['draft'], complete=False)
+            if 'configuration' not in payload['draft'] and 'timezone' in payload['draft']:
+                from companion_memory.configuration.managed_registry import DEFAULT_PLATFORM_ID, initial_values
+                draft = cast(dict[str, object], payload['draft'])
+                draft['configuration'] = initial_values(self.bootstrap.settings, self.resources.protected_directories(),
+                    text(draft['timezone']), text(draft.get('platform_id', DEFAULT_PLATFORM_ID)), product=self.bootstrap.product_format)
             return await identity.save_draft(text(payload['key']), revision(payload['expected_revision'], nullable=True), payload['draft'])
         if method == 'POST' and path == '/api/configuration/schema':
-            fields(payload, {'platform_id'})
-            from companion_memory.configuration.managed_registry import registries
+            if set(payload) not in (set(), {'platform_id'}):
+                raise OwnerFailure('INVALID_INPUT', 'configuration', 'INVALID_SHAPE')
+            from companion_memory.configuration.managed_registry import DEFAULT_PLATFORM_ID, registries
             from companion_memory.configuration.managed_bootstrap import bootstrap_snapshot
             from companion_memory.configuration.managed_form import form_view
             settings, directories = self.bootstrap.settings, self.resources.protected_directories()
-            return form_view(registries(settings, directories, text(payload['platform_id'])),
-                bootstrap_snapshot(settings, directories), settings.text('deployment.data_root'))
+            return form_view(registries(settings, directories, text(payload.get('platform_id', DEFAULT_PLATFORM_ID))),
+                bootstrap_snapshot(settings, directories), settings.text('deployment.data_root'), product=self.bootstrap.product_format)
         if method == 'POST' and path == '/api/wizard/validate':
             fields(payload, {'expected_revision'})
             current = await identity.read_draft()
@@ -237,10 +255,21 @@ class ManagedApplication:
                 raise OwnerFailure('PRECONDITION_FAILED', 'revision', 'REVISION_CONFLICT')
             draft = cast(dict[str, object], current['draft'])
             self.draft_shape(draft, complete=True)
-            candidate = resolve_values(self.bootstrap.settings, self.resources.protected_directories(),
-                text(draft['platform_id']), cast(dict[str, object], draft['configuration']))
+            from companion_memory.configuration.managed_registry import DEFAULT_PLATFORM_ID
+            try:
+                candidate = resolve_values(self.bootstrap.settings, self.resources.protected_directories(),
+                    text(draft.get('platform_id', DEFAULT_PLATFORM_ID)), cast(dict[str, object], draft['configuration']),
+                    require_price_evidence=True)
+            except ValueError:
+                from companion_memory.configuration.managed_diagnostics import diagnose_managed_configuration
+                issues = diagnose_managed_configuration(self.bootstrap.settings, self.resources.protected_directories(),
+                    text(draft.get('platform_id', DEFAULT_PLATFORM_ID)), draft['configuration'])
+                return {'valid': False, 'error': {'code': 'CONFIGURATION_INVALID'}, **issues}
             if type(candidate) is ManagedConfigurationErr:
-                return {'valid': False, 'error': candidate.error}
+                from companion_memory.configuration.managed_diagnostics import diagnose_managed_configuration
+                issues = diagnose_managed_configuration(self.bootstrap.settings, self.resources.protected_directories(),
+                    text(draft.get('platform_id', DEFAULT_PLATFORM_ID)), draft['configuration'])
+                return {'valid': False, 'error': candidate.error, **issues}
             assert type(candidate) is ManagedConfigurationOk
             import json
             content = json.dumps(candidate_values(candidate.value), ensure_ascii=False, sort_keys=True, separators=(',', ':'))
@@ -324,13 +353,20 @@ class ManagedApplication:
     @staticmethod
     def draft_shape(draft: dict[str, object], *, complete: bool) -> None:
         allowed = {'role_name', 'initial_material', 'platform_id', 'entry_id', 'host_id',
-            'conversation_id', 'timezone', 'timezone_confirmed', 'configuration'}
-        if not set(draft) <= allowed or complete and set(draft) != allowed:
+            'conversation_id', 'timezone', 'timezone_confirmed', 'configuration', 'setup_mode'}
+        required = {'role_name', 'initial_material', 'timezone', 'timezone_confirmed', 'configuration'}
+        if not set(draft) <= allowed or complete and not required <= set(draft):
+            raise OwnerFailure('INVALID_INPUT', 'wizard', 'INVALID_SHAPE')
+        binding = {'entry_id', 'host_id', 'conversation_id'}
+        if set(draft) & binding and not binding <= set(draft):
             raise OwnerFailure('INVALID_INPUT', 'wizard', 'INVALID_SHAPE')
         for key, value in draft.items():
             if key == 'configuration':
                 if type(value) is not dict:
                     raise OwnerFailure('INVALID_INPUT', 'configuration', 'INVALID_SHAPE')
+            elif key == 'setup_mode':
+                if value != 'SIMPLE':
+                    raise OwnerFailure('INVALID_INPUT', 'setup', 'INVALID_SHAPE')
             elif key == 'timezone_confirmed':
                 if type(value) is not bool or complete and value is not True:
                     raise OwnerFailure('INVALID_INPUT', 'timezone', 'CONFIRMATION_REQUIRED')

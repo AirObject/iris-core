@@ -16,6 +16,15 @@ if TYPE_CHECKING:
 async def request_connections(application: ManagedApplication, action: str, payload: dict[str, object], principal):
     from .managed_application import fields, text, revision
     host = application.business.host
+    if action == 'overview' and (host is None or not application.business.initialized or not application.identity.communication_format):
+        fields(payload, set())
+        state = ('UPGRADE_REQUIRED' if application.business.initialized and not application.identity.communication_format
+            else application.bootstrap.state)
+        return {'state': state, 'initialized': False,
+            'origin': application.bootstrap.settings.text('deployment.origin'),
+            'websocket_path': '/api/host/ws', 'subprotocol': 'iris.communication.v1',
+            'ws_enabled': False, 'ws_available': False, 'notifications_paused': True,
+            'configuration_id': None, 'routes': (), 'connections': ()}
     if host is None or not application.business.initialized or not application.identity.communication_format:
         raise OwnerFailure('INVALID_STATE', 'connection', 'NOT_READY')
     routes = NotificationRoutes(application.identity)
@@ -69,9 +78,17 @@ async def request_connections(application: ManagedApplication, action: str, payl
             application.identity.rows.page('notification_routes', after))
         return {'items': rows, 'after': rows[-1]['entry_id' if action == 'hosts/list' else 'object_id'] if rows else None}
     if action in ('hosts/register', 'hosts/confirm'):
-        fields(payload, {'key', 'entry_id', 'host_id', 'platform_id', 'external_entry_id'})
-        key, entry, recipient, platform, external = (text(payload[k], maximum=512 if k == 'external_entry_id' else 128)
-            for k in ('key', 'entry_id', 'host_id', 'platform_id', 'external_entry_id'))
+        if set(payload) not in ({'key', 'entry_id', 'host_id', 'platform_id', 'external_entry_id'},
+                {'key', 'entry_id', 'host_id', 'external_entry_id'}):
+            raise OwnerFailure('INVALID_INPUT', 'entry', 'INVALID_SHAPE')
+        key, entry, recipient, external = (text(payload[k], maximum=512 if k == 'external_entry_id' else 128)
+            for k in ('key', 'entry_id', 'host_id', 'external_entry_id'))
+        candidates = host.stored.candidate.platforms if host.stored is not None else ()
+        if len(candidates) != 1:
+            raise OwnerFailure('INVALID_STATE', 'platform', 'CONFIGURATION_REQUIRED')
+        platform = text(payload['platform_id']) if 'platform_id' in payload else candidates[0].platform_id
+        if platform != candidates[0].platform_id:
+            raise OwnerFailure('INVALID_INPUT', 'platform', 'BINDING_MISMATCH')
         assert host.runtime is not None
         if action == 'hosts/confirm':
             result = await host.runtime.confirm_command('register_content_entry', key,
@@ -80,6 +97,8 @@ async def request_connections(application: ManagedApplication, action: str, payl
             result = await host.register_entry(key, entry, recipient, platform, external)
         if type(result) is Committed and host.runtime.gate.state == 'NORMAL':
             await host.attach_registered_entry(entry, recipient)
+            if application.business.logging is not None:
+                application.business.logging.refresh_entries(host.configured_entries())
         return result
     host.normal()
     if action == 'routes/create':

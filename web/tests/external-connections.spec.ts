@@ -31,9 +31,8 @@ test('external connection setup, activation, independent host and browser probe 
   await expect(page.getByRole('heading',{name:'实例概览',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'外部连接',exact:true}).click();
   await page.getByRole('button',{name:'宿主与入口',exact:true}).click();
-  await page.getByLabel('宿主标识',{exact:true}).fill('host');
+  await page.getByLabel('宿主标识',{exact:true}).fill('other-host');
   await page.getByLabel('入口标识',{exact:true}).fill('browser-entry-'+suffix);
-  await page.getByLabel('已有平台标识').fill('sample_platform');
   await page.getByLabel('外部会话标识').fill('browser-conversation-'+suffix);
   await page.getByRole('button',{name:'确认登记',exact:true}).click();
   await expect(page.locator('#connection-host')).toBeVisible();
@@ -46,7 +45,12 @@ test('external connection setup, activation, independent host and browser probe 
   await page.getByRole('button',{name:'创建禁用路由',exact:true}).click();
   await expect(page.getByRole('heading',{name:route,exact:true})).toBeVisible();
   await page.getByRole('button',{name:'凭据与权限',exact:true}).click();
+  await page.getByLabel('宿主',{exact:true}).selectOption('other-host');
+  await expect(page.getByLabel('browser-entry-'+suffix,{exact:true})).toBeVisible();
+  await expect(page.getByLabel('entry',{exact:true})).toHaveCount(0);
+  await expect(page.getByLabel(route,{exact:true})).toHaveCount(0);
   await page.getByLabel('宿主',{exact:true}).selectOption('host');
+  await expect(page.getByLabel('browser-entry-'+suffix,{exact:true})).toHaveCount(0);
   for(const name of ['entry','notifications','runtime_observe','probe','goal_read','goal_write','confirm',route,'goal.upcoming','goal.due','core.mode_changed','connection.probe'])await page.getByLabel(name,{exact:true}).check();
   await page.getByRole('button',{name:'签发令牌',exact:true}).click();
   await expect(page.locator('#connection-secret')).toContainText('请立即安全保存');
@@ -79,6 +83,8 @@ test('external connection setup, activation, independent host and browser probe 
     await submitOriginal('发送一次探针','/api/connections/probes/run');
     await expect(page.locator('#connection-test-results')).toContainText('COMMITTED',{timeout:15000});
     await page.getByRole('button',{name:'目标管理',exact:true}).click();
+    await expect(page.getByRole('combobox',{name:'宿主与入口'})).toBeVisible();
+    await page.getByRole('combobox',{name:'宿主与入口'}).selectOption('entry');
     await page.getByLabel('目标内容').fill('真实浏览器与 WSS 目标提醒 '+suffix);
     await page.getByLabel('截止时间（UTC，可留空）').fill(new Date(Date.now()+10000).toISOString().slice(0,19));
     await page.locator('#goal-new').getByLabel('通知路由').selectOption(route);

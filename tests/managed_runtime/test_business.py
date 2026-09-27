@@ -10,6 +10,7 @@ from companion_memory.provider.credentials import CredentialResolver, Credential
 from companion_memory.provider.values import Record
 from companion_memory.memory.formats import record
 from companion_memory.persistence import Found
+from companion_memory.persistence.owned_statements import OwnerFailure
 from tests.daily_cognition.test_reasoning import responses
 from tests.daily_cognition.test_initial_persona_host import persona
 from .memory_support import shared_formal_response, exercise_memory
@@ -19,6 +20,7 @@ from companion_memory.configuration.managed_bootstrap import STORAGE_DEFAULTS
 from companion_memory.persistence import Ready, Committed
 from companion_memory.runtime.managed_bootstrap import ManagedBootstrap
 from companion_memory.runtime.managed_business import ManagedBusiness
+from companion_memory.management.managed_application import ManagedApplication
 from companion_memory.runtime.managed_host_resources import host_resources
 from .test_native_host import managed_inputs
 
@@ -65,6 +67,175 @@ def controlled_resources(port: int, resolutions: list[tuple[str, str, str]] | No
 
 
 class BusinessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_saved_draft_receipts_remain_confirmable_after_material_is_fixed(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            bootstrap = ManagedBootstrap(resolve_deployment({'deployment.data_root': str(root)}))
+            try:
+                self.assertIs(type(await bootstrap.open()), Ready)
+                identity = bootstrap.assembly.identity
+                assert identity is not None
+                first = setup_draft(root)
+                second = {**first, 'role_name': '已确认的合成角色'}
+                self.assertIs(type(await identity.save_draft('first-draft', None, first)), Committed)
+                self.assertIs(type(await identity.save_draft('second-draft', 1, second)), Committed)
+                self.assertIs(type(await identity.advance_wizard('confirm-material', 2,
+                    'VALIDATED', 'confirm-material')), Committed)
+                before = await identity.read_draft()
+                repeated = await identity.save_draft('first-draft', None, first)
+                self.assertIs(type(repeated), Committed)
+                assert type(repeated) is Committed
+                self.assertEqual(repeated.source, 'EXISTING')
+                for changed in ({**second, 'role_name': '另一个角色'},
+                        {**second, 'initial_material': '不同的初始材料'}, {**second, 'timezone': 'UTC'}):
+                    with self.assertRaises(OwnerFailure) as frozen:
+                        await identity.save_draft('change-confirmed-material', 3, changed)
+                    self.assertEqual(frozen.exception.reason, 'INITIALIZATION_STARTED')
+                with self.assertRaises(OwnerFailure) as reused:
+                    await identity.save_draft('first-draft', None, second)
+                self.assertEqual(reused.exception.reason, 'CONTENT_MISMATCH')
+                self.assertEqual(await identity.read_draft(), before)
+            finally:
+                if bootstrap.assembly.identity is not None:
+                    bootstrap.assembly.identity.close()
+                self.assertTrue(await bootstrap.close())
+
+    async def test_basic_setup_waits_for_actual_provider_configuration(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = resolve_deployment({'deployment.data_root': str(root)})
+            bootstrap = ManagedBootstrap(settings)
+            business = None
+            try:
+                self.assertIs(type(await bootstrap.open()), Ready)
+                identity = bootstrap.assembly.identity
+                assert identity is not None
+                draft = setup_draft(root)
+                for name in ('entry_id', 'host_id', 'conversation_id'):
+                    del draft[name]
+                complete_configuration = draft['configuration']
+                draft['configuration'] = {**complete_configuration,
+                    'foundation': {**complete_configuration['foundation'], 'provider.profiles': None}}
+                self.assertIs(type(await identity.save_draft('save-basic', None, draft)), Committed)
+                business = ManagedBusiness(bootstrap, identity, resource_factory=synthetic_resources)
+                confirmed = await business.initialize('confirm-basic', 1)
+                assert type(confirmed) is dict
+                self.assertEqual(confirmed['state'], 'CONFIGURATION_REQUIRED')
+                self.assertFalse(business.initialized)
+                self.assertEqual((await identity.read_draft())['state'], 'VALIDATED')
+                repeated = await business.initialize('confirm-basic', 1)
+                assert type(repeated) is dict
+                self.assertEqual(repeated['state'], 'CONFIGURATION_REQUIRED')
+                with self.assertRaises(OwnerFailure) as reused:
+                    await business.initialize('confirm-basic', 2)
+                self.assertEqual(reused.exception.reason, 'CONTENT_MISMATCH')
+                self.assertTrue(await business.close())
+                self.assertTrue(await bootstrap.close())
+                bootstrap = ManagedBootstrap(settings)
+                self.assertIs(type(await bootstrap.open()), Ready)
+                identity = bootstrap.assembly.identity
+                assert identity is not None
+                business = ManagedBusiness(bootstrap, identity, resource_factory=synthetic_resources)
+                recovered = await business.recover()
+                assert type(recovered) is dict
+                self.assertEqual(recovered['state'], 'CONFIGURATION_REQUIRED')
+                saved = await identity.save_draft('save-actual-configuration', 2,
+                    {**draft, 'configuration': complete_configuration})
+                self.assertIs(type(saved), Committed)
+                started = await business.initialize('initialize-business', 3)
+                assert type(started) is dict
+                self.assertEqual(started['state'], 'AWAITING_REVIEW')
+                assert business.host is not None
+                self.assertEqual(business.host.configured_entries(), ())
+                frozen = await identity.read_draft()
+                repeated = await business.initialize('confirm-basic', 1)
+                assert type(repeated) is dict
+                self.assertEqual(repeated['state'], 'CONFIGURATION_REQUIRED')
+                with self.assertRaises(OwnerFailure) as conflict:
+                    await business.initialize('initialize-business', 2)
+                self.assertEqual(conflict.exception.reason, 'CONTENT_MISMATCH')
+                self.assertEqual(await identity.read_draft(), frozen)
+                self.assertTrue(await business.close())
+                identity.close()
+                self.assertTrue(await bootstrap.close())
+                bootstrap = ManagedBootstrap(settings)
+                self.assertIs(type(await bootstrap.open()), Ready)
+                identity = bootstrap.assembly.identity
+                assert identity is not None
+                business = ManagedBusiness(bootstrap, identity, resource_factory=synthetic_resources)
+                recovered = await business.recover()
+                assert type(recovered) is dict
+                self.assertEqual(recovered['state'], 'AWAITING_REVIEW')
+                repeated = await business.initialize('confirm-basic', 1)
+                assert type(repeated) is dict
+                self.assertEqual(repeated['state'], 'CONFIGURATION_REQUIRED')
+                self.assertEqual(await identity.read_draft(), frozen)
+            finally:
+                if bootstrap.assembly.identity is not None:
+                    bootstrap.assembly.identity.close()
+                if business is not None:
+                    self.assertTrue(await business.close())
+                self.assertTrue(await bootstrap.close())
+
+    async def test_setup_without_entry_then_register_external_connection(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = resolve_deployment({'deployment.data_root': str(root)})
+            draft = setup_draft(root)
+            for name in ('entry_id', 'host_id', 'conversation_id'):
+                del draft[name]
+            bootstrap = ManagedBootstrap(settings)
+            business = None
+            try:
+                self.assertIs(type(await bootstrap.open()), Ready)
+                identity = bootstrap.assembly.identity
+                assert identity is not None
+                application = ManagedApplication(bootstrap, resource_factory=synthetic_resources)
+                business = application.business
+                from companion_memory.management.connection_management import request_connections
+                unavailable = await request_connections(application, 'overview', {}, None)
+                assert type(unavailable) is dict
+                self.assertEqual(unavailable['state'], 'BOOTSTRAP')
+                self.assertFalse(unavailable['initialized'])
+                self.assertTrue(unavailable['notifications_paused'])
+                self.assertIs(type(await identity.save_draft('draft-unbound', None, draft)), Committed)
+                result = await business.initialize('initialize-unbound', 1)
+                assert type(result) is dict
+                self.assertEqual(result['state'], 'AWAITING_REVIEW')
+                host = business.host
+                assert host is not None
+                self.assertEqual(host.configured_entries(), ())
+                self.assertEqual(await host.assembly.ingress.registered_entries(), ())
+                with self.assertRaises(OwnerFailure) as missing:
+                    await application.operations.selected_binding(host, draft, {})
+                self.assertEqual(missing.exception.reason, 'BINDING_REQUIRED')
+                registered = await request_connections(application,
+                    'hosts/register', {'key': 'external-binding', 'entry_id': 'entry', 'host_id': 'host',
+                        'external_entry_id': 'conversation'}, None)
+                self.assertIs(type(registered), Committed)
+                self.assertEqual(host.configured_entries(), ('entry',))
+                self.assertEqual(await application.operations.selected_binding(host, draft, {}),
+                    ('host', 'entry', {}))
+                second = await request_connections(application,
+                    'hosts/register', {'key': 'second-binding', 'entry_id': 'second', 'host_id': 'other-host',
+                        'external_entry_id': 'other-conversation'}, None)
+                self.assertIs(type(second), Committed)
+                with self.assertRaises(OwnerFailure) as ambiguous:
+                    await application.operations.selected_binding(host, draft, {})
+                self.assertEqual(ambiguous.exception.reason, 'BINDING_REQUIRED')
+                self.assertEqual(await application.operations.selected_binding(host, draft,
+                    {'host_id': 'other-host', 'entry_id': 'second', 'input': {'cursor': None}}),
+                    ('other-host', 'second', {'cursor': None}))
+                with self.assertRaises(OwnerFailure) as mismatch:
+                    await application.operations.selected_binding(host, draft,
+                        {'host_id': 'host', 'entry_id': 'second', 'input': {}})
+                self.assertEqual(mismatch.exception.reason, 'BINDING_MISMATCH')
+            finally:
+                if bootstrap.assembly.identity is not None:
+                    bootstrap.assembly.identity.close()
+                if business is not None:
+                    self.assertTrue(await business.close())
+
     async def test_explicit_persona_review_publication_and_focused_reopen(self):
         with TemporaryDirectory() as directory, responses((persona, shared_formal_response)) as (port, requests, failures):
             root = Path(directory)

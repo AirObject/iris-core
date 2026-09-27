@@ -63,7 +63,7 @@ class Mutation:
 
 class LedgerAssembly:
     """Trusted declarations required before creating a new provider database."""
-    def __init__(self, *, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False, daily_format: bool = False, dream_format: bool = False, managed_format: bool = False) -> None:
+    def __init__(self, *, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False, daily_format: bool = False, dream_format: bool = False, managed_format: bool = False, product_format: bool = False) -> None:
         if type(text_generation) is not bool or type(embedding_format) is not bool or text_generation and embedding_format:
             raise TypeError('An exact static provider format is required.')
         if type(embedding_usage_only) is not bool or embedding_usage_only and not embedding_format:raise TypeError('Usage-only requires embedding format.')
@@ -71,13 +71,15 @@ class LedgerAssembly:
         if type(dream_format) is not bool or dream_format and not daily_format:raise TypeError('Dream Provider requires explicit native cognition format.')
         self.dream_format=dream_format
         self.managed_format=managed_format
+        self.product_format=product_format
+        if product_format and not managed_format:raise ValueError("Product accounting requires managed owners.")
         if managed_format and not dream_format:raise ValueError("Managed storage requires dream owners.")
         self.daily_format=daily_format
         self.embedding_usage_only=embedding_usage_only or daily_format
         self.version=6 if dream_format else 5 if daily_format else 4 if embedding_usage_only else 3 if embedding_format else 2 if text_generation else 1
         self.text_generation = text_generation
         self.embedding_format = embedding_format or daily_format
-        self.repository = create_provider_repository(text_generation=text_generation,embedding_format=embedding_format,embedding_usage_only=embedding_usage_only,daily_format=daily_format,dream_format=dream_format)
+        self.repository = create_provider_repository(text_generation=text_generation,embedding_format=embedding_format,embedding_usage_only=embedding_usage_only,daily_format=daily_format,dream_format=dream_format,product_format=product_format)
         self._bindings: dict[int, LedgerBinding] = {}
         self._active: LedgerBinding | None = None
         mutation_schema = RecordSchema((Field("table", ScalarSchema("enum", choices=TABLES)), Field("object_id", IDENTIFIER),
@@ -91,7 +93,7 @@ class LedgerAssembly:
             change_schema = CHANGE
             if text_generation or embedding_format or daily_format:
                 change_schema = RecordSchema(CHANGE.fields + (
-                    Field('billing_mode', ScalarSchema('enum', choices=('TOKEN_METERED','USAGE_ONLY_TRIAL') if daily_format else ('USAGE_ONLY_TRIAL',) if embedding_usage_only else ('TOKEN_METERED','SIMULATED') if embedding_format else ('TOKEN_METERED', 'SUBSCRIPTION','USAGE_ONLY_TRIAL'))),
+                    Field('billing_mode', ScalarSchema('enum', choices=('TOKEN_METERED','USAGE_ONLY_TRIAL','USAGE_ONLY') if product_format else ('TOKEN_METERED','USAGE_ONLY_TRIAL') if daily_format else ('USAGE_ONLY_TRIAL',) if embedding_usage_only else ('TOKEN_METERED','SIMULATED') if embedding_format else ('TOKEN_METERED', 'SUBSCRIPTION','USAGE_ONLY_TRIAL'))),
                     Field('currency', ScalarSchema('enum', choices=('CNY',) if daily_format else ('CNY','TEST') if embedding_format else ('CNY', 'USD'))),
                     Field('quota_known', INTEGER, nullable=True), Field('quota_held', INTEGER), Field('config_snapshot_id', IDENTIFIER)))
             requirement = AuditRequirement("provider", "provider_change", event_code, 1, (reason,), change_schema)
@@ -263,7 +265,7 @@ class LedgerBinding:
             from .daily_stored_schema import validate as validate_daily
             from companion_memory.configuration import PresentValue
             from companion_memory.persistence.semantic_records import identity
-            validate_daily(table,row,dream=self.assembly.dream_format)
+            validate_daily(table,row,dream=self.assembly.dream_format,product=self.assembly.product_format)
             stored=self.semantic_configuration
             if stored is None:raise InvalidData()
             values={entry.definition.key:entry.state.value for entry in stored.candidate.foundation.list_entries() if type(entry.state) is PresentValue}
@@ -398,7 +400,7 @@ class LedgerBinding:
                 account=next(as_record(value) for value in cast(tuple[Data,...],configured.value) if as_record(value)['account_id'] in account_ids)
             usage = next((as_record(change.current['usage']) for change in changes if change.table == 'attempts'), None)
             event['change'].update({'billing_mode': account.get('billing_mode','SIMULATED'), 'currency': account['currency'],
-                'quota_known': usage['quota_known'] if usage is not None else None if account.get('billing_mode')=='USAGE_ONLY_TRIAL' else 0,
+                'quota_known': usage['quota_known'] if usage is not None else None if account.get('billing_mode') in ('USAGE_ONLY_TRIAL','USAGE_ONLY') else 0,
                 'quota_held': usage['quota_held'] if usage is not None else 0,
                 'config_snapshot_id': configuration.snapshot_id})
         frozen_event = as_record(freeze(event, 2048))

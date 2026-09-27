@@ -1,6 +1,7 @@
 /** Real Chromium regression against an explicitly supplied disposable managed instance. */
 import { readFile, writeFile } from 'node:fs/promises';
 import { test, expect, request } from '@playwright/test';
+import { createHash } from 'node:crypto';
 
 test('narrow administration preserves permission, configuration and backup boundaries', async ({ page }, testInfo) => {
   const passwordFile = process.env.IRIS_BROWSER_PASSWORD_FILE;
@@ -85,13 +86,14 @@ test('issued host token exposes a real paused backlog and revocation closes admi
   await page.goto('/');
   await page.getByRole('textbox', { name: '管理员口令', exact: true }).fill((await readFile(passwordFile, 'utf8')).trim());
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await page.getByRole('button', { name: '宿主接入', exact: true }).click();
-  await page.getByRole('textbox', { name: '宿主标识', exact: true }).fill('host');
-  await page.getByRole('textbox', { name: '入口标识，以逗号分隔', exact: true }).fill('entry');
-  await page.getByRole('combobox', { name: '允许的操作', exact: true }).selectOption('accept');
+  await page.getByRole('button', { name: '外部连接', exact: true }).click();
+  await page.getByRole('button', { name: '凭据与权限', exact: true }).click();
+  await page.getByRole('combobox', { name: '宿主', exact: true }).selectOption('host');
+  await page.getByLabel('entry', { exact: true }).check();
+  await page.getByLabel('accept', { exact: true }).check();
   await page.getByRole('button', { name: '签发令牌', exact: true }).click();
-  await expect(page.locator('#issued .secret')).not.toBeEmpty();
-  const token = await page.locator('#issued .secret').textContent();
+  await expect(page.locator('#connection-secret')).toContainText('请立即安全保存');
+  const token = (await page.locator('#connection-secret').innerText()).split('：')[1]!;
   const host = await request.newContext({ baseURL: testInfo.project.use.baseURL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
   try {
     const eventKey = `synthetic-browser-backlog-${Date.now()}`;
@@ -117,12 +119,14 @@ test('issued host token exposes a real paused backlog and revocation closes admi
     expect(Number(await count.innerText())).toBeGreaterThan(0);
     await writeFile(testInfo.outputPath('persisted-backlog.json'), JSON.stringify({ receipt, displayed: await page.locator('#daily-result').innerText() }));
     await page.screenshot({ path: testInfo.outputPath('actual-paused-backlog-390.png'), fullPage: true });
-    await page.getByRole('button', { name: '宿主接入', exact: true }).click();
-    const revoke = page.getByRole('button', { name: '撤销', exact: true }).and(page.locator('button:enabled'));
-    await expect(revoke).toHaveCount(1);
+    await page.getByRole('button', { name: '外部连接', exact: true }).click();
+    await page.getByRole('button', { name: '凭据与权限', exact: true }).click();
+    const tokenId = createHash('sha256').update(token).digest('hex');
+    const revoke = page.locator(`button[data-revoke="${tokenId}"]`);
+    await expect(revoke).toBeVisible();
     await revoke.click();
-    await expect(revoke).toHaveCount(0);
-    await expect(page.getByText('已撤销', { exact: true }).first()).toBeVisible();
+    await expect(revoke).toBeDisabled();
+    await expect(page.locator('#connection-panel')).toContainText('REVOKED');
     expect((await host.post('/api/host/accept', { data: payload })).status()).toBe(401);
     await page.screenshot({ path: testInfo.outputPath('revoked-host-token-390.png'), fullPage: true });
   } finally { await host.dispose(); }

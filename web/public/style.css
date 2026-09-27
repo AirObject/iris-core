@@ -7,3 +7,18 @@
 #connection-panel,#connection-panel fieldset,#connection-panel label{min-width:0}
 #connection-panel p,#connection-panel h2,#connection-panel label,#connection-panel li{overflow-wrap:anywhere}
 #connection-panel input,#connection-panel select{min-width:0;max-width:100%}
+
+/* Setup fields stay readable at narrow widths without exposing internal bindings. */
+#setup-compact .configuration-field{margin-bottom:22px;min-width:0}
+#setup-compact label{margin-bottom:6px}#setup-compact .setup-help{margin-bottom:0;overflow-wrap:anywhere}
+#setup-compact h3{font-size:16px;margin:26px 0 16px}#setup-advanced{overflow-wrap:anywhere}
+#setup-advanced input,#setup-advanced select{min-width:0;max-width:100%}
+
+#setup-compact .setup-field-help{margin:0 0 12px;font-size:12px}#setup-compact .setup-defaults{margin-bottom:0}#setup-compact .setup-defaults[open]>summary{margin-bottom:18px}
+
+/* The first-run form keeps provider credentials and optional settings distinct. */
+.setup-provider-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.setup-provider-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.setup-provider-heading h3{font-size:17px;margin:0}.setup-provider{min-width:0}.setup-provider p{overflow-wrap:anywhere}
+#simple-setup input,#simple-setup textarea{min-width:0;max-width:100%}#simple-setup .actions{margin-bottom:24px}
+@media(max-width:950px){.setup-provider-grid{grid-template-columns:1fr}}

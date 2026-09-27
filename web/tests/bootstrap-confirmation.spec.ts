@@ -1,72 +1,102 @@
-/** Real rejects and lost responses from SQLite, with trusted process timezone defaults. */
-import { writeFile } from 'node:fs/promises';
-import { test, expect } from '@playwright/test';
-import { secret, post, layout } from './disposable-support.js';
+/** Native draft saves, compact mirrors and exact amounts retain original receipts.
+ * Browser cases require an explicitly supplied disposable instance and credentials.
+ */
+import {writeFile} from 'node:fs/promises';
+import {test,expect} from '@playwright/test';
+import {secret,post,layout} from './disposable-support.js';
+import {parseAmount,formatAmount,compactCompatible,applyCompactValues,equalConfiguration,assertExactNumbers,type SetupField} from '../src/setup_configuration.js';
 
-test('trusted default, corrected first rejection and uncertain original confirmation',async({page},info)=>{
-  const zone=process.env.IRIS_REPAIR_ZONE;
-  if(!zone)throw new Error('Explicit expected server timezone required.');
-  const changedZone=zone==='UTC'?'Europe/Paris':'UTC';
-  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  page.setDefaultTimeout(15000);
+test('compact transformations preserve exact amounts, independent values and mirror boundaries',()=>{
+  const field:SetupField={domain:'text',key:'transport',path:['roles',0,'secret'],label:'凭据',group:'生成与图像',help:'',mirrors:[{domain:'text',key:'transport',path:['roles',1,'secret']}]};
+  const defaults={text:{transport:{roles:[{secret:null,limit:7},{secret:null,limit:8}]},'runtime.timezone':null},foundation:{untouched:{price:null,enabled:false,count:0}}};
+  const values=structuredClone(defaults);Object.assign(values.text,{'runtime.timezone':'Asia/Shanghai'});
+  const before=structuredClone(values);
+  expect(compactCompatible(values,defaults,[field])).toBe(true);
+  const changed=applyCompactValues(values,defaults,[field],new Map([[field,'synthetic_reference']]));
+  expect((changed.text as any).transport.roles.map((item:any)=>item.secret)).toEqual(['synthetic_reference','synthetic_reference']);
+  expect(changed.foundation).toEqual(before.foundation);expect(values).toEqual(before);
+  const reordered={foundation:values.foundation,text:values.text};
+  expect(compactCompatible(reordered,defaults,[field])).toBe(true);
+  const independent=structuredClone(changed);(independent.text as any).transport.roles[1].secret='independent_reference';
+  expect(compactCompatible(independent,defaults,[field])).toBe(false);
+  expect(()=>applyCompactValues(independent,defaults,[field],new Map([[field,'replacement']]))).toThrow('独立设置');
+  expect((independent.text as any).transport.roles[1].secret).toBe('independent_reference');
+  expect(equalConfiguration(values,reordered)).toBe(true);
+  const money:SetupField={...field,domain:'foundation',key:'untouched',path:['count'],mirrors:[],scale:1000000};
+  for(const invalid of [-1,'5']){const invalidMoney=structuredClone(values);(invalidMoney.foundation.untouched as any).count=invalid;expect(compactCompatible(invalidMoney,defaults,[field,money])).toBe(false);}
+
+  expect(parseAmount('0.000001')).toBe(1);expect(parseAmount('5.000001')).toBe(5000001);
+  expect(formatAmount(5000001)).toBe('5.000001');expect(parseAmount('9007199254.740991')).toBe(Number.MAX_SAFE_INTEGER);
+  for(const invalid of ['0.0000001','1e-6','-1',' 1','1.','9007199254.740992'])expect(()=>parseAmount(invalid)).toThrow();
+  expect(()=>assertExactNumbers({nested:[Number.MAX_SAFE_INTEGER+1]})).toThrow('精确');
+});
+
+
+test('two keys create a local workspace and lost responses resume without browser secrets',async({page},info)=>{
+  const errors:string[]=[];
+  page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(15000);
   await expect.poll(async()=>{try{return (await page.request.get('/health')).ok();}catch{return false;}},{timeout:30000}).toBe(true);
-  await page.goto('/');
-  await page.getByRole('button',{name:'首次建立管理员',exact:true}).click();
+  await page.goto('/');await page.getByRole('button',{name:'首次建立管理员',exact:true}).click();
   await page.getByRole('textbox',{name:'设置管理员口令',exact:true}).fill(await secret('browser-password'));
   await page.getByRole('textbox',{name:'一次性引导凭据',exact:true}).fill(await secret('bootstrap'));
   await page.getByRole('button',{name:'建立管理员',exact:true}).click();
   await expect(page.getByRole('status')).toContainText('管理员已建立');
   await page.getByRole('textbox',{name:'管理员口令',exact:true}).fill(await secret('browser-password'));
-  await page.getByRole('textbox',{name:'管理员口令',exact:true}).press('Enter');
-  await page.getByRole('button',{name:'初始化向导',exact:true}).click();
-  const timezone=page.getByRole('textbox',{name:'IANA 时区名称',exact:true});
-  await expect(timezone).toHaveValue(zone);
-  const confirmation=page.getByRole('checkbox',{name:'我确认这个时区用于日常与梦境调度',exact:true});
-  await expect(confirmation).not.toBeChecked();await confirmation.check();
-  await timezone.fill(changedZone);await expect(confirmation).not.toBeChecked();await confirmation.check();
-  for(const [name,value] of [['角色名称','合成修复工程参与者'],['初始自我材料','a'.repeat(2049)],['平台标识','sample_platform'],['入口标识','entry'],['宿主标识','host'],['会话标识','conversation']]){
-    await page.getByRole('textbox',{name,exact:true}).fill(value);
-  }
-  await page.getByText('导入已有配置',{exact:true}).click();
-  await page.getByRole('textbox',{name:'完整配置 JSON',exact:true}).fill(await secret('configuration.json'));
-  await page.getByRole('button',{name:'导入并检查表单',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('配置已导入');
-  const rejectedResponse=page.waitForResponse(r=>r.url().endsWith('/api/wizard/save'));
-  await page.getByRole('button',{name:'保存草稿',exact:true}).click();
-  const rejected=await rejectedResponse;expect(rejected.ok()).toBe(false);const rejectedBody=await rejected.json();
-  await expect(page.locator('#pending-operations')).toBeEmpty();
-  await page.getByRole('textbox',{name:'初始自我材料',exact:true}).fill('合成材料：验证明确拒绝后可以修改并重新提交。');
-  await page.getByRole('button',{name:'保存草稿',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('草稿已保存');
-  for(const width of [390,600]){await layout(page,width);await page.screenshot({path:info.outputPath(`wizard-${zone.replaceAll('/','-')}-${width}.png`),fullPage:true});}
-  await page.reload();await page.getByRole('button',{name:'初始化向导',exact:true}).click();
-  await expect(timezone).toHaveValue(changedZone);await expect(confirmation).toBeChecked();
-  // Wait for the saved configuration editor and its submission handler.
-  await expect(page.locator('#configuration-fields')).not.toBeEmpty();
-  await page.getByRole('textbox',{name:'初始自我材料',exact:true}).fill('合成材料：响应丢失以后，只允许原键确认。');
-  let committed:Record<string,any>|undefined;
-  await page.route('**/api/wizard/save',async route=>{
-    const response=await route.fetch();expect(response.ok()).toBe(true);committed=await response.json();await route.abort('failed');
-  },{times:1});
-  await page.getByRole('button',{name:'保存草稿',exact:true}).click();
-  await expect(page.getByRole('button',{name:'继续原操作',exact:true})).toBeVisible();
-  await expect.poll(()=>Boolean(committed)).toBe(true);
-  const retained=await page.locator('#pending-operations pre').textContent();
-  const logout=await post(page,'/api/logout',{key:crypto.randomUUID()});expect(logout.status).toBe(200);
-  await page.getByRole('button',{name:'继续原操作',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('登录');
-  expect(await page.locator('#pending-operations pre').textContent()).toBe(retained);
-  await page.reload();
-  await page.getByRole('textbox',{name:'管理员口令',exact:true}).fill(await secret('browser-password'));
   await page.getByRole('button',{name:'登录',exact:true}).click();
-  const recoveredResponse=page.waitForResponse(r=>r.url().endsWith('/api/wizard/save'));
-  await page.getByRole('button',{name:'继续原操作',exact:true}).click();
+  await page.getByRole('button',{name:'初始化向导',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'开始使用 Iris',exact:true})).toBeVisible();
+  const material=page.getByRole('textbox',{name:'角色背景（可选）',exact:true});
+  await expect(material).not.toHaveAttribute('required');await expect(material).toHaveValue('');
+  await expect(page.getByRole('textbox',{name:'角色名称',exact:true})).toHaveValue('Iris');
+  await expect(page.locator('#simple-setup input[type=password]')).toHaveCount(2);
+  await expect(page.getByText('本地默认不设费用预算',{exact:false})).toBeVisible();
+  // These are deliberately invalid provider credentials; setup must never send.
+  const generation='Synthetic-Generation-Never-Sent',embedding='Synthetic-Embedding-Never-Sent';
+  await page.getByRole('textbox',{name:'生成模型 API key',exact:true}).fill(generation);
+  await page.getByRole('textbox',{name:'语义检索 API key',exact:true}).fill(embedding);
+  let committed:Record<string,any>|undefined;
+  await page.route('**/api/setup/save',async route=>{
+    const response=await route.fetch();expect(response.ok()).toBe(true);committed=await response.json();
+    await route.abort('failed');
+  },{times:1});
+  await page.getByRole('button',{name:'创建并开始使用',exact:true}).click();
+  await expect.poll(()=>Boolean(committed)).toBe(true);
+  const browserRecords=await page.evaluate(()=>JSON.stringify(Object.fromEntries(Object.entries(sessionStorage))));
+  expect(browserRecords).not.toContain(generation);expect(browserRecords).not.toContain(embedding);
+  await expect(page.getByRole('textbox',{name:'生成模型 API key',exact:true})).toHaveAttribute('readonly');
+  await page.reload();
+  await page.getByRole('button',{name:'初始化向导',exact:true}).click();
+  await expect(page.getByRole('button',{name:'读取上次保存结果',exact:true})).toBeVisible();
+  const recoveredResponse=page.waitForResponse(response=>response.url().endsWith('/api/setup/operation'));
+  await page.getByRole('button',{name:'读取上次保存结果',exact:true}).click();
   const recovered=await (await recoveredResponse).json();
   expect(recovered.data.receipt.commit_id).toBe(committed?.data.receipt.commit_id);
-  await expect(page.locator('#pending-operations')).toBeEmpty();
-  const saved=await (await page.request.get('/api/wizard')).json();expect(saved.data.revision).toBe(2);
-  await page.getByRole('button',{name:'初始化向导',exact:true}).click();await expect(timezone).toHaveValue(changedZone);
-  await expect(confirmation).toBeChecked();
-  expect(errors).toEqual([]);
-  await writeFile(info.outputPath('assertions.json'),JSON.stringify({zone,changedZone,rejected:rejectedBody,original:committed,recovered,revision:saved.data.revision,errors}));
+  await expect(page.locator('#health')).toHaveText('业务就绪',{timeout:60000});
+  const status=(await (await page.request.get('/api/status')).json()).data;
+  expect(status.business_ready).toBe(true);expect(status.model_dispatch).toBe('PAUSED');
+  const persona=await post(page,'/api/persona/current',{});
+  expect(persona.body.data.value.publication_origin).toBe('LOCAL_DEFAULT');
+  await page.getByRole('button',{name:'当前状态',exact:true}).click();
+  await expect(page.locator('#state-set')).toBeVisible();
+  await page.getByRole('button',{name:'目标管理',exact:true}).click();
+  await expect(page.locator('#goal-new')).toBeVisible();
+  await page.getByRole('button',{name:'模型连接',exact:true}).click();
+  await expect(page.locator('#provider-settings input[type=password]').first()).toHaveValue('');
+  const rotated='Synthetic-Replacement-Never-Sent';
+  await page.getByRole('textbox',{name:'新的生成模型 API key',exact:true}).fill(rotated);
+  let rotation:Record<string,any>|undefined;
+  await page.route('**/api/setup/providers',async route=>{
+    const response=await route.fetch();expect(response.ok()).toBe(true);rotation=await response.json();await route.abort('failed');
+  },{times:1});
+  await page.getByRole('button',{name:'保存并应用',exact:true}).click();
+  await expect.poll(()=>Boolean(rotation)).toBe(true);
+  expect(await page.evaluate(()=>JSON.stringify(Object.fromEntries(Object.entries(sessionStorage))))).not.toContain(rotated);
+  await page.getByRole('button',{name:'模型连接',exact:true}).click();
+  await page.getByRole('button',{name:'继续原操作',exact:true}).click();
+  await expect(page.getByRole('status')).toContainText('模型连接已应用',{timeout:60000});
+  const final=(await (await page.request.get('/api/setup')).json()).data;
+  expect(final.providers.generation.configured).toBe(true);expect(final.providers.embedding.configured).toBe(true);
+  expect(JSON.stringify(final)).not.toContain(rotated);expect(errors).toEqual([]);
+  for(const width of [390,600]){await layout(page,width);await page.screenshot({path:info.outputPath('provider-'+width+'.png'),fullPage:true});}
+  await writeFile(info.outputPath('assertions.json'),JSON.stringify({committed,recovered,rotation,status,final,errors}));
 });

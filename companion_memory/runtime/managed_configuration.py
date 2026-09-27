@@ -132,7 +132,7 @@ class ManagedConfiguration:
                 boundary = ('NEXT_BATCH' if key.startswith('platforms.') else
                     'NEW_COMMUNICATION_WORK' if key.startswith('communication.') else
                     'NEXT_DREAM' if key in ('dream.schedule', 'runtime.timezone', 'memory.long_term_maintenance', 'self_model.initial_persona') else
-                    'NEXT_REQUEST' if key in ('provider.profiles', 'provider.transport') else
+                    'NEXT_REQUEST' if key in ('provider.profiles', 'provider.transport', 'provider.embedding_transport') else
                     'LOGGER_REBUILD' if key.startswith('logging.') and key != 'logging.file_directory' else
                     'RESTART_REQUIRED' if key in ('storage.database_file', 'logging.file_directory', 'media.root_directory', 'media.staging_directory') else
                     'MIGRATION_REQUIRED' if key == 'retrieval.semantic' else 'RESOURCE_PREPARATION_REQUIRED')
@@ -166,7 +166,7 @@ class ManagedConfiguration:
         changed = self.changes(self.work.versions.birth.candidate, candidate)
         if any(not (change['key'].startswith('platforms.') or
                 self.host.combination.communication_format and change['key'].startswith('communication.') or
-                (self.business.logging is not None and change['key'].startswith('logging.') and change['key'] != 'logging.file_directory') or change['key'] in ('dream.schedule', 'runtime.timezone', 'memory.long_term_maintenance', 'self_model.initial_persona', 'provider.profiles', 'provider.transport')) for change in changed):
+                (self.business.logging is not None and change['key'].startswith('logging.') and change['key'] != 'logging.file_directory') or change['key'] in ('dream.schedule', 'runtime.timezone', 'memory.long_term_maintenance', 'self_model.initial_persona', 'provider.profiles', 'provider.transport', 'provider.embedding_transport')) for change in changed):
             raise OwnerFailure('CAPABILITY_UNAVAILABLE', 'configuration', 'CONSUMER_PREPARATION_UNAVAILABLE')
         if host.provider is None or host.provider.managed_versions is None:
             raise OwnerFailure('INVALID_STATE', 'provider', 'NOT_READY')

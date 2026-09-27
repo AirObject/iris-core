@@ -22,7 +22,7 @@ class ProviderRepository:
     statements: tuple[tuple[str, StatementDefinition], ...]
 
 
-def create_provider_repository(*, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False, daily_format: bool = False, dream_format: bool = False) -> ProviderRepository:
+def create_provider_repository(*, text_generation: bool = False, embedding_format: bool = False, embedding_usage_only: bool = False, daily_format: bool = False, dream_format: bool = False, product_format: bool = False) -> ProviderRepository:
     """Describe a new ledger format without opening or modifying any database."""
     if dream_format and not daily_format:
         raise ValueError('Dream Provider requires explicit native cognition format.')
@@ -30,8 +30,8 @@ def create_provider_repository(*, text_generation: bool = False, embedding_forma
         if any((text_generation,embedding_format,embedding_usage_only)):
             raise TypeError('Daily Provider selects its own complete independent format.')
         base=create_provider_repository(embedding_format=True,embedding_usage_only=True)
-        from companion_memory.provider.daily_stored_schema import LAYOUTS, DREAM_LAYOUTS
-        layouts = DREAM_LAYOUTS if dream_format else LAYOUTS
+        from companion_memory.provider.daily_stored_schema import LAYOUTS, DREAM_LAYOUTS, PRODUCT_LAYOUTS
+        layouts = PRODUCT_LAYOUTS if product_format else DREAM_LAYOUTS if dream_format else LAYOUTS
         daily_tables=tuple(replace(t,record_schemas=layouts[t.name.removeprefix('provider_')]) if t.name.removeprefix('provider_') in LAYOUTS else t for t in base.definition.tables)
         # A known generation/image refusal is locally consumable. The legacy
         # usage-only embedding failure fence stays specific to embedding;
@@ -40,6 +40,8 @@ def create_provider_repository(*, text_generation: bool = False, embedding_forma
             "OR json_extract(body,'$.outcome')!='SUCCEEDED'",
             "OR (json_extract(body,'$.capability')='EMBEDDING' AND json_extract(body,'$.outcome')!='SUCCEEDED')")))
             if name=='requests_blocked' else (name,aggregate_statement(text_generation=True)) if name=='usage_aggregate' else (name,statement) for name,statement in base.statements)
+        if product_format:
+            daily_statements=tuple((name,replace(statement,sql=statement.sql.replace("(json_extract(body,'$.capability')='EMBEDDING' AND json_extract(body,'$.outcome')!='SUCCEEDED')","(json_extract(body,'$.capability')='EMBEDDING' AND json_extract(body,'$.outcome')!='SUCCEEDED' AND json_extract(body,'$.execution_evidence.account.billing_mode')!='USAGE_ONLY')"))) if name=='requests_blocked' else (name,statement) for name,statement in daily_statements)
         return ProviderRepository(replace(base.definition,schema_version=6 if dream_format else 5,tables=daily_tables,statements=tuple(s for _,s in daily_statements)),daily_statements)
     if type(text_generation) is not bool or type(embedding_format) is not bool or text_generation and embedding_format:
         raise TypeError('An exact static provider format is required.')

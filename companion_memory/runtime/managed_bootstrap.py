@@ -19,11 +19,24 @@ from .managed_resources import ManagedResources
 
 class ManagedBootstrap:
     """One owner of bootstrap storage; business assembly is attached exactly once."""
-    def __init__(self, settings: DeploymentSettings, *, communication_format: bool = True):
+    def __init__(self, settings: DeploymentSettings, *, communication_format: bool = True, product_format: bool | None = None):
         self.settings = settings
-        self.assembly = DailyAssembly(dream_format=True, managed_format=True, communication_format=communication_format)
+        if product_format is None:
+            product_format = communication_format
+            identity_path = Path(settings.text('deployment.data_root')) / 'bootstrap/identity.json'
+            if communication_format and identity_path.is_file():
+                from .managed_resources import read_record
+                retained_digest = read_record(identity_path).get('assembly_digest')
+                # Selection never upgrades a volume. Resource ownership and the
+                # complete database declaration are checked during open().
+                if retained_digest == '150175a80c69db28111273cd71ac93923e92ffc65ca282bb78949d3ffd4ad3e1':
+                    product_format = False
+                elif retained_digest == '6c23faee15efaa705935c8d8c81e5b0372cb9e97a1a6d3829e72334bbb322d1a':
+                    product_format = communication_format = False
+        self.product_format = product_format
+        self.assembly = DailyAssembly(dream_format=True, managed_format=True, communication_format=communication_format, product_format=product_format)
         from companion_memory.persistence._codec import AssemblyFormat
-        self.storage_format: AssemblyFormat = 'MANAGED_COMMUNICATION_V1' if communication_format else 'MANAGED_RUNTIME_V1'
+        self.storage_format: AssemblyFormat = 'MANAGED_PRODUCT_V1' if product_format else 'MANAGED_COMMUNICATION_V1' if communication_format else 'MANAGED_RUNTIME_V1'
         encoded = assembly_value(self.assembly.repositories, self.assembly.commands, assembly_format=self.storage_format)
         self.assembly_digest = sha256(encoded).hexdigest()
         self.resources: ManagedResources | None = None

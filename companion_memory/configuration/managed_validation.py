@@ -3,6 +3,7 @@
 Structural evidence references do not attest to supplier support, token counting
 or account authority. Actual sending requires those checks in the Provider gate.
 """
+from datetime import date
 import json
 from pathlib import PurePosixPath
 from types import MappingProxyType
@@ -13,10 +14,39 @@ from companion_memory.persistence.semantic_records import Record, isolate
 from companion_memory.retrieval.semantic_material import RENDER_DIGEST, space_identity
 from .snapshots import PresentValue
 from .information_vector import _VECTOR, _matches
-from .daily_schema import ACCOUNT, IMAGE_PROFILE, EMBEDDING_PROFILE, TOOL_NAMES
-from .dream_schema import GENERATION_PROFILE, ROLE_PROFILES, ROLES, DREAM_ROLES, GENERATION_ROLES
+from .daily_schema import TOOL_NAMES
+from .managed_product_schema import ACCOUNT, IMAGE_PROFILE, EMBEDDING_PROFILE, GENERATION_PROFILE, USAGE_ONLY_MODES, LEGACY_ACCOUNT
+from .dream_schema import ROLE_PROFILES, ROLES, DREAM_ROLES, GENERATION_ROLES
 from .managed_schema import MATERIAL_VALUES
 
+
+PERSONA_REQUIRED_TEXT = ('generation_goal', 'supervision_prompt')
+
+
+def persona_text_missing(value: object) -> bool:
+    """Generation and supervision instructions must contain actual nonblank text."""
+    return type(value) is not str or not value.strip()
+
+
+TOKEN_RATE_FIELDS = ('input_atoms_per_million', 'cached_atoms_per_million', 'output_atoms_per_million')
+TOKEN_PRICE_REQUIRED_FIELDS = (*TOKEN_RATE_FIELDS, 'source_url', 'checked_date')
+
+
+def token_price_issue(field: str, value: object) -> str | None:
+    """Apply metered-account requirements beyond the shared nullable price shape."""
+    if value is None or type(value) is str and not value.strip():
+        return 'MISSING_REQUIRED'
+    if field in TOKEN_RATE_FIELDS:
+        return None if type(value) is int and 0 <= value <= (1 << 63) - 1 else 'OUT_OF_RANGE'
+    if type(value) is not str:
+        return 'TYPE_MISMATCH'
+    if field == 'checked_date':
+        try:
+            if len(value) != 10 or date.fromisoformat(value).isoformat() != value:
+                return 'INVALID_DATE'
+        except ValueError:
+            return 'INVALID_DATE'
+    return None
 
 class DailyValueError(InvalidValue):
     """A fixed field and reason identify invalid configuration without its value."""
@@ -33,6 +63,9 @@ def validate_managed_values(foundation, text) -> None:
     """Enforce closed role-specific profiles, accounting modes and resource links."""
     f=_values(foundation);v=_values(text)
     checked={key:isolate(schema,v[key],8192) for key,schema in MATERIAL_VALUES.items()}
+    for field in PERSONA_REQUIRED_TEXT:
+        if persona_text_missing(checked['self_model.initial_persona'][field]):
+            raise DailyValueError('self_model.initial_persona.' + field, 'MISSING_REQUIRED')
     import re
     if re.fullmatch(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]', cast(str, checked['dream.schedule']['local_time'])) is None:
         raise DailyValueError('dream.schedule', 'RANGE_INVALID')
@@ -48,13 +81,20 @@ def validate_managed_values(foundation, text) -> None:
     accounts=cast(tuple[Record,...],freeze_value(SequenceSchema(ACCOUNT,2,3),f['provider.accounts'],owned=True))
     by_account={a['account_id']:a for a in accounts}
     if len(by_account)!=len(accounts):raise InvalidValue()
-    for a in accounts:
+    for account_index, a in enumerate(accounts):
         isolate(ACCOUNT,a,4096)
+        if a['billing_mode'] != 'USAGE_ONLY':isolate(LEGACY_ACCOUNT,a,4096)
         if a['quota'] is not None:raise InvalidValue()
-        if a['billing_mode']=='USAGE_ONLY_TRIAL':
+        if a['billing_mode'] in USAGE_ONLY_MODES:
             if a['price'] is not None or a['cost_limit_atoms'] is not None:raise InvalidValue()
         elif a['price'] is None or a['cost_limit_atoms'] is None:
             raise InvalidValue()
+        else:
+            price = cast(Record, a['price'])
+            for field in TOKEN_RATE_FIELDS:
+                reason = token_price_issue(field, price[field])
+                if reason is not None:
+                    raise DailyValueError(f'provider.accounts[{account_index}].price.{field}', reason)
     raw_profiles=f['provider.profiles']
     if type(raw_profiles) is not tuple or len(raw_profiles)!=9:raise InvalidValue()
     profiles={};by_role={}
@@ -101,7 +141,7 @@ def validate_managed_values(foundation, text) -> None:
         key={'MEDIA':'media.image_understanding','GOAL_DEDUP':'goals.semantic_deduplication','PERSONA':'self_model.initial_persona'}.get(cast(str,resource['role']))
         if key and any(resource[k]!=checked[key][k] for k in ('prompt_ref','prompt_digest','schema_ref','schema_digest')):raise InvalidValue()
     generation_accounts={by_role[role]['account_id'] for role in GENERATION_ROLES}
-    if sum(cast(int,by_account[a]['attempt_limit']) for a in by_account)>32:
+    if sum(cast(int,a['attempt_limit']) for a in accounts if a['billing_mode'] != 'USAGE_ONLY')>32:
         raise DailyValueError('provider.accounts', 'CAPACITY_INSUFFICIENT')
     if by_role['EMBEDDING_DOCUMENT']['account_id'] in generation_accounts or set(by_account)!=generation_accounts|{by_role['EMBEDDING_DOCUMENT']['account_id']}:raise InvalidValue()
     if checked['retrieval.query_vectors']['single_flight'] is not True:raise InvalidValue()

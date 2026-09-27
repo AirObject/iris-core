@@ -38,13 +38,24 @@ TABLES=(DailyTable('current_persona',(POINTER,),4096,True,(IndexSpec('instance',
     DailyTable('periodic_persona_reviews',(REVIEW,),8192,False),DailyTable('periodic_persona_publications',(PUBLICATION,),8192,False),DailyTable('periodic_persona_deferrals',(DEFERRAL,),8192,False))
 
 
-def periodic_catalog():
+# Readers accept the new source, while legacy catalog declarations retain their
+# exact signatures until an explicit managed-product format upgrade.
+LEGACY_TABLES = TABLES
+LOCAL_POINTER = RecordSchema(BASE + fields(publication_id=ID, publication_revision=P,
+    origin=enum('IMPORTED_APPROVED', 'INITIAL_APPROVED', 'PERIODIC_REVIEWED', 'LOCAL_DEFAULT'),
+    last_operation=OPERATION))
+from dataclasses import replace as replace_table
+TABLES = (replace_table(TABLES[0], schemas=(LOCAL_POINTER,)),) + TABLES[1:]
+
+
+def periodic_catalog(*, product_format: bool = False):
     from dataclasses import replace
     from companion_memory.persistence import StatementDefinition
     from companion_memory.persistence.owned_statements import StatementCatalog
-    catalog=daily_catalog('self_model',2,TABLES)
+    tables = TABLES if product_format else LEGACY_TABLES
+    catalog=daily_catalog('self_model',2,tables)
     shared=[]
-    for table in TABLES:
+    for table in tables:
         shared.append(('provider_read_'+table.name,StatementDefinition(
             'SELECT object_id,revision,body FROM self_model_'+table.name+" WHERE :scope_id='provider' AND scope_id=:caller_scope AND object_id=:object_id",
             RecordSchema(fields(caller_scope=ID,object_id=ID)),RecordSchema(fields(object_id=ID,revision=P,body=BoundedTextSchema(table.maximum))),False)))

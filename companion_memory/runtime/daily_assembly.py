@@ -44,7 +44,9 @@ from companion_memory.media.daily_work import DailyImageWork
 
 class DailyAssembly:
     """One static storage graph; only the host may install native owner services."""
-    def __init__(self, *, dream_format: bool = False, managed_format: bool = False, communication_format: bool = False):
+    def __init__(self, *, dream_format: bool = False, managed_format: bool = False, communication_format: bool = False, product_format: bool = False):
+        self.product_format=product_format
+        if product_format and not communication_format:raise ValueError("Product format requires managed communication owners.")
         self.dream_format=dream_format
         self.managed_format=managed_format
         self.communication_format=communication_format
@@ -57,8 +59,8 @@ class DailyAssembly:
         catalogs={c.definition.owner_module:c for c in self.content.catalogs}
         from companion_memory.configuration.managed_persistence import ManagedConfigurationAssembly
         self.configuration=ManagedConfigurationAssembly(catalogs['memory'],self.retrieval_catalog) if managed_format else DreamConfigurationAssembly(catalogs['memory'],self.retrieval_catalog) if dream_format else DailyConfigurationAssembly(catalogs['memory'],self.retrieval_catalog)
-        self.ledger=LedgerAssembly(daily_format=True,dream_format=dream_format,managed_format=managed_format)
-        self.persona=ApprovedPersonaImport(catalogs['memory'],dream_format=dream_format)
+        self.ledger=LedgerAssembly(daily_format=True,dream_format=dream_format,managed_format=managed_format,product_format=product_format)
+        self.persona=ApprovedPersonaImport(catalogs['memory'],dream_format=dream_format,product_format=product_format)
         self.materials=DailyMaterialStorage(catalogs['cognition'],dream_format=dream_format,managed_format=managed_format)
         self.schedule=DailySchedule(catalogs['runtime'],self.content,managed_format=managed_format)
         self.initialization=DailyInitialization(catalogs['runtime'])
@@ -90,7 +92,7 @@ class DailyAssembly:
         if self.dream_review is not None and self.dream is not None:self.dream.commands+=self.dream_review.commands
         if self.periodic is not None:self.periodic.review_work=self.dream_review;self.periodic.expiry=self.dream_expiry
         self.persona_mode=DailyPersonaMode(self.content,self.repositories)
-        self.initial_persona=DailyPersona(self.persona.catalog,self.materials,self.persona_mode,self.repositories)
+        self.initial_persona=DailyPersona(self.persona.catalog,self.materials,self.persona_mode,self.repositories,product_format=product_format)
         from .dream_mode import DreamMode
         self.dream_mode=DreamMode(self.content,self.dream,self.persona_mode,self.repositories) if self.dream is not None else None
         if self.dream_mode is not None:self.dream_mode.persona=self.periodic
@@ -99,8 +101,8 @@ class DailyAssembly:
         if self.dream is not None:
             self.dream.commands=tuple(replace(d,participants=(self.dream.catalog.definition,catalogs['runtime'].definition,self.persona.catalog.definition,catalogs['cognition'].definition)) if d.operation_kind in ('resume_dream','abort_background_dream') else d for d in self.dream.commands)
         self.content.replace_static_command('change_content_mode',self.dream_mode.definition if self.dream_mode is not None else self.persona_mode.definition)
-        self.daily_provider=DailyProviderCommands(self.ledger.repository.definition,tuple(repository for repository in self.repositories if repository.owner_module in ('cognition','media','goals','self_model','dream')),dream_format=dream_format)
-        self.semantic=SemanticCommands(self.repositories,self._semantic,usage_only=True)
+        self.daily_provider=DailyProviderCommands(self.ledger.repository.definition,tuple(repository for repository in self.repositories if repository.owner_module in ('cognition','media','goals','self_model','dream')),dream_format=dream_format,product_format=product_format)
+        self.semantic=SemanticCommands(self.repositories,self._semantic,usage_only=True,product_format=product_format)
         self.reasoning=DailyReasoning(catalogs['cognition'],self.materials,self.repositories)
         self.application=DailyApplication(self.content,self.reasoning,self.repositories)
         self.image_work=DailyImageWork(self.media,self.content,self.ledger.repository.definition)
@@ -136,7 +138,7 @@ class DailyAssembly:
                 self.commands += self.communication_ledger.commands
                 assert self.content.communication_gate is not None
                 self.commands += self.content.communication_gate._commands
-        self.storage=PersistenceService(self.repositories,self.commands,assembly_format='MANAGED_COMMUNICATION_V1' if communication_format else 'MANAGED_RUNTIME_V1' if managed_format else 'DREAM_MAINTENANCE_V1' if dream_format else 'DAILY_COGNITION_V1')
+        self.storage=PersistenceService(self.repositories,self.commands,assembly_format='MANAGED_PRODUCT_V1' if product_format else 'MANAGED_COMMUNICATION_V1' if communication_format else 'MANAGED_RUNTIME_V1' if managed_format else 'DREAM_MAINTENANCE_V1' if dream_format else 'DAILY_COGNITION_V1')
         self.work:SemanticWork|None=None;self.generations:SemanticGenerations|None=None;self.cache:SemanticQueryCache|None=None
         self.embedding:EmbeddingProvider|None=None;self.fixed:FixedMemorySets|None=None
         self.subject_origin:str|None=None

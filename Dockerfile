@@ -23,7 +23,9 @@ COPY --from=sqlite /opt/iris-sqlite /opt/iris-sqlite
 COPY deployment/requirements.lock /opt/iris/requirements.lock
 RUN pip install --no-cache-dir --require-hashes --only-binary=:all: -r /opt/iris/requirements.lock && \
     groupadd --gid 10001 iris && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin iris && \
-    mkdir -p /data /run/secrets && chown iris:iris /data /run/secrets && chmod 700 /data /run/secrets
+    mkdir -p /data /run/secrets /run/provider-credentials && \
+    chown iris:iris /data /run/secrets /run/provider-credentials && \
+    chmod 700 /data /run/secrets /run/provider-credentials
 WORKDIR /opt/iris
 COPY companion_memory ./companion_memory
 COPY protocol ./protocol

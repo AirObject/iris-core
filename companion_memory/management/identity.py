@@ -204,12 +204,17 @@ class IdentityAuthority:
                 raise OwnerFailure('INVALID_INPUT', 'wizard', 'CONTENT_MISMATCH')
             if kind == 'save_wizard' and old is not None and old['state'] in ('INITIALIZING', 'AWAITING_REVIEW', 'COMPLETE'):
                 raise OwnerFailure('PRECONDITION_FAILED', 'wizard', 'INITIALIZATION_STARTED')
+            if kind == 'save_wizard' and old is not None and old['state'] == 'VALIDATED' and (
+                    value['state'] != 'VALIDATED' or value['initialization_key'] != old['initialization_key']):
+                raise OwnerFailure('PRECONDITION_FAILED', 'wizard', 'STATE_MISMATCH')
             if kind == 'advance_wizard':
-                allowed = {'DRAFT': ('INITIALIZING',), 'INITIALIZING': ('AWAITING_REVIEW',),
+                allowed = {'DRAFT': ('VALIDATED', 'INITIALIZING'),
+                    'VALIDATED': ('INITIALIZING',), 'INITIALIZING': ('AWAITING_REVIEW',),
                     'AWAITING_REVIEW': ('AWAITING_REVIEW', 'REJECTED', 'COMPLETE'), 'REJECTED': ('AWAITING_REVIEW',)}
                 if (old is None or value['state'] not in allowed.get(cast(str, old['state']), ())
                         or value['content_digest'] != old['content_digest']
-                        or old['initialization_key'] is not None and value['initialization_key'] != old['initialization_key']):
+                        or old['state'] != 'VALIDATED' and old['initialization_key'] is not None
+                            and value['initialization_key'] != old['initialization_key']):
                     raise OwnerFailure('PRECONDITION_FAILED', 'wizard', 'STATE_MISMATCH')
             for ordinal, part in enumerate(parts):
                 if (part['wizard_revision'] != value['revision'] or part['ordinal'] != ordinal
@@ -545,11 +550,26 @@ class IdentityAuthority:
         return self.rows.write('confirmations', uow, self.row(confirmation_id, {'consumed_by': key}, old), cast(int, old['revision']))
 
     async def save_draft(self, key: str, expected_revision: int | None, draft: dict[str, object]):
-        """Atomically save a bounded draft and its immutable content chunks."""
+        """Confirm original saves before checking frozen material for a new write."""
         import json
         body = json.dumps(draft, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
         if len(body.encode()) > 393216:
             raise OwnerFailure('INVALID_INPUT', 'wizard', 'LIMIT_EXCEEDED')
+        request = digest(str(expected_revision) + body)
+        prior = await self.confirm_request('save_wizard', key, request)
+        if prior is not None:
+            return prior
+        current = await self.read_draft()
+        if current['state'] == 'VALIDATED':
+            before = cast(dict[str, object], current['draft'])
+            # An explicit conversion may adopt local setup defaults, while every
+            # already confirmed basic field retains its original value.
+            allowed = {'configuration'}
+            if 'setup_mode' not in before and draft.get('setup_mode') == 'SIMPLE':
+                allowed.add('setup_mode')
+            if {name: item for name, item in draft.items() if name not in allowed} != {
+                    name: item for name, item in before.items() if name not in allowed}:
+                raise OwnerFailure('PRECONDITION_FAILED', 'wizard', 'INITIALIZATION_STARTED')
         old = await self.rows.read('wizard', 'wizard')
         revision = 1 if expected_revision is None else expected_revision + 1
         # Unicode characters are never split across persistent chunks.
@@ -558,9 +578,9 @@ class IdentityAuthority:
             raise OwnerFailure('INVALID_INPUT', 'wizard', 'LIMIT_EXCEEDED')
         parts = tuple(self.row(f'wizard-{revision}-{ordinal}', {'wizard_revision': revision,
             'ordinal': ordinal, 'body': chunk}) for ordinal, chunk in enumerate(chunks))
-        return await self.write('save_wizard', key, self.row('wizard', {'state': 'DRAFT',
-            'part_count': len(parts), 'content_digest': digest(body), 'initialization_key': None,
-            'persona_run_id': None}, old), expected_revision, digest(str(expected_revision) + body), parts=parts)
+        return await self.write('save_wizard', key, self.row('wizard', {'state': current['state'],
+            'part_count': len(parts), 'content_digest': digest(body), 'initialization_key': current.get('initialization_key'),
+            'persona_run_id': None}, old), expected_revision, request, parts=parts)
 
     async def read_draft(self) -> dict[str, object]:
         """Recover only the committed wizard version; partial chunks are invisible."""
@@ -582,6 +602,25 @@ class IdentityAuthority:
             raise OwnerFailure('INTEGRITY_FAILURE', 'wizard', 'RECORD_INVALID')
         return {'state': wizard['state'], 'revision': wizard['revision'], 'draft': json.loads(body),
             'initialization_key': wizard['initialization_key'], 'persona_run_id': wizard['persona_run_id']}
+
+    async def confirm_initialization(self, key: str, expected_revision: int):
+        """Read an original setup confirmation independently of later wizard state.
+
+        The recorded target distinguishes a basic confirmation from business-root
+        initialization. Both retain their existing command digest and require the
+        exact original expected revision; this method does not advance the wizard.
+        """
+        import json
+        from companion_memory.persistence import Found, NotFound
+        prior = await self.operations['advance_wizard'].read_receipt(key)
+        if type(prior) is Found:
+            recorded = cast(Record, prior.value.result)['request_digest']
+            for state in ('VALIDATED', 'INITIALIZING'):
+                request = digest(json.dumps([expected_revision, state, key, None], separators=(',', ':')))
+                if recorded == request:
+                    return state, Committed(prior.value, 'EXISTING')
+            raise OwnerFailure('IDEMPOTENCY_CONFLICT', 'wizard', 'CONTENT_MISMATCH')
+        return None if type(prior) is NotFound else prior
 
     async def advance_wizard(self, key: str, expected_revision: int, state: str,
                              initialization_key: str, persona_run_id: str | None = None):

@@ -26,7 +26,7 @@ SCHEMA = RecordSchema(tuple(
     for f in MONEY_SCHEMA.fields) + (Field('observation_reason',enum('OK','MISSING','INVALID','UNSUPPORTED_FIELDS')),))
 
 
-def observe(raw:bytes|None=None) -> Record:
+def observe(raw:bytes|None=None, *, billing_mode: str = 'USAGE_ONLY_TRIAL') -> Record:
     """Preserve exact known integer observations, never repair missing values."""
     reported=None
     if raw is not None:
@@ -46,19 +46,20 @@ def observe(raw:bytes|None=None) -> Record:
         elif incoming is not None and total is not None:reason='OK';coverage='COMPLETE'
         elif incoming is not None or total is not None:reason='MISSING';coverage='PARTIAL'
     elif reported is not None:reason='INVALID'
-    return validate({'format_version':2,'billing_mode':'USAGE_ONLY_TRIAL','currency':'CNY',
+    return validate({'format_version':2,'billing_mode':billing_mode,'currency':'CNY',
         'source':'PROVIDER_REPORTED' if incoming is not None or total is not None else 'UNAVAILABLE',
         'fields':{'input_tokens':incoming,'total_tokens':total,'input_items':None,'embedding_dimensions':None,'cache_read_tokens':None},
         'raw_usage':{'prompt_tokens':incoming,'total_tokens':total,'input_units':None},
         'coverage':coverage,'valid':reason=='OK','observation_reason':reason,'cost_complete':False,
         'known_cost_atoms':None,'known_subtotal_atoms':0,'held_atoms':0,'estimated_cost_atoms':None,'reported_cost_atoms':None,'price_revision':None,
         'items':({'item':'input','quantity':incoming,'price_numerator':None,'price_denominator':None,'cost_atoms':None},),
-        'quota_known':None,'quota_held':0})
+        'quota_known':None,'quota_held':0},product=billing_mode=='USAGE_ONLY')
 
 
-def validate(value:object) -> Record:
+def validate(value:object, *, product: bool = False) -> Record:
     """Reject zero-cost claims and contradictory stored observation relations."""
-    result=isolate(SCHEMA,value,4096)
+    schema=RecordSchema(tuple(replace(field,schema=enum('USAGE_ONLY_TRIAL','USAGE_ONLY')) if product and field.name=='billing_mode' else field for field in SCHEMA.fields))
+    result=isolate(schema,value,4096)
     if (any(result[k] is not None for k in _NULL_FIELDS) or result['cost_complete'] is not False
             or any(result[k]!=0 for k in ('known_subtotal_atoms','held_atoms','quota_held'))):raise InvalidValue()
     fields=result['fields'];raw=result['raw_usage'];items=result['items']

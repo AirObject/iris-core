@@ -49,6 +49,11 @@ class ProviderVersionTests(unittest.IsolatedAsyncioTestCase):
                         await publish_fixture_persona(self, business)
                     host, manager = business.host, business.configuration
                     assert host is not None and manager is not None and host.runtime is not None and host.provider is not None
+                    # This fixture drives frozen batches directly. Drain the
+                    # independent goal/communication timer through its public
+                    # close contract before asserting each version transaction.
+                    assert business.goal_scheduler is not None
+                    self.assertTrue(await business.goal_scheduler.close(5))
                     memory = host.assembly.memory.information
                     assert memory is not None and host.network is not None
                     if reopen:

@@ -1,15 +1,20 @@
 /** External connection forms consume authenticated native management facts. */
 import type {ConfigurationOperation} from './configuration_operation.js';
 type Row=Record<string,unknown>;
-type Context={configuration:ConfigurationOperation;page:HTMLElement;api:(path:string,payload?:Row)=>Promise<unknown>;object:(v:unknown)=>Row;escape:(v:unknown)=>string;show:(s:string,error?:boolean)=>void;bind:(id:string,work:(f:HTMLFormElement)=>Promise<void>)=>void;write:(name:string,path:string,input:Row,keyField?:string)=>Promise<Row>};
+type Context={configuration:ConfigurationOperation;page:HTMLElement;api:(path:string,payload?:Row)=>Promise<unknown>;object:(v:unknown)=>Row;escape:(v:unknown)=>string;show:(s:string,error?:boolean)=>void;bind:(id:string,work:(f:HTMLFormElement)=>Promise<void>)=>void;write:(name:string,path:string,input:Row,keyField?:string)=>Promise<Row>;definitiveRejection:(error:unknown)=>boolean};
 let browserSocket:WebSocket|undefined;
 export function closeConnectionPage():void {browserSocket?.close(1000,'PAGE_CLOSED');browserSocket=undefined;}
 export async function renderConnections(c:Context,tab='overview'):Promise<void>{
   c.page.setAttribute('aria-busy','true');
   try {
   closeConnectionPage();
-  const {page,api,object,escape:esc,show,bind,write,configuration}=c;
+  const {page,api,object,escape:esc,show,bind,write,configuration,definitiveRejection}=c;
   const overview=object(await api('/api/connections/overview',{}));
+  if(overview.initialized===false){
+    const states:Record<string,string>={BOOTSTRAP:'基础设置尚未确认',CONFIGURATION_REQUIRED:'业务配置待补齐',RECOVERING:'实例正在恢复',UPGRADE_REQUIRED:'当前实例需要完成通信格式升级'};
+    page.innerHTML=`<h1>外部连接</h1><section class="card"><h2>当前不可接入</h2><p>${esc(states[String(overview.state)]??overview.state)}。完成业务初始化后即可登记宿主与入口。</p><p>HTTP：${esc(overview.origin)}</p><p>WS：${esc(String(overview.origin).replace(/^http/,'ws'))}${esc(overview.websocket_path)}</p><p>协议：${esc(overview.subprotocol)}</p></section>`;
+    return;
+  }
   const routes=(overview.routes as unknown[]).map(object);
   const connections=(overview.connections as unknown[]).map(object);
   const tabs=[['overview','连接概览'],['hosts','宿主与入口'],['tokens','凭据与权限'],['routes','通知路由'],['deliveries','连接与投递'],['settings','通信设置'],['testing','接入说明与联调']];
@@ -33,15 +38,28 @@ export async function renderConnections(c:Context,tab='overview'):Promise<void>{
   if(tab==='overview'){
     area.innerHTML=`<section class="card"><h2>${overview.ws_available?'WS 可接入':overview.ws_enabled?'WS 暂不可接入':'WS 已禁用'}</h2><p>当前模式：${esc(overview.mode)}；${overview.notifications_paused?'新通知已暂停':'按已启用路由派发'}。在线不代表当前可以发送。</p><p>HTTP：${esc(overview.origin)}</p><p>WS：${esc(String(overview.origin).replace(/^http/,'ws'))}/api/host/ws</p><p>协议：${esc(overview.subprotocol)}</p><p>实际配置：${esc(overview.configuration_id)}</p><p>消费者 ${connections.length} 个，可信路由 ${routes.length} 条。</p></section><section class="card"><h2>首次接入</h2><ol><li>完成初始化，登记宿主和入口。</li><li>创建路由，签发限定权限令牌。</li><li>在通信设置启用 WS，运行客户端并订阅。</li><li>明确启用路由，发送合成探针。</li><li>在目标管理页选择路由并创建有期限目标。</li></ol></section><section class="card"><h2>断线诊断</h2><p>查看连接、心跳及投递事实。修复宿主后，用原身份重新认证并显式接管所需路由，再查询当前目标。UNKNOWN 不允许重发；其他路由的订阅继续有效。</p></section>`;
   }else if(tab==='hosts'){
-    area.innerHTML=`<form id="connection-host" class="card"><h2>登记合法入口</h2>${field('宿主标识','host_id')}${field('入口标识','entry_id')}${field('已有平台标识','platform_id')}${field('外部会话标识','external_entry_id')}<p>仅绑定已配置平台；已引用的宿主和入口标识不可改写。</p><button>确认登记</button></form>`;
-    bind('#connection-host',async f=>{await write('connection.host','/api/connections/hosts/register',Object.fromEntries(['host_id','entry_id','platform_id','external_entry_id'].map(n=>[n,val(f,n)])));await refresh();});
+    area.innerHTML=`<form id="connection-host" class="card"><h2>登记合法入口</h2>${field('宿主标识','host_id')}${field('入口标识','entry_id')}${field('外部会话标识','external_entry_id')}<p>系统自动绑定当前配置的平台。宿主和入口在这里登记，已引用的标识不可改写。</p><button>确认登记</button></form>`;
+    bind('#connection-host',async f=>{await write('connection.host','/api/connections/hosts/register',Object.fromEntries(['host_id','entry_id','external_entry_id'].map(n=>[n,val(f,n)])));await refresh();});
     await list('/api/connections/hosts/list','登记事实');
   }else if(tab==='tokens'){
     const entryRows:Row[]=[];let after='';do{const r=object(await api('/api/connections/hosts/list',{after}));entryRows.push(...(r.items as unknown[]).map(object));after=String(r.after??'');}while(after&&entryRows.length<64);
     const operations=[['接收与媒体','accept','media_upload','media_inspect'],['召回与反馈','prepare','query','deep_recall','feedback'],['状态','state_read','state_write'],['目标','goal_read','goal_write'],['通知与观察','notifications','runtime_observe','probe'],['原操作','confirm']];
-    area.innerHTML=`<form id="connection-token" class="card"><h2>签发有限权限令牌</h2><label>宿主<select aria-label="宿主" name="host_id">${[...new Set(entryRows.map(r=>String(r.host_id)))].map(h=>`<option>${esc(h)}</option>`).join('')}</select></label><fieldset><legend>入口多选</legend>${checks('entries',entryRows.map(r=>String(r.entry_id)))}</fieldset>${operations.map(([title,...ops])=>`<fieldset><legend>${title}</legend>${checks('operations',ops)}</fieldset>`).join('')}<fieldset><legend>允许路由</legend>${checks('route_ids',routes.map(r=>String(r.object_id)))}</fieldset><fieldset><legend>允许事件</legend>${checks('event_types',['goal.upcoming','goal.due','core.mode_changed','connection.probe'])}</fieldset><label>有效期（小时）<input name="hours" type="number" min="1" max="720" value="24" required></label><p>新令牌只显示一次。轮换时先签发新令牌、按所需路由接管，再撤销旧令牌。</p><button>签发令牌</button><div id="connection-secret" aria-live="polite"></div></form>`;
-    let submitted:Row|undefined;
-    bind('#connection-token',async f=>{submitted??={key:crypto.randomUUID(),host_id:val(f,'host_id'),entries:values(f,'entries'),operations:values(f,'operations'),route_ids:values(f,'route_ids'),event_types:values(f,'event_types'),expires_at_us:(Date.now()+Number(val(f,'hours'))*3600000)*1000};const result=object(await api('/api/tokens/create',submitted));page.querySelector('#connection-secret')!.textContent=result.token?`请立即安全保存：${String(result.token)}`:'原签发已确认；秘密无法重新显示。请撤销后重新签发。';});
+    area.innerHTML=`<form id="connection-token" class="card"><h2>签发有限权限令牌</h2><label>宿主<select aria-label="宿主" name="host_id">${[...new Set(entryRows.map(r=>String(r.host_id)))].map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join('')}</select></label><fieldset><legend>入口多选</legend><div id="connection-token-entries"></div></fieldset>${operations.map(([title,...ops])=>`<fieldset><legend>${title}</legend>${checks('operations',ops)}</fieldset>`).join('')}<fieldset><legend>允许路由</legend><div id="connection-token-routes"></div></fieldset><fieldset><legend>允许事件</legend>${checks('event_types',['goal.upcoming','goal.due','core.mode_changed','connection.probe'])}</fieldset><label>有效期（小时）<input name="hours" type="number" min="1" max="720" value="24" required></label><p>新令牌只显示一次。轮换时先签发新令牌、按所需路由接管，再撤销旧令牌。</p><button>签发令牌</button><div id="connection-secret" aria-live="polite"></div></form>`;
+    const form=area.querySelector<HTMLFormElement>('#connection-token')!;
+    function scopes():void{const host=val(form,'host_id');area.querySelector('#connection-token-entries')!.innerHTML=checks('entries',entryRows.filter(row=>row.host_id===host).map(row=>String(row.entry_id)));area.querySelector('#connection-token-routes')!.innerHTML=checks('route_ids',routes.filter(route=>route.host_id===host).map(route=>String(route.object_id)));}
+    form.querySelector<HTMLSelectElement>('select[name="host_id"]')!.addEventListener('change',scopes);scopes();
+    let submitted:Row|undefined;let selection:string|undefined;
+    bind('#connection-token',async f=>{
+      const chosen={host_id:val(f,'host_id'),entries:values(f,'entries'),operations:values(f,'operations'),route_ids:values(f,'route_ids'),event_types:values(f,'event_types'),hours:val(f,'hours')};
+      const signature=JSON.stringify(chosen);
+      if(submitted&&signature!==selection)throw new Error('原令牌请求尚未确认。请保留原选项并继续原操作。');
+      submitted??={host_id:chosen.host_id,entries:chosen.entries,operations:chosen.operations,route_ids:chosen.route_ids,event_types:chosen.event_types,expires_at_us:(Date.now()+Number(chosen.hours)*3600000)*1000};
+      selection??=signature;
+      let result:Row;
+      try{result=await write('connection.token','/api/tokens/create',submitted);}catch(error){if(definitiveRejection(error)){submitted=undefined;selection=undefined;}throw error;}
+      page.querySelector('#connection-secret')!.textContent=result.token?`请立即安全保存：${String(result.token)}`:'原签发已确认；秘密无法重新显示。请撤销后重新签发。';
+      submitted=undefined;selection=undefined;f.reset();scopes();
+    });
     await list('/api/tokens/list','凭据状态',r=>`<p>${esc(r.host_id)} · ${esc(r.state)} · ${esc(r.operations)}</p>${summary(r)}<button type="button" data-revoke="${esc(r.object_id)}" data-revision="${r.revision}" ${r.revoked?'disabled':''}>撤销令牌</button>`);
     area.addEventListener('click',e=>{const b=(e.target as HTMLElement).closest<HTMLButtonElement>('[data-revoke]');if(b){b.disabled=true;void write('connection.revoke.'+b.dataset.revoke,'/api/tokens/revoke',{token_id:b.dataset.revoke,expected_revision:Number(b.dataset.revision)}).then(refresh).catch(e=>{b.disabled=false;show(String(e),true);});}});
   }else if(tab==='routes'){

@@ -82,6 +82,7 @@ def definitions() -> tuple[ParameterDefinitionInput, ...]:
     return (
         definition('deployment.data_root', kind='string', default='/data', sensitivity='administrator'),
         definition('deployment.secret_root', kind='string', default='/run/secrets', sensitivity='administrator'),
+        definition('deployment.provider_secret_root', kind='string', default='/run/provider-credentials', sensitivity='administrator'),
         definition('deployment.origin', kind='string', default='http://127.0.0.1:8080'),
         definition('deployment.bind', kind='string', default='0.0.0.0'),
         definition('deployment.trusted_proxy_peers', kind='string', default=''),
@@ -131,13 +132,16 @@ def resolve_deployment(explicit: dict[str, MetadataValue]) -> DeploymentSettings
     if type(resolved) is not ResolutionOk:
         raise ValueError('Invalid deployment value.')
     settings = DeploymentSettings(EffectiveSnapshot._from_entries(frozen.value, resolved.value))
-    for key in ('deployment.data_root', 'deployment.secret_root'):
+    for key in ('deployment.data_root', 'deployment.secret_root', 'deployment.provider_secret_root'):
         path = settings.text(key)
         if not path.startswith('/') or str(PurePosixPath(path)) != path or '..' in PurePosixPath(path).parts or any(ord(c) < 32 for c in path):
             raise ValueError('Invalid protected path.')
     root, secret = (PurePosixPath(settings.text(k)) for k in ('deployment.data_root', 'deployment.secret_root'))
     if root == PurePosixPath('/') or root.is_relative_to(secret) or secret.is_relative_to(root):
         raise ValueError('Protected resources overlap.')
+    provider = PurePosixPath(settings.text('deployment.provider_secret_root'))
+    if provider == PurePosixPath('/') or any(provider.is_relative_to(other) or other.is_relative_to(provider) for other in (root, secret)):
+        raise ValueError('Protected Provider credentials overlap.')
     origin = parse_origin(settings.text('deployment.origin'))
     import ipaddress
     peers = settings.text('deployment.trusted_proxy_peers')

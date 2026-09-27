@@ -9,10 +9,12 @@ test('synthetic participant explicitly initializes, reviews and publishes',async
   const wizard=await (await page.request.get('/api/wizard')).json();
   if(wizard.data.state==='DRAFT'){
     await page.getByRole('button',{name:'初始化向导',exact:true}).click();
+    await page.getByRole('button',{name:'高级配置',exact:true}).click();
+    await page.getByRole('button',{name:'保存设置并继续',exact:true}).click();
     await page.getByRole('button',{name:'验证已保存版本',exact:true}).click();
-    await page.getByRole('button',{name:'确认并创建实例',exact:true}).click();
+    await page.getByRole('button',{name:'确认基础设置',exact:true}).click();
     await page.getByRole('button',{name:'确认准备',exact:true}).click();
-  }else await page.getByRole('button',{name:'首次 persona',exact:true}).click();
+  }else await page.getByRole('button',{name:'角色设定',exact:true}).click();
   const pendingBefore=await post(page,'/api/persona/pending',{});
   if(['KNOWN_FAILED','USER_REJECTED'].includes(pendingBefore.body.data.value?.run?.state)){
     await page.getByRole('button',{name:'准备下一次候选',exact:true}).click();
@@ -23,15 +25,15 @@ test('synthetic participant explicitly initializes, reviews and publishes',async
   await page.getByRole('checkbox',{name:'我确认允许向这些目的地发送相应业务材料',exact:true}).check();
   if(await page.getByRole('button',{name:'启用新请求许可',exact:true}).count())await page.getByRole('button',{name:'启用新请求许可',exact:true}).click();
   await expect(page.getByRole('button',{name:'暂停后续新请求',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'首次 persona',exact:true}).click();
+  await page.getByRole('button',{name:'角色设定',exact:true}).click();
   await page.getByRole('button',{name:'明确生成候选',exact:true}).click();
   // Refresh only the existing pending result; never issue another generation.
   await expect.poll(async()=>{
     const pending=await post(page,'/api/persona/pending',{});
     return pending.body.data.value?.run?.state;
   },{timeout:60000}).toBe('WAITING_REVIEW');
-  await page.getByRole('button',{name:'首次 persona',exact:true}).click();
-  await expect(page.getByRole('button',{name:'首次 persona',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'角色设定',exact:true}).click();
+  await expect(page.getByRole('button',{name:'角色设定',exact:true})).toBeEnabled();
   await page.getByRole('combobox',{name:'人工审核决定',exact:true}).selectOption('APPROVE');
   await expect(page.getByRole('combobox',{name:'人工审核决定',exact:true})).toHaveValue('APPROVE');
   await page.getByRole('button',{name:'确认审核决定',exact:true}).click();

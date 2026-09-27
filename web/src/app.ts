@@ -1,5 +1,7 @@
+import {renderOnboarding,renderProviderSettings} from './onboarding.js';
 import {renderConnections,closeConnectionPage} from './external_connections.js';
 import {configurationOperation} from './configuration_operation.js';
+import {setupFields,initialConfiguration,compactCompatible,renderCompactSetup,formatAmount,assertExactNumbers,type SetupField} from './setup_configuration.js';
 /** Local administration of one protected instance; all writes keep their original request key. */
 type RecordValue = Record<string, unknown>;
 const page = document.querySelector<HTMLDivElement>('#page')!;
@@ -12,6 +14,7 @@ let authenticated = false;
 let auditing = false;
 let instanceId='';
 let activePageWork=0;
+let selectedManagementEntryId:string|undefined;
 function navigationBusy(change:number):void {
   activePageWork+=change;
   for(const button of navigation.querySelectorAll<HTMLButtonElement>('button'))button.disabled=activePageWork>0;
@@ -41,7 +44,7 @@ async function api(path: string, payload?: RecordValue): Promise<unknown> {
   if (!response.ok) {
     if (response.status === 401) authenticated = false;
     const error = object(result.error);
-    const messages: Record<string,string> = {AUTHENTICATION_REQUIRED:'登录已失效，或口令不正确。',NOT_READY:'实例尚未完成初始化与首次 persona 发布，请先完成引导。',FOCUS_MODE:'当前处于专注模式，暂不接受此操作。',BOOTSTRAP_REJECTED:'引导凭据不正确。',REVISION_CONFLICT:'内容已变化，请重新读取后确认。',LOGIN_RATE_LIMITED:'登录尝试过多，请稍后再试。',ORIGIN_REJECTED:'访问地址不匹配，请使用配置的本地地址。',INVALID_SHAPE:'请检查必填项与输入格式。',CONFIRMATION_REQUIRED:'请先确认实例时区。'};
+    const messages: Record<string,string> = {AUTHENTICATION_REQUIRED:'登录已失效，或口令不正确。',NOT_READY:'实例尚未准备好，请先完成初始化。',FORMAT_UPGRADE_REQUIRED:'这个旧实例需要先升级存储格式，才能使用新向导。请由部署者备份后执行初始化格式升级；现有数据和草稿应保留。',FOCUS_MODE:'当前处于专注模式，暂不接受此操作。',BOOTSTRAP_REJECTED:'引导凭据不正确。',REVISION_CONFLICT:'内容已变化，请重新读取后确认。',LOGIN_RATE_LIMITED:'登录尝试过多，请稍后再试。',ORIGIN_REJECTED:'访问地址不匹配，请使用配置的本地地址。',INVALID_SHAPE:'请检查必填项与输入格式。',CONFIRMATION_REQUIRED:'请先确认实例时区。',API_KEY_REQUIRED:'请填写生成模型和语义检索所需的 API key。',API_KEY_INVALID:'API key 格式不正确，请直接粘贴完整密钥，去掉空格或换行。',REPLACE_CONFIRMATION_REQUIRED:'请确认是否将旧草稿替换为推荐配置。',CREDENTIAL_STORAGE_UNAVAILABLE:'服务端密钥存储不可用，请检查专用密钥卷。',LOCAL_PERSONA_UNAVAILABLE:'已有角色生成操作尚未结束，请继续原角色流程。'};
     throw new OperationFailure((error.code==='MODE_BLOCKED'?'当前模式暂不允许此操作，请等待受控流程结束。':messages[String(error.reason)]) ?? `操作未完成：${String(error.code)} / ${String(error.reason)}`,String(result.outcome),result.cleanup_pending===true,String(error.reason));
   }
   if (response.status === 202) throw new Error('操作仍在确认中。请保留原操作标识，勿另建请求。');
@@ -49,18 +52,30 @@ async function api(path: string, payload?: RecordValue): Promise<unknown> {
   if(path==='/api/status'){const status=object(data);if(typeof status.instance_id==='string')instanceId=String(status.instance_id);document.querySelector('#health')!.textContent=status.business_ready?'业务就绪':'受保护引导';renderPendingOperations();}
   return data;
 }
+function runPageAction(scope:HTMLElement,action:()=>Promise<void>):void {
+  if(page.inert)return;
+  const buttons=[...scope.querySelectorAll<HTMLButtonElement>('button')].map(button=>({button,disabled:button.disabled}));
+  const wasInert=scope.inert,wasPageInert=page.inert;
+  scope.inert=true;page.inert=true;
+  navigationBusy(1);buttons.forEach(({button})=>button.disabled=true);
+  void action().catch(error=>show(error instanceof Error?error.message:'操作失败。',true)).finally(()=>{
+    buttons.forEach(({button,disabled})=>button.disabled=disabled);
+    scope.inert=wasInert;page.inert=wasPageInert;navigationBusy(-1);
+  });
+}
 function bind(id: string, action: (form: HTMLFormElement) => Promise<void>): void {
   const form = document.querySelector<HTMLFormElement>(id)!;
   form.addEventListener('submit', event => {
-    event.preventDefault();
-    const buttons = [...form.querySelectorAll<HTMLButtonElement>('button')];
-    navigationBusy(1);buttons.forEach(button => button.disabled = true);
-    void action(form).catch(error => show(error instanceof Error ? error.message : '操作失败。', true)).finally(() => {buttons.forEach(button => button.disabled = false);navigationBusy(-1);});
+    event.preventDefault();runPageAction(form,()=>action(form));
   });
+}
+function bindPageButton(id:string,action:()=>Promise<void>):void {
+  const button=document.querySelector<HTMLButtonElement>(id)!;
+  button.addEventListener('click',()=>runPageAction(button,action));
 }
 function menu(active: string): void {
   renderPendingOperations();
-  const items = auditing ? [['audit','审计读取'],['audit-login','重新验证审计能力'],['audit-logout','退出审计']] : authenticated ? [['overview','概览'],['wizard','初始化向导'],['persona','首次 persona'],['dispatch','模型工作'],['configuration','配置版本'],['daily','日常观察'],['memory','记忆与来源'],['state','当前状态'],['goals','目标管理'],['logs','运行日志'],['dream','梦境管理'],['backups','备份恢复'],['connections','外部连接'],['account','管理员口令'],['audit-login','独立审计登录'],['logout','退出登录']] : [['login','管理员登录'],['bootstrap','首次建立管理员'],['audit-login','独立审计登录']];
+  const items = auditing ? [['audit','审计读取'],['audit-login','重新验证审计能力'],['audit-logout','退出审计']] : authenticated ? [['overview','概览'],['wizard','初始化向导'],['persona','角色设定'],['provider-settings','模型连接'],['dispatch','模型工作'],['configuration','配置版本'],['daily','日常观察'],['memory','记忆与来源'],['state','当前状态'],['goals','目标管理'],['logs','运行日志'],['dream','梦境管理'],['backups','备份恢复'],['connections','外部连接'],['account','管理员口令'],['audit-login','独立审计登录'],['logout','退出登录']] : [['login','管理员登录'],['bootstrap','首次建立管理员'],['audit-login','独立审计登录']];
   navigation.innerHTML = items.map(([id,label]) => `<button data-page="${id}" ${id === active ? 'aria-current="page"' : ''}>${label}</button>`).join('');
   navigationBusy(0);
   for (const button of navigation.querySelectorAll<HTMLButtonElement>('button')) button.addEventListener('click', () => {if(!activePageWork)void render(button.dataset.page!).catch(error => show(String(error),true));});
@@ -71,7 +86,7 @@ async function render(name:string):Promise<void> {
   try{await renderPage(name);}finally{navigationBusy(-1);}
 }
 async function renderPage(name: string): Promise<void> {
-  if(name==='connections'||name==='tokens'){menu('connections');await renderConnections({page,api,object,escape,show,bind,write:originalWrite,configuration:configurationOperation(api,object,instanceId,definitiveRejection)});return;}
+  if(name==='connections'||name==='tokens'){menu('connections');await renderConnections({page,api,object,escape,show,bind,write:originalWrite,definitiveRejection,configuration:configurationOperation(api,object,instanceId,definitiveRejection)});return;}
   const pages:Record<string,()=>Promise<void>>={'audit-login':renderAuditLogin,audit:renderAudit,'audit-logout':async()=>{await api('/api/audit/logout',{});auditing=false;await render('login');},daily:renderDaily,memory:renderMemory,state:renderState,goals:renderGoals,logs:renderLogs,dream:renderDream,backups:renderBackups,account:renderAccount};
   if (pages[name]) {page.innerHTML='<p>正在读取…</p>';notice.textContent='';menu(name);await pages[name]!();return;}
   if (name === 'configuration') { page.innerHTML='<p>正在读取…</p>';notice.textContent='';menu(name); await renderConfiguration(); return; }
@@ -103,73 +118,87 @@ async function renderPage(name: string): Promise<void> {
   }
   if (name === 'overview') {
     const status = object(await api('/api/status'));
-    page.innerHTML = `<h1>实例概览</h1><p class="intro">从完整初始化开始，再明确开启日常学习与梦境工作。</p><div class="grid"><section class="card"><p class="muted">业务状态</p><p class="metric">${status.business_ready ? '可以接入' : status.state === 'AWAITING_REVIEW' ? '等待首次审核' : '等待初始化'}</p><p class="muted">${status.business_ready ? '业务根已完成恢复。' : '配置和首次 persona 尚需完成；当前仅开放受保护引导。'}</p></section><section class="card"><p class="muted">模型工作</p><p class="metric">${status.model_dispatch === 'ENABLED' ? '已显式启用' : '已暂停'}</p><p class="muted">重启和查看页面都不会自动发送新请求。</p></section></div><section class="card"><h2>开始设置</h2><p>确认角色、初始自我材料、时区和 Provider，然后生成并审核首次 persona。</p><button id="start">继续初始化</button></section><section class="card"><h2>能力边界</h2><p class="muted">音视频质量验证与可选重排尚未开放。开发者审计需要独立能力。</p></section>`;
-    document.querySelector('#start')!.addEventListener('click',()=>{void render('wizard');}); return;
+    const businessLabel=status.business_ready?'可以使用':status.state==='CONFIGURATION_REQUIRED'?'待配置':status.state==='AWAITING_REVIEW'?'等待首次审核':'等待初始化';
+    const businessDescription=status.business_ready?'角色和本地工作区已经就绪。':status.state==='CONFIGURATION_REQUIRED'?'基础设置已确认，请在设置中补齐真实 Provider 资料并完成业务初始化。':'请填写模型服务密钥，完成开始设置。';
+    page.innerHTML = `<h1>实例概览</h1><p class="intro">本地资料和工作区由你管理，模型工作可按需启用。</p><div class="grid"><section class="card"><p class="muted">业务状态</p><p class="metric">${businessLabel}</p><p class="muted">${businessDescription}</p></section><section class="card"><p class="muted">模型工作</p><p class="metric">${status.model_dispatch === 'ENABLED' ? '已显式启用' : '已暂停'}</p><p class="muted">重启和查看页面都不会自动发送新请求。</p></section></div><section class="card"><h2>${status.business_ready?'开始使用':'完成设置'}</h2><p>${status.business_ready?'本地角色与工作区已经就绪。可以管理状态、目标和记忆，也可按需启用模型工作。':'只需基础资料和模型服务密钥，其余使用推荐配置。'}</p><button id="start">${status.business_ready?'打开当前状态':'继续初始化'}</button>${status.business_ready?'<button id="overview-models" class="secondary">模型工作</button>':''}</section><section class="card"><h2>能力边界</h2><p class="muted">音视频质量验证与可选重排尚未开放。开发者审计需要独立能力。</p></section>`;
+    bindPageButton('#start',async()=>render(status.business_ready?'state':'wizard'));
+    if(status.business_ready)bindPageButton('#overview-models',async()=>render('dispatch'));return;
   }
-  if (name === 'wizard') {
-    const current = object(await api('/api/wizard')); const draft = object(current.draft); draftRevision = typeof current.revision === 'number' ? current.revision : null;
-    const status = object(await api('/api/status'));
-    if (current.state !== 'DRAFT') { page.innerHTML = `<h1>初始化已开始</h1><section class="card"><p>角色：${escape(draft.role_name)} · 时区：${escape(draft.timezone)}</p><p>当前状态：${escape(current.state)}</p><button id="review-page">进入首次 persona</button></section>`; document.querySelector('#review-page')!.addEventListener('click',()=>{void render('persona');}); return; }
-    const input = (title:string,id:string,defaultValue='') => `<label>${title}<input name="${id}" value="${escape(draft[id] ?? defaultValue)}" required></label>`;
-    page.innerHTML = `<h1>初始化向导</h1><p class="intro">草稿可以保存。完整验证、初始化执行和 persona 审核分别确认。</p><ol class="steps"><li class="active">填写与确认</li><li>完整验证</li><li>初始化</li><li>首次审核</li></ol><form id="wizard"><section class="card"><h2>角色与初始自我</h2>${input('角色名称','role_name')}<label>初始自我材料<textarea name="initial_material" required>${escape(draft.initial_material)}</textarea></label><p class="muted">材料用于建立唯一自我。persona 由模型生成，再经人工审核；当前状态与目标分别管理。</p></section><section class="card"><h2>实例时区</h2><p class="muted">服务实际环境时区：${escape(status.environment_timezone)}。请明确确认实例使用的时区。</p>${input('IANA 时区名称','timezone',typeof status.default_timezone==='string'?status.default_timezone:'')}<label class="check"><input name="timezone_confirmed" type="checkbox" ${draft.timezone_confirmed?'checked':''}>我确认这个时区用于日常与梦境调度</label></section><section class="card"><h2>宿主与入口</h2><div class="grid">${input('平台标识','platform_id')}${input('入口标识','entry_id')}${input('宿主标识','host_id')}${input('会话标识','conversation_id')}</div><div class="window"><span>历史上下文</span><span>本次总结的中段</span><span>最近上下文</span></div><p class="muted">三段窗口只总结中段，前后段提供上下文。</p></section><section class="card"><h2>业务配置</h2><p class="muted">完整配置包括 Provider、受保护凭据引用、窗口长度、学习事件、梦境和专注设置。秘密通过部署挂载，勿填写 API key。</p><p>先填写平台标识，再载入表单。固定协议和受保护目录由服务提供，Provider 资料与业务选择需自行确认。</p><button type="button" class="secondary" id="load-configuration">载入配置表单</button><details class="card"><summary>导入已有配置</summary><p>可粘贴完整配置 JSON，再检查表单。只接受配置值，不要包含口令或 API key；导入不会保存或激活。</p><label>完整配置 JSON<textarea id="configuration-import" spellcheck="false"></textarea></label><button type="button" class="secondary" id="import-configuration">导入并检查表单</button></details><div id="configuration-fields"></div><div class="actions"><button>保存草稿</button><button type="button" class="secondary" id="validate">验证已保存版本</button></div></section></form><div id="validation"></div>`;
-    let readConfiguration: (()=>RecordValue)|undefined;
-    async function loadConfiguration(imported?:RecordValue):Promise<void>{
-      const form=document.querySelector<HTMLFormElement>('#wizard')!;const platform=value(form,'platform_id');
-      if(!platform)throw new Error('请先填写平台标识。');
-      const schema=object(await api('/api/configuration/schema',{platform_id:platform}));
-      readConfiguration=configurationEditor(document.querySelector('#configuration-fields')!,object(schema.domains),imported??(draft.configuration?object(draft.configuration):{}));
+  if(name==='provider-settings'){
+    await api('/api/status');
+    await renderProviderSettings({root:page,instanceId,api,write:originalWrite,navigate:render,notify:show,run:runPageAction,definitiveRejection,pendingSetup:()=>false});return;
+  }
+  if(name==='wizard'){
+    await api('/api/status');
+    await renderOnboarding({root:page,instanceId,api,write:originalWrite,navigate:render,notify:show,run:runPageAction,definitiveRejection,
+      pendingSetup:()=>['wizard.save','wizard.initialize','wizard.local-persona'].some(slot=>sessionStorage.getItem(`iris.pending.${instanceId}.${slot}`)!==null)});
+    return;
+  }
+  if(name==='setup-advanced'){
+    await renderSetupConfiguration(object(await api('/api/wizard')),true);return;
+  }
+  if (name === 'legacy-wizard' || name === 'setup-confirmation') {
+    const current=object(await api('/api/wizard')),draft=object(current.draft);
+    draftRevision=typeof current.revision==='number'?current.revision:null;
+    const status=object(await api('/api/status'));
+    if(current.state==='VALIDATED'||name==='setup-confirmation'&&current.state==='DRAFT'&&draftRevision!==null){
+      const confirmed=current.state==='VALIDATED';
+      page.innerHTML='<h1>'+(confirmed?'基础设置已确认':'确认初始化设置')+'</h1>'+setupSteps(3)
+        +'<section class="card"><h2>基础资料</h2><p>角色：'+escape(draft.role_name)+' · 时区：'+escape(draft.timezone)+'</p><details><summary>初始自我材料</summary><p>'+escape(draft.initial_material)+'</p></details>'
+        +'<p>确认后角色、初始材料和时区将固定。模型资料未补齐时保持待配置，仍可登录和修改配置。</p></section>'
+        +setupBudgetSummary(draft.configuration)
+        +'<section class="card"><p>保存配置不等于生效。首次生成、模型发送许可和人工审核仍需分别确认。</p><div class="actions"><button id="setup-settings" class="secondary">返回模型连接</button><button id="validate" class="secondary">验证已保存版本</button></div>'
+        +(confirmed?'<form id="complete-business"><button id="start-business">完成业务初始化</button></form>':'<form id="confirm-basic"><button id="confirm-setup">确认基础设置</button></form>')+'<div id="validation"></div></section>';
+      bindPageButton('#setup-settings',async()=>render('configuration'));
+      bindPageButton('#validate',async()=>renderConfigurationValidation(object(await api('/api/wizard/validate',{expected_revision:draftRevision})),!confirmed));
+      if(confirmed)bind('#complete-business',async()=>{
+        const check=object(await api('/api/wizard/validate',{expected_revision:draftRevision}));
+        renderConfigurationValidation(check,false);
+        if(check.valid!==true)return;
+        await originalWrite('wizard.initialize','/api/wizard/initialize',{expected_revision:draftRevision});
+        await render('persona');
+      });
+      else bind('#confirm-basic',async()=>{
+        const result=await originalWrite('wizard.initialize','/api/wizard/initialize',{expected_revision:draftRevision});
+        await render(result.state==='CONFIGURATION_REQUIRED'?'wizard':'persona');
+      });
+      return;
     }
-    document.querySelector('#load-configuration')!.addEventListener('click',()=>{void loadConfiguration().catch(error=>show(String(error),true));});
-    document.querySelector('#import-configuration')!.addEventListener('click',()=>{void (async()=>{
-      const input=document.querySelector<HTMLTextAreaElement>('#configuration-import')!;
-      if(new TextEncoder().encode(input.value).length>524288)throw new Error('配置超过允许容量。');
-      const imported=object(JSON.parse(input.value));
-      const form=document.querySelector<HTMLFormElement>('#wizard')!;
-      const schema=object(await api('/api/configuration/schema',{platform_id:value(form,'platform_id')}));
-      const domains=object(schema.domains);
-      if(Object.keys(imported).sort().join('|')!==Object.keys(domains).sort().join('|'))throw new Error('配置域不完整或包含未知配置域。');
-      function checkShape(value:unknown,schema:RecordValue):void {
-        if('constant' in schema&&value!==schema.constant)throw new Error('固定配置值不匹配。');
-        if(schema.type==='object'){
-          const record=object(value),fields=(schema.fields as unknown[]).map(object);
-          if(Object.keys(record).some(key=>!fields.some(field=>field.name===key)))throw new Error('配置包含未知字段。');
-          for(const field of fields){const item=record[String(field.name)];
-            if(item===undefined&&field.optional||item===null&&field.nullable)continue;
-            checkShape(item,object(field.schema));}
-        } else if(schema.type==='array'){
-          if(!Array.isArray(value)||value.length<Number(schema.minimum)||value.length>Number(schema.maximum))throw new Error('配置列表数量不合法。');
-          value.forEach((item,index)=>checkShape(item,object(Array.isArray(schema.items)?schema.items[index]:schema.item)));
-        } else if(schema.type==='integer'?typeof value!=='number'||!Number.isInteger(value):schema.type==='boolean'?typeof value!=='boolean':schema.type==='string'?typeof value!=='string':false)throw new Error('配置值类型不合法。');
-      }
-      for(const [domain,entries] of Object.entries(domains)){
-        const expected=(entries as unknown[]).map(entry=>String(object(entry).key)).sort();
-        if(Object.keys(object(imported[domain])).sort().join('|')!==expected.join('|'))throw new Error('配置项不完整或包含未知配置项。');
-        for(const raw of entries as unknown[]){const entry=object(raw);checkShape(object(imported[domain])[String(entry.key)],object(entry.schema));}
-      }
-      await loadConfiguration(imported); input.value=''; show('配置已导入表单。请检查后保存，并执行完整验证。');
-    })().catch(error=>show(String(error),true));});
-    if(draft.platform_id)await loadConfiguration();
-    const timezoneField=document.querySelector<HTMLInputElement>('#wizard input[name="timezone"]')!;
-    timezoneField.addEventListener('input',()=>{document.querySelector<HTMLInputElement>('#wizard input[name="timezone_confirmed"]')!.checked=false;});
-    bind('#wizard', async form => {
-      const next: RecordValue = {};
-      for (const id of ['role_name','initial_material','platform_id','entry_id','host_id','conversation_id','timezone']) next[id] = value(form,id);
-      next.timezone_confirmed = new FormData(form).has('timezone_confirmed');
-      if(!readConfiguration)throw new Error('请先载入并填写业务配置表单。');
-      next.configuration=readConfiguration();
-      object(next.configuration).text={...object(object(next.configuration).text),'runtime.timezone':next.timezone};
-      const result = await originalWrite('wizard.save','/api/wizard/save',{expected_revision:draftRevision,draft:next});
-      if (!result.receipt) throw new Error('保存尚未确认，请保留本页的原操作重试。');
-      await render('wizard'); show('草稿已保存，业务配置尚未生效。');
+    if(current.state!=='DRAFT'){
+      page.innerHTML='<h1>初始化已开始</h1><section class="card"><p>角色：'+escape(draft.role_name)+' · 时区：'+escape(draft.timezone)+'</p><p>当前状态：'+escape(current.state)+'</p><button id="review-page">进入首次 persona</button></section>';
+      bindPageButton('#review-page',async()=>render('persona'));return;
+    }
+    const schema=object(await api('/api/configuration/schema',draft.platform_id?{platform_id:draft.platform_id}:{}));
+    const basic=object(object(schema.setup).basic_defaults);
+    const material=draft.initial_material===basic.initial_material?'':draft.initial_material??'';
+    page.innerHTML='<h1>初始化向导</h1>'+setupSteps(1)
+      +'<p class="intro">默认名称和中性背景已备好。只需确认时区，也可以填写自己的角色与背景；运行参数以后在高级设置中调整。</p>'
+      +'<form id="wizard"><section class="card"><h2>基础资料</h2><label>角色名称<input name="role_name" value="'+escape(draft.role_name??basic.role_name)+'" required></label>'
+      +'<label>初始自我材料（可选）<textarea name="initial_material">'+escape(material)+'</textarea></label>'
+      +'<p class="muted">留空使用中性背景，不预设姓名、个人经历或特殊能力。保存时写入草稿，确认基础设置后固定。</p><details><summary>查看默认中性背景</summary><p>'+escape(basic.initial_material)+'</p></details></section>'
+      +'<section class="card"><h2>实例时区</h2><p class="muted">服务实际环境时区：'+escape(status.environment_timezone)+'。用于日常与梦境调度。</p>'
+      +'<label>IANA 时区名称<input name="timezone" value="'+escape(draft.timezone??status.default_timezone??'')+'" required></label>'
+      +'<label class="check"><input name="timezone_confirmed" type="checkbox" '+(draft.timezone_confirmed?'checked':'')+' required>我确认这个时区用于日常与梦境调度</label></section>'
+      +'<button>保存并继续</button></form>';
+    const form=document.querySelector<HTMLFormElement>('#wizard')!;
+    form.querySelector<HTMLInputElement>('[name="timezone"]')!.addEventListener('input',()=>{form.querySelector<HTMLInputElement>('[name="timezone_confirmed"]')!.checked=false;});
+    bind('#wizard',async form=>{
+      const next:RecordValue={role_name:value(form,'role_name'),initial_material:value(form,'initial_material').trim()?value(form,'initial_material'):basic.initial_material,
+        timezone:value(form,'timezone'),timezone_confirmed:new FormData(form).has('timezone_confirmed')};
+      if(draft.platform_id)next.platform_id=draft.platform_id;
+      if(draft.configuration)next.configuration=structuredClone(draft.configuration);
+      if(next.configuration)object(next.configuration).text={...object(object(next.configuration).text),'runtime.timezone':next.timezone};
+      const result=await originalWrite('wizard.save','/api/wizard/save',{expected_revision:draftRevision,draft:next});
+      if(!result.receipt)throw new Error('保存尚未确认，请保留本页的原操作重试。');
+      await render('configuration');show('基础资料已保存。请配置模型连接，也可以稍后补充。');
     });
-    document.querySelector('#validate')!.addEventListener('click',()=>{void api('/api/wizard/validate',{expected_revision:draftRevision}).then(result=>{const view = object(result); document.querySelector('#validation')!.innerHTML = `<section class="card"><h2>${view.valid?'完整验证通过':'需要补全配置'}</h2><p>${view.valid ? '此草稿可用于创建正式实例。创建后初始材料和入口绑定将固定。' : escape(JSON.stringify(view.error))}</p>${view.valid ? '<button id="initialize">确认并创建实例</button>' : ''}</section>`;
-      if (view.valid) { document.querySelector('#initialize')!.addEventListener('click', () => {void originalWrite('wizard.initialize','/api/wizard/initialize',{expected_revision:draftRevision}).then(() => render('persona')).catch(error => show(String(error), true));}); }}).catch(error=>show(String(error),true));}); return;
+    return;
   }
   if (name === 'dispatch') {
     const status = object(await api('/api/model-dispatch'));
     const disclosure = object(status.disclosure);
     const destinations = Array.isArray(disclosure.destinations) ? disclosure.destinations.map(object) : [];
-    page.innerHTML = `<h1>模型请求许可</h1><p class="intro">${escape(disclosure.content)}</p><section class="card"><h2>已配置目的地</h2><ul>${destinations.map(item=>`<li>${escape(item.role)}：${escape(item.origin)}${escape(item.base_path)}${escape(item.endpoint_path)}</li>`).join('')}</ul><p>启用许可后，首次 persona 生成仍需单独点击；重启后许可暂停。</p><form id="dispatch"><label class="check"><input type="checkbox" name="confirmed" required>我确认允许向这些目的地发送相应业务材料</label><button>${status.enabled ? '暂停后续新请求' : '启用新请求许可'}</button></form></section>`;
+    page.innerHTML = `<h1>模型请求许可</h1><p class="intro">${escape(disclosure.content)}</p><section class="card"><h2>已配置目的地</h2><ul>${destinations.map(item=>`<li>${escape(item.role)}：${escape(item.origin)}${escape(item.base_path)}${escape(item.endpoint_path)}</li>`).join('')}</ul><p>启用许可后，模型工作仍由对应操作触发；重启后许可暂停。</p><form id="dispatch"><label class="check"><input type="checkbox" name="confirmed" required>我确认允许向这些目的地发送相应业务材料</label><button>${status.enabled ? '暂停后续新请求' : '启用新请求许可'}</button></form></section>`;
     await renderProviderProbe();
     const originalKey = key();
     bind('#dispatch',async()=>{const result=object(await api('/api/model-dispatch',{key:originalKey,expected_revision:status.revision,enabled:!status.enabled,disclosure_digest:disclosure.digest})); if(!result.receipt) throw new Error('许可变更尚未确认，请用原操作重试。'); await render('dispatch');});
@@ -177,6 +206,11 @@ async function renderPage(name: string): Promise<void> {
   }
   if (name === 'persona') {
     const status = object(await api('/api/status'));
+    if(status.business_ready){
+      const current=unbox(await api('/api/persona/current',{}));
+      page.innerHTML='<h1>角色设定</h1><p class="intro">'+(current.publication_origin==='LOCAL_DEFAULT'?'初始角色来自你确认的基础资料。':'当前角色已经发布并用于本地工作区。')+'</p><section class="card candidate">'+escape(current.text??'当前角色暂不可读取，请稍后刷新。')+'</section><button id="persona-workspace">返回工作区</button>';
+      bindPageButton('#persona-workspace',async()=>render('overview'));return;
+    }
     page.innerHTML = '<h1>首次 persona</h1><p class="intro">候选保留模型原文。审核决定与正式发布分别确认；读取和重启不会发起生成。</p><section class="card" id="persona"></section>';
     const area = document.querySelector<HTMLDivElement>('#persona')!;
     let pending: RecordValue | undefined;
@@ -263,14 +297,119 @@ async function renderAccount(): Promise<void> {
     request=undefined;form.reset();authenticated=false;await render('login');show('口令已更新，请重新登录。');
   });
 }
+function setupSteps(active:number):string {
+  return '<ol class="steps">'+['基础资料','模型连接','确认'].map((title,index)=>'<li'+(index+1===active?' class="active" aria-current="step"':'')+'>'+title+'</li>').join('')+'</ol>';
+}
+function setupBudgetSummary(configuration:unknown):string {
+  if(!configuration)return '';
+  const accounts=object(object(configuration).foundation)['provider.accounts'];
+  if(!Array.isArray(accounts))return '';
+  const amount=(value:unknown)=>{try{return value==null?'未填写':formatAmount(value);}catch{return '超出可精确展示范围';}};
+  return '<section class="card"><h2>初始化前核对账户限制</h2>'+accounts.map(raw=>{
+    const account=object(raw),price=account.price?object(account.price):{};
+    return '<h3>'+escape(account.account_id)+'</h3><p>累计尝试上限：'+escape(account.attempt_limit??'未填写')+' 次；'
+      +(account.billing_mode==='TOKEN_METERED'?'累计预算：'+escape(amount(account.cost_limit_atoms))+' 元。</p><p>每百万 token：未缓存输入 '+escape(amount(price.input_atoms_per_million))+' 元，缓存输入 '+escape(amount(price.cached_atoms_per_million))+' 元，输出 '+escape(amount(price.output_atoms_per_million))+' 元。'
+      :'仅记录用量，不核算货币；不表示免费。')+'</p>';
+  }).join('')+'<p class="muted">账户预算、费率和次数在业务初始化后固定。这里的限制不授予发送许可。</p></section>';
+}
+async function renderSetupConfiguration(wizard:RecordValue,forceAdvanced=false):Promise<void> {
+  const draft=object(wizard.draft);
+  if(!draft.role_name||!draft.timezone){
+    page.innerHTML='<h1>模型连接</h1><section class="card"><p>请先保存基础资料。</p><button id="back-to-wizard">返回基础资料</button></section>';
+    bindPageButton('#back-to-wizard',async()=>render('wizard'));return;
+  }
+  const schema=object(await api('/api/configuration/schema',draft.platform_id?{platform_id:draft.platform_id}:{})),domains=object(schema.domains);
+  let fields:SetupField[]=[];
+  try{fields=setupFields(object(schema.setup));}catch{/* Older/custom schemas retain the complete editor. */}
+  const defaults=initialConfiguration(domains);
+  page.innerHTML='<h1>模型连接</h1>'+setupSteps(2)
+    +'<p class="intro">已准备运行参数和内部模型绑定。填写实际凭据名称与账户资料即可；已有默认值可以保留。这里不接收 API key，也不会发送模型请求。</p>'
+    +'<form id="setup-configuration"><div id="setup-compact"></div><p id="setup-custom-note" class="muted"></p><details id="setup-advanced" class="card"><summary>高级设置（完整配置）</summary>'
+    +'<p class="muted">编辑全部配置及独立角色绑定。自定义配置会保留原值，不能自动合并到共享连接。</p><div id="setup-configuration-fields"></div></details>'
+    +'<div class="actions"><button>保存设置并继续</button><button type="button" id="configure-later" class="secondary">稍后配置模型</button></div><p class="muted">两项操作都会保存当前内容，再由你确认基础设置。缺少模型资料时保持待配置。</p></form>'
+    +'<details class="card"><summary>导入已有配置（可选）</summary><p>只接受完整配置值，不要包含口令或 API key。导入仅更新页面，保存后仍须完整验证。</p><label>完整配置 JSON<textarea id="configuration-import" spellcheck="false"></textarea></label><button type="button" class="secondary" id="import-configuration">导入并检查表单</button></details>'
+    +'<section class="card"><button type="button" id="use-recommended" class="secondary">改用推荐配置</button><div id="recommended-confirmation" hidden><p>将替换页面中的全部模型与高级配置，包括导入内容和未保存修改。角色、初始材料和已确认时区保持不变。此步只更新页面，保存设置后才写入草稿。</p><div class="actions"><button type="button" id="cancel-recommended" class="secondary">取消</button><button type="button" id="confirm-recommended">替换页面配置</button></div></div></section>'
+    +'<section class="card"><button id="return-to-wizard" class="secondary">'+(wizard.state==='DRAFT'?'返回基础资料':'返回初始化与验证')+'</button></section>';
+  const compact=document.querySelector<HTMLElement>('#setup-compact')!,area=document.querySelector<HTMLElement>('#setup-configuration-fields')!;
+  const advanced=document.querySelector<HTMLDetailsElement>('#setup-advanced')!,customNote=document.querySelector('#setup-custom-note')!;
+  let readConfiguration:()=>RecordValue,expanded=false;
+  function paint(configuration:RecordValue,preferAdvanced=false):void {
+    const compatible=compactCompatible(configuration,defaults,fields);
+    expanded=preferAdvanced||!compatible;advanced.open=expanded;compact.hidden=expanded;
+    customNote.textContent=compatible?'':'当前配置包含独立设置，使用完整编辑器保留全部自定义值。';
+    if(expanded){compact.replaceChildren();readConfiguration=configurationEditor(area,domains,configuration,true);}
+    else {area.replaceChildren();readConfiguration=renderCompactSetup(compact,domains,configuration,fields);}
+  }
+  paint(draft.configuration?object(structuredClone(draft.configuration)):defaults,forceAdvanced);
+  advanced.addEventListener('toggle',()=>{
+    if(advanced.open===expanded)return;
+    try{
+      const next=readConfiguration();
+      if(!advanced.open&&!compactCompatible(next,defaults,fields)){advanced.open=true;show('自定义配置需要使用高级设置；当前修改仍保留。');return;}
+      paint(next,advanced.open);
+    }catch(error){advanced.open=expanded;show(error instanceof Error?error.message:String(error),true);}
+  });
+  const recommendation=document.querySelector<HTMLElement>('#recommended-confirmation')!;
+  function assertSettledSetup():void {
+    if(['wizard.save','wizard.initialize'].some(slot=>sessionStorage.getItem(`iris.pending.${instanceId}.${slot}`)))
+      throw new Error('请先继续并确认已有的初始化原操作，再替换页面配置。');
+  }
+  bindPageButton('#use-recommended',async()=>{assertSettledSetup();recommendation.hidden=false;});
+  bindPageButton('#cancel-recommended',async()=>{recommendation.hidden=true;});
+  bindPageButton('#confirm-recommended',async()=>{
+    assertSettledSetup();
+    const recommended=structuredClone(defaults);
+    object(recommended.text)['runtime.timezone']=draft.timezone;
+    paint(recommended);recommendation.hidden=true;
+    show('已载入推荐配置，尚未保存。请填写实际模型资料，或稍后继续。');
+  });
+  bindPageButton('#return-to-wizard',async()=>render('wizard'));
+  bindPageButton('#import-configuration',async()=>{
+    const input=document.querySelector<HTMLTextAreaElement>('#configuration-import')!;
+    if(new TextEncoder().encode(input.value).length>524288)throw new Error('配置超过允许容量。');
+    const imported=object(JSON.parse(input.value));assertExactNumbers(imported);
+    if(Object.keys(imported).sort().join('|')!==Object.keys(domains).sort().join('|'))throw new Error('配置域不完整或包含未知配置域。');
+    function checkShape(value:unknown,schema:RecordValue):void {
+      if('constant' in schema&&value!==schema.constant)throw new Error('固定配置值不匹配。');
+      if(schema.type==='object'){
+        const record=object(value),fields=(schema.fields as unknown[]).map(object);
+        if(Object.keys(record).some(name=>!fields.some(field=>field.name===name)))throw new Error('配置包含未知字段。');
+        for(const field of fields){const item=record[String(field.name)];
+          if(item===undefined&&field.optional||item===null&&field.nullable)continue;
+          checkShape(item,object(field.schema));}
+      }else if(schema.type==='array'){
+        if(!Array.isArray(value)||value.length<Number(schema.minimum)||value.length>Number(schema.maximum))throw new Error('配置列表数量不合法。');
+        value.forEach((item,index)=>checkShape(item,arrayItemSchema(schema,index,item)));
+      }else if(schema.type==='integer'?typeof value!=='number'||!Number.isSafeInteger(value):schema.type==='boolean'?typeof value!=='boolean':schema.type==='string'?typeof value!=='string':false)throw new Error('配置值类型不合法。');
+    }
+    for(const [domain,entries] of Object.entries(domains)){
+      const expected=(entries as unknown[]).map(entry=>String(object(entry).key)).sort();
+      if(Object.keys(object(imported[domain])).sort().join('|')!==expected.join('|'))throw new Error('配置项不完整或包含未知配置项。');
+      for(const raw of entries as unknown[]){const entry=object(raw);checkShape(object(imported[domain])[String(entry.key)],object(entry.schema));}
+    }
+    paint(imported);input.value='';show('配置已导入表单。原值保留；保存后仍须执行完整验证。');
+  });
+  async function save():Promise<void>{
+    const configuration=readConfiguration();assertExactNumbers(configuration);
+    object(configuration.text)['runtime.timezone']=draft.timezone;
+    const nextDraft:RecordValue={...draft,configuration};
+    if(wizard.state==='DRAFT')for(const name of ['entry_id','host_id','conversation_id'])delete nextDraft[name];
+    const result=await originalWrite('wizard.save','/api/wizard/save',{expected_revision:wizard.revision,draft:nextDraft});
+    if(!result.receipt)throw new Error('保存尚未确认，请保留原操作重试。');
+    await render('setup-confirmation');show('设置草稿已保存；请核对并确认，保存本身不会生效。');
+  }
+  bind('#setup-configuration',save);
+  bindPageButton('#configure-later',save);
+}
 async function renderConfiguration(): Promise<void> {
+  const wizard=object(await api('/api/wizard'));
+  if(wizard.state==='DRAFT'||wizard.state==='VALIDATED')return render('wizard');
   const read = object(await api('/api/configuration/read',{version_id:null}));
   const status = object(read.status), values = object(read.values), platform = object(values.platform), textValues = object(values.text);
   const schedule = object(textValues['dream.schedule']);
   const instance = object(await api('/api/status'));
   const operation = configurationOperation(api,object,String(instance.instance_id),definitiveRejection);
-  const wizard=object(await api('/api/wizard'));
-  const schema=object(await api('/api/configuration/schema',{platform_id:object(wizard.draft).platform_id}));
+  const schema=object(await api('/api/configuration/schema',object(wizard.draft).platform_id?{platform_id:object(wizard.draft).platform_id}:{}));
   const names: Record<string,string> = {history_context_count:'历史上下文条数',target_count:'本次总结条数',recent_context_count:'最近上下文条数'};
   const platformKeys = Object.keys(platform).filter(item=>Object.keys(names).some(suffix=>item.endsWith(`.${suffix}`)));
   const field = (name:string,label:string,type:string,current:unknown) => `<label>${label}<input name="${escape(name)}" type="${type}" value="${escape(current)}" required></label>`;
@@ -357,7 +496,7 @@ function describe(data: unknown, depth = 0): string {
 }
 function unbox(value: unknown): RecordValue { if(Array.isArray(value))return {items:value}; const data=object(value); return Array.isArray(data.value)?{items:data.value}:data.value && typeof data.value==='object' ? object(data.value) : data; }
 function operationConfirmed(result:RecordValue):boolean {
-  return Boolean(result.registration && operationConfirmed(object(result.registration))) || Boolean(result.receipt || (result.result && typeof result.result==='object' && object(result.result).receipt))||result.cleanup_pending!==true&&['COMPLETE','FAILED','COMPLETED','APPLIED','KNOWN_FAILED','NOT_SENT','REMOTE_UNKNOWN','SUPERSEDED','AWAITING_REVIEW','READY'].includes(String(result.state));
+  return Boolean(result.registration && operationConfirmed(object(result.registration))) || Boolean(result.receipt || (result.result && typeof result.result==='object' && object(result.result).receipt))||result.cleanup_pending!==true&&['COMPLETE','FAILED','COMPLETED','APPLIED','KNOWN_FAILED','NOT_SENT','REMOTE_UNKNOWN','SUPERSEDED','AWAITING_REVIEW','CONFIGURATION_REQUIRED','READY'].includes(String(result.state));
 }
 function definitiveRejection(error:unknown):boolean {
   return error instanceof OperationFailure && ['REJECTED','NOT_COMMITTED'].includes(error.outcome) && !error.cleanupPending && !['ADMISSION_BUSY','ADMISSION_FULL','READ_FAILED','LOCK_DEADLINE','OWNER_ACTIVE'].includes(error.reason);
@@ -365,9 +504,11 @@ function definitiveRejection(error:unknown):boolean {
 async function originalWrite(slot: string, path: string, input: RecordValue, keyField='key'): Promise<RecordValue> {
   const storageKey=`iris.pending.${instanceId}.${slot}`;
   const old=sessionStorage.getItem(storageKey);
-  const retained=old?object(JSON.parse(old)):{path,input:{...input,[keyField]:key()}};
+  const nestedKey=Object.keys(input).sort().join('|')==='entry_id|host_id|input';
+  const retained=old?object(JSON.parse(old)):{path,input:nestedKey?{...input,input:{...object(input.input),[keyField]:key()}}:{...input,[keyField]:key()}};
   const supplied=object(retained.input);
-  if (old && (retained.path!==path || JSON.stringify(Object.fromEntries(Object.entries(supplied).filter(([name])=>name!==keyField)))!==JSON.stringify(input))) throw new Error('该操作仍待原确认；请保留原内容，先继续原操作。');
+  const original=nestedKey?{...supplied,input:Object.fromEntries(Object.entries(object(supplied.input)).filter(([name])=>name!==keyField))}:Object.fromEntries(Object.entries(supplied).filter(([name])=>name!==keyField));
+  if (old && (retained.path!==path || JSON.stringify(original)!==JSON.stringify(input))) throw new Error('该操作仍待原确认；请保留原内容，先继续原操作。');
   sessionStorage.setItem(storageKey,JSON.stringify(retained)); renderPendingOperations();
   let result:RecordValue;
   try {result=object(await api(path,supplied));} catch(error) {if(!old&&definitiveRejection(error)){sessionStorage.removeItem(storageKey);renderPendingOperations();}throw error;}
@@ -483,32 +624,81 @@ async function renderMemory(): Promise<void> {
   }
   document.querySelector('#memory-more')!.addEventListener('click',()=>{void more().catch(error=>show(String(error),true));});await more();
 }
+type ManagementBinding={host_id:string;entry_id:string};
+async function managementBinding(name:string,title:string):Promise<{binding:ManagementBinding;entries:ManagementBinding[]}|null> {
+  const status=object(await api('/api/status'));
+  if(!status.business_ready){
+    page.innerHTML=`<h1>${escape(title)}</h1><section class="card"><p>实例尚未就绪。请先完成开始设置。</p><button id="management-setup">返回初始化</button></section>`;
+    document.querySelector('#management-setup')!.addEventListener('click',()=>{void render('wizard');});
+    return null;
+  }
+  const entries:ManagementBinding[]=[];let after='';
+  for(;;){
+    const result=object(await api('/api/administration/bindings',{after}));
+    for(const row of (result.items as unknown[]).map(object))entries.push({host_id:String(row.host_id),entry_id:String(row.entry_id)});
+    const next=String(result.after??'');if(!next||next===after)break;after=next;
+  }
+  if(!entries.length){
+    page.innerHTML=`<h1>${escape(title)}</h1><section class="card"><p>尚未登记宿主与入口。请先在外部连接中建立合法绑定。</p><button id="management-connections">前往外部连接</button></section>`;
+    document.querySelector('#management-connections')!.addEventListener('click',()=>{void render('connections');});
+    return null;
+  }
+  const selected=entries.find(entry=>entry.entry_id===selectedManagementEntryId);
+  if(!selected&&entries.length===1)selectedManagementEntryId=entries[0]!.entry_id;
+  const binding=entries.find(entry=>entry.entry_id===selectedManagementEntryId);
+  if(!binding){
+    page.innerHTML=`<h1>${escape(title)}</h1><section class="card"><p>请选择要管理的宿主与入口。</p>${managementBindingOptions(entries,null)}</section>`;
+    bindManagementSelection(name);return null;
+  }
+  return {binding,entries};
+}
+function managementBindingOptions(entries:ManagementBinding[],selected:ManagementBinding|null):string {
+  return `<label>宿主与入口<select id="management-entry" aria-label="宿主与入口"><option value="">请选择</option>${entries.map(entry=>`<option value="${escape(entry.entry_id)}" ${selected?.entry_id===entry.entry_id?'selected':''}>${entry.host_id.startsWith("local-administrator:")&&entry.entry_id.startsWith("local-workspace:")?"本地工作区":escape(entry.host_id)+" · "+escape(entry.entry_id)}</option>`).join('')}</select></label>`;
+}
+function bindManagementSelection(name:string):void {
+  document.querySelector<HTMLSelectElement>('#management-entry')!.addEventListener('change',event=>{
+    selectedManagementEntryId=(event.target as HTMLSelectElement).value||undefined;
+    void render(name).catch(error=>show(String(error),true));
+  });
+}
+function boundInput(binding:ManagementBinding,input:RecordValue):RecordValue {
+  return {host_id:binding.host_id,entry_id:binding.entry_id,input};
+}
 async function renderState():Promise<void> {
-  const data=unbox(await api('/api/administration/state',{}));const activity=data.activity?object(data.activity):null;
-  page.innerHTML=`<h1>当前状态</h1><p class="intro">当前活动由明确报告更新，系统不会根据聊天内容或时间推断活动。修订变化后需重新确认。</p><section class="card">${describe(data)}</section><form id="state-set" class="card"><h2>${activity?'替换当前活动':'开始活动'}</h2><label>活动内容<input name="activity" maxlength="512" required></label><label class="check"><input type="checkbox" required>确认${activity?'结束原活动并开始新活动':'报告当前活动'}</label><button>确认报告</button></form>${activity?'<form id="state-end" class="card"><label class="check"><input type="checkbox" required>确认结束当前活动</label><button class="secondary">结束活动</button></form>':''}`;
+  const selection=await managementBinding('state','当前状态');if(!selection)return;
+  const {binding,entries}=selection;
+  const data=unbox(await api('/api/administration/state',boundInput(binding,{})));const activity=data.activity?object(data.activity):null;
+  page.innerHTML=`<h1>当前状态</h1><p class="intro">当前活动由明确报告更新，系统不会根据聊天内容或时间推断活动。修订变化后需重新确认。</p><section class="card">${managementBindingOptions(entries,binding)}</section><section class="card">${describe(data)}</section><form id="state-set" class="card"><h2>${activity?'替换当前活动':'开始活动'}</h2><label>活动内容<input name="activity" maxlength="512" required></label><label class="check"><input type="checkbox" required>确认${activity?'结束原活动并开始新活动':'报告当前活动'}</label><button>确认报告</button></form>${activity?'<form id="state-end" class="card"><label class="check"><input type="checkbox" required>确认结束当前活动</label><button class="secondary">结束活动</button></form>':''}`;
+  bindManagementSelection('state');
   let frozen:RecordValue|undefined;
-  bind('#state-set',async form=>{const text=value(form,'activity');if(!frozen)frozen={activity_id:activity?.activity_id??null,expected_revision:activity?.revision??null,replace_activity:!!activity,patch:{activity_value:text,reported_at:new Date().toISOString(),reported_offset_minutes:0}};else if(object(frozen.patch).activity_value!==text)throw new Error('请保持原请求内容以确认原操作。');let result:RecordValue;try{result=await originalWrite('state.set','/api/administration/state/set',frozen,'operation_key');}catch(error){if(!sessionStorage.getItem(`iris.pending.${instanceId}.state.set`))frozen=undefined;throw error;}if(!result.receipt)throw new Error('报告尚未确认。');await renderState();});
-  if(activity)bind('#state-end',async()=>{const result=await originalWrite('state.end','/api/administration/state/end',{activity_id:activity.activity_id,expected_revision:activity.revision},'operation_key');if(!result.receipt)throw new Error('结束尚未确认。');await renderState();});
+  bind('#state-set',async form=>{const text=value(form,'activity');if(!frozen)frozen={activity_id:activity?.activity_id??null,expected_revision:activity?.revision??null,replace_activity:!!activity,patch:{activity_value:text,reported_at:new Date().toISOString(),reported_offset_minutes:0}};else if(object(frozen.patch).activity_value!==text)throw new Error('请保持原请求内容以确认原操作。');let result:RecordValue;try{result=await originalWrite('state.set','/api/administration/state/set',boundInput(binding,frozen),'operation_key');}catch(error){if(!sessionStorage.getItem(`iris.pending.${instanceId}.state.set`))frozen=undefined;throw error;}if(!result.receipt)throw new Error('报告尚未确认。');await renderState();});
+  if(activity)bind('#state-end',async()=>{const result=await originalWrite('state.end','/api/administration/state/end',boundInput(binding,{activity_id:activity.activity_id,expected_revision:activity.revision}),'operation_key');if(!result.receipt)throw new Error('结束尚未确认。');await renderState();});
 }
 async function renderDream():Promise<void> {
+  const selection=await managementBinding('dream','梦境管理');if(!selection)return;
+  const {binding,entries}=selection;
   const state=object(await api('/api/dream/status',{})), schedule=object(state.schedule);
   const observed=unbox(await api('/api/observe',{scope:'dream',query:{}}));
-  page.innerHTML=`<h1>梦境管理</h1><p class="intro">专注期间拒绝普通业务写入和召回。暂停与安全终止保留原请求及未决责任，不强制解除远端未知。</p><section class="card">${describe(observed)}</section><div id="dream-actions"></div>`;
+  page.innerHTML=`<h1>梦境管理</h1><p class="intro">专注期间拒绝普通业务写入和召回。暂停与安全终止保留原请求及未决责任，不强制解除远端未知。</p><section class="card">${managementBindingOptions(entries,binding)}</section><section class="card">${describe(observed)}</section><div id="dream-actions"></div>`;
+  bindManagementSelection('dream');
   const area=document.querySelector('#dream-actions')!;
   if(!schedule.active_run_id) {
     area.innerHTML='<form id="dream-start" class="card"><label>模式<select name="mode"><option value="FOCUSED">专注梦境</option><option value="BACKGROUND">后台梦境</option></select></label><label class="check"><input type="checkbox" required>确认创建一轮受限梦境，继续执行前仍需明确恢复</label><button>创建梦境</button></form>';
-    const run=key();bind('#dream-start',async form=>{const result=await originalWrite('dream.start','/api/dream/start',{run_id:run,expected_revision:schedule.revision,mode_epoch:state.mode_epoch,mode:value(form,'mode')});if(!result.receipt)throw new Error('创建尚未确认。');await renderDream();});return;
+    const run=key();bind('#dream-start',async form=>{const result=await originalWrite('dream.start','/api/dream/start',boundInput(binding,{run_id:run,expected_revision:schedule.revision,mode_epoch:state.mode_epoch,mode:value(form,'mode')}));if(!result.receipt)throw new Error('创建尚未确认。');await renderDream();});return;
   }
-  const run=object(object(await api('/api/dream/inspect',{run_id:schedule.active_run_id})).run);
+  const run=object(object(await api('/api/dream/inspect',boundInput(binding,{run_id:schedule.active_run_id}))).run);
   area.innerHTML=`<section class="card"><h2>当前运行控制</h2>${['pause','resume','abort'].map(action=>`<form id="dream-${action}"><label class="check"><input type="checkbox" required>确认${action==='pause'?'暂停新步骤':action==='resume'?'恢复这轮梦境的后续工作':'安全终止这轮梦境'}</label><button class="${action==='abort'?'danger':'secondary'}">${action==='pause'?'暂停':action==='resume'?'恢复':'安全终止'}</button></form>`).join('')}</section>`;
-  for(const action of ['pause','resume','abort'])bind(`#dream-${action}`,async()=>{const result=await originalWrite(`dream.${action}`,`/api/dream/${action}`,{run_id:run.run_id,expected_revision:run.revision,mode_epoch:run.mode_epoch});if(!result.receipt)throw new Error('控制尚未完成，请按原运行状态继续确认。');await renderDream();});
+  for(const action of ['pause','resume','abort'])bind(`#dream-${action}`,async()=>{const result=await originalWrite(`dream.${action}`,`/api/dream/${action}`,boundInput(binding,{run_id:run.run_id,expected_revision:run.revision,mode_epoch:run.mode_epoch}));if(!result.receipt)throw new Error('控制尚未完成，请按原运行状态继续确认。');await renderDream();});
 }
 
 async function renderGoals():Promise<void> {
+  const selection=await managementBinding('goals','目标管理');if(!selection)return;
+  const {binding,entries}=selection;
   const connectionView=object(await api('/api/connections/overview',{}));
-  const routes=(connectionView.routes as unknown[]).map(object);
+  const routes=(connectionView.routes as unknown[]).map(object).filter(route=>route.host_id===binding.host_id&&(route.entries as unknown[]).includes(binding.entry_id));
   const routeOptions=(selected:unknown=null)=>`<label>通知路由<select aria-label="通知路由" name="route_id"><option value="">无期限时可不选</option>${routes.map(r=>`<option value="${escape(r.object_id)}" ${r.object_id===(selected??(routes.length===1?routes[0]!.object_id:null))?'selected':''}>${escape(r.object_id)} · ${escape(r.host_id)} · ${r.enabled?'已启用':'禁用'} · ${r.online?'在线':'离线'}</option>`).join('')}</select></label><p>离线或禁用路由仍可保存目标，提醒可能无法送达。可在外部连接页配置。</p>`;
-  page.innerHTML='<h1>目标管理</h1><p class="intro">管理明确注入的目标、截止时间与完成状态。完成或放弃须人工确认；有期限目标需要绑定合法路由。</p><form id="goal-new" class="card"><h2>添加目标</h2><label>目标内容<textarea name="content" maxlength="2048" required></textarea></label><label>截止时间（UTC，可留空）<input name="deadline" type="datetime-local" step="1"></label><label>提醒提前秒数（0 表示仅到期）<input name="lead_seconds" type="number" min="0" max="31536000" step="1" value="0" required></label><label class="check"><input type="checkbox" required>确认将此内容作为新的目标注入</label><button>添加目标</button></form><div id="goals-list"></div><button id="goals-more" class="secondary">读取下一页</button>';
+  page.innerHTML=`<h1>目标管理</h1><p class="intro">管理明确注入的目标、截止时间与完成状态。完成或放弃须人工确认；有期限目标需要绑定合法路由。</p><section class="card">${managementBindingOptions(entries,binding)}</section><form id="goal-new" class="card"><h2>添加目标</h2><label>目标内容<textarea name="content" maxlength="2048" required></textarea></label><label>截止时间（UTC，可留空）<input name="deadline" type="datetime-local" step="1"></label><label>提醒提前秒数（0 表示仅到期）<input name="lead_seconds" type="number" min="0" max="31536000" step="1" value="0" required></label><label class="check"><input type="checkbox" required>确认将此内容作为新的目标注入</label><button>添加目标</button></form><div id="goals-list"></div><button id="goals-more" class="secondary">读取下一页</button>`;
+  bindManagementSelection('goals');
   document.querySelector('#goal-new button')!.insertAdjacentHTML('beforebegin',routeOptions());
   let frozen:RecordValue|undefined;
   bind('#goal-new',async form=>{const content=value(form,'content'),deadline=value(form,'deadline')?new Date(value(form,'deadline')+'Z').toISOString():null;
@@ -517,13 +707,13 @@ async function renderGoals():Promise<void> {
     const reminder_lead_seconds=deadline?Number(value(form,'lead_seconds')):null;
     if(frozen&&frozen.reminder_lead_seconds!==reminder_lead_seconds)throw new Error('请保持原提醒提前量以确认原操作。');
     frozen??={content,subject_ids:['self'],world_scope:'REAL',deadline,reminder_lead_seconds,route_id,source_id:key()};
-    let result:RecordValue;try{result=await originalWrite('goals.inject','/api/administration/goals/inject',frozen,'operation_key');}catch(error){if(!sessionStorage.getItem(`iris.pending.${instanceId}.goals.inject`))frozen=undefined;throw error;}if(!result.receipt)throw new Error('目标注入尚未确认。');await renderGoals();});
+    let result:RecordValue;try{result=await originalWrite('goals.inject','/api/administration/goals/inject',boundInput(binding,frozen),'operation_key');}catch(error){if(!sessionStorage.getItem(`iris.pending.${instanceId}.goals.inject`))frozen=undefined;throw error;}if(!result.receipt)throw new Error('目标注入尚未确认。');await renderGoals();});
   let cursor:unknown=null;
   async function more():Promise<void> {
-    const data=unbox(await api('/api/administration/goals',cursor?{cursor}:{}));const items=Array.isArray(data.items)?data.items.map(object):[];
+    const data=unbox(await api('/api/administration/goals',boundInput(binding,cursor?{cursor}:{})));const items=Array.isArray(data.items)?data.items.map(object):[];
     if(!items.length&&!cursor)document.querySelector('#goals-list')!.textContent='暂无未完成目标。';
     for(const goal of items){const card=document.createElement('section');card.className='card';card.innerHTML=describe(goal)+`<form class="goal-status"><label>目标状态<select name="status"><option value="COMPLETED">已完成</option><option value="ABANDONED">已放弃</option></select></label><label class="check"><input type="checkbox" required>确认更新这一目标及当前修订</label><button>确认状态</button></form><form class="goal-deadline">${routeOptions(goal.route_id)}<label>新的截止时间（UTC，留空清除）<input type="datetime-local" step="1" name="deadline"></label><label>提醒提前秒数（0 表示仅到期）<input name="lead_seconds" type="number" min="0" max="31536000" step="1" value="${escape(goal.reminder_lead_seconds??0)}" required></label><label class="check"><input type="checkbox" required>确认变更截止时间</label><button class="secondary">变更截止时间</button></form>`;
-      for(const action of ['status','deadline']){const form=card.querySelector<HTMLFormElement>(`.goal-${action}`)!;form.addEventListener('submit',event=>{event.preventDefault();const change=action==='status'?{status:value(form,'status')}:{deadline:value(form,'deadline')?new Date(value(form,'deadline')+'Z').toISOString():null,reminder_lead_seconds:value(form,'deadline')?Number(value(form,'lead_seconds')):null,route_id:value(form,'route_id')||null};if(action==='deadline'&&change.deadline&&!change.route_id){show('有期限的目标需要选择通知路由。',true);return;}void originalWrite(`goal.${String(goal.goal_id)}.${action}`,`/api/administration/goals/${action}`,{goal_id:goal.goal_id,expected_revision:goal.revision,...change},'operation_key').then(result=>{if(!result.receipt)throw new Error('目标变更尚未确认。');return renderGoals();}).catch(error=>show(String(error),true));});}
+      for(const action of ['status','deadline']){const form=card.querySelector<HTMLFormElement>(`.goal-${action}`)!;form.addEventListener('submit',event=>{event.preventDefault();const change=action==='status'?{status:value(form,'status')}:{deadline:value(form,'deadline')?new Date(value(form,'deadline')+'Z').toISOString():null,reminder_lead_seconds:value(form,'deadline')?Number(value(form,'lead_seconds')):null,route_id:value(form,'route_id')||null};if(action==='deadline'&&change.deadline&&!change.route_id){show('有期限的目标需要选择通知路由。',true);return;}void originalWrite(`goal.${String(goal.goal_id)}.${action}`,`/api/administration/goals/${action}`,boundInput(binding,{goal_id:goal.goal_id,expected_revision:goal.revision,...change}),'operation_key').then(result=>{if(!result.receipt)throw new Error('目标变更尚未确认。');return renderGoals();}).catch(error=>show(String(error),true));});}
       document.querySelector('#goals-list')!.append(card);
     }
     cursor=data.next_cursor;document.querySelector<HTMLButtonElement>('#goals-more')!.disabled=!data.has_more;
@@ -544,56 +734,119 @@ async function renderLogs():Promise<void> {
   document.querySelector('#logs-next')!.addEventListener('click',()=>{void read().catch(error=>show(String(error),true));});await read();
 }
 
-function configurationEditor(root:Element,domains:RecordValue,current:RecordValue):()=>RecordValue {
-  root.replaceChildren();
-  const labels:Record<string,string>={foundation:'持久化、日志与 Provider',runtime:'运行与三段处理',platform:'平台窗口',content:'媒体与内容',information:'状态、目标与查询',text:'模型材料、策略与梦境',
+const configurationLabels:Record<string,string>={foundation:'持久化、日志与 Provider',runtime:'运行与三段处理',platform:'平台窗口',content:'媒体与内容',information:'状态、目标与查询',text:'模型材料、策略与梦境',
     'provider.accounts':'Provider 账户与预算','provider.profiles':'各角色模型配置','provider.role_profiles':'角色与模型绑定','provider.transport':'文本及图像连接','provider.embedding_transport':'Embedding 连接',
     'self_model.initial_persona':'首次 persona 生成与监管','dream.schedule':'梦境时间与专注选项','memory.long_term_maintenance':'长期维护','runtime.timezone':'实例时区',
     enabled:'启用',enabled_on_create:'创建后启用',focus_default:'默认进入专注',local_time:'每天开始时间',decay_enabled:'允许长期衰减',control_enabled:'允许人工梦境管理',
     account_id:'账户标识',window_id:'预算窗口标识',profile_id:'模型配置标识',account_ref:'账户引用',model_id:'模型名称',material_role:'使用角色',billing_mode:'计费方式',attempt_limit:'最多尝试数',cost_limit_atoms:'费用上限（最小计量单位）',
-    origin:'服务来源地址',base_path:'基础路径',endpoint_path:'请求路径',secret_ref:'受保护凭据名称',secret_revision:'凭据版本',evidence_ref:'已核实依据标识',
-    goal:'生成目标',supervision:'监管规则',prompt_ref:'提示词资源名称',schema_ref:'输出格式资源名称',prompt_digest:'提示词内容指纹',schema_digest:'输出格式指纹',
+    transport_ref:'连接配置引用',generation_profile_ref:'生成模型配置引用',supervision_profile_ref:'监管模型配置引用',configuration:'全部配置',platform_id:'平台标识',
+    origin:'服务来源地址',base_path:'基础路径',endpoint_path:'请求路径',secret_ref:'受保护凭据名称',secret_revision:'凭据版本',evidence_ref:'依据记录标识',
+    goal:'生成目标',generation_goal:'生成目标',supervision:'监管规则',supervision_prompt:'监管规则',prompt_ref:'提示词资源名称',schema_ref:'输出格式资源名称',prompt_digest:'提示词内容指纹',schema_digest:'输出格式指纹',
+    max_items:'每次最多项目数',wire_protocol:'通信协议',generation_ref:'文本生成连接引用',image_ref:'图像连接引用',embedding_ref:'Embedding 连接引用',space_id:'向量空间标识',
     price:'已核实费率',revision_ref:'费率版本',source_url:'费率来源',checked_date:'核实日期',currency:'货币',max_input_units:'输入容量',max_output_units:'输出容量'};
-  const label=(name:string)=>labels[name]??name;
+function configurationLabel(name:string):string{return configurationLabels[name]??name;}
+
+function configurationLocation(path:string):string {
+  const parts=path.replace(/\[(\d+)\]/g,'.$1').split('.');const labels:string[]=[];
+  for(let index=0;index<parts.length;){
+    if(/^\d+$/.test(parts[index]!)){labels.push(`第 ${Number(parts[index])+1} 项`);index++;continue;}
+    let end=parts.length;
+    while(end>index+1&&!configurationLabels[parts.slice(index,end).join('.')])end--;
+    labels.push(configurationLabel(parts.slice(index,end).join('.')));index=end;
+  }
+  return labels.join(' › ');
+}
+async function focusConfigurationField(path:string):Promise<void> {
+  await render('configuration');
+  // Match only paths emitted by the schema editor, never a selector from input.
+  const candidates=[...page.querySelectorAll<HTMLElement>('[data-configuration-path]')].filter(item=>item.dataset.configurationPath===path||JSON.parse(item.dataset.configurationMirrors??'[]').includes(path));
+  const field=candidates.find(item=>!item.closest('[hidden]'))??candidates[0];
+  if(!field){show('已打开设置。此问题涉及整体配置，请按诊断位置检查后再验证。');return;}
+  let hidden:HTMLElement|null=field;
+  while(hidden&&!hidden.hidden)hidden=hidden.parentElement;
+  const toggle=hidden?[...page.querySelectorAll<HTMLInputElement>('[data-configuration-toggle]')].find(item=>item.dataset.configurationToggle===hidden!.dataset.configurationPath):undefined;
+  const controls=field.querySelectorAll<HTMLElement>('input,select,textarea,button');
+  const target=toggle??[...controls].find(item=>!item.closest('[hidden]'))??field.querySelector<HTMLElement>('summary');
+  if(!target){show('此项为固定配置，请检查相关配置后再验证。');return;}
+  for(let ancestor:HTMLElement|null=target;ancestor&&ancestor!==page;ancestor=ancestor.parentElement){if(ancestor instanceof HTMLDetailsElement)ancestor.open=true;}
+  target.scrollIntoView({block:'center'});target.focus();
+  show(`已定位：${configurationLocation(path)}。修改后请保存草稿并重新验证。`);
+}
+function renderConfigurationValidation(view:RecordValue,canInitialize:boolean):void {
+  const area=document.querySelector<HTMLElement>('#validation')!;
+  if(view.valid===true){
+    area.innerHTML=`<section class="card"><h2>完整验证通过</h2><p>${canInitialize?'此草稿可用于创建正式实例。创建后初始材料将固定；入口稍后在外部连接中登记。':'业务配置完整，可以完成业务初始化。'}</p>${canInitialize?'<button id="initialize">确认并创建实例</button>':''}</section>`;
+    if(canInitialize)bindPageButton('#initialize',async()=>{await originalWrite('wizard.initialize','/api/wizard/initialize',{expected_revision:draftRevision});await render('persona');});
+    return;
+  }
+  const reasons:Record<string,string>={MISSING_REQUIRED:'必填项尚未填写',TYPE_MISMATCH:'内容类型不正确',INVALID_IDENTIFIER:'标识格式不合法',OUT_OF_RANGE:'数值超出允许范围',NOT_IN_ENUM:'请使用允许的选项',TEXT_TOO_LONG:'文字超过允许长度',INVALID_DATE:'请填写有效日期（YYYY-MM-DD）',INVALID_TEXT:'文字编码不合法',ARRAY_LENGTH_INVALID:'列表项数量不符合要求',UNKNOWN_FIELD:'包含未声明的配置字段'};
+  const issues=(Array.isArray(view.issues)?view.issues:[]).filter((item):item is {field:string;reason:string}=>!!item&&typeof item==='object'&&!Array.isArray(item)&&typeof (item as RecordValue).field==='string'&&typeof (item as RecordValue).reason==='string');
+  area.innerHTML='<section class="card"><h2>需要补全配置</h2><p>整份业务配置尚未通过校验。草稿仍保留，业务初始化和模型请求不会因此启动。</p><ul class="configuration-issues"></ul><p class="validation-limits"></p><details><summary>查看技术错误</summary><pre></pre></details><button id="finish-settings">前往设置</button></section>';
+  const list=area.querySelector('ul')!;
+  for(const issue of issues){
+    const item=document.createElement('li'),button=document.createElement('button'),reason=document.createElement('p');
+    button.type='button';button.className='secondary';button.style.maxWidth='100%';button.style.overflowWrap='anywhere';button.dataset.configurationIssue=issue.field;button.textContent=configurationLocation(issue.field);
+    reason.textContent=reasons[issue.reason]??'配置值不合法，请检查此项';
+    button.addEventListener('click',()=>{void focusConfigurationField(issue.field).catch(error=>show(String(error),true));});
+    item.append(button,reason);list.append(item);
+  }
+  area.querySelector('.validation-limits')!.textContent=view.issues_truncated===true?'问题列表已截断。请先处理已列出的项目，保存后重新验证，以继续查看剩余问题。':issues.length?'请保存修改后重新验证；字段提示不能替代整份配置校验。':'暂未提供可定位的字段问题，整份配置仍未通过。请查看技术错误并检查设置，保存后重新验证。';
+  area.querySelector('pre')!.textContent=JSON.stringify({error:view.error??{reason:'未提供技术错误'},issues},null,2);
+  area.querySelector('#finish-settings')!.addEventListener('click',()=>{void render('configuration').catch(error=>show(String(error),true));});
+}
+function arrayItemSchema(schema:RecordValue,index:number,item:unknown):RecordValue {
+  if(!Array.isArray(schema.items))return object(schema.item);
+  const alternatives=schema.items.map(object);
+  if(item&&typeof item==='object'&&!Array.isArray(item)&&typeof object(item).material_role==='string'){
+    const selected=alternatives.find(candidate=>Array.isArray(candidate.fields)&&candidate.fields.map(object).some(field=>field.name==='material_role'&&object(field.schema).constant===object(item).material_role));
+    if(selected)return selected;
+  }
+  return object(schema.items[index]);
+}
+function configurationEditor(root:Element,domains:RecordValue,current:RecordValue,preserve=false):()=>RecordValue {
+  root.replaceChildren();
   type Read=()=>unknown;
-  function editor(schema:RecordValue,initial:unknown,title:string):{element:HTMLElement;read:Read}{
+  function editor(schema:RecordValue,initial:unknown,title:string,path:string):{element:HTMLElement;read:Read}{
+    const retained=structuredClone(initial);
     if(initial==null && schema.minimum!==undefined && schema.minimum===schema.maximum && schema.type==='integer')initial=schema.minimum;
     if(initial==null && Array.isArray(schema.choices) && schema.choices.length===1)initial=schema.choices[0];
-    const area=document.createElement('div');area.className='configuration-field';
-    if('constant' in schema){area.innerHTML=`<p class="muted">${escape(title)}：${escape(schema.constant)}（固定）</p>`;return {element:area,read:()=>schema.constant};}
+    const area=document.createElement('div');area.className='configuration-field';area.dataset.configurationPath=path;
+    let dirty=false;area.addEventListener('input',()=>{dirty=true;});area.addEventListener('change',()=>{dirty=true;});
+    const finish=(read:Read)=>({element:area,read:()=>preserve&&!dirty&&retained!==undefined?structuredClone(retained):read()});
+    if('constant' in schema){area.innerHTML=`<p class="muted">${escape(title)}：${escape(schema.constant)}（固定）</p>`;return finish(()=>schema.constant);}
     if(schema.type==='object'){
       const section=document.createElement('details');const summary=document.createElement('summary');summary.textContent=title;section.append(summary);area.append(section);
       const source=initial&&typeof initial==='object'&&!Array.isArray(initial)?object(initial):{};const reads:Record<string,Read>={};
-      for(const raw of Array.isArray(schema.fields)?schema.fields:[]){const field=object(raw),name=String(field.name),child=editor(object(field.schema),source[name],label(name));
-        if(field.nullable||field.optional){const wrap=document.createElement('label');wrap.className='check';const toggle=document.createElement('input');toggle.type='checkbox';toggle.checked=source[name]!==null&&source[name]!==undefined;wrap.append(toggle,document.createTextNode(`设置${label(name)}`));section.append(wrap);child.element.hidden=!toggle.checked;toggle.addEventListener('change',()=>child.element.hidden=!toggle.checked);reads[name]=()=>toggle.checked?child.read():field.optional?undefined:null;}
+      for(const raw of Array.isArray(schema.fields)?schema.fields:[]){const field=object(raw),name=String(field.name),child=editor(object(field.schema),source[name],configurationLabel(name),`${path}.${name}`);
+        if(field.nullable||field.optional){const wrap=document.createElement('label');wrap.className='check';const toggle=document.createElement('input');toggle.type='checkbox';toggle.dataset.configurationToggle=`${path}.${name}`;toggle.checked=source[name]!==null&&source[name]!==undefined;wrap.append(toggle,document.createTextNode(`设置${configurationLabel(name)}`));section.append(wrap);child.element.hidden=!toggle.checked;toggle.addEventListener('change',()=>{child.element.hidden=!toggle.checked;child.element.dispatchEvent(new Event('change',{bubbles:true}));});reads[name]=()=>toggle.checked?child.read():field.optional?undefined:null;}
         else reads[name]=child.read;section.append(child.element);
       }
-      return {element:area,read:()=>Object.fromEntries(Object.entries(reads).map(([name,read])=>[name,read()]).filter(([,item])=>item!==undefined))};
+      return finish(()=>{const result:RecordValue=preserve?{...source}:{};for(const [name,read] of Object.entries(reads)){const value=read();if(value===undefined)delete result[name];else result[name]=value;}return result;});
     }
     if(schema.type==='array'){
       const section=document.createElement('details'),summary=document.createElement('summary');summary.textContent=title;section.append(summary);area.append(section);
       const children:ReturnType<typeof editor>[]=[];const list=document.createElement('div');section.append(list);const original=Array.isArray(initial)?initial:[];
       const fixedItems=Array.isArray(schema.items)?schema.items.map(object):null;
-      function add(item:unknown):void {const itemSchema=fixedItems?.[children.length]??object(schema.item);const child=editor(itemSchema,item,`${title} ${children.length+1}`);children.push(child);list.append(child.element);}
+      function add(item:unknown):void {const itemSchema=fixedItems?arrayItemSchema(schema,children.length,item):object(schema.item);const child=editor(itemSchema,item,`${title} ${children.length+1}`,`${path}[${children.length}]`);children.push(child);list.append(child.element);}
       for(let index=0;index<Math.max(Number(schema.minimum),original.length);index++)add(original[index]);
-      if(Number(schema.maximum)>Number(schema.minimum)){const addButton=document.createElement('button'),remove=document.createElement('button');addButton.type=remove.type='button';addButton.className=remove.className='secondary';addButton.textContent='添加一项';remove.textContent='移除末项';addButton.addEventListener('click',()=>{if(children.length<Number(schema.maximum))add(undefined);});remove.addEventListener('click',()=>{if(children.length>Number(schema.minimum))children.pop()!.element.remove();});section.append(addButton,remove);}
-      return {element:area,read:()=>children.map(child=>child.read())};
+      if(Number(schema.maximum)>Number(schema.minimum)){const addButton=document.createElement('button'),remove=document.createElement('button');addButton.type=remove.type='button';addButton.className=remove.className='secondary';addButton.textContent='添加一项';remove.textContent='移除末项';addButton.addEventListener('click',()=>{if(children.length<Number(schema.maximum)){add(undefined);area.dispatchEvent(new Event('change',{bubbles:true}));}});remove.addEventListener('click',()=>{if(children.length>Number(schema.minimum)){children.pop()!.element.remove();area.dispatchEvent(new Event('change',{bubbles:true}));}});section.append(addButton,remove);}
+      return finish(()=>children.map(child=>child.read()));
     }
     const wrapper=document.createElement('label');wrapper.append(document.createTextNode(title));area.append(wrapper);
     if(schema.type==='boolean'||Array.isArray(schema.choices)){
       const input=document.createElement('select');const options=schema.type==='boolean'?[['','请选择'],['true','是'],['false','否']]:[['','请选择'],...(schema.choices as unknown[]).map(item=>[String(item),String(item)])];
       for(const [item,text] of options){const option=document.createElement('option');option.value=item!;option.textContent=text!;input.append(option);}input.value=initial==null?'':String(initial);wrapper.append(input);
-      return {element:area,read:()=>input.value===''?null:schema.type==='boolean'?input.value==='true':input.value};
+      return finish(()=>input.value===''?null:schema.type==='boolean'?input.value==='true':input.value);
     }
     const input=document.createElement('input');input.type=schema.type==='integer'?'number':'text';input.value=initial==null?'':String(initial);if(schema.minimum!==undefined)input.min=String(schema.minimum);if(schema.maximum!==undefined)input.max=String(schema.maximum);if(schema.max_utf8_bytes!==undefined)input.maxLength=Number(schema.max_utf8_bytes);wrapper.append(input);
     if(schema.minimum===schema.maximum&&schema.minimum!==undefined)input.readOnly=true;
-    return {element:area,read:()=>schema.type==='integer'?(input.value===''?null:Number(input.value)):input.value};
+    return finish(()=>{if(schema.type!=='integer')return input.value;if(input.value==='')return null;const number=Number(input.value);if(!Number.isSafeInteger(number))throw new Error('整数超出可精确保存的范围。');return number;});
   }
   const readers:Record<string,Record<string,Read>>={};
-  for(const [domain,entries] of Object.entries(domains)){const group=document.createElement('details');group.className='card';const summary=document.createElement('summary');summary.textContent=label(domain);group.append(summary);root.append(group);readers[domain]={};const values=current[domain]?object(current[domain]):{};
-    for(const raw of entries as unknown[]){const entry=object(raw),name=String(entry.key);const child=editor(object(entry.schema),name in values?values[name]:entry.initial,label(name));readers[domain]![name]=child.read;group.append(child.element);}
+  for(const [domain,entries] of Object.entries(domains)){const group=document.createElement('details');group.className='card';group.dataset.configurationPath=domain;const summary=document.createElement('summary');summary.textContent=configurationLabel(domain);group.append(summary);root.append(group);readers[domain]={};const values=current[domain]?object(current[domain]):{};
+    for(const raw of entries as unknown[]){const entry=object(raw),name=String(entry.key);const child=editor(object(entry.schema),name in values?values[name]:entry.initial,configurationLabel(name),`${domain}.${name}`);readers[domain]![name]=child.read;group.append(child.element);}
   }
-  return ()=>Object.fromEntries(Object.entries(readers).map(([domain,values])=>[domain,Object.fromEntries(Object.entries(values).map(([name,read])=>[name,read()]))]));
+  return ()=>({...preserve?current:{},...Object.fromEntries(Object.entries(readers).map(([domain,values])=>[domain,{...preserve&&current[domain]?object(current[domain]):{},...Object.fromEntries(Object.entries(values).map(([name,read])=>[name,read()]))}]))});
 }
 
 async function start(): Promise<void> {

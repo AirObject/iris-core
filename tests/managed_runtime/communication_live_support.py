@@ -11,7 +11,7 @@ from companion_memory.management.managed_http import ManagedHTTP
 from .test_business import setup_draft, controlled_resources
 
 
-async def ready_application(test, root: Path, provider_port: int, *, port: int = 18180, communication_format: bool = True, static_root: Path | None = None, origin: str | None = None, legacy_test_sink: bool = False):
+async def ready_application(test, root: Path, provider_port: int, *, port: int = 18180, communication_format: bool = True, static_root: Path | None = None, origin: str | None = None, legacy_test_sink: bool = False, initial_binding: bool = True):
     """Publish a synthetic persona through the same reviewed native protocol."""
     root.mkdir(mode=0o700, exist_ok=True)
     settings = resolve_deployment({'deployment.data_root': str(root), 'deployment.port': port,
@@ -22,6 +22,9 @@ async def ready_application(test, root: Path, provider_port: int, *, port: int =
     application = ManagedApplication(bootstrap, resource_factory=controlled_resources(provider_port))
     business, identity = application.business, application.identity
     draft = setup_draft(root)
+    if not initial_binding:
+        for name in ('host_id', 'entry_id', 'conversation_id'):
+            del draft[name]
     if legacy_test_sink:
         draft['configuration']['information']['goals.delivery']['sink_mode'] = 'TEST_HTTP'
     test.assertIs(type(await identity.save_draft('draft', None, draft)), Committed)

@@ -19,7 +19,7 @@ export async function login(page:Page):Promise<void>{
 }
 export async function post(page:Page,path:string,payload:Record<string,unknown>){
   const csrf=(await page.context().cookies()).find(c=>c.name===(path.startsWith('/api/audit/')?'iris_audit_csrf':'iris_csrf'))?.value??'';
-  const response=await page.request.post(path,{data:payload,headers:{Origin:'http://127.0.0.1:18080','X-CSRF-Token':csrf}});
+  const response=await page.request.post(path,{data:payload,headers:{Origin:new URL(page.url()).origin,'X-CSRF-Token':csrf}});
   return {status:response.status(),body:await response.json()};
 }
 export async function layout(page:Page,width:number):Promise<void>{

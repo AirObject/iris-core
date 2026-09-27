@@ -39,7 +39,7 @@ def extend(http: dict, native) -> None:
         'generation_id':nullable(ID),**{key:nullable(TIME) for key in ('captured_seq','material_seq','published_seq','first_uncovered_seq')},
         'pending_count':TIME,'scanned_count':TIME,'observed_at':TIME})
     capabilities=obj({**{key:BOOL for key in ('generative_query','embedding','rerank','semantic_equivalence','real_persona')},
-        'persona_origin':enum('REMOTE_PROVIDER','SYNTHETIC','UNAVAILABLE')})
+        'persona_origin':enum('REMOTE_PROVIDER','SYNTHETIC','LOCAL_CONFIGURATION','UNAVAILABLE')})
     common={'request_id':ID,'recall_id':nullable(ID),'availability':enum('DEGRADED','COMPLETE'),'observed_at':TIME,
         'mode_epoch':TIME,'config_snapshot_id':ID,'sections':sections,'timing':obj({'base_ms':TIME,'budget_ms':TIME}),
         'truncation':obj({'reasons':array(ID,32),'omitted_memories':TIME}),'capabilities':capabilities}

@@ -23,6 +23,12 @@ class DailyPersonaPort:
     owner:DailyPersonaControl
     def __init__(self):raise TypeError('Trusted daily initialization issues this port.')
     async def prepare(self,key,input_id,self_revision,epoch):return await self.owner.call(self,'prepare_initial_persona',key,{'input_id':input_id,'expected_self_revision':self_revision,'expected_epoch':epoch})
+    async def publish_local(self, key: str, input_id: str, self_revision: int):
+        """Confirm the retained operator settings as the initial local role, without a send."""
+        if self.owner.owner.local is None:
+            raise OwnerFailure('ACCESS_DENIED', 'persona', 'OPERATION_NOT_GRANTED')
+        return await self.owner.call(self, 'publish_local_persona', key,
+            {'input_id': input_id, 'expected_self_revision': self_revision})
     async def generate(self,key,run_id,generation):return await self.owner.call(self,'generate',key,{'run_id':run_id,'generation':generation})
     async def read_pending(self,run_id):return await self.owner.call(self,'read_pending','read-pending',{'run_id':run_id})
     async def review(self,key,run_id,revision,candidate_id,candidate_revision,checksum,decision):
