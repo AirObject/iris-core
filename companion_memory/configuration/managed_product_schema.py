@@ -6,7 +6,7 @@ attempt limit; per-request capacity and uncertain-outcome isolation still apply.
 """
 from dataclasses import replace
 from companion_memory.persistence.schema import RecordSchema, ScalarSchema
-from companion_memory.persistence.semantic_records import enum, integer
+from companion_memory.persistence.semantic_records import ID, enum, integer
 from .daily_schema import ACCOUNT as LEGACY_ACCOUNT, IMAGE_PROFILE as LEGACY_IMAGE, EMBEDDING_PROFILE as LEGACY_EMBEDDING
 from .dream_schema import GENERATION_PROFILE as LEGACY_GENERATION
 
@@ -19,7 +19,8 @@ ACCOUNT = RecordSchema(tuple(
 def profile(schema: RecordSchema) -> RecordSchema:
     """Add the ordinary observation mode without changing a legacy declaration."""
     return RecordSchema(tuple(replace(field, schema=enum(*field.schema.choices, 'USAGE_ONLY'))
-        if field.name == 'billing_mode' and type(field.schema) is ScalarSchema else field for field in schema.fields))
+        if field.name == 'billing_mode' and type(field.schema) is ScalarSchema else
+        replace(field, schema=ID) if field.name == 'model_id' else field for field in schema.fields))
 
 GENERATION_PROFILE = profile(LEGACY_GENERATION)
 IMAGE_PROFILE = profile(LEGACY_IMAGE)

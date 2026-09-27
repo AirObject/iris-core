@@ -100,7 +100,8 @@ USAGE_PROFILE = RecordSchema(tuple(replace(f,schema=enum('USAGE_ONLY_TRIAL')) if
     replace(f,schema=RecordSchema(()),nullable=True) if f.name=='max_input_units' else f for f in PROFILE.fields))
 REPORTED_MODELS = ('doubao-embedding-vision','doubao-embedding-vision-251215')
 USAGE_TRANSPORT = RecordSchema(tuple(replace(f,schema=integer(2,2)) if f.name=='v' else
-    replace(f,schema=SequenceSchema(enum(*REPORTED_MODELS),1,2)) if f.name=='expected_reported_models' else f for f in TRANSPORT.fields))
+    replace(f,schema=SequenceSchema(ID,1,2)) if f.name=='expected_reported_models' else
+    replace(f,schema=BoundedTextSchema(256)) if f.name in ('origin','endpoint_path') else f for f in TRANSPORT.fields))
 
 
 def value_schemas(offline: bool, *, usage_only: bool=False) -> dict[str,RecordSchema]:
