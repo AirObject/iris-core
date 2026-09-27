@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import TimeoutError as FutureTimeout
 
 import httpx
 import pytest
@@ -82,3 +83,33 @@ def test_embedding_uses_configured_plan_path(store):
     gateway = Gateway(configs(), store, client=httpx.Client(transport=httpx.MockTransport(handler)))
     assert gateway.embedding("中文") == [0.1, 0.2]
     assert paths == ["/api/plan/v3/embeddings"]
+
+
+def test_generation_has_hard_total_timeout_and_two_retries(store):
+    class Future:
+        def result(self, timeout):
+            assert timeout == 120
+            raise FutureTimeout()
+    class Pool:
+        def submit(self, *args, **kwargs):
+            return Future()
+    sleeps = []
+    gateway = Gateway(configs(), store, sleeper=sleeps.append)
+    gateway._pool.shutdown(wait=False)
+    gateway._pool = Pool()
+    with pytest.raises(ModelError) as caught:
+        gateway.chat([{"role": "user", "content": "test"}], "test")
+    assert caught.value.category == "retryable"
+    assert sleeps == [2, 8]
+
+
+def test_provider_account_status_is_classified_without_body_in_record(store):
+    body = {"base_resp": {"status_code": 1201, "status_msg": "insufficient balance"}, "choices": []}
+    gateway = Gateway(configs(), store, client=httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=body))))
+    with pytest.raises(ModelError) as caught:
+        gateway.chat([{"role": "user", "content": "test"}], "test")
+    assert caught.value.category == "account"
+    with store.read() as conn:
+        call = conn.execute("SELECT result_category,error_summary FROM model_calls").fetchone()
+    assert tuple(call) == ("account", "provider status 1201")

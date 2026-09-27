@@ -27,6 +27,9 @@ class FakeGateway:
             raise result
         return result, json.dumps(result, ensure_ascii=False), None, "direct"
 
+    def embedding(self, text, purpose="embedding"):
+        return [1.0, 0.0]
+
 
 @pytest.fixture
 def store(tmp_path):

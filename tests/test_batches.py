@@ -2,6 +2,8 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from iris.db import Store
 from iris.learning import LearningEngine, PROMPT_VERSION
 from iris.memory_ops import adjust_retention, edit_memory
@@ -106,6 +108,14 @@ def test_B13_crash_recovery_has_no_partial_result(tmp_path):
     store = Store(path)
     msg(store, 1, "我喜欢猫")
     formed = form_batch(store, "A", PROMPT_VERSION)
+    with pytest.raises(RuntimeError):
+        with store.write() as conn:
+            stamp = "2026-09-28T00:00:00+00:00"
+            conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,retention,
+                created_at,updated_at,first_confirmed_at,last_confirmed_at)
+                VALUES('半写入','事实','self','观点',60,50,50,?,?,?,?)""", (stamp, stamp, stamp, stamp))
+            raise RuntimeError("simulated crash before commit")
+    assert count(store, "memories") == 0
     with store.write() as conn:
         conn.execute("UPDATE batches SET state='running' WHERE id=?", (formed.id,))
     store.close()
@@ -114,6 +124,23 @@ def test_B13_crash_recovery_has_no_partial_result(tmp_path):
         assert get_batch(reopened, formed.id).state == "waiting"
         assert get_batch(reopened, formed.id).attempt_count == 1
         assert count(reopened, "memories") == 0
+        assert count(reopened, "batch_attempts") == 1
+    finally:
+        reopened.close()
+
+
+def test_B13_crash_on_fourth_attempt_abandons_with_gap(tmp_path):
+    path = tmp_path / "crash-fourth.db"
+    store = Store(path)
+    msg(store, 1, "我喜欢猫")
+    formed = form_batch(store, "A", PROMPT_VERSION)
+    with store.write() as conn:
+        conn.execute("UPDATE batches SET state='running',attempt_count=3 WHERE id=?", (formed.id,))
+    store.close()
+    reopened = Store(path)
+    try:
+        assert get_batch(reopened, formed.id).state == "abandoned"
+        assert count(reopened, "memory_gaps") == 1
     finally:
         reopened.close()
 
@@ -132,16 +159,25 @@ def test_B15_single_writer_handles_concurrent_changes(store):
     msg(store, 1, "我喜欢猫")
     _, result = batch(store, FakeGateway({"memories": [memory()]}))
     memory_id = result["created"][0]
+    msg(store, 2, "A 的新消息")
+    msg(store, 1, "B 的新消息", entry="B")
+    a = form_batch(store, "A", PROMPT_VERSION)
+    b = form_batch(store, "B", PROMPT_VERSION)
     def write(index):
-        if index % 2:
+        if index == 0:
+            LearningEngine(store, FakeGateway({})).run_batch(a.id)
+        elif index == 1:
+            LearningEngine(store, FakeGateway({})).run_batch(b.id)
+        elif index % 2:
             adjust_retention(store, memory_id, 1)
         else:
             with store.read() as conn:
                 revision = conn.execute("SELECT revision FROM memories WHERE id=?", (memory_id,)).fetchone()[0]
-            edit_memory(store, memory_id, revision, content=f"小林喜欢猫 {index}")
+            edit_memory(store, memory_id, revision, content=f"小林喜欢猫 {index}", actor="dream" if index == 2 else "admin")
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(write, range(20)))
     assert count(store, "memories") == 1
+    assert get_batch(store, a.id).state == "succeeded" and get_batch(store, b.id).state == "succeeded"
 
 
 def test_B16_revision_conflict_skips_only_changed_update(store):

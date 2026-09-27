@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import Store, dumps, now
 
 
 def setup_role(store: Store, name: str, background: str = "", timezone_name: str = "Asia/Shanghai") -> str:
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError("unknown timezone") from exc
     name = name.strip() or "Iris"
     sentences = [part.strip() for part in re.split(r"[\n。！？]+", background) if part.strip()]
     persona = (f"我是{name}。" + ("初始设定：" + "；".join(sentences) + "。" if sentences else "尚无预设经历，会在相处中逐渐认识自己。"))

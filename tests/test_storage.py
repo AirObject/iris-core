@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 from iris.db import Store
 from iris.queue import add_message
 
@@ -24,3 +26,9 @@ def test_message_dedupe_key_is_per_entry_and_preserves_original(store):
     assert first == again and other != first
     with store.read() as conn:
         assert conn.execute("SELECT content FROM messages WHERE id=?", (first,)).fetchone()[0] == "原文"
+
+
+def test_message_rejects_invalid_time_before_queueing(store):
+    with pytest.raises(ValueError, match="timezone"):
+        add_message(store, entry_id="A", entry_name="A", platform="test", entry_kind="group",
+                    kind="message", sender="小林", content="你好", occurred_at="2026-09-28T09:00:00", dedupe_key="1")

@@ -8,3 +8,5 @@ __pycache__/
 data/
 *.db
 *.db-*
+*.db.*.bak
+dist/

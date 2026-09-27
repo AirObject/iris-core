@@ -35,9 +35,28 @@ class Store:
         self._writer.execute(
             "INSERT OR IGNORE INTO subjects(id,kind,name,created_at) VALUES('self','self','我',?)", (now(),)
         )
-        # A running batch had no committed result. Count that interrupted attempt once.
-        self._writer.execute("""UPDATE batches SET state='waiting',attempt_count=attempt_count+1,
-            next_retry_at=?,last_error='interrupted by restart' WHERE state='running'""", (now(),))
+        self._recover_inflight()
+
+    def _recover_inflight(self) -> None:
+        # A running batch had no committed result. Count the interrupted attempt once.
+        with self.write() as conn:
+            for batch in conn.execute("SELECT id,entry_id,target_ids,attempt_count FROM batches WHERE state='running'").fetchall():
+                count = batch["attempt_count"] + 1
+                state = "abandoned" if count >= 4 else "waiting"
+                stamp = now()
+                number = conn.execute("SELECT COALESCE(MAX(number),0)+1 FROM batch_attempts WHERE batch_id=?", (batch["id"],)).fetchone()[0]
+                conn.execute("""INSERT INTO batch_attempts(batch_id,number,started_at,finished_at,parse_status,error,duration_ms)
+                    VALUES(?,?,?,?,'failed','interrupted by restart',0)""", (batch["id"], number, stamp, stamp))
+                conn.execute("UPDATE batches SET state=?,attempt_count=?,next_retry_at=?,last_error=?,finished_at=? WHERE id=?",
+                             (state, count, stamp if state == "waiting" else None, "interrupted by restart",
+                              stamp if state == "abandoned" else None, batch["id"]))
+                if state == "abandoned":
+                    ids = json.loads(batch["target_ids"])
+                    conn.executemany("UPDATE messages SET learning_state='abandoned' WHERE id=?", ((i,) for i in ids))
+                    placeholders = ",".join("?" for _ in ids)
+                    bounds = conn.execute(f"SELECT MIN(occurred_at),MAX(occurred_at) FROM messages WHERE id IN ({placeholders})", ids).fetchone()
+                    conn.execute("""INSERT INTO memory_gaps(batch_id,entry_id,started_at,ended_at,reason,created_at)
+                        VALUES(?,?,?,?,?,?)""", (batch["id"], batch["entry_id"], bounds[0], bounds[1], "attempts_exhausted", stamp))
 
     def _migrate(self, existed: bool) -> None:
         migration_dir = files("iris").joinpath("migrations")

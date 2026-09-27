@@ -1,5 +1,6 @@
-from iris.learning import PROMPT, independent_evidence_count, normalize_event_time
+from iris.learning import PROMPT, independent_evidence_count, normalize_event_time, source_message_ids
 from iris.memory_ops import set_subject_link_status, setup_role
+from iris.models import ModelConfig
 
 from conftest import FakeGateway, batch, msg
 from test_batches import count, memory
@@ -116,6 +117,8 @@ def test_L11_derived_memory_records_revision_source(store):
     with store.read() as conn:
         row = conn.execute("SELECT source_memory_id,source_revision FROM sources WHERE memory_id=? AND kind='memory'", (second["created"][0],)).fetchone()
     assert tuple(row) == (first["created"][0], 1)
+    assert source_message_ids(store, second["created"][0]) == {1, 2}
+    assert independent_evidence_count(store, second["created"][0]) == 2
 
 
 def test_L12_reported_speech_stays_with_reporter(store):
@@ -144,6 +147,18 @@ def test_L14_invalid_self_claim_from_other_message_is_dropped(store):
     assert "self claim" in result["dropped"][0]["reason"]
 
 
+def test_role_name_is_accepted_as_self_alias_with_own_evidence(store):
+    setup_role(store, "Iris")
+    msg(store, 1, "我喜欢雨声", sender="我", kind="self_output")
+    output = {"memories": [memory("Iris喜欢雨声", [1], "Iris", ["Iris"], "观点")]}
+    _, result = batch(store, FakeGateway(output))
+    assert len(result["created"]) == 1
+    with store.read() as conn:
+        row = conn.execute("SELECT speaker_subject_id FROM memories WHERE stance='观点'").fetchone()
+        about = conn.execute("SELECT subject_id FROM memory_subjects WHERE memory_id=?", (result["created"][0],)).fetchone()
+    assert row[0] == "self" and about[0] == "self"
+
+
 def test_same_display_name_accounts_need_unambiguous_reference(store):
     from iris.queue import add_message
     add_message(store, entry_id="A", entry_name="A", platform="test", entry_kind="group",
@@ -156,3 +171,18 @@ def test_same_display_name_accounts_need_unambiguous_reference(store):
     _, result = batch(store, FakeGateway(output), count=2)
     assert len(result["created"]) == 1
     assert any("ambiguous" in item["reason"] for item in result["dropped"])
+
+
+def test_vector_confirmation_keeps_different_event_times_separate(store):
+    msg(store, 1, "我喜欢猫")
+    fake = FakeGateway({"memories": [memory()]})
+    fake.configs["embedding"] = ModelConfig("fake", "", "fake-embed")
+    _, first = batch(store, fake, count=1)
+    msg(store, 2, "我很喜欢猫咪")
+    fake.response = {"memories": [memory("小林对猫咪有很深的喜爱", [2])]}
+    _, second = batch(store, fake, count=1)
+    assert second["created"] == [] and second["confirmed"] == first["created"]
+    msg(store, 3, "我下周喜欢猫")
+    fake.response = {"memories": [{**memory("小林对猫咪有很深的喜爱", [2]), "event_time": "2026-10-02"}]}
+    _, third = batch(store, fake, count=1)
+    assert len(third["created"]) == 1

@@ -7,6 +7,7 @@ import os
 import re
 import time
 import tomllib
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -98,8 +99,10 @@ class Gateway:
         self.client = client or httpx.Client()
         self._own_client = client is None
         self.sleeper = sleeper
+        self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-model")
 
     def close(self) -> None:
+        self._pool.shutdown(wait=False, cancel_futures=True)
         if self._own_client:
             self.client.close()
 
@@ -130,7 +133,9 @@ class Gateway:
             started = time.monotonic()
             response: httpx.Response | None = None
             try:
-                response = self.client.post(url, headers=headers, json=payload, timeout=timeout)
+                total_timeout = 120 if kind == "chat" else 30
+                request = self._pool.submit(self.client.post, url, headers=headers, json=payload, timeout=timeout)
+                response = request.result(timeout=total_timeout)
                 duration = round((time.monotonic() - started) * 1000)
                 status = response.status_code
                 if status >= 400:
@@ -167,13 +172,16 @@ class Gateway:
                         raise ModelError("content_rejection", "provider content safety refusal")
                 if provider_status not in (None, 0, 200) and not content:
                     summary = f"provider status {provider_status}"
-                    self._record(purpose, config.model, duration, "configuration", summary, flags=flags, status_code=provider_status)
-                    raise ModelError("configuration", summary)
+                    provider_message = str(body.get("status_msg") or (data.get("error") or {}).get("message") or "").casefold()
+                    category = "account" if any(term in provider_message for term in
+                                                ("balance", "quota", "credit", "billing", "余额", "欠费", "额度")) else "configuration"
+                    self._record(purpose, config.model, duration, category, summary, flags=flags, status_code=provider_status)
+                    raise ModelError(category, summary)
                 self._record(purpose, config.model, duration, "success", None, data.get("usage"), flags, provider_status or status)
                 return data
-            except httpx.TransportError as exc:
+            except (httpx.TransportError, FutureTimeout) as exc:
                 duration = round((time.monotonic() - started) * 1000)
-                summary = _summary(type(exc).__name__, config.api_key)
+                summary = "total timeout" if isinstance(exc, FutureTimeout) else _summary(type(exc).__name__, config.api_key)
                 self._record(purpose, config.model, duration, "retryable", summary)
                 if attempt < 2:
                     self.sleeper((2, 8)[attempt])

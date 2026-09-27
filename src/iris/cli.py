@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -12,7 +13,7 @@ from .evaluation import run_learning_eval
 from .learning import LearningEngine, PROMPT_VERSION
 from .memory_ops import setup_role
 from .models import Gateway, ModelError, load_test_models
-from .queue import form_batch, get_batch
+from .queue import add_message, form_batch, get_batch
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     setup.add_argument("--timezone", default="Asia/Shanghai")
     models = commands.add_parser("models", help="Model connection commands")
     models.add_argument("action", choices=["check"])
+    ingest = commands.add_parser("ingest", help="Add UTF-8 JSONL messages")
+    ingest.add_argument("file", type=Path)
     learn = commands.add_parser("learn", help="Process an entry's pending messages")
     learn.add_argument("entry_id")
     learn.add_argument("--force", action="store_true", help="Run a waiting batch now")
@@ -48,6 +51,22 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "setup":
             print(setup_role(store, args.name, args.background, args.timezone))
+            return 0
+        if args.command == "ingest":
+            count = 0
+            for line in args.file.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                item = json.loads(line)
+                add_message(store, entry_id=item["entry_id"], entry_name=item.get("entry_name", item["entry_id"]),
+                            platform=item["platform"], entry_kind=item.get("entry_kind", "group"),
+                            kind=item.get("kind", "message"), sender=item["sender"], content=item["content"],
+                            occurred_at=item["occurred_at"], dedupe_key=item["dedupe_key"],
+                            account_id=item.get("account_id"), scene_identity=item.get("scene_identity"),
+                            quote_author=item.get("quote_author"), quote_content=item.get("quote_content"),
+                            pace=item.get("pace", "standard"))
+                count += 1
+            print(f"accepted {count} message rows")
             return 0
         configs = load_test_models()
         gateway = Gateway(configs, store)

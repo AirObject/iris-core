@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
+import math
 import random
-import statistics
 import tempfile
 from datetime import datetime, timezone
 from importlib.resources import files
@@ -91,6 +91,13 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total_messages = sum(len(row["case"]["messages"]) for row in rows)
     token_usage = {key: sum(call[key] or 0 for call in calls) for key in
                    ("prompt_tokens", "completion_tokens", "reasoning_tokens")}
+    def usage_for(prefixes: tuple[str, ...]) -> dict[str, int]:
+        chosen = [call for call in calls if call["purpose"] in prefixes]
+        return {key: sum(call[key] or 0 for call in chosen) for key in
+                ("prompt_tokens", "completion_tokens", "reasoning_tokens")}
+    learning_usage = usage_for(("learning", "learning_repair"))
+    judge_usage = usage_for(("learning_judge", "learning_judge_repair"))
+    embedding_usage = usage_for(("learning_context", "memory_embedding"))
     return {
         "cases": len(rows), "batches": len(batches), "messages": total_messages,
         "parse_direct": direct / len(batches) if batches else None,
@@ -107,6 +114,10 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "batch_p50_ms": _percentile([a["duration_ms"] for a in attempts], 50),
         "batch_p95_ms": _percentile([a["duration_ms"] for a in attempts], 95),
         "tokens": token_usage,
+        "learning_tokens": learning_usage,
+        "judge_tokens": judge_usage,
+        "embedding_tokens": embedding_usage,
+        "learning_tokens_per_1000_messages": round((learning_usage["prompt_tokens"] + learning_usage["completion_tokens"]) * 1000 / total_messages) if total_messages else None,
         "tokens_per_1000_messages": round((token_usage["prompt_tokens"] + token_usage["completion_tokens"]) * 1000 / total_messages) if total_messages else None,
         "estimated_cost": None,
     }
@@ -123,28 +134,52 @@ def _report_markdown(report: dict[str, Any]) -> str:
              f"学习提示词：`{report['prompt_version']}`；评分说明：`{report['scoring_version']}`；对话模型：`{report['chat_model']}`；embedding：`{report['embedding_model']}`。",
              "", "评测集为提交中冻结的 36 段虚构对话；判分使用同一个对话模型，可能偏高。未配置单价，费用无法估算。", "",
              "| 指标 | dev | holdout | 全部 | M1 门槛 |", "| --- | ---: | ---: | ---: | ---: |"]
-    names = [("解析直接成功率", "parse_direct", "≥98%（总成功）"), ("解析修正后成功率", "parse_repaired", "—"),
-             ("解析总成功率", "parse_total", "≥98%"), ("记忆精确率", "precision", "≥70%"),
+    names = [("解析直接成功率", "parse_direct", "≥98%"), ("解析修正后成功率", "parse_repaired", "单列"),
+             ("解析总成功率", "parse_total", "—"), ("记忆精确率", "precision", "≥70%"),
              ("事实召回率", "fact_recall", "≥60%"), ("误记率", "false_memory_rate", "—"),
              ("证据正确率", "evidence_accuracy", "—"), ("归属正确率", "attribution_accuracy", "—"),
              ("人物联系覆盖率", "link_recall", "—"), ("目标覆盖率", "goal_recall", "—"),
              ("批次耗时 P50 ms", "batch_p50_ms", "—"), ("批次耗时 P95 ms", "batch_p95_ms", "—"),
              ("输入 token", "prompt_tokens", "—"), ("输出 token", "completion_tokens", "—"),
              ("其中推理 token", "reasoning_tokens", "—"), ("每千条消息 token", "tokens_per_1000_messages", "—"),
+             ("每千条消息学习生成 token", "learning_tokens_per_1000_messages", "—"),
+             ("判分输入 token", "judge_prompt_tokens", "—"), ("判分输出 token", "judge_completion_tokens", "—"),
+             ("embedding 输入 token", "embedding_prompt_tokens", "—"),
+             ("估算费用（未配置单价）", "estimated_cost", "—"),
              ("新记忆数", "new_memories", "—"), ("必须事实数", "required_facts", "—")]
     for label, key, threshold in names:
         values = []
         for split in ("dev", "holdout", "all"):
             metric = report["metrics"].get(split)
-            values.append(_fmt(metric["tokens"].get(key) if key in ("prompt_tokens", "completion_tokens", "reasoning_tokens") else metric.get(key)) if metric else "—")
+            if not metric:
+                values.append("—")
+            elif key in ("prompt_tokens", "completion_tokens", "reasoning_tokens"):
+                values.append(_fmt(metric["tokens"].get(key)))
+            elif key.startswith("judge_") and key.endswith("_tokens"):
+                values.append(_fmt(metric.get("judge_tokens", {}).get(key.removeprefix("judge_"))))
+            elif key.startswith("embedding_") and key.endswith("_tokens"):
+                values.append(_fmt(metric.get("embedding_tokens", {}).get(key.removeprefix("embedding_"))))
+            else:
+                values.append(_fmt(metric.get(key)))
         lines.append(f"| {label} | {' | '.join(values)} | {threshold} |")
+    overall = report["metrics"].get("all")
+    if overall:
+        lines.extend(["", "M1 学习门槛按全部案例判断：直接解析 " +
+                      ("达标" if (overall["parse_direct"] or 0) >= 0.98 else "未达标") +
+                      f"（{_fmt(overall['parse_direct'])} / 98%）；记忆精确率 " +
+                      ("达标" if (overall["precision"] or 0) >= 0.70 else "未达标") +
+                      f"（{_fmt(overall['precision'])} / 70%）；事实召回率 " +
+                      ("达标" if (overall["fact_recall"] or 0) >= 0.60 else "未达标") +
+                      f"（{_fmt(overall['fact_recall'])} / 60%）。"])
     lines.extend(["", "## 与上次结果对比", ""])
     previous = report.get("previous")
     if previous:
         lines.append(f"上次报告：`{previous['path']}`。")
         for split in ("dev", "holdout", "all"):
+            if split == "all" and not ("holdout" in previous["metrics"] and "holdout" in report["metrics"]):
+                continue
             if split in previous["metrics"] and split in report["metrics"]:
-                for key in ("parse_total", "precision", "fact_recall"):
+                for key in ("parse_direct", "precision", "fact_recall"):
                     old = previous["metrics"][split].get(key)
                     new = report["metrics"][split].get(key)
                     if old is not None and new is not None:
@@ -154,13 +189,18 @@ def _report_markdown(report: dict[str, Any]) -> str:
     lines.extend(["", "## 随机抽查清单", "", "固定随机种子 20260928；以下为至少 10% 案例的判分，供人工核对。人工结论待填写。", ""])
     for item in report["spot_check"]:
         lines.append(f"### {item['id']}（{item['split']}）")
-        lines.append(f"标注事实：{'；'.join(f['fact'] for f in item['must']) or '无'}。")
+        lines.append(f"标注事实：{'；'.join(f['fact'] for f in item['must']) or '无'}；不应记住：{'；'.join(item['forbidden']) or '无'}。")
         for memory in item["memories"]:
             score = next((v for v in item["judge"]["memory_results"] if v["id"] == memory["id"]), {})
             lines.append(f"- 记忆 #{memory['id']}：{memory['content']}；说话人 {memory['speaker']}；立场 {memory['stance']}；判分 {json.dumps(score, ensure_ascii=False)}。")
+            for source in memory["evidence"]:
+                lines.append(f"  - 来源 #{source['id']}（{source['sender']}，{source['kind']}）：{source['content'][:160]}")
         lines.append(f"事实覆盖：{item['judge']['fact_covered']}。人工核对：待填写。")
         lines.append("")
-    lines.extend(["## 限制", "", "本报告没有第二家对话服务商的结果；当前配置仅提供一组对话模型。人工复核尚未由用户完成。", ""])
+    lines.extend(["## 限制", "", "本报告没有第二家对话服务商的结果；当前配置仅提供一组对话模型。人工复核尚未由用户完成。"])
+    for note in report.get("review_notes", []):
+        lines.append("- " + note)
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -210,12 +250,23 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     if previous_path:
         old = json.loads(previous_path.read_text(encoding="utf-8"))
         previous = {"path": previous_path.name, "metrics": old["metrics"]}
-    sampled = random.Random(20260928).sample(rows, max(1, (len(rows) + 9) // 10))
+    shuffled = rows[:]
+    random.Random(20260928).shuffle(shuffled)
+    sample_cases = math.ceil(len(rows) * 0.1)
+    sample_memories = math.ceil(sum(len(row["actual"]["memories"]) for row in rows) * 0.1)
+    sampled = []
+    covered_memories = 0
+    for row in shuffled:
+        if len(sampled) >= sample_cases and covered_memories >= sample_memories:
+            break
+        sampled.append(row)
+        covered_memories += len(row["actual"]["memories"])
     report = {"created_at": datetime.now(timezone.utc).isoformat(), "split": split,
               "prompt_version": PROMPT_VERSION, "scoring_version": SCORING_VERSION,
               "chat_model": configs["chat"].model, "embedding_model": configs["embedding"].model or "unconfigured",
               "metrics": metrics, "previous": previous,
               "spot_check": [{"id": row["case"]["id"], "split": row["case"]["split"], "must": row["case"]["must"],
+                              "forbidden": row["case"]["forbidden"],
                               "memories": row["actual"]["memories"], "judge": row["judge"]} for row in sampled],
               "cases": [{"id": row["case"]["id"], "split": row["case"]["split"], "judge": row["judge"],
                          "actual": row["actual"]} for row in rows]}

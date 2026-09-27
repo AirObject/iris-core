@@ -87,6 +87,14 @@ def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, 
                 pace: str = "standard") -> int:
     if kind not in ("message", "self_output", "action_result", "event"):
         raise ValueError("invalid message type")
+    if not entry_id or not dedupe_key or pace not in PACE:
+        raise ValueError("entry, dedupe key, and pace are required")
+    try:
+        occurrence = datetime.fromisoformat(occurred_at)
+    except ValueError as exc:
+        raise ValueError("occurred_at must be an ISO datetime") from exc
+    if occurrence.tzinfo is None:
+        raise ValueError("occurred_at needs a timezone offset")
     if len(content.encode("utf-8")) > 32768:
         raise ValueError("message exceeds 32 KB")
     with store.write() as conn:
@@ -147,12 +155,6 @@ def form_batch(store: Store, entry_id: str, prompt_version: str, *, target_count
         batch_id = int(result.lastrowid)
         conn.executemany("UPDATE messages SET learning_state='batched',batch_id=? WHERE id=?", ((batch_id, i) for i in selected))
     return get_batch(store, batch_id)
-
-
-def recover_unfinished(store: Store) -> None:
-    with store.write() as conn:
-        conn.execute("""UPDATE batches SET state='waiting',attempt_count=attempt_count+1,
-            next_retry_at=?,last_error='interrupted by restart' WHERE state='running'""", (now(),))
 
 
 def reset_batch(store: Store, batch_id: int) -> None:

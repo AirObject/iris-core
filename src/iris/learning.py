@@ -18,7 +18,7 @@ from .models import Gateway, ModelError
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 
 
-PROMPT_VERSION = "learning_v1"
+PROMPT_VERSION = "learning_v2"
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
 STANCES = {"亲历", "转述", "推断", "观点"}
@@ -205,7 +205,8 @@ class LearningEngine:
                 ev = evidence(item)
                 stance = str(item.get("stance") or "")
                 speaker = str(item.get("speaker") or "").strip()
-                speaker_id = snapshot["participant_refs"].get(speaker)
+                role_name = str(self.store.setting("role_name", "Iris"))
+                speaker_id = "self" if speaker in ("我", role_name) else snapshot["participant_refs"].get(speaker)
                 if speaker_id:
                     speaker = next(s["name"] for s in snapshot["subjects"] if s["id"] == speaker_id)
                 if stance not in STANCES:
@@ -231,7 +232,8 @@ class LearningEngine:
                 about = item.get("about") or []
                 if not isinstance(about, list):
                     raise ValueError("about must be a list")
-                about = [str(name).strip() for name in about if str(name).strip()][:10]
+                about = ["我" if str(name).strip() == role_name else str(name).strip()
+                         for name in about if str(name).strip()][:10]
                 for name in about:
                     if name in snapshot["participant_refs"] or name == "我":
                         continue
@@ -292,7 +294,7 @@ class LearningEngine:
         return accepted, dropped
 
     def _resolve_subject(self, conn: Any, name: str, snapshot: dict[str, Any]) -> str:
-        if name == "我":
+        if name in ("我", str(self.store.setting("role_name", "Iris"))):
             return "self"
         if name in snapshot.get("participant_refs", {}):
             return snapshot["participant_refs"][name]
@@ -331,6 +333,7 @@ class LearningEngine:
         updated: list[int] = []
         confirmed: list[int] = []
         target = set(batch.target_ids)
+        dedupe_threshold = float(self.store.setting("dedupe_cosine_threshold", 0.96))
         with self.store.write() as conn:
             row = conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()
             if not row or row[0] != "running":
@@ -342,8 +345,23 @@ class LearningEngine:
             for item in accepted["memories"]:
                 speaker_id = item["speaker_id"]
                 about_ids = {self._resolve_subject(conn, name, snapshot) for name in item["about"]}
+                def same_meaning(memory: Any) -> bool:
+                    if _similar(memory["content"], item["content"]):
+                        return True
+                    if item.get("_embedding") is None or memory["embedding"] is None:
+                        return False
+                    if memory["embedding_model"] != self.gateway.configs["embedding"].model:
+                        return False
+                    prior = np.frombuffer(memory["embedding"], dtype=np.float32)
+                    current_vector = item["_embedding"]
+                    if prior.size != current_vector.size:
+                        return False
+                    denominator = float(np.linalg.norm(prior) * np.linalg.norm(current_vector))
+                    return bool(denominator and float(np.dot(prior, current_vector) / denominator) >= dedupe_threshold)
                 duplicate = next((m for m in existing if m["speaker_subject_id"] == speaker_id and
-                                  existing_about.get(m["id"], set()) == about_ids and _similar(m["content"], item["content"])), None)
+                                  m["kind"] == item["kind"] and m["stance"] == item["stance"] and
+                                  m["event_time"] == item["event_time"] and
+                                  existing_about.get(m["id"], set()) == about_ids and same_meaning(m)), None)
                 if duplicate:
                     conn.execute("UPDATE memories SET retention=MIN(100,retention+5),last_confirmed_at=? WHERE id=?",
                                  (now(), duplicate["id"]))
@@ -355,10 +373,12 @@ class LearningEngine:
                 stamp = now()
                 result = conn.execute("""INSERT INTO memories
                     (content,kind,speaker_subject_id,stance,belief,importance,retention,event_time,entry_id,world,
-                     created_at,updated_at,first_confirmed_at,last_confirmed_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,'real',?,?,?,?)""",
+                     embedding,embedding_model,created_at,updated_at,first_confirmed_at,last_confirmed_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,'real',?,?,?,?,?,?)""",
                     (item["content"], item["kind"], speaker_id, item["stance"], item["belief"], item["importance"],
                      round(30 + item["importance"] * 0.4), item["event_time"], batch.entry_id,
+                     item["_embedding"].tobytes() if item.get("_embedding") is not None else None,
+                     self.gateway.configs["embedding"].model if item.get("_embedding") is not None else None,
                      stamp, stamp, stamp, stamp))
                 memory_id = int(result.lastrowid)
                 for sid in about_ids:
@@ -435,7 +455,7 @@ class LearningEngine:
                          (now(), dumps(result), batch.id))
             conn.execute("DELETE FROM memory_gaps WHERE batch_id=?", (batch.id,))
             self._write_attempt(conn, batch.id, attempt)
-        for memory_id in created + updated:
+        for memory_id in updated:
             self._embed_memory(memory_id)
         return result
 
@@ -512,6 +532,13 @@ class LearningEngine:
             attempt.update(raw_output=raw, repair_output=repair, parse_status=parse_status,
                            error=details[0] if details else None)
             accepted, dropped = self._validate(output, batch, snapshot, numbers, refs)
+            embedding_config = self.gateway.configs.get("embedding")
+            if embedding_config and embedding_config.model:
+                for item in accepted["memories"]:
+                    try:
+                        item["_embedding"] = np.asarray(self.gateway.embedding(item["content"], "memory_embedding"), dtype=np.float32)
+                    except ModelError:
+                        item["_embedding"] = None
             attempt["duration_ms"] = round((time.monotonic() - started) * 1000)
             return self._apply(batch, accepted, dropped, snapshot, refs, attempt)
         except ModelError as error:
@@ -523,8 +550,33 @@ class LearningEngine:
             return {"state": state, "error": error.summary}
 
 
-def independent_evidence_count(store: Store, memory_id: int) -> int:
+def source_message_ids(store: Store, memory_id: int) -> set[int]:
+    seen: set[int] = set()
+    messages: set[int] = set()
     with store.read() as conn:
-        rows = conn.execute("""SELECT DISTINCT m.sender_subject_id FROM sources s JOIN messages m ON s.message_id=m.id
-            WHERE s.memory_id=? AND s.kind='message'""", (memory_id,)).fetchall()
-    return len(rows)
+        def visit(current_id: int) -> None:
+            if current_id in seen:
+                return
+            seen.add(current_id)
+            for source in conn.execute("SELECT kind,message_id,source_memory_id FROM sources WHERE memory_id=?", (current_id,)):
+                if source["kind"] == "message" and source["message_id"] is not None:
+                    messages.add(source["message_id"])
+                elif source["kind"] == "memory" and source["source_memory_id"] is not None:
+                    visit(source["source_memory_id"])
+        visit(memory_id)
+    return messages
+
+
+def independent_evidence_count(store: Store, memory_id: int) -> int:
+    ids = source_message_ids(store, memory_id)
+    if not ids:
+        return 0
+    with store.read() as conn:
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(f"SELECT sender_subject_id,content FROM messages WHERE id IN ({placeholders})", tuple(ids)).fetchall()
+    independent: list[tuple[str, str]] = []
+    for row in rows:
+        if not any(subject == row["sender_subject_id"] and _similar(content, row["content"])
+                   for subject, content in independent):
+            independent.append((row["sender_subject_id"], row["content"]))
+    return len(independent)
