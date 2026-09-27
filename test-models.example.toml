@@ -1,0 +1,23 @@
+# Iris 测试用模型配置
+#
+# 用于开发、测试和评测（设计文档 21.4）。所有模型都通过 OpenAI 兼容接口调用（17.2）。
+# 使用方法：在 test-models.toml 中填写。该文件含 API key，已被 .gitignore 排除，不要提交；
+# 本文件（test-models.example.toml）是不含密钥的空模板，可以提交。
+#
+# base_url 填到 /v1 这一级，程序会在后面接 /chat/completions 或 /embeddings，
+# 例如 https://api.example.com/v1；本地 Ollama 一般是 http://127.0.0.1:11434/v1。
+
+# 对话模型（必填）：所有非 embedding 的调用暂时共用这一组，包括学习、梦境整理、
+# persona 生成与检查、目标判断、试用回复和评测判分。
+# 图片理解（M4）也用它，前提是这个模型支持图片输入。
+[chat]
+base_url = ""  # 接口地址
+api_key = ""
+model = ""     # 模型 ID
+
+# embedding 模型：为记忆和查询生成向量。
+# 三项都留空时，测试只用全文检索（11.6）。
+[embedding]
+base_url = ""  # 接口地址
+api_key = ""
+model = ""     # 模型 ID
