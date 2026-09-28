@@ -1,4 +1,4 @@
-from iris.learning import PROMPT, independent_evidence_count, normalize_event_time, source_message_ids
+from iris.learning import PROMPT, _same_goal, independent_evidence_count, normalize_event_time, source_message_ids
 from iris.memory_ops import set_subject_link_status, setup_role
 from iris.models import ModelConfig
 
@@ -83,6 +83,7 @@ def test_L07_roleplay_relation_keeps_world(store):
 
 def test_L08_relative_time_uses_instance_timezone(store):
     assert normalize_event_time("下周三", "2026-09-28T09:00:00+08:00", "Asia/Shanghai") == "2026-10-07"
+    assert normalize_event_time("明天", "2026-10-17T00:30:00+08:00", "Asia/Shanghai") == "2026-10-18"
     msg(store, 1, "下周三去上海出差")
     output = {"memories": [{**memory("小林下周三去上海出差"), "event_time": "下周三"}]}
     batch(store, FakeGateway(output))
@@ -186,3 +187,83 @@ def test_vector_confirmation_keeps_different_event_times_separate(store):
     fake.response = {"memories": [{**memory("小林对猫咪有很深的喜爱", [2]), "event_time": "2026-10-02"}]}
     _, third = batch(store, fake, count=1)
     assert len(third["created"]) == 1
+
+
+def test_scene_material_has_no_self_prefix_and_can_support_self_experience(store):
+    msg(store, 1, "石门打开", sender="场景", kind="event")
+    fake = FakeGateway({"memories": [memory("我亲眼看见石门打开", [1], "我", ["我"], "亲历")]})
+    _, result = batch(store, fake)
+    assert result["created"]
+    assert "[场景事件] 石门打开" in fake.materials[0]
+    assert "[场景事件] 我：" not in fake.materials[0]
+
+
+def test_quoted_author_in_room_is_valid_memory_speaker(store):
+    from iris.queue import add_message
+    common = dict(entry_id="A", entry_name="A", platform="test", entry_kind="group",
+                  kind="message", occurred_at="2026-09-28T09:00:00+08:00")
+    add_message(store, sender="小林", account_id="lin", content="你好", dedupe_key="one", **common)
+    add_message(store, sender="小王", account_id="wang", content="引用小林的话", dedupe_key="two",
+                quote_author="小林", quote_author_account_id="lin", quote_content="我喜欢猫", **common)
+    output = {"memories": [memory("小林喜欢猫", [2], "小林", ["小林"], "亲历")]}
+    _, result = batch(store, FakeGateway(output), count=2)
+    assert len(result["created"]) == 1
+    with store.read() as conn:
+        evidence = conn.execute("SELECT quote_author_subject_id FROM messages WHERE dedupe_key='two'").fetchone()[0]
+        speaker = conn.execute("SELECT speaker_subject_id FROM memories WHERE id=?", (result["created"][0],)).fetchone()[0]
+    assert speaker == evidence
+
+
+def test_self_report_requires_own_speech_not_scene_or_other_message(store):
+    msg(store, 1, "小林说她喜欢猫", sender="小王")
+    msg(store, 2, "小林走入房间", sender="场景", kind="event")
+    output = {"memories": [memory("我转述小林喜欢猫", [1, 2], "我", ["小林"], "转述")]}
+    _, result = batch(store, FakeGateway(output), count=2)
+    assert not result["created"]
+    assert "self speech" in result["dropped"][0]["reason"]
+
+
+def test_same_batch_confirmation_only_increments_once(store):
+    msg(store, 1, "我喜欢猫")
+    _, first = batch(store, FakeGateway({"memories": [memory()]}), count=1)
+    memory_id = first["created"][0]
+    msg(store, 2, "我还是喜欢猫")
+    output = {"memories": [memory(evidence=[2]), memory(evidence=[2])],
+              "updates": [{"ref": "M1", "action": "确认", "evidence": [2]}]}
+    _, result = batch(store, FakeGateway(output), count=1)
+    assert result["confirmed"] == [memory_id]
+    with store.read() as conn:
+        assert conn.execute("SELECT retention FROM memories WHERE id=?", (memory_id,)).fetchone()[0] == 59
+
+
+def test_duplicate_new_memories_in_one_batch_do_not_self_confirm(store):
+    msg(store, 1, "我喜欢猫")
+    _, result = batch(store, FakeGateway({"memories": [memory(), memory()]}), count=1)
+    assert len(result["created"]) == 1 and not result["confirmed"]
+    with store.read() as conn:
+        assert conn.execute("SELECT retention FROM memories").fetchone()[0] == 54
+
+
+def test_goals_and_questions_merge_near_duplicates_only_in_same_entry(store):
+    msg(store, 1, "周五问问小林面试结果")
+    first = {"goals": [{"content": "周五问小林面试结果", "evidence": [1]}],
+             "questions": ["小林喜欢猫吗？"]}
+    batch(store, FakeGateway(first), count=1)
+    msg(store, 2, "周五记得问小林面试结果")
+    second = {"goals": [{"content": "周五问小林的面试结果", "evidence": [2]}],
+              "questions": ["小林喜欢猫吗"]}
+    batch(store, FakeGateway(second), count=1)
+    with store.read() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM goals WHERE entry_id='A'").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM goal_sources").fetchone()[0] == 4
+    msg(store, 1, "周五问问小林面试结果", entry="B")
+    batch(store, FakeGateway(first), count=1, entry="B")
+    with store.read() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM goals").fetchone()[0] == 4
+
+
+def test_near_goal_text_with_different_person_or_day_stays_distinct():
+    names = {"小林", "小明"}
+    assert _same_goal("周五问小林面试结果", "周五问小林的面试结果", names)
+    assert not _same_goal("周五问小林面试结果", "周五问小明面试结果", names)
+    assert not _same_goal("周五问小林面试结果", "周六问小林面试结果", names)

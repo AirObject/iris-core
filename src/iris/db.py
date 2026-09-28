@@ -35,9 +35,8 @@ class Store:
         self._writer.execute(
             "INSERT OR IGNORE INTO subjects(id,kind,name,created_at) VALUES('self','self','我',?)", (now(),)
         )
-        self._recover_inflight()
 
-    def _recover_inflight(self) -> None:
+    def recover_inflight(self) -> None:
         # A running batch had no committed result. Count the interrupted attempt once.
         with self.write() as conn:
             for batch in conn.execute("SELECT id,entry_id,target_ids,attempt_count FROM batches WHERE state='running'").fetchall():

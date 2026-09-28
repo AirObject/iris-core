@@ -121,6 +121,9 @@ def test_B13_crash_recovery_has_no_partial_result(tmp_path):
     store.close()
     reopened = Store(path)
     try:
+        assert get_batch(reopened, formed.id).state == "running"
+        assert count(reopened, "batch_attempts") == 0
+        reopened.recover_inflight()
         assert get_batch(reopened, formed.id).state == "waiting"
         assert get_batch(reopened, formed.id).attempt_count == 1
         assert count(reopened, "memories") == 0
@@ -139,6 +142,8 @@ def test_B13_crash_on_fourth_attempt_abandons_with_gap(tmp_path):
     store.close()
     reopened = Store(path)
     try:
+        assert get_batch(reopened, formed.id).state == "running"
+        reopened.recover_inflight()
         assert get_batch(reopened, formed.id).state == "abandoned"
         assert count(reopened, "memory_gaps") == 1
     finally:

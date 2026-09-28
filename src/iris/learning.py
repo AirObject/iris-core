@@ -18,7 +18,7 @@ from .models import Gateway, ModelError
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 
 
-PROMPT_VERSION = "learning_v2"
+PROMPT_VERSION = "learning_v3"
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
 STANCES = {"亲历", "转述", "推断", "观点"}
@@ -39,6 +39,21 @@ def _normalize(text: str) -> str:
 def _similar(a: str, b: str) -> bool:
     left, right = _normalize(a), _normalize(b)
     return bool(left and right and (left == right or difflib.SequenceMatcher(None, left, right).ratio() >= 0.88))
+
+
+GOAL_TIME = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|(?:上|本|这|下)周[一二三四五六日天]|"
+                       r"周[一二三四五六日天]|周末|下个月|月底|明早|今晚|今天|明天|后天")
+
+
+def _same_goal(a: str, b: str, known_people: set[str]) -> bool:
+    if not _similar(a, b):
+        return False
+    people_a = {name for name in known_people if name in a}
+    people_b = {name for name in known_people if name in b}
+    if people_a != people_b:
+        return False
+    times_a, times_b = GOAL_TIME.findall(a), GOAL_TIME.findall(b)
+    return not times_a or not times_b or times_a == times_b
 
 
 def normalize_event_time(value: Any, evidence_at: str, timezone_name: str) -> str | None:
@@ -139,7 +154,7 @@ class LearningEngine:
         participants = []
         snapshot["participant_refs"] = {}
         for sid, name in names.items():
-            if sid == "self":
+            if sid in ("self", "scene"):
                 continue
             ref = f"P{len(participants)+1}"
             snapshot["participant_refs"][ref] = sid
@@ -166,8 +181,11 @@ class LearningEngine:
                 label_type = {"message": "他人消息", "self_output": "我实际发言", "action_result": "我行动结果", "event": "场景事件"}[m["kind"]]
                 quote = f"；引用作者 {m['quote_author_name']}：{m['quote_content'] or ''}" if m["quote_author_name"] else ""
                 scene = f"（{m['scene_identity']}）" if m["scene_identity"] else ""
-                lines.append(f"#{number} [{dt.strftime('%Y-%m-%d 周')}{'一二三四五六日'[dt.weekday()]} {dt.strftime('%H:%M')}] "
-                             f"[{label_type}] {m['sender_name']}{scene}{quote}：数据：{truncate_material(m['content'])}")
+                prefix = f"#{number} [{dt.strftime('%Y-%m-%d 周')}{'一二三四五六日'[dt.weekday()]} {dt.strftime('%H:%M')}] "
+                if m["kind"] == "event":
+                    lines.append(f"{prefix}[场景事件] {truncate_material(m['content'])}")
+                else:
+                    lines.append(f"{prefix}[{label_type}] {m['sender_name']}{scene}{quote}：数据：{truncate_material(m['content'])}")
         material = "\n".join(lines)
         # Drop context from the beginning/end if the material exceeds its budget; target IDs stay fixed.
         if estimate_tokens(material) > 10000:
@@ -217,6 +235,10 @@ class LearningEngine:
                     messages[i]["kind"] in ("self_output", "action_result", "event") for i in ev
                 ):
                     raise ValueError("self claim has no self evidence")
+                if speaker == "我" and stance == "转述" and not any(
+                    messages[i]["kind"] == "self_output" for i in ev
+                ):
+                    raise ValueError("self report has no self speech evidence")
                 if speaker != "我":
                     evidence_speakers = set()
                     for i in ev:
@@ -332,9 +354,18 @@ class LearningEngine:
         created: list[int] = []
         updated: list[int] = []
         confirmed: list[int] = []
+        confirmed_once: set[int] = set()
         target = set(batch.target_ids)
         dedupe_threshold = float(self.store.setting("dedupe_cosine_threshold", 0.96))
         with self.store.write() as conn:
+            def confirm_once(memory_id: int) -> None:
+                if memory_id in confirmed_once:
+                    return
+                conn.execute("UPDATE memories SET retention=MIN(100,retention+5),last_confirmed_at=? WHERE id=?",
+                             (now(), memory_id))
+                confirmed_once.add(memory_id)
+                confirmed.append(memory_id)
+
             row = conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()
             if not row or row[0] != "running":
                 raise RuntimeError("batch state changed before commit")
@@ -363,12 +394,11 @@ class LearningEngine:
                                   m["event_time"] == item["event_time"] and
                                   existing_about.get(m["id"], set()) == about_ids and same_meaning(m)), None)
                 if duplicate:
-                    conn.execute("UPDATE memories SET retention=MIN(100,retention+5),last_confirmed_at=? WHERE id=?",
-                                 (now(), duplicate["id"]))
+                    if duplicate["id"] not in created:
+                        confirm_once(duplicate["id"])
                     for message_id in item["evidence"]:
                         if message_id in target:
                             self._source(conn, duplicate["id"], message_id)
-                    confirmed.append(duplicate["id"])
                     continue
                 stamp = now()
                 result = conn.execute("""INSERT INTO memories
@@ -402,9 +432,7 @@ class LearningEngine:
                     dropped.append({"section": "updates", "item": item, "reason": "memory revision changed"})
                     continue
                 if item["action"] == "确认":
-                    conn.execute("UPDATE memories SET retention=MIN(100,retention+5),last_confirmed_at=? WHERE id=?",
-                                 (now(), current["id"]))
-                    confirmed.append(current["id"])
+                    confirm_once(current["id"])
                 else:
                     content = str(item.get("content") or "").strip()
                     if len(content) > 1000:
@@ -440,12 +468,21 @@ class LearningEngine:
                 for item in accepted[section]:
                     content = str(item["content"]).strip()
                     kind = "question" if section == "questions" else "normal"
-                    old = conn.execute("SELECT id FROM goals WHERE kind=? AND state='open' AND content=?", (kind, content)).fetchone()
+                    deadline = item.get("deadline")
+                    people = {subject["name"] for subject in snapshot["subjects"]
+                              if subject["id"] not in ("self", "scene")}
+                    candidates = conn.execute("""SELECT id,content,deadline FROM goals
+                        WHERE entry_id=? AND kind=? AND state='open' ORDER BY id""",
+                        (batch.entry_id, kind)).fetchall()
+                    old = next((row for row in candidates if _same_goal(row["content"], content, people) and
+                                (not row["deadline"] or not deadline or row["deadline"] == deadline)), None)
                     if old:
-                        goal_id = old[0]
+                        goal_id = old["id"]
+                        if not old["deadline"] and deadline:
+                            conn.execute("UPDATE goals SET deadline=? WHERE id=?", (deadline, goal_id))
                     else:
-                        goal_id = conn.execute("INSERT INTO goals(content,kind,deadline,created_at) VALUES(?,?,?,?)",
-                                               (content, kind, item.get("deadline"), now())).lastrowid
+                        goal_id = conn.execute("""INSERT INTO goals(content,kind,deadline,created_at,entry_id)
+                            VALUES(?,?,?,?,?)""", (content, kind, deadline, now(), batch.entry_id)).lastrowid
                     for message_id in item["evidence"]:
                         conn.execute("INSERT OR IGNORE INTO goal_sources(goal_id,message_id) VALUES(?,?)", (goal_id, message_id))
             conn.executemany("UPDATE messages SET learning_state='learned' WHERE id=?", ((i,) for i in batch.target_ids))

@@ -80,10 +80,32 @@ def _subject(conn: sqlite3.Connection, platform: str, account_id: str, name: str
     return subject_id
 
 
+def _quote_subject(conn: sqlite3.Connection, *, entry_id: str, platform: str,
+                   name: str | None, account_id: str | None,
+                   current_sender_id: str | None) -> str | None:
+    if not name and not account_id:
+        return None
+    if account_id:
+        return _subject(conn, platform, account_id, name or account_id)
+    participants = {row[0] for row in conn.execute("""SELECT DISTINCT m.sender_subject_id
+        FROM messages m JOIN subjects s ON s.id=m.sender_subject_id
+        WHERE m.entry_id=? AND m.kind='message' AND s.name=?""", (entry_id, name))}
+    if current_sender_id and conn.execute("SELECT name FROM subjects WHERE id=?", (current_sender_id,)).fetchone()[0] == name:
+        participants.add(current_sender_id)
+    if len(participants) == 1:
+        return next(iter(participants))
+    # A display name alone never binds this mention to a platform account.
+    mentioned_id = uuid.uuid4().hex
+    conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)",
+                 (mentioned_id, name, now()))
+    return mentioned_id
+
+
 def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, entry_kind: str,
                 kind: str, sender: str, content: str, occurred_at: str, dedupe_key: str,
                 account_id: str | None = None, scene_identity: str | None = None,
-                quote_author: str | None = None, quote_content: str | None = None,
+                quote_author: str | None = None, quote_author_account_id: str | None = None,
+                quote_content: str | None = None,
                 pace: str = "standard") -> int:
     if kind not in ("message", "self_output", "action_result", "event"):
         raise ValueError("invalid message type")
@@ -103,8 +125,11 @@ def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, 
         existing = conn.execute("SELECT id FROM messages WHERE entry_id=? AND dedupe_key=?", (entry_id, dedupe_key)).fetchone()
         if existing:
             return int(existing[0])
-        sender_id = "self" if kind != "message" else _subject(conn, platform, account_id or sender, sender)
-        quote_id = _subject(conn, platform, f"quoted:{quote_author}", quote_author) if quote_author else None
+        sender_id = ("self" if kind in ("self_output", "action_result") else
+                     "scene" if kind == "event" else _subject(conn, platform, account_id or sender, sender))
+        quote_id = _quote_subject(conn, entry_id=entry_id, platform=platform,
+                                  name=quote_author, account_id=quote_author_account_id,
+                                  current_sender_id=sender_id if kind == "message" else None)
         result = conn.execute("""INSERT INTO messages
             (entry_id,kind,sender_subject_id,scene_identity,content,quote_author_subject_id,quote_content,
              occurred_at,received_at,dedupe_key)

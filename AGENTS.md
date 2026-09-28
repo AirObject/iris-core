@@ -1,10 +1,10 @@
 # Iris 后续实现说明
 
-产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码只完成 M1 第 1 个 PR：学习核心及学习评测。不要复制 `dev-0`、`dev-1` 分支的代码。
+产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心与第二轮学习质量评测；检索等后续功能尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
 
 ## 安装和运行
 
-需要 uv 和 Python 3.12。Windows PowerShell：
+需要 uv 和 Python 3.12 及以上。Windows PowerShell：
 
 ```powershell
 uv sync
@@ -20,7 +20,7 @@ uv run iris eval learning --split dev
 uv run iris eval learning
 ```
 
-评测集 `evals/learning_v1.jsonl` 已先于提示词冻结；dev 可迭代，holdout 只用于最终评估。报告在 `evals/reports/`。不要为了达标修改样本或放宽 `scoring_v1.md`；真实标注错误须说明修改理由。
+`evals/learning_v1.jsonl` 的 36 段全部为 dev；`evals/learning_v2.jsonl` 在提示词 v3 前冻结，其中 16 段为新 holdout。迭代只运行 dev，holdout 只用于最后一次评估；门槛要求全部和 holdout 同时达标。报告在 `evals/reports/`。不要为了达标修改样本或放宽 `scoring_v2.md`；真实标注错误须逐条说明理由。评测按入口真实节奏分批，每段判两次，分歧取不利结论。
 
 ## 目录
 

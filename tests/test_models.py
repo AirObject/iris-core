@@ -4,7 +4,8 @@ from concurrent.futures import TimeoutError as FutureTimeout
 import httpx
 import pytest
 
-from iris.models import Gateway, ModelConfig, ModelError, parse_json_object
+from iris.models import (Gateway, ModelConfig, ModelError, parse_json_object,
+                         parse_json_object_with_status, repair_unescaped_value_quotes)
 
 
 def configs():
@@ -20,6 +21,27 @@ def response(content='{"ok":true}', *, flags=None, finish_reason="stop", usage=N
 def test_lenient_json_removes_think_fence_and_trailing_comma():
     raw = '<think>private reasoning</think>\n```json\n{"memories": [1,],}\n``` extra'
     assert parse_json_object(raw) == {"memories": [1]}
+
+
+def test_bare_quotes_in_string_value_are_fixed_without_changing_valid_json():
+    valid = '{"memories":[{"content":"她说\\"好呀\\"，我记住了"}]}'
+    assert repair_unescaped_value_quotes(valid) == valid
+    assert parse_json_object_with_status(valid)[1] == "direct"
+    malformed = '{"memories":[{"content":"她说"好呀"，我记住了"}]}'
+    fixed, status = parse_json_object_with_status(malformed)
+    assert status == "quote_repaired"
+    assert fixed["memories"][0]["content"] == "她说“好呀”，我记住了"
+
+
+def test_quote_repair_is_counted_as_first_response_success(store):
+    calls = []
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=response('{"content":"他说"收到"。"}'))
+    gateway = Gateway(configs(), store, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    parsed, _, repair, status, _ = gateway.json_chat([{"role": "user", "content": "test"}], "learning")
+    assert parsed == {"content": "他说“收到”。"}
+    assert repair is None and status == "quote_repaired" and len(calls) == 1
 
 
 def test_retry_after_then_backoff_and_reasoning_usage(store):

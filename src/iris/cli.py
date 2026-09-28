@@ -63,11 +63,15 @@ def main(argv: list[str] | None = None) -> int:
                             kind=item.get("kind", "message"), sender=item["sender"], content=item["content"],
                             occurred_at=item["occurred_at"], dedupe_key=item["dedupe_key"],
                             account_id=item.get("account_id"), scene_identity=item.get("scene_identity"),
-                            quote_author=item.get("quote_author"), quote_content=item.get("quote_content"),
+                            quote_author=item.get("quote_author"),
+                            quote_author_account_id=item.get("quote_author_account_id"),
+                            quote_content=item.get("quote_content"),
                             pace=item.get("pace", "standard"))
                 count += 1
             print(f"accepted {count} message rows")
             return 0
+        if args.command == "learn":
+            store.recover_inflight()
         configs = load_test_models()
         gateway = Gateway(configs, store)
         try:
