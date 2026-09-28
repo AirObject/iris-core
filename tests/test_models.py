@@ -1,0 +1,115 @@
+import json
+from concurrent.futures import TimeoutError as FutureTimeout
+
+import httpx
+import pytest
+
+from iris.models import Gateway, ModelConfig, ModelError, parse_json_object
+
+
+def configs():
+    return {"chat": ModelConfig("https://example.invalid/api/v1", "placeholder", "stub-chat"),
+            "embedding": ModelConfig("https://example.invalid/api/plan/v3", "placeholder", "stub-embed")}
+
+
+def response(content='{"ok":true}', *, flags=None, finish_reason="stop", usage=None, base_status=0):
+    return {"choices": [{"message": {"content": content}, "finish_reason": finish_reason}],
+            "usage": usage or {}, "base_resp": {"status_code": base_status}, **(flags or {})}
+
+
+def test_lenient_json_removes_think_fence_and_trailing_comma():
+    raw = '<think>private reasoning</think>\n```json\n{"memories": [1,],}\n``` extra'
+    assert parse_json_object(raw) == {"memories": [1]}
+
+
+def test_retry_after_then_backoff_and_reasoning_usage(store):
+    sequence = [httpx.Response(429, headers={"Retry-After": "3"}), httpx.Response(503),
+                httpx.Response(200, json=response(usage={"prompt_tokens": 10, "completion_tokens": 20,
+                    "completion_tokens_details": {"reasoning_tokens": 7}}))]
+    slept = []
+    def handler(request):
+        return sequence.pop(0)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    gateway = Gateway(configs(), store, client=client, sleeper=slept.append)
+    assert gateway.chat([{"role": "user", "content": "test"}], "test").content == '{"ok":true}'
+    assert slept == [3, 8]
+    with store.read() as conn:
+        calls = conn.execute("SELECT result_category,reasoning_tokens,error_summary FROM model_calls ORDER BY id").fetchall()
+    assert [c[0] for c in calls] == ["retryable", "retryable", "success"]
+    assert calls[-1][1] == 7
+    assert all("placeholder" not in str(c[2]) for c in calls)
+
+
+def test_explicit_safety_refusal_requires_unusable_output(store):
+    items = [response("", flags={"input_sensitive": True}, base_status=1001),
+             response('{"ok":true}', flags={"output_sensitive": True}, base_status=1001)]
+    def handler(request):
+        return httpx.Response(200, json=items.pop(0))
+    gateway = Gateway(configs(), store, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(ModelError) as caught:
+        gateway.chat([{"role": "user", "content": "test"}], "test")
+    assert caught.value.category == "content_rejection"
+    assert gateway.chat([{"role": "user", "content": "test"}], "test").content == '{"ok":true}'
+    with store.read() as conn:
+        assert [r[0] for r in conn.execute("SELECT result_category FROM model_calls ORDER BY id")] == ["content_rejection", "success"]
+
+
+@pytest.mark.parametrize(("status", "category"), [(401, "authentication"), (404, "configuration"), (402, "account")])
+def test_http_error_categories_without_provider_body(store, status, category):
+    gateway = Gateway(configs(), store, client=httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(status, text="secret-looking provider body"))))
+    with pytest.raises(ModelError) as caught:
+        gateway.chat([{"role": "user", "content": "test"}], "test")
+    assert caught.value.category == category
+    with store.read() as conn:
+        assert "secret-looking" not in conn.execute("SELECT error_summary FROM model_calls").fetchone()[0]
+
+
+def test_bad_json_or_length_gets_one_repair_call(store):
+    items = [response('{"broken":', finish_reason="length"), response('{"ok":true}')]
+    gateway = Gateway(configs(), store, client=httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=items.pop(0)))))
+    parsed, raw, repair, status, reason = gateway.json_chat([{"role": "user", "content": "test"}], "learning")
+    assert (parsed, status) == ({"ok": True}, "repaired")
+    assert raw == '{"broken":' and repair == '{"ok":true}'
+    assert reason == "finish_reason=length"
+
+
+def test_embedding_uses_configured_plan_path(store):
+    paths = []
+    def handler(request):
+        paths.append(request.url.path)
+        return httpx.Response(200, json={"data": [{"embedding": [0.1, 0.2]}], "usage": {}})
+    gateway = Gateway(configs(), store, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert gateway.embedding("中文") == [0.1, 0.2]
+    assert paths == ["/api/plan/v3/embeddings"]
+
+
+def test_generation_has_hard_total_timeout_and_two_retries(store):
+    class Future:
+        def result(self, timeout):
+            assert timeout == 120
+            raise FutureTimeout()
+    class Pool:
+        def submit(self, *args, **kwargs):
+            return Future()
+    sleeps = []
+    gateway = Gateway(configs(), store, sleeper=sleeps.append)
+    gateway._pool.shutdown(wait=False)
+    gateway._pool = Pool()
+    with pytest.raises(ModelError) as caught:
+        gateway.chat([{"role": "user", "content": "test"}], "test")
+    assert caught.value.category == "retryable"
+    assert sleeps == [2, 8]
+
+
+def test_provider_account_status_is_classified_without_body_in_record(store):
+    body = {"base_resp": {"status_code": 1201, "status_msg": "insufficient balance"}, "choices": []}
+    gateway = Gateway(configs(), store, client=httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=body))))
+    with pytest.raises(ModelError) as caught:
+        gateway.chat([{"role": "user", "content": "test"}], "test")
+    assert caught.value.category == "account"
+    with store.read() as conn:
+        call = conn.execute("SELECT result_category,error_summary FROM model_calls").fetchone()
+    assert tuple(call) == ("account", "provider status 1201")
