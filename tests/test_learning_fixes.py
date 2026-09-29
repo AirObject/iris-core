@@ -147,7 +147,7 @@ def test_v4_promise_and_detail_preserving_summary_pass_through_learning(store):
               "goals": [{"content": "在小林公开前保密入学计划", "evidence": [1, 2]}], "questions": []}
     fake = FakeGateway(output)
     formed, result = batch(store, fake)
-    assert PROMPT_VERSION == "learning_v4"
+    assert PROMPT_VERSION == "learning_v5"
     assert fake.requests[0]["max_tokens"] == 16000
     assert fake.requests[0]["batch_id"] == formed.id
     assert len(result["created"]) == 2
@@ -165,7 +165,7 @@ def test_participant_named_self_cannot_bypass_speaker_id_check(store):
     assert "inference speaker" in result["dropped"][0]["reason"]
 
 
-@pytest.mark.parametrize("stance", ["亲历", "观点", "推断"])
+@pytest.mark.parametrize("stance", ["亲历", "观点"])
 def test_self_attribution_fills_self_only_after_evidence_validation(store, stance):
     msg(store, 1, "我答应帮小林；我觉得小林的文章写得好", sender="我", kind="self_output")
     item = memory("我对小林的重要言行", [1], "我", ["小林"], stance)

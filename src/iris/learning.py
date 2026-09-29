@@ -19,7 +19,7 @@ from .models import Gateway, ModelError
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 
 
-PROMPT_VERSION = "learning_v4"
+PROMPT_VERSION = "learning_v5"
 LEARNING_MAX_TOKENS = 16000
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
@@ -368,7 +368,7 @@ class LearningEngine:
                                          (messages[i]["sender_subject_id"], messages[i]["quote_author_subject_id"]) if sid}
                     if not speaker_id or speaker_id not in evidence_speakers:
                         raise ValueError("speaker reference is not in evidence")
-                if speaker_id == "self" and stance in ("亲历", "观点", "推断") and "我" not in about:
+                if speaker_id == "self" and stance in ("亲历", "观点") and "我" not in about:
                     before = about[:]
                     about = ["我", *about]
                     snapshot["normalizations"].append({"section": "memories", "index": index, "field": "about",
@@ -419,6 +419,26 @@ class LearningEngine:
         for item in output.get("questions", []) if isinstance(output.get("questions", []), list) else []:
             if isinstance(item, str) and item.strip():
                 accepted["questions"].append({"content": item.strip(), "evidence": [batch.target_ids[0]]})
+        # Batch-local references are useful for identity validation, never durable prose.
+        names = {ref: next(s["name"] for s in snapshot["subjects"] if s["id"] == sid)
+                 for ref, sid in snapshot["participant_refs"].items()}
+        def readable(text: str) -> str:
+            for ref, name in names.items():
+                pattern = r"(?<![A-Za-z0-9_])" + re.escape(ref) + r"(?![A-Za-z0-9_])"
+                text = re.sub(pattern + r"\s*" + re.escape(name), lambda _: name, text)
+                text = re.sub(pattern, lambda _: name, text)
+            return text
+        for section in ("memories", "updates", "goals", "questions"):
+            for index, item in enumerate(accepted[section]):
+                for field in ("content", "tags"):
+                    before = item.get(field)
+                    if before is None:
+                        continue
+                    after = [readable(t) for t in before] if field == "tags" else readable(str(before))
+                    if before != after:
+                        item[field] = after
+                        snapshot["normalizations"].append({"section": section, "index": index, "field": field,
+                            "before": before, "after": after, "reason": "temporary participant reference replaced"})
         return accepted, dropped
 
     def _resolve_subject(self, conn: Any, name: str, snapshot: dict[str, Any]) -> str:
