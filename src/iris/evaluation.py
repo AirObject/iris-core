@@ -274,7 +274,7 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 ("prompt_tokens", "completion_tokens", "reasoning_tokens")}
     learning_usage = usage_for(("learning", "learning_repair"))
     judge_usage = usage_for(("learning_judge", "learning_judge_repair"))
-    embedding_usage = usage_for(("learning_context", "memory_embedding"))
+    embedding_usage = usage_for(("learning_context", "memory_embedding", "retrieval_query"))
     return {
         "cases": len(rows), "batches": len(batches), "messages": total_messages,
         "parse_direct": direct / len(batches) if batches else None,

@@ -65,6 +65,18 @@ def test_alias_metrics_and_truncated_batches_do_not_mix_with_other_links_or_judg
     assert metric["learning_call_max_ms"] == 95000
 
 
+def test_embedding_usage_includes_shared_retrieval_queries():
+    row = {"case": {"id": "usage", "messages": [], "must": [], "links": []},
+           "actual": {"memories": [], "batches": [], "attempts": [], "links": [], "goals": [],
+                      "calls": [{"purpose": purpose, "prompt_tokens": count}
+                                for purpose, count in (("memory_embedding", 10), ("retrieval_query", 30),
+                                                       ("learning_context", 5), ("learning", 20), ("learning_judge", 40))]},
+           "judge": {"memory_results": [], "fact_covered": [], "goal_covered": [], "link_covered": [], "actual_link_correct": []}}
+    metric = _metrics([row])
+    assert metric["embedding_tokens"]["prompt_tokens"] == 45
+    assert metric["tokens"]["prompt_tokens"] == 105
+
+
 def test_judge_v3_rejects_array_string_names_and_wrong_alias_relation(store):
     msg(store, 1, "叫我阿灯")
     actual = _case_data(store)
