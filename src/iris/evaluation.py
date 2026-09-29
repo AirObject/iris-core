@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import math
 import random
@@ -20,7 +22,8 @@ from .models import Gateway, ModelConfig, ModelError
 from .queue import add_message, form_batch, get_batch
 
 
-SCORING_VERSION = "scoring_v2"
+SCORING_VERSION = "scoring_v3"
+JUDGE_MAX_TOKENS = 16000
 SCORING = files("iris").joinpath("prompts", SCORING_VERSION + ".md").read_text(encoding="utf-8")
 
 
@@ -33,27 +36,86 @@ def _case_data(store: Store) -> dict[str, Any]:
         memories = []
         for memory in conn.execute("""SELECT m.id,m.content,m.stance,m.belief,m.speaker_subject_id,s.name AS speaker FROM memories m
             JOIN subjects s ON s.id=m.speaker_subject_id WHERE m.stance!='设定' ORDER BY m.id"""):
-            about = [r[0] for r in conn.execute("""SELECT s.name FROM memory_subjects ms JOIN subjects s ON s.id=ms.subject_id
-                WHERE ms.memory_id=?""", (memory["id"],))]
+            about = [dict(r) for r in conn.execute("""SELECT s.id,s.name FROM memory_subjects ms JOIN subjects s ON s.id=ms.subject_id
+                WHERE ms.memory_id=? ORDER BY s.id""", (memory["id"],))]
             evidence = [dict(r) for r in conn.execute("""SELECT x.id,x.kind,x.content,x.occurred_at,x.entry_id,
-                x.quote_content,s.name AS sender,q.name AS quote_author FROM sources src JOIN messages x ON x.id=src.message_id
+                x.quote_content,x.sender_subject_id,x.quote_author_subject_id,s.name AS sender,q.name AS quote_author
+                FROM sources src JOIN messages x ON x.id=src.message_id
                 JOIN subjects s ON s.id=x.sender_subject_id LEFT JOIN subjects q ON q.id=x.quote_author_subject_id
                 WHERE src.memory_id=? AND src.kind='message' ORDER BY x.id""", (memory["id"],))]
-            memories.append({**dict(memory), "about": about, "evidence": evidence})
+            memories.append({**dict(memory), "about": [p["name"] for p in about],
+                             "about_subject_ids": [p["id"] for p in about], "evidence": evidence})
         links = [dict(r) for r in conn.execute("""SELECT l.kind,l.belief,l.status,a.name AS a,b.name AS b,
+            l.subject_a,l.subject_b,l.source_message_id,m.sender_subject_id AS evidence_sender_subject_id,
+            m.quote_author_subject_id AS evidence_quote_author_subject_id,
+            m.quote_content AS evidence_quote_content,
             m.content AS evidence_content,m.kind AS evidence_kind FROM subject_links l
             JOIN subjects a ON a.id=l.subject_a JOIN subjects b ON b.id=l.subject_b
             LEFT JOIN messages m ON m.id=l.source_message_id ORDER BY l.id""")]
+        aliases = [dict(r) for r in conn.execute("""SELECT a.subject_id,a.alias,a.source_message_id,s.name,
+            m.content AS evidence_content,m.kind AS evidence_kind,m.sender_subject_id AS evidence_sender_subject_id,
+            m.quote_content AS evidence_quote_content,
+            m.quote_author_subject_id AS evidence_quote_author_subject_id
+            FROM subject_aliases a JOIN subjects s ON s.id=a.subject_id
+            LEFT JOIN messages m ON m.id=a.source_message_id ORDER BY a.subject_id,a.alias""")]
+        links.extend({**a, "kind": "alias", "a": a["name"], "b": a["alias"], "subject_a": a["subject_id"]}
+                     for a in aliases if a["source_message_id"] is not None)
         goals = [dict(r) for r in conn.execute("SELECT content,kind,deadline,entry_id,state FROM goals ORDER BY id")]
         attempts = [dict(r) for r in conn.execute("""SELECT a.number,a.parse_status,a.duration_ms,a.error,
             a.raw_output,a.batch_id FROM batch_attempts a ORDER BY a.id""")]
-        calls = [dict(r) for r in conn.execute("""SELECT purpose,prompt_tokens,completion_tokens,reasoning_tokens,result_category
+        calls = [dict(r) for r in conn.execute("""SELECT purpose,prompt_tokens,completion_tokens,reasoning_tokens,result_category,
+            finish_reason,batch_id,duration_ms,error_summary
             FROM model_calls ORDER BY id""")]
         batches = [dict(r) for r in conn.execute("SELECT id,state,target_ids,result_json FROM batches ORDER BY id")]
         identities = [dict(r) for r in conn.execute("""SELECT s.id,s.name,p.account_id FROM subjects s
             LEFT JOIN platform_identities p ON p.subject_id=s.id ORDER BY s.id""")]
+        for person in identities:
+            person["aliases"] = [a["alias"] for a in aliases if a["subject_id"] == person["id"]]
     return {"memories": memories, "links": links, "goals": goals, "attempts": attempts,
-            "calls": calls, "batches": batches, "identities": identities}
+            "calls": calls, "batches": batches, "identities": identities, "aliases": aliases}
+
+
+def _normal_name(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    # A stringified JSON/Python container is still not a person's name.
+    try:
+        return not isinstance(ast.literal_eval(value), (list, dict, tuple, set))
+    except (ValueError, SyntaxError):
+        return True
+
+
+def _link_matches(expected: dict[str, Any], actual: dict[str, Any], identities: list[dict[str, Any]]) -> bool:
+    if expected.get("kind") != actual.get("kind"):
+        return False
+    def names(side: str) -> set[str]:
+        result = {actual.get(side)}
+        for person in identities:
+            if person["id"] == actual.get("subject_" + side):
+                result.update([person["name"], *person.get("aliases", [])])
+        return result
+    a, b = names("a"), names("b")
+    return ((expected.get("a") in a and expected.get("b") in b) or
+            (expected.get("kind") == "same_as" and expected.get("a") in b and expected.get("b") in a))
+
+
+def _has_required_subjects(fact: dict[str, Any], memory: dict[str, Any], identities: list[dict[str, Any]]) -> bool:
+    """Necessary structural constraints only; the model still checks meaning and stance."""
+    names: dict[str, set[str]] = {}
+    accounts: dict[str, set[str]] = {}
+    for person in identities:
+        names.setdefault(person["id"], set()).update([person["name"], *person.get("aliases", [])])
+        if person.get("account_id") is not None:
+            accounts.setdefault(person["id"], set()).add(person["account_id"])
+    speaker_id = memory.get("speaker_subject_id")
+    if fact.get("speaker") and fact["speaker"] not in names.get(speaker_id, set()):
+        return False
+    if fact.get("speaker_account_id") and fact["speaker_account_id"] not in accounts.get(speaker_id, set()):
+        return False
+    about_ids = memory.get("about_subject_ids", [])
+    about_names = {name for sid in about_ids for name in names.get(sid, set())}
+    about_accounts = {account for sid in about_ids for account in accounts.get(sid, set())}
+    return set(fact.get("about", [])) <= about_names and set(fact.get("about_account_ids", [])) <= about_accounts
 
 
 def _judge(gateway: Gateway, case: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
@@ -62,11 +124,12 @@ def _judge(gateway: Gateway, case: dict[str, Any], actual: dict[str, Any]) -> di
                "links": case["links"], "goals": case["goals"], "actual_memories": actual["memories"],
                "actual_links": actual["links"], "actual_goals": actual["goals"],
                "actual_subjects": actual["identities"],
+               "actual_aliases": actual.get("aliases", []),
                "target_segments": [json.loads(batch["target_ids"]) for batch in actual["batches"]]}
     output, *_ = gateway.json_chat(
         [{"role": "system", "content": SCORING},
          {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
-        "learning_judge", max_tokens=6000)
+        "learning_judge", max_tokens=JUDGE_MAX_TOKENS)
     memory_by_id = {item.get("id"): item for item in output.get("memory_results", []) if isinstance(item, dict)}
     results = []
     for memory in actual["memories"]:
@@ -78,10 +141,28 @@ def _judge(gateway: Gateway, case: dict[str, Any], actual: dict[str, Any]) -> di
         if not isinstance(values, list):
             values = []
         return [values[i] is True if i < len(values) else False for i in range(length)]
-    return {"memory_results": results, "fact_covered": booleans("fact_covered", len(case["must"])),
-            "link_covered": booleans("link_covered", len(case["links"])),
+    actual_link_correct = booleans("actual_link_correct", len(actual["links"]))
+    model_verdicts = {"actual_link_correct": actual_link_correct[:],
+                      "link_covered": booleans("link_covered", len(case["links"])),
+                      "fact_covered": booleans("fact_covered", len(case["must"]))}
+    for index, link in enumerate(actual["links"]):
+        if not all(_normal_name(link.get(key)) for key in ("a", "b")):
+            actual_link_correct[index] = False
+        if link.get("kind") == "alias" and not any(
+                a["subject_id"] == link.get("subject_a") and a["alias"] == link.get("b")
+                for a in actual.get("aliases", [])):
+            actual_link_correct[index] = False
+    covered = model_verdicts["link_covered"][:]
+    for index, expected in enumerate(case["links"]):
+        covered[index] = covered[index] and any(
+            correct and _link_matches(expected, link, actual["identities"])
+            for correct, link in zip(actual_link_correct, actual["links"], strict=True))
+    fact_covered = [covered and any(_has_required_subjects(fact, m, actual["identities"]) for m in actual["memories"])
+                    for fact, covered in zip(case["must"], model_verdicts["fact_covered"], strict=True)]
+    return {"memory_results": results, "fact_covered": fact_covered,
+            "link_covered": covered,
             "goal_covered": booleans("goal_covered", len(case["goals"])),
-            "actual_link_correct": booleans("actual_link_correct", len(actual["links"]))}
+            "actual_link_correct": actual_link_correct, "model_verdicts": model_verdicts}
 
 
 def _combine_judges(first: dict[str, Any], second: dict[str, Any], case_id: str) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
@@ -106,6 +187,9 @@ def _combine_judges(first: dict[str, Any], second: dict[str, Any], case_id: str)
             decisions += 1
             result = old and new
             values.append(result)
+            # Shape/type checks can force both scores false; still disclose differing model votes.
+            old = first.get("model_verdicts", {}).get(key, first[key])[index - 1]
+            new = second.get("model_verdicts", {}).get(key, second[key])[index - 1]
             if old != new:
                 differences.append({"case": case_id, "item": key, "index": index,
                                     "first": old, "second": new, "scored": result})
@@ -163,6 +247,16 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     link_covered = [value for row in rows for value in row["judge"]["link_covered"]]
     goal_covered = [value for row in rows for value in row["judge"]["goal_covered"]]
     actual_link_correct = [value for row in rows for value in row["judge"].get("actual_link_correct", [])]
+    alias_covered = [value for row in rows for link, value in
+                     zip(row["case"].get("links", []), row["judge"]["link_covered"])
+                     if link.get("kind") == "alias"]
+    actual_alias_correct = [value for row in rows for link, value in
+                            zip(row["actual"].get("links", []), row["judge"].get("actual_link_correct", []))
+                            if link.get("kind") == "alias"]
+    learning_calls = [c for c in calls if c["purpose"] in ("learning", "learning_repair")]
+    length_batches = sum(len({c["batch_id"] for c in row["actual"]["calls"]
+                              if c["purpose"] in ("learning", "learning_repair") and c.get("finish_reason") == "length"})
+                         for row in rows)
     quote_repaired = sum(1 for a in attempts if a["parse_status"] == "quote_repaired")
     direct = sum(1 for a in attempts if a["parse_status"] == "direct") + quote_repaired
     repaired = sum(1 for a in attempts if a["parse_status"] == "repaired")
@@ -172,11 +266,11 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     judge_changes = sum(len(row.get("judge_inconsistencies", [])) for row in rows)
     judge_decisions = sum(row.get("judge_decisions", 0) for row in rows)
     total_messages = sum(len(row["case"]["messages"]) for row in rows)
-    token_usage = {key: sum(call[key] or 0 for call in calls) for key in
+    token_usage = {key: sum(call.get(key) or 0 for call in calls) for key in
                    ("prompt_tokens", "completion_tokens", "reasoning_tokens")}
     def usage_for(prefixes: tuple[str, ...]) -> dict[str, int]:
         chosen = [call for call in calls if call["purpose"] in prefixes]
-        return {key: sum(call[key] or 0 for call in chosen) for key in
+        return {key: sum(call.get(key) or 0 for call in chosen) for key in
                 ("prompt_tokens", "completion_tokens", "reasoning_tokens")}
     learning_usage = usage_for(("learning", "learning_repair"))
     judge_usage = usage_for(("learning_judge", "learning_judge_repair"))
@@ -187,6 +281,14 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "parse_quote_repaired": quote_repaired,
         "parse_repaired": repaired / len(batches) if batches else None,
         "parse_total": (direct + repaired) / len(batches) if batches else None,
+        "length_truncated_batches": length_batches,
+        "length_truncated_calls": sum(c.get("finish_reason") == "length" for c in learning_calls),
+        "judge_length_truncated_calls": sum(c.get("finish_reason") == "length" for c in calls
+                                             if c["purpose"] in ("learning_judge", "learning_judge_repair")),
+        "learning_timeout_calls": sum("timeout" in (c.get("error_summary") or "").casefold() for c in learning_calls),
+        "learning_call_p95_ms": _percentile([c["duration_ms"] for c in learning_calls if c.get("duration_ms") is not None], 95),
+        "learning_call_max_ms": max((c["duration_ms"] for c in learning_calls if c.get("duration_ms") is not None), default=None),
+        "learning_max_completion_tokens": max((c["completion_tokens"] for c in learning_calls if c.get("completion_tokens") is not None), default=None),
         "precision": sum(m["correct_worth"] for m in memories) / new_count if new_count else None,
         "fact_recall": sum(fact_covered) / len(fact_covered) if fact_covered else None,
         "false_memory_rate": sum(m["forbidden"] for m in memories) / new_count if new_count else None,
@@ -194,6 +296,9 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "attribution_accuracy": sum(m["attribution_correct"] for m in memories) / new_count if new_count else None,
         "link_recall": sum(link_covered) / len(link_covered) if link_covered else None,
         "link_precision": sum(actual_link_correct) / len(actual_link_correct) if actual_link_correct else None,
+        "alias_recall": sum(alias_covered) / len(alias_covered) if alias_covered else None,
+        "alias_precision": sum(actual_alias_correct) / len(actual_alias_correct) if actual_alias_correct else None,
+        "required_aliases": len(alias_covered), "new_aliases": len(actual_alias_correct),
         "goal_recall": sum(goal_covered) / len(goal_covered) if goal_covered else None,
         "goal_duplicates": sum(item["normal"] for item in duplicates),
         "question_duplicates": sum(item["question"] for item in duplicates),
@@ -227,16 +332,25 @@ def _report_markdown(report: dict[str, Any]) -> str:
              "判分与学习使用同一模型，仍需人工抽查。未配置单价，费用无法估算。", "",
              "| 指标 | dev | holdout | 全部 | M1 门槛 |", "| --- | ---: | ---: | ---: | ---: |"]
     names = [("解析直接成功率", "parse_direct", "≥98%"),
+             ("因长度截断的批次数", "length_truncated_batches", "单列"),
+             ("学习长度截断调用数（含修正）", "length_truncated_calls", "单列"),
+             ("判分长度截断调用数", "judge_length_truncated_calls", "单列"),
              ("其中引号确定性修复次数", "parse_quote_repaired", "单列"),
              ("解析模型修正后成功率", "parse_repaired", "单列"),
              ("解析总成功率", "parse_total", "—"), ("记忆精确率", "precision", "≥70%"),
              ("事实召回率", "fact_recall", "≥60%"), ("误记率", "false_memory_rate", "—"),
              ("证据正确率", "evidence_accuracy", "—"), ("归属正确率", "attribution_accuracy", "—"),
              ("人物联系精确率", "link_precision", "—"), ("人物联系覆盖率", "link_recall", "—"),
+             ("别名精确率", "alias_precision", "—"), ("别名覆盖率", "alias_recall", "—"),
+             ("实际别名数", "new_aliases", "—"), ("必需别名数", "required_aliases", "—"),
              ("目标覆盖率", "goal_recall", "—"),
              ("目标重复数", "goal_duplicates", "—"), ("询问重复数", "question_duplicates", "—"),
              ("判分不一致率", "judge_inconsistency_rate", "—"),
              ("批次耗时 P50 ms", "batch_p50_ms", "—"), ("批次耗时 P95 ms", "batch_p95_ms", "—"),
+             ("学习生成调用 P95 ms", "learning_call_p95_ms", "—"),
+             ("学习生成调用最长 ms", "learning_call_max_ms", "120 秒超时"),
+             ("学习生成超时调用数", "learning_timeout_calls", "单列"),
+             ("学习单次最大输出 token（含推理）", "learning_max_completion_tokens", "上限 16000"),
              ("输入 token", "prompt_tokens", "—"), ("输出 token", "completion_tokens", "—"),
              ("其中推理 token", "reasoning_tokens", "—"), ("每千条消息 token", "tokens_per_1000_messages", "—"),
              ("每千条消息学习生成 token", "learning_tokens_per_1000_messages", "—"),
@@ -266,16 +380,17 @@ def _report_markdown(report: dict[str, Any]) -> str:
                   ("事实召回率", "fact_recall", 0.60))
         passed = all((all_metrics.get(key) or 0) >= limit and (holdout.get(key) or 0) >= limit
                      for _, key, limit in checks)
-        lines.extend(["", f"M1 学习门槛（全部与 holdout 同时满足）：{'达标' if passed else '未达标'}。"])
+        lines.extend(["", f"本评测集 M1 三项学习指标（全部与 holdout 同时满足）：{'达标' if passed else '未达标'}。"
+                      "仓库历史 holdout 只作回归对照；M1 最终验收还需规划者运行隐藏验收集。"])
         for label, key, limit in checks:
             lines.append(f"- {label}：全部 {_fmt(all_metrics.get(key))}，holdout {_fmt(holdout.get(key))}；门槛 {_fmt(limit)}。")
     else:
-        lines.extend(["", "本次未运行新 holdout，不能判定 M1 学习门槛是否最终达标。"])
+        lines.extend(["", "本次没有 holdout 结果，不能判定 M1 学习门槛是否最终达标；最终还需规划者运行隐藏验收集。"])
     lines.extend(["", "M2 参考门槛（本 PR 不要求）：记忆精确率 ≥85%；事实召回率 ≥75%；"
                   "误记率 ≤5%；证据正确率 ≥90%；归属正确率 ≥90%。"])
     lines.extend(["", "## 与上次结果对比", ""])
     previous = report.get("previous")
-    if previous and previous.get("corpus") == report["corpus"]:
+    if previous and previous.get("corpus") == report["corpus"] and previous.get("scoring_version") == report["scoring_version"]:
         lines.append(f"上次报告：`{previous['path']}`。")
         for split in ("dev", "holdout", "all"):
             if split == "all" and not ("holdout" in previous["metrics"] and "holdout" in report["metrics"]):
@@ -302,6 +417,12 @@ def _report_markdown(report: dict[str, Any]) -> str:
                           "", *("    " + part for part in item["first_raw"].splitlines()), ""])
     else:
         lines.append("所有批次首轮直接解析成功。")
+    lines.extend(["", "## 长度截断调用", ""])
+    truncated = [c for c in report.get("generation_calls", []) if c["finish_reason"] == "length"]
+    for call in truncated:
+        lines.append(f"- {call['case']} 批次 {call['batch_id']} {call['purpose']}：finish_reason=length，输出 {call['completion_tokens']} token。")
+    if not truncated:
+        lines.append("学习与判分均无 finish_reason=length。")
     lines.extend(["", "## 随机抽查清单", "", "固定随机种子 20260928；以下为至少 10% 案例的判分，供人工核对。人工结论待填写。", ""])
     for item in report["spot_check"]:
         lines.append(f"### {item['id']}（{item['split']}）")
@@ -312,6 +433,7 @@ def _report_markdown(report: dict[str, Any]) -> str:
             for source in memory["evidence"]:
                 lines.append(f"  - 来源 #{source['id']}（{source['sender']}，{source['kind']}）：{source['content'][:160]}")
         lines.append(f"事实覆盖：{item['judge']['fact_covered']}。人工核对：待填写。")
+        lines.append(f"人物联系及别名：{json.dumps(item.get('links', []), ensure_ascii=False)}。")
         lines.append("")
     lines.extend(["## 限制", "", "本报告没有第二家对话服务商的结果；当前配置仅提供一组对话模型。人工复核尚未由用户完成。"])
     for note in report.get("review_notes", []):
@@ -358,14 +480,20 @@ def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any]) -> dict[str
             store.close()
 
 
-def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = "all") -> tuple[Path, dict[str, Any]]:
+def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = "all", *,
+                      corpus: Path | None = None, out: Path | None = None) -> tuple[Path, dict[str, Any]]:
     root = root.resolve()
     if split not in ("dev", "holdout", "all"):
         raise ValueError("invalid split")
-    cases = [json.loads(line) for name in ("learning_v1.jsonl", "learning_v2.jsonl")
-             for line in (root / "evals" / name).read_text(encoding="utf-8").splitlines() if line]
+    paths = [corpus.resolve()] if corpus is not None else [root / "evals" / name for name in
+                                                         ("learning_v1.jsonl", "learning_v2.jsonl", "learning_v3.jsonl")]
+    cases = [json.loads(line) for path in paths for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if len({c["id"] for c in cases}) != len(cases):
+        raise ValueError("duplicate evaluation case IDs")
     if split != "all":
         cases = [case for case in cases if case["split"] == split]
+    if not cases:
+        raise ValueError("no evaluation cases for requested split")
     started = time.monotonic()
     ordered: list[dict[str, Any] | None] = [None] * len(cases)
     with ThreadPoolExecutor(max_workers=4, thread_name_prefix="iris-eval") as pool:
@@ -380,14 +508,15 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     rows = [row for row in ordered if row is not None]
     metrics = {name: _metrics([row for row in rows if name == "all" or row["case"]["split"] == name])
                for name in ("dev", "holdout", "all") if name == "all" or any(row["case"]["split"] == name for row in rows)}
-    reports = root / "evals" / "reports"
+    reports = out.resolve() if out is not None else root / "evals" / "reports"
     reports.mkdir(parents=True, exist_ok=True)
     previous_paths = sorted(reports.glob("learning-*.json"))
     previous = None
     if previous_paths:
         previous_path = previous_paths[-1]
         old = json.loads(previous_path.read_text(encoding="utf-8"))
-        previous = {"path": previous_path.name, "metrics": old.get("metrics", {}), "corpus": old.get("corpus")}
+        previous = {"path": previous_path.name, "metrics": old.get("metrics", {}), "corpus": old.get("corpus"),
+                    "scoring_version": old.get("scoring_version")}
     shuffled = rows[:]
     random.Random(20260928).shuffle(shuffled)
     sample_cases = math.ceil(len(rows) * 0.1)
@@ -405,21 +534,33 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
               "prompt_version": PROMPT_VERSION, "scoring_version": SCORING_VERSION,
               "chat_model": configs["chat"].model, "embedding_model": configs["embedding"].model or "unconfigured",
               "corpus": {"cases": len(cases), "messages": sum(len(row["case"]["messages"]) for row in rows),
-                         "must": sum(len(row["case"]["must"]) for row in rows)},
+                         "must": sum(len(row["case"]["must"]) for row in rows),
+                         "sha256": hashlib.sha256(json.dumps(cases, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()},
               "metrics": metrics, "previous": previous,
               "judge_inconsistencies": [item for row in rows for item in row["judge_inconsistencies"]],
               "parse_failures": parse_failures,
+              "generation_calls": [{"case": row["case"]["id"], **{key: call.get(key) for key in
+                                     ("purpose", "batch_id", "finish_reason", "completion_tokens", "duration_ms", "result_category")}}
+                                   for row in rows for call in row["actual"]["calls"]
+                                   if call["purpose"] in ("learning", "learning_repair", "learning_judge", "learning_judge_repair")],
               "spot_check": [{"id": row["case"]["id"], "split": row["case"]["split"], "must": row["case"]["must"],
                               "forbidden": row["case"]["forbidden"],
-                              "memories": row["actual"]["memories"], "judge": row["judge"]} for row in sampled],
+                              "memories": row["actual"]["memories"], "judge": row["judge"],
+                              "links": row["actual"]["links"], "subjects": row["actual"]["identities"]} for row in sampled],
               "cases": [{"id": row["case"]["id"], "split": row["case"]["split"],
                          "messages": len(row["case"]["messages"]), "batches": len(row["actual"]["batches"]),
                          "new_memories": len(row["actual"]["memories"]),
                          "required_facts": len(row["case"]["must"]),
                          "covered_facts": sum(row["judge"]["fact_covered"]),
                          "judge_inconsistencies": len(row["judge_inconsistencies"])} for row in rows]}
+    # Reports may quote model output or corpus text; redact every configured key.
+    serialized = json.dumps(report, ensure_ascii=False, indent=2)
+    for config in configs.values():
+        if config.api_key:
+            serialized = serialized.replace(config.api_key, "[REDACTED]")
+    report = json.loads(serialized)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     path = reports / f"learning-{stamp}-{split}.md"
     path.write_text(_report_markdown(report), encoding="utf-8")
-    path.with_suffix(".json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.with_suffix(".json").write_text(serialized, encoding="utf-8")
     return path, report

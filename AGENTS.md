@@ -1,6 +1,6 @@
 # Iris 后续实现说明
 
-产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心与第二轮学习质量评测；检索等后续功能尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
+产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心、第二轮学习质量评测及第三轮输出长度／归属／别名修正；检索等后续功能尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
 
 ## 安装和运行
 
@@ -18,9 +18,14 @@ uv run iris --help
 uv run iris models check
 uv run iris eval learning --split dev
 uv run iris eval learning
+uv run iris eval learning --corpus C:\path\to\cases.jsonl --out C:\path\to\reports
 ```
 
-`evals/learning_v1.jsonl` 的 36 段全部为 dev；`evals/learning_v2.jsonl` 在提示词 v3 前冻结，其中 16 段为新 holdout。迭代只运行 dev，holdout 只用于最后一次评估；门槛要求全部和 holdout 同时达标。报告在 `evals/reports/`。不要为了达标修改样本或放宽 `scoring_v2.md`；真实标注错误须逐条说明理由。评测按入口真实节奏分批，每段判两次，分歧取不利结论。
+`evals/learning_v1.jsonl` 的 36 段全部为 dev；`learning_v2.jsonl` 的 16 段历史 holdout 已在 PR #2 分析，依 2026-09-29 决定只具回归意义，本轮保留原 split 作最终对照。`learning_v3.jsonl` 的 10 段手写 dev 和 `scoring_v3.md` 在学习提示词 v4 前单独提交冻结，概况与边界修订理由见 `evals/learning_v3_notes.md`。迭代只运行 dev，历史 holdout 本轮只在最后运行一次。不要为了达标修改样本或放宽评分；真实标注错误须逐条说明理由。评测按入口真实节奏分批，每段判两次，分歧取不利结论。
+
+默认评测读取三份仓库 JSONL，报告写入 `evals/reports/`。`--corpus` 替换输入集，`--out` 替换报告目录，均支持仓库外路径。隐藏验收集由规划者维护，执行者不得寻找或读取；最终门槛须隐藏集和仓库评测同时达到，不能仅凭仓库结果宣称 M1 最终通过。报告单列长度截断批次、别名覆盖率／精确率及双判分歧。
+
+学习提示词使用 v4，学习和判分输出上限均为 16000 token，生成总超时仍为每次请求 120 秒。`model_calls` 记录 finish_reason、输出用量和所属批次。校验前做确定性规整：计划立场、数字 M 引用、单元素名字数组和无效 derived_from；通过证据校验的自身亲历／观点／推断补齐 about 中的“我”。原始输出及规整记录都保留。消息／引用作者显示参与者编号，归属用主体 ID 校验。同名账号不合并；本人别名写 `subject_aliases`，未知同一人用 `same_as`，虚构扮演用 `roleplay`。
 
 ## 目录
 
