@@ -1,0 +1,2045 @@
+{
+  "created_at": "2026-09-28T17:33:04.361756+00:00",
+  "split": "dev",
+  "elapsed_seconds": 571.4,
+  "prompt_version": "learning_v3",
+  "scoring_version": "scoring_v2",
+  "chat_model": "MiniMax-M3",
+  "embedding_model": "doubao-embedding-vision",
+  "corpus": {
+    "cases": 60,
+    "messages": 848,
+    "must": 136
+  },
+  "metrics": {
+    "dev": {
+      "cases": 60,
+      "batches": 120,
+      "messages": 848,
+      "parse_direct": 1.0,
+      "parse_quote_repaired": 2,
+      "parse_repaired": 0.0,
+      "parse_total": 1.0,
+      "precision": 0.896969696969697,
+      "fact_recall": 0.75,
+      "false_memory_rate": 0.006060606060606061,
+      "evidence_accuracy": 0.9393939393939394,
+      "attribution_accuracy": 0.8424242424242424,
+      "link_recall": 0.2857142857142857,
+      "link_precision": 0.5,
+      "goal_recall": 1.0,
+      "goal_duplicates": 0,
+      "question_duplicates": 0,
+      "judge_inconsistencies": 29,
+      "judge_inconsistency_rate": 0.03562653562653563,
+      "new_memories": 165,
+      "new_links": 4,
+      "required_facts": 136,
+      "batch_p50_ms": 5387.0,
+      "batch_p95_ms": 20821.2,
+      "tokens": {
+        "prompt_tokens": 510630,
+        "completion_tokens": 301749,
+        "reasoning_tokens": 213541
+      },
+      "learning_tokens": {
+        "prompt_tokens": 199276,
+        "completion_tokens": 117179,
+        "reasoning_tokens": 78647
+      },
+      "judge_tokens": {
+        "prompt_tokens": 301947,
+        "completion_tokens": 184570,
+        "reasoning_tokens": 134894
+      },
+      "embedding_tokens": {
+        "prompt_tokens": 9407,
+        "completion_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "learning_tokens_per_1000_messages": 373178,
+      "tokens_per_1000_messages": 957994,
+      "estimated_cost": null
+    },
+    "all": {
+      "cases": 60,
+      "batches": 120,
+      "messages": 848,
+      "parse_direct": 1.0,
+      "parse_quote_repaired": 2,
+      "parse_repaired": 0.0,
+      "parse_total": 1.0,
+      "precision": 0.896969696969697,
+      "fact_recall": 0.75,
+      "false_memory_rate": 0.006060606060606061,
+      "evidence_accuracy": 0.9393939393939394,
+      "attribution_accuracy": 0.8424242424242424,
+      "link_recall": 0.2857142857142857,
+      "link_precision": 0.5,
+      "goal_recall": 1.0,
+      "goal_duplicates": 0,
+      "question_duplicates": 0,
+      "judge_inconsistencies": 29,
+      "judge_inconsistency_rate": 0.03562653562653563,
+      "new_memories": 165,
+      "new_links": 4,
+      "required_facts": 136,
+      "batch_p50_ms": 5387.0,
+      "batch_p95_ms": 20821.2,
+      "tokens": {
+        "prompt_tokens": 510630,
+        "completion_tokens": 301749,
+        "reasoning_tokens": 213541
+      },
+      "learning_tokens": {
+        "prompt_tokens": 199276,
+        "completion_tokens": 117179,
+        "reasoning_tokens": 78647
+      },
+      "judge_tokens": {
+        "prompt_tokens": 301947,
+        "completion_tokens": 184570,
+        "reasoning_tokens": 134894
+      },
+      "embedding_tokens": {
+        "prompt_tokens": 9407,
+        "completion_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "learning_tokens_per_1000_messages": 373178,
+      "tokens_per_1000_messages": 957994,
+      "estimated_cost": null
+    }
+  },
+  "previous": {
+    "path": "learning-20260927T173659625582Z-all.json",
+    "metrics": {
+      "dev": {
+        "cases": 24,
+        "batches": 48,
+        "messages": 144,
+        "parse_direct": 0.9791666666666666,
+        "parse_repaired": 0.020833333333333332,
+        "parse_total": 1.0,
+        "precision": 0.9411764705882353,
+        "fact_recall": 0.9285714285714286,
+        "false_memory_rate": 0.0196078431372549,
+        "evidence_accuracy": 0.9607843137254902,
+        "attribution_accuracy": 0.9607843137254902,
+        "link_recall": 0.5,
+        "goal_recall": 1.0,
+        "new_memories": 51,
+        "required_facts": 28,
+        "batch_p50_ms": 6007.5,
+        "batch_p95_ms": 21570.8,
+        "tokens": {
+          "prompt_tokens": 90697,
+          "completion_tokens": 68604,
+          "reasoning_tokens": 37061
+        },
+        "learning_tokens": {
+          "prompt_tokens": 59210,
+          "completion_tokens": 49235,
+          "reasoning_tokens": 22485
+        },
+        "judge_tokens": {
+          "prompt_tokens": 28871,
+          "completion_tokens": 19369,
+          "reasoning_tokens": 14576
+        },
+        "embedding_tokens": {
+          "prompt_tokens": 2616,
+          "completion_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        "learning_tokens_per_1000_messages": 753090,
+        "tokens_per_1000_messages": 1106257,
+        "estimated_cost": null
+      },
+      "holdout": {
+        "cases": 12,
+        "batches": 24,
+        "messages": 72,
+        "parse_direct": 0.9583333333333334,
+        "parse_repaired": 0.041666666666666664,
+        "parse_total": 1.0,
+        "precision": 0.9090909090909091,
+        "fact_recall": 0.5833333333333334,
+        "false_memory_rate": 0.0,
+        "evidence_accuracy": 0.9545454545454546,
+        "attribution_accuracy": 0.7727272727272727,
+        "link_recall": 1.0,
+        "goal_recall": 1.0,
+        "new_memories": 22,
+        "required_facts": 12,
+        "batch_p50_ms": 5867.0,
+        "batch_p95_ms": 17257.5,
+        "tokens": {
+          "prompt_tokens": 45565,
+          "completion_tokens": 39909,
+          "reasoning_tokens": 23672
+        },
+        "learning_tokens": {
+          "prompt_tokens": 30949,
+          "completion_tokens": 26957,
+          "reasoning_tokens": 17323
+        },
+        "judge_tokens": {
+          "prompt_tokens": 13585,
+          "completion_tokens": 12952,
+          "reasoning_tokens": 6349
+        },
+        "embedding_tokens": {
+          "prompt_tokens": 1031,
+          "completion_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        "learning_tokens_per_1000_messages": 804250,
+        "tokens_per_1000_messages": 1187139,
+        "estimated_cost": null
+      },
+      "all": {
+        "cases": 36,
+        "batches": 72,
+        "messages": 216,
+        "parse_direct": 0.9722222222222222,
+        "parse_repaired": 0.027777777777777776,
+        "parse_total": 1.0,
+        "precision": 0.9315068493150684,
+        "fact_recall": 0.825,
+        "false_memory_rate": 0.0136986301369863,
+        "evidence_accuracy": 0.958904109589041,
+        "attribution_accuracy": 0.9041095890410958,
+        "link_recall": 0.75,
+        "goal_recall": 1.0,
+        "new_memories": 73,
+        "required_facts": 40,
+        "batch_p50_ms": 5867.0,
+        "batch_p95_ms": 20410.1,
+        "tokens": {
+          "prompt_tokens": 136262,
+          "completion_tokens": 108513,
+          "reasoning_tokens": 60733
+        },
+        "learning_tokens": {
+          "prompt_tokens": 90159,
+          "completion_tokens": 76192,
+          "reasoning_tokens": 39808
+        },
+        "judge_tokens": {
+          "prompt_tokens": 42456,
+          "completion_tokens": 32321,
+          "reasoning_tokens": 20925
+        },
+        "embedding_tokens": {
+          "prompt_tokens": 3647,
+          "completion_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        "learning_tokens_per_1000_messages": 770144,
+        "tokens_per_1000_messages": 1133218,
+        "estimated_cost": null
+      }
+    },
+    "corpus": null
+  },
+  "judge_inconsistencies": [
+    {
+      "case": "L006",
+      "item": "memory",
+      "id": 2,
+      "field": "attribution_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L006",
+      "item": "fact_covered",
+      "index": 1,
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L006",
+      "item": "actual_link_correct",
+      "index": 1,
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L018",
+      "item": "memory",
+      "id": 1,
+      "field": "correct_worth",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L018",
+      "item": "memory",
+      "id": 2,
+      "field": "correct_worth",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L019",
+      "item": "memory",
+      "id": 3,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L019",
+      "item": "memory",
+      "id": 3,
+      "field": "evidence_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L024",
+      "item": "memory",
+      "id": 2,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L029",
+      "item": "memory",
+      "id": 1,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L029",
+      "item": "fact_covered",
+      "index": 1,
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L030",
+      "item": "memory",
+      "id": 1,
+      "field": "attribution_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L030",
+      "item": "fact_covered",
+      "index": 1,
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L032",
+      "item": "memory",
+      "id": 3,
+      "field": "correct_worth",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L034",
+      "item": "memory",
+      "id": 1,
+      "field": "correct_worth",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L034",
+      "item": "memory",
+      "id": 2,
+      "field": "correct_worth",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L034",
+      "item": "memory",
+      "id": 2,
+      "field": "evidence_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L035",
+      "item": "memory",
+      "id": 2,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L035",
+      "item": "memory",
+      "id": 2,
+      "field": "evidence_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V001",
+      "item": "memory",
+      "id": 2,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V001",
+      "item": "fact_covered",
+      "index": 2,
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V006",
+      "item": "memory",
+      "id": 1,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V021",
+      "item": "memory",
+      "id": 4,
+      "field": "evidence_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V024",
+      "item": "memory",
+      "id": 1,
+      "field": "attribution_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "V024",
+      "item": "memory",
+      "id": 2,
+      "field": "attribution_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "V033",
+      "item": "memory",
+      "id": 1,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V033",
+      "item": "memory",
+      "id": 1,
+      "field": "evidence_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V034",
+      "item": "memory",
+      "id": 4,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V034",
+      "item": "memory",
+      "id": 4,
+      "field": "evidence_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V036",
+      "item": "memory",
+      "id": 3,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    }
+  ],
+  "parse_failures": [],
+  "spot_check": [
+    {
+      "id": "L024",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "小林计划为面试练习",
+          "speaker": "小林",
+          "about": [
+            "小林"
+          ],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "我已经答应明天陪小林练习"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "小林即将参加面试，需要为此做练习",
+          "stance": "亲历",
+          "belief": 80,
+          "speaker_subject_id": "f5e4caac1a1a48ba9f92a489b16b2a0f",
+          "speaker": "小林",
+          "about": [
+            "小林"
+          ],
+          "evidence": [
+            {
+              "id": 4,
+              "kind": "message",
+              "content": "练习是为了面试。",
+              "occurred_at": "2026-10-22T09:03:00+08:00",
+              "entry_id": "L024",
+              "quote_content": null,
+              "sender": "小林",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "我还没答应陪小林练习，表示考虑一下之后再告诉她",
+          "stance": "亲历",
+          "belief": 95,
+          "speaker_subject_id": "self",
+          "speaker": "我",
+          "about": [
+            "我"
+          ],
+          "evidence": [
+            {
+              "id": 2,
+              "kind": "self_output",
+              "content": "我考虑一下，还没答应。",
+              "occurred_at": "2026-10-22T09:01:00+08:00",
+              "entry_id": "L024",
+              "quote_content": null,
+              "sender": "我",
+              "quote_author": null
+            },
+            {
+              "id": 5,
+              "kind": "self_output",
+              "content": "之后告诉你。",
+              "occurred_at": "2026-10-22T09:04:00+08:00",
+              "entry_id": "L024",
+              "quote_content": null,
+              "sender": "我",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "小林邀请我明天陪她练习",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "f5e4caac1a1a48ba9f92a489b16b2a0f",
+          "speaker": "小林",
+          "about": [
+            "小林",
+            "我"
+          ],
+          "evidence": [
+            {
+              "id": 1,
+              "kind": "message",
+              "content": "你明天能陪我练习吗？",
+              "occurred_at": "2026-10-22T09:00:00+08:00",
+              "entry_id": "L024",
+              "quote_content": null,
+              "sender": "小林",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": false,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      }
+    },
+    {
+      "id": "L027",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "阿澈转述小夏不吃辣",
+          "speaker": "阿澈",
+          "about": [
+            "小夏"
+          ],
+          "stance": "转述"
+        }
+      ],
+      "forbidden": [
+        "阿澈不吃辣",
+        "小夏在本段亲口说不吃辣"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "小夏在午饭时告诉阿澈自己不吃辣（阿澈转述，小夏本人尚未直接确认）",
+          "stance": "转述",
+          "belief": 50,
+          "speaker_subject_id": "7779e1480ecd4baa967a75012f0da98f",
+          "speaker": "阿澈",
+          "about": [
+            "小夏"
+          ],
+          "evidence": [
+            {
+              "id": 1,
+              "kind": "message",
+              "content": "小夏说她不吃辣。",
+              "occurred_at": "2026-10-25T09:00:00+08:00",
+              "entry_id": "L027",
+              "quote_content": null,
+              "sender": "阿澈",
+              "quote_author": null
+            },
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "她在午饭时告诉我的。",
+              "occurred_at": "2026-10-25T09:02:00+08:00",
+              "entry_id": "L027",
+              "quote_content": null,
+              "sender": "阿澈",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      }
+    },
+    {
+      "id": "V007",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "阿隽写短篇使用笔名周末电台",
+          "speaker": "阿隽",
+          "about": [
+            "阿隽"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿隽喜欢写深夜营业的城市小店",
+          "speaker": "阿隽",
+          "about": [
+            "阿隽"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿隽去年向《北窗》投稿第一篇小说",
+          "speaker": "阿隽",
+          "about": [
+            "阿隽"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿隽计划年底前完成车站主题故事",
+          "speaker": "阿隽",
+          "about": [
+            "阿隽"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "标点刚打错了"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "阿隽发表短篇小说时一直用笔名「周末电台」，不希望用本名发表。",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "c09414f7e79d4a208ea2d97fb08c794c",
+          "speaker": "阿隽",
+          "about": [
+            "阿隽"
+          ],
+          "evidence": [
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "我写短篇一直用笔名周末电台，别叫我本名发表哈。",
+              "occurred_at": "2026-10-08T18:04:00+08:00",
+              "entry_id": "V007",
+              "quote_content": null,
+              "sender": "阿隽",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "阿隽最喜欢写的题材是城市里半夜营业的小店。",
+          "stance": "亲历",
+          "belief": 80,
+          "speaker_subject_id": "c09414f7e79d4a208ea2d97fb08c794c",
+          "speaker": "阿隽",
+          "about": [
+            "阿隽"
+          ],
+          "evidence": [
+            {
+              "id": 8,
+              "kind": "message",
+              "content": "我最喜欢写城市里半夜营业的小店。",
+              "occurred_at": "2026-10-08T18:14:00+08:00",
+              "entry_id": "V007",
+              "quote_content": null,
+              "sender": "阿隽",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "阿隽去年把第一篇小说投给了《北窗》",
+          "stance": "亲历",
+          "belief": 85,
+          "speaker_subject_id": "c09414f7e79d4a208ea2d97fb08c794c",
+          "speaker": "阿隽",
+          "about": [
+            "阿隽"
+          ],
+          "evidence": [
+            {
+              "id": 13,
+              "kind": "message",
+              "content": "去年我把第一篇小说投给了《北窗》。",
+              "occurred_at": "2026-10-08T18:24:00+08:00",
+              "entry_id": "V007",
+              "quote_content": null,
+              "sender": "阿隽",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "content": "阿隽打算年底前写完一组车站故事",
+          "stance": "亲历",
+          "belief": 75,
+          "speaker_subject_id": "c09414f7e79d4a208ea2d97fb08c794c",
+          "speaker": "阿隽",
+          "about": [
+            "阿隽"
+          ],
+          "evidence": [
+            {
+              "id": 17,
+              "kind": "message",
+              "content": "我打算年底前写完那组车站故事。",
+              "occurred_at": "2026-10-08T18:32:00+08:00",
+              "entry_id": "V007",
+              "quote_content": null,
+              "sender": "阿隽",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 4,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      }
+    },
+    {
+      "id": "L028",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "观众甲认为我今天讲故事温柔",
+          "speaker": "观众甲",
+          "about": [
+            "我"
+          ],
+          "stance": "观点"
+        }
+      ],
+      "forbidden": [
+        "我天生性格温柔"
+      ],
+      "memories": [],
+      "judge": {
+        "memory_results": [],
+        "fact_covered": [
+          false
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      }
+    },
+    {
+      "id": "L015",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "小王引用小林准备考研的说法",
+          "speaker": "小王",
+          "about": [
+            "小林"
+          ],
+          "stance": "转述"
+        }
+      ],
+      "forbidden": [
+        "小王本人准备考研"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "小王转述称小林说过“她准备考研”，但小周表示未亲耳听到此话，小王称会向小林核实。",
+          "stance": "转述",
+          "belief": 35,
+          "speaker_subject_id": "35b1750b08c04b5faa4011498a7f12ad",
+          "speaker": "小王",
+          "about": [
+            "小周",
+            "小王",
+            "小林"
+          ],
+          "evidence": [
+            {
+              "id": 1,
+              "kind": "message",
+              "content": "我引用小林昨天的话：她准备考研。",
+              "occurred_at": "2026-10-13T09:00:00+08:00",
+              "entry_id": "L015",
+              "quote_content": null,
+              "sender": "小王",
+              "quote_author": "小林"
+            },
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "对，原话是她准备考研。",
+              "occurred_at": "2026-10-13T09:02:00+08:00",
+              "entry_id": "L015",
+              "quote_content": null,
+              "sender": "小王",
+              "quote_author": null
+            },
+            {
+              "id": 4,
+              "kind": "message",
+              "content": "我没有听到她亲口说。",
+              "occurred_at": "2026-10-13T09:03:00+08:00",
+              "entry_id": "L015",
+              "quote_content": null,
+              "sender": "小周",
+              "quote_author": null
+            },
+            {
+              "id": 5,
+              "kind": "message",
+              "content": "我可以问她确认。",
+              "occurred_at": "2026-10-13T09:04:00+08:00",
+              "entry_id": "L015",
+              "quote_content": null,
+              "sender": "小王",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      }
+    },
+    {
+      "id": "L005",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "小林的猫叫团子",
+          "speaker": "小林",
+          "about": [
+            "小林"
+          ],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "团子今天睡了一整天"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "小林有一只猫叫团子",
+          "stance": "亲历",
+          "belief": 95,
+          "speaker_subject_id": "9ad539c3050e4d7a8de66c02ce30912e",
+          "speaker": "小林",
+          "about": [
+            "小林"
+          ],
+          "evidence": [
+            {
+              "id": 1,
+              "kind": "message",
+              "content": "我家猫叫团子。",
+              "occurred_at": "2026-10-03T09:00:00+08:00",
+              "entry_id": "L005",
+              "quote_content": null,
+              "sender": "小林",
+              "quote_author": null
+            },
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "对，我家猫就叫团子。",
+              "occurred_at": "2026-10-03T09:02:00+08:00",
+              "entry_id": "L005",
+              "quote_content": null,
+              "sender": "小林",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "Iris觉得团子这个名字可爱",
+          "stance": "观点",
+          "belief": 80,
+          "speaker_subject_id": "self",
+          "speaker": "我",
+          "about": [
+            "我"
+          ],
+          "evidence": [
+            {
+              "id": 2,
+              "kind": "self_output",
+              "content": "团子这个名字可爱。",
+              "occurred_at": "2026-10-03T09:01:00+08:00",
+              "entry_id": "L005",
+              "quote_content": null,
+              "sender": "我",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": false,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      }
+    },
+    {
+      "id": "L032",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "小周自述最近在做心理咨询",
+          "speaker": "小周",
+          "about": [
+            "小周"
+          ],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "小周患有某种疾病"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "小周最近在做心理咨询",
+          "stance": "亲历",
+          "belief": 85,
+          "speaker_subject_id": "7a339cb6e6dd43e7984465374f4e9538",
+          "speaker": "小周",
+          "about": [
+            "小周"
+          ],
+          "evidence": [
+            {
+              "id": 1,
+              "kind": "message",
+              "content": "我最近在做心理咨询，希望这件事只在这里谈。",
+              "occurred_at": "2026-10-30T09:00:00+08:00",
+              "entry_id": "L032",
+              "quote_content": null,
+              "sender": "小周",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "小周希望心理咨询这件事只在这里谈，不在其他场合提及",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "7a339cb6e6dd43e7984465374f4e9538",
+          "speaker": "小周",
+          "about": [
+            "小周"
+          ],
+          "evidence": [
+            {
+              "id": 1,
+              "kind": "message",
+              "content": "我最近在做心理咨询，希望这件事只在这里谈。",
+              "occurred_at": "2026-10-30T09:00:00+08:00",
+              "entry_id": "L032",
+              "quote_content": null,
+              "sender": "小周",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "小周这周的咨询预约安排在周四",
+          "stance": "亲历",
+          "belief": 75,
+          "speaker_subject_id": "7a339cb6e6dd43e7984465374f4e9538",
+          "speaker": "小周",
+          "about": [
+            "小周"
+          ],
+          "evidence": [
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "这周预约在周四。",
+              "occurred_at": "2026-10-30T09:02:00+08:00",
+              "entry_id": "L032",
+              "quote_content": null,
+              "sender": "小周",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "content": "小周计划周四咨询之后再聊感受",
+          "stance": "亲历",
+          "belief": 75,
+          "speaker_subject_id": "7a339cb6e6dd43e7984465374f4e9538",
+          "speaker": "小周",
+          "about": [
+            "小周"
+          ],
+          "evidence": [
+            {
+              "id": 4,
+              "kind": "message",
+              "content": "之后再聊感受。",
+              "occurred_at": "2026-10-30T09:03:00+08:00",
+              "entry_id": "L032",
+              "quote_content": null,
+              "sender": "小周",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": false,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 4,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      }
+    },
+    {
+      "id": "V012",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "阿湄在小剧场担任舞台监督",
+          "speaker": "阿湄",
+          "about": [
+            "阿湄"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿湄喜欢排练时直接指出问题",
+          "speaker": "阿湄",
+          "about": [
+            "阿湄"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿湄曾在剧场停电时用手电引导演员",
+          "speaker": "阿湄",
+          "about": [
+            "阿湄"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿湄计划周六首演后请剧组吃饭",
+          "speaker": "阿湄",
+          "about": [
+            "阿湄"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "灯刚闪了一下"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "阿湄在小剧场做舞台监督，最忙的是换景时",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "ee33c5647b8249cc9b7d29e0a282d3f4",
+          "speaker": "阿湄",
+          "about": [
+            "阿湄"
+          ],
+          "evidence": [
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "我在小剧场做舞台监督，最忙的是换景时。",
+              "occurred_at": "2026-10-13T18:04:00+08:00",
+              "entry_id": "V012",
+              "quote_content": null,
+              "sender": "阿湄",
+              "quote_author": null
+            },
+            {
+              "id": 13,
+              "kind": "message",
+              "content": "上次临时停电，我用手电给演员引路。",
+              "occurred_at": "2026-10-13T18:24:00+08:00",
+              "entry_id": "V012",
+              "quote_content": null,
+              "sender": "阿湄",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "阿湄喜欢排练时有人直说问题，不绕圈子",
+          "stance": "亲历",
+          "belief": 80,
+          "speaker_subject_id": "ee33c5647b8249cc9b7d29e0a282d3f4",
+          "speaker": "阿湄",
+          "about": [
+            "阿湄"
+          ],
+          "evidence": [
+            {
+              "id": 8,
+              "kind": "message",
+              "content": "我喜欢排练时有人直说问题，别绕圈子。",
+              "occurred_at": "2026-10-13T18:14:00+08:00",
+              "entry_id": "V012",
+              "quote_content": null,
+              "sender": "阿湄",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "阿湄打算周六首演后请大家一起吃饭",
+          "stance": "亲历",
+          "belief": 70,
+          "speaker_subject_id": "ee33c5647b8249cc9b7d29e0a282d3f4",
+          "speaker": "阿湄",
+          "about": [
+            "阿湄"
+          ],
+          "evidence": [
+            {
+              "id": 17,
+              "kind": "message",
+              "content": "周六首演后想请大家一起吃饭。",
+              "occurred_at": "2026-10-13T18:32:00+08:00",
+              "entry_id": "V012",
+              "quote_content": null,
+              "sender": "阿湄",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "content": "阿湄曾在小剧场临时停电时用手电给演员引路",
+          "stance": "亲历",
+          "belief": 80,
+          "speaker_subject_id": "ee33c5647b8249cc9b7d29e0a282d3f4",
+          "speaker": "阿湄",
+          "about": [
+            "阿湄"
+          ],
+          "evidence": [
+            {
+              "id": 13,
+              "kind": "message",
+              "content": "上次临时停电，我用手电给演员引路。",
+              "occurred_at": "2026-10-13T18:24:00+08:00",
+              "entry_id": "V012",
+              "quote_content": null,
+              "sender": "阿湄",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 4,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": false,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "L001",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L002",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L003",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L004",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 4,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L005",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L006",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 2,
+      "covered_facts": 1,
+      "judge_inconsistencies": 3
+    },
+    {
+      "id": "L007",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L008",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L009",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L010",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 5,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L011",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 0,
+      "required_facts": 0,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L012",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L013",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 0,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L014",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L015",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L016",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 2,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L017",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L018",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "L019",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 2,
+      "covered_facts": 1,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "L020",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L021",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L022",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L023",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 0,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L024",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "L025",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 4,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L026",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L027",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L028",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 0,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L029",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "L030",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "L031",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L032",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 4,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "L033",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 0,
+      "required_facts": 0,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L034",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 3
+    },
+    {
+      "id": "L035",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "L036",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V001",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 2,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "V002",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V003",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V004",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V005",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V006",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "V007",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V008",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V009",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V010",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 6,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V011",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V012",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V021",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "V022",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V023",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V024",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 2,
+      "required_facts": 4,
+      "covered_facts": 1,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "V025",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V026",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V027",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V028",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V033",
+      "split": "dev",
+      "messages": 36,
+      "batches": 9,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 2,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "V034",
+      "split": "dev",
+      "messages": 36,
+      "batches": 9,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 1,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "V035",
+      "split": "dev",
+      "messages": 36,
+      "batches": 9,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V036",
+      "split": "dev",
+      "messages": 36,
+      "batches": 9,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 1
+    }
+  ]
+}

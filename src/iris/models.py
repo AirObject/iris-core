@@ -79,17 +79,73 @@ def _retry_after(value: str | None) -> float | None:
             return None
 
 
-def parse_json_object(raw: str) -> dict[str, Any]:
+def repair_unescaped_value_quotes(candidate: str) -> str:
+    """Replace likely bare quotes inside JSON string values, leaving valid JSON intact."""
+    try:
+        json.JSONDecoder().raw_decode(candidate)
+        return candidate
+    except json.JSONDecodeError:
+        pass
+    output: list[str] = []
+    stack: list[str] = []
+    inside = False
+    value_string = False
+    escaped = False
+    inner_quotes = 0
+    last_nonspace = ""
+    for index, char in enumerate(candidate):
+        if inside:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                following = candidate[index + 1:].lstrip()
+                next_char = following[:1]
+                terminal = next_char in (",", "}", "]") if value_string else next_char == ":"
+                if value_string and not terminal:
+                    char = "“" if inner_quotes % 2 == 0 else "”"
+                    inner_quotes += 1
+                else:
+                    inside = False
+        else:
+            if char == '"':
+                value_string = last_nonspace == ":" or bool(stack and stack[-1] == "[")
+                inside = True
+                inner_quotes = 0
+            elif char in "{[":
+                stack.append(char)
+            elif char in "}]" and stack:
+                stack.pop()
+        output.append(char)
+        if not inside and not char.isspace():
+            last_nonspace = char
+    return "".join(output)
+
+
+def parse_json_object_with_status(raw: str) -> tuple[dict[str, Any], str]:
     stripped = re.sub(r"<think\b[^>]*>.*?</think>", "", raw, flags=re.I | re.S)
     stripped = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", stripped.strip(), flags=re.I)
     start = stripped.find("{")
     if start < 0:
         raise ValueError("no JSON object")
     candidate = re.sub(r",\s*([}\]])", r"\1", stripped[start:])
-    value, _ = json.JSONDecoder().raw_decode(candidate)
+    status = "direct"
+    try:
+        value, _ = json.JSONDecoder().raw_decode(candidate)
+    except json.JSONDecodeError:
+        repaired = repair_unescaped_value_quotes(candidate)
+        if repaired == candidate:
+            raise
+        value, _ = json.JSONDecoder().raw_decode(repaired)
+        status = "quote_repaired"
     if not isinstance(value, dict):
         raise ValueError("top-level value is not an object")
-    return value
+    return value, status
+
+
+def parse_json_object(raw: str) -> dict[str, Any]:
+    return parse_json_object_with_status(raw)[0]
 
 
 class Gateway:
@@ -215,7 +271,8 @@ class Gateway:
         try:
             if reply.finish_reason == "length":
                 raise ValueError("finish_reason=length")
-            return parse_json_object(first_raw), first_raw, None, "direct", None
+            parsed, status = parse_json_object_with_status(first_raw)
+            return parsed, first_raw, None, status, None
         except ValueError as first_error:
             repair_messages = messages + [
                 {"role": "assistant", "content": first_raw},
