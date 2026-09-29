@@ -286,6 +286,8 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "judge_length_truncated_calls": sum(c.get("finish_reason") == "length" for c in calls
                                              if c["purpose"] in ("learning_judge", "learning_judge_repair")),
         "learning_timeout_calls": sum("timeout" in (c.get("error_summary") or "").casefold() for c in learning_calls),
+        "judge_timeout_calls": sum("timeout" in (c.get("error_summary") or "").casefold() for c in calls
+                                   if c["purpose"] in ("learning_judge", "learning_judge_repair")),
         "learning_call_p95_ms": _percentile([c["duration_ms"] for c in learning_calls if c.get("duration_ms") is not None], 95),
         "learning_call_max_ms": max((c["duration_ms"] for c in learning_calls if c.get("duration_ms") is not None), default=None),
         "learning_max_completion_tokens": max((c["completion_tokens"] for c in learning_calls if c.get("completion_tokens") is not None), default=None),
@@ -350,6 +352,7 @@ def _report_markdown(report: dict[str, Any]) -> str:
              ("学习生成调用 P95 ms", "learning_call_p95_ms", "—"),
              ("学习生成调用最长 ms", "learning_call_max_ms", "120 秒超时"),
              ("学习生成超时调用数", "learning_timeout_calls", "单列"),
+             ("判分生成超时调用数", "judge_timeout_calls", "单列"),
              ("学习单次最大输出 token（含推理）", "learning_max_completion_tokens", "上限 16000"),
              ("输入 token", "prompt_tokens", "—"), ("输出 token", "completion_tokens", "—"),
              ("其中推理 token", "reasoning_tokens", "—"), ("每千条消息 token", "tokens_per_1000_messages", "—"),

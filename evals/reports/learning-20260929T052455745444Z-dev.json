@@ -1,0 +1,5306 @@
+{
+  "created_at": "2026-09-29T05:24:55.738821+00:00",
+  "split": "dev",
+  "elapsed_seconds": 906.2,
+  "prompt_version": "learning_v4",
+  "scoring_version": "scoring_v3",
+  "chat_model": "MiniMax-M3",
+  "embedding_model": "doubao-embedding-vision",
+  "corpus": {
+    "cases": 70,
+    "messages": 984,
+    "must": 164,
+    "sha256": "52fc706b1c19d2e52c4b1d98fb215f957ddaa1417ba1cffcaf81bd763c2fbcd7"
+  },
+  "metrics": {
+    "dev": {
+      "cases": 70,
+      "batches": 139,
+      "messages": 984,
+      "parse_direct": 1.0,
+      "parse_quote_repaired": 4,
+      "parse_repaired": 0.0,
+      "parse_total": 1.0,
+      "length_truncated_batches": 0,
+      "length_truncated_calls": 0,
+      "judge_length_truncated_calls": 0,
+      "learning_timeout_calls": 0,
+      "learning_call_p95_ms": 36830.0,
+      "learning_call_max_ms": 52520,
+      "learning_max_completion_tokens": 9343,
+      "precision": 0.9293478260869565,
+      "fact_recall": 0.7560975609756098,
+      "false_memory_rate": 0.005434782608695652,
+      "evidence_accuracy": 0.9402173913043478,
+      "attribution_accuracy": 0.8858695652173914,
+      "link_recall": 0.6666666666666666,
+      "link_precision": 0.9166666666666666,
+      "alias_recall": 1.0,
+      "alias_precision": 1.0,
+      "required_aliases": 3,
+      "new_aliases": 5,
+      "goal_recall": 1.0,
+      "goal_duplicates": 0,
+      "question_duplicates": 0,
+      "judge_inconsistencies": 28,
+      "judge_inconsistency_rate": 0.029978586723768737,
+      "new_memories": 184,
+      "new_links": 12,
+      "required_facts": 164,
+      "batch_p50_ms": 7446.0,
+      "batch_p95_ms": 37367.5,
+      "tokens": {
+        "prompt_tokens": 773291,
+        "completion_tokens": 515599,
+        "reasoning_tokens": 398017
+      },
+      "learning_tokens": {
+        "prompt_tokens": 302199,
+        "completion_tokens": 221343,
+        "reasoning_tokens": 172220
+      },
+      "judge_tokens": {
+        "prompt_tokens": 459201,
+        "completion_tokens": 294256,
+        "reasoning_tokens": 225797
+      },
+      "embedding_tokens": {
+        "prompt_tokens": 11891,
+        "completion_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "learning_tokens_per_1000_messages": 532055,
+      "tokens_per_1000_messages": 1309848,
+      "estimated_cost": null
+    },
+    "all": {
+      "cases": 70,
+      "batches": 139,
+      "messages": 984,
+      "parse_direct": 1.0,
+      "parse_quote_repaired": 4,
+      "parse_repaired": 0.0,
+      "parse_total": 1.0,
+      "length_truncated_batches": 0,
+      "length_truncated_calls": 0,
+      "judge_length_truncated_calls": 0,
+      "learning_timeout_calls": 0,
+      "learning_call_p95_ms": 36830.0,
+      "learning_call_max_ms": 52520,
+      "learning_max_completion_tokens": 9343,
+      "precision": 0.9293478260869565,
+      "fact_recall": 0.7560975609756098,
+      "false_memory_rate": 0.005434782608695652,
+      "evidence_accuracy": 0.9402173913043478,
+      "attribution_accuracy": 0.8858695652173914,
+      "link_recall": 0.6666666666666666,
+      "link_precision": 0.9166666666666666,
+      "alias_recall": 1.0,
+      "alias_precision": 1.0,
+      "required_aliases": 3,
+      "new_aliases": 5,
+      "goal_recall": 1.0,
+      "goal_duplicates": 0,
+      "question_duplicates": 0,
+      "judge_inconsistencies": 28,
+      "judge_inconsistency_rate": 0.029978586723768737,
+      "new_memories": 184,
+      "new_links": 12,
+      "required_facts": 164,
+      "batch_p50_ms": 7446.0,
+      "batch_p95_ms": 37367.5,
+      "tokens": {
+        "prompt_tokens": 773291,
+        "completion_tokens": 515599,
+        "reasoning_tokens": 398017
+      },
+      "learning_tokens": {
+        "prompt_tokens": 302199,
+        "completion_tokens": 221343,
+        "reasoning_tokens": 172220
+      },
+      "judge_tokens": {
+        "prompt_tokens": 459201,
+        "completion_tokens": 294256,
+        "reasoning_tokens": 225797
+      },
+      "embedding_tokens": {
+        "prompt_tokens": 11891,
+        "completion_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "learning_tokens_per_1000_messages": 532055,
+      "tokens_per_1000_messages": 1309848,
+      "estimated_cost": null
+    }
+  },
+  "previous": {
+    "path": "learning-20260929T050816017261Z-dev.json",
+    "metrics": {
+      "dev": {
+        "cases": 10,
+        "batches": 15,
+        "messages": 136,
+        "parse_direct": 1.0,
+        "parse_quote_repaired": 2,
+        "parse_repaired": 0.0,
+        "parse_total": 1.0,
+        "length_truncated_batches": 0,
+        "length_truncated_calls": 0,
+        "judge_length_truncated_calls": 2,
+        "learning_timeout_calls": 1,
+        "learning_call_p95_ms": 98848.8,
+        "learning_call_max_ms": 120013,
+        "learning_max_completion_tokens": 8152,
+        "precision": 0.925,
+        "fact_recall": 0.7857142857142857,
+        "false_memory_rate": 0.0,
+        "evidence_accuracy": 0.95,
+        "attribution_accuracy": 0.875,
+        "link_recall": 0.6,
+        "link_precision": 1.0,
+        "alias_recall": 0.6666666666666666,
+        "alias_precision": 1.0,
+        "required_aliases": 3,
+        "new_aliases": 2,
+        "goal_recall": 1.0,
+        "goal_duplicates": 0,
+        "question_duplicates": 0,
+        "judge_inconsistencies": 7,
+        "judge_inconsistency_rate": 0.035175879396984924,
+        "new_memories": 40,
+        "new_links": 3,
+        "required_facts": 28,
+        "batch_p50_ms": 12447.0,
+        "batch_p95_ms": 106996.8,
+        "tokens": {
+          "prompt_tokens": 139292,
+          "completion_tokens": 111699,
+          "reasoning_tokens": 75698
+        },
+        "learning_tokens": {
+          "prompt_tokens": 33473,
+          "completion_tokens": 50941,
+          "reasoning_tokens": 37796
+        },
+        "judge_tokens": {
+          "prompt_tokens": 103202,
+          "completion_tokens": 60758,
+          "reasoning_tokens": 37902
+        },
+        "embedding_tokens": {
+          "prompt_tokens": 2617,
+          "completion_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        "learning_tokens_per_1000_messages": 620691,
+        "tokens_per_1000_messages": 1845522,
+        "estimated_cost": null
+      },
+      "all": {
+        "cases": 10,
+        "batches": 15,
+        "messages": 136,
+        "parse_direct": 1.0,
+        "parse_quote_repaired": 2,
+        "parse_repaired": 0.0,
+        "parse_total": 1.0,
+        "length_truncated_batches": 0,
+        "length_truncated_calls": 0,
+        "judge_length_truncated_calls": 2,
+        "learning_timeout_calls": 1,
+        "learning_call_p95_ms": 98848.8,
+        "learning_call_max_ms": 120013,
+        "learning_max_completion_tokens": 8152,
+        "precision": 0.925,
+        "fact_recall": 0.7857142857142857,
+        "false_memory_rate": 0.0,
+        "evidence_accuracy": 0.95,
+        "attribution_accuracy": 0.875,
+        "link_recall": 0.6,
+        "link_precision": 1.0,
+        "alias_recall": 0.6666666666666666,
+        "alias_precision": 1.0,
+        "required_aliases": 3,
+        "new_aliases": 2,
+        "goal_recall": 1.0,
+        "goal_duplicates": 0,
+        "question_duplicates": 0,
+        "judge_inconsistencies": 7,
+        "judge_inconsistency_rate": 0.035175879396984924,
+        "new_memories": 40,
+        "new_links": 3,
+        "required_facts": 28,
+        "batch_p50_ms": 12447.0,
+        "batch_p95_ms": 106996.8,
+        "tokens": {
+          "prompt_tokens": 139292,
+          "completion_tokens": 111699,
+          "reasoning_tokens": 75698
+        },
+        "learning_tokens": {
+          "prompt_tokens": 33473,
+          "completion_tokens": 50941,
+          "reasoning_tokens": 37796
+        },
+        "judge_tokens": {
+          "prompt_tokens": 103202,
+          "completion_tokens": 60758,
+          "reasoning_tokens": 37902
+        },
+        "embedding_tokens": {
+          "prompt_tokens": 2617,
+          "completion_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        "learning_tokens_per_1000_messages": 620691,
+        "tokens_per_1000_messages": 1845522,
+        "estimated_cost": null
+      }
+    },
+    "corpus": {
+      "cases": 10,
+      "messages": 136,
+      "must": 28,
+      "sha256": "1c96c8ac07ac7971f2c107ae8e8a10e943859d6275c088ad130f315fba07f28f"
+    },
+    "scoring_version": "scoring_v3"
+  },
+  "judge_inconsistencies": [
+    {
+      "case": "L007",
+      "item": "memory",
+      "id": 1,
+      "field": "evidence_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L007",
+      "item": "fact_covered",
+      "index": 1,
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L009",
+      "item": "memory",
+      "id": 1,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L030",
+      "item": "memory",
+      "id": 1,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L030",
+      "item": "fact_covered",
+      "index": 1,
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "L032",
+      "item": "memory",
+      "id": 2,
+      "field": "correct_worth",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L032",
+      "item": "memory",
+      "id": 2,
+      "field": "evidence_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "L034",
+      "item": "memory",
+      "id": 1,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V003",
+      "item": "memory",
+      "id": 3,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V004",
+      "item": "memory",
+      "id": 2,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V006",
+      "item": "memory",
+      "id": 1,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V008",
+      "item": "memory",
+      "id": 1,
+      "field": "attribution_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "V008",
+      "item": "fact_covered",
+      "index": 1,
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "V009",
+      "item": "memory",
+      "id": 2,
+      "field": "attribution_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "V009",
+      "item": "fact_covered",
+      "index": 4,
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "V025",
+      "item": "fact_covered",
+      "index": 4,
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V027",
+      "item": "memory",
+      "id": 1,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V034",
+      "item": "memory",
+      "id": 4,
+      "field": "evidence_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "V035",
+      "item": "fact_covered",
+      "index": 3,
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V036",
+      "item": "memory",
+      "id": 3,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "V036",
+      "item": "memory",
+      "id": 3,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "F001",
+      "item": "memory",
+      "id": 1,
+      "field": "evidence_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "F001",
+      "item": "memory",
+      "id": 2,
+      "field": "evidence_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "F001",
+      "item": "memory",
+      "id": 2,
+      "field": "attribution_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "F001",
+      "item": "memory",
+      "id": 3,
+      "field": "evidence_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "F002",
+      "item": "fact_covered",
+      "index": 3,
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "F007",
+      "item": "memory",
+      "id": 4,
+      "field": "attribution_correct",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "F009",
+      "item": "memory",
+      "id": 5,
+      "field": "evidence_correct",
+      "first": true,
+      "second": false,
+      "scored": false
+    }
+  ],
+  "parse_failures": [],
+  "generation_calls": [
+    {
+      "case": "L001",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 861,
+      "duration_ms": 3868,
+      "result_category": "success"
+    },
+    {
+      "case": "L001",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1086,
+      "duration_ms": 4867,
+      "result_category": "success"
+    },
+    {
+      "case": "L001",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 927,
+      "duration_ms": 4237,
+      "result_category": "success"
+    },
+    {
+      "case": "L002",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 885,
+      "duration_ms": 17422,
+      "result_category": "success"
+    },
+    {
+      "case": "L002",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 462,
+      "duration_ms": 4244,
+      "result_category": "success"
+    },
+    {
+      "case": "L002",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 623,
+      "duration_ms": 4752,
+      "result_category": "success"
+    },
+    {
+      "case": "L003",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1000,
+      "duration_ms": 8138,
+      "result_category": "success"
+    },
+    {
+      "case": "L003",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 477,
+      "duration_ms": 2297,
+      "result_category": "success"
+    },
+    {
+      "case": "L003",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 630,
+      "duration_ms": 3608,
+      "result_category": "success"
+    },
+    {
+      "case": "L004",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1906,
+      "duration_ms": 9141,
+      "result_category": "success"
+    },
+    {
+      "case": "L004",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 573,
+      "duration_ms": 2886,
+      "result_category": "success"
+    },
+    {
+      "case": "L004",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 538,
+      "duration_ms": 2293,
+      "result_category": "success"
+    },
+    {
+      "case": "L005",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 767,
+      "duration_ms": 10757,
+      "result_category": "success"
+    },
+    {
+      "case": "L005",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 574,
+      "duration_ms": 3508,
+      "result_category": "success"
+    },
+    {
+      "case": "L005",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 564,
+      "duration_ms": 3474,
+      "result_category": "success"
+    },
+    {
+      "case": "L006",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3835,
+      "duration_ms": 17157,
+      "result_category": "success"
+    },
+    {
+      "case": "L006",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 4082,
+      "duration_ms": 20662,
+      "result_category": "success"
+    },
+    {
+      "case": "L006",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1893,
+      "duration_ms": 9298,
+      "result_category": "success"
+    },
+    {
+      "case": "L007",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 4240,
+      "duration_ms": 21167,
+      "result_category": "success"
+    },
+    {
+      "case": "L007",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 5723,
+      "duration_ms": 22762,
+      "result_category": "success"
+    },
+    {
+      "case": "L007",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 4245,
+      "duration_ms": 19575,
+      "result_category": "success"
+    },
+    {
+      "case": "L008",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 696,
+      "duration_ms": 2951,
+      "result_category": "success"
+    },
+    {
+      "case": "L008",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 4505,
+      "duration_ms": 16152,
+      "result_category": "success"
+    },
+    {
+      "case": "L008",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 662,
+      "duration_ms": 2595,
+      "result_category": "success"
+    },
+    {
+      "case": "L009",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1262,
+      "duration_ms": 4832,
+      "result_category": "success"
+    },
+    {
+      "case": "L009",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 791,
+      "duration_ms": 7126,
+      "result_category": "success"
+    },
+    {
+      "case": "L009",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1996,
+      "duration_ms": 24428,
+      "result_category": "success"
+    },
+    {
+      "case": "L010",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3203,
+      "duration_ms": 13814,
+      "result_category": "success"
+    },
+    {
+      "case": "L010",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1084,
+      "duration_ms": 7077,
+      "result_category": "success"
+    },
+    {
+      "case": "L010",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 847,
+      "duration_ms": 4424,
+      "result_category": "success"
+    },
+    {
+      "case": "L011",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 120,
+      "duration_ms": 2125,
+      "result_category": "success"
+    },
+    {
+      "case": "L011",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 164,
+      "duration_ms": 1207,
+      "result_category": "success"
+    },
+    {
+      "case": "L011",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 233,
+      "duration_ms": 1484,
+      "result_category": "success"
+    },
+    {
+      "case": "L012",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3172,
+      "duration_ms": 38931,
+      "result_category": "success"
+    },
+    {
+      "case": "L012",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1313,
+      "duration_ms": 8269,
+      "result_category": "success"
+    },
+    {
+      "case": "L012",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2662,
+      "duration_ms": 14975,
+      "result_category": "success"
+    },
+    {
+      "case": "L013",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2644,
+      "duration_ms": 13624,
+      "result_category": "success"
+    },
+    {
+      "case": "L013",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 434,
+      "duration_ms": 2605,
+      "result_category": "success"
+    },
+    {
+      "case": "L013",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 888,
+      "duration_ms": 4178,
+      "result_category": "success"
+    },
+    {
+      "case": "L013",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 8418,
+      "duration_ms": 37824,
+      "result_category": "success"
+    },
+    {
+      "case": "L014",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2157,
+      "duration_ms": 9488,
+      "result_category": "success"
+    },
+    {
+      "case": "L014",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 922,
+      "duration_ms": 4512,
+      "result_category": "success"
+    },
+    {
+      "case": "L014",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 573,
+      "duration_ms": 7362,
+      "result_category": "success"
+    },
+    {
+      "case": "L014",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1275,
+      "duration_ms": 14417,
+      "result_category": "success"
+    },
+    {
+      "case": "L015",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1903,
+      "duration_ms": 11041,
+      "result_category": "success"
+    },
+    {
+      "case": "L015",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1696,
+      "duration_ms": 7607,
+      "result_category": "success"
+    },
+    {
+      "case": "L015",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1173,
+      "duration_ms": 5113,
+      "result_category": "success"
+    },
+    {
+      "case": "L016",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 308,
+      "duration_ms": 1974,
+      "result_category": "success"
+    },
+    {
+      "case": "L016",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 714,
+      "duration_ms": 2653,
+      "result_category": "success"
+    },
+    {
+      "case": "L016",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 599,
+      "duration_ms": 4023,
+      "result_category": "success"
+    },
+    {
+      "case": "L017",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2045,
+      "duration_ms": 10055,
+      "result_category": "success"
+    },
+    {
+      "case": "L017",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1841,
+      "duration_ms": 9032,
+      "result_category": "success"
+    },
+    {
+      "case": "L017",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 710,
+      "duration_ms": 4063,
+      "result_category": "success"
+    },
+    {
+      "case": "L017",
+      "purpose": "learning_judge_repair",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 74,
+      "duration_ms": 2421,
+      "result_category": "success"
+    },
+    {
+      "case": "L018",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 863,
+      "duration_ms": 5223,
+      "result_category": "success"
+    },
+    {
+      "case": "L018",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 746,
+      "duration_ms": 3637,
+      "result_category": "success"
+    },
+    {
+      "case": "L018",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1044,
+      "duration_ms": 4749,
+      "result_category": "success"
+    },
+    {
+      "case": "L019",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 4628,
+      "duration_ms": 21275,
+      "result_category": "success"
+    },
+    {
+      "case": "L019",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1760,
+      "duration_ms": 7122,
+      "result_category": "success"
+    },
+    {
+      "case": "L019",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1691,
+      "duration_ms": 8381,
+      "result_category": "success"
+    },
+    {
+      "case": "L020",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2823,
+      "duration_ms": 12474,
+      "result_category": "success"
+    },
+    {
+      "case": "L020",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2769,
+      "duration_ms": 49766,
+      "result_category": "success"
+    },
+    {
+      "case": "L020",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 939,
+      "duration_ms": 10417,
+      "result_category": "success"
+    },
+    {
+      "case": "L021",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2233,
+      "duration_ms": 36803,
+      "result_category": "success"
+    },
+    {
+      "case": "L021",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1122,
+      "duration_ms": 6016,
+      "result_category": "success"
+    },
+    {
+      "case": "L021",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1246,
+      "duration_ms": 5055,
+      "result_category": "success"
+    },
+    {
+      "case": "L022",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 792,
+      "duration_ms": 4120,
+      "result_category": "success"
+    },
+    {
+      "case": "L022",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 603,
+      "duration_ms": 6787,
+      "result_category": "success"
+    },
+    {
+      "case": "L022",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 745,
+      "duration_ms": 9693,
+      "result_category": "success"
+    },
+    {
+      "case": "L023",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 406,
+      "duration_ms": 2212,
+      "result_category": "success"
+    },
+    {
+      "case": "L023",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 389,
+      "duration_ms": 1923,
+      "result_category": "success"
+    },
+    {
+      "case": "L023",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 280,
+      "duration_ms": 6938,
+      "result_category": "success"
+    },
+    {
+      "case": "L024",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1990,
+      "duration_ms": 9390,
+      "result_category": "success"
+    },
+    {
+      "case": "L024",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1824,
+      "duration_ms": 8338,
+      "result_category": "success"
+    },
+    {
+      "case": "L024",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1444,
+      "duration_ms": 6334,
+      "result_category": "success"
+    },
+    {
+      "case": "L025",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 773,
+      "duration_ms": 3575,
+      "result_category": "success"
+    },
+    {
+      "case": "L025",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 638,
+      "duration_ms": 3161,
+      "result_category": "success"
+    },
+    {
+      "case": "L025",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 513,
+      "duration_ms": 2106,
+      "result_category": "success"
+    },
+    {
+      "case": "L026",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2065,
+      "duration_ms": 8116,
+      "result_category": "success"
+    },
+    {
+      "case": "L026",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 613,
+      "duration_ms": 2247,
+      "result_category": "success"
+    },
+    {
+      "case": "L026",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 699,
+      "duration_ms": 2422,
+      "result_category": "success"
+    },
+    {
+      "case": "L027",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2471,
+      "duration_ms": 11147,
+      "result_category": "success"
+    },
+    {
+      "case": "L027",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1101,
+      "duration_ms": 4470,
+      "result_category": "success"
+    },
+    {
+      "case": "L027",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 937,
+      "duration_ms": 2957,
+      "result_category": "success"
+    },
+    {
+      "case": "L028",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2183,
+      "duration_ms": 22131,
+      "result_category": "success"
+    },
+    {
+      "case": "L028",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 838,
+      "duration_ms": 10963,
+      "result_category": "success"
+    },
+    {
+      "case": "L028",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 4144,
+      "duration_ms": 56077,
+      "result_category": "success"
+    },
+    {
+      "case": "L028",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1489,
+      "duration_ms": 21233,
+      "result_category": "success"
+    },
+    {
+      "case": "L029",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2338,
+      "duration_ms": 10636,
+      "result_category": "success"
+    },
+    {
+      "case": "L029",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3148,
+      "duration_ms": 15399,
+      "result_category": "success"
+    },
+    {
+      "case": "L029",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3113,
+      "duration_ms": 13254,
+      "result_category": "success"
+    },
+    {
+      "case": "L030",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 628,
+      "duration_ms": 3271,
+      "result_category": "success"
+    },
+    {
+      "case": "L030",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2863,
+      "duration_ms": 12832,
+      "result_category": "success"
+    },
+    {
+      "case": "L030",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2369,
+      "duration_ms": 11593,
+      "result_category": "success"
+    },
+    {
+      "case": "L031",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1545,
+      "duration_ms": 6017,
+      "result_category": "success"
+    },
+    {
+      "case": "L031",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1359,
+      "duration_ms": 6042,
+      "result_category": "success"
+    },
+    {
+      "case": "L031",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2976,
+      "duration_ms": 14329,
+      "result_category": "success"
+    },
+    {
+      "case": "L032",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3916,
+      "duration_ms": 15078,
+      "result_category": "success"
+    },
+    {
+      "case": "L032",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3548,
+      "duration_ms": 50398,
+      "result_category": "success"
+    },
+    {
+      "case": "L032",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3475,
+      "duration_ms": 48689,
+      "result_category": "success"
+    },
+    {
+      "case": "L033",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 222,
+      "duration_ms": 1501,
+      "result_category": "success"
+    },
+    {
+      "case": "L033",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 263,
+      "duration_ms": 1724,
+      "result_category": "success"
+    },
+    {
+      "case": "L033",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 330,
+      "duration_ms": 1576,
+      "result_category": "success"
+    },
+    {
+      "case": "L034",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2155,
+      "duration_ms": 29262,
+      "result_category": "success"
+    },
+    {
+      "case": "L034",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1308,
+      "duration_ms": 6173,
+      "result_category": "success"
+    },
+    {
+      "case": "L034",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3727,
+      "duration_ms": 16324,
+      "result_category": "success"
+    },
+    {
+      "case": "L034",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2582,
+      "duration_ms": 12347,
+      "result_category": "success"
+    },
+    {
+      "case": "L035",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2797,
+      "duration_ms": 12081,
+      "result_category": "success"
+    },
+    {
+      "case": "L035",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1288,
+      "duration_ms": 5117,
+      "result_category": "success"
+    },
+    {
+      "case": "L035",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 11698,
+      "duration_ms": 53279,
+      "result_category": "success"
+    },
+    {
+      "case": "L036",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1368,
+      "duration_ms": 6669,
+      "result_category": "success"
+    },
+    {
+      "case": "L036",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 619,
+      "duration_ms": 2505,
+      "result_category": "success"
+    },
+    {
+      "case": "L036",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 479,
+      "duration_ms": 1932,
+      "result_category": "success"
+    },
+    {
+      "case": "V001",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 866,
+      "duration_ms": 4863,
+      "result_category": "success"
+    },
+    {
+      "case": "V001",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 2510,
+      "duration_ms": 12306,
+      "result_category": "success"
+    },
+    {
+      "case": "V001",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2309,
+      "duration_ms": 30702,
+      "result_category": "success"
+    },
+    {
+      "case": "V001",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2566,
+      "duration_ms": 33078,
+      "result_category": "success"
+    },
+    {
+      "case": "V002",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1037,
+      "duration_ms": 5741,
+      "result_category": "success"
+    },
+    {
+      "case": "V002",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 2151,
+      "duration_ms": 9375,
+      "result_category": "success"
+    },
+    {
+      "case": "V002",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1355,
+      "duration_ms": 5590,
+      "result_category": "success"
+    },
+    {
+      "case": "V002",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1828,
+      "duration_ms": 6773,
+      "result_category": "success"
+    },
+    {
+      "case": "V003",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 887,
+      "duration_ms": 5335,
+      "result_category": "success"
+    },
+    {
+      "case": "V003",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 3367,
+      "duration_ms": 48276,
+      "result_category": "success"
+    },
+    {
+      "case": "V003",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1526,
+      "duration_ms": 7439,
+      "result_category": "success"
+    },
+    {
+      "case": "V003",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2866,
+      "duration_ms": 11303,
+      "result_category": "success"
+    },
+    {
+      "case": "V004",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3672,
+      "duration_ms": 16116,
+      "result_category": "success"
+    },
+    {
+      "case": "V004",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 2407,
+      "duration_ms": 37073,
+      "result_category": "success"
+    },
+    {
+      "case": "V004",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3884,
+      "duration_ms": 54667,
+      "result_category": "success"
+    },
+    {
+      "case": "V004",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 4535,
+      "duration_ms": 64804,
+      "result_category": "success"
+    },
+    {
+      "case": "V005",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1151,
+      "duration_ms": 16398,
+      "result_category": "success"
+    },
+    {
+      "case": "V005",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 3013,
+      "duration_ms": 10479,
+      "result_category": "success"
+    },
+    {
+      "case": "V005",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 709,
+      "duration_ms": 7725,
+      "result_category": "success"
+    },
+    {
+      "case": "V005",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1081,
+      "duration_ms": 11152,
+      "result_category": "success"
+    },
+    {
+      "case": "V006",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 575,
+      "duration_ms": 3151,
+      "result_category": "success"
+    },
+    {
+      "case": "V006",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1412,
+      "duration_ms": 19022,
+      "result_category": "success"
+    },
+    {
+      "case": "V006",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3986,
+      "duration_ms": 11232,
+      "result_category": "success"
+    },
+    {
+      "case": "V006",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1298,
+      "duration_ms": 3944,
+      "result_category": "success"
+    },
+    {
+      "case": "V007",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2772,
+      "duration_ms": 10388,
+      "result_category": "success"
+    },
+    {
+      "case": "V007",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1153,
+      "duration_ms": 4980,
+      "result_category": "success"
+    },
+    {
+      "case": "V007",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1543,
+      "duration_ms": 15218,
+      "result_category": "success"
+    },
+    {
+      "case": "V007",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1534,
+      "duration_ms": 12582,
+      "result_category": "success"
+    },
+    {
+      "case": "V008",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1585,
+      "duration_ms": 22654,
+      "result_category": "success"
+    },
+    {
+      "case": "V008",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1251,
+      "duration_ms": 4673,
+      "result_category": "success"
+    },
+    {
+      "case": "V008",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2560,
+      "duration_ms": 9705,
+      "result_category": "success"
+    },
+    {
+      "case": "V008",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 4648,
+      "duration_ms": 19300,
+      "result_category": "success"
+    },
+    {
+      "case": "V009",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 610,
+      "duration_ms": 2327,
+      "result_category": "success"
+    },
+    {
+      "case": "V009",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1328,
+      "duration_ms": 5004,
+      "result_category": "success"
+    },
+    {
+      "case": "V009",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1870,
+      "duration_ms": 26708,
+      "result_category": "success"
+    },
+    {
+      "case": "V009",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1815,
+      "duration_ms": 19163,
+      "result_category": "success"
+    },
+    {
+      "case": "V010",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1470,
+      "duration_ms": 6461,
+      "result_category": "success"
+    },
+    {
+      "case": "V010",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 4234,
+      "duration_ms": 23148,
+      "result_category": "success"
+    },
+    {
+      "case": "V010",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1364,
+      "duration_ms": 7974,
+      "result_category": "success"
+    },
+    {
+      "case": "V010",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1427,
+      "duration_ms": 5865,
+      "result_category": "success"
+    },
+    {
+      "case": "V011",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 998,
+      "duration_ms": 4835,
+      "result_category": "success"
+    },
+    {
+      "case": "V011",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 2224,
+      "duration_ms": 8273,
+      "result_category": "success"
+    },
+    {
+      "case": "V011",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 859,
+      "duration_ms": 4277,
+      "result_category": "success"
+    },
+    {
+      "case": "V011",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 664,
+      "duration_ms": 2865,
+      "result_category": "success"
+    },
+    {
+      "case": "V012",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1072,
+      "duration_ms": 4690,
+      "result_category": "success"
+    },
+    {
+      "case": "V012",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 2453,
+      "duration_ms": 47272,
+      "result_category": "success"
+    },
+    {
+      "case": "V012",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 447,
+      "duration_ms": 1980,
+      "result_category": "success"
+    },
+    {
+      "case": "V012",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 526,
+      "duration_ms": 2396,
+      "result_category": "success"
+    },
+    {
+      "case": "V021",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 571,
+      "duration_ms": 2728,
+      "result_category": "success"
+    },
+    {
+      "case": "V021",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 2445,
+      "duration_ms": 11092,
+      "result_category": "success"
+    },
+    {
+      "case": "V021",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 880,
+      "duration_ms": 4161,
+      "result_category": "success"
+    },
+    {
+      "case": "V021",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1197,
+      "duration_ms": 6324,
+      "result_category": "success"
+    },
+    {
+      "case": "V021",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1005,
+      "duration_ms": 5346,
+      "result_category": "success"
+    },
+    {
+      "case": "V022",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1175,
+      "duration_ms": 4550,
+      "result_category": "success"
+    },
+    {
+      "case": "V022",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 2886,
+      "duration_ms": 14992,
+      "result_category": "success"
+    },
+    {
+      "case": "V022",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 844,
+      "duration_ms": 12453,
+      "result_category": "success"
+    },
+    {
+      "case": "V022",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1980,
+      "duration_ms": 24809,
+      "result_category": "success"
+    },
+    {
+      "case": "V022",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1350,
+      "duration_ms": 16589,
+      "result_category": "success"
+    },
+    {
+      "case": "V023",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 514,
+      "duration_ms": 10213,
+      "result_category": "success"
+    },
+    {
+      "case": "V023",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1975,
+      "duration_ms": 7786,
+      "result_category": "success"
+    },
+    {
+      "case": "V023",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 1959,
+      "duration_ms": 7682,
+      "result_category": "success"
+    },
+    {
+      "case": "V023",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2769,
+      "duration_ms": 11954,
+      "result_category": "success"
+    },
+    {
+      "case": "V023",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3207,
+      "duration_ms": 13433,
+      "result_category": "success"
+    },
+    {
+      "case": "V024",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1011,
+      "duration_ms": 5137,
+      "result_category": "success"
+    },
+    {
+      "case": "V024",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1734,
+      "duration_ms": 7361,
+      "result_category": "success"
+    },
+    {
+      "case": "V024",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 537,
+      "duration_ms": 3468,
+      "result_category": "success"
+    },
+    {
+      "case": "V024",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1884,
+      "duration_ms": 23804,
+      "result_category": "success"
+    },
+    {
+      "case": "V024",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 5099,
+      "duration_ms": 60995,
+      "result_category": "success"
+    },
+    {
+      "case": "V025",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 996,
+      "duration_ms": 4620,
+      "result_category": "success"
+    },
+    {
+      "case": "V025",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1341,
+      "duration_ms": 12434,
+      "result_category": "success"
+    },
+    {
+      "case": "V025",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 1662,
+      "duration_ms": 6690,
+      "result_category": "success"
+    },
+    {
+      "case": "V025",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1485,
+      "duration_ms": 6168,
+      "result_category": "success"
+    },
+    {
+      "case": "V025",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1308,
+      "duration_ms": 6377,
+      "result_category": "success"
+    },
+    {
+      "case": "V026",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1211,
+      "duration_ms": 5130,
+      "result_category": "success"
+    },
+    {
+      "case": "V026",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1325,
+      "duration_ms": 4218,
+      "result_category": "success"
+    },
+    {
+      "case": "V026",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 1375,
+      "duration_ms": 4857,
+      "result_category": "success"
+    },
+    {
+      "case": "V026",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 920,
+      "duration_ms": 10479,
+      "result_category": "success"
+    },
+    {
+      "case": "V026",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1078,
+      "duration_ms": 11437,
+      "result_category": "success"
+    },
+    {
+      "case": "V027",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1255,
+      "duration_ms": 4946,
+      "result_category": "success"
+    },
+    {
+      "case": "V027",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1026,
+      "duration_ms": 8379,
+      "result_category": "success"
+    },
+    {
+      "case": "V027",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 1376,
+      "duration_ms": 6759,
+      "result_category": "success"
+    },
+    {
+      "case": "V027",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1809,
+      "duration_ms": 19127,
+      "result_category": "success"
+    },
+    {
+      "case": "V027",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2874,
+      "duration_ms": 16372,
+      "result_category": "success"
+    },
+    {
+      "case": "V028",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 733,
+      "duration_ms": 3224,
+      "result_category": "success"
+    },
+    {
+      "case": "V028",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1192,
+      "duration_ms": 3771,
+      "result_category": "success"
+    },
+    {
+      "case": "V028",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 1210,
+      "duration_ms": 4876,
+      "result_category": "success"
+    },
+    {
+      "case": "V028",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3039,
+      "duration_ms": 41538,
+      "result_category": "success"
+    },
+    {
+      "case": "V028",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2100,
+      "duration_ms": 24485,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 204,
+      "duration_ms": 4607,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 437,
+      "duration_ms": 2735,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 225,
+      "duration_ms": 4320,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning",
+      "batch_id": 4,
+      "finish_reason": "stop",
+      "completion_tokens": 890,
+      "duration_ms": 4753,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning",
+      "batch_id": 5,
+      "finish_reason": "stop",
+      "completion_tokens": 248,
+      "duration_ms": 8542,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning",
+      "batch_id": 6,
+      "finish_reason": "stop",
+      "completion_tokens": 657,
+      "duration_ms": 9987,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning",
+      "batch_id": 7,
+      "finish_reason": "stop",
+      "completion_tokens": 359,
+      "duration_ms": 2250,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning",
+      "batch_id": 8,
+      "finish_reason": "stop",
+      "completion_tokens": 191,
+      "duration_ms": 1319,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning",
+      "batch_id": 9,
+      "finish_reason": "stop",
+      "completion_tokens": 690,
+      "duration_ms": 3432,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 931,
+      "duration_ms": 3503,
+      "result_category": "success"
+    },
+    {
+      "case": "V033",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2351,
+      "duration_ms": 10948,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 280,
+      "duration_ms": 2269,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 375,
+      "duration_ms": 10138,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 439,
+      "duration_ms": 2251,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning",
+      "batch_id": 4,
+      "finish_reason": "stop",
+      "completion_tokens": 469,
+      "duration_ms": 2864,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning",
+      "batch_id": 5,
+      "finish_reason": "stop",
+      "completion_tokens": 341,
+      "duration_ms": 6393,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning",
+      "batch_id": 6,
+      "finish_reason": "stop",
+      "completion_tokens": 596,
+      "duration_ms": 8072,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning",
+      "batch_id": 7,
+      "finish_reason": "stop",
+      "completion_tokens": 1072,
+      "duration_ms": 21742,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning",
+      "batch_id": 8,
+      "finish_reason": "stop",
+      "completion_tokens": 537,
+      "duration_ms": 3880,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning",
+      "batch_id": 9,
+      "finish_reason": "stop",
+      "completion_tokens": 3740,
+      "duration_ms": 16499,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3399,
+      "duration_ms": 14215,
+      "result_category": "success"
+    },
+    {
+      "case": "V034",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3326,
+      "duration_ms": 10356,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 382,
+      "duration_ms": 2026,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1008,
+      "duration_ms": 4983,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 257,
+      "duration_ms": 5449,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning",
+      "batch_id": 4,
+      "finish_reason": "stop",
+      "completion_tokens": 2271,
+      "duration_ms": 10938,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning",
+      "batch_id": 5,
+      "finish_reason": "stop",
+      "completion_tokens": 419,
+      "duration_ms": 2085,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning",
+      "batch_id": 6,
+      "finish_reason": "stop",
+      "completion_tokens": 1759,
+      "duration_ms": 8277,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning",
+      "batch_id": 7,
+      "finish_reason": "stop",
+      "completion_tokens": 741,
+      "duration_ms": 10836,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning",
+      "batch_id": 8,
+      "finish_reason": "stop",
+      "completion_tokens": 393,
+      "duration_ms": 4072,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning",
+      "batch_id": 9,
+      "finish_reason": "stop",
+      "completion_tokens": 846,
+      "duration_ms": 4060,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 5472,
+      "duration_ms": 21127,
+      "result_category": "success"
+    },
+    {
+      "case": "V035",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 6676,
+      "duration_ms": 28872,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 195,
+      "duration_ms": 1450,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1490,
+      "duration_ms": 21639,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 190,
+      "duration_ms": 3138,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning",
+      "batch_id": 4,
+      "finish_reason": "stop",
+      "completion_tokens": 810,
+      "duration_ms": 4036,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning",
+      "batch_id": 5,
+      "finish_reason": "stop",
+      "completion_tokens": 324,
+      "duration_ms": 6206,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning",
+      "batch_id": 6,
+      "finish_reason": "stop",
+      "completion_tokens": 693,
+      "duration_ms": 3349,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning",
+      "batch_id": 7,
+      "finish_reason": "stop",
+      "completion_tokens": 375,
+      "duration_ms": 2218,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning",
+      "batch_id": 8,
+      "finish_reason": "stop",
+      "completion_tokens": 639,
+      "duration_ms": 12821,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning",
+      "batch_id": 9,
+      "finish_reason": "stop",
+      "completion_tokens": 1139,
+      "duration_ms": 5941,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3457,
+      "duration_ms": 14341,
+      "result_category": "success"
+    },
+    {
+      "case": "V036",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2567,
+      "duration_ms": 10337,
+      "result_category": "success"
+    },
+    {
+      "case": "F001",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 9343,
+      "duration_ms": 39760,
+      "result_category": "success"
+    },
+    {
+      "case": "F001",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 7157,
+      "duration_ms": 27865,
+      "result_category": "success"
+    },
+    {
+      "case": "F001",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3695,
+      "duration_ms": 18471,
+      "result_category": "success"
+    },
+    {
+      "case": "F002",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3133,
+      "duration_ms": 12843,
+      "result_category": "success"
+    },
+    {
+      "case": "F002",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1420,
+      "duration_ms": 7569,
+      "result_category": "success"
+    },
+    {
+      "case": "F002",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2380,
+      "duration_ms": 32762,
+      "result_category": "success"
+    },
+    {
+      "case": "F002",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2184,
+      "duration_ms": 27430,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1251,
+      "duration_ms": 4836,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 2144,
+      "duration_ms": 8225,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 1271,
+      "duration_ms": 8140,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1326,
+      "duration_ms": 22879,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1760,
+      "duration_ms": 30823,
+      "result_category": "success"
+    },
+    {
+      "case": "F004",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2394,
+      "duration_ms": 10028,
+      "result_category": "success"
+    },
+    {
+      "case": "F004",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2030,
+      "duration_ms": 8486,
+      "result_category": "success"
+    },
+    {
+      "case": "F004",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 4639,
+      "duration_ms": 20185,
+      "result_category": "success"
+    },
+    {
+      "case": "F005",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 5655,
+      "duration_ms": 23798,
+      "result_category": "success"
+    },
+    {
+      "case": "F005",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1547,
+      "duration_ms": 6710,
+      "result_category": "success"
+    },
+    {
+      "case": "F005",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2521,
+      "duration_ms": 10049,
+      "result_category": "success"
+    },
+    {
+      "case": "F006",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3666,
+      "duration_ms": 44690,
+      "result_category": "success"
+    },
+    {
+      "case": "F006",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1989,
+      "duration_ms": 9882,
+      "result_category": "success"
+    },
+    {
+      "case": "F006",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1123,
+      "duration_ms": 5846,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1631,
+      "duration_ms": 6580,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 3525,
+      "duration_ms": 15107,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 412,
+      "duration_ms": 2614,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 6465,
+      "duration_ms": 25493,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3620,
+      "duration_ms": 15541,
+      "result_category": "success"
+    },
+    {
+      "case": "F008",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 5525,
+      "duration_ms": 21403,
+      "result_category": "success"
+    },
+    {
+      "case": "F008",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3681,
+      "duration_ms": 14661,
+      "result_category": "success"
+    },
+    {
+      "case": "F008",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3870,
+      "duration_ms": 13876,
+      "result_category": "success"
+    },
+    {
+      "case": "F009",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 5236,
+      "duration_ms": 23365,
+      "result_category": "success"
+    },
+    {
+      "case": "F009",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2030,
+      "duration_ms": 7236,
+      "result_category": "success"
+    },
+    {
+      "case": "F009",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3829,
+      "duration_ms": 13597,
+      "result_category": "success"
+    },
+    {
+      "case": "F010",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 2923,
+      "duration_ms": 52520,
+      "result_category": "success"
+    },
+    {
+      "case": "F010",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1543,
+      "duration_ms": 6097,
+      "result_category": "success"
+    },
+    {
+      "case": "F010",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3196,
+      "duration_ms": 12172,
+      "result_category": "success"
+    }
+  ],
+  "spot_check": [
+    {
+      "id": "V011",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "小卓正在开发视障人士使用的公交提醒工具",
+          "speaker": "小卓",
+          "about": [
+            "小卓"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "小卓有三年无障碍测试经历",
+          "speaker": "小卓",
+          "about": [
+            "小卓"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "小卓认为语音提示应该简短且少打断用户",
+          "speaker": "小卓",
+          "about": [
+            "小卓"
+          ],
+          "about_optional": [],
+          "stance": "观点"
+        },
+        {
+          "fact": "小卓计划下周请朋友试用公交提醒工具",
+          "speaker": "小卓",
+          "about": [
+            "小卓"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "IDE 刚卡住"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "P1 小卓正在做一个给视障朋友用的公交提醒小工具",
+          "stance": "亲历",
+          "belief": 80,
+          "speaker_subject_id": "03000296f44647c5b19ff781ddab0624",
+          "speaker": "小卓",
+          "about": [
+            "小卓"
+          ],
+          "about_subject_ids": [
+            "03000296f44647c5b19ff781ddab0624"
+          ],
+          "evidence": [
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "我在做给视障朋友用的公交提醒小工具。",
+              "occurred_at": "2026-10-12T18:04:00+08:00",
+              "entry_id": "V011",
+              "quote_content": null,
+              "sender_subject_id": "03000296f44647c5b19ff781ddab0624",
+              "quote_author_subject_id": null,
+              "sender": "小卓",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "P1 小卓以前做过三年无障碍测试",
+          "stance": "亲历",
+          "belief": 80,
+          "speaker_subject_id": "03000296f44647c5b19ff781ddab0624",
+          "speaker": "小卓",
+          "about": [
+            "小卓"
+          ],
+          "about_subject_ids": [
+            "03000296f44647c5b19ff781ddab0624"
+          ],
+          "evidence": [
+            {
+              "id": 8,
+              "kind": "message",
+              "content": "我以前做过三年无障碍测试。",
+              "occurred_at": "2026-10-12T18:14:00+08:00",
+              "entry_id": "V011",
+              "quote_content": null,
+              "sender_subject_id": "03000296f44647c5b19ff781ddab0624",
+              "quote_author_subject_id": null,
+              "sender": "小卓",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "P1 小卓计划下周找几个朋友试用公交提醒小工具的第一版",
+          "stance": "亲历",
+          "belief": 80,
+          "speaker_subject_id": "03000296f44647c5b19ff781ddab0624",
+          "speaker": "小卓",
+          "about": [
+            "小卓"
+          ],
+          "about_subject_ids": [
+            "03000296f44647c5b19ff781ddab0624"
+          ],
+          "evidence": [
+            {
+              "id": 17,
+              "kind": "message",
+              "content": "下周会找几个朋友试用第一版。",
+              "occurred_at": "2026-10-12T18:32:00+08:00",
+              "entry_id": "V011",
+              "quote_content": null,
+              "sender_subject_id": "03000296f44647c5b19ff781ddab0624",
+              "quote_author_subject_id": null,
+              "sender": "小卓",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "content": "P1 小卓认为公交提醒小工具的语音提示应该短一点，不能一直打断人",
+          "stance": "观点",
+          "belief": 75,
+          "speaker_subject_id": "03000296f44647c5b19ff781ddab0624",
+          "speaker": "小卓",
+          "about": [
+            "小卓"
+          ],
+          "about_subject_ids": [
+            "03000296f44647c5b19ff781ddab0624"
+          ],
+          "evidence": [
+            {
+              "id": 13,
+              "kind": "message",
+              "content": "我觉得语音提示应该短一点，不能一直打断人。",
+              "occurred_at": "2026-10-12T18:24:00+08:00",
+              "entry_id": "V011",
+              "quote_content": null,
+              "sender_subject_id": "03000296f44647c5b19ff781ddab0624",
+              "quote_author_subject_id": null,
+              "sender": "小卓",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 4,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      },
+      "links": [],
+      "subjects": [
+        {
+          "id": "03000296f44647c5b19ff781ddab0624",
+          "name": "小卓",
+          "account_id": "V011:小卓",
+          "aliases": []
+        },
+        {
+          "id": "scene",
+          "name": "场景",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "self",
+          "name": "我",
+          "account_id": null,
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "id": "F009",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "我认为《慢河》结尾不替人物做决定，留白处理得好",
+          "speaker": "我",
+          "about": [
+            "我"
+          ],
+          "about_optional": [],
+          "stance": "观点"
+        },
+        {
+          "fact": "程墨认为《慢河》最后两集浪费铺垫，并评价编剧不负责，这是程墨自己的看法",
+          "speaker": "程墨",
+          "about": [
+            "程墨"
+          ],
+          "about_optional": [],
+          "stance": "观点"
+        },
+        {
+          "fact": "程墨一直喜欢慢节奏的剧，但不喜欢故意留坑",
+          "speaker": "程墨",
+          "about": [
+            "程墨"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "我偏爱开放式结局",
+          "speaker": "我",
+          "about": [
+            "我"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "《慢河》编剧不负责",
+        "《慢河》最后两集浪费铺垫",
+        "我今天有点困"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "P1 程墨请求不要把他对《慢河》编剧的批评说成大家的结论，这是他个人的气话也是他的看法",
+          "stance": "亲历",
+          "belief": 95,
+          "speaker_subject_id": "22b614d8a5944e28a6a9d74b8d117752",
+          "speaker": "程墨",
+          "about": [
+            "程墨",
+            "我"
+          ],
+          "about_subject_ids": [
+            "22b614d8a5944e28a6a9d74b8d117752",
+            "self"
+          ],
+          "evidence": [
+            {
+              "id": 10,
+              "kind": "message",
+              "content": "但别把我对编剧的评价说成大家的结论，这是我的气话也是我的看法。",
+              "occurred_at": "2026-10-10T16:09:00+08:00",
+              "entry_id": "F009",
+              "quote_content": null,
+              "sender_subject_id": "22b614d8a5944e28a6a9d74b8d117752",
+              "quote_author_subject_id": null,
+              "sender": "程墨",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "我偏爱开放式结局，喜欢一直琢磨人物后来的生活",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "self",
+          "speaker": "我",
+          "about": [
+            "我"
+          ],
+          "about_subject_ids": [
+            "self"
+          ],
+          "evidence": [
+            {
+              "id": 6,
+              "kind": "self_output",
+              "content": "我自己偏爱开放式结局，能一直琢磨人物后来的生活。",
+              "occurred_at": "2026-10-10T16:05:00+08:00",
+              "entry_id": "F009",
+              "quote_content": null,
+              "sender_subject_id": "self",
+              "quote_author_subject_id": null,
+              "sender": "我",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "P1 程墨一直喜欢节奏慢的剧，但不喜欢故意留坑不填",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "22b614d8a5944e28a6a9d74b8d117752",
+          "speaker": "程墨",
+          "about": [
+            "程墨"
+          ],
+          "about_subject_ids": [
+            "22b614d8a5944e28a6a9d74b8d117752"
+          ],
+          "evidence": [
+            {
+              "id": 5,
+              "kind": "message",
+              "content": "我也不是讨厌慢节奏，我一直喜欢节奏慢的剧，只是不喜欢故意留坑。",
+              "occurred_at": "2026-10-10T16:04:00+08:00",
+              "entry_id": "F009",
+              "quote_content": null,
+              "sender_subject_id": "22b614d8a5944e28a6a9d74b8d117752",
+              "quote_author_subject_id": null,
+              "sender": "程墨",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "content": "我答应会把P1对《慢河》编剧的评价归在P1个人名下，不当作大家结论",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "self",
+          "speaker": "我",
+          "about": [
+            "程墨",
+            "我"
+          ],
+          "about_subject_ids": [
+            "22b614d8a5944e28a6a9d74b8d117752",
+            "self"
+          ],
+          "evidence": [
+            {
+              "id": 10,
+              "kind": "message",
+              "content": "但别把我对编剧的评价说成大家的结论，这是我的气话也是我的看法。",
+              "occurred_at": "2026-10-10T16:09:00+08:00",
+              "entry_id": "F009",
+              "quote_content": null,
+              "sender_subject_id": "22b614d8a5944e28a6a9d74b8d117752",
+              "quote_author_subject_id": null,
+              "sender": "程墨",
+              "quote_author": null
+            },
+            {
+              "id": 11,
+              "kind": "self_output",
+              "content": "我会把它归在你的评价里。",
+              "occurred_at": "2026-10-10T16:10:00+08:00",
+              "entry_id": "F009",
+              "quote_content": null,
+              "sender_subject_id": "self",
+              "quote_author_subject_id": null,
+              "sender": "我",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "content": "P1 程墨和我约好下次聊另一部剧",
+          "stance": "亲历",
+          "belief": 70,
+          "speaker_subject_id": "22b614d8a5944e28a6a9d74b8d117752",
+          "speaker": "程墨",
+          "about": [
+            "程墨",
+            "我"
+          ],
+          "about_subject_ids": [
+            "22b614d8a5944e28a6a9d74b8d117752",
+            "self"
+          ],
+          "evidence": [
+            {
+              "id": 12,
+              "kind": "message",
+              "content": "行，下次换一部聊。",
+              "occurred_at": "2026-10-10T16:11:00+08:00",
+              "entry_id": "F009",
+              "quote_content": null,
+              "sender_subject_id": "22b614d8a5944e28a6a9d74b8d117752",
+              "quote_author_subject_id": null,
+              "sender": "程墨",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 4,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 5,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": false,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          false,
+          false,
+          true,
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      },
+      "links": [],
+      "subjects": [
+        {
+          "id": "22b614d8a5944e28a6a9d74b8d117752",
+          "name": "程墨",
+          "account_id": "F009:程墨",
+          "aliases": []
+        },
+        {
+          "id": "scene",
+          "name": "场景",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "self",
+          "name": "我",
+          "account_id": null,
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "id": "V026",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "阿藤改为周日参加植物交换会",
+          "speaker": "阿藤",
+          "about": [
+            "阿藤"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "小蒲家阳台主要养蕨类植物",
+          "speaker": "小蒲",
+          "about": [
+            "小蒲"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "兰蓝换苗时不喜欢使用一次性塑料盆",
+          "speaker": "兰蓝",
+          "about": [
+            "兰蓝"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿泽计划把种子赠给社区学校",
+          "speaker": "阿泽",
+          "about": [
+            "阿泽"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "雨刚停了"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "植物交换会从周六改到周日，阿藤周日去",
+          "stance": "亲历",
+          "belief": 75,
+          "speaker_subject_id": "97e19f4750904e2d98af748a4afa97b5",
+          "speaker": "阿藤",
+          "about": [
+            "阿藤"
+          ],
+          "about_subject_ids": [
+            "97e19f4750904e2d98af748a4afa97b5"
+          ],
+          "evidence": [
+            {
+              "id": 4,
+              "kind": "message",
+              "content": "我原定周六去植物交换会，已经报名了。",
+              "occurred_at": "2026-10-27T18:06:00+08:00",
+              "entry_id": "V026",
+              "quote_content": null,
+              "sender_subject_id": "97e19f4750904e2d98af748a4afa97b5",
+              "quote_author_subject_id": null,
+              "sender": "阿藤",
+              "quote_author": null
+            },
+            {
+              "id": 24,
+              "kind": "message",
+              "content": "更正一下哈，交换会从周六改到周日，我周日去。",
+              "occurred_at": "2026-10-27T18:46:00+08:00",
+              "entry_id": "V026",
+              "quote_content": null,
+              "sender_subject_id": "97e19f4750904e2d98af748a4afa97b5",
+              "quote_author_subject_id": null,
+              "sender": "阿藤",
+              "quote_author": null
+            },
+            {
+              "id": 28,
+              "kind": "message",
+              "content": "阿藤说的那件事我刚看群公告，确实改周日。",
+              "occurred_at": "2026-10-27T18:54:00+08:00",
+              "entry_id": "V026",
+              "quote_content": null,
+              "sender_subject_id": "9912dcfaf9b741498da549e685ba0d83",
+              "quote_author_subject_id": null,
+              "sender": "禾禾",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "小蒲家阳台主要养蕨类，湿度比较合适",
+          "stance": "亲历",
+          "belief": 80,
+          "speaker_subject_id": "0dc930a9088043ee9f8e79277548bf29",
+          "speaker": "小蒲",
+          "about": [
+            "小蒲"
+          ],
+          "about_subject_ids": [
+            "0dc930a9088043ee9f8e79277548bf29"
+          ],
+          "evidence": [
+            {
+              "id": 13,
+              "kind": "message",
+              "content": "我家阳台主要养蕨类，湿度比较合适。",
+              "occurred_at": "2026-10-27T18:24:00+08:00",
+              "entry_id": "V026",
+              "quote_content": null,
+              "sender_subject_id": "0dc930a9088043ee9f8e79277548bf29",
+              "quote_author_subject_id": null,
+              "sender": "小蒲",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "兰蓝不喜欢用一次性塑料盆，换苗时会带旧盆",
+          "stance": "亲历",
+          "belief": 75,
+          "speaker_subject_id": "bcab0c8f570f4ce1ae848cae105e7aae",
+          "speaker": "兰蓝",
+          "about": [
+            "兰蓝"
+          ],
+          "about_subject_ids": [
+            "bcab0c8f570f4ce1ae848cae105e7aae"
+          ],
+          "evidence": [
+            {
+              "id": 22,
+              "kind": "message",
+              "content": "我不喜欢用一次性塑料盆，换苗会带旧盆。",
+              "occurred_at": "2026-10-27T18:42:00+08:00",
+              "entry_id": "V026",
+              "quote_content": null,
+              "sender_subject_id": "bcab0c8f570f4ce1ae848cae105e7aae",
+              "quote_author_subject_id": null,
+              "sender": "兰蓝",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "content": "阿泽打算把今年收的种子分给社区学校",
+          "stance": "亲历",
+          "belief": 70,
+          "speaker_subject_id": "cb6186d999bf45f1ba36cc77604740c8",
+          "speaker": "阿泽",
+          "about": [
+            "阿泽"
+          ],
+          "about_subject_ids": [
+            "cb6186d999bf45f1ba36cc77604740c8"
+          ],
+          "evidence": [
+            {
+              "id": 30,
+              "kind": "message",
+              "content": "我想把今年收的种子分给社区学校。",
+              "occurred_at": "2026-10-27T18:58:00+08:00",
+              "entry_id": "V026",
+              "quote_content": null,
+              "sender_subject_id": "cb6186d999bf45f1ba36cc77604740c8",
+              "quote_author_subject_id": null,
+              "sender": "阿泽",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 4,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      },
+      "links": [],
+      "subjects": [
+        {
+          "id": "0dc930a9088043ee9f8e79277548bf29",
+          "name": "小蒲",
+          "account_id": "V026:小蒲",
+          "aliases": []
+        },
+        {
+          "id": "97e19f4750904e2d98af748a4afa97b5",
+          "name": "阿藤",
+          "account_id": "V026:阿藤",
+          "aliases": []
+        },
+        {
+          "id": "9912dcfaf9b741498da549e685ba0d83",
+          "name": "禾禾",
+          "account_id": "V026:禾禾",
+          "aliases": []
+        },
+        {
+          "id": "bcab0c8f570f4ce1ae848cae105e7aae",
+          "name": "兰蓝",
+          "account_id": "V026:兰蓝",
+          "aliases": []
+        },
+        {
+          "id": "cb6186d999bf45f1ba36cc77604740c8",
+          "name": "阿泽",
+          "account_id": "V026:阿泽",
+          "aliases": []
+        },
+        {
+          "id": "scene",
+          "name": "场景",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "self",
+          "name": "我",
+          "account_id": null,
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "id": "V035",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "阿墨现实中是牙医",
+          "speaker": "阿墨",
+          "about": [
+            "阿墨"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿墨在游戏里扮演精灵弓手伊诺",
+          "speaker": "阿墨",
+          "about": [
+            "阿墨",
+            "伊诺"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "小森喜欢我先询问 NPC 再行动的游戏方式",
+          "speaker": "小森",
+          "about": [
+            "我"
+          ],
+          "about_optional": [
+            "小森"
+          ],
+          "stance": "观点"
+        },
+        {
+          "fact": "小枫计划下周继续玩这条游戏支线",
+          "speaker": "小枫",
+          "about": [
+            "小枫"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "血条刚掉了一格"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "M1 中扮演精灵弓手伊诺的应为 P6 阿墨（参与者列表中 P2 为小枫）；阿墨本人在 #6 明确说明伊诺是其扮演的虚构游戏角色，不是本人现实身份",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "4125988031f6440bbc5ee6d47b7e6469",
+          "speaker": "阿墨",
+          "about": [
+            "阿墨"
+          ],
+          "about_subject_ids": [
+            "4125988031f6440bbc5ee6d47b7e6469"
+          ],
+          "evidence": [
+            {
+              "id": 5,
+              "kind": "message",
+              "content": "现实我是牙医，游戏里才演精灵弓手伊诺。",
+              "occurred_at": "2026-11-05T18:08:00+08:00",
+              "entry_id": "V035",
+              "quote_content": null,
+              "sender_subject_id": "4125988031f6440bbc5ee6d47b7e6469",
+              "quote_author_subject_id": null,
+              "sender": "阿墨",
+              "quote_author": null
+            },
+            {
+              "id": 14,
+              "kind": "message",
+              "content": "伊诺是我扮演的精灵弓手，不是我本人。",
+              "occurred_at": "2026-11-05T18:26:00+08:00",
+              "entry_id": "V035",
+              "quote_content": null,
+              "sender_subject_id": "4125988031f6440bbc5ee6d47b7e6469",
+              "quote_author_subject_id": null,
+              "sender": "阿墨",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "小森喜欢先与 NPC 对话再采取行动，认为这样故事更顺畅",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "fbf1fee8753c4128a6fbfc1a3887a3ed",
+          "speaker": "小森",
+          "about": [
+            "小森"
+          ],
+          "about_subject_ids": [
+            "fbf1fee8753c4128a6fbfc1a3887a3ed"
+          ],
+          "evidence": [
+            {
+              "id": 23,
+              "kind": "message",
+              "content": "我喜欢你们先问 NPC 再动手，这样故事顺。",
+              "occurred_at": "2026-11-05T18:44:00+08:00",
+              "entry_id": "V035",
+              "quote_content": null,
+              "sender_subject_id": "fbf1fee8753c4128a6fbfc1a3887a3ed",
+              "quote_author_subject_id": null,
+              "sender": "小森",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "小枫计划下周继续推进当前的支线剧情",
+          "stance": "亲历",
+          "belief": 75,
+          "speaker_subject_id": "bbba08fd496c4b47aa260add253de2ba",
+          "speaker": "小枫",
+          "about": [
+            "小枫"
+          ],
+          "about_subject_ids": [
+            "bbba08fd496c4b47aa260add253de2ba"
+          ],
+          "evidence": [
+            {
+              "id": 33,
+              "kind": "message",
+              "content": "我想下周接着打这条支线。",
+              "occurred_at": "2026-11-05T19:04:00+08:00",
+              "entry_id": "V035",
+              "quote_content": null,
+              "sender_subject_id": "bbba08fd496c4b47aa260add253de2ba",
+              "quote_author_subject_id": null,
+              "sender": "小枫",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          false,
+          false,
+          false,
+          true
+        ],
+        "link_covered": [
+          true
+        ],
+        "goal_covered": [],
+        "actual_link_correct": [
+          true
+        ]
+      },
+      "links": [
+        {
+          "kind": "roleplay",
+          "belief": 85,
+          "status": "possible",
+          "a": "阿墨",
+          "b": "伊诺",
+          "subject_a": "4125988031f6440bbc5ee6d47b7e6469",
+          "subject_b": "bc8c563cdca042729d91fd69a1927731",
+          "source_message_id": 5,
+          "evidence_sender_subject_id": "4125988031f6440bbc5ee6d47b7e6469",
+          "evidence_quote_author_subject_id": null,
+          "evidence_quote_content": null,
+          "evidence_content": "现实我是牙医，游戏里才演精灵弓手伊诺。",
+          "evidence_kind": "message"
+        }
+      ],
+      "subjects": [
+        {
+          "id": "091f34fc4ccb4c9d8aa3ad7928cddfc8",
+          "name": "雨晴",
+          "account_id": "V035:雨晴",
+          "aliases": []
+        },
+        {
+          "id": "32e4eb45ef4e4d08942c4021c7e47819",
+          "name": "岛岛",
+          "account_id": "V035:岛岛",
+          "aliases": []
+        },
+        {
+          "id": "4125988031f6440bbc5ee6d47b7e6469",
+          "name": "阿墨",
+          "account_id": "V035:阿墨",
+          "aliases": []
+        },
+        {
+          "id": "52b26b4b7aa7489b93e2cf56d843900a",
+          "name": "阿辛",
+          "account_id": "V035:阿辛",
+          "aliases": []
+        },
+        {
+          "id": "bbba08fd496c4b47aa260add253de2ba",
+          "name": "小枫",
+          "account_id": "V035:小枫",
+          "aliases": []
+        },
+        {
+          "id": "bc8c563cdca042729d91fd69a1927731",
+          "name": "伊诺",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "fbf1fee8753c4128a6fbfc1a3887a3ed",
+          "name": "小森",
+          "account_id": "V035:小森",
+          "aliases": []
+        },
+        {
+          "id": "scene",
+          "name": "场景",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "self",
+          "name": "我",
+          "account_id": null,
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "id": "L021",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "小林尚未决定是否报名",
+          "speaker": "小林",
+          "about": [
+            "小林"
+          ],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [],
+      "memories": [
+        {
+          "id": 1,
+          "content": "我答应下周（2026-10-26左右）再问小林是否已决定报名",
+          "stance": "亲历",
+          "belief": 95,
+          "speaker_subject_id": "self",
+          "speaker": "我",
+          "about": [
+            "小林",
+            "我"
+          ],
+          "about_subject_ids": [
+            "4a381c78c5db435f95b222f9e09aa9e6",
+            "self"
+          ],
+          "evidence": [
+            {
+              "id": 2,
+              "kind": "self_output",
+              "content": "下次我可以问问你决定了吗？",
+              "occurred_at": "2026-10-19T09:01:00+08:00",
+              "entry_id": "L021",
+              "quote_content": null,
+              "sender_subject_id": "self",
+              "quote_author_subject_id": null,
+              "sender": "我",
+              "quote_author": null
+            },
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "可以，下周再问我。",
+              "occurred_at": "2026-10-19T09:02:00+08:00",
+              "entry_id": "L021",
+              "quote_content": null,
+              "sender_subject_id": "4a381c78c5db435f95b222f9e09aa9e6",
+              "quote_author_subject_id": null,
+              "sender": "小林",
+              "quote_author": null
+            },
+            {
+              "id": 5,
+              "kind": "self_output",
+              "content": "我会下周问你。",
+              "occurred_at": "2026-10-19T09:04:00+08:00",
+              "entry_id": "L021",
+              "quote_content": null,
+              "sender_subject_id": "self",
+              "quote_author_subject_id": null,
+              "sender": "我",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "小林尚未决定是否报名某事，报名截止时间为2026年10月底",
+          "stance": "亲历",
+          "belief": 85,
+          "speaker_subject_id": "4a381c78c5db435f95b222f9e09aa9e6",
+          "speaker": "小林",
+          "about": [
+            "小林"
+          ],
+          "about_subject_ids": [
+            "4a381c78c5db435f95b222f9e09aa9e6"
+          ],
+          "evidence": [
+            {
+              "id": 1,
+              "kind": "message",
+              "content": "我还没决定要不要报名。",
+              "occurred_at": "2026-10-19T09:00:00+08:00",
+              "entry_id": "L021",
+              "quote_content": null,
+              "sender_subject_id": "4a381c78c5db435f95b222f9e09aa9e6",
+              "quote_author_subject_id": null,
+              "sender": "小林",
+              "quote_author": null
+            },
+            {
+              "id": 4,
+              "kind": "message",
+              "content": "报名截止在月底。",
+              "occurred_at": "2026-10-19T09:03:00+08:00",
+              "entry_id": "L021",
+              "quote_content": null,
+              "sender_subject_id": "4a381c78c5db435f95b222f9e09aa9e6",
+              "quote_author_subject_id": null,
+              "sender": "小林",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [
+          true
+        ],
+        "actual_link_correct": []
+      },
+      "links": [],
+      "subjects": [
+        {
+          "id": "4a381c78c5db435f95b222f9e09aa9e6",
+          "name": "小林",
+          "account_id": "L021:小林",
+          "aliases": []
+        },
+        {
+          "id": "scene",
+          "name": "场景",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "self",
+          "name": "我",
+          "account_id": null,
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "id": "V005",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "阿旭持续四年拍摄街边老招牌",
+          "speaker": "阿旭",
+          "about": [
+            "阿旭"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿旭拍人像前会征求同意且不喜欢用闪光灯",
+          "speaker": "阿旭",
+          "about": [
+            "阿旭"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿旭去年首次独立策划胶片展",
+          "speaker": "阿旭",
+          "about": [
+            "阿旭"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "阿旭计划本月底办老招牌摄影小展",
+          "speaker": "阿旭",
+          "about": [
+            "阿旭"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "刚才镜头盖找不到了"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "阿旭在街上拍摄老招牌已持续四年，攒了一本册子",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "cb59a4c4c87e48c6a4fc0a8b81867d72",
+          "speaker": "阿旭",
+          "about": [
+            "阿旭"
+          ],
+          "about_subject_ids": [
+            "cb59a4c4c87e48c6a4fc0a8b81867d72"
+          ],
+          "evidence": [
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "我在街上拍老招牌拍了四年，已经攒了一本册子。",
+              "occurred_at": "2026-10-06T18:04:00+08:00",
+              "entry_id": "V005",
+              "quote_content": null,
+              "sender_subject_id": "cb59a4c4c87e48c6a4fc0a8b81867d72",
+              "quote_author_subject_id": null,
+              "sender": "阿旭",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "阿旭不喜欢使用闪光灯，拍人时会先征求对方同意",
+          "stance": "亲历",
+          "belief": 85,
+          "speaker_subject_id": "cb59a4c4c87e48c6a4fc0a8b81867d72",
+          "speaker": "阿旭",
+          "about": [
+            "阿旭"
+          ],
+          "about_subject_ids": [
+            "cb59a4c4c87e48c6a4fc0a8b81867d72"
+          ],
+          "evidence": [
+            {
+              "id": 8,
+              "kind": "message",
+              "content": "我不喜欢闪光灯，拍人也会先问能不能拍。",
+              "occurred_at": "2026-10-06T18:14:00+08:00",
+              "entry_id": "V005",
+              "quote_content": null,
+              "sender_subject_id": "cb59a4c4c87e48c6a4fc0a8b81867d72",
+              "quote_author_subject_id": null,
+              "sender": "阿旭",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "我承诺周末提醒阿旭整理展览照片",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "self",
+          "speaker": "我",
+          "about": [
+            "阿旭",
+            "我"
+          ],
+          "about_subject_ids": [
+            "cb59a4c4c87e48c6a4fc0a8b81867d72",
+            "self"
+          ],
+          "evidence": [
+            {
+              "id": 15,
+              "kind": "self_output",
+              "content": "那我周末提醒你整理展览照片。",
+              "occurred_at": "2026-10-06T18:28:00+08:00",
+              "entry_id": "V005",
+              "quote_content": null,
+              "sender_subject_id": "self",
+              "quote_author_subject_id": null,
+              "sender": "我",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "content": "阿旭计划2026年10月末把拍摄的招牌照片做成小展",
+          "stance": "亲历",
+          "belief": 80,
+          "speaker_subject_id": "cb59a4c4c87e48c6a4fc0a8b81867d72",
+          "speaker": "阿旭",
+          "about": [
+            "阿旭"
+          ],
+          "about_subject_ids": [
+            "cb59a4c4c87e48c6a4fc0a8b81867d72"
+          ],
+          "evidence": [
+            {
+              "id": 17,
+              "kind": "message",
+              "content": "这个月末准备把招牌照片做成小展。",
+              "occurred_at": "2026-10-06T18:32:00+08:00",
+              "entry_id": "V005",
+              "quote_content": null,
+              "sender_subject_id": "cb59a4c4c87e48c6a4fc0a8b81867d72",
+              "quote_author_subject_id": null,
+              "sender": "阿旭",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "content": "阿旭去年（2025年）第一次自己策展了一场胶片展",
+          "stance": "亲历",
+          "belief": 85,
+          "speaker_subject_id": "cb59a4c4c87e48c6a4fc0a8b81867d72",
+          "speaker": "阿旭",
+          "about": [
+            "阿旭"
+          ],
+          "about_subject_ids": [
+            "cb59a4c4c87e48c6a4fc0a8b81867d72"
+          ],
+          "evidence": [
+            {
+              "id": 13,
+              "kind": "message",
+              "content": "去年那次胶片展是我第一次自己策展。",
+              "occurred_at": "2026-10-06T18:24:00+08:00",
+              "entry_id": "V005",
+              "quote_content": null,
+              "sender_subject_id": "cb59a4c4c87e48c6a4fc0a8b81867d72",
+              "quote_author_subject_id": null,
+              "sender": "阿旭",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 4,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 5,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [
+          true
+        ],
+        "actual_link_correct": []
+      },
+      "links": [],
+      "subjects": [
+        {
+          "id": "cb59a4c4c87e48c6a4fc0a8b81867d72",
+          "name": "阿旭",
+          "account_id": "V005:阿旭",
+          "aliases": []
+        },
+        {
+          "id": "scene",
+          "name": "场景",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "self",
+          "name": "我",
+          "account_id": null,
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "id": "L027",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "阿澈转述小夏不吃辣",
+          "speaker": "阿澈",
+          "about": [
+            "小夏"
+          ],
+          "stance": "转述"
+        }
+      ],
+      "forbidden": [
+        "阿澈不吃辣",
+        "小夏在本段亲口说不吃辣"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "P1 阿澈转述称小夏在午饭时告诉他自己不吃辣；P2 小王表示自己当时在场但没有听到",
+          "stance": "转述",
+          "belief": 45,
+          "speaker_subject_id": "2f31a418666d4bb9ad0f0177434c6da6",
+          "speaker": "阿澈",
+          "about": [
+            "小夏"
+          ],
+          "about_subject_ids": [
+            "0fa3ae1362d34655a34d121a38ddcb26"
+          ],
+          "evidence": [
+            {
+              "id": 1,
+              "kind": "message",
+              "content": "小夏说她不吃辣。",
+              "occurred_at": "2026-10-25T09:00:00+08:00",
+              "entry_id": "L027",
+              "quote_content": null,
+              "sender_subject_id": "2f31a418666d4bb9ad0f0177434c6da6",
+              "quote_author_subject_id": null,
+              "sender": "阿澈",
+              "quote_author": null
+            },
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "她在午饭时告诉我的。",
+              "occurred_at": "2026-10-25T09:02:00+08:00",
+              "entry_id": "L027",
+              "quote_content": null,
+              "sender_subject_id": "2f31a418666d4bb9ad0f0177434c6da6",
+              "quote_author_subject_id": null,
+              "sender": "阿澈",
+              "quote_author": null
+            },
+            {
+              "id": 4,
+              "kind": "message",
+              "content": "我没听见。",
+              "occurred_at": "2026-10-25T09:03:00+08:00",
+              "entry_id": "L027",
+              "quote_content": null,
+              "sender_subject_id": "621fd18606604d369f5d3e223c718469",
+              "quote_author_subject_id": null,
+              "sender": "小王",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      },
+      "links": [],
+      "subjects": [
+        {
+          "id": "0fa3ae1362d34655a34d121a38ddcb26",
+          "name": "小夏",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "2f31a418666d4bb9ad0f0177434c6da6",
+          "name": "阿澈",
+          "account_id": "L027:阿澈",
+          "aliases": []
+        },
+        {
+          "id": "621fd18606604d369f5d3e223c718469",
+          "name": "小王",
+          "account_id": "L027:小王",
+          "aliases": []
+        },
+        {
+          "id": "scene",
+          "name": "场景",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "self",
+          "name": "我",
+          "account_id": null,
+          "aliases": []
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "L001",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L002",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L003",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L004",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L005",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L006",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 2,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L007",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "L008",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L009",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "L010",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L011",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 0,
+      "required_facts": 0,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L012",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L013",
+      "split": "dev",
+      "messages": 6,
+      "batches": 2,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L014",
+      "split": "dev",
+      "messages": 6,
+      "batches": 2,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L015",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L016",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L017",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L018",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L019",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L020",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L021",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L022",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L023",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 0,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L024",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L025",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L026",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L027",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L028",
+      "split": "dev",
+      "messages": 6,
+      "batches": 2,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L029",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L030",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 1,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "L031",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L032",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "L033",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 0,
+      "required_facts": 0,
+      "covered_facts": 0,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L034",
+      "split": "dev",
+      "messages": 6,
+      "batches": 2,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 0,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "L035",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "L036",
+      "split": "dev",
+      "messages": 6,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V001",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V002",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V003",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "V004",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 2,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "V005",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V006",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "V007",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V008",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "V009",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "V010",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V011",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V012",
+      "split": "dev",
+      "messages": 18,
+      "batches": 2,
+      "new_memories": 2,
+      "required_facts": 4,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V021",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V022",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V023",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 6,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V024",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 2,
+      "required_facts": 4,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V025",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "V026",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V027",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 2,
+      "required_facts": 4,
+      "covered_facts": 1,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "V028",
+      "split": "dev",
+      "messages": 34,
+      "batches": 3,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V033",
+      "split": "dev",
+      "messages": 36,
+      "batches": 9,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "V034",
+      "split": "dev",
+      "messages": 36,
+      "batches": 9,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 2,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "V035",
+      "split": "dev",
+      "messages": 36,
+      "batches": 9,
+      "new_memories": 3,
+      "required_facts": 4,
+      "covered_facts": 1,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "V036",
+      "split": "dev",
+      "messages": 36,
+      "batches": 9,
+      "new_memories": 4,
+      "required_facts": 4,
+      "covered_facts": 3,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "F001",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 4,
+      "required_facts": 3,
+      "covered_facts": 3,
+      "judge_inconsistencies": 4
+    },
+    {
+      "id": "F002",
+      "split": "dev",
+      "messages": 14,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 3,
+      "covered_facts": 2,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "F003",
+      "split": "dev",
+      "messages": 12,
+      "batches": 3,
+      "new_memories": 2,
+      "required_facts": 2,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F004",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 2,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F005",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F006",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 4,
+      "required_facts": 3,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F007",
+      "split": "dev",
+      "messages": 26,
+      "batches": 3,
+      "new_memories": 4,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "F008",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 5,
+      "required_facts": 6,
+      "covered_facts": 4,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F009",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 5,
+      "required_facts": 4,
+      "covered_facts": 2,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "F010",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 2,
+      "required_facts": 2,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    }
+  ]
+}

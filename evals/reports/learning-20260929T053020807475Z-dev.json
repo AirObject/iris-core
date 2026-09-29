@@ -1,0 +1,1106 @@
+{
+  "created_at": "2026-09-29T05:30:20.806475+00:00",
+  "split": "dev",
+  "elapsed_seconds": 241.3,
+  "prompt_version": "learning_v4",
+  "scoring_version": "scoring_v3",
+  "chat_model": "MiniMax-M3",
+  "embedding_model": "doubao-embedding-vision",
+  "corpus": {
+    "cases": 10,
+    "messages": 136,
+    "must": 28,
+    "sha256": "1c96c8ac07ac7971f2c107ae8e8a10e943859d6275c088ad130f315fba07f28f"
+  },
+  "metrics": {
+    "dev": {
+      "cases": 10,
+      "batches": 15,
+      "messages": 136,
+      "parse_direct": 1.0,
+      "parse_quote_repaired": 2,
+      "parse_repaired": 0.0,
+      "parse_total": 1.0,
+      "length_truncated_batches": 0,
+      "length_truncated_calls": 0,
+      "judge_length_truncated_calls": 0,
+      "learning_timeout_calls": 0,
+      "learning_call_p95_ms": 84555.0,
+      "learning_call_max_ms": 117098,
+      "learning_max_completion_tokens": 9452,
+      "precision": 0.8979591836734694,
+      "fact_recall": 0.8928571428571429,
+      "false_memory_rate": 0.0,
+      "evidence_accuracy": 0.9795918367346939,
+      "attribution_accuracy": 0.9591836734693877,
+      "link_recall": 1.0,
+      "link_precision": 1.0,
+      "alias_recall": 1.0,
+      "alias_precision": 1.0,
+      "required_aliases": 3,
+      "new_aliases": 3,
+      "goal_recall": 1.0,
+      "goal_duplicates": 0,
+      "question_duplicates": 0,
+      "judge_inconsistencies": 5,
+      "judge_inconsistency_rate": 0.02109704641350211,
+      "new_memories": 49,
+      "new_links": 5,
+      "required_facts": 28,
+      "batch_p50_ms": 18856.0,
+      "batch_p95_ms": 85970.8,
+      "tokens": {
+        "prompt_tokens": 121652,
+        "completion_tokens": 118008,
+        "reasoning_tokens": 86469
+      },
+      "learning_tokens": {
+        "prompt_tokens": 35787,
+        "completion_tokens": 55318,
+        "reasoning_tokens": 31307
+      },
+      "judge_tokens": {
+        "prompt_tokens": 83130,
+        "completion_tokens": 62690,
+        "reasoning_tokens": 55162
+      },
+      "embedding_tokens": {
+        "prompt_tokens": 2735,
+        "completion_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "learning_tokens_per_1000_messages": 669890,
+      "tokens_per_1000_messages": 1762206,
+      "estimated_cost": null
+    },
+    "all": {
+      "cases": 10,
+      "batches": 15,
+      "messages": 136,
+      "parse_direct": 1.0,
+      "parse_quote_repaired": 2,
+      "parse_repaired": 0.0,
+      "parse_total": 1.0,
+      "length_truncated_batches": 0,
+      "length_truncated_calls": 0,
+      "judge_length_truncated_calls": 0,
+      "learning_timeout_calls": 0,
+      "learning_call_p95_ms": 84555.0,
+      "learning_call_max_ms": 117098,
+      "learning_max_completion_tokens": 9452,
+      "precision": 0.8979591836734694,
+      "fact_recall": 0.8928571428571429,
+      "false_memory_rate": 0.0,
+      "evidence_accuracy": 0.9795918367346939,
+      "attribution_accuracy": 0.9591836734693877,
+      "link_recall": 1.0,
+      "link_precision": 1.0,
+      "alias_recall": 1.0,
+      "alias_precision": 1.0,
+      "required_aliases": 3,
+      "new_aliases": 3,
+      "goal_recall": 1.0,
+      "goal_duplicates": 0,
+      "question_duplicates": 0,
+      "judge_inconsistencies": 5,
+      "judge_inconsistency_rate": 0.02109704641350211,
+      "new_memories": 49,
+      "new_links": 5,
+      "required_facts": 28,
+      "batch_p50_ms": 18856.0,
+      "batch_p95_ms": 85970.8,
+      "tokens": {
+        "prompt_tokens": 121652,
+        "completion_tokens": 118008,
+        "reasoning_tokens": 86469
+      },
+      "learning_tokens": {
+        "prompt_tokens": 35787,
+        "completion_tokens": 55318,
+        "reasoning_tokens": 31307
+      },
+      "judge_tokens": {
+        "prompt_tokens": 83130,
+        "completion_tokens": 62690,
+        "reasoning_tokens": 55162
+      },
+      "embedding_tokens": {
+        "prompt_tokens": 2735,
+        "completion_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "learning_tokens_per_1000_messages": 669890,
+      "tokens_per_1000_messages": 1762206,
+      "estimated_cost": null
+    }
+  },
+  "previous": {
+    "path": "learning-20260929T052455745444Z-dev.json",
+    "metrics": {
+      "dev": {
+        "cases": 70,
+        "batches": 139,
+        "messages": 984,
+        "parse_direct": 1.0,
+        "parse_quote_repaired": 4,
+        "parse_repaired": 0.0,
+        "parse_total": 1.0,
+        "length_truncated_batches": 0,
+        "length_truncated_calls": 0,
+        "judge_length_truncated_calls": 0,
+        "learning_timeout_calls": 0,
+        "learning_call_p95_ms": 36830.0,
+        "learning_call_max_ms": 52520,
+        "learning_max_completion_tokens": 9343,
+        "precision": 0.9293478260869565,
+        "fact_recall": 0.7560975609756098,
+        "false_memory_rate": 0.005434782608695652,
+        "evidence_accuracy": 0.9402173913043478,
+        "attribution_accuracy": 0.8858695652173914,
+        "link_recall": 0.6666666666666666,
+        "link_precision": 0.9166666666666666,
+        "alias_recall": 1.0,
+        "alias_precision": 1.0,
+        "required_aliases": 3,
+        "new_aliases": 5,
+        "goal_recall": 1.0,
+        "goal_duplicates": 0,
+        "question_duplicates": 0,
+        "judge_inconsistencies": 28,
+        "judge_inconsistency_rate": 0.029978586723768737,
+        "new_memories": 184,
+        "new_links": 12,
+        "required_facts": 164,
+        "batch_p50_ms": 7446.0,
+        "batch_p95_ms": 37367.5,
+        "tokens": {
+          "prompt_tokens": 773291,
+          "completion_tokens": 515599,
+          "reasoning_tokens": 398017
+        },
+        "learning_tokens": {
+          "prompt_tokens": 302199,
+          "completion_tokens": 221343,
+          "reasoning_tokens": 172220
+        },
+        "judge_tokens": {
+          "prompt_tokens": 459201,
+          "completion_tokens": 294256,
+          "reasoning_tokens": 225797
+        },
+        "embedding_tokens": {
+          "prompt_tokens": 11891,
+          "completion_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        "learning_tokens_per_1000_messages": 532055,
+        "tokens_per_1000_messages": 1309848,
+        "estimated_cost": null
+      },
+      "all": {
+        "cases": 70,
+        "batches": 139,
+        "messages": 984,
+        "parse_direct": 1.0,
+        "parse_quote_repaired": 4,
+        "parse_repaired": 0.0,
+        "parse_total": 1.0,
+        "length_truncated_batches": 0,
+        "length_truncated_calls": 0,
+        "judge_length_truncated_calls": 0,
+        "learning_timeout_calls": 0,
+        "learning_call_p95_ms": 36830.0,
+        "learning_call_max_ms": 52520,
+        "learning_max_completion_tokens": 9343,
+        "precision": 0.9293478260869565,
+        "fact_recall": 0.7560975609756098,
+        "false_memory_rate": 0.005434782608695652,
+        "evidence_accuracy": 0.9402173913043478,
+        "attribution_accuracy": 0.8858695652173914,
+        "link_recall": 0.6666666666666666,
+        "link_precision": 0.9166666666666666,
+        "alias_recall": 1.0,
+        "alias_precision": 1.0,
+        "required_aliases": 3,
+        "new_aliases": 5,
+        "goal_recall": 1.0,
+        "goal_duplicates": 0,
+        "question_duplicates": 0,
+        "judge_inconsistencies": 28,
+        "judge_inconsistency_rate": 0.029978586723768737,
+        "new_memories": 184,
+        "new_links": 12,
+        "required_facts": 164,
+        "batch_p50_ms": 7446.0,
+        "batch_p95_ms": 37367.5,
+        "tokens": {
+          "prompt_tokens": 773291,
+          "completion_tokens": 515599,
+          "reasoning_tokens": 398017
+        },
+        "learning_tokens": {
+          "prompt_tokens": 302199,
+          "completion_tokens": 221343,
+          "reasoning_tokens": 172220
+        },
+        "judge_tokens": {
+          "prompt_tokens": 459201,
+          "completion_tokens": 294256,
+          "reasoning_tokens": 225797
+        },
+        "embedding_tokens": {
+          "prompt_tokens": 11891,
+          "completion_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        "learning_tokens_per_1000_messages": 532055,
+        "tokens_per_1000_messages": 1309848,
+        "estimated_cost": null
+      }
+    },
+    "corpus": {
+      "cases": 70,
+      "messages": 984,
+      "must": 164,
+      "sha256": "52fc706b1c19d2e52c4b1d98fb215f957ddaa1417ba1cffcaf81bd763c2fbcd7"
+    },
+    "scoring_version": "scoring_v3"
+  },
+  "judge_inconsistencies": [
+    {
+      "case": "F002",
+      "item": "memory",
+      "id": 4,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "F007",
+      "item": "memory",
+      "id": 5,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    },
+    {
+      "case": "F009",
+      "item": "memory",
+      "id": 6,
+      "field": "correct_worth",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "F009",
+      "item": "memory",
+      "id": 7,
+      "field": "correct_worth",
+      "first": false,
+      "second": true,
+      "scored": false
+    },
+    {
+      "case": "F010",
+      "item": "memory",
+      "id": 5,
+      "field": "correct_worth",
+      "first": true,
+      "second": false,
+      "scored": false
+    }
+  ],
+  "parse_failures": [],
+  "generation_calls": [
+    {
+      "case": "F001",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3793,
+      "duration_ms": 13407,
+      "result_category": "success"
+    },
+    {
+      "case": "F001",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1300,
+      "duration_ms": 12504,
+      "result_category": "success"
+    },
+    {
+      "case": "F001",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1562,
+      "duration_ms": 14085,
+      "result_category": "success"
+    },
+    {
+      "case": "F002",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 4258,
+      "duration_ms": 17859,
+      "result_category": "success"
+    },
+    {
+      "case": "F002",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 2109,
+      "duration_ms": 9560,
+      "result_category": "success"
+    },
+    {
+      "case": "F002",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2627,
+      "duration_ms": 9297,
+      "result_category": "success"
+    },
+    {
+      "case": "F002",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2421,
+      "duration_ms": 9169,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1128,
+      "duration_ms": 5596,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 1540,
+      "duration_ms": 6445,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 841,
+      "duration_ms": 13247,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 820,
+      "duration_ms": 9508,
+      "result_category": "success"
+    },
+    {
+      "case": "F003",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1056,
+      "duration_ms": 9775,
+      "result_category": "success"
+    },
+    {
+      "case": "F004",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 1939,
+      "duration_ms": 37320,
+      "result_category": "success"
+    },
+    {
+      "case": "F004",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 4084,
+      "duration_ms": 13397,
+      "result_category": "success"
+    },
+    {
+      "case": "F004",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1344,
+      "duration_ms": 6224,
+      "result_category": "success"
+    },
+    {
+      "case": "F005",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 6011,
+      "duration_ms": 24732,
+      "result_category": "success"
+    },
+    {
+      "case": "F005",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2246,
+      "duration_ms": 14528,
+      "result_category": "success"
+    },
+    {
+      "case": "F005",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3298,
+      "duration_ms": 13575,
+      "result_category": "success"
+    },
+    {
+      "case": "F006",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3208,
+      "duration_ms": 12235,
+      "result_category": "success"
+    },
+    {
+      "case": "F006",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1440,
+      "duration_ms": 6501,
+      "result_category": "success"
+    },
+    {
+      "case": "F006",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1301,
+      "duration_ms": 5410,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 4641,
+      "duration_ms": 44028,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning",
+      "batch_id": 2,
+      "finish_reason": "stop",
+      "completion_tokens": 5454,
+      "duration_ms": 26624,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning",
+      "batch_id": 3,
+      "finish_reason": "stop",
+      "completion_tokens": 496,
+      "duration_ms": 3493,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3254,
+      "duration_ms": 10114,
+      "result_category": "success"
+    },
+    {
+      "case": "F007",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2109,
+      "duration_ms": 7221,
+      "result_category": "success"
+    },
+    {
+      "case": "F008",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 6636,
+      "duration_ms": 26916,
+      "result_category": "success"
+    },
+    {
+      "case": "F008",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 2737,
+      "duration_ms": 9802,
+      "result_category": "success"
+    },
+    {
+      "case": "F008",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 4624,
+      "duration_ms": 18808,
+      "result_category": "success"
+    },
+    {
+      "case": "F009",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 9452,
+      "duration_ms": 117098,
+      "result_category": "success"
+    },
+    {
+      "case": "F009",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 1890,
+      "duration_ms": 6334,
+      "result_category": "success"
+    },
+    {
+      "case": "F009",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 3390,
+      "duration_ms": 11894,
+      "result_category": "success"
+    },
+    {
+      "case": "F010",
+      "purpose": "learning",
+      "batch_id": 1,
+      "finish_reason": "stop",
+      "completion_tokens": 3812,
+      "duration_ms": 70608,
+      "result_category": "success"
+    },
+    {
+      "case": "F010",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 6905,
+      "duration_ms": 24326,
+      "result_category": "success"
+    },
+    {
+      "case": "F010",
+      "purpose": "learning_judge",
+      "batch_id": null,
+      "finish_reason": "stop",
+      "completion_tokens": 14282,
+      "duration_ms": 49274,
+      "result_category": "success"
+    }
+  ],
+  "spot_check": [
+    {
+      "id": "F007",
+      "split": "dev",
+      "must": [
+        {
+          "fact": "更正后韩川参加的培训在北湾校区，2026年10月21日至23日共三天，韩川负责第一天木工安全课；原松桥校区10月14日至16日安排作废",
+          "speaker": "韩川",
+          "about": [
+            "韩川"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        },
+        {
+          "fact": "韩川培训演示带护目镜和两把手锯，不带电动工具",
+          "speaker": "韩川",
+          "about": [
+            "韩川"
+          ],
+          "about_optional": [],
+          "stance": "亲历"
+        }
+      ],
+      "forbidden": [
+        "培训已最终确定在松桥校区10月14日至16日举行",
+        "培训最终确定有二十人"
+      ],
+      "memories": [
+        {
+          "id": 1,
+          "content": "培训改在北湾校区，日期为10月21日至23日，仍为三天，P1韩川负责第一天木工安全课；之前的松桥校区旧通知作废",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "f6646197bd0445529c57c7b370af7558",
+          "speaker": "韩川",
+          "about": [
+            "韩川"
+          ],
+          "about_subject_ids": [
+            "f6646197bd0445529c57c7b370af7558"
+          ],
+          "evidence": [
+            {
+              "id": 1,
+              "kind": "message",
+              "content": "下周培训地点定了，是松桥校区。",
+              "occurred_at": "2026-10-08T18:00:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            },
+            {
+              "id": 3,
+              "kind": "message",
+              "content": "10月14日到16日，三天，我负责第一天的木工安全课。",
+              "occurred_at": "2026-10-08T18:02:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            },
+            {
+              "id": 17,
+              "kind": "message",
+              "content": "来了，刚才我把旧通知当新的了。培训实际在北湾校区，日期改成10月21日到23日。松桥那一版作废。",
+              "occurred_at": "2026-10-08T18:22:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            },
+            {
+              "id": 18,
+              "kind": "message",
+              "content": "仍然是三天，我还是负责第一天木工安全课，工具清单不变。",
+              "occurred_at": "2026-10-08T18:23:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "content": "培训人数仍未最终确认，之前二十人为预报名；保险表未收齐，韩川计划于10月9日催表",
+          "stance": "亲历",
+          "belief": 85,
+          "speaker_subject_id": "f6646197bd0445529c57c7b370af7558",
+          "speaker": "韩川",
+          "about": [
+            "韩川"
+          ],
+          "about_subject_ids": [
+            "f6646197bd0445529c57c7b370af7558"
+          ],
+          "evidence": [
+            {
+              "id": 6,
+              "kind": "message",
+              "content": "之前说的二十个人只是预报名，人数还没最后确认。",
+              "occurred_at": "2026-10-08T18:05:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            },
+            {
+              "id": 8,
+              "kind": "message",
+              "content": "对，保险表还没收齐。",
+              "occurred_at": "2026-10-08T18:07:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            },
+            {
+              "id": 22,
+              "kind": "message",
+              "content": "还是没确认，我明天催表。",
+              "occurred_at": "2026-10-08T18:27:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "content": "木工安全课将带护目镜和两把手锯，不带电动工具",
+          "stance": "亲历",
+          "belief": 85,
+          "speaker_subject_id": "f6646197bd0445529c57c7b370af7558",
+          "speaker": "韩川",
+          "about": [
+            "韩川"
+          ],
+          "about_subject_ids": [
+            "f6646197bd0445529c57c7b370af7558"
+          ],
+          "evidence": [
+            {
+              "id": 5,
+              "kind": "message",
+              "content": "会带护目镜和两把手锯，不带电动工具。",
+              "occurred_at": "2026-10-08T18:04:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            },
+            {
+              "id": 18,
+              "kind": "message",
+              "content": "仍然是三天，我还是负责第一天木工安全课，工具清单不变。",
+              "occurred_at": "2026-10-08T18:23:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "content": "P1韩川尚未亲自到过松桥校区，宣传照片里有工作台但不能保证",
+          "stance": "亲历",
+          "belief": 75,
+          "speaker_subject_id": "f6646197bd0445529c57c7b370af7558",
+          "speaker": "韩川",
+          "about": [
+            "韩川"
+          ],
+          "about_subject_ids": [
+            "f6646197bd0445529c57c7b370af7558"
+          ],
+          "evidence": [
+            {
+              "id": 10,
+              "kind": "message",
+              "content": "宣传照片里有，但我没去过，不敢保证。",
+              "occurred_at": "2026-10-08T18:09:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "f6646197bd0445529c57c7b370af7558",
+              "quote_author_subject_id": null,
+              "sender": "韩川",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "content": "我建议培训人数先留空，等最终确认后再填",
+          "stance": "亲历",
+          "belief": 90,
+          "speaker_subject_id": "self",
+          "speaker": "我",
+          "about": [
+            "我"
+          ],
+          "about_subject_ids": [
+            "self"
+          ],
+          "evidence": [
+            {
+              "id": 7,
+              "kind": "self_output",
+              "content": "人数先留空比较合适。",
+              "occurred_at": "2026-10-08T18:06:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "self",
+              "quote_author_subject_id": null,
+              "sender": "我",
+              "quote_author": null
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "content": "Iris处理信息更新时倾向于等待正式通知再行动，会仔细区分需要变更和可沿用的部分，不依据未确认或可能过时的资料匆忙决定",
+          "stance": "亲历",
+          "belief": 65,
+          "speaker_subject_id": "self",
+          "speaker": "我",
+          "about": [
+            "我"
+          ],
+          "about_subject_ids": [
+            "self"
+          ],
+          "evidence": [
+            {
+              "id": 14,
+              "kind": "self_output",
+              "content": "等正式通知更稳妥。",
+              "occurred_at": "2026-10-08T18:21:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "self",
+              "quote_author_subject_id": null,
+              "sender": "我",
+              "quote_author": null
+            },
+            {
+              "id": 16,
+              "kind": "self_output",
+              "content": "不急，等你看清文件再说。",
+              "occurred_at": "2026-10-08T18:21:30+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "self",
+              "quote_author_subject_id": null,
+              "sender": "我",
+              "quote_author": null
+            },
+            {
+              "id": 19,
+              "kind": "self_output",
+              "content": "地点和整段日期都要换，其他安排沿用。",
+              "occurred_at": "2026-10-08T18:24:00+08:00",
+              "entry_id": "F007",
+              "quote_content": null,
+              "sender_subject_id": "self",
+              "quote_author_subject_id": null,
+              "sender": "我",
+              "quote_author": null
+            }
+          ]
+        }
+      ],
+      "judge": {
+        "memory_results": [
+          {
+            "id": 1,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 2,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 3,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 4,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 5,
+            "correct_worth": false,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          },
+          {
+            "id": 6,
+            "correct_worth": true,
+            "forbidden": false,
+            "evidence_correct": true,
+            "attribution_correct": true
+          }
+        ],
+        "fact_covered": [
+          true,
+          true
+        ],
+        "link_covered": [],
+        "goal_covered": [],
+        "actual_link_correct": []
+      },
+      "links": [],
+      "subjects": [
+        {
+          "id": "f6646197bd0445529c57c7b370af7558",
+          "name": "韩川",
+          "account_id": "F007:韩川",
+          "aliases": []
+        },
+        {
+          "id": "scene",
+          "name": "场景",
+          "account_id": null,
+          "aliases": []
+        },
+        {
+          "id": "self",
+          "name": "我",
+          "account_id": null,
+          "aliases": []
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "F001",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 5,
+      "required_facts": 3,
+      "covered_facts": 3,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F002",
+      "split": "dev",
+      "messages": 14,
+      "batches": 2,
+      "new_memories": 4,
+      "required_facts": 3,
+      "covered_facts": 3,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "F003",
+      "split": "dev",
+      "messages": 12,
+      "batches": 3,
+      "new_memories": 2,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F004",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 4,
+      "required_facts": 2,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F005",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 3,
+      "required_facts": 1,
+      "covered_facts": 1,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F006",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 4,
+      "required_facts": 3,
+      "covered_facts": 2,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F007",
+      "split": "dev",
+      "messages": 26,
+      "batches": 3,
+      "new_memories": 6,
+      "required_facts": 2,
+      "covered_facts": 2,
+      "judge_inconsistencies": 1
+    },
+    {
+      "id": "F008",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 9,
+      "required_facts": 6,
+      "covered_facts": 6,
+      "judge_inconsistencies": 0
+    },
+    {
+      "id": "F009",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 7,
+      "required_facts": 4,
+      "covered_facts": 4,
+      "judge_inconsistencies": 2
+    },
+    {
+      "id": "F010",
+      "split": "dev",
+      "messages": 12,
+      "batches": 1,
+      "new_memories": 5,
+      "required_facts": 2,
+      "covered_facts": 1,
+      "judge_inconsistencies": 1
+    }
+  ]
+}

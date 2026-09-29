@@ -43,7 +43,9 @@ def test_alias_metrics_and_truncated_batches_do_not_mix_with_other_links_or_judg
                         "calls": [
                             {"purpose": "learning", "batch_id": 1, "finish_reason": "length", "completion_tokens": 16000, "duration_ms": 90000},
                             {"purpose": "learning_repair", "batch_id": 1, "finish_reason": "length", "completion_tokens": 16000, "duration_ms": 95000},
-                            {"purpose": "learning_judge", "batch_id": None, "finish_reason": "length", "completion_tokens": 6000, "duration_ms": 30000}]},
+                            {"purpose": "learning_judge", "batch_id": None, "finish_reason": "length", "completion_tokens": 6000, "duration_ms": 30000},
+                            {"purpose": "learning_judge", "batch_id": None, "finish_reason": None, "duration_ms": 120000, "error_summary": "total timeout"},
+                            {"purpose": "learning_judge_repair", "batch_id": None, "finish_reason": None, "duration_ms": 120000, "error_summary": "ReadTimeout"}]},
              "judge": {"memory_results": [], "fact_covered": [], "goal_covered": [],
                        "link_covered": [True, False], "actual_link_correct": [True, False, True]}}
     second = {"case": {"id": "B", "messages": [{}], "links": [{"kind": "alias"}]},
@@ -55,6 +57,8 @@ def test_alias_metrics_and_truncated_batches_do_not_mix_with_other_links_or_judg
     assert metric["length_truncated_batches"] == 2
     assert metric["length_truncated_calls"] == 3
     assert metric["judge_length_truncated_calls"] == 1
+    assert metric["judge_timeout_calls"] == 2
+    assert metric["learning_timeout_calls"] == 0
     assert metric["alias_recall"] == metric["alias_precision"] == 0.5
     assert metric["required_aliases"] == metric["new_aliases"] == 2
     assert metric["learning_max_completion_tokens"] == 16000
