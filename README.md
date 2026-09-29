@@ -59,7 +59,7 @@ with httpx.Client(base_url="http://127.0.0.1:8080", timeout=10) as client:
 
 接收接口也接受上述消息对象的数组，整批提交在一个事务中完成。正文上限为 32768 个 UTF-8 字节；超限返回 413，不截断。首次入口自动创建。接收并不执行学习：本 PR 仍使用离线 `iris learn group-a --force`；请在停止服务后运行学习命令，再启动服务载入索引，不要启动多个进程共同写同一个数据库。
 
-准备结果还包含空的 `state`、未结束的 `goals`、运行 `hints` 和 `recall_id`。`participants` 接受主体 ID 或无歧义的名字／别名；同名账号必须使用主体 ID。省略参与者时从返回的近期消息推断，传空数组可不取人物要点。`recent_limit=0` 关闭近期消息；记忆最多 8 条、1500 个估算 token，目标最多 10 个。模型故障时仍返回已有资料，并说明全文检索降级。
+准备结果还包含空的 `state`、未结束的 `goals`、运行 `hints` 和 `recall_id`。`participants` 接受主体 ID 或无歧义的名字／别名；同名账号必须使用主体 ID。省略参与者时从返回的近期消息推断，传空数组可不取人物要点。明确问属性时按检索相关性筛选，不无条件添加人物要点；概括式人物提示可补充每位参与者最多三条要点。`recent_limit=0` 关闭近期消息；记忆最多 8 条、1500 个估算 token，目标最多 10 个。模型故障时仍返回已有资料，并说明全文检索降级。
 
 定向查询和状态示例：
 
@@ -83,7 +83,7 @@ print(httpx.get("http://127.0.0.1:8080/api/v1/status").json())
 uv run iris eval learning --split dev --judge-runs 1
 uv run iris eval learning --judge-runs 2
 uv run iris eval recall
-uv run iris eval recall --split dev --calibrate
+uv run iris eval recall --split dev --calibrate --compare-embeddings
 uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
 uv run python evals/benchmark_retrieval.py
 ```

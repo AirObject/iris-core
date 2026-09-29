@@ -7,6 +7,8 @@ import math
 import sqlite3
 import tempfile
 import time
+from dataclasses import replace
+from itertools import product
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,9 +47,10 @@ def load_corpus(path: Path) -> dict:
         data = json.loads(text)
     except json.JSONDecodeError:
         records = [json.loads(line) for line in text.splitlines() if line.strip()]
-        data = {"memories": [], "queries": []}
+        data = {"memories": [], "queries": [], "subjects": []}
         for row in records:
             if "memories" in row:
+                data['subjects'].extend(row.get('subjects', []))
                 data["memories"].extend(row["memories"])
                 data["queries"].extend(row.get("queries", []))
             elif row.get("record_type") == "memory":
@@ -90,9 +93,16 @@ def seed_corpus(store: Store, data: dict) -> tuple[dict, dict]:
         def subject(name):
             if name in ("我", "self", "Iris"):
                 return "self"
+            existing = conn.execute('SELECT id FROM subjects WHERE name=?', (name,)).fetchall()
+            if len(existing) == 1:
+                return existing[0][0]
             sid = "person:" + name
             conn.execute("INSERT OR IGNORE INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)", (sid, name, stamp))
             return sid
+        for person in data.get('subjects', []):
+            sid = subject(person['name'])
+            for alias in person.get('aliases', []):
+                conn.execute('INSERT OR IGNORE INTO subject_aliases(subject_id,alias) VALUES(?,?)', (sid, alias))
         for m in data["memories"]:
             mid = conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,retention,
                 event_time,lifecycle,entry_id,world,created_at,updated_at,first_confirmed_at,last_confirmed_at)
@@ -126,7 +136,7 @@ def cache_embeddings(configs, texts: list[str], store: Store, cache_path: Path):
     config = configs["embedding"]
     vectors, missing = {}, []
     def key(text):
-        return hashlib.sha256((config.base_url + "\0" + config.model + "\0" + text).encode("utf-8")).hexdigest()
+        return hashlib.sha256((config.base_url + "\0" + config.model + "\0" + str(config.dimensions) + "\0" + text).encode("utf-8")).hexdigest()
     for text in dict.fromkeys(texts):
         row = connection.execute("SELECT vector FROM embeddings WHERE key=?", (key(text),)).fetchone()
         if row:
@@ -134,12 +144,22 @@ def cache_embeddings(configs, texts: list[str], store: Store, cache_path: Path):
         else:
             missing.append(text)
     gateway = Gateway(configs, store)
+    failures = []
+    def request(text):
+        time.sleep(1)
+        return gateway.embedding(text, 'recall_eval_embedding')
     try:
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = {pool.submit(gateway.embedding, text, "recall_eval_embedding"): text for text in missing}
+        # Keep provider pressure modest; retries and every attempted call are
+        # recorded, while completed vectors survive an interrupted dev run.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            futures = {pool.submit(request, text): text for text in missing}
             for completed, future in enumerate(as_completed(futures), 1):
                 text = futures[future]
-                vector = np.asarray(future.result(), dtype=np.float32)
+                try:
+                    vector = np.asarray(future.result(), dtype=np.float32)
+                except Exception as error:
+                    failures.append(error)
+                    continue
                 if vector.ndim != 1 or not vector.size or not np.all(np.isfinite(vector)) or not np.linalg.norm(vector):
                     raise ValueError("invalid evaluation embedding")
                 vectors[text] = vector.tolist()
@@ -147,7 +167,14 @@ def cache_embeddings(configs, texts: list[str], store: Store, cache_path: Path):
                 connection.commit()
                 if completed % 10 == 0 or completed == len(missing):
                     print(f"embedding cache: {completed}/{len(missing)} new", flush=True)
+        if failures:
+            raise failures[0]
     finally:
+        connection.execute('CREATE TABLE IF NOT EXISTS calls(id INTEGER PRIMARY KEY, dimension INTEGER, data_json TEXT NOT NULL)')
+        with store.read() as reader:
+            for row in reader.execute('SELECT purpose,model,result_category,duration_ms,prompt_tokens,completion_tokens FROM model_calls'):
+                connection.execute('INSERT INTO calls(dimension,data_json) VALUES(?,?)', (config.dimensions, json.dumps(dict(row))))
+        connection.commit()
         gateway.close()
         connection.close()
     return CachedEmbeddings(configs, vectors), len(missing)
@@ -165,7 +192,8 @@ def _run_queries(retrieval, queries, ids, entries, *, details=False):
                 known_memory_ids=[ids[key] for key in q.get("known_memory_ids", [])],
                 recent_limit=q.get("recent_limit", 20))
         local_ms = max(0, (time.perf_counter() - start) * 1000 - retrieval.last_embedding_ms)
-        row = {"id": q["id"], "mode": q.get("mode", "prepare"), "relevant": q["relevant"],
+        row = {"id": q["id"], "split": q['split'], "categories": q.get('categories', []),
+               "mode": q.get("mode", "prepare"), "relevant": q["relevant"],
                "returned": [reverse[m["id"]] for m in response["memories"]], "local_ms": local_ms}
         if details:
             row["query"] = q
@@ -179,96 +207,137 @@ def _selection_score(metric):
     return ((recall + ndcg) / 2 - error, recall, ndcg, -error)
 
 
-def run_recall_eval(configs, root: Path, split="all", *, corpus: Path | None = None, out: Path | None = None,
-                    calibrate=False) -> tuple[Path, dict]:
+def grouped_metrics(rows):
+    result = {}
+    for split in dict.fromkeys(row['split'] for row in rows):
+        subset = [row for row in rows if row['split'] == split]
+        result[split] = {'all': recall_metrics(subset), 'categories': {
+            category: recall_metrics([row for row in subset if category in row['categories']])
+            for category in sorted({c for row in subset for c in row['categories']})}}
+    return result
+
+
+def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = None, out: Path | None = None,
+                    calibrate=False, compare_embeddings=False) -> tuple[Path, dict]:
     root = root.resolve()
-    data = load_corpus(corpus.resolve() if corpus else root / "evals/recall_v1.json")
-    if split not in ("all", "dev", "holdout"):
-        raise ValueError("invalid split")
-    queries = [q for q in data["queries"] if split == "all" or q["split"] == split]
+    data = load_corpus(corpus.resolve() if corpus else root / 'evals/recall_v2.json')
+    if split not in ('all', 'dev', 'holdout'):
+        raise ValueError('invalid split')
+    if (calibrate or compare_embeddings) and split != 'dev':
+        raise ValueError('calibration and embedding comparison only support --split dev')
+    queries = [q for q in data['queries'] if split == 'all' or q['split'] == split]
     if not queries:
-        raise ValueError("no recall queries for requested split")
-    if calibrate and (split != "dev" or any(q["split"] != "dev" for q in queries)):
-        raise ValueError("calibration only supports --split dev")
-    reports = out.resolve() if out else root / "evals/reports"
+        raise ValueError('no recall queries for requested split')
+    reports = out.resolve() if out else root / 'evals/reports'
     reports.mkdir(parents=True, exist_ok=True)
     external = not reports.is_relative_to(root)
-    cache_path = (reports if external else root / "data") / "recall-embeddings.db"
+    cache_path = (reports if external else root / 'data') / 'recall-embeddings.db'
     started = time.perf_counter()
-    variants, details, trials = {}, {}, []
-    config = configs.get("embedding")
+    variants, details, trials, usage = {}, {}, [], []
+    config = configs.get('embedding')
     vector_enabled = bool(config and config.model and config.base_url)
-    with tempfile.TemporaryDirectory(prefix="iris-recall-") as folder:
-        store = Store(Path(folder) / "iris.db")
-        try:
-            ids, entries = seed_corpus(store, data)
-            gateway, misses, dimension = None, 0, None
-            if vector_enabled:
-                texts = [m["content"] for m in data["memories"]] + [q.get("text", "") for q in queries if q.get("text")]
-                gateway, misses = cache_embeddings(configs, texts, store, cache_path)
-                dimension = len(gateway.vectors[texts[0]])
-                with store.write() as conn:
-                    for m in data["memories"]:
-                        conn.execute("UPDATE memories SET embedding=?,embedding_model=? WHERE id=?",
-                            (np.asarray(gateway.vectors[m["content"]], dtype=np.float32).tobytes(), config.model, ids[m["id"]]))
-            for tokenizer in ("jieba", "trigram"):
-                for use_vector in (False, True) if vector_enabled else (False,):
-                    name = tokenizer + ("_hybrid" if use_vector else "_fts")
-                    best = None
-                    for lexical_min in ([.25, .5, .75, 1.] if calibrate else [DEFAULTS["lexical_min"]]):
-                        for vector_min in ([.35, .45, .55, .65, .75, .85] if calibrate and use_vector else [DEFAULTS["vector_min"]]):
-                            retrieval = Retrieval(store, gateway if use_vector else None, tokenizer=tokenizer,
-                                                  vector_min=vector_min, lexical_min=lexical_min,
-                                                  clock=lambda: datetime.fromisoformat(data.get("as_of", "2026-09-29T12:00:00+00:00")))
-                            rows = _run_queries(retrieval, queries, ids, entries, details=external)
-                            metrics = recall_metrics(rows)
-                            params = {"tokenizer": tokenizer, "vector_min": vector_min, "lexical_min": lexical_min}
-                            if calibrate:
-                                trials.append({"variant": name, "settings": params, "metrics": metrics})
-                            if best is None or _selection_score(metrics) > _selection_score(best["metrics"]):
-                                best = {"settings": params, "metrics": metrics, "rows": rows}
-                    variants[name] = {"settings": best["settings"], "metrics": best["metrics"],
-                                      "queries": [{k: r[k] for k in ("id", "returned", "local_ms")} for r in best["rows"]]}
-                    details[name] = best["rows"]
-                    print(f"{name}: Recall@8={best['metrics']['recall_at_8']}, nDCG@8={best['metrics']['ndcg_at_8']}", flush=True)
-            with store.read() as conn:
-                usage = [dict(r) for r in conn.execute("SELECT purpose,model,result_category,duration_ms,prompt_tokens,completion_tokens FROM model_calls")]
-        finally:
-            store.close()
-    recommended = max(variants, key=lambda name: _selection_score(variants[name]["metrics"]))
-    report = {"created_at": now(), "split": split, "elapsed_seconds": time.perf_counter() - started,
-              "corpus": {"memories": len(data["memories"]), "queries": len(queries),
-                         "sha256": hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()},
-              "embedding_model": config.model if vector_enabled else "unconfigured", "dimension": dimension,
-              "embedding_cache_misses": misses, "embedding_calls": usage, "variants": variants,
-              "calibration": {"enabled": calibrate, "trials": trials,
-                  "selection_rule": "最大化 (Recall@8+nDCG@8)/2-无关误返率；相同分数依次按召回、nDCG、较低误返率。仅 dev；M2 门槛只作参考，不作为本 PR 的参数筛选硬约束。",
-                  "recommended_variant": recommended, "recommended_settings": variants[recommended]["settings"]},
-              "m2_reference": {"recall_at_8": .85, "ndcg_at_8": .75, "irrelevant_return_rate": .10}}
+    dimensions = [1024, 2048] if compare_embeddings else [config.dimensions or DEFAULTS['embedding_dimensions']] if config else []
+    prefixes = ['', '为这个问题检索能回答它的个人记忆：'] if compare_embeddings else [DEFAULTS['query_prefix']]
+    misses = 0
+    clock = lambda: datetime.fromisoformat(data.get('as_of', '2026-09-29T12:00:00+00:00'))
+    def evaluate(store, gateway, ids, entries, tokenizer, prefix, dimension, name):
+        best = None
+        grid = product([.35, .45, .55, .65], [.75, .85, .95], [.5, 1., 2.]) if calibrate and gateway else [
+            (DEFAULTS['vector_min'], DEFAULTS['vector_relative'], DEFAULTS['vector_weight'])]
+        retrieval = Retrieval(store, gateway, tokenizer=tokenizer, clock=clock, query_prefix=prefix)
+        for floor, relative, weight in grid:
+            params = dict(tokenizer=tokenizer, vector_min=floor, vector_relative=relative,
+                          vector_weight=weight, query_prefix=prefix)
+            retrieval.overrides.update(params)
+            rows = _run_queries(retrieval, queries, ids, entries, details=external)
+            metrics = recall_metrics(rows)
+            settings = {**params, 'embedding_dimensions': dimension, 'embedding_model': config.model if config else ''}
+            if calibrate:
+                trials.append({'variant': name, 'settings': settings, 'metrics': metrics})
+            if best is None or _selection_score(metrics) > _selection_score(best['metrics']):
+                best = {'settings': settings, 'metrics': metrics, 'rows': rows}
+        variants[name] = {'settings': best['settings'], 'metrics': best['metrics'], 'groups': grouped_metrics(best['rows']),
+            'queries': [{k: r[k] for k in ('id', 'split', 'categories', 'relevant', 'returned', 'local_ms')} for r in best['rows']],
+            'index_bytes': retrieval.index.nbytes if retrieval.index else 0}
+        details[name] = best['rows']
+        m = best['metrics']
+        print(f"{name}: Recall@8={m['recall_at_8']}, nDCG@8={m['ndcg_at_8']}, false={m['irrelevant_return_rate']}", flush=True)
+
+    # Dimension-specific databases avoid mixing vectors in an already loaded index.
+    for dimension in (dimensions if vector_enabled else [None]):
+        with tempfile.TemporaryDirectory(prefix='ir-') as folder:
+            store = Store(Path(folder) / 'i.db')
+            try:
+                ids, entries = seed_corpus(store, data)
+                if dimension == (dimensions[0] if vector_enabled else None):
+                    for tokenizer in ('jieba', 'trigram'):
+                        evaluate(store, None, ids, entries, tokenizer, '', None, tokenizer + '_fts')
+                if vector_enabled:
+                    local_configs = {**configs, 'embedding': replace(config, dimensions=dimension)}
+                    store.set_setting('retrieval', {**DEFAULTS, 'embedding_model': config.model, 'embedding_dimensions': dimension})
+                    preparer = Retrieval(store)
+                    texts = [m['content'] for m in data['memories']]
+                    for prefix in prefixes:
+                        preparer.settings['query_prefix'] = prefix
+                        for q in queries:
+                            if q.get('text'):
+                                texts.append(preparer.embedding_text(q['text'], q.get('participants', q.get('filters', {}).get('people', []))))
+                    gateway, new = cache_embeddings(local_configs, texts, store, cache_path)
+                    misses += new
+                    if any(len(v) != dimension for v in gateway.vectors.values()):
+                        raise ValueError('provider did not return requested embedding dimensions')
+                    with store.write() as conn:
+                        for m in data['memories']:
+                            conn.execute('UPDATE memories SET embedding=?,embedding_model=? WHERE id=?',
+                                (np.asarray(gateway.vectors[m['content']], dtype=np.float32).tobytes(), config.model, ids[m['id']]))
+                    for prefix in prefixes:
+                        for tokenizer in ('jieba', 'trigram'):
+                            name = tokenizer + '_hybrid'
+                            if compare_embeddings:
+                                name += f'_d{dimension}_' + ('instruction' if prefix else 'plain')
+                            evaluate(store, gateway, ids, entries, tokenizer, prefix, dimension, name)
+                with store.read() as conn:
+                    usage.extend(dict(r) for r in conn.execute('SELECT purpose,model,result_category,duration_ms,prompt_tokens,completion_tokens FROM model_calls'))
+            finally:
+                store.close()
+    recommended = max(variants, key=lambda name: _selection_score(variants[name]['metrics'])) if calibrate else None
+    sources = sorted(p for p in Path(__file__).parent.rglob('*') if p.suffix in ('.py', '.md', '.sql', '.json'))
+    report = {'created_at': now(), 'split': split, 'elapsed_seconds': time.perf_counter() - started,
+        'source_sha256': hashlib.sha256(b''.join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest(),
+        'corpus': {'version': data.get('version'), 'memories': len(data['memories']), 'queries': len(queries),
+                   'sha256': hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()},
+        'embedding_model': config.model if vector_enabled else 'unconfigured', 'dimensions': dimensions,
+        'embedding_cache_misses': misses, 'embedding_calls': usage, 'variants': variants,
+        'calibration': {'enabled': calibrate, 'compare_embeddings': compare_embeddings, 'trials': trials,
+            'selection_rule': '(Recall@8+nDCG@8)/2-无关误返率；平分优先召回、nDCG、较低误返。仅 dev 选择，holdout 不排序挑方案。',
+            'recommended_variant': recommended, 'recommended_settings': variants[recommended]['settings'] if recommended else None},
+        'm2_reference': {'recall_at_8': .85, 'ndcg_at_8': .75, 'irrelevant_return_rate': .10}}
     if external:
-        report["details"] = {"memories": data["memories"], "queries": queries, "variants": details}
+        report['details'] = {'memories': data['memories'], 'queries': queries, 'variants': details}
     serialized = json.dumps(report, ensure_ascii=False, indent=2)
-    for config in configs.values():
-        if config.api_key:
-            serialized = serialized.replace(config.api_key, "[REDACTED]")
+    for model in configs.values():
+        if model.api_key:
+            serialized = serialized.replace(model.api_key, '[REDACTED]')
     report = json.loads(serialized)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    path = reports / f"recall-{stamp}-{split}.md"
-    lines = ["# Iris 召回评测", "", f"固定记忆 {len(data['memories'])} 条，查询 {len(queries)} 条；直接入库，没有学习或生成调用。",
-        f"embedding：{report['embedding_model']}，维度 {dimension}；新请求 {misses} 次，其余使用按端点／模型／文本哈希缓存的真实向量。",
-        "本地 P95 包含生产回复准备与召回记录写入，扣除 embedding 调用耗时。首次向量获取用量与耗时单列在 JSON；并非网络 SLA 测试。",
-        "", "| 方案 | Recall@8 | nDCG@8 | 无关误返率 | prepare P95 ms | 文本阈值 | 向量阈值 |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
-    for name, value in variants.items():
-        m, p = value["metrics"], value["settings"]
-        fmt = lambda n: "—" if n is None else f"{n:.3f}"
-        lines.append(f"| {name} | {fmt(m['recall_at_8'])} | {fmt(m['ndcg_at_8'])} | {fmt(m['irrelevant_return_rate'])} | {fmt(m['prepare_p95_ms'])} | {p['lexical_min']} | {p['vector_min']} |")
-    lines.extend(["", "M2 参考：Recall@8 ≥0.85，nDCG@8 ≥0.75，无关误返率 ≤0.10；本 PR 不以这三项作达标门槛。",
-        "Recall 与 nDCG 对有答案查询取宏平均；nDCG 使用 2^相关等级−1 和 log2 排名折损。无关误返率只以无答案查询为分母。",
-        f"本次{'进行了 dev 标定' if calibrate else '使用已保存的默认阈值进行对照'}；推荐：{recommended}。",
-        report["calibration"]["selection_rule"],
-        "评测命令不修改运行中的数据库设置。完整阈值试验在 JSON 中；外部 --out 另外保存每条固定记忆、查询与完整返回。",
-        "学习和召回的最终验收仍需规划者运行隐藏集。", ""])
-    path.write_text("\n".join(lines), encoding="utf-8")
-    path.with_suffix(".json").write_text(serialized, encoding="utf-8")
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    path = reports / f'recall-{stamp}-{split}.md'
+    lines = ['# Iris 召回评测', '', f"固定记忆 {len(data['memories'])} 条，查询 {len(queries)} 条；直接入库，不调用生成模型。",
+        f"embedding：{report['embedding_model']}，维度 {dimensions}；新请求 {misses} 次。缓存键含端点、模型、维度和实际输入文本。",
+        'P95 为正式 prepare 路径，扣除外部 embedding 网络等待；包含召回记录写入。', '',
+        '| 方案 | 分组 | 类别 | 查询数 | Recall@8 | nDCG@8 | 无关误返率 | P95 ms |',
+        '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |']
+    fmt = lambda n: '—' if n is None else f'{n:.3f}'
+    for name, variant in variants.items():
+        for group, values in variant['groups'].items():
+            for category, m in [('全部', values['all']), *values['categories'].items()]:
+                lines.append(f"| {name} | {group} | {category} | {m['queries']} | {fmt(m['recall_at_8'])} | {fmt(m['ndcg_at_8'])} | {fmt(m['irrelevant_return_rate'])} | {fmt(m['prepare_p95_ms'])} |")
+    lines.extend(['', 'M2 目标：Recall@8 ≥0.85、nDCG@8 ≥0.75、无关误返率 ≤0.10。未调整门槛。',
+        '类别可重叠；Recall/nDCG 只以有答案问题为分母，无关误返率只以无答案问题为分母；空分母为 —。',
+        report['calibration']['selection_rule'], f'本次推荐：{recommended or "未进行选择，使用已冻结参数"}。',
+        '以下为各方案参数和索引块存储；参数网格、用量与逐条结果保存在同名 JSON。', ''])
+    for name, variant in variants.items():
+        lines.append(f"- {name}: {json.dumps(variant['settings'], ensure_ascii=False)}；块存储 {variant['index_bytes']/2**20:.3f} MiB。")
+    lines.extend(['', '评测不会修改在用数据库。规划者将以隐藏召回集复核；本报告不能替代独立验收。', ''])
+    path.write_text('\n'.join(lines), encoding='utf-8')
+    path.with_suffix('.json').write_text(serialized, encoding='utf-8')
     return path, report

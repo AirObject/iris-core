@@ -6,16 +6,32 @@
 uv run iris eval learning --split dev --judge-runs 1
 uv run iris eval learning --judge-runs 2
 uv run iris eval recall
-uv run iris eval recall --split dev --calibrate
+uv run iris eval recall --split dev --calibrate --compare-embeddings
 uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
 uv run python evals/benchmark_retrieval.py --out evals/reports
 ```
 
 学习最终评测必须使用默认的双判；单判只用于 dev 迭代，不计算双判分歧率。学习评分 v3、语料和 M1 门槛保持不变。`--out` 位于仓库外时，JSON 的 `details` 保存每案例完整输入、全部记忆及来源、每次原判分和最终判分；仓库内报告保持汇总与抽查规模。
 
-学习成功案例保存在 `data/learning-checkpoints/<指纹>`，外部报告的检查点在 `<out>/.learning-checkpoints/<指纹>`。只有源码、语料、模型端点／ID、判分次数都一致才复用已完成案例；失败案例重新执行，不按分数选择结果。报告列 `resumed_cases` 和源码指纹。请勿在评测运行期间编辑源码／迁移或重建当前虚拟环境。
+学习成功案例保存在 `data/lc/<16位指纹>`，外部报告的检查点在 `<out>/.lc/<16位指纹>`。meta.json 保存并校验完整 SHA-256。只有源码、语料、模型端点／ID／维度、判分次数都一致才复用已完成案例；失败案例重新执行，不按分数选择结果。报告列 `resumed_cases` 和源码指纹。请勿在评测运行期间编辑源码／迁移或重建当前虚拟环境。
 
-## 固定记忆召回集
+## 当前召回质量评测（M1-5）
+
+默认 `recall_v2.json` 在 `95549fc` 冻结：50 条固定记忆、66 条逐条手写的自然查询，44 dev／22 holdout，其中 16 条无答案。包含近名人物、同一人的其他事实、相近话题，以及六类重叠标记。v1 原样保留，可用 `--corpus evals/recall_v1.json` 跑回归。详细执行顺序和局限见 [PR5_EXECUTION](PR5_EXECUTION.md)。
+
+`--calibrate --compare-embeddings --split dev` 比较 1024／2048 维、有／无检索前缀，以及绝对下限 0.35／0.45／0.55／0.65、相对最佳余弦比例 0.75／0.85／0.95、向量 RRF 权重 0.5／1／2（全文权重 1）。不调用生成模型。选择规则为 `(Recall@8+nDCG@8)/2-无关误返率`，平分依次看 Recall、nDCG、较低误返。holdout 只在最终运行，不选择参数或方案；报告保留预定的 FTS／混合及两分词器对照。
+
+当前默认 2048 维 float32、jieba、RRF k=60、两路等权、绝对下限 0.35、相对比例 0.75，前缀为“为这个问题检索能回答它的个人记忆：”。新数据库保存这些值，旧设置保留；旧版未写维度／前缀时按 2048／空前缀解释。文本覆盖率阈值已经移除。模型或维度更换后须重新标定并保证记忆向量一致。
+
+JSON 可加 `subjects: [{"name":"本人名字","aliases":["本人声明的别名"]}]`，直接写 subject_aliases。查询可加 `categories` 字符串数组。JSONL 的 memories 头记录同样支持 subjects。分类指标与 split 指标独立列出，空分母为不可计算。外部 --out 仍保留完整输入和返回。
+
+缓存键新增请求维度和完整的实际 embedding 文本，使用服务商真实 1024／2048 维，不能截向量代替。新增请求单路、每次至少间隔 1 秒，缓存保存调用用量／失败。性能脚本比较两种维度、5k／50k、float32／float16；输出为 retrieval-performance-pr5.json，旧数据不覆盖。
+
+当前结果：v2 默认方案 dev 1.000／0.998／0，holdout 1.000／0.977／0.667（依次 Recall@8／nDCG@8／无关误返），**无答案目标未通过**；v1 回归误返 0.75，也明显退化。详见[最终召回](reports/recall-20260929T152944533947Z-all.md)、[v1 回归](reports/recall-20260929T153146196759Z-all.md)、[性能报告](reports/retrieval-performance-pr5.md)。默认 5k／50k prepare P95 为 55.1／202.6ms。
+
+[最终学习双判](reports/learning-20260929T155300064221Z-all.md)全量／历史 holdout 的直接解析率为 100%／100%、精确率 91.47%／98.33%、事实召回 76.32%／78.12%，原 M1 学习数值门槛仍达到；全量归属 88.76%、别名覆盖 33.33%，不能宣称整体质量不变或最终验收通过。学习截断 0，判分截断 1 次后成功修正，57 项双判分歧按不利结论。源码固定在 63d9917 后运行；规划者仍须隐藏集复核。
+
+## PR #4 固定记忆召回集与历史参数
 
 `recall_v1.json` 在 `a8af9b1` 单独冻结：40 条固定记忆、38 条手写 dev 查询、8 条无答案。没有模板或脚本生成质量语料；性能脚本中的合成记忆只用于规模测试。召回评测直接入库，不经过学习，不调用生成模型，使用正式 Retrieval.prepare／search、去冗余和记录路径。
 
@@ -44,7 +60,7 @@ uv run python evals/benchmark_retrieval.py --out evals/reports
 
 Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1)`，以理想前八条归一化；无关误返率只统计无答案查询中是否返回非空。报告对照 jieba、trigram、两者各自的纯全文和融合向量方案。没有配置 embedding 时只输出两组全文结果，不冒充已经完成向量比较。
 
-embedding 使用真实服务，按端点／模型／文本 SHA-256 缓存在 `data/recall-embeddings.db`；外部 --out 则将缓存放在外部。缓存中不含凭据。首次运行另记新 embedding 的调用用量与耗时；本地 prepare P95 扣除查询 embedding 等待，仍包含候选检索、去冗余和召回记录提交。外部 JSON 的 `details` 保存所有固定记忆、查询、相关性标签和完整返回，仓库内只保留结果 ID 与汇总。
+embedding 使用真实服务，按端点／模型／维度／完整输入文本 SHA-256 缓存在 `data/recall-embeddings.db`；外部 --out 则将缓存放在外部。缓存中不含凭据。首次运行另记新 embedding 的调用用量与耗时；本地 prepare P95 扣除查询 embedding 等待，仍包含候选检索、去冗余和召回记录提交。外部 JSON 的 `details` 保存所有固定记忆、查询、相关性标签和完整返回，仓库内只保留结果 ID 与汇总。
 
 `--calibrate` 只允许与 `--split dev` 一起使用。词项覆盖网格为 0.25／0.5／0.75／1.0；余弦网格为 0.35／0.45／0.55／0.65／0.75／0.85。按 `(Recall@8+nDCG@8)/2-无关误返率` 选择，平分依次看 Recall、nDCG 和误返率。命令只报告推荐设置，不写生产库。M2 参考值仍为 Recall@8≥0.85、nDCG@8≥0.75、无关误返率≤0.10，本 PR 不要求达到。
 

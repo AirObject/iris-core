@@ -1,6 +1,6 @@
 # Iris 后续实现说明
 
-产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心及第四轮召回、回复准备、查询与反馈接口；后台调度、HTTP 学习触发、界面、首次设置和鉴权尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
+产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心、回复准备、查询与反馈接口及第五轮召回质量改进；后台调度、HTTP 学习触发、界面、首次设置和鉴权尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
 
 ## 安装和运行
 
@@ -52,8 +52,8 @@ uv run iris eval learning --corpus C:\path\to\cases.jsonl --out C:\path\to\repor
 
 `recall_v1.json` 是单独冻结的 40 条固定记忆、38 条手写 dev 查询（8 条无答案）；禁止用脚本或模板生成质量语料。`iris eval recall --corpus <JSON 或 JSONL> --out <目录>` 可用于规划者的外部集，格式见 evals/README。`--calibrate` 只允许 `--split dev`，报告参数选择，不修改在用数据库；不要在隐藏集上调参。
 
-默认 jieba、RRF k=60、2048 维 float32，文本覆盖阈值 0.5、向量余弦阈值 0.65，按当前 doubao-embedding-vision dev 标定。初次打开数据库将 `retrieval_defaults.json` 写入 `runtime_settings.retrieval`；保留已有设置。更换模型必须重新标定，未经标定退回全文检索。SQLite 存 float32；内存 dtype 可配置 float16，但本机实测更慢。索引更新只能在事务提交后，不能在写事务里全表读取记忆和向量。读准备／查询只写召回记录，不增加保留强度。
+recall_v2 在 `95549fc` 单独冻结：50 条记忆、44 dev／22 holdout、16 条无答案。只能用 dev 标定；holdout 最后运行一次并按类别报告，v1 作为回归。默认 jieba、RRF k=60、两路等权、2048 维 float32，向量绝对下限 0.35、相对最佳余弦比例 0.75，查询前缀“为这个问题检索能回答它的个人记忆：”。全文按 BM25，去停用词和主体名字后至少命中一个实词，不再用词项覆盖阈值。按当前 doubao-embedding-vision 的 v2 dev 标定；完整选择过程见 evals/PR5_EXECUTION.md。初次打开数据库将 `retrieval_defaults.json` 写入 `runtime_settings.retrieval`；保留已有设置。更换模型必须重新标定，未经标定退回全文检索。SQLite 存 float32；内存 dtype 可配置 float16，但本机实测更慢。索引更新只能在事务提交后，不能在写事务里全表读取记忆和向量。评分使用不可变向量块快照，不持数据库写锁；更新只复制有读者持有的被修改块。读准备／查询只写召回记录，不增加保留强度。
 
-Python 3.12 和 3.13 使用独立环境测试，不能在运行评测时切换或重建同一虚拟环境，也不要在模型评测运行期间修改源码或迁移。完整学习案例按源码／语料／模型／判分次数指纹保存在忽略的 data/learning-checkpoints；外部 --out 的检查点与完整明细留在外部。只复用相同输入的完成案例，不按分数选择或改写结果。
+Python 3.12 和 3.13 使用独立环境测试，不能在运行评测时切换或重建同一虚拟环境，也不要在模型评测运行期间修改源码或迁移。完整学习案例按源码／语料／模型与维度／判分次数指纹保存在忽略的 data/lc/<16位短名>，meta.json 校验完整 SHA-256；外部 --out 的检查点与完整明细留在外部。只复用相同输入的完成案例，不按分数选择或改写结果。
 
 本 PR 覆盖 R01、R04—R13；用户已确认 R14 按设计留到 M4，R02、R03 同样留到 M4。不要在本轮添加可见范围、宿主令牌、自动遗忘和恢复。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料。

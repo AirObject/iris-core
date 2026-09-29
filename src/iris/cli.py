@@ -43,6 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     evaluation.add_argument("--out", type=Path, help="Report output directory (default: evals/reports)")
     evaluation.add_argument("--judge-runs", type=int, choices=[1, 2], default=2)
     evaluation.add_argument("--calibrate", action="store_true", help="Calibrate recall thresholds on dev only")
+    evaluation.add_argument("--compare-embeddings", action="store_true", help="Compare 1024/2048 dimensions and query prefix on dev only")
     args = parser.parse_args(argv)
     if args.command == "serve":
         from .api import create_app, loopback_host
@@ -68,11 +69,12 @@ def main(argv: list[str] | None = None) -> int:
                     configs = load_test_models()
                 except FileNotFoundError:
                     configs = {}
-                path, _ = run_recall_eval(configs, Path.cwd(), args.split, corpus=args.corpus, out=args.out, calibrate=args.calibrate)
+                path, _ = run_recall_eval(configs, Path.cwd(), args.split, corpus=args.corpus, out=args.out,
+                                         calibrate=args.calibrate, compare_embeddings=args.compare_embeddings)
                 print(f"Report: {path}")
                 return 0
-            if args.calibrate:
-                raise ValueError("--calibrate is only available for recall")
+            if args.calibrate or args.compare_embeddings:
+                raise ValueError("--calibrate/--compare-embeddings are only available for recall")
             path, report = run_learning_eval(load_test_models(), Path.cwd(), args.split, corpus=args.corpus, out=args.out, judge_runs=args.judge_runs)
             print(f"Report: {path}")
             for split, metrics in report["metrics"].items():
