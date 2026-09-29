@@ -1,0 +1,1 @@
+{"tokenizer":"jieba","vector_min":0.65,"lexical_min":0.5,"embedding_model":"doubao-embedding-vision","dtype":"float32"}

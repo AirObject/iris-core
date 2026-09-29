@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -190,10 +191,14 @@ class Gateway:
         url = config.base_url + ("/chat/completions" if kind == "chat" else "/embeddings")
         headers = {"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"}
         total_timeout = CHAT_TOTAL_TIMEOUT if kind == "chat" else 30
+        retrieval = kind == "embedding" and purpose == "retrieval_query"
+        if retrieval:
+            total_timeout = 2
         if kind == "chat" and purpose in ("learning_judge", "learning_judge_repair"):
             total_timeout = JUDGE_TOTAL_TIMEOUT
-        timeout = httpx.Timeout(total_timeout, connect=10)
-        for attempt in range(3):
+        timeout = httpx.Timeout(total_timeout, connect=min(10, total_timeout))
+        attempts = 1 if retrieval else 3
+        for attempt in range(attempts):
             started = time.monotonic()
             response: httpx.Response | None = None
             try:
@@ -215,7 +220,7 @@ class Gateway:
                     # Do not store provider response bodies; they may echo credentials or user data.
                     summary = f"HTTP {status}"
                     self._record(purpose, config.model, duration, category, summary, status_code=status, batch_id=batch_id)
-                    if category == "retryable" and attempt < 2:
+                    if category == "retryable" and attempt < attempts - 1:
                         self.sleeper(max((2, 8)[attempt], _retry_after(response.headers.get("Retry-After")) or 0))
                         continue
                     raise ModelError(category, summary)
@@ -244,18 +249,23 @@ class Gateway:
                     self._record(purpose, config.model, duration, category, summary, data.get("usage"), flags, provider_status,
                                  finish_reason=finish_reason, batch_id=batch_id)
                     raise ModelError(category, summary)
+                if kind == "embedding":
+                    vector = data["data"][0]["embedding"]
+                    if not isinstance(vector, list) or not vector or any(not math.isfinite(float(v)) for v in vector) or not any(float(v) for v in vector):
+                        raise ValueError("invalid embedding vector")
                 self._record(purpose, config.model, duration, "success", None, data.get("usage"), flags, provider_status or status,
                              finish_reason=finish_reason, batch_id=batch_id)
                 return data
             except (httpx.TransportError, FutureTimeout) as exc:
+                request.cancel()
                 duration = round((time.monotonic() - started) * 1000)
                 summary = "total timeout" if isinstance(exc, FutureTimeout) else _summary(type(exc).__name__, config.api_key)
                 self._record(purpose, config.model, duration, "retryable", summary, batch_id=batch_id)
-                if attempt < 2:
+                if attempt < attempts - 1:
                     self.sleeper((2, 8)[attempt])
                     continue
                 raise ModelError("retryable", summary) from exc
-            except (json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
+            except (json.JSONDecodeError, ValueError, KeyError, IndexError, TypeError) as exc:
                 duration = round((time.monotonic() - started) * 1000)
                 summary = _summary(f"invalid provider response: {type(exc).__name__}", config.api_key)
                 self._record(purpose, config.model, duration, "configuration", summary, status_code=response.status_code if response else None,

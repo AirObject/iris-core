@@ -11,6 +11,9 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Iterator
 
+from .search_text import segmented
+from .vector_index import VectorIndex
+
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -26,15 +29,23 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         existed = self.path.exists()
         self._lock = threading.RLock()
+        self._vector_indexes: dict[tuple[str, str], VectorIndex] = {}
         self._writer = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None, timeout=30)
         self._writer.row_factory = sqlite3.Row
+        self._writer.create_function("iris_terms", 1, segmented, deterministic=True)
         self._writer.execute("PRAGMA journal_mode=WAL")
         self._writer.execute("PRAGMA foreign_keys=ON")
         self._writer.execute("PRAGMA busy_timeout=30000")
-        self._migrate(existed)
+        try:
+            self._migrate(existed)
+        except BaseException:
+            self._writer.close()
+            raise
         self._writer.execute(
             "INSERT OR IGNORE INTO subjects(id,kind,name,created_at) VALUES('self','self','我',?)", (now(),)
         )
+        self._writer.execute("INSERT OR IGNORE INTO runtime_settings(key,value_json) VALUES('retrieval',?)",
+            (files("iris").joinpath("retrieval_defaults.json").read_text(encoding="utf-8"),))
 
     def recover_inflight(self) -> None:
         # A running batch had no committed result. Count the interrupted attempt once.
@@ -89,6 +100,39 @@ class Store:
                 raise
             else:
                 self._writer.commit()
+                self._refresh_vectors()
+
+    def vector_index(self, model: str, dtype: str = "float32") -> VectorIndex:
+        with self._lock:
+            assert not self._writer.in_transaction
+            key = (model, dtype)
+            if key not in self._vector_indexes:
+                index = VectorIndex(model, dtype)
+                with self.read() as conn:
+                    for row in conn.execute("""SELECT id,revision,lifecycle,embedding,embedding_model FROM memories
+                            WHERE lifecycle!='deleted' AND embedding IS NOT NULL AND embedding_model=?""", (model,)):
+                        index.upsert(row)
+                if not self._vector_indexes:
+                    # The first complete startup snapshot already includes these commits.
+                    # No other in-memory index can still need their notifications.
+                    self._writer.execute("DELETE FROM vector_dirty")
+                self._vector_indexes[key] = index
+            return self._vector_indexes[key]
+
+    def _refresh_vectors(self) -> None:
+        """Called under the writer lock, after commit; rollback never reaches this hook."""
+        if not self._vector_indexes:
+            return
+        assert not self._writer.in_transaction
+        with self.read() as conn:
+            for change in conn.execute("""SELECT d.memory_id,m.id,m.revision,m.lifecycle,m.embedding,m.embedding_model
+                    FROM vector_dirty d LEFT JOIN memories m ON m.id=d.memory_id"""):
+                for index in self._vector_indexes.values():
+                    if change["id"] is None:
+                        index.remove(change["memory_id"])
+                    else:
+                        index.upsert(change)
+        self._writer.execute("DELETE FROM vector_dirty")
 
     @contextlib.contextmanager
     def read(self) -> Iterator[sqlite3.Connection]:

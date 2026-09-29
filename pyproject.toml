@@ -5,16 +5,22 @@ description = "Iris learning core"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
+  "jieba>=0.42,<1",
   "numpy>=2,<3",
   "tzdata>=2025.2",
+  "uvicorn>=0.30,<1",
 ]
 
 [project.scripts]
 iris = "iris.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8,<10"]
+dev = [
+    "psutil>=6,<8",
+    "pytest>=8,<10",
+]
 
 [build-system]
 requires = ["hatchling"]

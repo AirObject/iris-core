@@ -17,6 +17,7 @@ import numpy as np
 from .db import Store, dumps, now
 from .models import Gateway, ModelError
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
+from .retrieval import Retrieval
 
 
 PROMPT_VERSION = "learning_v5"
@@ -100,6 +101,7 @@ class LearningEngine:
     def __init__(self, store: Store, gateway: Gateway):
         self.store = store
         self.gateway = gateway
+        self.retrieval = Retrieval(store, gateway)
 
     def _snapshot(self, batch: Batch) -> dict[str, Any]:
         ids = batch.history_ids + batch.target_ids + batch.future_ids
@@ -108,52 +110,19 @@ class LearningEngine:
             rows = conn.execute(f"""SELECT m.*,s.name AS sender_name,q.name AS quote_author_name
                 FROM messages m JOIN subjects s ON s.id=m.sender_subject_id
                 LEFT JOIN subjects q ON q.id=m.quote_author_subject_id WHERE m.id IN ({placeholders})""", ids).fetchall()
-            memories = conn.execute("""SELECT m.*,s.name AS speaker_name FROM memories m
-                JOIN subjects s ON s.id=m.speaker_subject_id WHERE m.lifecycle='active' ORDER BY m.importance DESC,m.id DESC""").fetchall()
             subjects = conn.execute("SELECT id,name,parent_id FROM subjects").fetchall()
             aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases").fetchall()
             identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities").fetchall()
             persona = conn.execute("SELECT content FROM persona_versions WHERE is_current=1 ORDER BY id DESC LIMIT 1").fetchone()
-            about_rows = conn.execute("SELECT memory_id,subject_id FROM memory_subjects").fetchall()
         messages = {r["id"]: _row_dict(r) for r in rows}
-        memory_list = [_row_dict(r) for r in memories]
-        about: dict[int, set[str]] = {}
-        for row in about_rows:
-            about.setdefault(row["memory_id"], set()).add(row["subject_id"])
-        return {"messages": messages, "memories": memory_list, "subjects": [_row_dict(r) for r in subjects],
+        return {"messages": messages, "subjects": [_row_dict(r) for r in subjects],
                 "aliases": [_row_dict(r) for r in aliases], "identities": [_row_dict(r) for r in identities],
-                "persona": persona[0] if persona else "", "role_name": str(self.store.setting("role_name", "Iris")),
-                "memory_about": about}
+                "persona": persona[0] if persona else "", "role_name": str(self.store.setting("role_name", "Iris"))}
 
     def _related(self, batch: Batch, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         target = [snapshot["messages"][i] for i in batch.target_ids]
-        participants = {m["sender_subject_id"] for m in target}
-        candidates = snapshot["memories"]
-        selected: list[dict[str, Any]] = []
-        for person in participants:
-            personal = [m for m in candidates if person in snapshot["memory_about"].get(m["id"], set())]
-            selected.extend(personal[:3])
-        selected_ids = {m["id"] for m in selected}
-        if candidates and self.gateway.configs.get("embedding") and self.gateway.configs["embedding"].model:
-            try:
-                vector = np.asarray(self.gateway.embedding("\n".join(m["content"] for m in target), "learning_context"), dtype=np.float32)
-                ranked = []
-                for memory in candidates:
-                    if memory["embedding"] is None or memory["embedding_model"] != self.gateway.configs["embedding"].model:
-                        continue
-                    old = np.frombuffer(memory["embedding"], dtype=np.float32)
-                    if old.size != vector.size:
-                        continue
-                    denominator = float(np.linalg.norm(vector) * np.linalg.norm(old))
-                    if denominator:
-                        ranked.append((float(np.dot(vector, old) / denominator), memory))
-                for _, memory in sorted(ranked, key=lambda pair: pair[0], reverse=True):
-                    if memory["id"] not in selected_ids:
-                        selected.append(memory)
-                        selected_ids.add(memory["id"])
-            except ModelError:
-                pass  # Participant highlights remain available.
-        return selected[:15]
+        participants = list(dict.fromkeys(m["sender_subject_id"] for m in target))
+        return self.retrieval.learning_context("\n".join(m["content"] for m in target), participants)
 
     def _material(self, batch: Batch, snapshot: dict[str, Any], related: list[dict[str, Any]]) -> tuple[str, dict[int, int], dict[str, dict[str, Any]]]:
         messages = snapshot["messages"]
@@ -487,13 +456,18 @@ class LearningEngine:
                         ON CONFLICT(subject_id,alias) DO UPDATE SET
                         source_message_id=COALESCE(subject_aliases.source_message_id,excluded.source_message_id)""",
                         (item["_subject_id"], item["alias"], item["_source_message_id"]))
-            existing = conn.execute("SELECT * FROM memories WHERE lifecycle='active'").fetchall()
-            existing_about = {r["memory_id"]: set() for r in conn.execute("SELECT memory_id FROM memory_subjects")}
-            for r in conn.execute("SELECT memory_id,subject_id FROM memory_subjects"):
-                existing_about.setdefault(r["memory_id"], set()).add(r["subject_id"])
             for item in accepted["memories"]:
                 speaker_id = item["speaker_id"]
                 about_ids = {self._resolve_subject(conn, name, snapshot) for name in item["about"]}
+                # Composite index narrows by the same speaker/claim before fetching prose or vectors.
+                scope = " AND id IN (SELECT memory_id FROM memory_subjects WHERE subject_id=?)" if about_ids else " AND NOT EXISTS (SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=memories.id)"
+                parameters = [speaker_id, item["kind"], item["stance"], item["event_time"]]
+                if about_ids:
+                    parameters.append(sorted(about_ids)[0])
+                existing = conn.execute("""SELECT * FROM memories WHERE speaker_subject_id=? AND kind=?
+                    AND stance=? AND event_time IS ? AND lifecycle='active'""" + scope, parameters).fetchall()
+                existing_about = {m["id"]: {r[0] for r in conn.execute(
+                    "SELECT subject_id FROM memory_subjects WHERE memory_id=?", (m["id"],))} for m in existing}
                 def same_meaning(memory: Any) -> bool:
                     if _similar(memory["content"], item["content"]):
                         return True
@@ -540,9 +514,6 @@ class LearningEngine:
                     conn.execute("INSERT INTO sources(memory_id,kind,source_memory_id,source_revision,created_at) VALUES(?,'memory',?,?,?)",
                                  (memory_id, source_memory["id"], source_memory["revision"], stamp))
                 created.append(memory_id)
-                new_memory = conn.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone()
-                existing.append(new_memory)
-                existing_about[memory_id] = about_ids
             for item in accepted["updates"]:
                 original = refs[item["ref"]]
                 current = conn.execute("SELECT * FROM memories WHERE id=?", (original["id"],)).fetchone()

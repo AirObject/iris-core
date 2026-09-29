@@ -152,6 +152,9 @@ def test_external_corpus_and_out_use_production_path_and_respect_split(tmp_path,
     assert report["corpus"]["cases"] == 1 and report["cases"][0]["id"] == "external-dev"
     assert report["metrics"]["all"]["alias_recall"] == 1
     assert report["timeouts_seconds"] == {"learning": 120, "judge": 240}
+    assert len(report["details"]) == 1
+    assert report["details"][0]["actual"]["memories"]
+    assert len(report["details"][0]["judges"]) == 2
     assert not (root / "evals").exists()
     assert "因长度截断的批次数" in path.read_text(encoding="utf-8")
     assert "隐藏" in path.read_text(encoding="utf-8")
@@ -161,10 +164,37 @@ def test_cli_forwards_corpus_out_and_preserves_default_arguments(tmp_path, monke
     from iris import cli
     seen = []
     monkeypatch.setattr(cli, "load_test_models", lambda: {})
-    def run(configs, root, split, *, corpus=None, out=None):
-        seen.append((split, corpus, out))
+    def run(configs, root, split, *, corpus=None, out=None, judge_runs=2):
+        seen.append((split, corpus, out, judge_runs))
         return tmp_path / "report.md", {"metrics": {}}
     monkeypatch.setattr(cli, "run_learning_eval", run)
     assert main(["eval", "learning", "--corpus", str(tmp_path / "外部.jsonl"), "--out", str(tmp_path / "报告")]) == 0
     assert main(["eval", "learning"]) == 0
-    assert seen == [("all", tmp_path / "外部.jsonl", tmp_path / "报告"), ("all", None, None)]
+    assert main(["eval", "learning", "--judge-runs", "1"]) == 0
+    assert seen == [("all", tmp_path / "外部.jsonl", tmp_path / "报告", 2), ("all", None, None, 2), ("all", None, None, 1)]
+
+
+def test_single_judge_has_no_invented_agreement(tmp_path, monkeypatch):
+    monkeypatch.setattr(evaluation, "Gateway", EvaluationGateway)
+    case = {"id": "one", "split": "dev", "entry_type": "private", "messages": [
+        {"at": "2026-10-01T09:00:00+08:00", "speaker": "小林", "type": "message", "content": "叫我阿灯，我喜欢薄荷茶"}],
+        "must": [], "forbidden": [], "goals": [], "links": [{"kind": "alias", "a": "小林", "b": "阿灯"}]}
+    row = evaluation._run_case({"chat": ModelConfig("fake", "", "fake"), "embedding": ModelConfig("", "", "")}, case, judge_runs=1)
+    assert len(row["judges"]) == 1 and row["judge_decisions"] == 0
+    assert _metrics([row])["judge_inconsistency_rate"] is None
+
+
+def test_single_judge_report_does_not_claim_two_judges_agree(tmp_path, monkeypatch):
+    monkeypatch.setattr(evaluation, "Gateway", EvaluationGateway)
+    case = {"id": "one", "split": "dev", "entry_type": "private", "messages": [
+        {"at": "2026-10-01T09:00:00+08:00", "speaker": "小林", "type": "message", "content": "叫我阿灯，我喜欢薄荷茶"}],
+        "must": [], "forbidden": [], "goals": [], "links": [{"kind": "alias", "a": "小林", "b": "阿灯"}]}
+    corpus = tmp_path / "case.jsonl"
+    corpus.write_text(json.dumps(case, ensure_ascii=False), encoding="utf-8")
+    configs = {"chat": ModelConfig("fake", "", "fake"), "embedding": ModelConfig("", "", "")}
+    _, previous = run_learning_eval(configs, tmp_path, "dev", corpus=corpus, judge_runs=2)
+    path, report = run_learning_eval(configs, tmp_path, "dev", corpus=corpus, judge_runs=1)
+    prose = path.read_text(encoding="utf-8")
+    assert "两次判分结论一致" not in prose
+    assert "本次为单判" in prose
+    assert "个百分点" not in prose

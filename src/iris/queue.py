@@ -6,6 +6,7 @@ import json
 import re
 import sqlite3
 import uuid
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -106,7 +107,7 @@ def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, 
                 account_id: str | None = None, scene_identity: str | None = None,
                 quote_author: str | None = None, quote_author_account_id: str | None = None,
                 quote_content: str | None = None,
-                pace: str = "standard") -> int:
+                pace: str = "standard", _conn: sqlite3.Connection | None = None) -> int:
     if kind not in ("message", "self_output", "action_result", "event"):
         raise ValueError("invalid message type")
     if not entry_id or not dedupe_key or pace not in PACE:
@@ -119,7 +120,7 @@ def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, 
         raise ValueError("occurred_at needs a timezone offset")
     if len(content.encode("utf-8")) > 32768:
         raise ValueError("message exceeds 32 KB")
-    with store.write() as conn:
+    with (nullcontext(_conn) if _conn is not None else store.write()) as conn:
         conn.execute("INSERT OR IGNORE INTO entries(id,name,platform,kind,pace) VALUES(?,?,?,?,?)",
                      (entry_id, entry_name, platform, entry_kind, pace))
         existing = conn.execute("SELECT id FROM messages WHERE entry_id=? AND dedupe_key=?", (entry_id, dedupe_key)).fetchone()

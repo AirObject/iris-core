@@ -1,0 +1,150 @@
+"""Reproducible Windows/native benchmark. Synthetic performance data is not a quality corpus.
+
+uv run python evals/benchmark_retrieval.py --out evals/reports
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import sqlite3
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+import psutil
+from fastapi.testclient import TestClient
+
+from iris.api import create_app
+from iris.db import Store
+from iris.models import ModelConfig
+from iris.retrieval import DEFAULTS
+
+STAMP = "2026-09-29T12:00:00+00:00"
+
+
+def build(path, size):
+    if path.exists():
+        return
+    store = Store(path)
+    rng = np.random.default_rng(20260929)
+    try:
+        with store.write() as conn:
+            conn.execute("INSERT INTO entries(id,name,platform,kind) VALUES('bench','bench','perf','group')")
+            for i in range(100):
+                conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)", (f"p{i}", f"参与者{i}", STAMP))
+        for base in range(0, size, 500):
+            vectors = rng.normal(size=(min(500, size - base), 2048)).astype(np.float32)
+            vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+            with store.write() as conn:
+                for offset, vector in enumerate(vectors):
+                    i = base + offset
+                    mid = conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,
+                        retention,entry_id,embedding,embedding_model,created_at,updated_at,first_confirmed_at,last_confirmed_at)
+                        VALUES(?,'事实',?,'亲历',75,60,55,'bench',?,'perf-2048',?,?,?,?)""",
+                        (f"参与者{i%100}的天文观測记录第{i}号，地点南山，计划继续观星。", f"p{i%100}", vector.tobytes(), STAMP, STAMP, STAMP, STAMP)).lastrowid
+                    conn.execute("INSERT INTO memory_subjects VALUES(?,?)", (mid, f"p{i%100}"))
+        store._writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        store.close()
+
+
+class Gateway:
+    configs = {"embedding": ModelConfig("local-cached", "", "perf-2048")}
+
+    def __init__(self):
+        self.vector = np.random.default_rng(4321).normal(size=2048).astype(np.float32)
+
+    def embedding(self, text, purpose="embedding"):
+        return self.vector
+
+
+def worker(path, size, dtype, repeats):
+    process = psutil.Process()
+    store = Store(path)
+    store.set_setting("retrieval", {**DEFAULTS, "embedding_model": "perf-2048", "dtype": dtype, "vector_min": 0.0})
+    gateway = Gateway()
+    rss_before = process.memory_info().rss
+    start = time.perf_counter()
+    with TestClient(create_app(store=store, gateway=gateway)) as client:
+        retrieval = client.app.state.retrieval
+        load_seconds = time.perf_counter() - start
+        rss_loaded = process.memory_info().rss
+        direct, http, vector_times = [], [], []
+        query = {"text": "天文观測记录", "participants": []}
+        for _ in range(5):
+            retrieval.prepare("bench", **query)
+        for _ in range(repeats):
+            started = time.perf_counter()
+            retrieval.index.scores(gateway.vector)
+            vector_times.append((time.perf_counter() - started) * 1000)
+            started = time.perf_counter()
+            retrieval.prepare("bench", **query)
+            direct.append((time.perf_counter() - started) * 1000)
+            started = time.perf_counter()
+            response = client.post("/api/v1/entries/bench/prepare", json=query)
+            response.raise_for_status()
+            http.append((time.perf_counter() - started) * 1000)
+        # Identical deterministic queries across fresh float32 / float16 worker processes.
+        rng = np.random.default_rng(7788)
+        rankings = []
+        for _ in range(20):
+            scores = retrieval.index.scores(rng.normal(size=2048).astype(np.float32))
+            rankings.append([mid for mid, _ in sorted(scores.items(), key=lambda p: (-p[1][0], p[0]))[:8]])
+        info = process.memory_info()
+        result = {"memories": size, "dimension": 2048, "dtype": dtype, "samples": repeats,
+                  "load_seconds": load_seconds, "matrix_storage_mib": retrieval.index.nbytes / 2**20,
+                  "rss_before_mib": rss_before / 2**20, "rss_after_load_mib": rss_loaded / 2**20,
+                  "rss_load_delta_mib": (rss_loaded - rss_before) / 2**20,
+                  "rss_after_queries_mib": info.rss / 2**20,
+                  "peak_working_set_mib": getattr(info, "peak_wset", info.rss) / 2**20,
+                  "vector_p95_ms": float(np.percentile(vector_times, 95)),
+                  "prepare_p50_ms": float(np.percentile(direct, 50)), "prepare_p95_ms": float(np.percentile(direct, 95)),
+                  "http_prepare_p95_ms": float(np.percentile(http, 95)), "top8": rankings}
+    store.close()
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", type=Path, default=Path("evals/reports"))
+    parser.add_argument("--worker", action="store_true")
+    parser.add_argument("--size", type=int, default=5000)
+    parser.add_argument("--dtype", default="float32")
+    parser.add_argument("--repeats", type=int, default=60)
+    args = parser.parse_args()
+    folder = Path("data/performance")
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"memories-{args.size}.db"
+    if args.worker:
+        result = worker(path, args.size, args.dtype, args.repeats)
+        (folder / f"result-{args.size}-{args.dtype}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        return
+    results = []
+    for size in (5000, 50000):
+        build(folder / f"memories-{size}.db", size)
+        for dtype in ("float32", "float16"):
+            subprocess.run([sys.executable, "-X", "utf8", __file__, "--worker", "--size", str(size), "--dtype", dtype, "--repeats", str(args.repeats)], check=True)
+            row = json.loads((folder / f"result-{size}-{dtype}.json").read_text(encoding="utf-8"))
+            results.append(row)
+            print(f"{size} {dtype}: prepare P95 {row['prepare_p95_ms']:.1f} ms, HTTP P95 {row['http_prepare_p95_ms']:.1f} ms", flush=True)
+    for size in (5000, 50000):
+        rows = [r for r in results if r["memories"] == size]
+        rows[1]["top8_overlap_with_float32"] = float(np.mean([len(set(a) & set(b)) / 8 for a,b in zip(rows[0]["top8"],rows[1]["top8"], strict=True)]))
+    for row in results:
+        row.pop("top8")
+    report = {"platform": platform.platform(), "python": platform.python_version(), "sqlite": sqlite3.sqlite_version,
+              "numpy": np.__version__, "logical_cpus": os.cpu_count(), "physical_memory_gib": psutil.virtual_memory().total / 2**30,
+              "note": "Fresh process per size/dtype; precomputed synthetic query embedding; 5 warmups; FTS, vector ranking, metadata, JSON and recall record included. HTTP uses in-process ASGI TestClient; no external embedding network.",
+              "results": results}
+    args.out.mkdir(parents=True, exist_ok=True)
+    target = args.out / "retrieval-performance.json"
+    target.write_text(json.dumps(report, ensure_ascii=False, indent=2),encoding="utf-8")
+    print(target)
+
+
+if __name__ == "__main__":
+    main()

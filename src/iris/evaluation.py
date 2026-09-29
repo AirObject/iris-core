@@ -332,7 +332,7 @@ def _report_markdown(report: dict[str, Any]) -> str:
              f"每次学习请求总超时 {report.get('timeouts_seconds', {}).get('learning', CHAT_TOTAL_TIMEOUT)} 秒；"
              f"评测判分请求总超时 {report.get('timeouts_seconds', {}).get('judge', JUDGE_TOTAL_TIMEOUT)} 秒。",
              "", f"评测集：{report['corpus']['cases']} 段、{report['corpus']['messages']} 条消息、"
-             f"{report['corpus']['must']} 条 must；当前运行 {report['split']}。每段判两次，分歧按不利结论计分。"
+             f"{report['corpus']['must']} 条 must；当前运行 {report['split']}。每段判 {report.get('judge_runs', 2)} 次；双判分歧按不利结论计分，单判不计算分歧率。"
              "判分与学习使用同一模型，仍需人工抽查。未配置单价，费用无法估算。", "",
              "| 指标 | dev | holdout | 全部 | M1 门槛 |", "| --- | ---: | ---: | ---: | ---: |"]
     names = [("解析直接成功率", "parse_direct", "≥98%"),
@@ -395,7 +395,9 @@ def _report_markdown(report: dict[str, Any]) -> str:
                   "误记率 ≤5%；证据正确率 ≥90%；归属正确率 ≥90%。"])
     lines.extend(["", "## 与上次结果对比", ""])
     previous = report.get("previous")
-    if previous and previous.get("corpus") == report["corpus"] and previous.get("scoring_version") == report["scoring_version"]:
+    if (previous and previous.get("corpus") == report["corpus"]
+            and previous.get("scoring_version") == report["scoring_version"]
+            and previous.get("judge_runs", 2) == report.get("judge_runs", 2)):
         lines.append(f"上次报告：`{previous['path']}`。")
         for split in ("dev", "holdout", "all"):
             if split == "all" and not ("holdout" in previous["metrics"] and "holdout" in report["metrics"]):
@@ -407,12 +409,14 @@ def _report_markdown(report: dict[str, Any]) -> str:
                     if old is not None and new is not None:
                         lines.append(f"- {split} {key}: {_fmt(old)} → {_fmt(new)}（{(new-old)*100:+.1f} 个百分点）")
     else:
-        lines.append("没有同一评测集的可比前次结果；PR #1 使用较短的 v1 集和旧评分规则。")
+        lines.append("没有同一评测集、评分规则和判分次数的可比前次结果。")
     lines.extend(["", "## 判分不一致清单", ""])
     if report["judge_inconsistencies"]:
         for item in report["judge_inconsistencies"]:
             identifier = f"记忆 #{item['id']}" if item["item"] == "memory" else f"{item['item']} 第 {item['index']} 项"
             lines.append(f"- {item['case']} {identifier} {item.get('field', '')}：第一次 {item['first']}，第二次 {item['second']}，计分 {item['scored']}。")
+    elif report.get("judge_runs", 2) == 1:
+        lines.append("本次为单判，不计算双判分歧。")
     else:
         lines.append("两次判分结论一致。")
     lines.extend(["", "## 首轮解析异常输出", ""])
@@ -447,7 +451,7 @@ def _report_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any]) -> dict[str, Any]:
+def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs: int = 2) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="iris-eval-") as temporary:
         store = Store(Path(temporary) / "iris.db")
         store.recover_inflight()
@@ -473,21 +477,24 @@ def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any]) -> dict[str
             actual = _case_data(store)
             try:
                 first = _judge(gateway, case, actual)
-                second = _judge(gateway, case, actual)  # same payload, independent call
+                second = _judge(gateway, case, actual) if judge_runs == 2 else None
             except ModelError as error:
                 raise RuntimeError(f"judge failed for {case['id']}: {error.summary}") from error
-            judge, differences, decisions = _combine_judges(first, second, case["id"])
+            judge, differences, decisions = _combine_judges(first, second, case["id"]) if second is not None else (first, [], 0)
             actual = _case_data(store)  # include both judging calls in aggregate usage
             return {"case": case, "actual": actual, "judge": judge,
-                    "judge_inconsistencies": differences, "judge_decisions": decisions}
+                    "judge_inconsistencies": differences, "judge_decisions": decisions,
+                    "judges": [first, second] if second is not None else [first]}
         finally:
             gateway.close()
             store.close()
 
 
 def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = "all", *,
-                      corpus: Path | None = None, out: Path | None = None) -> tuple[Path, dict[str, Any]]:
+                      corpus: Path | None = None, out: Path | None = None, judge_runs: int = 2) -> tuple[Path, dict[str, Any]]:
     root = root.resolve()
+    if judge_runs not in (1, 2):
+        raise ValueError("judge_runs must be 1 or 2")
     if split not in ("dev", "holdout", "all"):
         raise ValueError("invalid split")
     paths = [corpus.resolve()] if corpus is not None else [root / "evals" / name for name in
@@ -500,20 +507,51 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     if not cases:
         raise ValueError("no evaluation cases for requested split")
     started = time.monotonic()
+    reports = out.resolve() if out is not None else root / "evals" / "reports"
+    sources = sorted(p for p in Path(__file__).parent.rglob("*") if p.suffix in (".py", ".md", ".sql", ".json"))
+    source_hash = hashlib.sha256(b"".join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest()
+    signature = hashlib.sha256(json.dumps({"sources": source_hash, "cases": cases, "judge_runs": judge_runs,
+        "models": {k: (v.base_url, v.model) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    checkpoints = (reports / ".learning-checkpoints" if not reports.is_relative_to(root) else root / "data/learning-checkpoints") / signature
+    checkpoints.mkdir(parents=True, exist_ok=True)
+    def save_checkpoint(path, value):
+        serialized = json.dumps(value, ensure_ascii=False, indent=2)
+        for config in configs.values():
+            if config.api_key:
+                serialized = serialized.replace(config.api_key, "[REDACTED]")
+        temp = path.with_suffix(".tmp")
+        temp.write_text(serialized, encoding="utf-8")
+        temp.replace(path)
+    resumed = 0
+    failures = []
     ordered: list[dict[str, Any] | None] = [None] * len(cases)
     with ThreadPoolExecutor(max_workers=4, thread_name_prefix="iris-eval") as pool:
-        pending = {pool.submit(_run_case, configs, case): index for index, case in enumerate(cases)}
+        pending = {}
+        for index, case in enumerate(cases):
+            checkpoint = checkpoints / f"{index:04}.json"
+            if checkpoint.exists():
+                ordered[index] = json.loads(checkpoint.read_text(encoding="utf-8"))
+                resumed += 1
+            else:
+                pending[pool.submit(_run_case, configs, case, judge_runs)] = index
         for completed, future in enumerate(as_completed(pending), 1):
             index = pending[future]
-            row = future.result()
+            try:
+                row = future.result()
+            except Exception as error:
+                failures.append({"case": cases[index]["id"], "error": str(error)})
+                save_checkpoint(checkpoints / "failures.json", failures)
+                continue
             ordered[index] = row
+            save_checkpoint(checkpoints / f"{index:04}.json", row)
             actual = row["actual"]
             print(f"[{completed}/{len(cases)}] {cases[index]['id']}: "
                   f"{len(actual['memories'])} memories, {len(actual['batches'])} batches", flush=True)
+    if failures:
+        raise RuntimeError(f"{len(failures)} evaluation cases failed; completed cases retained in {checkpoints}")
     rows = [row for row in ordered if row is not None]
     metrics = {name: _metrics([row for row in rows if name == "all" or row["case"]["split"] == name])
                for name in ("dev", "holdout", "all") if name == "all" or any(row["case"]["split"] == name for row in rows)}
-    reports = out.resolve() if out is not None else root / "evals" / "reports"
     reports.mkdir(parents=True, exist_ok=True)
     previous_paths = sorted(reports.glob("learning-*.json"))
     previous = None
@@ -521,7 +559,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
         previous_path = previous_paths[-1]
         old = json.loads(previous_path.read_text(encoding="utf-8"))
         previous = {"path": previous_path.name, "metrics": old.get("metrics", {}), "corpus": old.get("corpus"),
-                    "scoring_version": old.get("scoring_version")}
+                    "scoring_version": old.get("scoring_version"), "judge_runs": old.get("judge_runs", 2)}
     shuffled = rows[:]
     random.Random(20260928).shuffle(shuffled)
     sample_cases = math.ceil(len(rows) * 0.1)
@@ -534,7 +572,8 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
         sampled.append(row)
         covered_memories += len(row["actual"]["memories"])
     parse_failures = _parse_failure_records(rows, configs["chat"].api_key)
-    report = {"created_at": datetime.now(timezone.utc).isoformat(), "split": split,
+    report = {"created_at": datetime.now(timezone.utc).isoformat(), "split": split, "judge_runs": judge_runs,
+              "checkpoint_signature": signature, "source_sha256": source_hash, "resumed_cases": resumed,
               "elapsed_seconds": round(time.monotonic() - started, 1),
               "prompt_version": PROMPT_VERSION, "scoring_version": SCORING_VERSION,
               "timeouts_seconds": {"learning": CHAT_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT},
@@ -559,6 +598,8 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
                          "required_facts": len(row["case"]["must"]),
                          "covered_facts": sum(row["judge"]["fact_covered"]),
                          "judge_inconsistencies": len(row["judge_inconsistencies"])} for row in rows]}
+    if not reports.is_relative_to(root):
+        report["details"] = rows
     # Reports may quote model output or corpus text; redact every configured key.
     serialized = json.dumps(report, ensure_ascii=False, indent=2)
     for config in configs.values():
