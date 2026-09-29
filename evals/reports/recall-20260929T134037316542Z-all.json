@@ -1,0 +1,1010 @@
+{
+  "created_at": "2026-09-29T13:40:37.315790+00:00",
+  "split": "all",
+  "elapsed_seconds": 3.2413621000014246,
+  "corpus": {
+    "memories": 40,
+    "queries": 38,
+    "sha256": "67b21ab7f9e60069471e83e9338e8e2d085b0b83b5021c6e7564429100a98d53"
+  },
+  "embedding_model": "doubao-embedding-vision",
+  "dimension": 2048,
+  "embedding_cache_misses": 0,
+  "embedding_calls": [],
+  "variants": {
+    "jieba_fts": {
+      "settings": {
+        "tokenizer": "jieba",
+        "vector_min": 0.65,
+        "lexical_min": 0.5
+      },
+      "metrics": {
+        "queries": 38,
+        "answerable": 30,
+        "no_answer": 8,
+        "recall_at_8": 0.5333333333333333,
+        "ndcg_at_8": 0.5285741379700791,
+        "irrelevant_return_rate": 0.125,
+        "prepare_p95_ms": 12.057039968203753
+      },
+      "queries": [
+        {
+          "id": "Q01",
+          "returned": [],
+          "local_ms": 4.72619995707646
+        },
+        {
+          "id": "Q02",
+          "returned": [],
+          "local_ms": 11.891900037880987
+        },
+        {
+          "id": "Q03",
+          "returned": [],
+          "local_ms": 12.02319998992607
+        },
+        {
+          "id": "Q04",
+          "returned": [],
+          "local_ms": 10.078200022689998
+        },
+        {
+          "id": "Q05",
+          "returned": [],
+          "local_ms": 11.87510002637282
+        },
+        {
+          "id": "Q06",
+          "returned": [
+            "M05"
+          ],
+          "local_ms": 11.006099986843765
+        },
+        {
+          "id": "Q07",
+          "returned": [],
+          "local_ms": 9.9474000162445
+        },
+        {
+          "id": "Q08",
+          "returned": [],
+          "local_ms": 12.01129995752126
+        },
+        {
+          "id": "Q09",
+          "returned": [
+            "M09"
+          ],
+          "local_ms": 11.084199999459088
+        },
+        {
+          "id": "Q10",
+          "returned": [
+            "M10"
+          ],
+          "local_ms": 10.925100010354072
+        },
+        {
+          "id": "Q11",
+          "returned": [],
+          "local_ms": 12.02020002529025
+        },
+        {
+          "id": "Q12",
+          "returned": [
+            "M12"
+          ],
+          "local_ms": 11.0881999717094
+        },
+        {
+          "id": "Q13",
+          "returned": [],
+          "local_ms": 10.858099965844303
+        },
+        {
+          "id": "Q14",
+          "returned": [],
+          "local_ms": 12.040599947795272
+        },
+        {
+          "id": "Q15",
+          "returned": [
+            "M16"
+          ],
+          "local_ms": 12.082799978088588
+        },
+        {
+          "id": "Q16",
+          "returned": [
+            "M18"
+          ],
+          "local_ms": 11.981100018601865
+        },
+        {
+          "id": "Q17",
+          "returned": [],
+          "local_ms": 10.920599976088852
+        },
+        {
+          "id": "Q18",
+          "returned": [],
+          "local_ms": 11.073099973145872
+        },
+        {
+          "id": "Q19",
+          "returned": [
+            "M22"
+          ],
+          "local_ms": 11.851099960040301
+        },
+        {
+          "id": "Q20",
+          "returned": [
+            "M23"
+          ],
+          "local_ms": 11.118599970359355
+        },
+        {
+          "id": "Q21",
+          "returned": [
+            "M26"
+          ],
+          "local_ms": 11.990799976047128
+        },
+        {
+          "id": "Q22",
+          "returned": [
+            "M28"
+          ],
+          "local_ms": 12.00240000616759
+        },
+        {
+          "id": "Q23",
+          "returned": [],
+          "local_ms": 10.923599998932332
+        },
+        {
+          "id": "Q24",
+          "returned": [
+            "M34",
+            "M33"
+          ],
+          "local_ms": 12.014999985694885
+        },
+        {
+          "id": "Q25",
+          "returned": [
+            "M34"
+          ],
+          "local_ms": 12.027399963699281
+        },
+        {
+          "id": "Q26",
+          "returned": [
+            "M37"
+          ],
+          "local_ms": 12.044200033415109
+        },
+        {
+          "id": "Q27",
+          "returned": [
+            "M36"
+          ],
+          "local_ms": 11.877299984917045
+        },
+        {
+          "id": "Q28",
+          "returned": [
+            "M32"
+          ],
+          "local_ms": 12.050599965732545
+        },
+        {
+          "id": "Q29",
+          "returned": [],
+          "local_ms": 11.046600004192442
+        },
+        {
+          "id": "Q30",
+          "returned": [
+            "M09"
+          ],
+          "local_ms": 10.996000026352704
+        },
+        {
+          "id": "Q31",
+          "returned": [],
+          "local_ms": 10.918999963905662
+        },
+        {
+          "id": "Q32",
+          "returned": [],
+          "local_ms": 12.018600013107061
+        },
+        {
+          "id": "Q33",
+          "returned": [],
+          "local_ms": 10.004199983086437
+        },
+        {
+          "id": "Q34",
+          "returned": [],
+          "local_ms": 11.013699986506253
+        },
+        {
+          "id": "Q35",
+          "returned": [],
+          "local_ms": 12.947399984113872
+        },
+        {
+          "id": "Q36",
+          "returned": [],
+          "local_ms": 9.978200017940253
+        },
+        {
+          "id": "Q37",
+          "returned": [
+            "M37",
+            "M38"
+          ],
+          "local_ms": 11.962799995671958
+        },
+        {
+          "id": "Q38",
+          "returned": [
+            "M24"
+          ],
+          "local_ms": 12.117700011003762
+        }
+      ]
+    },
+    "jieba_hybrid": {
+      "settings": {
+        "tokenizer": "jieba",
+        "vector_min": 0.65,
+        "lexical_min": 0.5
+      },
+      "metrics": {
+        "queries": 38,
+        "answerable": 30,
+        "no_answer": 8,
+        "recall_at_8": 0.8,
+        "ndcg_at_8": 0.8150862923687278,
+        "irrelevant_return_rate": 0.125,
+        "prepare_p95_ms": 23.93781995633617
+      },
+      "queries": [
+        {
+          "id": "Q01",
+          "returned": [],
+          "local_ms": 24.219099956098944
+        },
+        {
+          "id": "Q02",
+          "returned": [
+            "M02"
+          ],
+          "local_ms": 22.797999961767346
+        },
+        {
+          "id": "Q03",
+          "returned": [
+            "M03"
+          ],
+          "local_ms": 21.029199997428805
+        },
+        {
+          "id": "Q04",
+          "returned": [
+            "M04"
+          ],
+          "local_ms": 23.051199968904257
+        },
+        {
+          "id": "Q05",
+          "returned": [],
+          "local_ms": 21.013899997342378
+        },
+        {
+          "id": "Q06",
+          "returned": [
+            "M05"
+          ],
+          "local_ms": 21.957799966912717
+        },
+        {
+          "id": "Q07",
+          "returned": [
+            "M08"
+          ],
+          "local_ms": 21.091000002343208
+        },
+        {
+          "id": "Q08",
+          "returned": [],
+          "local_ms": 21.817400003783405
+        },
+        {
+          "id": "Q09",
+          "returned": [
+            "M09"
+          ],
+          "local_ms": 20.98550001392141
+        },
+        {
+          "id": "Q10",
+          "returned": [
+            "M10"
+          ],
+          "local_ms": 21.05640002992004
+        },
+        {
+          "id": "Q11",
+          "returned": [
+            "M13"
+          ],
+          "local_ms": 21.020000043790787
+        },
+        {
+          "id": "Q12",
+          "returned": [
+            "M12"
+          ],
+          "local_ms": 22.008599946275353
+        },
+        {
+          "id": "Q13",
+          "returned": [
+            "M14"
+          ],
+          "local_ms": 22.446999966632575
+        },
+        {
+          "id": "Q14",
+          "returned": [
+            "M15"
+          ],
+          "local_ms": 22.577199968509376
+        },
+        {
+          "id": "Q15",
+          "returned": [
+            "M16"
+          ],
+          "local_ms": 21.939199999906123
+        },
+        {
+          "id": "Q16",
+          "returned": [
+            "M18"
+          ],
+          "local_ms": 20.998499996494502
+        },
+        {
+          "id": "Q17",
+          "returned": [
+            "M19"
+          ],
+          "local_ms": 22.074100037571043
+        },
+        {
+          "id": "Q18",
+          "returned": [],
+          "local_ms": 21.823499992024153
+        },
+        {
+          "id": "Q19",
+          "returned": [
+            "M22"
+          ],
+          "local_ms": 21.01230004336685
+        },
+        {
+          "id": "Q20",
+          "returned": [
+            "M23"
+          ],
+          "local_ms": 22.941899951547384
+        },
+        {
+          "id": "Q21",
+          "returned": [
+            "M26"
+          ],
+          "local_ms": 22.02550001675263
+        },
+        {
+          "id": "Q22",
+          "returned": [
+            "M28"
+          ],
+          "local_ms": 23.01240002270788
+        },
+        {
+          "id": "Q23",
+          "returned": [
+            "M32"
+          ],
+          "local_ms": 22.05979998689145
+        },
+        {
+          "id": "Q24",
+          "returned": [
+            "M33",
+            "M34"
+          ],
+          "local_ms": 21.96800004458055
+        },
+        {
+          "id": "Q25",
+          "returned": [
+            "M34"
+          ],
+          "local_ms": 21.934600081294775
+        },
+        {
+          "id": "Q26",
+          "returned": [
+            "M37"
+          ],
+          "local_ms": 22.934800013899803
+        },
+        {
+          "id": "Q27",
+          "returned": [
+            "M36"
+          ],
+          "local_ms": 23.07870000367984
+        },
+        {
+          "id": "Q28",
+          "returned": [
+            "M32"
+          ],
+          "local_ms": 22.007500054314733
+        },
+        {
+          "id": "Q29",
+          "returned": [],
+          "local_ms": 25.96820000326261
+        },
+        {
+          "id": "Q30",
+          "returned": [
+            "M09"
+          ],
+          "local_ms": 21.9912999891676
+        },
+        {
+          "id": "Q31",
+          "returned": [],
+          "local_ms": 21.124100021552294
+        },
+        {
+          "id": "Q32",
+          "returned": [],
+          "local_ms": 22.948300000280142
+        },
+        {
+          "id": "Q33",
+          "returned": [],
+          "local_ms": 23.867499956395477
+        },
+        {
+          "id": "Q34",
+          "returned": [],
+          "local_ms": 22.01070002047345
+        },
+        {
+          "id": "Q35",
+          "returned": [],
+          "local_ms": 21.894699952099472
+        },
+        {
+          "id": "Q36",
+          "returned": [],
+          "local_ms": 21.10090001951903
+        },
+        {
+          "id": "Q37",
+          "returned": [
+            "M37",
+            "M38"
+          ],
+          "local_ms": 22.949400008656085
+        },
+        {
+          "id": "Q38",
+          "returned": [
+            "M24"
+          ],
+          "local_ms": 21.02560002822429
+        }
+      ]
+    },
+    "trigram_fts": {
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.65,
+        "lexical_min": 0.5
+      },
+      "metrics": {
+        "queries": 38,
+        "answerable": 30,
+        "no_answer": 8,
+        "recall_at_8": 0.03333333333333333,
+        "ndcg_at_8": 0.03333333333333333,
+        "irrelevant_return_rate": 0.0,
+        "prepare_p95_ms": 23.279619973618534
+      },
+      "queries": [
+        {
+          "id": "Q01",
+          "returned": [],
+          "local_ms": 14.828599989414215
+        },
+        {
+          "id": "Q02",
+          "returned": [],
+          "local_ms": 20.9851999534294
+        },
+        {
+          "id": "Q03",
+          "returned": [],
+          "local_ms": 20.999500004108995
+        },
+        {
+          "id": "Q04",
+          "returned": [],
+          "local_ms": 21.06530003948137
+        },
+        {
+          "id": "Q05",
+          "returned": [],
+          "local_ms": 19.892600015737116
+        },
+        {
+          "id": "Q06",
+          "returned": [],
+          "local_ms": 21.022900007665157
+        },
+        {
+          "id": "Q07",
+          "returned": [],
+          "local_ms": 23.103699961211532
+        },
+        {
+          "id": "Q08",
+          "returned": [],
+          "local_ms": 20.99300001282245
+        },
+        {
+          "id": "Q09",
+          "returned": [],
+          "local_ms": 22.91900001000613
+        },
+        {
+          "id": "Q10",
+          "returned": [],
+          "local_ms": 18.95239995792508
+        },
+        {
+          "id": "Q11",
+          "returned": [],
+          "local_ms": 21.05189999565482
+        },
+        {
+          "id": "Q12",
+          "returned": [],
+          "local_ms": 21.01789996959269
+        },
+        {
+          "id": "Q13",
+          "returned": [],
+          "local_ms": 20.98239999031648
+        },
+        {
+          "id": "Q14",
+          "returned": [],
+          "local_ms": 21.954800002276897
+        },
+        {
+          "id": "Q15",
+          "returned": [],
+          "local_ms": 22.017700015567243
+        },
+        {
+          "id": "Q16",
+          "returned": [],
+          "local_ms": 19.952500006183982
+        },
+        {
+          "id": "Q17",
+          "returned": [],
+          "local_ms": 20.94419999048114
+        },
+        {
+          "id": "Q18",
+          "returned": [],
+          "local_ms": 20.04309999756515
+        },
+        {
+          "id": "Q19",
+          "returned": [],
+          "local_ms": 21.050300041679293
+        },
+        {
+          "id": "Q20",
+          "returned": [],
+          "local_ms": 25.051500007975847
+        },
+        {
+          "id": "Q21",
+          "returned": [],
+          "local_ms": 19.82539996970445
+        },
+        {
+          "id": "Q22",
+          "returned": [],
+          "local_ms": 21.06120000826195
+        },
+        {
+          "id": "Q23",
+          "returned": [],
+          "local_ms": 19.958999997470528
+        },
+        {
+          "id": "Q24",
+          "returned": [],
+          "local_ms": 20.952499995473772
+        },
+        {
+          "id": "Q25",
+          "returned": [],
+          "local_ms": 21.089599991682917
+        },
+        {
+          "id": "Q26",
+          "returned": [],
+          "local_ms": 19.863199966493994
+        },
+        {
+          "id": "Q27",
+          "returned": [],
+          "local_ms": 20.08460002252832
+        },
+        {
+          "id": "Q28",
+          "returned": [],
+          "local_ms": 20.88329999241978
+        },
+        {
+          "id": "Q29",
+          "returned": [],
+          "local_ms": 20.058900001458824
+        },
+        {
+          "id": "Q30",
+          "returned": [],
+          "local_ms": 20.995400031097233
+        },
+        {
+          "id": "Q31",
+          "returned": [],
+          "local_ms": 20.086899981833994
+        },
+        {
+          "id": "Q32",
+          "returned": [],
+          "local_ms": 23.983300023246557
+        },
+        {
+          "id": "Q33",
+          "returned": [],
+          "local_ms": 22.07140001701191
+        },
+        {
+          "id": "Q34",
+          "returned": [],
+          "local_ms": 19.76459997240454
+        },
+        {
+          "id": "Q35",
+          "returned": [],
+          "local_ms": 23.010500008240342
+        },
+        {
+          "id": "Q36",
+          "returned": [],
+          "local_ms": 22.168900002725422
+        },
+        {
+          "id": "Q37",
+          "returned": [
+            "M37",
+            "M38"
+          ],
+          "local_ms": 21.95449999999255
+        },
+        {
+          "id": "Q38",
+          "returned": [],
+          "local_ms": 21.02699998067692
+        }
+      ]
+    },
+    "trigram_hybrid": {
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.65,
+        "lexical_min": 0.5
+      },
+      "metrics": {
+        "queries": 38,
+        "answerable": 30,
+        "no_answer": 8,
+        "recall_at_8": 0.7,
+        "ndcg_at_8": 0.7150862923687278,
+        "irrelevant_return_rate": 0.125,
+        "prepare_p95_ms": 25.18695999169722
+      },
+      "queries": [
+        {
+          "id": "Q01",
+          "returned": [],
+          "local_ms": 16.52120001381263
+        },
+        {
+          "id": "Q02",
+          "returned": [
+            "M02"
+          ],
+          "local_ms": 22.960799979045987
+        },
+        {
+          "id": "Q03",
+          "returned": [
+            "M03"
+          ],
+          "local_ms": 23.928299953695387
+        },
+        {
+          "id": "Q04",
+          "returned": [
+            "M04"
+          ],
+          "local_ms": 22.95020001474768
+        },
+        {
+          "id": "Q05",
+          "returned": [],
+          "local_ms": 22.99440000206232
+        },
+        {
+          "id": "Q06",
+          "returned": [],
+          "local_ms": 20.888399973046035
+        },
+        {
+          "id": "Q07",
+          "returned": [
+            "M08"
+          ],
+          "local_ms": 22.193699958734214
+        },
+        {
+          "id": "Q08",
+          "returned": [],
+          "local_ms": 23.937499965541065
+        },
+        {
+          "id": "Q09",
+          "returned": [
+            "M09"
+          ],
+          "local_ms": 23.052799981087446
+        },
+        {
+          "id": "Q10",
+          "returned": [
+            "M10"
+          ],
+          "local_ms": 24.048299994319677
+        },
+        {
+          "id": "Q11",
+          "returned": [
+            "M13"
+          ],
+          "local_ms": 24.86750000389293
+        },
+        {
+          "id": "Q12",
+          "returned": [
+            "M12"
+          ],
+          "local_ms": 22.94829994207248
+        },
+        {
+          "id": "Q13",
+          "returned": [
+            "M14"
+          ],
+          "local_ms": 24.946599965915084
+        },
+        {
+          "id": "Q14",
+          "returned": [
+            "M15"
+          ],
+          "local_ms": 23.134699964430183
+        },
+        {
+          "id": "Q15",
+          "returned": [
+            "M16"
+          ],
+          "local_ms": 23.952399962581694
+        },
+        {
+          "id": "Q16",
+          "returned": [
+            "M18"
+          ],
+          "local_ms": 22.889900021255016
+        },
+        {
+          "id": "Q17",
+          "returned": [
+            "M19"
+          ],
+          "local_ms": 21.928600035607815
+        },
+        {
+          "id": "Q18",
+          "returned": [],
+          "local_ms": 22.94870000332594
+        },
+        {
+          "id": "Q19",
+          "returned": [
+            "M22"
+          ],
+          "local_ms": 24.022500030696392
+        },
+        {
+          "id": "Q20",
+          "returned": [
+            "M23"
+          ],
+          "local_ms": 24.97560007032007
+        },
+        {
+          "id": "Q21",
+          "returned": [
+            "M26"
+          ],
+          "local_ms": 23.24459998635575
+        },
+        {
+          "id": "Q22",
+          "returned": [
+            "M28"
+          ],
+          "local_ms": 25.85519995773211
+        },
+        {
+          "id": "Q23",
+          "returned": [
+            "M32"
+          ],
+          "local_ms": 23.053099983371794
+        },
+        {
+          "id": "Q24",
+          "returned": [
+            "M33"
+          ],
+          "local_ms": 21.8473999411799
+        },
+        {
+          "id": "Q25",
+          "returned": [
+            "M34"
+          ],
+          "local_ms": 24.142500013113022
+        },
+        {
+          "id": "Q26",
+          "returned": [
+            "M37"
+          ],
+          "local_ms": 23.898799961898476
+        },
+        {
+          "id": "Q27",
+          "returned": [],
+          "local_ms": 25.0199000001885
+        },
+        {
+          "id": "Q28",
+          "returned": [
+            "M32"
+          ],
+          "local_ms": 21.992499998304993
+        },
+        {
+          "id": "Q29",
+          "returned": [],
+          "local_ms": 35.94769997289404
+        },
+        {
+          "id": "Q30",
+          "returned": [
+            "M09"
+          ],
+          "local_ms": 24.087500059977174
+        },
+        {
+          "id": "Q31",
+          "returned": [],
+          "local_ms": 21.849999960977584
+        },
+        {
+          "id": "Q32",
+          "returned": [],
+          "local_ms": 21.932899951934814
+        },
+        {
+          "id": "Q33",
+          "returned": [],
+          "local_ms": 22.118300024885684
+        },
+        {
+          "id": "Q34",
+          "returned": [],
+          "local_ms": 20.942699979059398
+        },
+        {
+          "id": "Q35",
+          "returned": [],
+          "local_ms": 22.880100004840642
+        },
+        {
+          "id": "Q36",
+          "returned": [],
+          "local_ms": 23.150599969085306
+        },
+        {
+          "id": "Q37",
+          "returned": [
+            "M37",
+            "M38"
+          ],
+          "local_ms": 22.97099999850616
+        },
+        {
+          "id": "Q38",
+          "returned": [],
+          "local_ms": 22.01650000642985
+        }
+      ]
+    }
+  },
+  "calibration": {
+    "enabled": false,
+    "trials": [],
+    "selection_rule": "最大化 (Recall@8+nDCG@8)/2-无关误返率；相同分数依次按召回、nDCG、较低误返率。仅 dev；M2 门槛只作参考，不作为本 PR 的参数筛选硬约束。",
+    "recommended_variant": "jieba_hybrid",
+    "recommended_settings": {
+      "tokenizer": "jieba",
+      "vector_min": 0.65,
+      "lexical_min": 0.5
+    }
+  },
+  "m2_reference": {
+    "recall_at_8": 0.85,
+    "ndcg_at_8": 0.75,
+    "irrelevant_return_rate": 0.1
+  }
+}

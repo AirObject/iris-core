@@ -26,6 +26,9 @@ def main(argv: list[str] | None = None) -> int:
     setup.add_argument("--name", default="Iris")
     setup.add_argument("--background", default="")
     setup.add_argument("--timezone", default="Asia/Shanghai")
+    serve = commands.add_parser("serve", help="Serve the local host API")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8080)
     models = commands.add_parser("models", help="Model connection commands")
     models.add_argument("action", choices=["check"])
     ingest = commands.add_parser("ingest", help="Add UTF-8 JSONL messages")
@@ -34,14 +37,43 @@ def main(argv: list[str] | None = None) -> int:
     learn.add_argument("entry_id")
     learn.add_argument("--force", action="store_true", help="Run a waiting batch now")
     evaluation = commands.add_parser("eval", help="Run a frozen evaluation")
-    evaluation.add_argument("kind", choices=["learning"])
+    evaluation.add_argument("kind", choices=["learning", "recall"])
     evaluation.add_argument("--split", choices=["dev", "holdout", "all"], default="all")
     evaluation.add_argument("--corpus", type=Path, help="UTF-8 JSONL corpus, including files outside the repository")
     evaluation.add_argument("--out", type=Path, help="Report output directory (default: evals/reports)")
+    evaluation.add_argument("--judge-runs", type=int, choices=[1, 2], default=2)
+    evaluation.add_argument("--calibrate", action="store_true", help="Calibrate recall thresholds on dev only")
     args = parser.parse_args(argv)
+    if args.command == "serve":
+        from .api import create_app, loopback_host
+        import uvicorn
+        try:
+            host = loopback_host(args.host)
+            if not 1 <= args.port <= 65535:
+                raise ValueError("port must be 1..65535")
+            try:
+                configs = load_test_models()
+            except FileNotFoundError:
+                configs = None
+            uvicorn.run(create_app(args.db, configs=configs), host=host, port=args.port, workers=1)
+            return 0
+        except (ValueError, OSError) as error:
+            print(str(error), file=sys.stderr)
+            return 1
     if args.command == "eval":
         try:
-            path, report = run_learning_eval(load_test_models(), Path.cwd(), args.split, corpus=args.corpus, out=args.out)
+            if args.kind == "recall":
+                from .recall_evaluation import run_recall_eval
+                try:
+                    configs = load_test_models()
+                except FileNotFoundError:
+                    configs = {}
+                path, _ = run_recall_eval(configs, Path.cwd(), args.split, corpus=args.corpus, out=args.out, calibrate=args.calibrate)
+                print(f"Report: {path}")
+                return 0
+            if args.calibrate:
+                raise ValueError("--calibrate is only available for recall")
+            path, report = run_learning_eval(load_test_models(), Path.cwd(), args.split, corpus=args.corpus, out=args.out, judge_runs=args.judge_runs)
             print(f"Report: {path}")
             for split, metrics in report["metrics"].items():
                 print(f"{split}: parse={metrics['parse_total']}, precision={metrics['precision']}, recall={metrics['fact_recall']}")

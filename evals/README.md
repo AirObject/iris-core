@@ -1,4 +1,68 @@
-# 学习评测
+# 学习与召回评测
+
+## 当前命令
+
+```powershell
+uv run iris eval learning --split dev --judge-runs 1
+uv run iris eval learning --judge-runs 2
+uv run iris eval recall
+uv run iris eval recall --split dev --calibrate
+uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
+uv run python evals/benchmark_retrieval.py --out evals/reports
+```
+
+学习最终评测必须使用默认的双判；单判只用于 dev 迭代，不计算双判分歧率。学习评分 v3、语料和 M1 门槛保持不变。`--out` 位于仓库外时，JSON 的 `details` 保存每案例完整输入、全部记忆及来源、每次原判分和最终判分；仓库内报告保持汇总与抽查规模。
+
+学习成功案例保存在 `data/learning-checkpoints/<指纹>`，外部报告的检查点在 `<out>/.learning-checkpoints/<指纹>`。只有源码、语料、模型端点／ID、判分次数都一致才复用已完成案例；失败案例重新执行，不按分数选择结果。报告列 `resumed_cases` 和源码指纹。请勿在评测运行期间编辑源码／迁移或重建当前虚拟环境。
+
+## 固定记忆召回集
+
+`recall_v1.json` 在 `a8af9b1` 单独冻结：40 条固定记忆、38 条手写 dev 查询、8 条无答案。没有模板或脚本生成质量语料；性能脚本中的合成记忆只用于规模测试。召回评测直接入库，不经过学习，不调用生成模型，使用正式 Retrieval.prepare／search、去冗余和记录路径。
+
+标准输入是 UTF-8 JSON：
+
+```json
+{
+  "as_of": "2026-09-29T12:00:00+00:00",
+  "memories": [
+    {"id": "tea", "content": "小林喜欢桂花乌龙茶", "about": ["小林"], "kind": "偏好"},
+    {"id": "meeting", "content": "活动晚上八点开始", "source_message_ids": ["recent-1"]}
+  ],
+  "queries": [
+    {"id": "Q1", "split": "dev", "text": "给小林准备什么茶", "relevant": {"tea": 3}},
+    {"id": "Q2", "split": "dev", "text": "活动晚上八点开始", "relevant": {},
+     "recent_messages": [{"id": "recent-1", "speaker": "小林", "content": "活动晚上八点开始"}]}
+  ]
+}
+```
+
+也接受 JSONL：一行 `{"memories":[...]}` 后接每行一个查询，或使用 `record_type: "memory"|"query"` 区分记录。`--corpus` 完全替换仓库输入；`--split` 只筛选查询，固定记忆集不变。规划者应在外部目录运行隐藏验收，执行者不得寻找或读取其文件。
+
+记忆字段：`id`、`content`，以及可选的 `about`（名字）、`speaker`（默认“我”）、`kind`、`stance`、`belief`、`importance`、`retention`、`event_time`、`world`、`lifecycle`、`tags`、`source_message_ids`。来源消息必须出现在某个查询的 `recent_messages` 中且 ID 全局唯一；未列来源的记忆视为有未提供的历史来源，不因当前消息剔除。
+
+查询字段：`id`、`split`（缺省 dev）、`text`、`relevant`（ID 到 1—3 相关等级的映射；列表简写等价于全为 1）。`participants` 缺省空列表；`known_memory_ids` 排除宿主已有记忆；`recent_messages` 模拟真正入库的本入口消息，`recent_limit` 缺省 20。已在近期消息或宿主上下文中的信息不应出现在 relevant。可选 `mode:"search"` 及 `filters` 测试结构筛选；其延迟不计入 prepare P95。默认 `as_of` 固定为 2026-09-29 12:00 UTC，只影响排名时间权重。
+
+Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1)`，以理想前八条归一化；无关误返率只统计无答案查询中是否返回非空。报告对照 jieba、trigram、两者各自的纯全文和融合向量方案。没有配置 embedding 时只输出两组全文结果，不冒充已经完成向量比较。
+
+embedding 使用真实服务，按端点／模型／文本 SHA-256 缓存在 `data/recall-embeddings.db`；外部 --out 则将缓存放在外部。缓存中不含凭据。首次运行另记新 embedding 的调用用量与耗时；本地 prepare P95 扣除查询 embedding 等待，仍包含候选检索、去冗余和召回记录提交。外部 JSON 的 `details` 保存所有固定记忆、查询、相关性标签和完整返回，仓库内只保留结果 ID 与汇总。
+
+`--calibrate` 只允许与 `--split dev` 一起使用。词项覆盖网格为 0.25／0.5／0.75／1.0；余弦网格为 0.35／0.45／0.55／0.65／0.75／0.85。按 `(Recall@8+nDCG@8)/2-无关误返率` 选择，平分依次看 Recall、nDCG 和误返率。命令只报告推荐设置，不写生产库。M2 参考值仍为 Recall@8≥0.85、nDCG@8≥0.75、无关误返率≤0.10，本 PR 不要求达到。
+
+首轮将无关误返率≤0.10 当作参数筛选硬约束，虽然误返为零，融合召回率却降到 30%。保留[首轮原报告](reports/recall-20260929T131836604222Z-dev.md)。随后用上面的综合分数选择，未改动语料、标注或 M2 参考值：[标定报告](reports/recall-20260929T132532283541Z-dev.md)。默认 jieba＋向量、词项覆盖 0.5、余弦 0.65；Recall@8=0.800、nDCG@8=0.815、无关误返率=0.125。还有 1/8 条无答案误返，不能宣称达到全部 M2 参考项。
+
+最终源码的[默认配置复测](reports/recall-20260929T134037316542Z-all.md)保持相同质量指标。jieba 纯全文 Recall@8=0.533，trigram 纯全文仅 0.033；本集包含短中文词和改述，trigram 的三字符片段匹配对此较弱。向量使两者分别提高到 0.800、0.700，故默认选 jieba＋向量，并以 jieba 作超时降级。两种 FTS 表都保留，便于可重复对照；运行检索只走设置中选定的一种。
+
+新数据库将默认配置保存到 `runtime_settings.retrieval`；现有数据库保留已有设置。更换模型后须重新标定，默认只用全文并给出提示。当前服务商实测支持请求 1024 维，512 维返回 400，见 [维度探测记录](reports/embedding-dimensions.json)；本 PR 继续保存和检索已评测的 2048 维向量，没有混用不同维度。
+
+## 性能方法
+
+`benchmark_retrieval.py` 分别生成 5 千、5 万条合成记忆，固定随机种子、2048 维向量；每个规模／dtype 在新进程测量，预热 5 次、采样 60 次。报告包含直接 prepare、进程内 HTTP／JSON 路径、向量评分 P95、索引载入时长、RSS 增量和进程峰值工作集。查询 embedding 已预先生成；不计外部网络。float16 用 float32 累加，和 float32 在相同 20 条查询上比较前八名交集。
+
+数据见 [性能说明](reports/retrieval-performance.md)和[完整 JSON](reports/retrieval-performance.json)。50k float32 的块存储约 392.8 MiB，加载 RSS 增量约 410.5 MiB、峰值约 553.7 MiB，prepare P95 196.3 ms；float16 块存储约 196.8 MiB、峰值约 355.7 MiB，P95 283.9 ms。默认保留 float32；测量反映本机单进程串行负载，不是并发吞吐承诺。
+
+## 学习语料与历史记录
+
+本 PR 的[最终双判报告](reports/learning-20260929T140257986981Z-all.md)：86 段、203 批，全部／历史 holdout 的直接解析率为 99.51%／98.44%、精确率为 95.88%／100%、事实召回率为 78.51%／79.69%；三项均达原 M1 门槛，学习和判分长度截断均为 0。运行一次历史 holdout，耗时 1390.0 秒，没有复用案例。完整过程和报告用量分项修正见 [PR4_EXECUTION](PR4_EXECUTION.md)；该修正只重新汇总已保存的调用记录，没有模型重跑或判分调整。学习和召回最终验收仍待规划者隐藏集。
 
 `learning_v1.jsonl` 是 PR #1 的 36 段短对话。原来的 12 段 holdout 已用于错误分析，因此 36 段现在全部为 dev，不再用于最终门槛判定。v1 仍保留作为回归材料。
 
@@ -29,7 +93,7 @@ uv run iris eval learning --corpus C:\eval-data\cases.jsonl --out C:\eval-result
 uv run iris eval learning --split dev --corpus evals/learning_v3.jsonl
 ```
 
-不加参数时默认运行全部仓库样本，报告在 `evals/reports/`。`--corpus` 可与 `--split` 组合，不会拼入仓库样本；`--out` 将 Markdown、JSON 和前次报告查找都放到指定目录，不往仓库写报告。读取与写入均为 UTF-8。报告比较校验样本内容 SHA-256 与评分版本。
+不加参数时默认运行全部仓库样本，报告在 `evals/reports/`。`--corpus` 可与 `--split` 组合，不会拼入仓库样本；`--out` 将 Markdown、JSON 和前次报告查找都放到指定目录，不往仓库写报告。读取与写入均为 UTF-8。报告比较校验样本内容 SHA-256、评分版本与判分次数。
 
 报告单列因长度截断的**学习批次数**（同一批的首轮／修正／重试只计一批），同时列学习与判分截断调用数、生成耗时，以及按学习／判分分列的超时调用数；JSON 保留生成调用的紧凑统计字段，包含 finish_reason 与输出 token。别名覆盖率＝正确覆盖的 alias 标注／alias 标注数；别名精确率＝判对的实际学习别名／实际学习别名数；分母为零记为不可计算，不显示成 100%。其他人物联系指标包含 alias，别名另行拆出。每段判两次，所有分歧按不利结论统计并列清单。
 

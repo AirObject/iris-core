@@ -132,6 +132,9 @@ def test_embedding_uses_configured_plan_path(store):
 ])
 def test_generation_has_hard_total_timeout_and_two_retries(store, purpose, deadline):
     class Future:
+        def cancel(self):
+            return False
+
         def result(self, timeout):
             assert timeout == deadline
             raise FutureTimeout()

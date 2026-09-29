@@ -110,3 +110,33 @@ def test_migration_003_preserves_old_aliases_and_call_usage(tmp_path):
         assert len(list(tmp_path.glob("v2.db.*.bak"))) == 1
     finally:
         upgraded.close()
+
+
+def test_migration_004_indexes_existing_prose_and_tags_and_preserves_settings(tmp_path):
+    import json
+    from iris.retrieval import Retrieval
+    path = tmp_path / "v3.db"
+    migration_dir = Path(__file__).resolve().parents[1] / "src/iris/migrations"
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE schema_migrations(version TEXT PRIMARY KEY,applied_at TEXT NOT NULL)")
+        for script in sorted(migration_dir.glob("00[1-3]_*.sql")):
+            conn.executescript(script.read_text(encoding="utf-8"))
+            conn.execute("INSERT INTO schema_migrations VALUES(?, '2026-09-28')", (script.name,))
+        conn.execute("INSERT INTO subjects VALUES('self','self','我',NULL,'2026-09-28')")
+        for frequency, lifecycle in enumerate(("active", "forgotten", "deleted"), 1):
+            conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,retention,
+                lifecycle,created_at,updated_at,first_confirmed_at,last_confirmed_at)
+                VALUES(?,'偏好','self','亲历',70,50,50,?,'2026-09-28','2026-09-28','2026-09-28','2026-09-28')""",
+                (f"我喜欢天文摄影，每月拍摄 {frequency} 次", lifecycle))
+        conn.execute("INSERT INTO memory_tags VALUES(1,'望远镜')")
+        conn.execute("INSERT INTO runtime_settings VALUES('retrieval',?)", (json.dumps({"lexical_min": .75}),))
+    upgraded = Store(path)
+    try:
+        assert upgraded.setting("retrieval") == {"lexical_min": .75}
+        for tokenizer in ("jieba", "trigram"):
+            r = Retrieval(upgraded, tokenizer=tokenizer)
+            assert [m["id"] for m in r.search(text="望远镜")["memories"]] == [1]
+            assert {m["id"] for m in r.search(text="天文摄影", include_forgotten=True)["memories"]} == {1, 2}
+        assert len(list(tmp_path.glob("v3.db.*.bak"))) == 1
+    finally:
+        upgraded.close()
