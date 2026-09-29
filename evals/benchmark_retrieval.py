@@ -26,7 +26,7 @@ from iris.retrieval import DEFAULTS
 STAMP = "2026-09-29T12:00:00+00:00"
 
 
-def build(path, size):
+def build(path, size, dimension):
     if path.exists():
         return
     store = Store(path)
@@ -37,14 +37,14 @@ def build(path, size):
             for i in range(100):
                 conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)", (f"p{i}", f"参与者{i}", STAMP))
         for base in range(0, size, 500):
-            vectors = rng.normal(size=(min(500, size - base), 2048)).astype(np.float32)
+            vectors = rng.normal(size=(min(500, size - base), dimension)).astype(np.float32)
             vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
             with store.write() as conn:
                 for offset, vector in enumerate(vectors):
                     i = base + offset
                     mid = conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,
                         retention,entry_id,embedding,embedding_model,created_at,updated_at,first_confirmed_at,last_confirmed_at)
-                        VALUES(?,'事实',?,'亲历',75,60,55,'bench',?,'perf-2048',?,?,?,?)""",
+                        VALUES(?,'事实',?,'亲历',75,60,55,'bench',?,'perf-vector',?,?,?,?)""",
                         (f"参与者{i%100}的天文观測记录第{i}号，地点南山，计划继续观星。", f"p{i%100}", vector.tobytes(), STAMP, STAMP, STAMP, STAMP)).lastrowid
                     conn.execute("INSERT INTO memory_subjects VALUES(?,?)", (mid, f"p{i%100}"))
         store._writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -53,20 +53,20 @@ def build(path, size):
 
 
 class Gateway:
-    configs = {"embedding": ModelConfig("local-cached", "", "perf-2048")}
+    configs = {"embedding": ModelConfig("local-cached", "", "perf-vector")}
 
-    def __init__(self):
-        self.vector = np.random.default_rng(4321).normal(size=2048).astype(np.float32)
+    def __init__(self, dimension):
+        self.vector = np.random.default_rng(4321).normal(size=dimension).astype(np.float32)
 
     def embedding(self, text, purpose="embedding"):
         return self.vector
 
 
-def worker(path, size, dtype, repeats):
+def worker(path, size, dtype, repeats, dimension):
     process = psutil.Process()
     store = Store(path)
-    store.set_setting("retrieval", {**DEFAULTS, "embedding_model": "perf-2048", "dtype": dtype, "vector_min": 0.0})
-    gateway = Gateway()
+    store.set_setting("retrieval", {**DEFAULTS, "embedding_model": "perf-vector", "dtype": dtype, "vector_min": 0.0, "vector_relative": 0.0, "embedding_dimensions": dimension})
+    gateway = Gateway(dimension)
     rss_before = process.memory_info().rss
     start = time.perf_counter()
     with TestClient(create_app(store=store, gateway=gateway)) as client:
@@ -92,10 +92,10 @@ def worker(path, size, dtype, repeats):
         rng = np.random.default_rng(7788)
         rankings = []
         for _ in range(20):
-            scores = retrieval.index.scores(rng.normal(size=2048).astype(np.float32))
+            scores = retrieval.index.scores(rng.normal(size=dimension).astype(np.float32))
             rankings.append([mid for mid, _ in sorted(scores.items(), key=lambda p: (-p[1][0], p[0]))[:8]])
         info = process.memory_info()
-        result = {"memories": size, "dimension": 2048, "dtype": dtype, "samples": repeats,
+        result = {"memories": size, "dimension": dimension, "dtype": dtype, "samples": repeats,
                   "load_seconds": load_seconds, "matrix_storage_mib": retrieval.index.nbytes / 2**20,
                   "rss_before_mib": rss_before / 2**20, "rss_after_load_mib": rss_loaded / 2**20,
                   "rss_load_delta_mib": (rss_loaded - rss_before) / 2**20,
@@ -114,26 +114,27 @@ def main():
     parser.add_argument("--worker", action="store_true")
     parser.add_argument("--size", type=int, default=5000)
     parser.add_argument("--dtype", default="float32")
+    parser.add_argument("--dimension", type=int, default=2048)
     parser.add_argument("--repeats", type=int, default=60)
     args = parser.parse_args()
     folder = Path("data/performance")
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"memories-{args.size}.db"
+    path = folder / f"memories-{args.size}-{args.dimension}.db"
     if args.worker:
-        result = worker(path, args.size, args.dtype, args.repeats)
-        (folder / f"result-{args.size}-{args.dtype}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        result = worker(path, args.size, args.dtype, args.repeats, args.dimension)
+        (folder / f"result-{args.size}-{args.dimension}-{args.dtype}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         return
     results = []
-    for size in (5000, 50000):
-        build(folder / f"memories-{size}.db", size)
-        for dtype in ("float32", "float16"):
-            subprocess.run([sys.executable, "-X", "utf8", __file__, "--worker", "--size", str(size), "--dtype", dtype, "--repeats", str(args.repeats)], check=True)
-            row = json.loads((folder / f"result-{size}-{dtype}.json").read_text(encoding="utf-8"))
-            results.append(row)
-            print(f"{size} {dtype}: prepare P95 {row['prepare_p95_ms']:.1f} ms, HTTP P95 {row['http_prepare_p95_ms']:.1f} ms", flush=True)
-    for size in (5000, 50000):
-        rows = [r for r in results if r["memories"] == size]
-        rows[1]["top8_overlap_with_float32"] = float(np.mean([len(set(a) & set(b)) / 8 for a,b in zip(rows[0]["top8"],rows[1]["top8"], strict=True)]))
+    for dimension in (1024, 2048):
+        for size in (5000, 50000):
+            build(folder / f"memories-{size}-{dimension}.db", size, dimension)
+            for dtype in ("float32", "float16"):
+                subprocess.run([sys.executable, "-X", "utf8", __file__, "--worker", "--size", str(size), "--dimension", str(dimension), "--dtype", dtype, "--repeats", str(args.repeats)], check=True)
+                row = json.loads((folder / f"result-{size}-{dimension}-{dtype}.json").read_text(encoding="utf-8"))
+                results.append(row)
+                print(f"{size} d{dimension} {dtype}: prepare P95 {row['prepare_p95_ms']:.1f} ms, HTTP P95 {row['http_prepare_p95_ms']:.1f} ms", flush=True)
+            rows = [r for r in results if r["memories"] == size and r['dimension'] == dimension]
+            rows[1]["top8_overlap_with_float32"] = float(np.mean([len(set(a) & set(b)) / 8 for a,b in zip(rows[0]["top8"],rows[1]["top8"], strict=True)]))
     for row in results:
         row.pop("top8")
     report = {"platform": platform.platform(), "python": platform.python_version(), "sqlite": sqlite3.sqlite_version,
@@ -141,7 +142,7 @@ def main():
               "note": "Fresh process per size/dtype; precomputed synthetic query embedding; 5 warmups; FTS, vector ranking, metadata, JSON and recall record included. HTTP uses in-process ASGI TestClient; no external embedding network.",
               "results": results}
     args.out.mkdir(parents=True, exist_ok=True)
-    target = args.out / "retrieval-performance.json"
+    target = args.out / "retrieval-performance-pr5.json"
     target.write_text(json.dumps(report, ensure_ascii=False, indent=2),encoding="utf-8")
     print(target)
 

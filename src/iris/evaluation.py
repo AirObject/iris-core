@@ -511,9 +511,14 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     sources = sorted(p for p in Path(__file__).parent.rglob("*") if p.suffix in (".py", ".md", ".sql", ".json"))
     source_hash = hashlib.sha256(b"".join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest()
     signature = hashlib.sha256(json.dumps({"sources": source_hash, "cases": cases, "judge_runs": judge_runs,
-        "models": {k: (v.base_url, v.model) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-    checkpoints = (reports / ".learning-checkpoints" if not reports.is_relative_to(root) else root / "data/learning-checkpoints") / signature
+        "models": {k: (v.base_url, v.model, v.dimensions) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    checkpoints = (reports / ".lc" if not reports.is_relative_to(root) else root / "data/lc") / signature[:16]
     checkpoints.mkdir(parents=True, exist_ok=True)
+    # The shortened path is not the identity: verify all 256 bits before reuse.
+    metadata = checkpoints / 'meta.json'
+    if metadata.exists() and json.loads(metadata.read_text(encoding='utf-8'))['signature'] != signature:
+        raise ValueError('checkpoint fingerprint collision')
+    metadata.write_text(json.dumps({'signature': signature}), encoding='utf-8')
     def save_checkpoint(path, value):
         serialized = json.dumps(value, ensure_ascii=False, indent=2)
         for config in configs.values():
