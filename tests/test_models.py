@@ -97,6 +97,25 @@ def test_bad_json_or_length_gets_one_repair_call(store):
     assert reason == "finish_reason=length"
 
 
+def test_finish_reason_and_output_usage_are_recorded_for_first_and_repair(store):
+    from conftest import msg
+    from iris.queue import form_batch
+    msg(store, 1, "我喜欢茶")
+    batch_id = form_batch(store, "A", "test").id
+    items = [response('{"broken":', finish_reason="length", usage={"completion_tokens": 16000}),
+             response('{"ok":true}', usage={"completion_tokens": 8})]
+    gateway = Gateway(configs(), store, client=httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=items.pop(0)))))
+    try:
+        gateway.json_chat([{"role": "user", "content": "test"}], "learning", 16000, batch_id=batch_id)
+        with store.read() as conn:
+            rows = conn.execute("SELECT purpose,finish_reason,completion_tokens,batch_id FROM model_calls ORDER BY id").fetchall()
+        assert [tuple(row) for row in rows] == [("learning", "length", 16000, batch_id),
+                                              ("learning_repair", "stop", 8, batch_id)]
+    finally:
+        gateway.close()
+
+
 def test_embedding_uses_configured_plan_path(store):
     paths = []
     def handler(request):
@@ -107,20 +126,26 @@ def test_embedding_uses_configured_plan_path(store):
     assert paths == ["/api/plan/v3/embeddings"]
 
 
-def test_generation_has_hard_total_timeout_and_two_retries(store):
+@pytest.mark.parametrize(("purpose", "deadline"), [
+    ("test", 120), ("learning", 120), ("learning_repair", 120),
+    ("learning_judge", 240), ("learning_judge_repair", 240),
+])
+def test_generation_has_hard_total_timeout_and_two_retries(store, purpose, deadline):
     class Future:
         def result(self, timeout):
-            assert timeout == 120
+            assert timeout == deadline
             raise FutureTimeout()
     class Pool:
         def submit(self, *args, **kwargs):
+            assert kwargs["timeout"].read == deadline
+            assert kwargs["timeout"].connect == 10
             return Future()
     sleeps = []
     gateway = Gateway(configs(), store, sleeper=sleeps.append)
     gateway._pool.shutdown(wait=False)
     gateway._pool = Pool()
     with pytest.raises(ModelError) as caught:
-        gateway.chat([{"role": "user", "content": "test"}], "test")
+        gateway.chat([{"role": "user", "content": "test"}], purpose)
     assert caught.value.category == "retryable"
     assert sleeps == [2, 8]
 

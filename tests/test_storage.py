@@ -89,3 +89,24 @@ def test_event_intake_uses_scene_but_action_result_uses_self(store):
     with store.read() as conn:
         assert conn.execute("SELECT sender_subject_id FROM messages WHERE id=?", (event,)).fetchone()[0] == "scene"
         assert conn.execute("SELECT sender_subject_id FROM messages WHERE id=?", (action,)).fetchone()[0] == "self"
+
+
+def test_migration_003_preserves_old_aliases_and_call_usage(tmp_path):
+    path = tmp_path / "v2.db"
+    migration_dir = Path(__file__).resolve().parents[1] / "src/iris/migrations"
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE schema_migrations(version TEXT PRIMARY KEY,applied_at TEXT NOT NULL)")
+        for name in ("001_learning_core.sql", "002_scene_and_goal_entry.sql"):
+            conn.executescript((migration_dir / name).read_text(encoding="utf-8"))
+            conn.execute("INSERT INTO schema_migrations VALUES(?, '2026-09-28')", (name,))
+        conn.execute("INSERT INTO subjects VALUES('lin','person','小林',NULL,'2026-09-28')")
+        conn.execute("INSERT INTO subject_aliases VALUES('lin','阿灯')")
+        conn.execute("INSERT INTO model_calls(purpose,model,duration_ms,completion_tokens,result_category,created_at) VALUES('learning','fake',50,90,'success','2026-09-28')")
+    upgraded = Store(path)
+    try:
+        with upgraded.read() as conn:
+            assert tuple(conn.execute("SELECT alias,source_message_id FROM subject_aliases").fetchone()) == ("阿灯", None)
+            assert tuple(conn.execute("SELECT completion_tokens,finish_reason,batch_id FROM model_calls").fetchone()) == (90, None, None)
+        assert len(list(tmp_path.glob("v2.db.*.bak"))) == 1
+    finally:
+        upgraded.close()

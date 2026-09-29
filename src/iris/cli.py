@@ -36,15 +36,17 @@ def main(argv: list[str] | None = None) -> int:
     evaluation = commands.add_parser("eval", help="Run a frozen evaluation")
     evaluation.add_argument("kind", choices=["learning"])
     evaluation.add_argument("--split", choices=["dev", "holdout", "all"], default="all")
+    evaluation.add_argument("--corpus", type=Path, help="UTF-8 JSONL corpus, including files outside the repository")
+    evaluation.add_argument("--out", type=Path, help="Report output directory (default: evals/reports)")
     args = parser.parse_args(argv)
     if args.command == "eval":
         try:
-            path, report = run_learning_eval(load_test_models(), Path.cwd(), args.split)
+            path, report = run_learning_eval(load_test_models(), Path.cwd(), args.split, corpus=args.corpus, out=args.out)
             print(f"Report: {path}")
             for split, metrics in report["metrics"].items():
                 print(f"{split}: parse={metrics['parse_total']}, precision={metrics['precision']}, recall={metrics['fact_recall']}")
             return 0
-        except (FileNotFoundError, ModelError, RuntimeError) as error:
+        except (OSError, ValueError, ModelError, RuntimeError) as error:
             print(f"Evaluation failed: {error}", file=sys.stderr)
             return 1
     store = Store(args.db)

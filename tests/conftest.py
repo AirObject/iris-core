@@ -14,10 +14,12 @@ class FakeGateway:
         self.response = response if response is not None else {}
         self.hook = hook
         self.materials = []
+        self.requests = []
         self.configs = {"chat": ModelConfig("fake", "", "fake"), "embedding": ModelConfig("", "", "")}
 
-    def json_chat(self, messages, purpose, max_tokens=3500):
+    def json_chat(self, messages, purpose, max_tokens=3500, *, batch_id=None):
         self.materials.append(messages[-1]["content"])
+        self.requests.append({"messages": messages, "purpose": purpose, "max_tokens": max_tokens, "batch_id": batch_id})
         if self.hook:
             self.hook(messages)
         if isinstance(self.response, Exception):

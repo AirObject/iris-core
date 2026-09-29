@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import difflib
 import json
 import re
@@ -18,7 +19,8 @@ from .models import Gateway, ModelError
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 
 
-PROMPT_VERSION = "learning_v3"
+PROMPT_VERSION = "learning_v4"
+LEARNING_MAX_TOKENS = 16000
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
 STANCES = {"亲历", "转述", "推断", "观点"}
@@ -84,6 +86,16 @@ def _row_dict(row: Any) -> dict[str, Any]:
     return dict(row)
 
 
+def _memory_ref(value: Any) -> str | None:
+    if (type(value) is int or (type(value) is float and value.is_integer())) and value > 0:
+        return f"M{int(value)}"
+    if isinstance(value, str):
+        raw = value.strip()
+        if re.fullmatch(r"M?[0-9]+", raw):
+            return "M" + str(int(raw.removeprefix("M")))
+    return None
+
+
 class LearningEngine:
     def __init__(self, store: Store, gateway: Gateway):
         self.store = store
@@ -110,7 +122,7 @@ class LearningEngine:
             about.setdefault(row["memory_id"], set()).add(row["subject_id"])
         return {"messages": messages, "memories": memory_list, "subjects": [_row_dict(r) for r in subjects],
                 "aliases": [_row_dict(r) for r in aliases], "identities": [_row_dict(r) for r in identities],
-                "persona": persona[0] if persona else "",
+                "persona": persona[0] if persona else "", "role_name": str(self.store.setting("role_name", "Iris")),
                 "memory_about": about}
 
     def _related(self, batch: Batch, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
@@ -161,6 +173,12 @@ class LearningEngine:
             identity = next((p for p in snapshot["identities"] if p["subject_id"] == sid), None)
             account = f"（{identity['platform']} {identity['account_id']}）" if identity else ""
             participants.append(f"{ref} {name}{account}")
+            aliases = [a["alias"] for a in snapshot["aliases"] if a["subject_id"] == sid]
+            if aliases:
+                participants[-1] += "；别名：" + "、".join(aliases)
+        subject_refs = {sid: ref for ref, sid in snapshot["participant_refs"].items()}
+        def subject_label(sid: str, name: str) -> str:
+            return f"{subject_refs[sid]} {name}" if sid in subject_refs else name
         refs = {f"M{i}": memory for i, memory in enumerate(related, 1)}
         lines = ["角色与 persona（数据）：", "名字：" + str(self.store.setting("role_name", "Iris")),
                  truncate_material(snapshot["persona"], 800), "参与者：", *participants,
@@ -179,13 +197,13 @@ class LearningEngine:
                 m = messages[message_id]
                 dt = datetime.fromisoformat(m["occurred_at"])
                 label_type = {"message": "他人消息", "self_output": "我实际发言", "action_result": "我行动结果", "event": "场景事件"}[m["kind"]]
-                quote = f"；引用作者 {m['quote_author_name']}：{m['quote_content'] or ''}" if m["quote_author_name"] else ""
+                quote = f"；引用作者 {subject_label(m['quote_author_subject_id'], m['quote_author_name'])}：{m['quote_content'] or ''}" if m["quote_author_name"] else ""
                 scene = f"（{m['scene_identity']}）" if m["scene_identity"] else ""
                 prefix = f"#{number} [{dt.strftime('%Y-%m-%d 周')}{'一二三四五六日'[dt.weekday()]} {dt.strftime('%H:%M')}] "
                 if m["kind"] == "event":
                     lines.append(f"{prefix}[场景事件] {truncate_material(m['content'])}")
                 else:
-                    lines.append(f"{prefix}[{label_type}] {m['sender_name']}{scene}{quote}：数据：{truncate_material(m['content'])}")
+                    lines.append(f"{prefix}[{label_type}] {subject_label(m['sender_subject_id'], m['sender_name'])}{scene}{quote}：数据：{truncate_material(m['content'])}")
         material = "\n".join(lines)
         # Drop context from the beginning/end if the material exceeds its budget; target IDs stay fixed.
         if estimate_tokens(material) > 10000:
@@ -194,6 +212,68 @@ class LearningEngine:
             material = "\n".join(kept)
             number_to_id = {n: mid for n, mid in number_to_id.items() if mid in batch.target_ids}
         return material, number_to_id, refs
+
+    @staticmethod
+    def _known_subject(name: str, snapshot: dict[str, Any]) -> str | None:
+        if name in ("我", snapshot["role_name"]):
+            return "self"
+        if name in snapshot["participant_refs"]:
+            return snapshot["participant_refs"][name]
+        if re.fullmatch(r"P[0-9]+", name):
+            raise ValueError("unknown participant number")
+        participants = {m["sender_subject_id"] for m in snapshot["messages"].values() if m["sender_name"] == name}
+        participants.update(m["quote_author_subject_id"] for m in snapshot["messages"].values() if m["quote_author_name"] == name)
+        known = {s["id"] for s in snapshot["subjects"] if s["name"] == name}
+        aliases = {a["subject_id"] for a in snapshot["aliases"] if a["alias"] == name}
+        matches = participants or known or aliases
+        if len(matches) > 1:
+            raise ValueError("subject is ambiguous; use participant number")
+        return next(iter(matches)) if matches else None
+
+    @staticmethod
+    def _normalize_output(output: dict[str, Any], refs: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Repair only unambiguous shapes; leave raw model output unchanged for audit."""
+        output = copy.deepcopy(output)
+        notes = []
+        for section in ("memories", "updates", "people"):
+            values = output.get(section, [])
+            if not isinstance(values, list):
+                continue
+            for index, item in enumerate(values):
+                if not isinstance(item, dict):
+                    continue
+                def note(field: str, before: Any, after: Any, reason: str) -> None:
+                    notes.append({"section": section, "index": index, "field": field,
+                                  "before": before, "after": after, "reason": reason})
+                if section == "people":
+                    for field in ("name", "alias", "same_as", "roleplay"):
+                        value = item.get(field)
+                        if isinstance(value, list) and len(value) == 1 and isinstance(value[0], str):
+                            item[field] = value[0]
+                            note(field, value, value[0], "single string name unwrapped")
+                if section == "updates":
+                    value = item.get("ref")
+                    ref = _memory_ref(value)
+                    if ref is not None and ref != value:
+                        item["ref"] = ref
+                        note("ref", value, ref, "memory reference normalized")
+                if section == "memories":
+                    derived = item.get("derived_from", [])
+                    kept = []
+                    if not isinstance(derived, list):
+                        note("derived_from", derived, [], "invalid derived memory list removed")
+                        derived = []
+                    for value in derived:
+                        ref = _memory_ref(value)
+                        if ref not in refs:
+                            note("derived_from", value, None, "unknown derived memory reference removed")
+                        else:
+                            if value != ref:
+                                note("derived_from", value, ref, "memory reference normalized")
+                            if ref not in kept:
+                                kept.append(ref)
+                    item["derived_from"] = kept
+        return output, notes
 
     def _validate(self, output: dict[str, Any], batch: Batch, snapshot: dict[str, Any],
                   number_to_id: dict[int, int], refs: dict[str, dict[str, Any]]) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
@@ -213,7 +293,43 @@ class LearningEngine:
                 raise ValueError("unknown evidence number")
             return list(dict.fromkeys(result))
 
-        for item in output.get("memories", []) if isinstance(output.get("memories", []), list) else []:
+        # Resolve declared aliases before memories, including aliases used in this output.
+        people = output.get("people", [])
+        if not isinstance(people, list):
+            dropped.append({"section": "people", "item": people, "reason": "not a list"})
+            people = []
+        for item in people:
+            try:
+                if not isinstance(item, dict):
+                    raise ValueError("not an object")
+                item = dict(item)
+                relations = [key for key in ("alias", "same_as", "roleplay") if key in item]
+                for key in ["name", *relations]:
+                    if not isinstance(item.get(key), str) or not item[key].strip():
+                        raise ValueError(f"people {key} must be a nonempty string")
+                    item[key] = item[key].strip()
+                if len(relations) != 1:
+                    raise ValueError("people needs exactly one relation")
+                ev = evidence(item)
+                owner = self._known_subject(item["name"], snapshot)
+                relation = relations[0]
+                if relation == "alias":
+                    own_evidence = [i for i in ev if owner and owner in
+                                    (messages[i]["sender_subject_id"], messages[i]["quote_author_subject_id"])]
+                    if not target.intersection(own_evidence):
+                        raise ValueError("alias subject has no own evidence in target segment")
+                    item["_subject_id"] = owner
+                    item["_source_message_id"] = next(i for i in own_evidence if i in target)
+                    alias = {"subject_id": owner, "alias": item["alias"]}
+                    if alias not in snapshot["aliases"]:
+                        snapshot["aliases"].append(alias)
+                else:
+                    self._known_subject(item[relation], snapshot)  # Reject ambiguous participants.
+                accepted["people"].append({**item, "evidence": ev})
+            except ValueError as exc:
+                dropped.append({"section": "people", "item": item, "reason": str(exc)})
+
+        for index, item in enumerate(output.get("memories", []) if isinstance(output.get("memories", []), list) else []):
             try:
                 if not isinstance(item, dict):
                     raise ValueError("not an object")
@@ -223,53 +339,46 @@ class LearningEngine:
                 ev = evidence(item)
                 stance = str(item.get("stance") or "")
                 speaker = str(item.get("speaker") or "").strip()
-                role_name = str(self.store.setting("role_name", "Iris"))
-                speaker_id = "self" if speaker in ("我", role_name) else snapshot["participant_refs"].get(speaker)
+                speaker_id = self._known_subject(speaker, snapshot)
+                about = item.get("about") or []
+                if not isinstance(about, list) or any(not isinstance(name, str) for name in about):
+                    raise ValueError("about must be a list of names")
+                about = ["我" if name.strip() == snapshot["role_name"] else name.strip() for name in about if name.strip()][:10]
+                about_ids = {self._known_subject(name, snapshot) for name in about}
+                if stance == "计划":
+                    stance = "亲历" if speaker_id == "self" or not about or speaker in about or (speaker_id and speaker_id in about_ids) else "转述"
+                    snapshot["normalizations"].append({"section": "memories", "index": index, "field": "stance",
+                                                       "before": "计划", "after": stance, "reason": "plan stance normalized"})
                 if speaker_id:
                     speaker = next(s["name"] for s in snapshot["subjects"] if s["id"] == speaker_id)
                 if stance not in STANCES:
                     raise ValueError("invalid stance")
-                if stance == "推断" and speaker != "我":
+                if stance == "推断" and speaker_id != "self":
                     raise ValueError("inference speaker must be self")
-                if speaker == "我" and stance in ("亲历", "观点") and not any(
+                if speaker_id == "self" and stance in ("亲历", "观点") and not any(
                     messages[i]["kind"] in ("self_output", "action_result", "event") for i in ev
                 ):
                     raise ValueError("self claim has no self evidence")
-                if speaker == "我" and stance == "转述" and not any(
+                if speaker_id == "self" and stance == "转述" and not any(
                     messages[i]["kind"] == "self_output" for i in ev
                 ):
                     raise ValueError("self report has no self speech evidence")
-                if speaker != "我":
-                    evidence_speakers = set()
-                    for i in ev:
-                        if messages[i]["sender_name"] == speaker:
-                            evidence_speakers.add(messages[i]["sender_subject_id"])
-                        if messages[i]["quote_author_name"] == speaker:
-                            evidence_speakers.add(messages[i]["quote_author_subject_id"])
-                    if speaker_id and speaker_id not in evidence_speakers:
+                if speaker_id != "self":
+                    evidence_speakers = {sid for i in ev for sid in
+                                         (messages[i]["sender_subject_id"], messages[i]["quote_author_subject_id"]) if sid}
+                    if not speaker_id or speaker_id not in evidence_speakers:
                         raise ValueError("speaker reference is not in evidence")
-                    if not speaker_id and len(evidence_speakers) != 1:
-                        raise ValueError("speaker is absent or ambiguous in evidence")
-                    speaker_id = speaker_id or next(iter(evidence_speakers))
-                about = item.get("about") or []
-                if not isinstance(about, list):
-                    raise ValueError("about must be a list")
-                about = ["我" if str(name).strip() == role_name else str(name).strip()
-                         for name in about if str(name).strip()][:10]
-                for name in about:
-                    if name in snapshot["participant_refs"] or name == "我":
-                        continue
-                    participants_matching = {m["sender_subject_id"] for m in messages.values() if m["sender_name"] == name}
-                    participants_matching.update(m["quote_author_subject_id"] for m in messages.values() if m["quote_author_name"] == name)
-                    if len(participants_matching) > 1:
-                        raise ValueError("about subject is ambiguous; use participant number")
+                if speaker_id == "self" and stance in ("亲历", "观点", "推断") and "我" not in about:
+                    before = about[:]
+                    about = ["我", *about]
+                    snapshot["normalizations"].append({"section": "memories", "index": index, "field": "about",
+                                                       "before": before, "after": about[:],
+                                                       "reason": "self attribution includes self"})
                 tags = item.get("tags") or []
                 if not isinstance(tags, list):
                     tags = []
                 first_target = next(i for i in ev if i in target)
                 derived = item.get("derived_from") or []
-                if not isinstance(derived, list) or any(ref not in refs for ref in derived):
-                    raise ValueError("unknown derived memory reference")
                 accepted["memories"].append({"content": content, "kind": str(item.get("type") or "其他") if item.get("type") in MEMORY_TYPES else "其他",
                     "about": about, "tags": [str(tag).strip() for tag in tags if str(tag).strip()][:10],
                     "speaker": speaker, "speaker_id": speaker_id or "self", "stance": stance,
@@ -285,7 +394,7 @@ class LearningEngine:
             dropped.append({"section": "memories", "item": item, "reason": "batch memory limit 20"})
         accepted["memories"] = accepted["memories"][:20]
 
-        for section in ("updates", "people", "goals"):
+        for section in ("updates", "goals"):
             values = output.get(section) or []
             if not isinstance(values, list):
                 dropped.append({"section": section, "item": values, "reason": "not a list"})
@@ -296,15 +405,12 @@ class LearningEngine:
                         raise ValueError("not an object")
                     ev = evidence(item)
                     if section == "updates":
-                        if item.get("ref") not in refs:
+                        if not isinstance(item.get("ref"), str) or item["ref"] not in refs:
                             raise ValueError("unknown memory reference")
                         if item.get("action") not in ("确认", "修正", "反驳"):
                             raise ValueError("invalid update action")
                         if item.get("action") != "确认" and not str(item.get("content") or "").strip():
                             raise ValueError("missing corrected content")
-                    elif section == "people":
-                        if not item.get("name") or not (item.get("same_as") or item.get("roleplay")):
-                            raise ValueError("missing people relation")
                     elif not str(item.get("content") or "").strip():
                         raise ValueError("empty goal")
                     accepted[section].append({**item, "evidence": ev})
@@ -316,23 +422,9 @@ class LearningEngine:
         return accepted, dropped
 
     def _resolve_subject(self, conn: Any, name: str, snapshot: dict[str, Any]) -> str:
-        if name in ("我", str(self.store.setting("role_name", "Iris"))):
-            return "self"
-        if name in snapshot.get("participant_refs", {}):
-            return snapshot["participant_refs"][name]
-        participant_ids = {m["sender_subject_id"] for m in snapshot["messages"].values() if m["sender_name"] == name}
-        participant_ids.update(m["quote_author_subject_id"] for m in snapshot["messages"].values() if m["quote_author_name"] == name)
-        if len(participant_ids) == 1:
-            return next(iter(participant_ids))
-        known = [subject["id"] for subject in snapshot["subjects"] if subject["name"] == name]
-        if len(known) == 1:
-            return known[0]
-        for alias in snapshot["aliases"]:
-            if alias["alias"] == name:
-                return alias["subject_id"]
-        row = conn.execute("SELECT id FROM subjects WHERE name=? ORDER BY created_at LIMIT 1", (name,)).fetchone()
-        if row:
-            return row[0]
+        known = self._known_subject(name, snapshot)
+        if known:
+            return known
         import uuid
         parent_id = None
         if name.endswith("的妈妈"):
@@ -369,6 +461,12 @@ class LearningEngine:
             row = conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()
             if not row or row[0] != "running":
                 raise RuntimeError("batch state changed before commit")
+            for item in accepted["people"]:
+                if "alias" in item:
+                    conn.execute("""INSERT INTO subject_aliases(subject_id,alias,source_message_id) VALUES(?,?,?)
+                        ON CONFLICT(subject_id,alias) DO UPDATE SET
+                        source_message_id=COALESCE(subject_aliases.source_message_id,excluded.source_message_id)""",
+                        (item["_subject_id"], item["alias"], item["_source_message_id"]))
             existing = conn.execute("SELECT * FROM memories WHERE lifecycle='active'").fetchall()
             existing_about = {r["memory_id"]: set() for r in conn.execute("SELECT memory_id FROM memory_subjects")}
             for r in conn.execute("SELECT memory_id,subject_id FROM memory_subjects"):
@@ -452,6 +550,8 @@ class LearningEngine:
                     if message_id in target:
                         self._source(conn, current["id"], message_id)
             for item in accepted["people"]:
+                if "alias" in item:
+                    continue
                 a = self._resolve_subject(conn, str(item["name"]), snapshot)
                 relation_name = str(item.get("same_as") or item.get("roleplay"))
                 b = self._resolve_subject(conn, relation_name, snapshot)
@@ -487,7 +587,7 @@ class LearningEngine:
                         conn.execute("INSERT OR IGNORE INTO goal_sources(goal_id,message_id) VALUES(?,?)", (goal_id, message_id))
             conn.executemany("UPDATE messages SET learning_state='learned' WHERE id=?", ((i,) for i in batch.target_ids))
             result = {"created": created, "updated": updated, "confirmed": confirmed, "dropped": dropped,
-                      "parse_status": attempt["parse_status"]}
+                      "parse_status": attempt["parse_status"], "normalizations": snapshot["normalizations"]}
             conn.execute("UPDATE batches SET state='succeeded',attempt_count=attempt_count+1,finished_at=?,result_json=?,last_error=NULL WHERE id=?",
                          (now(), dumps(result), batch.id))
             conn.execute("DELETE FROM memory_gaps WHERE batch_id=?", (batch.id,))
@@ -565,9 +665,11 @@ class LearningEngine:
             related = self._related(batch, snapshot)
             material, numbers, refs = self._material(batch, snapshot, related)
             output, raw, repair, parse_status, *details = self.gateway.json_chat(
-                [{"role": "system", "content": PROMPT}, {"role": "user", "content": material}], "learning", max_tokens=6500)
+                [{"role": "system", "content": PROMPT}, {"role": "user", "content": material}], "learning",
+                max_tokens=LEARNING_MAX_TOKENS, batch_id=batch.id)
             attempt.update(raw_output=raw, repair_output=repair, parse_status=parse_status,
                            error=details[0] if details else None)
+            output, snapshot["normalizations"] = self._normalize_output(output, refs)
             accepted, dropped = self._validate(output, batch, snapshot, numbers, refs)
             embedding_config = self.gateway.configs.get("embedding")
             if embedding_config and embedding_config.model:
