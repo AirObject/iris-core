@@ -151,6 +151,7 @@ def test_external_corpus_and_out_use_production_path_and_respect_split(tmp_path,
     assert path.parent == out and path.with_suffix(".json").exists()
     assert report["corpus"]["cases"] == 1 and report["cases"][0]["id"] == "external-dev"
     assert report["metrics"]["all"]["alias_recall"] == 1
+    assert report["timeouts_seconds"] == {"learning": 120, "judge": 240}
     assert not (root / "evals").exists()
     assert "因长度截断的批次数" in path.read_text(encoding="utf-8")
     assert "隐藏" in path.read_text(encoding="utf-8")

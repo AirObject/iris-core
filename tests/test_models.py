@@ -126,20 +126,26 @@ def test_embedding_uses_configured_plan_path(store):
     assert paths == ["/api/plan/v3/embeddings"]
 
 
-def test_generation_has_hard_total_timeout_and_two_retries(store):
+@pytest.mark.parametrize(("purpose", "deadline"), [
+    ("test", 120), ("learning", 120), ("learning_repair", 120),
+    ("learning_judge", 240), ("learning_judge_repair", 240),
+])
+def test_generation_has_hard_total_timeout_and_two_retries(store, purpose, deadline):
     class Future:
         def result(self, timeout):
-            assert timeout == 120
+            assert timeout == deadline
             raise FutureTimeout()
     class Pool:
         def submit(self, *args, **kwargs):
+            assert kwargs["timeout"].read == deadline
+            assert kwargs["timeout"].connect == 10
             return Future()
     sleeps = []
     gateway = Gateway(configs(), store, sleeper=sleeps.append)
     gateway._pool.shutdown(wait=False)
     gateway._pool = Pool()
     with pytest.raises(ModelError) as caught:
-        gateway.chat([{"role": "user", "content": "test"}], "test")
+        gateway.chat([{"role": "user", "content": "test"}], purpose)
     assert caught.value.category == "retryable"
     assert sleeps == [2, 8]
 

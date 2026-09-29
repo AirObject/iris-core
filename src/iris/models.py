@@ -19,6 +19,10 @@ import httpx
 from .db import Store, now
 
 
+CHAT_TOTAL_TIMEOUT = 120
+JUDGE_TOTAL_TIMEOUT = 240
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     base_url: str
@@ -185,12 +189,14 @@ class Gateway:
             raise ModelError("configuration", f"{kind} model is not configured")
         url = config.base_url + ("/chat/completions" if kind == "chat" else "/embeddings")
         headers = {"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"}
-        timeout = httpx.Timeout(120 if kind == "chat" else 30, connect=10)
+        total_timeout = CHAT_TOTAL_TIMEOUT if kind == "chat" else 30
+        if kind == "chat" and purpose in ("learning_judge", "learning_judge_repair"):
+            total_timeout = JUDGE_TOTAL_TIMEOUT
+        timeout = httpx.Timeout(total_timeout, connect=10)
         for attempt in range(3):
             started = time.monotonic()
             response: httpx.Response | None = None
             try:
-                total_timeout = 120 if kind == "chat" else 30
                 request = self._pool.submit(self.client.post, url, headers=headers, json=payload, timeout=timeout)
                 response = request.result(timeout=total_timeout)
                 duration = round((time.monotonic() - started) * 1000)
