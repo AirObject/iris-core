@@ -2,6 +2,25 @@ import json
 from pathlib import Path
 
 
+def test_conversation_frozen_corpus_contract():
+    corpus = json.loads((Path(__file__).resolve().parents[1] / "evals/recall_conversation_v1.json").read_text(encoding="utf-8"))
+    queries, memories = corpus['queries'], corpus['memories']
+    ids = {m['id'] for m in memories}
+    assert len(ids) == len(memories) == 33
+    assert len({q['id'] for q in queries}) == len(queries) == 24
+    assert sum(not q['relevant'] for q in queries) == 6
+    assert {q['entry_kind'] for q in queries} == {'private', 'group', 'live'}
+    sources = [m['id'] for q in queries for m in q['recent_messages']]
+    assert len(sources) == len(set(sources))
+    for q in queries:
+        assert q['split'] == 'dev' and q['text'] is None and q['participants'] is None
+        assert '对话中准备' in q['categories'] and q['recent_messages']
+        assert set(q['relevant']) <= ids
+        assert not set(q.get('known_memory_ids', [])) & set(q['relevant'])
+        assert all(1 <= grade <= 3 for grade in q['relevant'].values())
+    assert all(set(m.get('source_message_ids', [])) <= set(sources) for m in memories)
+
+
 def test_handwritten_recall_corpus_contract():
     corpus = json.loads((Path(__file__).resolve().parents[1] / "evals/recall_v1.json").read_text(encoding="utf-8"))
     ids = {m["id"] for m in corpus["memories"]}
