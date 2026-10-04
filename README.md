@@ -87,7 +87,7 @@ uv run iris eval learning --judge-runs 2
 uv run iris eval recall
 uv run iris eval recall --split dev --calibrate --compare-embeddings
 uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
-uv run python evals/benchmark_retrieval.py
+uv run python evals/benchmark_retrieval.py --default-config
 ```
 
 语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。学习和召回的最终验收仍需规划者运行隐藏集。

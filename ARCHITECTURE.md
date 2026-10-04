@@ -62,7 +62,7 @@ prepare 返回当前 persona 版本／时间、本入口近期消息及未学习
 
 feedback 在一个事务中检查召回是否存在、是否超过 24 小时、每条记忆是否确实返回且仍未删除。所有条目有效才写入；`used_at IS NULL` 条件保证同次召回同条只计一次，原子执行 `retention=MIN(100,retention+8)`。修订变化不影响反馈资格，也不因反馈增加修订号或相信程度。遗忘记忆的读取／反馈在本 PR 不改变生命周期，双阈值恢复留给 M2。
 
-自动化测试覆盖 R01、R04—R13、接口、事务提交／回滚、同名主体、过滤、2 秒超时与反馈幂等。用户确认 R14 与设计一致留到 M4；R02／R03 同样未实施。性能数据与 float16 比较见 [性能报告](evals/reports/retrieval-performance.json)。
+自动化测试覆盖 R01、R04—R13、接口、事务提交／回滚、同名主体、过滤、2 秒超时与反馈幂等。用户确认 R14 与设计一致留到 M4；R02／R03 同样未实施。当前默认配置见 [第二轮性能报告](evals/reports/retrieval-performance-pr5-r2.md)，维度与 float16 的历史对照见 [第一轮性能报告](evals/reports/retrieval-performance-pr5.md)。
 
 ## 评测明细与重试
 

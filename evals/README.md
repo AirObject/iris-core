@@ -8,7 +8,7 @@ uv run iris eval learning --judge-runs 2
 uv run iris eval recall
 uv run iris eval recall --split dev --calibrate --compare-embeddings
 uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
-uv run python evals/benchmark_retrieval.py --out evals/reports
+uv run python evals/benchmark_retrieval.py --default-config --out evals/reports
 ```
 
 第二轮固定代码后，全部学习集双判独立运行两次，分别保留结果及与 PR #4 的差异，不按得分挑选。学习最终评测必须使用默认的双判；单判只用于 dev 迭代，不计算双判分歧率。学习评分 v3、语料和 M1 门槛保持不变。`--out` 位于仓库外时，JSON 的 `details` 保存每案例完整输入、全部记忆及来源、每次原判分和最终判分；仓库内报告保持汇总与抽查规模。
@@ -30,6 +30,10 @@ uv run python evals/benchmark_retrieval.py --out evals/reports
 `benchmark_retrieval.py --default-config` 以在用默认参数跑 5k／50k，默认 prepare 请求省略查询与参与者，三位合成参与者从近期消息推断；结果写入 retrieval-performance-pr5-r2.json，保留第一轮数据。查询向量预先生成，网络不计入本地 P95。
 
 第二轮标定报告：[全部公开 dev](reports/recall-20261004T090239190151Z-dev.md)。默认 trigram＋2048 float32、有前缀、0.45 绝对下限、0.75 相对比例、向量权重 2。无向量时默认降级 jieba，避免不足三个字符的中文查询丢失。
+
+[最终默认召回](reports/recall-20261004T090706550725Z-dev.md)：128 条公开 dev 为 0.900／0.884／0.467（Recall／nDCG／无关误返）；其中“对话中准备”24 条为 0.806／0.785／0.167。各集合、类别和两项诊断值均单列；无答案误返与部分对话漏召回仍未解决，不宣称验收通过。[默认性能](reports/retrieval-performance-pr5-r2.md)的 5k／50k prepare P95 为 75.2／230.8ms。
+
+最终固定代码在全部学习集上独立双判两次：[运行 1](reports/learning-20261004T100554664028Z-all.md)、[运行 2](reports/learning-20261004T105047281034Z-all.md)、[与 PR #4 对照](reports/learning-pr5-r2-comparison.md)。两次都是 86 段、203 批，复用 0；第一轮检查点完整归档后再执行第二轮。两次全量及历史 holdout 均达到三项 M1 学习数值门槛，但全量精确率 93.70%／94.60%、证据 96.67%／95.68%、归属 91.48%／91.73% 都低于 PR #4；事实召回 79.82%／80.70% 高于基线，别名覆盖 3/3／2/3。没有改提示词或评分说明。学习超时 7／2 次，均重试成功；学习／判分截断和判分超时均为 0。双判分歧 36／41 项，全部取不利结论。不能据这些公开结果宣称隐藏验收通过。
 
 第一轮历史报告保留：[v2](reports/recall-20260929T152944533947Z-all.md)、[v1](reports/recall-20260929T153146196759Z-all.md)、[学习](reports/learning-20260929T155300064221Z-all.md)。第一轮属性词表和参与者过滤已在第二轮删除，不能将历史分数当作当前实现结果。
 
