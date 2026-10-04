@@ -160,3 +160,21 @@ def test_late_probe_cannot_clear_new_authentication_failure(store):
     health.observe("chat", token, "authentication", "HTTP 401")
     health.observe("chat", token, "success", probe=True)
     assert health.snapshot()["chat"]["state"] == "invalid_key"
+
+
+def test_explicit_content_refusal_is_not_hidden_by_another_inflight_failure(store):
+    from iris.models import ModelConfig
+    configs = {"chat": ModelConfig("http://fake", "", "chat")}
+    health = ModelHealth(store, configs)
+    def handler(request):
+        token = health.check("chat", "learning")
+        for _ in range(3):
+            health.observe("chat", token, "retryable", "network error in another request")
+        return httpx.Response(400, json={"error": {"code": "content_filter"}})
+    gateway = Gateway(configs, store, health=health, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    try:
+        with pytest.raises(ModelError) as caught:
+            gateway.chat([], "learning")
+        assert caught.value.category == "content_rejection" and not caught.value.paused
+    finally:
+        gateway.close()

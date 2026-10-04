@@ -5,7 +5,8 @@ from pathlib import Path
 
 class StoreLease:
     def __init__(self, database):
-        self.path = Path(database).resolve().with_suffix(".owner.lock")
+        database = Path(database).resolve()
+        self.path = database.with_name(database.name + ".owner.lock")
         self.file = None
 
     def __enter__(self):

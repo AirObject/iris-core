@@ -158,3 +158,24 @@ def test_offline_learning_is_rejected_while_service_owns_database(tmp_path):
         assert not path.exists()
     with StoreLease(path):
         pass
+
+
+def test_unchanged_toml_reload_does_not_undo_internal_config_replacement(store):
+    from dataclasses import replace
+    from iris.models import Gateway
+    original = ModelConfig("http://fake", "old-fake", "chat")
+    loaded = {"chat": original}
+    health = ModelHealth(store, loaded)
+    gateway = Gateway(loaded, store, health=health)
+    scheduler = Scheduler(store, gateway, config_loader=lambda: dict(loaded))
+    try:
+        corrected = replace(original, api_key="corrected-fake")
+        gateway.replace_config("chat", corrected)
+        scheduler.tick()
+        assert gateway.configs["chat"] == corrected
+        loaded["chat"] = replace(original, api_key="new-file-fake")
+        scheduler.tick()
+        assert gateway.configs["chat"] == loaded["chat"]
+    finally:
+        scheduler.stop()
+        gateway.close()

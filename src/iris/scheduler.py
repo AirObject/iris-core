@@ -24,6 +24,7 @@ class Scheduler:
         self.store, self.gateway, self.clock = store, gateway, clock
         self.health = getattr(gateway, "health", None)
         self.interval, self.config_loader = interval, config_loader
+        self._loaded_configs = dict(gateway.configs)
         if max_concurrent is not None:
             self.set_concurrency(max_concurrent)
         self._pool = ThreadPoolExecutor(max_workers=32, thread_name_prefix="iris-learning")
@@ -127,7 +128,9 @@ class Scheduler:
                 try:
                     configs = self.config_loader()
                     for kind in ("chat", "embedding"):
-                        self.gateway.replace_config(kind, configs.get(kind))
+                        if configs.get(kind) != self._loaded_configs.get(kind):
+                            self.gateway.replace_config(kind, configs.get(kind))
+                    self._loaded_configs = dict(configs)
                 except (OSError, ValueError):
                     log.warning("model configuration could not be reloaded")
             if self.health:

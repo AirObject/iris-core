@@ -315,6 +315,8 @@ class Gateway:
             self._record(purpose, config.model, duration, category, summary, usage, flags, status_code,
                          finish_reason=finish_reason, batch_id=batch_id, kind=kind, timed_out=timed_out)
             paused = self.health.observe(kind, token, category, summary, probe=probe) if self.health else False
+            if category == "content_rejection":
+                paused = False  # Explicit safety refusal is a terminal batch result even during another outage.
             if category == "success":
                 if self.configs.get(kind) != config:
                     raise ModelError("paused", "model configuration changed during request", paused=True)
