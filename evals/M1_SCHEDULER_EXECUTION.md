@@ -26,6 +26,7 @@
 - 深路径 checkout：`C:\t\s6\windows-path-validation\standalone-service-scheduler-and-http-evaluation\independent-interpreter-checkouts\long-directory-for-path-boundaries\repo`。解释器环境分别为 `C:\t\s6\py312` 和 `C:\t\s6\py313`，测试临时目录分别为 `C:\t\s6\test312`、`C:\t\s6\test313`。源文件从深路径导入，独立环境未相互切换／重建；测试临时根保持短路径以容纳既有评测指纹目录。
 - `uv build` 和 CLI 帮助通过；轮子包含新迁移、评分说明和服务模块。
 - 后续复核增加回归：未改动的 TOML 不能撤销内部配置替换；另一请求打开模型暂停状态时，明确内容拒绝仍是终态。最终测试数字以合并 PR #5 后重跑记录为准。
+- 复核提交 `031837c` 的同一深路径全量复测：Python 3.12.13 **212 passed**（48.54 秒），Python 3.13.13 **212 passed**（46.36 秒），只有 Starlette 测试客户端弃用提示。两个测试运行均使用上述独立环境和临时根；最新 `uv build` 及轮子内容检查通过。
 
 ## 真实端到端与 PR #5
 
