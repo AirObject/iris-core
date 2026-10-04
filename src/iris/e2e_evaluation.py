@@ -68,11 +68,55 @@ def load_corpus(path):
                                                      and e["fact"] for e in checkpoint["expected"]):
                 raise ValueError("expected must be a nonempty list of facts")
             for fact in checkpoint["expected"]:
-                if not fact.get("source_keys") or any((checkpoint["entry_id"], key) not in keys for key in fact["source_keys"]):
-                    raise ValueError("expected facts need valid source_keys in their entry")
+                if any(source not in keys for source in fact_sources(fact, checkpoint["entry_id"])):
+                    raise ValueError("expected facts need sources present in this script")
             if not all(isinstance(f, str) for f in checkpoint.get("forbidden", [])):
                 raise ValueError("forbidden must contain strings")
     return scripts
+
+
+def fact_sources(fact, default_entry):
+    """Legacy local keys or explicit entry/key objects; never parse delimiters in IDs."""
+    if ("source_keys" in fact) == ("sources" in fact):
+        raise ValueError("expected facts need exactly one of source_keys or sources")
+    if "source_keys" in fact:
+        keys = fact["source_keys"]
+        if not isinstance(keys, list) or not keys or any(not isinstance(k, str) or not k for k in keys):
+            raise ValueError("source_keys must be a nonempty string list")
+        return [(default_entry, key) for key in keys]
+    sources = fact["sources"]
+    if not isinstance(sources, list) or not sources or any(
+            not isinstance(s, dict) or set(s) != {"entry_id", "key"}
+            or any(not isinstance(s[k], str) or not s[k] for k in ("entry_id", "key")) for s in sources):
+        raise ValueError("sources must be nonempty entry_id/key objects")
+    return [(source["entry_id"], source["key"]) for source in sources]
+
+
+def fact_latency(expected, fact, entry_id, entries, sent, first_seen):
+    sources = fact_sources(expected, entry_id)
+    started = min(sent[source] for source in sources)
+    refs = fact["memory_ids"]
+    measured = fact["covered"] and refs and all(mid in first_seen for mid in refs)
+    latency = round(max(first_seen[mid] for mid in refs) - started, 3) if measured else None
+    return {"fact": expected["fact"], "seconds": latency,
+            "sources": [{"entry_id": eid, "key": key} for eid, key in sources],
+            "u04_applicable": all(entries[eid].get("pace", "standard") == "realtime" for eid, _ in sources),
+            "within_60_seconds": latency is not None and 0 <= latency <= 60}
+
+
+def check_recent_messages(response, entry_id, sent_messages):
+    """Check HTTP receipts and original payloads, independently of semantic judging."""
+    recent = response.get("recent_messages")
+    if not isinstance(recent, list):
+        return {"passed": False, "checked": 0, "reason": "recent_messages is not a list"}
+    invalid = []
+    for message in recent:
+        mid = message.get("id") if isinstance(message, dict) else None
+        original = sent_messages.get(mid) if type(mid) is int else None
+        if not original or original["entry_id"] != entry_id or message.get("entry_id") != entry_id or any(
+                message.get(key) != original[key] for key in ("content", "kind", "quote_content") if key in original):
+            invalid.append(mid)
+    return {"passed": not invalid, "checked": len(recent), "invalid_message_ids": invalid}
 
 
 def _message(entry, message):
@@ -196,6 +240,7 @@ def _run_script(configs, script, judge_runs, wait_timeout):
         gateway = Gateway(configs)
         detail = {"id": script["id"], "script": script, "checkpoints": [], "first_seen_memories": {}, "receipts": []}
         judged_messages = []
+        sent_messages = {}
         sent, first_seen, observed_batches = {}, {}, set()
         origin = time.monotonic()
         def observe():
@@ -217,6 +262,7 @@ def _run_script(configs, script, judge_runs, wait_timeout):
                 receipt = service.post(f"/api/v1/entries/{entry['id']}/messages", _message(entry, message))
                 detail["receipts"].append(receipt)
                 judged_messages.append({**message, "message_id": receipt["message_ids"][0]})
+                sent_messages[receipt["message_ids"][0]] = message
                 observe()
             deadline = time.monotonic() + wait_timeout
             while True:
@@ -233,20 +279,19 @@ def _run_script(configs, script, judge_runs, wait_timeout):
             detail["first_seen_memories"] = first_seen
             for checkpoint in script["checkpoints"]:
                 entry = entries[checkpoint["entry_id"]]
-                service.post(f"/api/v1/entries/{entry['id']}/messages", _message(entry, checkpoint["question"]))
+                receipt = service.post(f"/api/v1/entries/{entry['id']}/messages", _message(entry, checkpoint["question"]))
+                detail["receipts"].append(receipt)
+                sent_messages[receipt["message_ids"][0]] = {**checkpoint["question"], "entry_id": entry["id"]}
                 response = service.post(f"/api/v1/entries/{entry['id']}/prepare", checkpoint.get("prepare", {}))
                 judges = [_judge(gateway, {**script, "messages": judged_messages}, checkpoint, response) for _ in range(judge_runs)]
                 combined = combine_judges(judges)
-                latencies = []
-                for expected, fact in zip(checkpoint["expected"], combined["facts"]):
-                    started = min(sent[(entry["id"], key)] for key in expected["source_keys"])
-                    observed = [first_seen[mid] for mid in fact["memory_ids"] if mid in first_seen]
-                    latency = round(max(observed) - started, 3) if observed and fact["covered"] else None
-                    latencies.append({"fact": expected["fact"], "seconds": latency,
-                                      "u04_applicable": entry.get("pace", "standard") == "realtime",
-                                      "within_60_seconds": latency is not None and latency <= 60})
+                isolation = check_recent_messages(response, entry["id"], sent_messages)
+                if not isolation["passed"]:
+                    detail["failure"] = "recent_messages isolation check failed"
+                latencies = [fact_latency(expected, fact, entry["id"], entries, sent, first_seen)
+                             for expected, fact in zip(checkpoint["expected"], combined["facts"])]
                 detail["checkpoints"].append({"id": checkpoint["id"], "response": response, "judges": judges,
-                                              "combined": combined, "latencies": latencies})
+                                              "combined": combined, "latencies": latencies, "recent_message_isolation": isolation})
             detail["passed"] = not detail.get("failure") and all(c["combined"]["passed"] for c in detail["checkpoints"])
             detail["final_status"] = service.status()
             return detail
@@ -286,7 +331,8 @@ def run_e2e_eval(configs, root, split="all", *, corpus=None, out=None, judge_run
         summaries.append({"id": row["id"], "passed": row["passed"], "failure": row.get("failure"),
                           "u04_seconds": max((t["seconds"] for t in timings if t["seconds"] is not None), default=None),
                           "u04_passed": all(t["within_60_seconds"] for t in timings) if timings else None,
-                          "checkpoints": [{"id": c["id"], **c["combined"], "latencies": c["latencies"]} for c in checkpoints]})
+                          "checkpoints": [{"id": c["id"], **c["combined"], "latencies": c["latencies"],
+                                           "recent_message_isolation": c["recent_message_isolation"]} for c in checkpoints]})
         calls.extend(row.get("final_status", row.get("before_restart", {})).get("learning_calls_24h", []))
     disagreements = sum(c["combined"]["disagreements"] for row in rows for c in row["checkpoints"])
     decisions = sum(c["combined"]["decisions"] for row in rows for c in row["checkpoints"])
