@@ -6,7 +6,8 @@
 uv run iris eval learning --split dev --judge-runs 1
 uv run iris eval learning --judge-runs 2
 uv run iris eval recall
-uv run iris eval recall --split dev --calibrate --compare-embeddings
+uv run iris eval recall --split dev --calibrate
+# 如需重新比较 1024／2048 维，再加 --compare-embeddings
 uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
 uv run python evals/benchmark_retrieval.py --default-config --out evals/reports
 ```
@@ -15,23 +16,27 @@ uv run python evals/benchmark_retrieval.py --default-config --out evals/reports
 
 学习成功案例保存在 `data/lc/<16位指纹>`，外部报告的检查点在 `<out>/.lc/<16位指纹>`。meta.json 保存并校验完整 SHA-256。只有源码、语料、模型端点／ID／维度、判分次数都一致才复用已完成案例；失败案例重新执行，不按分数选择结果。报告列 `resumed_cases` 和源码指纹。请勿在评测运行期间编辑源码／迁移或重建当前虚拟环境。
 
-## 当前召回质量评测（M1-5 第二轮）
+## 当前召回质量评测（M1-5 第三轮）
 
-默认运行 recall_v1、recall_v2、recall_conversation_v1 三份公开集，共 128 条查询。每份使用独立数据库，标定以全部查询的合并指标选参数。v2 原 holdout 已被分析，按 dev 使用；文件中的原 split 不改，加载时记录 source_split 并转为 dev。指定这些仓库文件的 --corpus 也按 dev 处理；外部语料按提供的 split，不转换。最终验收由规划者运行隐藏集，执行者不得寻找或读取。
+默认运行 recall_v1、recall_v2、recall_conversation_v1 三份公开集，共 128 条查询，各自隔离入库。第三轮按最新任务恢复冻结 split：v1 的 38 条、v2 的 44 条 dev 和对话集的 24 条，共 106 条 dev 用于标定；v2 的 22 条已分析 holdout 仅作最终对照，不参与选择，也不再代表独立验收。--corpus 同样遵守文件 split，不隐式转换。第二轮曾把 128 条全部按 dev 使用，旧报告保留，不将两轮分母混用。最终验收由规划者运行隐藏集，执行者不得寻找或读取。
 
-对话集在 `15cdd48` 手写冻结，33 条记忆、24 条查询（6 条无答案），包含私聊、群聊、直播。近期消息和记忆标签未通过脚本或模板生成。详细顺序与限制见 [PR5_EXECUTION](PR5_EXECUTION.md)。
+对话集在 `15cdd48` 手写冻结，33 条记忆、24 条查询（6 条无答案），包含私聊、群聊、直播。近期消息和记忆标签未通过脚本或模板生成；第三轮未改任何质量语料。详细记录见 [PR5_EXECUTION](PR5_EXECUTION.md)。
 
-`--calibrate --split dev` 比较绝对下限 0.35／0.45／0.55／0.65、相对比例 0.75／0.85／0.95、向量权重 0.5／1／2，全文权重为 1。选择仍按 `(Recall@8+nDCG@8)/2-无关误返率`，平分依次看召回、nDCG、低误返。第一轮 1024／2048 维、有／无前缀比较保留；加 --compare-embeddings 可重新对照。模型调用只取 embedding，不调用生成模型，命令不修改在用库。
+`--calibrate --split dev` 的网格保持原取值：jieba／trigram；绝对下限 0.35／0.45／0.55／0.65；相对比例 0.75／0.85／0.95；向量权重 0.5／1／2，全文权重 1；空前缀／“为这个问题检索能回答它的个人记忆：”。共 144 个混合组合及两个全文对照，全部写入 Markdown 和 JSON。默认维度 2048；加 --compare-embeddings 才重新比较 1024／2048，维度对照历史结果保留。只请求 embedding，不调用生成模型，不修改在用库。
 
-每个集合和类别都报告 Recall@8、nDCG@8、无关误返、平均返回条数及 relevant 标注精确率。“对话中准备”单列。Recall/nDCG 按全部返回（包括人物要点）计算；无关误返只统计无答案查询有没有 reason=relevant 的记忆。诊断精确率为标注相关的 relevant 返回数除以全部 relevant 返回数，跨查询合并计数，不设门槛；平均条数同样只作诊断。空分母为不可计算。无答案拒绝留到 M2，不加话题规则。
+选择先比较 `Q=(Recall@8+nDCG@8)/2`；与全网格最高 Q 相差不足 0.01 的方案视为持平，恰差 0.01 不算。持平时先取 relevant 标注精确率高者，再取无关误返率低者；其后取较高 Q，完全相同保留固定网格顺序。精确率无分母按 0 处理。比较完整网格，不能先淘汰各变体内部的非赢家，也不逐项链式平分。无关误返不再从 Q 中扣除，不设本轮门槛。
 
-缓存键包括端点、模型、请求维度和完整 embedding 输入。预取复用正式 prepare_query／embedding_text，null 查询会读真正入库的近期消息。新增请求单路、间隔至少 1 秒。报告逐条保留返回 ID 和 reason，外部 --out 另保留完整输入与返回。
+[完整 dev 网格](reports/recall-20261004T162313575686Z-dev.md)选出 trigram＋2048 float32、有前缀、绝对下限 0.35、相对比例 0.75、向量权重 2。最高 Q 为无前缀 trigram 的 0.975330，选中方案 Q=0.970943，差 0.004386；九个组合进入持平区间，选中方案 relevant 精确率最高（0.553459）。下限较第二轮的 0.45 降低，短中文词仍是 trigram 的限制；没有为了选择某分词器增加规则或改网格。无向量时仍降级 jieba。
 
-`benchmark_retrieval.py --default-config` 以在用默认参数跑 5k／50k，默认 prepare 请求省略查询与参与者，三位合成参与者从近期消息推断；结果写入 retrieval-performance-pr5-r2.json，保留第一轮数据。查询向量预先生成，网络不计入本地 P95。
+[固定默认结果](reports/recall-20261004T162512585904Z-all.md)及[选择与类别汇总](reports/recall-pr5-r3-summary.md)：dev 106 条 Recall／nDCG／误返 0.978／0.964／0.625；历史 holdout 22 条为 1.000／0.914／1.000；全部 128 条为 0.981／0.956／0.700；对话中准备 24 条为 0.944／0.908／0.333。无答案拒绝仍未解决，留到 M2，不新增过滤、话题词表或阈值技巧。
 
-第二轮标定报告：[全部公开 dev](reports/recall-20261004T090239190151Z-dev.md)。默认 trigram＋2048 float32、有前缀、0.45 绝对下限、0.75 相对比例、向量权重 2。无向量时默认降级 jieba，避免不足三个字符的中文查询丢失。
+各集合、split 和类别都报告 Recall@8、nDCG@8、无关误返、平均返回数和 relevant 标注精确率。Recall/nDCG 按全部返回（包括人物要点）计算；无关误返只统计无答案查询有无 reason=relevant 的记忆。标注精确率为标注相关的 relevant 返回数／全部 relevant 返回数，跨查询合并计数，在质量持平时用于选参；平均条数只作诊断，两者均不设数值门槛。空分母为不可计算。类别可重叠，沿用冻结标注；v1 没有分类标签，整体误返仍包含它的八条无答案查询。
 
-[最终默认召回](reports/recall-20261004T090706550725Z-dev.md)：128 条公开 dev 为 0.900／0.884／0.467（Recall／nDCG／无关误返）；其中“对话中准备”24 条为 0.806／0.785／0.167。各集合、类别和两项诊断值均单列；无答案误返与部分对话漏召回仍未解决，不宣称验收通过。[默认性能](reports/retrieval-performance-pr5-r2.md)的 5k／50k prepare P95 为 75.2／230.8ms。
+缓存键包括端点、模型、维度和完整 embedding 输入。预取复用正式 prepare_query／embedding_text；null 查询读取真正入库的近期消息。新增请求单路、间隔至少 1 秒。报告逐条保留返回 ID 和 reason；外部 --out 另保留完整输入与返回。
+
+`benchmark_retrieval.py --default-config` 以当前默认跑 5k／50k，每组新进程，两种请求分别预热 5 次、采样 60 次：不点名的 `{}` 从近期消息推导查询和参与者；点名请求显式查询“参与者1的天文观測记录”，参与者仍由近期消息推断。三位参与者和五万条记忆都属合成性能数据。查询向量预生成，网络不计入本地 P95；包含候选过滤、去冗余、JSON 和召回记录写入。结果写入 [retrieval-performance-pr5-r3](reports/retrieval-performance-pr5-r3.md)，旧报告保留。第三轮两套 Python 深路径全量测试均为 215 passed。
+
+第三轮学习调用路径未改，因此按任务不重跑学习评测，以下是第二轮固定实现的两次报告，不冒充第三轮新结果。
 
 最终固定代码在全部学习集上独立双判两次：[运行 1](reports/learning-20261004T100554664028Z-all.md)、[运行 2](reports/learning-20261004T105047281034Z-all.md)、[与 PR #4 对照](reports/learning-pr5-r2-comparison.md)。两次都是 86 段、203 批，复用 0；第一轮检查点完整归档后再执行第二轮。两次全量及历史 holdout 均达到三项 M1 学习数值门槛，但全量精确率 93.70%／94.60%、证据 96.67%／95.68%、归属 91.48%／91.73% 都低于 PR #4；事实召回 79.82%／80.70% 高于基线，别名覆盖 3/3／2/3。没有改提示词或评分说明。学习超时 7／2 次，均重试成功；学习／判分截断和判分超时均为 0。双判分歧 36／41 项，全部取不利结论。不能据这些公开结果宣称隐藏验收通过。
 

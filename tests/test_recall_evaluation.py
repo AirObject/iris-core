@@ -17,22 +17,46 @@ def test_relevant_reason_metrics_separate_background_from_answers():
     assert metrics['recall_at_8'] == metrics['ndcg_at_8'] == 1
 
 
-def test_public_corpora_use_all_dev_queries_in_separate_databases(tmp_path):
+def test_public_corpora_exclude_historical_holdout_from_calibration(tmp_path):
     from iris.recall_evaluation import PUBLIC_CORPORA
     folder = tmp_path / 'evals'
     folder.mkdir()
     for name, topic in zip(PUBLIC_CORPORA, ('天文', '水彩', '陶艺'), strict=True):
         (folder / name).write_text(json.dumps({
             'memories': [{'id': 'm', 'content': topic}],
-            'queries': [{'id': 'q', 'split': 'holdout', 'text': topic, 'relevant': {'m': 3}}]
+            'queries': [
+                {'id': 'dev', 'split': 'dev', 'text': topic, 'relevant': {'m': 3}},
+                {'id': 'old', 'split': 'holdout', 'text': topic, 'relevant': {'m': 3}}]
         }, ensure_ascii=False), encoding='utf-8')
     _, report = run_recall_eval({}, tmp_path, 'dev', calibrate=True)
     variant = report['variants']['jieba_fts']
     assert variant['metrics']['queries'] == 3 and variant['metrics']['recall_at_8'] == 1
     assert len(variant['corpora']) == 3
-    assert all(q['returned'] == ['m'] and q['split'] == 'dev' for q in variant['queries'])
-    assert all(json.loads((folder / name).read_text(encoding='utf-8'))['queries'][0]['split'] == 'holdout'
+    assert all(q['id'] == 'dev' and q['returned'] == ['m'] for q in variant['queries'])
+    _, final = run_recall_eval({}, tmp_path)
+    assert final['variants']['jieba_fts']['groups']['holdout']['all']['queries'] == 3
+    assert all(json.loads((folder / name).read_text(encoding='utf-8'))['queries'][1]['split'] == 'holdout'
                for name in PUBLIC_CORPORA)
+
+
+def test_selection_uses_global_quality_band_then_precision_then_false_returns():
+    from itertools import permutations
+    from iris.recall_evaluation import select_trial
+    def trial(name, quality, precision, false):
+        return {'name': name, 'metrics': {'recall_at_8': quality, 'ndcg_at_8': quality,
+                'relevant_precision': precision, 'irrelevant_return_rate': false}}
+    best_quality = trial('best quality', .90, .5, .8)
+    higher_precision = trial('precision', .891, .8, .7)
+    fewer_false = trial('false', .891, .8, .6)
+    boundary = trial('exactly 0.01 behind', .89, 1., 0.)
+    chained = trial('tie chaining is not allowed', .882, 1., 0.)
+    for order in permutations([best_quality, higher_precision, fewer_false, boundary, chained]):
+        assert select_trial(order) is fewer_false
+    assert select_trial([best_quality, boundary, chained]) is best_quality
+    # A large false-return reduction cannot compensate for lost retrieval quality.
+    assert select_trial([best_quality, trial('loss', .88, 1., 0.)]) is best_quality
+    # If no labelled relevant items were returned, precision is not treated as 100%.
+    assert select_trial([trial('empty', .90, None, 0.), best_quality]) is best_quality
 
 
 def test_null_prepare_and_embedding_prefetch_share_production_query(tmp_path, monkeypatch):
@@ -131,3 +155,27 @@ def test_external_recall_corpus_details_use_production_redundancy(tmp_path):
     assert row["returned"] == ["b"] and row["response"]["recent_messages"]
     assert report["variants"]["trigram_fts"]["metrics"]["recall_at_8"] == 0
     assert "M2" in path.read_text(encoding="utf-8")
+
+
+def test_calibration_compares_full_prefix_grid(tmp_path, monkeypatch):
+    from iris import recall_evaluation as evaluation
+    from iris.models import ModelConfig
+    seen = []
+    def cache(configs, texts, store, path):
+        seen.extend(texts)
+        return evaluation.CachedEmbeddings(configs, {text: [1.] + [0.] * 2047 for text in texts}), 0
+    monkeypatch.setattr(evaluation, 'cache_embeddings', cache)
+    corpus = tmp_path / 'recall.json'
+    corpus.write_text(json.dumps({'memories': [{'id': 'm', 'content': '看星星'}],
+        'queries': [{'id': 'q', 'text': '天文', 'relevant': {'m': 3}}]}, ensure_ascii=False), encoding='utf-8')
+    _, report = run_recall_eval({'embedding': ModelConfig('fake', '', 'fake-vector', 2048)},
+                                tmp_path, 'dev', corpus=corpus, calibrate=True)
+    trials = report['calibration']['trials']
+    hybrids = [t for t in trials if 'hybrid' in t['variant']]
+    assert len(hybrids) == 2 * 4 * 3 * 3 * 2
+    assert len({tuple(t['settings'].values()) for t in hybrids}) == len(hybrids)
+    assert {t['settings']['query_prefix'] for t in hybrids} == {'', '为这个问题检索能回答它的个人记忆：'}
+    assert '天文' in seen and '为这个问题检索能回答它的个人记忆：天文' in seen
+    chosen = evaluation.select_trial(trials)
+    assert report['calibration']['recommended_settings'] == chosen['settings']
+    assert report['variants'][chosen['variant']]['settings'] == chosen['settings']

@@ -88,21 +88,30 @@ def worker(path, size, dtype, repeats, dimension, default_config=False):
         retrieval = client.app.state.retrieval
         load_seconds = time.perf_counter() - start
         rss_loaded = process.memory_info().rss
-        direct, http, vector_times = [], [], []
-        query = {} if default_config else {"text": "天文观測记录", "participants": []}
-        for _ in range(5):
-            retrieval.prepare("bench", **query)
-        for _ in range(repeats):
-            started = time.perf_counter()
-            retrieval.index.scores(gateway.vector)
-            vector_times.append((time.perf_counter() - started) * 1000)
-            started = time.perf_counter()
-            retrieval.prepare("bench", **query)
-            direct.append((time.perf_counter() - started) * 1000)
-            started = time.perf_counter()
-            response = client.post("/api/v1/entries/bench/prepare", json=query)
-            response.raise_for_status()
-            http.append((time.perf_counter() - started) * 1000)
+        queries = {
+            'unnamed': {} if default_config else {'text': '天文观測记录', 'participants': []},
+            'named': {'text': '参与者1的天文观測记录', **({} if default_config else {'participants': []})}}
+        timings = {}
+        for name, query in queries.items():
+            direct, http, vector_times = [], [], []
+            for _ in range(5):
+                retrieval.prepare('bench', **query)
+            for _ in range(repeats):
+                started = time.perf_counter()
+                retrieval.index.scores(gateway.vector)
+                vector_times.append((time.perf_counter() - started) * 1000)
+                started = time.perf_counter()
+                retrieval.prepare('bench', **query)
+                direct.append((time.perf_counter() - started) * 1000)
+                started = time.perf_counter()
+                response = client.post('/api/v1/entries/bench/prepare', json=query)
+                response.raise_for_status()
+                http.append((time.perf_counter() - started) * 1000)
+            timings[name] = {'request': query, 'samples': repeats,
+                'vector_p95_ms': float(np.percentile(vector_times, 95)),
+                'prepare_p50_ms': float(np.percentile(direct, 50)),
+                'prepare_p95_ms': float(np.percentile(direct, 95)),
+                'http_prepare_p95_ms': float(np.percentile(http, 95))}
         # Identical deterministic queries across fresh float32 / float16 worker processes.
         rng = np.random.default_rng(7788)
         rankings = []
@@ -110,15 +119,13 @@ def worker(path, size, dtype, repeats, dimension, default_config=False):
             scores = retrieval.index.scores(rng.normal(size=dimension).astype(np.float32))
             rankings.append([mid for mid, _ in sorted(scores.items(), key=lambda p: (-p[1][0], p[0]))[:8]])
         info = process.memory_info()
-        result = {"memories": size, "dimension": dimension, "dtype": dtype, "samples": repeats, "settings": settings, "request": query,
+        result = {"memories": size, "dimension": dimension, "dtype": dtype, "settings": settings, "queries": timings,
                   "load_seconds": load_seconds, "matrix_storage_mib": retrieval.index.nbytes / 2**20,
                   "rss_before_mib": rss_before / 2**20, "rss_after_load_mib": rss_loaded / 2**20,
                   "rss_load_delta_mib": (rss_loaded - rss_before) / 2**20,
                   "rss_after_queries_mib": info.rss / 2**20,
                   "peak_working_set_mib": getattr(info, "peak_wset", info.rss) / 2**20,
-                  "vector_p95_ms": float(np.percentile(vector_times, 95)),
-                  "prepare_p50_ms": float(np.percentile(direct, 50)), "prepare_p95_ms": float(np.percentile(direct, 95)),
-                  "http_prepare_p95_ms": float(np.percentile(http, 95)), "top8": rankings}
+                  "top8": rankings}
     store.close()
     return result
 
@@ -148,7 +155,8 @@ def main():
                 subprocess.run([sys.executable, "-X", "utf8", __file__, "--worker", "--size", str(size), "--dimension", str(dimension), "--dtype", dtype, "--repeats", str(args.repeats)] + (["--default-config"] if args.default_config else []), check=True)
                 row = json.loads((folder / f"result-{size}-{dimension}-{dtype}.json").read_text(encoding="utf-8"))
                 results.append(row)
-                print(f"{size} d{dimension} {dtype}: prepare P95 {row['prepare_p95_ms']:.1f} ms, HTTP P95 {row['http_prepare_p95_ms']:.1f} ms", flush=True)
+                for name, timing in row['queries'].items():
+                    print(f"{size} d{dimension} {dtype} {name}: prepare P95 {timing['prepare_p95_ms']:.1f} ms, HTTP P95 {timing['http_prepare_p95_ms']:.1f} ms", flush=True)
             rows = [r for r in results if r["memories"] == size and r['dimension'] == dimension]
             if len(rows) == 2:
                 rows[1]["top8_overlap_with_float32"] = float(np.mean([len(set(a) & set(b)) / 8 for a,b in zip(rows[0]["top8"],rows[1]["top8"], strict=True)]))
@@ -156,10 +164,10 @@ def main():
         row.pop("top8")
     report = {"platform": platform.platform(), "python": platform.python_version(), "sqlite": sqlite3.sqlite_version,
               "numpy": np.__version__, "logical_cpus": os.cpu_count(), "physical_memory_gib": psutil.virtual_memory().total / 2**30,
-              "note": "Fresh process per size/dtype; precomputed synthetic query embedding; 5 warmups; FTS, vector ranking, metadata, JSON and recall record included. HTTP uses in-process ASGI TestClient; no external embedding network.",
+              "note": "Fresh process per size/dtype; precomputed synthetic query embedding; 5 warmups per query (unnamed and named); FTS, vector ranking, metadata, JSON and recall record included. HTTP uses in-process ASGI TestClient; no external embedding network.",
               "results": results}
     args.out.mkdir(parents=True, exist_ok=True)
-    target = args.out / ("retrieval-performance-pr5-r2.json" if args.default_config else "retrieval-performance-pr5.json")
+    target = args.out / ("retrieval-performance-pr5-r3.json" if args.default_config else "retrieval-performance-comparison-r3.json")
     target.write_text(json.dumps(report, ensure_ascii=False, indent=2),encoding="utf-8")
     print(target)
 

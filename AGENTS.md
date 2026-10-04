@@ -24,7 +24,7 @@ uv run iris eval recall --split dev --calibrate
 uv run iris eval learning --corpus C:\path\to\cases.jsonl --out C:\path\to\reports
 ```
 
-`evals/learning_v1.jsonl` 的 36 段全部为 dev；`learning_v2.jsonl` 的 16 段历史 holdout 已在 PR #2 分析，依 2026-09-29 决定只具回归意义，本轮保留原 split 作最终对照。`learning_v3.jsonl` 的 10 段手写 dev 和 `scoring_v3.md` 在学习提示词 v4 前单独提交冻结，概况与边界修订理由见 `evals/learning_v3_notes.md`。迭代只运行 dev。PR #5 第二轮按用户要求，最终代码固定后全部学习集双判独立运行两次；历史 holdout 仅作回归，不作为未见验收。不要为了达标修改样本或放宽评分；真实标注错误须逐条说明理由。评测按入口真实节奏分批，最终每段判两次，分歧取不利结论；迭代允许 --judge-runs 1，不能把单判当成最终双判结果。
+`evals/learning_v1.jsonl` 的 36 段全部为 dev；`learning_v2.jsonl` 的 16 段历史 holdout 已在 PR #2 分析，依 2026-09-29 决定只具回归意义，本轮保留原 split 作最终对照。`learning_v3.jsonl` 的 10 段手写 dev 和 `scoring_v3.md` 在学习提示词 v4 前单独提交冻结，概况与边界修订理由见 `evals/learning_v3_notes.md`。迭代只运行 dev。PR #5 第二轮按用户要求，最终代码固定后全部学习集双判独立运行两次；第三轮未改学习选取，沿用这两次报告，不冒充新评测；历史 holdout 仅作回归，不作为未见验收。不要为了达标修改样本或放宽评分；真实标注错误须逐条说明理由。评测按入口真实节奏分批，最终每段判两次，分歧取不利结论；迭代允许 --judge-runs 1，不能把单判当成最终双判结果。
 
 默认评测读取三份仓库 JSONL，报告写入 `evals/reports/`。`--corpus` 替换输入集，`--out` 替换报告目录，均支持仓库外路径。隐藏验收集由规划者维护，执行者不得寻找或读取；最终门槛须隐藏集和仓库评测同时达到，不能仅凭仓库结果宣称 M1 最终通过。报告单列长度截断批次、别名覆盖率／精确率及双判分歧。
 
@@ -50,16 +50,16 @@ uv run iris eval learning --corpus C:\path\to\cases.jsonl --out C:\path\to\repor
 
 ## 召回与验证
 
-`recall_v1.json` 是单独冻结的 40 条固定记忆、38 条手写 dev 查询（8 条无答案）；禁止用脚本或模板生成质量语料。`iris eval recall --corpus <JSON 或 JSONL> --out <目录>` 可用于规划者的外部集，格式见 evals/README。`--calibrate` 只允许 `--split dev`，报告参数选择，不修改在用数据库；不要在隐藏集上调参。
+`recall_v1.json` 是单独冻结的 40 条固定记忆、38 条手写 dev 查询（8 条无答案）；禁止用脚本或模板生成质量语料。`iris eval recall --corpus <JSON 或 JSONL> --out <目录>` 可用于规划者的外部集，格式见 evals/README。`--calibrate` 只允许 `--split dev`，报告完整网格，不修改在用数据库。先比较 `(Recall@8+nDCG@8)/2`，与全网格最佳相差不足 0.01 视为持平，再比较 relevant 标注精确率、较低无关误返率；不以误返抵消召回损失。禁止用隐藏集或已分析过的 holdout 选参。
 
-recall_v2 在 `95549fc` 单独冻结，历史 22 条 holdout 已分析。第二轮新增 `15cdd48` 手写冻结的 recall_conversation_v1：33 条记忆、24 条查询、6 条无答案，查询和参与者均为 null，含私聊／群聊／直播。默认三个公开集合各自隔离入库，全部按 dev 合并标定；原文件 split 保留作来源记录，不新增公开 holdout。验收以规划者的隐藏集为准。
+recall_v2 在 `95549fc` 单独冻结，历史 22 条 holdout 已分析。第二轮新增 `15cdd48` 手写冻结的 recall_conversation_v1：33 条记忆、24 条查询、6 条无答案，查询和参与者均为 null，含私聊／群聊／直播。默认三个公开集合各自隔离入库。第三轮按冻结 split 合并 106 条 dev 标定；原 v2 holdout 的 22 条只报告对照，不参与选参，不新增公开 holdout。验收以规划者的隐藏集为准。
 
-回复准备先选相关记忆，再按参与者最近发言顺序轮流补人物要点，宿主显式顺序优先，要点合计最多三条，排除 self／scene；每条有 reason，相关项为 relevant，要点为 person_highlight。search 不补人物要点。参与者只轻度加权，不排除其他人；文本点名（含别名）只保留 about／speaker／正文提及该主体的记忆，同名主体都算锚点。不得重新引入属性或话题词表判断答案。QUERY_STOP 只留通用语法词，删词清单见 PR5_EXECUTION。
+回复准备先选相关记忆，再按参与者最近发言顺序轮流补人物要点，宿主显式顺序优先，要点合计最多三条，排除 self／scene；每条有 reason，相关项为 relevant，要点为 person_highlight。search 不补人物要点。点名检查仅对全文匹配、达到向量绝对下限和人物要点的候选按 ID 读取正文；各路按原顺序分批检查，锚点筛选仍先于 200 条截断，相对下限仍取被点名范围内的最佳余弦。参与者只轻度加权，不排除其他人；文本点名（含别名）只保留 about／speaker／正文提及该主体的记忆，同名主体都算锚点。不得重新引入属性或话题词表判断答案。QUERY_STOP 只留通用语法词，删词清单见 PR5_EXECUTION。
 
 学习材料由 learning_retrieval.py 独立选取，默认恢复 PR #4：jieba 词项覆盖 0.5、向量下限 0.65、无问题前缀或相对截断、不按锚点或参与者排除，人物要点仍含本批参与者及提及者。专用 runtime_settings.learning_retrieval 不读回复标定设置；以后修改先用学习评测证明质量不降。
 
-回复默认 trigram＋2048 float32 向量，有前缀、绝对下限 0.45、相对比例 0.75、向量权重 2／全文权重 1；无向量时降级 jieba，保留短词检索。完整参数见 retrieval_defaults.json 与本轮报告。新数据库写入 runtime_settings.retrieval；已有设置保留。更换模型或维度须重新标定，未标定退回全文。SQLite 存 float32，内存默认 float32。索引只在事务提交后更新；评分用不可变向量块快照，不持数据库写锁。读准备／查询只写召回记录，不增加保留强度。
+回复默认 trigram＋2048 float32 向量，有前缀、绝对下限 0.35、相对比例 0.75、向量权重 2／全文权重 1；无向量时降级 jieba，保留短词检索。这是第三轮新规则在 106 条 dev 上选择的结果：全网格最佳 Q=0.975330，选中 Q=0.970943，差 0.004386，持平区间内 relevant 标注精确率最高。完整参数和 144 个混合组合、两个全文对照见 retrieval_defaults.json 与本轮报告。新数据库写入 runtime_settings.retrieval；已有设置保留。更换模型或维度须重新标定，未标定退回全文。SQLite 存 float32，内存默认 float32。索引只在事务提交后更新；评分用不可变向量块快照，不持数据库写锁。读准备／查询只写召回记录，不增加保留强度。
 
 Python 3.12 和 3.13 使用独立环境测试，不能在运行评测时切换或重建同一虚拟环境，也不要在模型评测运行期间修改源码或迁移。完整学习案例按源码／语料／模型与维度／判分次数指纹保存在忽略的 data/lc/<16位短名>，meta.json 校验完整 SHA-256；外部 --out 的检查点与完整明细留在外部。只复用相同输入的完成案例，不按分数选择或改写结果。
 
-本 PR 覆盖 R01、R04—R13；用户已确认 R14 按设计留到 M4，R02、R03 同样留到 M4。不要在本轮添加可见范围、宿主令牌、自动遗忘和恢复。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料。
+本 PR 覆盖 R01、R04—R13；用户已确认 R14 按设计留到 M4，R02、R03 同样留到 M4。不要在本轮添加可见范围、宿主令牌、自动遗忘和恢复。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料；`--default-config` 同时测 5k／50k 点名与不点名 prepare，结果保存在 retrieval-performance-pr5-r3.json。

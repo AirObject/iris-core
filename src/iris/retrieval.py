@@ -8,7 +8,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files
-from itertools import zip_longest
+from itertools import islice, zip_longest
 from typing import Any
 
 from .db import Store, dumps, now
@@ -180,39 +180,70 @@ class Retrieval:
         lexical_scores: dict[int, float] = {}
         vector_scores = {}
         analysis = analyze(conn, text, tokenizer=self.settings['tokenizer'], entry_kind=entry_kind)
-        if analysis.people:
-            anchors = set(analysis.people)
+        # Only ranked lane candidates reach the name matcher. Stream until the
+        # existing per-lane cap is filled, so unrelated people cannot exhaust it.
+        # Cache the predicate across FTS, vector and participant highlights.
+        anchor_matches = {}
+        anchors = set(analysis.people)
+        def anchored(candidates):
+            if not anchors:
+                yield from candidates
+                return
+            candidates = iter(candidates)
             marks = ','.join('?' for _ in anchors)
-            conn.create_function('mentions_anchor', 1,
-                lambda content: bool(anchors.intersection(analysis.names.mentioned(content))), deterministic=True)
-            where += f""" AND (m.speaker_subject_id IN ({marks}) OR m.id IN
-                (SELECT memory_id FROM memory_subjects WHERE subject_id IN ({marks})) OR mentions_anchor(m.content))"""
-            args.extend([*anchors, *anchors])
+            while batch := list(islice(candidates, CANDIDATES)):
+                missing = list(dict.fromkeys(row[0] for row in batch if row[0] not in anchor_matches))
+                if missing:
+                    ids = ','.join('?' for _ in missing)
+                    matches = conn.execute(f"""SELECT m.id,m.content,
+                        (m.speaker_subject_id IN ({marks}) OR EXISTS
+                            (SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=m.id
+                             AND ms.subject_id IN ({marks}))) AS direct
+                        FROM memories m WHERE m.id IN ({ids}) AND {where}""",
+                        [*anchors, *anchors, *missing, *args])
+                    anchor_matches.update((mid, False) for mid in missing)
+                    for row in matches:
+                        anchor_matches[row['id']] = bool(row['direct'] or
+                            anchors.intersection(analysis.names.mentioned(row['content'])))
+                yield from (row for row in batch if anchor_matches[row[0]])
         boosted = set(participants) | ({'self'} if analysis.refers_to_self else set())
         tokens = analysis.tokens
         table = "memory_fts_" + self.settings["tokenizer"]
         if tokens:
-            lexical = conn.execute(f"""SELECT m.id,f.content,f.tags,bm25({table}) AS rank FROM {table} f
+            lexical = conn.execute(f"""SELECT m.id,bm25({table}) AS rank FROM {table} f
                 JOIN memories m ON m.id=f.rowid WHERE {table} MATCH ? AND {where}
-                ORDER BY rank,m.id LIMIT ?""", [match_query(tokens), *args, CANDIDATES]).fetchall()
-            for row in lexical:
+                ORDER BY rank,m.id LIMIT ?""", [match_query(tokens), *args, -1 if anchors else CANDIDATES])
+            lexical_ids = [row[0] for row in islice(anchored(lexical), CANDIDATES)]
+            # Sorting BM25 needs only IDs/ranks; fetch tokenized prose for the
+            # retained candidates, not every FTS match in the corpus.
+            marks = ','.join('?' for _ in lexical_ids)
+            lexical_text = {row[0]: row for row in conn.execute(
+                f'SELECT rowid,content,tags FROM {table} WHERE rowid IN ({marks})', lexical_ids)}
+            for mid in lexical_ids:
+                row = lexical_text[mid]
                 haystack = (row["content"] + " " + row["tags"]).casefold()
                 present = set(haystack.split()) if self.settings["tokenizer"] == "jieba" else None
                 hits = sum(t in present if present is not None else t in haystack for t in tokens)
                 if hits:
-                    lexical_scores[row["id"]] = hits
+                    lexical_scores[mid] = hits
             for rank, mid in enumerate(lexical_scores, 1):
                 scores[mid] = 1 / (RRF_K + rank)
         if vector is not None and self.index:
             vector_scores = self.index.scores(vector, include_forgotten=bool(filters.get("include_forgotten")))
             # Apply structured filters before truncating vector ranks.
-            if analysis.people or any(filters.get(k) for k in ("people", "kinds", "stances", "time_from", "time_to")):
+            if any(filters.get(k) for k in ("people", "kinds", "stances", "time_from", "time_to")):
                 allowed = {r[0] for r in conn.execute("SELECT m.id FROM memories m WHERE " + where, args)}
                 vector_scores = {mid: v for mid, v in vector_scores.items() if mid in allowed}
-            best = max((pair[0] for pair in vector_scores.values()), default=0)
-            cutoff = max(self.settings['vector_min'], best * self.settings['vector_relative'])
-            ranked = sorted(((mid, pair) for mid, pair in vector_scores.items() if pair[0] >= cutoff), key=lambda p: (-p[1][0], p[0]))
-            for rank, (mid, _) in enumerate(ranked[:CANDIDATES], 1):
+            # The absolute floor defines vector candidates before any prose is
+            # read. The relative cutoff still uses the best ANCHORED candidate.
+            ranked = sorted(((mid, pair) for mid, pair in vector_scores.items()
+                             if pair[0] >= self.settings['vector_min']), key=lambda p: (-p[1][0], p[0]))
+            cutoff = None
+            for rank, (mid, pair) in enumerate(islice(anchored(ranked), CANDIDATES), 1):
+                if cutoff is None:
+                    cutoff = max(self.settings['vector_min'], pair[0] * self.settings['vector_relative'])
+                if pair[0] < cutoff:
+                    break
                 scores[mid] = scores.get(mid, 0) + self.settings['vector_weight'] / (RRF_K + rank)
         highlights_ids = []
         if highlights:
@@ -220,9 +251,10 @@ class Retrieval:
             for sid in dict.fromkeys(participants):
                 if sid in ('self', 'scene'):
                     continue
-                queues.append([r[0] for r in conn.execute(f"""SELECT m.id FROM memory_subjects ms
+                queue = conn.execute(f"""SELECT m.id FROM memory_subjects ms
                     JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND {where}
-                    ORDER BY m.importance DESC,m.id LIMIT ?""", [sid, *args, CANDIDATES])])
+                    ORDER BY m.importance DESC,m.id LIMIT ?""", [sid, *args, -1 if anchors else CANDIDATES])
+                queues.append([r[0] for r in islice(anchored(queue), CANDIDATES)])
             highlights_ids = list(dict.fromkeys(mid for row in zip_longest(*queues) for mid in row if mid is not None))
         if not text.strip() and not highlights:
             for rank, row in enumerate(conn.execute("SELECT m.id FROM memories m WHERE " + where + " ORDER BY m.importance DESC,m.id LIMIT ?", [*args, CANDIDATES]), 1):

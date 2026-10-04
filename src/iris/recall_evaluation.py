@@ -8,6 +8,7 @@ import sqlite3
 import tempfile
 import time
 from dataclasses import replace
+from decimal import Decimal
 from contextlib import ExitStack
 from itertools import product
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -216,9 +217,18 @@ def _run_queries(retrieval, queries, ids, entries, *, details=False):
     return rows
 
 
-def _selection_score(metric):
-    recall, ndcg, error = metric["recall_at_8"] or 0, metric["ndcg_at_8"] or 0, metric["irrelevant_return_rate"] or 0
-    return ((recall + ndcg) / 2 - error, recall, ndcg, -error)
+def select_trial(trials):
+    """Choose against the global best quality, avoiding non-transitive tie chains."""
+    trials = list(trials)
+    def quality(trial):
+        m = trial['metrics']
+        return (Decimal(str(m['recall_at_8'] or 0)) + Decimal(str(m['ndcg_at_8'] or 0))) / 2
+    best = max(map(quality, trials))
+    tied = [trial for trial in trials if best - quality(trial) < Decimal('0.01')]
+    # Missing precision (no relevant returns) is zero, never perfect precision.
+    # Fully equal trials retain fixed grid order after the higher quality score.
+    return max(tied, key=lambda trial: (trial['metrics']['relevant_precision'] or 0,
+        -(trial['metrics']['irrelevant_return_rate'] or 0), quality(trial)))
 
 
 def grouped_metrics(rows):
@@ -242,10 +252,8 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
     datasets = []
     for path in paths:
         data = load_corpus(path)
-        if path in public_paths:
-            # Original split stays in the frozen file and is recorded as provenance.
-            for q in data['queries']:
-                q['source_split'], q['split'] = q['split'], 'dev'
+        # Respect frozen splits: the analysed v2 holdout is report-only in
+        # round three, not an input to parameter selection or independent proof.
         datasets.append((path.stem, data))
     if split not in ('all', 'dev', 'holdout'):
         raise ValueError('invalid split')
@@ -261,14 +269,15 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
     cache_path = (reports if external else root / 'data') / 'recall-embeddings.db'
     started = time.perf_counter()
     variants, details, trials, usage = {}, {}, [], []
+    evaluated = {}
     config = configs.get('embedding')
     vector_enabled = bool(config and config.model and config.base_url)
     dimensions = [1024, 2048] if compare_embeddings else [config.dimensions or DEFAULTS['embedding_dimensions']] if config else []
-    prefixes = ['', '为这个问题检索能回答它的个人记忆：'] if compare_embeddings else [DEFAULTS['query_prefix']]
+    prefixes = ['', '为这个问题检索能回答它的个人记忆：'] if calibrate or compare_embeddings else [DEFAULTS['query_prefix']]
     misses = 0
 
     def evaluate(contexts, gateway, tokenizer, prefix, dimension, name):
-        best = None
+        choices = []
         grid = product([.35, .45, .55, .65], [.75, .85, .95], [.5, 1., 2.]) if calibrate and gateway else [
             (DEFAULTS['vector_min'], DEFAULTS['vector_relative'], DEFAULTS['vector_weight'])]
         retrievers = [(context, Retrieval(context['store'], gateway, tokenizer=tokenizer,
@@ -285,8 +294,9 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
             settings = {**params, 'embedding_dimensions': dimension, 'embedding_model': config.model if config else ''}
             if calibrate:
                 trials.append({'variant': name, 'settings': settings, 'metrics': metrics})
-            if best is None or _selection_score(metrics) > _selection_score(best['metrics']):
-                best = {'settings': settings, 'metrics': metrics, 'rows': rows}
+            choices.append({'variant': name, 'settings': settings, 'metrics': metrics, 'rows': rows})
+        evaluated[name] = choices
+        best = select_trial(choices)
         variants[name] = {'settings': best['settings'], 'metrics': best['metrics'], 'groups': grouped_metrics(best['rows']),
             'corpora': {context['name']: grouped_metrics([r for r in best['rows'] if r['corpus'] == context['name']])
                         for context in contexts},
@@ -343,13 +353,23 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
                 for prefix in prefixes:
                     for tokenizer in ('jieba', 'trigram'):
                         name = tokenizer + '_hybrid'
-                        if compare_embeddings:
+                        if calibrate or compare_embeddings:
                             name += f'_d{dimension}_' + ('instruction' if prefix else 'plain')
                         evaluate(contexts, gateway, tokenizer, prefix, dimension, name)
             for context in contexts:
                 with context['store'].read() as conn:
                     usage.extend(dict(r) for r in conn.execute('SELECT purpose,model,result_category,duration_ms,prompt_tokens,completion_tokens FROM model_calls'))
-    recommended = max(variants, key=lambda name: _selection_score(variants[name]['metrics'])) if calibrate else None
+    # Select from the FULL grid, not per-variant winners: a local 0.01 tie
+    # band can differ from the global one. Keep the exact selected trial visible.
+    chosen = select_trial(t for choices in evaluated.values() for t in choices) if calibrate else None
+    recommended = chosen['variant'] if chosen else None
+    if chosen:
+        variant = variants[recommended]
+        variant.update(settings=chosen['settings'], metrics=chosen['metrics'], groups=grouped_metrics(chosen['rows']),
+            corpora={name: grouped_metrics([r for r in chosen['rows'] if r['corpus'] == name]) for name in variant['corpora']},
+            queries=[{k: r[k] for k in ('id', 'corpus', 'split', 'categories', 'relevant', 'returned', 'reasons', 'local_ms')}
+                     for r in chosen['rows']])
+        details[recommended] = chosen['rows']
     sources = sorted(p for p in Path(__file__).parent.rglob('*') if p.suffix in ('.py', '.md', '.sql', '.json'))
     report = {'created_at': now(), 'split': split, 'elapsed_seconds': time.perf_counter() - started,
         'source_sha256': hashlib.sha256(b''.join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest(),
@@ -360,7 +380,7 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
         'embedding_model': config.model if vector_enabled else 'unconfigured', 'dimensions': dimensions,
         'embedding_cache_misses': misses, 'embedding_calls': usage, 'variants': variants,
         'calibration': {'enabled': calibrate, 'compare_embeddings': compare_embeddings, 'trials': trials,
-            'selection_rule': '(Recall@8+nDCG@8)/2-无关误返率；平分优先召回、nDCG、较低误返。仅 dev 选择，holdout 不排序挑方案。',
+            'selection_rule': '(Recall@8+nDCG@8)/2 距全网格最高值不足 0.01 视为持平；取 relevant 标注精确率高者，再取无关误返率低者。其后质量高者优先，完全相同时保留固定网格顺序。仅 dev 选择，历史 holdout 不参与。',
             'recommended_variant': recommended, 'recommended_settings': variants[recommended]['settings'] if recommended else None},
         'm2_reference': {'recall_at_8': .85, 'ndcg_at_8': .75, 'irrelevant_return_rate': .10}}
     if external:
@@ -385,13 +405,23 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
                 for category, m in [('全部', values['all']), *values['categories'].items()]:
                     lines.append(f"| {name} | {corpus_name} | {group} | {category} | {m['queries']} | {fmt(m['recall_at_8'])} | {fmt(m['ndcg_at_8'])} | {fmt(m['irrelevant_return_rate'])} | {fmt(m['average_returned'])} | {fmt(m['relevant_precision'])} | {fmt(m['prepare_p95_ms'])} |")
     lines.extend(['', 'M2 参考值：Recall@8 ≥0.85、nDCG@8 ≥0.75、无关误返率 ≤0.10。拒答留到 M2，本轮只报告。',
-        '公开 v1、v2 和对话中准备全部按 dev 使用，原 split 留在语料文件；验收以规划者隐藏集为准。',
+        '按冻结文件 split 使用 dev；v2 历史 holdout 仅作报告对照，不参与选择，也不作为未见验收。验收以规划者隐藏集为准。',
         '类别可重叠；Recall/nDCG 按所有返回（含人物要点）计算，只以有答案问题为分母。无关误返只检查无答案问题的 reason=relevant 返回。',
-        '平均返回数和 relevant 标注精确率只作诊断，不设门槛；后者为标注相关的 relevant 返回数 / 全部 relevant 返回数，跨查询合并计数。空分母为 —。',
+        '平均返回数只作诊断；relevant 标注精确率用于质量持平时比较，不设门槛；后者为标注相关的 relevant 返回数 / 全部 relevant 返回数，跨查询合并计数。空分母为 —。',
         report['calibration']['selection_rule'], f'本次推荐：{recommended or "未进行选择，使用已冻结参数"}。',
         '以下为各方案参数和索引块存储之和；参数网格、用量与逐条返回原因保存在同名 JSON。', ''])
     for name, variant in variants.items():
         lines.append(f"- {name}: {json.dumps(variant['settings'], ensure_ascii=False)}；块存储 {variant['index_bytes']/2**20:.3f} MiB。")
+    if calibrate:
+        lines.extend(['', '## 完整参数网格', '',
+            'Q = (Recall@8+nDCG@8)/2；有前缀为“为这个问题检索能回答它的个人记忆：”。每行均在本报告全部 dev 上评测。', '',
+            '| 方案 | 下限 | 相对比例 | 向量权重 | Recall@8 | nDCG@8 | Q | relevant 精确率 | 无关误返率 | 平均返回数 | 选定 |',
+            '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |'])
+        for trial in trials:
+            p, m = trial['settings'], trial['metrics']
+            chosen_row = trial['variant'] == recommended and p == report['calibration']['recommended_settings']
+            quality = ((m['recall_at_8'] or 0) + (m['ndcg_at_8'] or 0)) / 2
+            lines.append(f"| {trial['variant']} | {p['vector_min']} | {p['vector_relative']} | {p['vector_weight']} | {fmt(m['recall_at_8'])} | {fmt(m['ndcg_at_8'])} | {quality:.6f} | {fmt(m['relevant_precision'])} | {fmt(m['irrelevant_return_rate'])} | {fmt(m['average_returned'])} | {'是' if chosen_row else ''} |")
     lines.extend(['', '评测不会修改在用数据库。规划者将以隐藏召回集复核；本报告不能替代独立验收。', ''])
     path.write_text('\n'.join(lines), encoding='utf-8')
     path.with_suffix('.json').write_text(serialized, encoding='utf-8')

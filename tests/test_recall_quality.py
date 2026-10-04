@@ -127,3 +127,43 @@ def test_vector_snapshot_is_stable_after_update_delete_and_append(store):
     with store.write() as conn:
         conn.execute("UPDATE memories SET lifecycle='deleted' WHERE id=?", (first,))
     assert first not in index.scores([1.,0.]) and first in snap.scores([1.,0.])
+
+
+@pytest.mark.parametrize('mode', ['search', 'prepare'])
+def test_named_filter_only_inspects_candidates_and_preserves_selection(store, monkeypatch, mode):
+    from iris import retrieval as module
+    from iris.query_analysis import SubjectNames
+    entry(store)
+    people(store)
+    # Put more distractors than the lane cap before the matching subjects. The
+    # cap and vector-relative cutoff must still apply AFTER anchor filtering.
+    monkeypatch.setattr(module, 'CANDIDATES', 4)
+    for i in range(7):
+        put(store, f'江橙的邮票第{i}册', about=['q'], vector=[1., 0.])
+    about = put(store, '蓝色邮票来自旧日收藏', about=['p'], vector=[.5, np.sqrt(.75)])
+    speaker = put(store, '邮票放在阁楼', speaker='p', about=[], vector=[.5, np.sqrt(.75)])
+    body = put(store, '江橙把红色邮票送给小江', about=['q'], vector=[.5, np.sqrt(.75)])
+    vector_only = put(store, '小江曾去海边远足', about=['self'], vector=[.5, np.sqrt(.75)])
+    highlight = put(store, '小江委托江橙照顾兰花', about=['q'], importance=99)
+    noncandidate = '江橙珍藏一把旧雨伞'
+    put(store, noncandidate, about=['self'], vector=[0., 1.])
+    seen = []
+    original = SubjectNames.mentioned
+    def tracked(self, text):
+        seen.append(text)
+        return original(self, text)
+    monkeypatch.setattr(SubjectNames, 'mentioned', tracked)
+    r = Retrieval(store, Embeddings(store), tokenizer='jieba', vector_min=.4, vector_relative=.75)
+    if mode == 'prepare':
+        result = r.prepare('A', text='江澄的邮票', participants=['q'])
+    else:
+        result = r.search(text='江澄的邮票')
+    expected = [(about, 'relevant'), (speaker, 'relevant'), (body, 'relevant'), (vector_only, 'relevant')]
+    if mode == 'prepare':
+        expected = [expected[2], *expected[:2], expected[3], (highlight, 'person_highlight')]
+    assert [(m['id'], m['reason']) for m in result['memories']] == expected
+    assert noncandidate not in seen
+    assert seen.count('小江曾去海边远足') == 1
+    assert seen.count('江橙把红色邮票送给小江') == 1
+    if mode == 'prepare':
+        assert '小江委托江橙照顾兰花' in seen

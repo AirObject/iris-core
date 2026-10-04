@@ -85,9 +85,14 @@ print(httpx.get("http://127.0.0.1:8080/api/v1/status").json())
 uv run iris eval learning --split dev --judge-runs 1
 uv run iris eval learning --judge-runs 2
 uv run iris eval recall
-uv run iris eval recall --split dev --calibrate --compare-embeddings
+uv run iris eval recall --split dev --calibrate
+# 如需重新比较 1024／2048 维，再加 --compare-embeddings
 uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
 uv run python evals/benchmark_retrieval.py --default-config
 ```
 
 语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。学习和召回的最终验收仍需规划者运行隐藏集。
+
+当前回复检索默认 trigram＋2048 维 float32，向量下限 0.35、相对比例 0.75、向量／全文权重 2:1，查询加“为这个问题检索能回答它的个人记忆：”前缀；无向量时用 jieba。新数据库写入这些默认值，已有设置保留。学习材料保持独立的 PR #4 设置。
+
+第三轮在 106 条 dev 上先比较 `(Recall@8+nDCG@8)/2`，距最高值不足 0.01 视为持平，再取 relevant 标注精确率高、无关误返率低者。原 v2 holdout 的 22 条只作对照，不用于选择；无关误返不设本轮门槛。[参数选择与完整结果](evals/reports/recall-pr5-r3-summary.md)记录了仍选 trigram 的依据及未解决的误返。点名检查仅读取检索和人物要点候选的正文，含点名／不点名两种请求的 5k、50k 数据见[性能报告](evals/reports/retrieval-performance-pr5-r3.md)。
