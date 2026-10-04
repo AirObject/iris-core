@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -74,8 +75,9 @@ def test_longest_wait_uses_reception_time_and_focus_survives_later_chatter(store
         scheduler.stop()
 
 
-def test_B01_B02_B06_B07_B08_concurrency_serial_entries_and_frozen_batches(store):
+def test_B01_B02_B06_B07_B08_concurrency_serial_entries_and_frozen_batches(store, monkeypatch):
     clock = Clock()
+    monkeypatch.setattr("iris.queue.now", lambda: clock().isoformat())
     for entry in ("A", "B", "C"):
         intake(store, clock, entry, 5, "realtime")
     gate = threading.Event()
@@ -96,13 +98,13 @@ def test_B01_B02_B06_B07_B08_concurrency_serial_entries_and_frozen_batches(store
     try:
         scheduler.tick()
         wait_for(lambda: active == 2)
-        msg(store, 6, "学习时新收到", entry="A")
+        new_id = msg(store, 6, "学习时新收到", entry="A")
         for _ in range(5):
             scheduler.tick()
         with store.read() as conn:
             rows = conn.execute("SELECT entry_id,state,target_ids FROM batches").fetchall()
         assert len(rows) == 2 and len({r["entry_id"] for r in rows}) == 2
-        assert all("6" not in r["target_ids"] for r in rows if r["entry_id"] == "A")
+        assert all(new_id not in json.loads(r["target_ids"]) for r in rows if r["entry_id"] == "A")
         gate.set()
         wait_for(lambda: active == 0)
         clock.advance(6)

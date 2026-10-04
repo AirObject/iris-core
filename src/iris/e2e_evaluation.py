@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import asdict
 from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
@@ -131,10 +132,17 @@ class ServeProcess:
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         config = self.directory / "test-models.toml"
-        config.write_text("\n".join(f"[{kind}]\n" + "\n".join(
-            f"{key} = {json.dumps(getattr(value, key), ensure_ascii=False)}" for key in ("base_url", "api_key", "model"))
-            for kind, value in configs.items()), encoding="utf-8")
         self.env = {**os.environ, "IRIS_TEST_MODELS": str(config.resolve()), "PYTHONIOENCODING": "utf-8"}
+        sections = []
+        for kind, value in configs.items():
+            fields = asdict(value)
+            env_name = f"IRIS_E2E_{kind.upper()}_API_KEY"
+            self.env[env_name] = fields.pop("api_key")
+            fields["api_key_env"] = env_name
+            sections.append(f"[{kind}]\n" + "\n".join(
+                f"{key} = {json.dumps(item, ensure_ascii=False)}" for key, item in fields.items() if item is not None))
+        # Even if the evaluator is killed before cleanup, this file has no API keys.
+        config.write_text("\n".join(sections), encoding="utf-8")
         # Works in editable installs and from a deep-path source checkout without installing it again.
         self.env["PYTHONPATH"] = str(Path(__file__).resolve().parent.parent)
         self.process = None

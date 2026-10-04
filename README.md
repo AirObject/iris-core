@@ -113,4 +113,8 @@ uv run iris eval e2e --judge-runs 2 --out C:\eval-results\e2e
 uv run python evals/benchmark_retrieval.py
 ```
 
-语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。端到端评测在临时目录启动真实服务，只经 HTTP 写入和提问，并跨越强制重启。最终双判要求至少 8/10；最终验收仍需规划者运行隐藏集。
+语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。端到端评测在临时目录启动真实服务，只经 HTTP 写入和提问，并跨越强制重启。最终双判要求通过比例至少 80%（当前公开集至少 9/11）；最终验收仍需规划者运行隐藏集。
+
+端到端公开集现为 11 个手写脚本，包括群聊学习、重启后私聊提问的 E011。prepare 的查询文本只省略或使用提问原文；评测器另行校验近期原始消息没有跨入口。跨入口来源格式见 [评测说明](evals/README.md)。
+
+评测启动子进程时，临时 TOML 只记录端点、模型和 `api_key_env` 变量名，密钥仅通过该子进程环境传递；不会修改调用者环境。平时的配置来源仍为 `test-models.toml`／`IRIS_TEST_MODELS`。需要时也可在模型配置组中用 `api_key_env` 引用已设置的环境变量，不能与 `api_key` 同时填写；变量缺失会明确报错。

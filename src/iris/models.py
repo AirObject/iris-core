@@ -60,9 +60,15 @@ def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
     result = {}
     for name in ("chat", "embedding"):
         group = data.get(name, {})
+        api_key = str(group.get("api_key", ""))
+        if "api_key_env" in group:
+            env_name = group["api_key_env"]
+            if "api_key" in group or not isinstance(env_name, str) or not env_name or env_name not in os.environ:
+                raise ValueError("api_key_env needs an existing environment variable and no api_key field")
+            api_key = os.environ[env_name]
         result[name] = ModelConfig(
             str(group.get("base_url", "")).rstrip("/"),
-            str(group.get("api_key", "")),
+            api_key,
             str(group.get("model", "")),
         )
     return result

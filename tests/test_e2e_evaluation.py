@@ -150,3 +150,38 @@ def test_recent_message_isolation_checks_receipts_not_only_claimed_entry(recent,
     response = {"recent_messages": [{**sent.get(m["id"], {}), **m} for m in recent]}
     check = check_recent_messages(response, "dm", sent)
     assert check["passed"] is passed
+
+
+def test_e2e_temporary_config_never_contains_api_keys(tmp_path, monkeypatch):
+    import os
+    from iris.e2e_evaluation import ServeProcess
+    from iris.models import ModelConfig, load_test_models
+    configs = {"chat": ModelConfig("https://unused.invalid/v1", "test-secret-only-chat", "chat-model"),
+               "embedding": ModelConfig("https://unused.invalid/v1", "test-secret-only-embedding", "embedding-model")}
+    before = dict(os.environ)
+    service = ServeProcess(tmp_path / "service", configs)
+    try:
+        assert dict(os.environ) == before
+        for path in service.directory.rglob("*"):
+            if path.is_file():
+                assert all(c.api_key.encode() not in path.read_bytes() for c in configs.values())
+        for key, value in service.env.items():
+            monkeypatch.setenv(key, value)
+        assert load_test_models(service.env["IRIS_TEST_MODELS"]) == configs
+    finally:
+        service.stop()
+
+
+@pytest.mark.parametrize("environment", [{}, {"IRIS_E2E_CHAT_API_KEY": "test-environment-secret"}])
+def test_missing_model_key_environment_fails_without_printing_key(tmp_path, monkeypatch, environment):
+    from iris.models import load_test_models
+    path = tmp_path / "models.toml"
+    path.write_text('[chat]\nbase_url="https://unused.invalid"\nmodel="chat"\napi_key_env="IRIS_E2E_CHAT_API_KEY"\n', encoding="utf-8")
+    monkeypatch.delenv("IRIS_E2E_CHAT_API_KEY", raising=False)
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
+    if environment:
+        assert load_test_models(path)["chat"].api_key == "test-environment-secret"
+    else:
+        with pytest.raises(ValueError, match="environment"):
+            load_test_models(path)
