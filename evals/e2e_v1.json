@@ -191,6 +191,25 @@
         {"id":"plant-name","entry_id":"plant","question":{"sender":"青禾","account_id":"qinghe","kind":"message","occurred_at":"2026-10-05T08:00:00+08:00","dedupe_key":"pq","content":"我说的小绿指的是什么？"},"prepare":{"text":"我说的小绿指的是什么？","recent_limit":2},"expected":[{"fact":"青禾把阳台的薄荷命名为小绿。","source_keys":["p1"]}],"forbidden":[]},
         {"id":"market-location","entry_id":"market","question":{"sender":"阿瓦","account_id":"awa","kind":"message","occurred_at":"2026-10-05T08:01:00+08:00","dedupe_key":"gq","content":"旧书摊现在搬到哪个门，周日几点开始？"},"prepare":{"text":"旧书摊现在搬到哪个门，周日几点开始？","recent_limit":2},"expected":[{"fact":"雨生说旧书摊已搬到南门，周日上午九点开始。","source_keys":["g1"]}],"forbidden":["旧书摊仍在北门。"]}
       ]
+    },
+    {
+      "id":"E011","split":"dev","description":"群里得知集合变更和自己的承诺，重启后在同平台私聊使用共享记忆；近期原文不能串入口",
+      "entries":[{"id":"cleanup-group","kind":"group","platform":"neighbors","pace":"realtime"},{"id":"ning-dm","kind":"private","platform":"neighbors","pace":"realtime"}],
+      "messages":[
+        {"entry_id":"cleanup-group","dedupe_key":"g1","sender":"顾雨","account_id":"guyu","kind":"message","occurred_at":"2026-10-10T19:00:00+08:00","content":"星期天的河岸清洁还照原来的桥头集合吗？我怕绕远了。"},
+        {"entry_id":"cleanup-group","dedupe_key":"g2","sender":"许宁","account_id":"xuning","kind":"message","occurred_at":"2026-10-10T19:00:12+08:00","content":"改了，明早九点在社区东门集合，桥头那边施工。"},
+        {"entry_id":"cleanup-group","dedupe_key":"g3","sender":"顾雨","account_id":"guyu","kind":"message","occurred_at":"2026-10-10T19:00:20+08:00","content":"那我负责带夹子和垃圾袋。"},
+        {"entry_id":"cleanup-group","dedupe_key":"g4","sender":"Iris","account_id":"iris","kind":"self_output","occurred_at":"2026-10-10T19:00:30+08:00","content":"我答应明早替许宁带一壶热茶，杯子请大家自备。"},
+        {"entry_id":"ning-dm","dedupe_key":"d1","sender":"许宁","account_id":"xuning","kind":"message","occurred_at":"2026-10-10T19:01:00+08:00","content":"刚从群里退出来，手机通知响个不停。"},
+        {"entry_id":"ning-dm","dedupe_key":"d2","sender":"Iris","account_id":"iris","kind":"self_output","occurred_at":"2026-10-10T19:01:09+08:00","content":"这边能收到你的消息。"},
+        {"entry_id":"cleanup-group","dedupe_key":"g5","sender":"顾雨","account_id":"guyu","kind":"message","occurred_at":"2026-10-10T19:01:18+08:00","content":"群公告我点开只看到一半，你们也是吗？"},
+        {"entry_id":"cleanup-group","dedupe_key":"g6","sender":"许宁","account_id":"xuning","kind":"message","occurred_at":"2026-10-10T19:01:25+08:00","content":"往下划一下，下面有个展开按钮。"},
+        {"entry_id":"ning-dm","dedupe_key":"d3","sender":"许宁","account_id":"xuning","kind":"message","occurred_at":"2026-10-10T19:01:40+08:00","content":"我先把免打扰打开，不然一亮屏就走神。"},
+        {"entry_id":"cleanup-group","dedupe_key":"g7","sender":"顾雨","account_id":"guyu","kind":"message","occurred_at":"2026-10-10T19:01:48+08:00","content":"找到了，原来藏在屏幕最下面。"},
+        {"entry_id":"cleanup-group","dedupe_key":"g8","sender":"Iris","account_id":"iris","kind":"self_output","occurred_at":"2026-10-10T19:01:56+08:00","content":"看得到就好，今晚先休息。"},
+        {"entry_id":"ning-dm","dedupe_key":"d4","sender":"许宁","account_id":"xuning","kind":"message","occurred_at":"2026-10-10T19:02:05+08:00","content":"安静多了，我也准备收手机了。"}
+      ],
+      "checkpoints":[{"id":"group-memory-in-dm","entry_id":"ning-dm","question":{"sender":"许宁","account_id":"xuning","kind":"message","occurred_at":"2026-10-11T07:30:00+08:00","dedupe_key":"q1","content":"今天河岸清洁几点在哪里集合？你还答应替我带什么？"},"prepare":{"recent_limit":5},"expected":[{"fact":"许宁说河岸清洁改为 2026 年 10 月 11 日上午九点在社区东门集合，原来的桥头正在施工。","sources":[{"entry_id":"cleanup-group","key":"g2"}]},{"fact":"Iris 答应替许宁带一壶热茶，杯子由大家自备。","sources":[{"entry_id":"cleanup-group","key":"g4"}]}],"forbidden":["河岸清洁仍在桥头集合。","许宁答应替 Iris 带热茶。"]}]
     }
   ]
 }

@@ -9,12 +9,16 @@ from iris.e2e_evaluation import combine_judges, load_corpus, run_e2e_eval
 
 def test_fixed_corpus_is_handwritten_and_covers_required_scenarios():
     scripts = load_corpus(Path(__file__).resolve().parents[1] / "evals/e2e_v1.json")
-    assert len(scripts) == 10
-    assert len({s["id"] for s in scripts}) == 10
+    assert len(scripts) == 11
+    assert len({s["id"] for s in scripts}) == 11
     assert {e["kind"] for s in scripts for e in s["entries"]} >= {"private", "group", "live"}
     assert sum(any("text" not in c.get("prepare", {}) and "participants" not in c.get("prepare", {})
                    for c in s["checkpoints"]) for s in scripts) >= 2
     assert any(m["kind"] == "self_output" for s in scripts for m in s["messages"])
+    cross = next(s for s in scripts if s["id"] == "E011")
+    c = cross["checkpoints"][0]
+    assert "text" not in c["prepare"] and "participants" not in c["prepare"]
+    assert all(source["entry_id"] != c["entry_id"] for f in c["expected"] for source in f["sources"])
 
 
 def test_public_prepare_text_is_omitted_or_verbatim_question():

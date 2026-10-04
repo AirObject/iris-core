@@ -66,6 +66,6 @@ Python 3.12 和 3.13 使用独立环境测试，不能在运行评测时切换�
 
 内部设置接口为 Gateway.replace_config、Gateway.retry_now、ModelHealth.set_daily_token_limit、Scheduler.set_concurrency；后续设置页调用它们。serve 自动重新读取模型配置。离线 iris learn 必须停止服务后运行，服务／离线命令用操作系统锁互斥。模型网络调用仍在事务外，向量补算写回必须核对修订号；不要改变 learning_context 的选材。
 
-新增 `uv run iris eval e2e --judge-runs 2 --out C:\eval-results\e2e`。10 个脚本为手写 dev，评分文件 e2e_scoring_v1.md 独立于学习评分。评测使用真实 serve 子进程，只经 HTTP 接收、观察学习和准备回复，强制重启后才提问。Windows 需结束虚拟环境解释器启动的整个子进程树。默认双判、分歧取不利结论；单判仅用于迭代。完整返回只写到仓库外 --out，隐藏集由规划者运行。仓库至少 8/10 通过不代表隐藏门槛通过。
+新增 `uv run iris eval e2e --judge-runs 2 --out C:\eval-results\e2e`。11 个脚本为手写 dev（原 10 个加单独冻结的跨入口 E011），评分文件 e2e_scoring_v1.md 独立于学习评分。评测使用真实 serve 子进程，只经 HTTP 接收、观察学习和准备回复，强制重启后才提问。Windows 需结束虚拟环境解释器启动的整个子进程树。默认双判、分歧取不利结论；单判仅用于迭代。完整返回只写到仓库外 --out，隐藏集由规划者运行。仓库通过比例至少 80%（当前 9/11）不代表隐藏门槛通过。跨入口来源用 sources 的 entry_id/key 对象，近期原始消息隔离必须独立于模型判分检查。
 
 本轮与 PR #5 并行，禁止修改 retrieval.py、query_analysis.py、search_text.py、vector_index.py、recall_evaluation.py、evals/recall_*、学习提示词和学习评分。PR #5 合并后以 merge 合入 origin/main，重跑全量测试和端到端双判，不 rebase。不在模型评测运行中修改源码或迁移。
