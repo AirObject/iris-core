@@ -29,7 +29,7 @@
         {"entry_id":"trip","dedupe_key":"m7","sender":"林岚","account_id":"linlan","kind":"message","occurred_at":"2026-10-04T11:01:20+08:00","content":"是充电线掉下去了，没别的。"},
         {"entry_id":"trip","dedupe_key":"m8","sender":"林岚","account_id":"linlan","kind":"message","occurred_at":"2026-10-04T11:01:25+08:00","content":"我把东西收起来，下午再聊。"}
       ],
-      "checkpoints":[{"id":"corrected-trip","entry_id":"trip","question":{"sender":"林岚","account_id":"linlan","kind":"message","occurred_at":"2026-10-05T12:00:00+08:00","dedupe_key":"q1","content":"我最终定下的出差是几号去哪个城市？"},"prepare":{"text":"林岚出差的日期和城市","recent_limit":5},"expected":[{"fact":"林岚最终确定在 2026 年 10 月 8 日（下周四）去苏州出差。","source_keys":["m3"]}],"forbidden":["林岚目前仍计划周三去上海出差。"]}]
+      "checkpoints":[{"id":"corrected-trip","entry_id":"trip","question":{"sender":"林岚","account_id":"linlan","kind":"message","occurred_at":"2026-10-05T12:00:00+08:00","dedupe_key":"q1","content":"我最终定下的出差是几号去哪个城市？"},"prepare":{"text":"我最终定下的出差是几号去哪个城市？","recent_limit":5},"expected":[{"fact":"林岚最终确定在 2026 年 10 月 8 日（下周四）去苏州出差。","source_keys":["m3"]}],"forbidden":["林岚目前仍计划周三去上海出差。"]}]
     },
     {
       "id":"E003","split":"dev","description":"群聊中的饮食偏好和角色对聚餐的承诺",
@@ -48,7 +48,7 @@
         {"entry_id":"dinner","dedupe_key":"m11","sender":"梁柚","account_id":"you","kind":"message","occurred_at":"2026-10-04T12:02:15+08:00","content":"现在能看到原来的图了。"},
         {"entry_id":"dinner","dedupe_key":"m12","sender":"闻舟","account_id":"zhou","kind":"message","occurred_at":"2026-10-04T12:02:22+08:00","content":"我的也恢复了，没事。"}
       ],
-      "checkpoints":[{"id":"meal","entry_id":"dinner","question":{"sender":"梁柚","account_id":"you","kind":"message","occurred_at":"2026-10-06T18:00:00+08:00","dedupe_key":"q1","content":"聚餐那件事，你答应给我准备什么？还记得我要避开什么吗？"},"prepare":{"text":"梁柚聚餐不吃什么，Iris答应准备什么","recent_limit":5},"expected":[{"fact":"梁柚不吃香菜。","source_keys":["m1"]},{"fact":"Iris 答应为梁柚单独准备不放香菜的凉面。","source_keys":["m3"]}],"forbidden":["闻舟不吃香菜。"]}]
+      "checkpoints":[{"id":"meal","entry_id":"dinner","question":{"sender":"梁柚","account_id":"you","kind":"message","occurred_at":"2026-10-06T18:00:00+08:00","dedupe_key":"q1","content":"聚餐那件事，你答应给我准备什么？还记得我要避开什么吗？"},"prepare":{"text":"聚餐那件事，你答应给我准备什么？还记得我要避开什么吗？","recent_limit":5},"expected":[{"fact":"梁柚不吃香菜。","source_keys":["m1"]},{"fact":"Iris 答应为梁柚单独准备不放香菜的凉面。","source_keys":["m3"]}],"forbidden":["闻舟不吃香菜。"]}]
     },
     {
       "id":"E004","split":"dev","description":"同一群两个同名账号各自的活动不能混在一起",
@@ -67,7 +67,7 @@
         {"entry_id":"weekend","dedupe_key":"m11","sender":"阿麦","account_id":"mai","kind":"message","occurred_at":"2026-10-04T14:02:17+08:00","content":"现在都收到了，谢谢。"},
         {"entry_id":"weekend","dedupe_key":"m12","sender":"小林","account_id":"lin-model","kind":"message","occurred_at":"2026-10-04T14:02:24+08:00","content":"好，那我关掉上传窗口。"}
       ],
-      "checkpoints":[{"id":"two-lins","entry_id":"weekend","question":{"sender":"阿麦","account_id":"mai","kind":"message","occurred_at":"2026-10-05T14:00:00+08:00","dedupe_key":"q1","content":"两个小林周末分别做了什么？"},"prepare":{"text":"小林周末帆船模型和河边跑步","participants":[],"recent_limit":5},"expected":[{"fact":"账号 lin-model 的小林周末在家做木质帆船模型。","source_keys":["m1"]},{"fact":"账号 lin-run 的另一个小林周末在河边跑了十公里。","source_keys":["m3"]}],"forbidden":["同一个小林既做了帆船模型又跑了十公里。"]}]
+      "checkpoints":[{"id":"two-lins","entry_id":"weekend","question":{"sender":"阿麦","account_id":"mai","kind":"message","occurred_at":"2026-10-05T14:00:00+08:00","dedupe_key":"q1","content":"两个小林周末分别做了什么？"},"prepare":{"text":"两个小林周末分别做了什么？","participants":[],"recent_limit":5},"expected":[{"fact":"账号 lin-model 的小林周末在家做木质帆船模型。","source_keys":["m1"]},{"fact":"账号 lin-run 的另一个小林周末在河边跑了十公里。","source_keys":["m3"]}],"forbidden":["同一个小林既做了帆船模型又跑了十公里。"]}]
     },
     {
       "id":"E005","split":"dev","description":"直播中多人起哄与角色自己的明确喜好分开，省流节奏自然凑满",
@@ -123,7 +123,7 @@
         {"entry_id":"workshop","dedupe_key":"m11","sender":"胡杨","account_id":"huyang","kind":"message","occurred_at":"2026-10-04T16:01:52+08:00","content":"可以了，把椅子挪了半步。"},
         {"entry_id":"workshop","dedupe_key":"m12","sender":"胡杨","account_id":"huyang","kind":"message","occurred_at":"2026-10-04T16:02:05+08:00","content":"我去洗个杯子，回头聊。"}
       ],
-      "checkpoints":[{"id":"weekly-class","entry_id":"workshop","question":{"sender":"胡杨","account_id":"huyang","kind":"message","occurred_at":"2026-10-06T16:00:00+08:00","dedupe_key":"q1","content":"我的木工课每周什么时候上，在哪里？"},"prepare":{"text":"胡杨木工课固定安排时间地点","recent_limit":5},"expected":[{"fact":"胡杨每周五晚上七点在河岸工坊上木工课。","source_keys":["m3"]}],"forbidden":[]}]
+      "checkpoints":[{"id":"weekly-class","entry_id":"workshop","question":{"sender":"胡杨","account_id":"huyang","kind":"message","occurred_at":"2026-10-06T16:00:00+08:00","dedupe_key":"q1","content":"我的木工课每周什么时候上，在哪里？"},"prepare":{"text":"我的木工课每周什么时候上，在哪里？","recent_limit":5},"expected":[{"fact":"胡杨每周五晚上七点在河岸工坊上木工课。","source_keys":["m3"]}],"forbidden":[]}]
     },
     {
       "id":"E007","split":"dev","description":"角色真实发言中的承诺，重启后不传查询文本",
@@ -157,7 +157,7 @@
         {"entry_id":"bookclub","dedupe_key":"m11","sender":"阿橙","account_id":"orange","kind":"message","occurred_at":"2026-10-04T10:01:52+08:00","content":"辛苦，先留在群里。"},
         {"entry_id":"bookclub","dedupe_key":"m12","sender":"路遥","account_id":"luyao","kind":"message","occurred_at":"2026-10-04T10:02:00+08:00","content":"没问题，我去把相机收好。"}
       ],
-      "checkpoints":[{"id":"reported-plan","entry_id":"bookclub","question":{"sender":"白果","account_id":"ginkgo","kind":"message","occurred_at":"2026-10-05T10:00:00+08:00","dedupe_key":"q1","content":"之前关于小穗和出版社的消息是谁说的，有定下来吗？"},"prepare":{"text":"小穗出版社工作阿橙转述是否确定","participants":[],"recent_limit":5},"expected":[{"fact":"阿橙转述小穗可能想去出版社工作，尚未确定，也未再次确认。","source_keys":["m1","m3"]}],"forbidden":["小穗已经在出版社工作。"]}]
+      "checkpoints":[{"id":"reported-plan","entry_id":"bookclub","question":{"sender":"白果","account_id":"ginkgo","kind":"message","occurred_at":"2026-10-05T10:00:00+08:00","dedupe_key":"q1","content":"之前关于小穗和出版社的消息是谁说的，有定下来吗？"},"prepare":{"text":"之前关于小穗和出版社的消息是谁说的，有定下来吗？","participants":[],"recent_limit":5},"expected":[{"fact":"阿橙转述小穗可能想去出版社工作，尚未确定，也未再次确认。","source_keys":["m1","m3"]}],"forbidden":["小穗已经在出版社工作。"]}]
     },
     {
       "id":"E009","split":"dev","description":"直播游戏中的场景事件、角色行动结果及观众建议",
@@ -172,7 +172,7 @@
         {"entry_id":"game","dedupe_key":"m7","sender":"柿子","account_id":"persimmon","kind":"message","occurred_at":"2026-10-04T21:01:14+08:00","content":"刷新后没问题了。"},
         {"entry_id":"game","dedupe_key":"m8","sender":"Iris","account_id":"iris","kind":"self_output","occurred_at":"2026-10-04T21:01:22+08:00","content":"那我们稍微停一下，等大家画面同步。"}
       ],
-      "checkpoints":[{"id":"action-result","entry_id":"game","question":{"sender":"栗子","account_id":"chestnut","kind":"message","occurred_at":"2026-10-05T21:00:00+08:00","dedupe_key":"q1","content":"昨天游戏里你解开蓝色机关后得到了什么？"},"prepare":{"text":"我在游戏中解开蓝色机关获得的东西","recent_limit":5},"expected":[{"fact":"Iris 在游戏里解开蓝色机关后获得铜钥匙。","source_keys":["m3"]}],"forbidden":["栗子解开机关并拿到了铜钥匙。"]}]
+      "checkpoints":[{"id":"action-result","entry_id":"game","question":{"sender":"栗子","account_id":"chestnut","kind":"message","occurred_at":"2026-10-05T21:00:00+08:00","dedupe_key":"q1","content":"昨天游戏里你解开蓝色机关后得到了什么？"},"prepare":{"text":"昨天游戏里你解开蓝色机关后得到了什么？","recent_limit":5},"expected":[{"fact":"Iris 在游戏里解开蓝色机关后获得铜钥匙。","source_keys":["m3"]}],"forbidden":["栗子解开机关并拿到了铜钥匙。"]}]
     },
     {
       "id":"E010","split":"dev","description":"两个入口交错接收，各自学习，重启后分别提问",
@@ -188,8 +188,8 @@
         {"entry_id":"market","dedupe_key":"g4","sender":"阿瓦","account_id":"awa","kind":"message","occurred_at":"2026-10-04T08:01:18+08:00","content":"现在看见了，字很清楚。"}
       ],
       "checkpoints":[
-        {"id":"plant-name","entry_id":"plant","question":{"sender":"青禾","account_id":"qinghe","kind":"message","occurred_at":"2026-10-05T08:00:00+08:00","dedupe_key":"pq","content":"我说的小绿指的是什么？"},"prepare":{"text":"青禾说的小绿是什么","recent_limit":2},"expected":[{"fact":"青禾把阳台的薄荷命名为小绿。","source_keys":["p1"]}],"forbidden":[]},
-        {"id":"market-location","entry_id":"market","question":{"sender":"阿瓦","account_id":"awa","kind":"message","occurred_at":"2026-10-05T08:01:00+08:00","dedupe_key":"gq","content":"旧书摊现在搬到哪个门，周日几点开始？"},"prepare":{"text":"旧书摊搬到南门的时间","recent_limit":2},"expected":[{"fact":"雨生说旧书摊已搬到南门，周日上午九点开始。","source_keys":["g1"]}],"forbidden":["旧书摊仍在北门。"]}
+        {"id":"plant-name","entry_id":"plant","question":{"sender":"青禾","account_id":"qinghe","kind":"message","occurred_at":"2026-10-05T08:00:00+08:00","dedupe_key":"pq","content":"我说的小绿指的是什么？"},"prepare":{"text":"我说的小绿指的是什么？","recent_limit":2},"expected":[{"fact":"青禾把阳台的薄荷命名为小绿。","source_keys":["p1"]}],"forbidden":[]},
+        {"id":"market-location","entry_id":"market","question":{"sender":"阿瓦","account_id":"awa","kind":"message","occurred_at":"2026-10-05T08:01:00+08:00","dedupe_key":"gq","content":"旧书摊现在搬到哪个门，周日几点开始？"},"prepare":{"text":"旧书摊现在搬到哪个门，周日几点开始？","recent_limit":2},"expected":[{"fact":"雨生说旧书摊已搬到南门，周日上午九点开始。","source_keys":["g1"]}],"forbidden":["旧书摊仍在北门。"]}
       ]
     }
   ]

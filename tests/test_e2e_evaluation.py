@@ -17,6 +17,14 @@ def test_fixed_corpus_is_handwritten_and_covers_required_scenarios():
     assert any(m["kind"] == "self_output" for s in scripts for m in s["messages"])
 
 
+def test_public_prepare_text_is_omitted_or_verbatim_question():
+    scripts = load_corpus(Path(__file__).resolve().parents[1] / "evals/e2e_v1.json")
+    for script in scripts:
+        for checkpoint in script["checkpoints"]:
+            text = checkpoint.get("prepare", {}).get("text")
+            assert text is None or text == checkpoint["question"]["content"], (script["id"], checkpoint["id"])
+
+
 def test_double_judge_disagreements_are_adverse_and_single_has_no_denominator():
     a = {"facts": [{"covered": True, "memory_ids": [1], "reason": "支持"}],
          "forbidden": [{"present": False, "memory_ids": [], "reason": "没有"}]}
