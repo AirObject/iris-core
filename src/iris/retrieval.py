@@ -8,13 +8,14 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files
+from itertools import zip_longest
 from typing import Any
 
 from .db import Store, dumps, now
 from .models import Gateway, ModelError
 from .queue import estimate_tokens
 from .search_text import match_query
-from .query_analysis import analyze, attribute_evidence
+from .query_analysis import analyze
 
 RRF_K = 60
 CANDIDATES = 200
@@ -105,12 +106,12 @@ class Retrieval:
             saved.setdefault('query_prefix', '')
         return {**DEFAULTS, **saved, **self.overrides}
 
-    def embedding_text(self, text: str, participants=()) -> str:
+    def embedding_text(self, text: str, participants=(), *, entry_kind=None) -> str:
         with self.store.read() as conn:
-            analysis = analyze(conn, text, _people(conn, list(participants)))
+            analysis = analyze(conn, text, tokenizer=self.settings['tokenizer'], entry_kind=entry_kind)
         return self.settings['query_prefix'] + analysis.text
 
-    def _query_vector(self, text: str, participants=()):
+    def _query_vector(self, text: str, participants=(), *, entry_kind=None):
         self.settings = self._settings()
         if self.settings["tokenizer"] not in ("jieba", "trigram"):
             raise ValueError("unknown FTS tokenizer")
@@ -118,20 +119,29 @@ class Retrieval:
             self.index = self.store.vector_index(self.model, self.settings["dtype"])
         self.last_embedding_ms = 0.0
         if not text.strip() or not self.model:
+            self._fulltext_fallback()
             return None, [{"code": "embedding_unconfigured", "message": "未配置 embedding，本次使用全文检索。"}] if text.strip() else []
         dimensions = self.gateway.configs['embedding'].dimensions
         if (self.settings["embedding_model"] != self.model or dimensions not in (None, self.settings['embedding_dimensions'])) and "vector_min" not in self.overrides:
+            self._fulltext_fallback()
             return None, [{"code": "embedding_uncalibrated", "message": "embedding 模型已变化，需在召回 dev 集重新标定阈值；本次使用全文检索。"}]
         started = time.perf_counter()
         try:
-            vector = self.gateway.embedding(self.embedding_text(text, participants), "retrieval_query")
+            vector = self.gateway.embedding(self.embedding_text(text, participants, entry_kind=entry_kind), "retrieval_query")
             if self.index.dimension and len(vector) != self.index.dimension:
                 raise ModelError("configuration", "embedding dimension changed")
             return vector, []
         except ModelError:
+            self._fulltext_fallback()
             return None, [{"code": "embedding_fallback", "message": "embedding 超时或失败，本次已退回全文检索。"}]
         finally:
             self.last_embedding_ms = (time.perf_counter() - started) * 1000
+
+    def _fulltext_fallback(self):
+        # Preserve explicit tokenizer comparisons; only the normal configured
+        # path selects its independently measured full-text fallback.
+        if 'tokenizer' not in self.overrides and self.settings.get('fallback_tokenizer'):
+            self.settings = {**self.settings, 'tokenizer': self.settings['fallback_tokenizer']}
 
     def _hydrate(self, conn, ids: list[int]) -> dict[int, dict]:
         if not ids:
@@ -164,13 +174,21 @@ class Retrieval:
                 row["_other_source"] = True
         return rows
 
-    def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, learning=False, limit=8, **filters) -> list[dict]:
+    def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, entry_kind=None, limit=8, **filters) -> list[dict]:
         where, args = _filters(conn, **filters)
         scores: dict[int, float] = {}
         lexical_scores: dict[int, float] = {}
         vector_scores = {}
-        analysis = analyze(conn, text, participants, self.settings['tokenizer'])
-        participants = tuple(dict.fromkeys([*participants, *analysis.people])) if learning else analysis.people
+        analysis = analyze(conn, text, tokenizer=self.settings['tokenizer'], entry_kind=entry_kind)
+        if analysis.people:
+            anchors = set(analysis.people)
+            marks = ','.join('?' for _ in anchors)
+            conn.create_function('mentions_anchor', 1,
+                lambda content: bool(anchors.intersection(analysis.names.mentioned(content))), deterministic=True)
+            where += f""" AND (m.speaker_subject_id IN ({marks}) OR m.id IN
+                (SELECT memory_id FROM memory_subjects WHERE subject_id IN ({marks})) OR mentions_anchor(m.content))"""
+            args.extend([*anchors, *anchors])
+        boosted = set(participants) | ({'self'} if analysis.refers_to_self else set())
         tokens = analysis.tokens
         table = "memory_fts_" + self.settings["tokenizer"]
         if tokens:
@@ -188,7 +206,7 @@ class Retrieval:
         if vector is not None and self.index:
             vector_scores = self.index.scores(vector, include_forgotten=bool(filters.get("include_forgotten")))
             # Apply structured filters before truncating vector ranks.
-            if any(filters.get(k) for k in ("people", "kinds", "stances", "time_from", "time_to")):
+            if analysis.people or any(filters.get(k) for k in ("people", "kinds", "stances", "time_from", "time_to")):
                 allowed = {r[0] for r in conn.execute("SELECT m.id FROM memories m WHERE " + where, args)}
                 vector_scores = {mid: v for mid, v in vector_scores.items() if mid in allowed}
             best = max((pair[0] for pair in vector_scores.values()), default=0)
@@ -197,11 +215,15 @@ class Retrieval:
             for rank, (mid, _) in enumerate(ranked[:CANDIDATES], 1):
                 scores[mid] = scores.get(mid, 0) + self.settings['vector_weight'] / (RRF_K + rank)
         highlights_ids = []
-        if highlights and (learning or not tokens):
-            for sid in participants:
-                highlights_ids.extend(r[0] for r in conn.execute("""SELECT m.id FROM memory_subjects ms
-                    JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND m.lifecycle='active'
-                    ORDER BY m.importance DESC,m.id LIMIT 3""", (sid,)))
+        if highlights:
+            queues = []
+            for sid in dict.fromkeys(participants):
+                if sid in ('self', 'scene'):
+                    continue
+                queues.append([r[0] for r in conn.execute(f"""SELECT m.id FROM memory_subjects ms
+                    JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND {where}
+                    ORDER BY m.importance DESC,m.id LIMIT ?""", [sid, *args, CANDIDATES])])
+            highlights_ids = list(dict.fromkeys(mid for row in zip_longest(*queues) for mid in row if mid is not None))
         if not text.strip() and not highlights:
             for rank, row in enumerate(conn.execute("SELECT m.id FROM memories m WHERE " + where + " ORDER BY m.importance DESC,m.id LIMIT ?", [*args, CANDIDATES]), 1):
                 scores[row[0]] = 1 / (RRF_K + rank)
@@ -210,9 +232,6 @@ class Retrieval:
         clock = self.clock()
         allowed_lifecycles = {"active", "forgotten"} if filters.get("include_forgotten") else {"active"}
         for mid, memory in list(rows.items()):
-            if not learning and not attribute_evidence(text, memory['content']):
-                del rows[mid]
-                continue
             if memory["lifecycle"] not in allowed_lifecycles:
                 del rows[mid]
                 continue
@@ -225,19 +244,12 @@ class Retrieval:
                 recency = 1 / (1 + abs((clock - event).total_seconds()) / (86400 * 30))
             except ValueError:
                 recency = 0
-            related_person = bool(set(participants) & {p["id"] for p in memory["about"]})
-            if participants and not related_person:
-                # A different person's same topic is a particularly dangerous
-                # false answer. Both channels must independently be strong.
-                similarity, revision = vector_scores.get(mid, (0, 0))
-                if lexical_scores.get(mid, 0) < 2 or similarity < max(.7, self.settings['vector_min']) or revision != memory['revision']:
-                    del rows[mid]
-                    continue
+            related_person = bool(boosted & {p["id"] for p in memory["about"]})
             weight = 1 + .05 * memory["importance"] / 100 + .03 * memory["retention"] / 100 + .02 * recency + .05 * related_person
             memory["score"] = scores.get(mid, 0) * weight
-        highlight_set = set(highlights_ids)
-        ordered = [rows[mid] for mid in dict.fromkeys(highlights_ids) if mid in rows]
-        ordered.extend(sorted((m for mid, m in rows.items() if mid not in highlight_set), key=lambda m: (-m["score"], m["id"])))
+            memory['reason'] = 'relevant' if mid in scores else 'person_highlight'
+        ordered = sorted((m for mid, m in rows.items() if mid in scores), key=lambda m: (-m['score'], m['id']))
+        ordered.extend(rows[mid] for mid in highlights_ids if mid in rows and mid not in scores)
         return ordered
 
     def _duplicate(self, a: dict, b: dict) -> bool:
@@ -259,10 +271,13 @@ class Retrieval:
     def _select(self, candidates: list[dict], *, limit: int, token_budget: int | None = None,
                 recent_ids=(), known_ids=()) -> list[dict]:
         selected = []
+        highlight_count = 0
         recent_ids, known_ids = set(recent_ids), set(known_ids)
         for m in candidates:
             if len(selected) >= limit:
                 break
+            if m.get('reason') == 'person_highlight' and highlight_count >= 3:
+                continue
             if m["id"] in known_ids or (m["_messages"] and not m["_other_source"] and m["_messages"] <= recent_ids):
                 continue
             if any(self._duplicate(m, old) for old in selected):
@@ -271,6 +286,7 @@ class Retrieval:
             if token_budget is not None and estimate_tokens(dumps(payload)) > token_budget:
                 continue
             selected.append(m)
+            highlight_count += m.get('reason') == 'person_highlight'
         return [self._public(m) for m in selected]
 
     def _record(self, entry_id: str | None, request: dict, memories: list[dict]) -> str:
@@ -299,10 +315,8 @@ class Retrieval:
         return result
 
     def learning_context(self, text: str, participants: list[str], limit: int = 15) -> list[dict]:
-        vector, _ = self._query_vector(text, participants)
-        with self.store.read() as conn:
-            candidates = self._rank(conn, text, vector, participants=_people(conn, participants), highlights=True, learning=True)
-            return self._select(candidates, limit=limit)
+        from .learning_retrieval import LearningRetrieval
+        return LearningRetrieval(self.store, self.gateway, clock=self.clock).context(text, participants, limit)
 
     @staticmethod
     def _model_hints(conn) -> list[dict]:
@@ -328,17 +342,24 @@ class Retrieval:
             g["due_soon"] = remaining is not None and 0 <= remaining <= 86400
         return goals
 
+    def prepare_query(self, entry_id: str, text: str | None = None) -> tuple[str, str]:
+        """The same query derivation is used by prepare and evaluation prefetch."""
+        with self.store.read() as conn:
+            entry = conn.execute('SELECT kind FROM entries WHERE id=?', (entry_id,)).fetchone()
+            if entry is None:
+                raise KeyError(entry_id)
+            if text is None:
+                text = "\n".join(r[0] for r in reversed(conn.execute("SELECT content FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 5", (entry_id,)).fetchall()))
+            return text, entry['kind']
+
     def prepare(self, entry_id: str, *, text: str | None = None, participants: list[str] | None = None,
                 known_memory_ids=(), recent_limit=20, memory_limit=8, token_budget=1500, goal_limit=10) -> dict:
-        # A preliminary read only supplies an embedding hint. No transaction spans a model call.
-        if text is None:
-            with self.store.read() as conn:
-                text = "\n".join(r[0] for r in reversed(conn.execute("SELECT content FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 5", (entry_id,)).fetchall()))
-        # Resolve explicit participants for pronouns before the network call.
-        # The final result still uses exactly one independent read snapshot.
-        vector, hints = self._query_vector(text, participants or ())
         request = dict(text=text, participants=participants, known_memory_ids=list(known_memory_ids), recent_limit=recent_limit,
                        memory_limit=memory_limit, token_budget=token_budget, goal_limit=goal_limit)
+        # No read or write transaction spans the model call. The final response
+        # uses one independent snapshot; arrivals during embedding are allowed.
+        text, entry_kind = self.prepare_query(entry_id, text)
+        vector, hints = self._query_vector(text, entry_kind=entry_kind)
         with self.store.read() as conn:
             if not conn.execute("SELECT 1 FROM entries WHERE id=?", (entry_id,)).fetchone():
                 raise KeyError(entry_id)
@@ -347,8 +368,10 @@ class Retrieval:
                 WHERE m.entry_id=? ORDER BY m.id DESC LIMIT ?""", (entry_id, recent_limit)).fetchall())]
             for m in recent:
                 m["unlearned"] = m["learning_state"] != "learned"
-            participant_ids = _people(conn, participants) if participants is not None else list(dict.fromkeys(m["sender_subject_id"] for m in recent if m["sender_subject_id"] not in ("self", "scene")))
-            candidates = self._rank(conn, text, vector, participants=participant_ids, highlights=True)
+            participant_ids = _people(conn, participants) if participants is not None else list(dict.fromkeys(
+                r[0] for r in conn.execute('SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,))
+                if r[0] not in ('self', 'scene')))
+            candidates = self._rank(conn, text, vector, participants=participant_ids, highlights=True, entry_kind=entry_kind)
             memories = self._select(candidates, limit=min(memory_limit, 8), token_budget=min(token_budget, 1500),
                                     recent_ids=[m["id"] for m in recent], known_ids=known_memory_ids)
             persona = conn.execute("SELECT id AS version,content,created_at AS generated_at FROM persona_versions WHERE is_current=1 ORDER BY id DESC LIMIT 1").fetchone()

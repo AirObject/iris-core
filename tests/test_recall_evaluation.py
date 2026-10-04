@@ -5,6 +5,60 @@ import pytest
 from iris.recall_evaluation import recall_metrics, run_recall_eval
 
 
+def test_relevant_reason_metrics_separate_background_from_answers():
+    rows = [
+        {'relevant': {'a': 3}, 'returned': ['a', 'x', 'h'], 'reasons': {'a': 'relevant', 'x': 'relevant', 'h': 'person_highlight'}, 'local_ms': 1},
+        {'relevant': {}, 'returned': ['h'], 'reasons': {'h': 'person_highlight'}, 'local_ms': 1},
+        {'relevant': {}, 'returned': ['x'], 'reasons': {'x': 'relevant'}, 'local_ms': 1}]
+    metrics = recall_metrics(rows)
+    assert metrics['irrelevant_return_rate'] == .5
+    assert metrics['average_returned'] == pytest.approx(5/3)
+    assert metrics['relevant_precision'] == pytest.approx(1/3)
+    assert metrics['recall_at_8'] == metrics['ndcg_at_8'] == 1
+
+
+def test_public_corpora_use_all_dev_queries_in_separate_databases(tmp_path):
+    from iris.recall_evaluation import PUBLIC_CORPORA
+    folder = tmp_path / 'evals'
+    folder.mkdir()
+    for name, topic in zip(PUBLIC_CORPORA, ('天文', '水彩', '陶艺'), strict=True):
+        (folder / name).write_text(json.dumps({
+            'memories': [{'id': 'm', 'content': topic}],
+            'queries': [{'id': 'q', 'split': 'holdout', 'text': topic, 'relevant': {'m': 3}}]
+        }, ensure_ascii=False), encoding='utf-8')
+    _, report = run_recall_eval({}, tmp_path, 'dev', calibrate=True)
+    variant = report['variants']['jieba_fts']
+    assert variant['metrics']['queries'] == 3 and variant['metrics']['recall_at_8'] == 1
+    assert len(variant['corpora']) == 3
+    assert all(q['returned'] == ['m'] and q['split'] == 'dev' for q in variant['queries'])
+    assert all(json.loads((folder / name).read_text(encoding='utf-8'))['queries'][0]['split'] == 'holdout'
+               for name in PUBLIC_CORPORA)
+
+
+def test_null_prepare_and_embedding_prefetch_share_production_query(tmp_path, monkeypatch):
+    from iris import recall_evaluation as evaluation
+    from iris.models import ModelConfig
+    seen = []
+    def cache(configs, texts, store, path):
+        seen.extend(texts)
+        return evaluation.CachedEmbeddings(configs, {text: [1.] + [0.] * 2047 for text in texts}), 0
+    monkeypatch.setattr(evaluation, 'cache_embeddings', cache)
+    corpus = tmp_path / 'conversation.json'
+    corpus.write_text(json.dumps({'subjects': [{'name': 'Iris', 'aliases': ['小鸢']}],
+        'memories': [{'id': 'm', 'content': '我偏爱室内乐', 'about': ['我']}],
+        'queries': [{'id': 'q', 'text': None, 'participants': None, 'entry_kind': 'live',
+            'categories': ['对话中准备'], 'recent_messages': [
+                {'id': 'a', 'speaker': '来客', 'content': '晚安。'},
+                {'id': 'b', 'speaker': '新观众', 'content': '主播喜欢听什么音乐？'}],
+            'relevant': {'m': 3}}]}, ensure_ascii=False), encoding='utf-8')
+    _, report = run_recall_eval({'embedding': ModelConfig('fake', '', 'fake-vector', 2048)}, tmp_path, corpus=corpus,
+                                out=tmp_path / 'out')
+    hybrid = report['variants']['jieba_hybrid']
+    assert hybrid['groups']['dev']['categories']['对话中准备']['recall_at_8'] == 1
+    assert hybrid['queries'][0]['reasons']['m'] == 'relevant'
+    assert any('晚安' in text and '我喜欢听什么音乐' in text for text in seen)
+
+
 @pytest.mark.parametrize('jsonl', [False, True])
 def test_recall_alias_seed_and_split_category_report(tmp_path, jsonl):
     corpus = tmp_path / 'recall.json'

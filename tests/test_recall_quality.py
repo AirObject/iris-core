@@ -24,15 +24,13 @@ def test_function_words_do_not_dilute_bm25_and_numbers_survive(store):
     assert mid in [m["id"] for m in Retrieval(store).search(text="请问能不能帮我看看火山地质展是哪天，在什么地方办呀？")['memories']]
 
 
-def test_alias_name_and_participant_focus_do_not_answer_unknown_attribute(store):
+def test_alias_names_anchor_the_named_subject(store):
     entry(store)
     people(store)
     right = put(store, "江澄做园林设计工作", about=["p"])
     put(store, "江橙的工作是设计游戏", about=["q"])
     r = Retrieval(store)
     assert [m["id"] for m in r.search(text="小江做什么工作呀")['memories']] == [right]
-    assert not r.search(text="江澄生日是哪天")['memories']
-    assert not r.prepare("A", text="他住在哪个小区？", participants=["p"])['memories']
     assert r.prepare("A", text="", participants=["p"])['memories']
 
 
@@ -43,16 +41,6 @@ def test_vector_absolute_and_relative_cutoffs(store):
     assert [m["id"] for m in r.search(text="没有共同词")['memories']] == [good]
     r = Retrieval(store, Embeddings(store), vector_min=.95, vector_relative=.8)
     assert not r.search(text="没有共同词")['memories']
-
-
-def test_topic_overlap_is_not_evidence_for_an_asked_attribute(store):
-    put(store, '摄影课每周三下午开课', vector=[1., 0.])
-    put(store, '石桥旅馆在江边，入住需要登记', vector=[1., 0.])
-    r = Retrieval(store, Embeddings(store), vector_min=.3)
-    assert not r.search(text='摄影课的学费多少钱') ['memories']
-    assert not r.search(text='石桥旅馆有无障碍厕所吗')['memories']
-    put(store, '摄影课学费每人 180 元')
-    assert r.search(text='摄影课的学费多少钱')['memories']
 
 
 def test_latin_alias_case_and_name_boundaries(store):
@@ -95,6 +83,7 @@ def test_legacy_settings_keep_original_dimensions_and_unprefixed_queries(store):
 @pytest.mark.parametrize("mode", ["prepare", "search", "learning_context"])
 def test_vector_scoring_does_not_block_committed_memory_write(store, monkeypatch, mode):
     entry(store)
+    store.set_setting('learning_retrieval', {'embedding_model': 'fake-vector'})
     old = put(store, "天文摄影旧记录", vector=[1., 0.])
     r = Retrieval(store, Embeddings(store), vector_min=.5)
     entered, release = threading.Event(), threading.Event()

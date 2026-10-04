@@ -1,0 +1,69 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.13",
+  "sqlite": "3.50.4",
+  "numpy": "2.5.3",
+  "logical_cpus": 20,
+  "physical_memory_gib": 23.273365020751953,
+  "note": "Fresh process per size/dtype; precomputed synthetic query embedding; 5 warmups; FTS, vector ranking, metadata, JSON and recall record included. HTTP uses in-process ASGI TestClient; no external embedding network.",
+  "results": [
+    {
+      "memories": 5000,
+      "dimension": 2048,
+      "dtype": "float32",
+      "samples": 60,
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.45,
+        "vector_relative": 0.75,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 2048,
+        "embedding_model": "perf-vector",
+        "dtype": "float32",
+        "fallback_tokenizer": "jieba"
+      },
+      "request": {},
+      "load_seconds": 0.2897359000053257,
+      "matrix_storage_mib": 40.078125,
+      "rss_before_mib": 118.953125,
+      "rss_after_load_mib": 162.41015625,
+      "rss_load_delta_mib": 43.45703125,
+      "rss_after_queries_mib": 167.19140625,
+      "peak_working_set_mib": 168.953125,
+      "vector_p95_ms": 8.327904995530844,
+      "prepare_p50_ms": 57.38800000108313,
+      "prepare_p95_ms": 75.1984500020626,
+      "http_prepare_p95_ms": 83.46837998687988
+    },
+    {
+      "memories": 50000,
+      "dimension": 2048,
+      "dtype": "float32",
+      "samples": 60,
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.45,
+        "vector_relative": 0.75,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 2048,
+        "embedding_model": "perf-vector",
+        "dtype": "float32",
+        "fallback_tokenizer": "jieba"
+      },
+      "request": {},
+      "load_seconds": 2.205641000007745,
+      "matrix_storage_mib": 392.765625,
+      "rss_before_mib": 118.68359375,
+      "rss_after_load_mib": 526.52734375,
+      "rss_load_delta_mib": 407.84375,
+      "rss_after_queries_mib": 550.41796875,
+      "peak_working_set_mib": 559.18359375,
+      "vector_p95_ms": 64.70688001281813,
+      "prepare_p50_ms": 219.2522499972256,
+      "prepare_p95_ms": 230.8441949848202,
+      "http_prepare_p95_ms": 241.84353500168072
+    }
+  ]
+}

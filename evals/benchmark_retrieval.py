@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from iris.api import create_app
 from iris.db import Store
 from iris.models import ModelConfig
+from iris.queue import add_message
 from iris.retrieval import DEFAULTS
 
 STAMP = "2026-09-29T12:00:00+00:00"
@@ -62,10 +63,24 @@ class Gateway:
         return self.vector
 
 
-def worker(path, size, dtype, repeats, dimension):
+def worker(path, size, dtype, repeats, dimension, default_config=False):
     process = psutil.Process()
     store = Store(path)
-    store.set_setting("retrieval", {**DEFAULTS, "embedding_model": "perf-vector", "dtype": dtype, "vector_min": 0.0, "vector_relative": 0.0, "embedding_dimensions": dimension})
+    settings = {**DEFAULTS, "embedding_model": "perf-vector", "dtype": dtype, "embedding_dimensions": dimension}
+    if not default_config:
+        settings.update(vector_min=0.0, vector_relative=0.0)
+    store.set_setting("retrieval", settings)
+    if default_config:
+        # Exercise null query / inferred participants on the normal prepare path.
+        # These are synthetic performance messages, not quality annotations.
+        with store.write() as conn:
+            for i in range(3):
+                conn.execute("INSERT OR IGNORE INTO platform_identities(subject_id,platform,account_id,display_name) VALUES(?,'perf',?,?)",
+                             (f'p{i}', f'bench{i}', f'参与者{i}'))
+        for i in range(3):
+            add_message(store, entry_id='bench', entry_name='bench', platform='perf', entry_kind='group',
+                        kind='message', sender=f'参与者{i}', account_id=f'bench{i}', content='今晚整理天文观測记录，继续聊聊观星。',
+                        occurred_at=STAMP, dedupe_key=f'prepare-default-{i}')
     gateway = Gateway(dimension)
     rss_before = process.memory_info().rss
     start = time.perf_counter()
@@ -74,7 +89,7 @@ def worker(path, size, dtype, repeats, dimension):
         load_seconds = time.perf_counter() - start
         rss_loaded = process.memory_info().rss
         direct, http, vector_times = [], [], []
-        query = {"text": "天文观測记录", "participants": []}
+        query = {} if default_config else {"text": "天文观測记录", "participants": []}
         for _ in range(5):
             retrieval.prepare("bench", **query)
         for _ in range(repeats):
@@ -95,7 +110,7 @@ def worker(path, size, dtype, repeats, dimension):
             scores = retrieval.index.scores(rng.normal(size=dimension).astype(np.float32))
             rankings.append([mid for mid, _ in sorted(scores.items(), key=lambda p: (-p[1][0], p[0]))[:8]])
         info = process.memory_info()
-        result = {"memories": size, "dimension": dimension, "dtype": dtype, "samples": repeats,
+        result = {"memories": size, "dimension": dimension, "dtype": dtype, "samples": repeats, "settings": settings, "request": query,
                   "load_seconds": load_seconds, "matrix_storage_mib": retrieval.index.nbytes / 2**20,
                   "rss_before_mib": rss_before / 2**20, "rss_after_load_mib": rss_loaded / 2**20,
                   "rss_load_delta_mib": (rss_loaded - rss_before) / 2**20,
@@ -116,25 +131,27 @@ def main():
     parser.add_argument("--dtype", default="float32")
     parser.add_argument("--dimension", type=int, default=2048)
     parser.add_argument("--repeats", type=int, default=60)
+    parser.add_argument("--default-config", action="store_true", help="Only 5k/50k using current default dimension, dtype and cutoffs")
     args = parser.parse_args()
     folder = Path("data/performance")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"memories-{args.size}-{args.dimension}.db"
     if args.worker:
-        result = worker(path, args.size, args.dtype, args.repeats, args.dimension)
+        result = worker(path, args.size, args.dtype, args.repeats, args.dimension, args.default_config)
         (folder / f"result-{args.size}-{args.dimension}-{args.dtype}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         return
     results = []
-    for dimension in (1024, 2048):
+    for dimension in ([DEFAULTS['embedding_dimensions']] if args.default_config else (1024, 2048)):
         for size in (5000, 50000):
             build(folder / f"memories-{size}-{dimension}.db", size, dimension)
-            for dtype in ("float32", "float16"):
-                subprocess.run([sys.executable, "-X", "utf8", __file__, "--worker", "--size", str(size), "--dimension", str(dimension), "--dtype", dtype, "--repeats", str(args.repeats)], check=True)
+            for dtype in ([DEFAULTS['dtype']] if args.default_config else ("float32", "float16")):
+                subprocess.run([sys.executable, "-X", "utf8", __file__, "--worker", "--size", str(size), "--dimension", str(dimension), "--dtype", dtype, "--repeats", str(args.repeats)] + (["--default-config"] if args.default_config else []), check=True)
                 row = json.loads((folder / f"result-{size}-{dimension}-{dtype}.json").read_text(encoding="utf-8"))
                 results.append(row)
                 print(f"{size} d{dimension} {dtype}: prepare P95 {row['prepare_p95_ms']:.1f} ms, HTTP P95 {row['http_prepare_p95_ms']:.1f} ms", flush=True)
             rows = [r for r in results if r["memories"] == size and r['dimension'] == dimension]
-            rows[1]["top8_overlap_with_float32"] = float(np.mean([len(set(a) & set(b)) / 8 for a,b in zip(rows[0]["top8"],rows[1]["top8"], strict=True)]))
+            if len(rows) == 2:
+                rows[1]["top8_overlap_with_float32"] = float(np.mean([len(set(a) & set(b)) / 8 for a,b in zip(rows[0]["top8"],rows[1]["top8"], strict=True)]))
     for row in results:
         row.pop("top8")
     report = {"platform": platform.platform(), "python": platform.python_version(), "sqlite": sqlite3.sqlite_version,
@@ -142,7 +159,7 @@ def main():
               "note": "Fresh process per size/dtype; precomputed synthetic query embedding; 5 warmups; FTS, vector ranking, metadata, JSON and recall record included. HTTP uses in-process ASGI TestClient; no external embedding network.",
               "results": results}
     args.out.mkdir(parents=True, exist_ok=True)
-    target = args.out / "retrieval-performance-pr5.json"
+    target = args.out / ("retrieval-performance-pr5-r2.json" if args.default_config else "retrieval-performance-pr5.json")
     target.write_text(json.dumps(report, ensure_ascii=False, indent=2),encoding="utf-8")
     print(target)
 
