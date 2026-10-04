@@ -1,6 +1,6 @@
 # Iris 后续实现说明
 
-产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心及第四轮召回、回复准备、查询与反馈接口；后台调度、HTTP 学习触发、界面、首次设置和鉴权尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
+产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；界面、首次设置、设置页、secrets.json 和鉴权尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
 
 ## 安装和运行
 
@@ -28,7 +28,7 @@ uv run iris eval learning --corpus C:\path\to\cases.jsonl --out C:\path\to\repor
 
 默认评测读取三份仓库 JSONL，报告写入 `evals/reports/`。`--corpus` 替换输入集，`--out` 替换报告目录，均支持仓库外路径。隐藏验收集由规划者维护，执行者不得寻找或读取；最终门槛须隐藏集和仓库评测同时达到，不能仅凭仓库结果宣称 M1 最终通过。报告单列长度截断批次、别名覆盖率／精确率及双判分歧。
 
-学习提示词使用 v5，学习和判分输出上限均为 16000 token。学习请求总超时仍为 120 秒；评测判分因真实请求连续超时单独延长到 240 秒，报告标明两者。`model_calls` 记录 finish_reason、输出用量和所属批次。校验前做确定性规整：计划立场、数字 M 引用、单元素名字数组和无效 derived_from；通过证据校验的自身亲历／观点补齐 about 中的“我”；推断只在实际涉及我时由学习输出包含“我”，不再无条件补齐。正文和 tags 在校验后消除批次 P 编号，禁止推断性别，不同事实分开。原始输出及规整记录都保留。消息／引用作者显示参与者编号，归属用主体 ID 校验。同名账号不合并；本人别名写 `subject_aliases`，未知同一人用 `same_as`，虚构扮演用 `roleplay`。
+学习提示词使用 v5，学习和判分输出上限均为 16000 token。学习请求（含调用内重试和 JSON 修正）共享 180 秒总预算；其他生成 120 秒、embedding 30 秒、召回查询 embedding 2 秒、评测判分 240 秒，报告和状态接口标明超时。`model_calls` 记录 finish_reason、输出用量和所属批次。校验前做确定性规整：计划立场、数字 M 引用、单元素名字数组和无效 derived_from；通过证据校验的自身亲历／观点补齐 about 中的“我”；推断只在实际涉及我时由学习输出包含“我”，不再无条件补齐。正文和 tags 在校验后消除批次 P 编号，禁止推断性别，不同事实分开。原始输出及规整记录都保留。消息／引用作者显示参与者编号，归属用主体 ID 校验。同名账号不合并；本人别名写 `subject_aliases`，未知同一人用 `same_as`，虚构扮演用 `roleplay`。
 
 ## 目录
 
@@ -57,3 +57,15 @@ uv run iris eval learning --corpus C:\path\to\cases.jsonl --out C:\path\to\repor
 Python 3.12 和 3.13 使用独立环境测试，不能在运行评测时切换或重建同一虚拟环境，也不要在模型评测运行期间修改源码或迁移。完整学习案例按源码／语料／模型／判分次数指纹保存在忽略的 data/learning-checkpoints；外部 --out 的检查点与完整明细留在外部。只复用相同输入的完成案例，不按分数选择或改写结果。
 
 本 PR 覆盖 R01、R04—R13；用户已确认 R14 按设计留到 M4，R02、R03 同样留到 M4。不要在本轮添加可见范围、宿主令牌、自动遗忘和恢复。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料。
+
+## 调度与端到端（M1-6）
+
+服务启动先恢复中断批次，默认同时学习两个批次，同入口串行；学习状态以 batches 为准。手动请求的消息位置持久保存在 entries，向量补算由 memories 的缺失向量推导。暂不建立通用任务表，梦境整理阶段再引入。接收后不能假设消息已经被学习；等待状态接口的批次结果。
+
+模型健康按 chat／embedding 分开并持久保存，连续三次可重试的网络请求错误（包括调用内重试）暂停用途；触发暂停的批次失败不扣尝试次数。探测间隔 60／120／240／480／600 秒。401／403 与 404 分别为密钥无效、配置错误，只在配置变化后恢复。每日 token 上限默认不限，按角色时区恢复；在途调用及服务商未报告的 token 无法事先扣减。模型配置仍只从 test-models.toml／IRIS_TEST_MODELS 加载，不把凭据存入数据库。
+
+内部设置接口为 Gateway.replace_config、Gateway.retry_now、ModelHealth.set_daily_token_limit、Scheduler.set_concurrency；后续设置页调用它们。serve 自动重新读取模型配置。离线 iris learn 必须停止服务后运行，服务／离线命令用操作系统锁互斥。模型网络调用仍在事务外，向量补算写回必须核对修订号；不要改变 learning_context 的选材。
+
+新增 `uv run iris eval e2e --judge-runs 2 --out C:\eval-results\e2e`。10 个脚本为手写 dev，评分文件 e2e_scoring_v1.md 独立于学习评分。评测使用真实 serve 子进程，只经 HTTP 接收、观察学习和准备回复，强制重启后才提问。Windows 需结束虚拟环境解释器启动的整个子进程树。默认双判、分歧取不利结论；单判仅用于迭代。完整返回只写到仓库外 --out，隐藏集由规划者运行。仓库至少 8/10 通过不代表隐藏门槛通过。
+
+本轮与 PR #5 并行，禁止修改 retrieval.py、query_analysis.py、search_text.py、vector_index.py、recall_evaluation.py、evals/recall_*、学习提示词和学习评分。PR #5 合并后以 merge 合入 origin/main，重跑全量测试和端到端双判，不 rebase。不在模型评测运行中修改源码或迁移。

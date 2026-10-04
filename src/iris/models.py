@@ -9,7 +9,7 @@ import re
 import time
 import tomllib
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -21,13 +21,15 @@ from .db import Store, now
 
 
 CHAT_TOTAL_TIMEOUT = 120
+LEARNING_TOTAL_TIMEOUT = 180
+EMBEDDING_TOTAL_TIMEOUT = 30
 JUDGE_TOTAL_TIMEOUT = 240
 
 
 @dataclass(frozen=True)
 class ModelConfig:
     base_url: str
-    api_key: str
+    api_key: str = field(repr=False)
     model: str
 
 
@@ -43,12 +45,13 @@ class ModelReply:
 
 class ModelError(Exception):
     def __init__(self, category: str, summary: str, raw_output: str | None = None,
-                 first_raw: str | None = None):
+                 first_raw: str | None = None, *, paused: bool = False):
         super().__init__(summary)
         self.category = category
         self.summary = summary
         self.raw_output = raw_output
         self.first_raw = first_raw
+        self.paused = paused
 
 
 def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
@@ -154,12 +157,16 @@ def parse_json_object(raw: str) -> dict[str, Any]:
 
 
 class Gateway:
-    def __init__(self, configs: dict[str, ModelConfig], store: Store | None = None, client: httpx.Client | None = None, sleeper=time.sleep):
-        self.configs = configs
+    def __init__(self, configs: dict[str, ModelConfig], store: Store | None = None, client: httpx.Client | None = None,
+                 sleeper=time.sleep, *, health=None, clock=None, monotonic=time.monotonic):
+        self.health = health
+        self.configs = health.configs if health else dict(configs)
         self.store = store
         self.client = client or httpx.Client()
         self._own_client = client is None
         self.sleeper = sleeper
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.monotonic = monotonic
         self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-model")
 
     def close(self) -> None:
@@ -169,7 +176,8 @@ class Gateway:
 
     def _record(self, purpose: str, model: str, duration_ms: int, category: str, error: str | None,
                 usage: dict[str, Any] | None = None, flags: dict[str, Any] | None = None, status_code: int | None = None,
-                *, finish_reason: str | None = None, batch_id: int | None = None) -> None:
+                *, finish_reason: str | None = None, batch_id: int | None = None,
+                kind: str | None = None, timed_out: bool = False) -> None:
         if not self.store:
             return
         usage = usage or {}
@@ -178,111 +186,157 @@ class Gateway:
         with self.store.write() as conn:
             conn.execute("""INSERT INTO model_calls
                 (purpose,model,duration_ms,prompt_tokens,completion_tokens,reasoning_tokens,result_category,
-                 error_summary,input_sensitive,output_sensitive,status_code,created_at,finish_reason,batch_id)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 error_summary,input_sensitive,output_sensitive,status_code,created_at,finish_reason,batch_id,model_kind,timed_out)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (purpose, model, duration_ms, usage.get("prompt_tokens"), usage.get("completion_tokens"),
                  details.get("reasoning_tokens"), category, error, flags.get("input_sensitive"),
-                 flags.get("output_sensitive"), status_code, now(), finish_reason, batch_id))
+                 flags.get("output_sensitive"), status_code, self.clock().isoformat(), finish_reason, batch_id, kind, int(timed_out)))
 
-    def _call(self, kind: str, purpose: str, payload: dict[str, Any], *, batch_id: int | None = None) -> dict[str, Any]:
-        config = self.configs[kind]
-        if not config.base_url or not config.model:
-            raise ModelError("configuration", f"{kind} model is not configured")
-        url = config.base_url + ("/chat/completions" if kind == "chat" else "/embeddings")
-        headers = {"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"}
-        total_timeout = CHAT_TOTAL_TIMEOUT if kind == "chat" else 30
-        retrieval = kind == "embedding" and purpose == "retrieval_query"
-        if retrieval:
-            total_timeout = 2
-        if kind == "chat" and purpose in ("learning_judge", "learning_judge_repair"):
-            total_timeout = JUDGE_TOTAL_TIMEOUT
-        timeout = httpx.Timeout(total_timeout, connect=min(10, total_timeout))
-        attempts = 1 if retrieval else 3
+    def replace_config(self, kind: str, config: ModelConfig) -> bool:
+        if self.health:
+            return self.health.replace_config(kind, config)
+        changed = self.configs.get(kind) != config
+        self.configs[kind] = config
+        return changed
+
+    def retry_now(self, kind: str) -> None:
+        if self.health:
+            self.health.retry_now(kind)
+
+    def probe(self, kind: str) -> bool:
+        if not self.health or kind not in self.health.due_probes():
+            return False
+        payload = ({"messages": [{"role": "user", "content": '只输出 JSON：{"ok":true}'}],
+                    "max_tokens": 64, "response_format": {"type": "json_object"}}
+                   if kind == "chat" else {"input": "Iris 测试连接"})
+        try:
+            self._call(kind, "health_probe", payload, probe=True)
+            return True
+        except ModelError:
+            return False
+
+    @staticmethod
+    def timeout_for(kind, purpose):
+        if kind == "embedding":
+            return 2 if purpose == "retrieval_query" else EMBEDDING_TOTAL_TIMEOUT
+        if purpose in ("learning", "learning_repair"):
+            return LEARNING_TOTAL_TIMEOUT
+        if purpose in ("learning_judge", "learning_judge_repair", "e2e_judge", "e2e_judge_repair"):
+            return JUDGE_TOTAL_TIMEOUT
+        return CHAT_TOTAL_TIMEOUT
+
+    def _call(self, kind: str, purpose: str, payload: dict[str, Any], *, batch_id: int | None = None,
+              deadline: float | None = None, probe: bool = False) -> dict[str, Any]:
+        deadline = deadline if deadline is not None else self.monotonic() + self.timeout_for(kind, purpose)
+        attempts = 1 if probe or purpose == "retrieval_query" else 3
         for attempt in range(attempts):
-            started = time.monotonic()
-            response: httpx.Response | None = None
+            token = self.health.check(kind, purpose, probe=probe) if self.health else None
+            config = self.configs.get(kind)
+            if not config or not config.base_url or not config.model:
+                raise ModelError("configuration", f"{kind} model is not configured", paused=bool(self.health))
+            remaining = deadline - self.monotonic()
+            if remaining <= 0:
+                raise ModelError("retryable", "total timeout")
+            url = config.base_url + ("/chat/completions" if kind == "chat" else "/embeddings")
+            headers = {"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"}
+            timeout = httpx.Timeout(remaining, connect=min(10, remaining))
+            started = self.monotonic()
+            response = None
+            flags, usage = {}, {}
+            finish_reason, status_code = None, None
+            category, summary, timed_out = "success", None, False
+            retry_delay = (2, 8)[min(attempt, 1)]
             try:
-                request = self._pool.submit(self.client.post, url, headers=headers, json=payload, timeout=timeout)
-                response = request.result(timeout=total_timeout)
-                duration = round((time.monotonic() - started) * 1000)
-                status = response.status_code
-                if status >= 400:
-                    if status in (401, 403):
+                request = self._pool.submit(self.client.post, url, headers=headers,
+                                            json={**payload, "model": config.model}, timeout=timeout)
+                response = request.result(timeout=remaining)
+                status_code = response.status_code
+                if status_code >= 400:
+                    try:
+                        error_data = response.json()
+                    except ValueError:
+                        error_data = {}
+                    error = error_data.get("error", {}) if isinstance(error_data, dict) else {}
+                    error = error if isinstance(error, dict) else {}
+                    # Inspect structured codes for classification, but never persist provider prose.
+                    code = str(error.get("code") or error.get("type") or "").casefold()
+                    if status_code in (401, 403):
                         category = "authentication"
-                    elif status in (402, 423):
-                        category = "account"
-                    elif status == 429 or status >= 500:
-                        category = "retryable"
-                    elif status in (400, 404, 422):
+                    elif status_code == 404:
                         category = "configuration"
+                    elif status_code in (402, 423) or code in (
+                            "insufficient_quota", "insufficient_balance", "account_suspended", "account_deactivated",
+                            "billing_hard_limit_reached", "balance_not_enough", "arrearage"):
+                        category = "account"
+                    elif code in ("content_filter", "content_policy_violation", "content_safety", "sensitive_content"):
+                        category = "content_rejection"
+                    elif status_code == 429 or status_code >= 500:
+                        category = "retryable"
                     else:
                         category = "configuration"
-                    # Do not store provider response bodies; they may echo credentials or user data.
-                    summary = f"HTTP {status}"
-                    self._record(purpose, config.model, duration, category, summary, status_code=status, batch_id=batch_id)
-                    if category == "retryable" and attempt < attempts - 1:
-                        self.sleeper(max((2, 8)[attempt], _retry_after(response.headers.get("Retry-After")) or 0))
-                        continue
-                    raise ModelError(category, summary)
-                data = response.json()
-                flags = {
-                    "input_sensitive": data.get("input_sensitive"),
-                    "output_sensitive": data.get("output_sensitive"),
-                }
-                body = data.get("base_resp") or {}
-                provider_status = body.get("status_code")
-                content = None
-                finish_reason = None
-                if kind == "chat":
+                    summary = f"HTTP {status_code}"
+                    retry_delay = max(retry_delay, _retry_after(response.headers.get("Retry-After")) or 0)
+                else:
+                    data = response.json()
+                    flags = {"input_sensitive": data.get("input_sensitive"), "output_sensitive": data.get("output_sensitive")}
+                    usage = data.get("usage") or {}
+                    body = data.get("base_resp") or {}
+                    provider_status = body.get("status_code")
                     choices = data.get("choices") or []
-                    content = (choices[0].get("message") or {}).get("content") if choices else None
-                    finish_reason = choices[0].get("finish_reason") if choices else None
-                    if any(flags.values()) and not content:
-                        self._record(purpose, config.model, duration, "content_rejection", "provider content safety refusal", data.get("usage"), flags, provider_status or status,
-                                     finish_reason=finish_reason, batch_id=batch_id)
-                        raise ModelError("content_rejection", "provider content safety refusal")
-                if provider_status not in (None, 0, 200) and not content:
-                    summary = f"provider status {provider_status}"
-                    provider_message = str(body.get("status_msg") or (data.get("error") or {}).get("message") or "").casefold()
-                    category = "account" if any(term in provider_message for term in
-                                                ("balance", "quota", "credit", "billing", "余额", "欠费", "额度")) else "configuration"
-                    self._record(purpose, config.model, duration, category, summary, data.get("usage"), flags, provider_status,
-                                 finish_reason=finish_reason, batch_id=batch_id)
-                    raise ModelError(category, summary)
-                if kind == "embedding":
-                    vector = data["data"][0]["embedding"]
-                    if not isinstance(vector, list) or not vector or any(not math.isfinite(float(v)) for v in vector) or not any(float(v) for v in vector):
-                        raise ValueError("invalid embedding vector")
-                self._record(purpose, config.model, duration, "success", None, data.get("usage"), flags, provider_status or status,
-                             finish_reason=finish_reason, batch_id=batch_id)
-                return data
+                    choice = choices[0] if choices else {}
+                    content = (choice.get("message") or {}).get("content")
+                    finish_reason = choice.get("finish_reason")
+                    if kind == "chat" and (finish_reason == "content_filter" or
+                            (choice.get("message") or {}).get("refusal") or (any(flags.values()) and not content)):
+                        category, summary = "content_rejection", "provider content safety refusal"
+                    elif provider_status not in (None, 0, 200) and not content:
+                        provider_message = str(body.get("status_msg") or (data.get("error") or {}).get("message") or "").casefold()
+                        category = "account" if any(term in provider_message for term in
+                            ("balance", "quota", "credit", "billing", "余额", "欠费", "额度")) else "configuration"
+                        summary = f"provider status {provider_status}"
+                    elif kind == "embedding":
+                        vector = data["data"][0]["embedding"]
+                        if not isinstance(vector, list) or not vector or any(not math.isfinite(float(v)) for v in vector) or not any(float(v) for v in vector):
+                            raise ValueError("invalid embedding vector")
+                    elif not choices or not isinstance(content, str):
+                        raise ValueError("missing chat choice")
+                    status_code = provider_status or status_code
             except (httpx.TransportError, FutureTimeout) as exc:
                 request.cancel()
-                duration = round((time.monotonic() - started) * 1000)
-                summary = "total timeout" if isinstance(exc, FutureTimeout) else _summary(type(exc).__name__, config.api_key)
-                self._record(purpose, config.model, duration, "retryable", summary, batch_id=batch_id)
-                if attempt < attempts - 1:
-                    self.sleeper((2, 8)[attempt])
-                    continue
-                raise ModelError("retryable", summary) from exc
-            except (json.JSONDecodeError, ValueError, KeyError, IndexError, TypeError) as exc:
-                duration = round((time.monotonic() - started) * 1000)
-                summary = _summary(f"invalid provider response: {type(exc).__name__}", config.api_key)
-                self._record(purpose, config.model, duration, "configuration", summary, status_code=response.status_code if response else None,
-                             batch_id=batch_id)
-                raise ModelError("configuration", summary) from exc
+                timed_out = isinstance(exc, (FutureTimeout, httpx.TimeoutException))
+                category = "retryable"
+                summary = "total timeout" if isinstance(exc, FutureTimeout) else type(exc).__name__
+            except (ValueError, KeyError, IndexError, TypeError) as exc:
+                category, summary = "configuration", f"invalid provider response: {type(exc).__name__}"
+            duration = round((self.monotonic() - started) * 1000)
+            # Even an HTTP client that returns just after the deadline cannot commit a late result.
+            if category == "success" and self.monotonic() > deadline:
+                category, summary, timed_out = "retryable", "total timeout", True
+            self._record(purpose, config.model, duration, category, summary, usage, flags, status_code,
+                         finish_reason=finish_reason, batch_id=batch_id, kind=kind, timed_out=timed_out)
+            paused = self.health.observe(kind, token, category, summary, probe=probe) if self.health else False
+            if category == "success":
+                if self.configs.get(kind) != config:
+                    raise ModelError("paused", "model configuration changed during request", paused=True)
+                return data
+            if category != "retryable" or paused or attempt == attempts - 1:
+                raise ModelError(category, summary, paused=paused)
+            if deadline - self.monotonic() <= retry_delay:
+                raise ModelError(category, summary, paused=paused)
+            self.sleeper(retry_delay)
         raise AssertionError("unreachable")
 
-    def chat(self, messages: list[dict[str, str]], purpose: str, max_tokens: int = 3500, *, batch_id: int | None = None) -> ModelReply:
-        data = self._call("chat", purpose, {"model": self.configs["chat"].model, "messages": messages,
-                                           "response_format": {"type": "json_object"}, "max_tokens": max_tokens}, batch_id=batch_id)
+    def chat(self, messages: list[dict[str, str]], purpose: str, max_tokens: int = 3500, *, batch_id: int | None = None,
+             _deadline: float | None = None) -> ModelReply:
+        data = self._call("chat", purpose, {"messages": messages,
+                         "response_format": {"type": "json_object"}, "max_tokens": max_tokens}, batch_id=batch_id, deadline=_deadline)
         choice = (data.get("choices") or [{}])[0]
         return ModelReply(str((choice.get("message") or {}).get("content") or ""), choice.get("finish_reason"),
                           data.get("usage") or {}, data.get("input_sensitive"), data.get("output_sensitive"),
                           (data.get("base_resp") or {}).get("status_code"))
 
     def embedding(self, text: str, purpose: str = "embedding") -> list[float]:
-        data = self._call("embedding", purpose, {"model": self.configs["embedding"].model, "input": text})
+        data = self._call("embedding", purpose, {"input": text})
         try:
             return [float(v) for v in data["data"][0]["embedding"]]
         except (KeyError, IndexError, TypeError, ValueError) as exc:
@@ -290,7 +344,8 @@ class Gateway:
 
     def json_chat(self, messages: list[dict[str, str]], purpose: str, max_tokens: int = 3500, *,
                   batch_id: int | None = None) -> tuple[dict[str, Any], str, str | None, str, str | None]:
-        reply = self.chat(messages, purpose, max_tokens, batch_id=batch_id)
+        deadline = self.monotonic() + self.timeout_for("chat", purpose)
+        reply = self.chat(messages, purpose, max_tokens, batch_id=batch_id, _deadline=deadline)
         first_raw = reply.content
         try:
             if reply.finish_reason == "length":
@@ -303,7 +358,7 @@ class Gateway:
                 {"role": "user", "content": f"上一个回答无法解析：{first_error}。只输出修正后的完整 JSON 对象，不要解释。"},
             ]
             try:
-                second = self.chat(repair_messages, purpose + "_repair", max_tokens, batch_id=batch_id)
+                second = self.chat(repair_messages, purpose + "_repair", max_tokens, batch_id=batch_id, _deadline=deadline)
             except ModelError as error:
                 error.first_raw = first_raw
                 raise

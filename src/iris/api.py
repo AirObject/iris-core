@@ -1,9 +1,10 @@
-"""M1 host API. No scheduling, generation, authentication, or management routes."""
+"""Local host API and the service-owned learning scheduler."""
 from __future__ import annotations
 
 import ipaddress
+import asyncio
 import sqlite3
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, ExitStack
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
@@ -15,8 +16,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .db import Store
 from .models import Gateway
+from .model_health import ModelHealth
 from .queue import add_message
-from .retrieval import Retrieval, backlog, latest_models
+from .retrieval import Retrieval
+from .scheduler import Scheduler
+from .service_status import service_status, add_health_hints
+from .process_lock import StoreLease
 
 
 def loopback_host(host: str) -> str:
@@ -34,6 +39,12 @@ class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class CustomPace(Input):
+    count: int = Field(ge=1, le=1000, strict=True)
+    idle_seconds: int = Field(ge=1, le=86400, strict=True)
+    max_wait_seconds: int = Field(ge=1, le=604800, strict=True)
+
+
 class Message(Input):
     sender: str = Field(min_length=1, max_length=200)
     content: str
@@ -48,7 +59,7 @@ class Message(Input):
     quote_author: str | None = None
     quote_author_account_id: str | None = None
     quote_content: str | None = None
-    pace: Literal["realtime", "standard", "economy"] = "standard"
+    pace: Literal["realtime", "standard", "economy"] | CustomPace = "standard"
 
     @field_validator("occurred_at")
     @classmethod
@@ -108,22 +119,33 @@ class RevisionConflict(Exception):
 
 
 def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = None, configs=None,
-               gateway: Gateway | None = None) -> FastAPI:
+               gateway: Gateway | None = None, config_loader=None, learning_concurrency=None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
-        active_store = store or Store(db_path)
-        active_gateway = gateway or (Gateway(configs, active_store) if configs else None)
-        app.state.store = active_store
-        app.state.retrieval = Retrieval(active_store, active_gateway)
-        app.state.ready = True
+        resources = ExitStack()
         try:
+            if store is None:
+                resources.enter_context(StoreLease(db_path))
+            active_store = store or Store(db_path)
+            if store is None:
+                resources.callback(active_store.close)
+            health = getattr(gateway, "health", None) or ModelHealth(active_store, configs or (gateway.configs if gateway else {}))
+            active_gateway = gateway or Gateway(configs or {}, active_store, health=health)
+            if gateway is None:
+                resources.callback(active_gateway.close)
+            scheduler = Scheduler(active_store, active_gateway, config_loader=config_loader, max_concurrent=learning_concurrency)
+            resources.callback(scheduler.stop)
+            app.state.store = active_store
+            app.state.gateway = active_gateway
+            app.state.health = health
+            app.state.scheduler = scheduler
+            app.state.retrieval = Retrieval(active_store, active_gateway)
+            scheduler.start()
+            app.state.ready = True
             yield
         finally:
             app.state.ready = False
-            if active_gateway and gateway is None:
-                active_gateway.close()
-            if store is None:
-                active_store.close()
+            await asyncio.to_thread(resources.close)
 
     app = FastAPI(title="Iris 宿主接口", version="0.1.0", lifespan=lifespan,
                   description="接收消息、回复准备、记忆查询和使用反馈。接收不等于学习，召回不等于使用。M1 仅供本机接入。")
@@ -175,13 +197,17 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             pending = conn.execute("SELECT COUNT(*) FROM messages WHERE entry_id=? AND learning_state IN ('pending','batched')", (entry_id,)).fetchone()[0]
         return {"message_ids": ids, "pending_count": pending}
 
+    @app.post("/api/v1/entries/{entry_id}/learn", summary="请求尽快学习；模型暂停时接受并说明原因")
+    def learn(entry_id: str):
+        return app.state.scheduler.request_learning(entry_id)
+
     @app.post("/api/v1/entries/{entry_id}/prepare", summary="准备回复材料，不调用生成模型")
     def prepare(entry_id: str, payload: Prepare):
-        return app.state.retrieval.prepare(entry_id, **payload.model_dump())
+        return add_health_hints(Retrieval(app.state.store, app.state.gateway).prepare(entry_id, **payload.model_dump()), app.state.health)
 
     @app.post("/api/v1/memories/search", summary="筛选并查询记忆；深度读取不恢复遗忘记忆")
     def search(payload: Search):
-        return app.state.retrieval.search(**payload.model_dump())
+        return add_health_hints(Retrieval(app.state.store, app.state.gateway).search(**payload.model_dump()), app.state.health)
 
     @app.post("/api/v1/feedback", summary="反馈实际使用的记忆，24 小时内同条只强化一次")
     def feedback(payload: Feedback):
@@ -189,7 +215,6 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
 
     @app.get("/api/v1/status", summary="服务状态、最近模型调用和入口积压")
     def status():
-        with app.state.store.read() as conn:
-            return {"service": "ready", "models": latest_models(conn), "backlog": backlog(conn)}
+        return service_status(app.state.store, app.state.scheduler, app.state.health)
 
     return app

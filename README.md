@@ -1,4 +1,4 @@
-# Iris M1：学习、召回与宿主接口
+# Iris M1：学习、召回、后台调度与宿主接口
 
 需要 [uv](https://docs.astral.sh/uv/) 和 Python 3.12 及以上。uv 会直接使用机器上已有的兼容 Python；没有时才下载。国内网络下载解释器较慢时，可设置 `UV_PYTHON_INSTALL_MIRROR`，或用 `uv run --python <解释器绝对路径>` 指定已安装的 Python 3.12／3.13。
 
@@ -25,7 +25,7 @@ uv run iris serve
 uv run iris --db data/iris.db serve --host 127.0.0.1 --port 8080
 ```
 
-默认地址为 `http://127.0.0.1:8080`，交互接口文档在 `/docs`，OpenAPI 在 `/openapi.json`。没有模型配置也能启动并使用全文检索；配置 embedding 后可以融合向量检索。当前没有管理员密码和宿主令牌，只允许监听回环地址（`127.0.0.1`、`::1`、`localhost`）。首次设置、界面、后台调度和通过 HTTP 触发学习在后续 PR 实现。
+默认地址为 `http://127.0.0.1:8080`，交互接口文档在 `/docs`，OpenAPI 在 `/openapi.json`。服务启动时恢复中断批次，然后自动调度学习。没有模型配置也能启动、接收和使用全文检索；配置 embedding 后可以融合向量检索。当前没有管理员密码和宿主令牌，只允许监听回环地址（`127.0.0.1`、`::1`、`localhost`）。首次设置、界面、鉴权和 secrets.json 留到后续 PR。
 
 下面的 Python 示例依次调用接收消息、回复准备和使用反馈；请求与响应均使用 UTF-8 JSON：
 
@@ -57,7 +57,18 @@ with httpx.Client(base_url="http://127.0.0.1:8080", timeout=10) as client:
     feedback.raise_for_status()
 ```
 
-接收接口也接受上述消息对象的数组，整批提交在一个事务中完成。正文上限为 32768 个 UTF-8 字节；超限返回 413，不截断。首次入口自动创建。接收并不执行学习：本 PR 仍使用离线 `iris learn group-a --force`；请在停止服务后运行学习命令，再启动服务载入索引，不要启动多个进程共同写同一个数据库。
+接收接口也接受上述消息对象的数组，整批提交在一个事务中完成。正文上限为 32768 个 UTF-8 字节；超限返回 413，不截断。首次入口自动创建，可以在消息中用 `pace` 选择 `realtime`、`standard`（默认）、`economy`，或对象 `{"count":6,"idle_seconds":30,"max_wait_seconds":180}` 自定义节奏；入口创建后沿用已保存的节奏。接收返回后，由后台按数量、空闲、最长等待、关注信号触发学习。等待时间按接收时间计算，历史消息的发生时间仍用于学习事实和相对日期。
+
+离线 `iris learn group-a --force` 只允许在服务停止时使用。服务和离线写入命令使用操作系统文件锁，避免两个进程共同写同一数据库；崩溃后锁自动释放。不要手动删除锁文件来绕过它。
+
+实时／标准／省流的数量分别为 4／12／30 条，空闲为 5 秒／10 分钟／30 分钟，最长等待为 1 分钟／1 小时／4 小时。待学习消息提到角色名、`@`、`记住` 或 `别忘了` 时，空闲条件缩短到至多 1 分钟。手动触发接受后立即返回，暂停期间也接受并给出原因：
+
+```python
+print(httpx.post("http://127.0.0.1:8080/api/v1/entries/group-a/learn").json())
+# {"accepted": true, "pending_count": 2, "paused": false, "reason": null}
+```
+
+默认同时学习 2 个批次，同一入口严格串行。可用 `iris serve --learning-concurrency 1` 修改并持久保存并发数（1—32）。手动请求持久保存到请求当时的消息位置，重启后继续处理该范围的尾部。正常关闭服务时等待在途任务完成；强制终止后由下次启动恢复。
 
 准备结果还包含空的 `state`、未结束的 `goals`、运行 `hints` 和 `recall_id`。`participants` 接受主体 ID 或无歧义的名字／别名；同名账号必须使用主体 ID。省略参与者时从返回的近期消息推断，传空数组可不取人物要点。`recent_limit=0` 关闭近期消息；记忆最多 8 条、1500 个估算 token，目标最多 10 个。模型故障时仍返回已有资料，并说明全文检索降级。
 
@@ -77,6 +88,18 @@ print(httpx.get("http://127.0.0.1:8080/api/v1/status").json())
 
 查询可包含遗忘记忆，但读取不会改变其状态；自动遗忘和恢复规则到 M2 实现。反馈有效期为 24 小时，同次召回同条记忆只增加一次保留强度（+8，上限 100），不改变相信程度或修订号。错误码：400 参数／反馈无效、404 不存在／已删除、413 消息过大、503 暂不可用；409 保留用于修订冲突，当前宿主接口不修改记忆正文。
 
+## 模型故障与状态
+
+学习首次请求、调用内重试和 JSON 修正共享 180 秒总预算；其他生成请求为 120 秒，embedding 为 30 秒，召回查询 embedding 仍限 2 秒且不重试，评测判分为 240 秒。调用内最多再试两次；批次重试间隔为 1／5／15 分钟，共四次尝试。
+
+对话和 embedding 分别维护状态：`normal`、`temporarily_unavailable`、`invalid_key`、`configuration_error`、`account_problem`；每日上限造成学习暂停时，对话用途显示 `usage_limit`。连续三次网络／超时／429／5xx 请求错误会暂停该用途（包含调用内重试的失败），触发暂停的批次失败不扣尝试次数。探测使用固定短请求，间隔为 1、2、4、8、10 分钟，之后保持 10 分钟；成功即恢复。401／403 是密钥无效，404 是配置错误，只在配置实际改变后恢复；账户问题还支持定时探测和内部立即重试。
+
+服务会重新读取 `test-models.toml` 或 `IRIS_TEST_MODELS` 指向的文件，修改模型配置后对新工作生效。设置页以后可调用 `Gateway.replace_config(kind, ModelConfig(...))`、`Gateway.retry_now(kind)`；这两个内部函数不提供 HTTP 设置入口，也不把凭据写入数据库。`ModelHealth.set_daily_token_limit(整数或 None)` 设置每日 token 上限，默认不限；按角色 `timezone` 的次日零点或调高上限恢复。额度根据服务商已报告用量计算，在途请求可能越过上限，未报告 token 的调用不能计量。接收和召回始终照常。
+
+embedding 暂停时网关直接返回可降级错误，回复准备和查询使用全文，并附 `model_paused` 提示。缺少向量的记忆照常进入全文索引，恢复后后台按修订号补算。`GET /api/v1/status` 提供 `model_health`、各入口 `current_batch`／`latest_batch`、`memory_gap_count`、今日／本周 `usage`、`learning_latency_24h`（P50／P95／最大耗时／超时数）和 `scheduler.running`；兼容保留最近调用 `models` 和积压 `backlog`。
+
+运行日志同时输出控制台和数据库所在目录的 `logs/iris.log`，每 2 MB 滚动，保留 3 份旧文件；只记录状态、标识和错误类别，默认不记录消息正文或 API key。
+
 ## 评测
 
 ```powershell
@@ -85,7 +108,9 @@ uv run iris eval learning --judge-runs 2
 uv run iris eval recall
 uv run iris eval recall --split dev --calibrate
 uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
+uv run iris eval e2e --split dev --judge-runs 1
+uv run iris eval e2e --judge-runs 2 --out C:\eval-results\e2e
 uv run python evals/benchmark_retrieval.py
 ```
 
-语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。学习和召回的最终验收仍需规划者运行隐藏集。
+语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。端到端评测在临时目录启动真实服务，只经 HTTP 写入和提问，并跨越强制重启。最终双判要求至少 8/10；最终验收仍需规划者运行隐藏集。

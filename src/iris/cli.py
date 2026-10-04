@@ -29,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     serve = commands.add_parser("serve", help="Serve the local host API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument("--learning-concurrency", type=int, help="Concurrent learning batches, default 2 (1..32)")
     models = commands.add_parser("models", help="Model connection commands")
     models.add_argument("action", choices=["check"])
     ingest = commands.add_parser("ingest", help="Add UTF-8 JSONL messages")
@@ -37,11 +38,12 @@ def main(argv: list[str] | None = None) -> int:
     learn.add_argument("entry_id")
     learn.add_argument("--force", action="store_true", help="Run a waiting batch now")
     evaluation = commands.add_parser("eval", help="Run a frozen evaluation")
-    evaluation.add_argument("kind", choices=["learning", "recall"])
+    evaluation.add_argument("kind", choices=["learning", "recall", "e2e"])
     evaluation.add_argument("--split", choices=["dev", "holdout", "all"], default="all")
     evaluation.add_argument("--corpus", type=Path, help="UTF-8 JSONL corpus, including files outside the repository")
     evaluation.add_argument("--out", type=Path, help="Report output directory (default: evals/reports)")
     evaluation.add_argument("--judge-runs", type=int, choices=[1, 2], default=2)
+    evaluation.add_argument("--wait-timeout", type=float, default=900, help="E2E natural learning drain deadline, seconds")
     evaluation.add_argument("--calibrate", action="store_true", help="Calibrate recall thresholds on dev only")
     args = parser.parse_args(argv)
     if args.command == "serve":
@@ -55,7 +57,17 @@ def main(argv: list[str] | None = None) -> int:
                 configs = load_test_models()
             except FileNotFoundError:
                 configs = None
-            uvicorn.run(create_app(args.db, configs=configs), host=host, port=args.port, workers=1)
+            if args.learning_concurrency is not None and not 1 <= args.learning_concurrency <= 32:
+                raise ValueError("learning concurrency must be 1..32")
+            from .runtime_logging import configure_logging
+            configure_logging(Path(args.db).resolve().parent, configs or {})
+            def reload_configs():
+                try:
+                    return load_test_models()
+                except FileNotFoundError:
+                    return {}
+            uvicorn.run(create_app(args.db, configs=configs, config_loader=reload_configs,
+                                  learning_concurrency=args.learning_concurrency), host=host, port=args.port, workers=1)
             return 0
         except (ValueError, OSError) as error:
             print(str(error), file=sys.stderr)
@@ -73,6 +85,13 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             if args.calibrate:
                 raise ValueError("--calibrate is only available for recall")
+            if args.kind == "e2e":
+                from .e2e_evaluation import run_e2e_eval
+                path, report = run_e2e_eval(load_test_models(), Path.cwd(), args.split, corpus=args.corpus,
+                                          out=args.out, judge_runs=args.judge_runs, wait_timeout=args.wait_timeout)
+                print(f"Report: {path}")
+                print(f"E2E: {report['passed']}/{report['total']}; judge runs={report['judge_runs']}")
+                return 0
             path, report = run_learning_eval(load_test_models(), Path.cwd(), args.split, corpus=args.corpus, out=args.out, judge_runs=args.judge_runs)
             print(f"Report: {path}")
             for split, metrics in report["metrics"].items():
@@ -81,7 +100,15 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError, ModelError, RuntimeError) as error:
             print(f"Evaluation failed: {error}", file=sys.stderr)
             return 1
-    store = Store(args.db)
+    from .process_lock import StoreLease
+    lease = StoreLease(args.db)
+    try:
+        lease.__enter__()
+        store = Store(args.db)
+    except (ValueError, OSError) as error:
+        lease.__exit__()
+        print(str(error), file=sys.stderr)
+        return 1
     try:
         if args.command == "setup":
             print(setup_role(store, args.name, args.background, args.timezone))
@@ -141,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             gateway.close()
     finally:
         store.close()
+        lease.__exit__()
     return 1
 
 

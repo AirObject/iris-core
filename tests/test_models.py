@@ -127,30 +127,38 @@ def test_embedding_uses_configured_plan_path(store):
 
 
 @pytest.mark.parametrize(("purpose", "deadline"), [
-    ("test", 120), ("learning", 120), ("learning_repair", 120),
+    ("test", 120), ("learning", 180), ("learning_repair", 180),
     ("learning_judge", 240), ("learning_judge_repair", 240),
 ])
 def test_generation_has_hard_total_timeout_and_two_retries(store, purpose, deadline):
+    from fake_openai import Clock
+    clock = Clock()
+    seen = []
     class Future:
         def cancel(self):
             return False
 
         def result(self, timeout):
-            assert timeout == deadline
+            seen.append(timeout)
+            clock.advance(1)
             raise FutureTimeout()
     class Pool:
         def submit(self, *args, **kwargs):
-            assert kwargs["timeout"].read == deadline
+            assert kwargs["timeout"].read <= deadline
             assert kwargs["timeout"].connect == 10
             return Future()
     sleeps = []
-    gateway = Gateway(configs(), store, sleeper=sleeps.append)
+    def sleep(seconds):
+        sleeps.append(seconds)
+        clock.advance(seconds)
+    gateway = Gateway(configs(), store, sleeper=sleep, monotonic=clock.monotonic)
     gateway._pool.shutdown(wait=False)
     gateway._pool = Pool()
     with pytest.raises(ModelError) as caught:
         gateway.chat([{"role": "user", "content": "test"}], purpose)
     assert caught.value.category == "retryable"
     assert sleeps == [2, 8]
+    assert seen == [deadline, deadline - 3, deadline - 12]
 
 
 def test_provider_account_status_is_classified_without_body_in_record(store):

@@ -18,7 +18,7 @@ from typing import Any
 from .db import Store
 from .learning import LearningEngine, PROMPT_VERSION, _same_goal
 from .memory_ops import setup_role
-from .models import CHAT_TOTAL_TIMEOUT, JUDGE_TOTAL_TIMEOUT, Gateway, ModelConfig, ModelError
+from .models import LEARNING_TOTAL_TIMEOUT, JUDGE_TOTAL_TIMEOUT, Gateway, ModelConfig, ModelError
 from .queue import add_message, form_batch, get_batch
 
 
@@ -329,7 +329,7 @@ def _fmt(value: Any) -> str:
 def _report_markdown(report: dict[str, Any]) -> str:
     lines = ["# Iris 学习评测", "", f"时间：{report['created_at']}",
              f"学习提示词：`{report['prompt_version']}`；评分说明：`{report['scoring_version']}`；对话模型：`{report['chat_model']}`；embedding：`{report['embedding_model']}`。",
-             f"每次学习请求总超时 {report.get('timeouts_seconds', {}).get('learning', CHAT_TOTAL_TIMEOUT)} 秒；"
+             f"学习请求（含重试和 JSON 修正）总超时 {report.get('timeouts_seconds', {}).get('learning', LEARNING_TOTAL_TIMEOUT)} 秒；"
              f"评测判分请求总超时 {report.get('timeouts_seconds', {}).get('judge', JUDGE_TOTAL_TIMEOUT)} 秒。",
              "", f"评测集：{report['corpus']['cases']} 段、{report['corpus']['messages']} 条消息、"
              f"{report['corpus']['must']} 条 must；当前运行 {report['split']}。每段判 {report.get('judge_runs', 2)} 次；双判分歧按不利结论计分，单判不计算分歧率。"
@@ -576,7 +576,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
               "checkpoint_signature": signature, "source_sha256": source_hash, "resumed_cases": resumed,
               "elapsed_seconds": round(time.monotonic() - started, 1),
               "prompt_version": PROMPT_VERSION, "scoring_version": SCORING_VERSION,
-              "timeouts_seconds": {"learning": CHAT_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT},
+              "timeouts_seconds": {"learning": LEARNING_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT},
               "chat_model": configs["chat"].model, "embedding_model": configs["embedding"].model or "unconfigured",
               "corpus": {"cases": len(cases), "messages": sum(len(row["case"]["messages"]) for row in rows),
                          "must": sum(len(row["case"]["must"]) for row in rows),
