@@ -27,6 +27,12 @@
 
 阶段门槛要求全部公开样本和规划者隐藏集同时达到。公开语料在 GLM 阶段全部按 dev 使用；`learning_v2` 的历史 holdout 只作回归分组单列，不作 holdout 判定。
 
+## PR #5 本次复现（2026-10-05）
+
+以上两节保留 main 在重测开始时的原文；本次完成 PR #5 的 macOS 测试、召回复现和性能测量。详见 [收尾记录](reports/pr5-macos-closeout-20261005.md)、[召回逐项对照](reports/pr5-macos-recall-comparison-20261005.md) 和 [性能报告](reports/retrieval-performance-macos-20261005.md)。
+
+Python 3.13／3.12 各 215 passed，uv build 成功。默认召回 Recall@8、nDCG@8、误返率与历史一致；relevant 标注精确率及五条 v2 返回存在差异，历史源码指纹也待追溯，未重新选参，交规划者决定。默认四组性能 R10 通过；扩展对照及 macOS RSS 口径另见报告。学习影响由「test: GLM 学习基线与 PR #5 对照」另行测量。
+
 ## 命令
 
 在仓库根目录运行；Windows PowerShell 中命令相同，只是路径写法不同：
