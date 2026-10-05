@@ -1,24 +1,27 @@
 # Iris M1：学习、召回与宿主接口
 
-需要 [uv](https://docs.astral.sh/uv/) 和 Python 3.12 及以上。uv 会直接使用机器上已有的兼容 Python；没有时才下载。国内网络下载解释器较慢时，可设置 `UV_PYTHON_INSTALL_MIRROR`，或用 `uv run --python <解释器绝对路径>` 指定已安装的 Python 3.12／3.13。
+需要 [uv](https://docs.astral.sh/uv/) 和 Python 3.12 及以上。开发设备为 macOS，仓库内 `.venv` 使用 Python 3.13；以下命令也适用于 Linux 和 Windows PowerShell：
 
-```powershell
-uv sync
+```bash
+uv sync --python 3.13
 uv run pytest
+uv run --locked --isolated --python 3.12 pytest
 ```
+
+两个版本的测试依次运行，不同时运行；3.12 使用临时环境，保持仓库 `.venv` 为 3.13。
 
 可用 `uv run iris setup --name Iris` 创建初始角色。学习命令行可用 `uv run iris ingest messages.jsonl` 接收 UTF-8 消息，再执行 `uv run iris learn <入口标识> --force`。JSONL 每行至少包含 `entry_id`、`platform`、`sender`、`content`、带时区的 ISO `occurred_at` 和入口内唯一的 `dedupe_key`；可选 `kind` 为 `message`、`self_output`、`action_result` 或 `event`。引用可带 `quote_author`、`quote_author_account_id` 和 `quote_content`；场景事件有固定的“场景”主体，行动结果属于“我”。
 
-把 `test-models.example.toml` 复制为仓库根目录的 `test-models.toml` 并填写测试模型配置；该文件被 Git 忽略。也可设置 `IRIS_TEST_MODELS` 指向工作树外的配置文件。然后运行：
+把 `test-models.example.toml` 复制为仓库根目录的 `test-models.toml` 并填写测试模型配置；该文件被 Git 忽略。在其他 worktree 中设置 `IRIS_TEST_MODELS` 指向同一份配置的绝对路径，不复制密钥文件。2026-10-05 起对话模型为 glm-5.3-flash，embedding 为 doubao-embedding-vision。然后运行：
 
-```powershell
+```bash
 uv run iris models check
 uv run iris eval learning
 ```
 
 ## 本机服务
 
-```powershell
+```bash
 uv run iris setup --name Iris
 uv run iris serve
 # 也可指定数据库和本机端口：
@@ -81,13 +84,13 @@ print(httpx.get("http://127.0.0.1:8080/api/v1/status").json())
 
 ## 评测
 
-```powershell
+```bash
 uv run iris eval learning --split dev --judge-runs 1
 uv run iris eval learning --judge-runs 2
 uv run iris eval recall
 uv run iris eval recall --split dev --calibrate
 # 如需重新比较 1024／2048 维，再加 --compare-embeddings
-uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
+uv run iris eval recall --corpus <外部 JSON 或 JSONL> --out <外部目录>
 uv run python evals/benchmark_retrieval.py --default-config
 ```
 
@@ -95,4 +98,6 @@ uv run python evals/benchmark_retrieval.py --default-config
 
 当前回复检索默认 trigram＋2048 维 float32，向量下限 0.35、相对比例 0.75、向量／全文权重 2:1，查询加“为这个问题检索能回答它的个人记忆：”前缀；无向量时用 jieba。新数据库写入这些默认值，已有设置保留。学习材料保持独立的 PR #4 设置。
 
-第三轮在 106 条 dev 上先比较 `(Recall@8+nDCG@8)/2`，距最高值不足 0.01 视为持平，再取 relevant 标注精确率高、无关误返率低者。原 v2 holdout 的 22 条只作对照，不用于选择；无关误返不设本轮门槛。[参数选择与完整结果](evals/reports/recall-pr5-r3-summary.md)记录了仍选 trigram 的依据及未解决的误返。点名检查仅读取检索和人物要点候选的正文，含点名／不点名两种请求的 5k、50k 数据见[性能报告](evals/reports/retrieval-performance-pr5-r3.md)。
+召回评测默认运行三份公开集，共 128 条查询。GLM 阶段全部按 dev 使用，保留原 split 作历史分组；原选参方法见 [evals/README.md](evals/README.md)。新设备阶段只复现冻结参数，有质量差异交规划者决定是否重新标定。无答案拒绝留到 M2。
+
+点名检查仅读取检索和人物要点候选的正文。性能脚本加 `--default-config` 覆盖当前默认的 5 千／5 万条、点名／不点名四组；不带该参数还会比较维度和 dtype，并在合成测试库中关闭向量截断。性能方法和本次报告入口见 [evals/README.md](evals/README.md)。学习影响由「test: GLM 学习基线与 PR #5 对照」另行测量。

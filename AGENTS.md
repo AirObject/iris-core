@@ -2,33 +2,47 @@
 
 产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心、回复准备、查询与反馈接口及第五轮召回质量改进；后台调度、HTTP 学习触发、界面、首次设置和鉴权尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
 
+2026-10-05 起，开发与评测的对话模型改为 glm-5.3-flash，开发设备改为 macOS。MiniMax-M3 时期的评测结果全部作废；GLM 重测计划及新设备召回复现见 `evals/README.md`。
+
+## 分工
+
+规划者（监督者）负责规划、审查和文档，并在仓库外维护隐藏验收集；执行者负责代码、测试和评测。每个执行任务在自己的 git worktree 中进行。可以同时有多个执行会话，但同一时间只有一个修改产品代码（`src/`、`tests/`、迁移和提示词）；其余会话只运行评测、整理报告，或做互不重叠的配置。
+
 ## 安装和运行
 
-需要 uv 和 Python 3.12 及以上。Windows PowerShell：
+需要 uv 和 Python 3.12 及以上。以下命令在 macOS、Linux 和 Windows PowerShell 中相同：
 
-```powershell
-uv sync
+```bash
+uv sync --python 3.13
 uv run pytest
 uv run iris --help
 uv run iris serve
 ```
 
-测试模型配置可放在当前目录的 `test-models.toml`，或用环境变量 `IRIS_TEST_MODELS` 指向绝对路径。参见 `test-models.example.toml`。验证连接及运行真实评测：
+仓库内的 `.venv` 使用 Python 3.13。提 PR 前另用临时环境跑一次 3.12：
 
-```powershell
+```bash
+uv run --locked --isolated --python 3.12 pytest
+```
+
+不要省略 `--isolated` 直接写 `--python 3.12`，否则 uv 会把 `.venv` 重建成 3.12。两个版本的测试共用 `.pytest-tmp`，不要同时运行。
+
+测试模型配置可放在当前目录的 `test-models.toml`，或用环境变量 `IRIS_TEST_MODELS` 指向绝对路径；在其他 worktree 中工作时用后者指向同一份配置，不要复制含密钥的文件。参见 `test-models.example.toml`。验证连接及运行真实评测：
+
+```bash
 uv run iris models check
 uv run iris eval learning --split dev --judge-runs 1
 uv run iris eval learning --judge-runs 2
 uv run iris eval recall
 uv run iris eval recall --split dev --calibrate
-uv run iris eval learning --corpus C:\path\to\cases.jsonl --out C:\path\to\reports
+uv run iris eval learning --corpus <外部 JSONL> --out <外部目录>
 ```
 
-`evals/learning_v1.jsonl` 的 36 段全部为 dev；`learning_v2.jsonl` 的 16 段历史 holdout 已在 PR #2 分析，依 2026-09-29 决定只具回归意义，本轮保留原 split 作最终对照。`learning_v3.jsonl` 的 10 段手写 dev 和 `scoring_v3.md` 在学习提示词 v4 前单独提交冻结，概况与边界修订理由见 `evals/learning_v3_notes.md`。迭代只运行 dev。PR #5 第二轮按用户要求，最终代码固定后全部学习集双判独立运行两次；第三轮未改学习选取，沿用这两次报告，不冒充新评测；历史 holdout 仅作回归，不作为未见验收。不要为了达标修改样本或放宽评分；真实标注错误须逐条说明理由。评测按入口真实节奏分批，最终每段判两次，分歧取不利结论；迭代允许 --judge-runs 1，不能把单判当成最终双判结果。
+`evals/learning_v1.jsonl` 的 36 段全部为 dev；`learning_v2.jsonl` 的 16 段历史 holdout 已在 PR #2 分析，依 2026-09-29 决定只具回归意义，报告中单列但不作 holdout 判定。`learning_v3.jsonl` 的 10 段手写 dev 和 `scoring_v3.md` 在学习提示词 v4 前单独提交冻结，概况与边界修订理由见 `evals/learning_v3_notes.md`。GLM 阶段全部公开样本按 dev 使用。不要为了达标修改样本或放宽评分；真实标注错误须逐条说明理由。评测按入口真实节奏分批，最终每段判两次，分歧取不利结论；迭代允许 --judge-runs 1，不能把单判当成最终双判结果。
 
-默认评测读取三份仓库 JSONL，报告写入 `evals/reports/`。`--corpus` 替换输入集，`--out` 替换报告目录，均支持仓库外路径。隐藏验收集由规划者维护，执行者不得寻找或读取；最终门槛须隐藏集和仓库评测同时达到，不能仅凭仓库结果宣称 M1 最终通过。报告单列长度截断批次、别名覆盖率／精确率及双判分歧。
+默认评测读取三份仓库 JSONL，报告写入 `evals/reports/`。`--corpus` 替换输入集，`--out` 替换报告目录，均支持仓库外路径。隐藏验收集由规划者维护，执行者不得寻找或读取；最终门槛须隐藏集和全部公开样本同时达到，不能仅凭仓库结果宣称 M1 最终通过。报告单列长度截断批次、别名覆盖率／精确率及双判分歧。
 
-学习提示词使用 v5，学习和判分输出上限均为 16000 token。学习请求总超时本轮仍为 120 秒（已决定的 180 秒改动留到调度 PR）；评测判分因真实请求连续超时单独延长到 240 秒，报告标明两者。`model_calls` 记录 finish_reason、输出用量和所属批次。校验前做确定性规整：计划立场、数字 M 引用、单元素名字数组和无效 derived_from；通过证据校验的自身亲历／观点补齐 about 中的“我”；推断只在实际涉及我时由学习输出包含“我”，不再无条件补齐。正文和 tags 在校验后消除批次 P 编号，禁止推断性别，不同事实分开。原始输出及规整记录都保留。消息／引用作者显示参与者编号，归属用主体 ID 校验。同名账号不合并；本人别名写 `subject_aliases`，未知同一人用 `same_as`，虚构扮演用 `roleplay`。
+学习提示词使用 v5，学习和判分输出上限均为 16000 token。学习请求总超时 120 秒，评测判分 240 秒，报告标明两者。`model_calls` 记录 finish_reason、输出用量和所属批次。校验前做确定性规整：计划立场、数字 M 引用、单元素名字数组和无效 derived_from；通过证据校验的自身亲历／观点补齐 about 中的“我”；推断只在实际涉及我时由学习输出包含“我”，不再无条件补齐。正文和 tags 在校验后消除批次 P 编号，禁止推断性别，不同事实分开。原始输出及规整记录都保留。消息／引用作者显示参与者编号，归属用主体 ID 校验。同名账号不合并；本人别名写 `subject_aliases`，未知同一人用 `same_as`，虚构扮演用 `roleplay`。
 
 ## 目录
 
@@ -38,6 +52,7 @@ uv run iris eval learning --corpus C:\path\to\cases.jsonl --out C:\path\to\repor
 - `src/iris/learning.py`、`prompts/`：材料、校验、写入、学习提示词和评分说明。
 - `src/iris/memory_ops.py`：初始设定和数据层记忆操作。
 - `src/iris/retrieval.py`、`vector_index.py`、`search_text.py`：FTS5、numpy 向量、回复准备和反馈。
+- `src/iris/learning_retrieval.py`：独立的学习材料检索，不继承回复调参。
 - `src/iris/api.py`：FastAPI 宿主接口；serve 只绑定回环地址。
 - `src/iris/evaluation.py`、`recall_evaluation.py`、`evals/`：隔离数据库的学习和召回评测。
 - `tests/`：确定性逻辑和假模型集成测试。
@@ -50,16 +65,16 @@ uv run iris eval learning --corpus C:\path\to\cases.jsonl --out C:\path\to\repor
 
 ## 召回与验证
 
-`recall_v1.json` 是单独冻结的 40 条固定记忆、38 条手写 dev 查询（8 条无答案）；禁止用脚本或模板生成质量语料。`iris eval recall --corpus <JSON 或 JSONL> --out <目录>` 可用于规划者的外部集，格式见 evals/README。`--calibrate` 只允许 `--split dev`，报告完整网格，不修改在用数据库。先比较 `(Recall@8+nDCG@8)/2`，与全网格最佳相差不足 0.01 视为持平，再比较 relevant 标注精确率、较低无关误返率；不以误返抵消召回损失。禁止用隐藏集或已分析过的 holdout 选参。
+默认召回评测读取 recall_v1、recall_v2、recall_conversation_v1 三份公开语料，共 123 条固定记忆、128 条查询，各自隔离入库。v1 在 `a8af9b1` 冻结，v2 在 `95549fc` 冻结，对话集在 `15cdd48` 冻结；来源与格式见 `evals/README.md`，语料及 notes 保持原样。禁止用脚本或模板生成质量语料。GLM 阶段全部公开样本按 dev 使用；文件中的原 split 仅作历史分组，不代表未见验收。隐藏验收集由规划者维护，执行者不得寻找或读取。
 
-recall_v2 在 `95549fc` 单独冻结，历史 22 条 holdout 已分析。第二轮新增 `15cdd48` 手写冻结的 recall_conversation_v1：33 条记忆、24 条查询、6 条无答案，查询和参与者均为 null，含私聊／群聊／直播。默认三个公开集合各自隔离入库。第三轮按冻结 split 合并 106 条 dev 标定；原 v2 holdout 的 22 条只报告对照，不参与选参，不新增公开 holdout。验收以规划者的隐藏集为准。
+`iris eval recall --corpus <JSON 或 JSONL> --out <目录>` 支持外部集。`--calibrate` 只允许 `--split dev`，报告完整网格，不修改在用数据库。选参先比较 `Q=(Recall@8+nDCG@8)/2`，与全网格最佳相差不足 0.01 视为持平，再比较 relevant 标注精确率、较低无关误返率，随后比较 Q，完全相同保留网格顺序；不逐项链式平分。PR #5 原选参使用冻结 split 的 106 条 dev，排除 v2 已分析的 22 条历史 holdout。新设备阶段只复现，不重新选参；有差异先报告，由规划者决定是否重新标定。
 
-回复准备先选相关记忆，再按参与者最近发言顺序轮流补人物要点，宿主显式顺序优先，要点合计最多三条，排除 self／scene；每条有 reason，相关项为 relevant，要点为 person_highlight。search 不补人物要点。点名检查仅对全文匹配、达到向量绝对下限和人物要点的候选按 ID 读取正文；各路按原顺序分批检查，锚点筛选仍先于 200 条截断，相对下限仍取被点名范围内的最佳余弦。参与者只轻度加权，不排除其他人；文本点名（含别名）只保留 about／speaker／正文提及该主体的记忆，同名主体都算锚点。不得重新引入属性或话题词表判断答案。QUERY_STOP 只留通用语法词，删词清单见 PR5_EXECUTION。
+回复准备先选相关记忆，再按参与者最近发言顺序轮流补人物要点，宿主显式顺序优先，要点合计最多三条，排除 self／scene。每条有 reason：相关项为 relevant，要点为 person_highlight；search 不补人物要点。参与者只轻度加权，不排除其他人；文本点名（含别名）只保留 about／speaker／正文提及该主体的记忆，同名主体都算锚点。点名检查仅对全文匹配、达到向量绝对下限和人物要点的候选按 ID 读取正文并缓存；锚点筛选先于 200 条截断，相对下限取被点名范围内的最佳余弦。不得用属性或话题词表判断答案；回复 QUERY_STOP 只保留通用语法词。
 
-学习材料由 learning_retrieval.py 独立选取，默认恢复 PR #4：jieba 词项覆盖 0.5、向量下限 0.65、无问题前缀或相对截断、不按锚点或参与者排除，人物要点仍含本批参与者及提及者。专用 runtime_settings.learning_retrieval 不读回复标定设置；以后修改先用学习评测证明质量不降。
+学习材料由 learning_retrieval.py 独立选取，保持 PR #4 设置：jieba 词项覆盖 0.5、向量下限 0.65、RRF k=60 等权、无问题前缀或相对截断、不按锚点或参与者排除，人物要点含本批参与者及提及者。专用 runtime_settings.learning_retrieval 不读回复标定设置；以后修改先用学习评测证明质量不降。本次学习影响由「test: GLM 学习基线与 PR #5 对照」另行测量。
 
-回复默认 trigram＋2048 float32 向量，有前缀、绝对下限 0.35、相对比例 0.75、向量权重 2／全文权重 1；无向量时降级 jieba，保留短词检索。这是第三轮新规则在 106 条 dev 上选择的结果：全网格最佳 Q=0.975330，选中 Q=0.970943，差 0.004386，持平区间内 relevant 标注精确率最高。完整参数和 144 个混合组合、两个全文对照见 retrieval_defaults.json 与本轮报告。新数据库写入 runtime_settings.retrieval；已有设置保留。更换模型或维度须重新标定，未标定退回全文。SQLite 存 float32，内存默认 float32。索引只在事务提交后更新；评分用不可变向量块快照，不持数据库写锁。读准备／查询只写召回记录，不增加保留强度。
+回复默认 trigram、RRF k=60、2048 维 float32，查询前缀为“为这个问题检索能回答它的个人记忆：”，向量绝对下限 0.35、相对比例 0.75、向量权重 2／全文权重 1；无向量时降级 jieba。完整参数见 `src/iris/retrieval_defaults.json`。新数据库写入 runtime_settings.retrieval，已有设置保留。更换模型或维度须重新标定，未标定退回全文。SQLite 存 float32，内存默认 float32。索引只在事务提交后更新；评分用不可变向量块快照，不持数据库写锁。读准备／查询只写召回记录，不增加保留强度。
 
-Python 3.12 和 3.13 使用独立环境测试，不能在运行评测时切换或重建同一虚拟环境，也不要在模型评测运行期间修改源码或迁移。完整学习案例按源码／语料／模型与维度／判分次数指纹保存在忽略的 data/lc/<16位短名>，meta.json 校验完整 SHA-256；外部 --out 的检查点与完整明细留在外部。只复用相同输入的完成案例，不按分数选择或改写结果。
+不能在运行评测时切换或重建同一虚拟环境，也不要在模型评测运行期间修改源码或迁移。完整学习案例按源码／语料／模型端点、ID、维度／判分次数指纹保存在忽略的 `data/lc/<16位指纹>`，meta.json 校验完整 SHA-256；外部 --out 的检查点在 `<out>/.lc/<16位指纹>`，完整明细也留在外部。只复用相同输入的完成案例，不按分数选择或改写结果。
 
-本 PR 覆盖 R01、R04—R13；用户已确认 R14 按设计留到 M4，R02、R03 同样留到 M4。不要在本轮添加可见范围、宿主令牌、自动遗忘和恢复。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料；`--default-config` 同时测 5k／50k 点名与不点名 prepare，结果保存在 retrieval-performance-pr5-r3.json。
+本分支覆盖召回验收 R01、R04—R13；R02、R03、R14 经用户确认留到 M4。可见范围和宿主令牌在 M4，自动遗忘和恢复在 M2，未到对应阶段不要添加。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料；加 `--default-config` 测量当前默认的 5 千／5 万条、点名／不点名四组 prepare。
