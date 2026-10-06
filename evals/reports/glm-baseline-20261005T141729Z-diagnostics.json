@@ -58,7 +58,8 @@
           "only_report_changes": true
         }
       }
-    }
+    },
+    "planner_commit_title": "chore: 清理 MiniMax-M3 评测产物"
   },
   "public_corpus_field_comparison": {
     "all_non_tag_case_fields_identical": true,
@@ -150,9 +151,9 @@
     "each_cli_default_case_workers": 4
   },
   "protocol": {
-    "initial_parallel": "Both original CLIs started concurrently. Pair invalidated after PR5 L007 judging exhausted timeout retries; both stopped together. Main also recorded HTTP 429. No quality score selected or discarded based on score.",
+    "initial_parallel": "Both original CLIs started concurrently. Pair invalidated after PR5 L007 judging exhausted timeout retries; both stopped together. Main also recorded one learning_judge HTTP 429 (L009), not an embedding HTTP 429. No quality score selected or discarded based on score.",
     "retry": "One fresh full sequential attempt per side, main then PR5; initial checkpoints archived externally before retry. No initial completed cases reused.",
-    "quality_trigger": "Not evaluable because no valid complete first comparison exists; no score-triggered second pair was run.",
+    "quality_trigger": "Suspended by the planner: GLM 判分，仅作预览. No score-triggered rerun and no assessment of PR5 learning impact. Later executor scoring will reuse existing learning outputs without rerunning learning.",
     "source_parameters_unchanged": true,
     "hidden_corpus_accessed": false,
     "recall_calibration_run": false
@@ -60730,12 +60731,246 @@
     }
   ],
   "limitations": [
-    "Incomplete and abandoned-batch learning attempts do not establish a valid GLM baseline or PR5 learning impact.",
+    "GLM 判分，仅作预览. Scores and differences are descriptive only; the planner suspended the 3-percentage-point rerun rule. Missing judgments and abandoned batches also prevent a complete 86-case report. PR5 learning impact awaits the new executor-scoring channel.",
     "All public samples are dev in the GLM stage; historical holdout is a regression grouping only.",
     "Original gateway discards reasoning_content; presence of that provider response field is unobservable.",
     "The judge discards raw response text after parsing; strict JSON/marker inspection is limited to persisted learning raw_output, while judge repairs and truncations are observable through model_calls.",
     "Quantitative usage excludes unreported timeout/cancelled-request tokens.",
     "Automated sampling plus retained databases/checkpoints may still lack final calls of early failed cases; such gaps are listed per run.",
-    "Qualitative assistant review is not independent human acceptance; original judgments were not changed."
-  ]
+    "Qualitative assistant review is not independent human acceptance; original judgments were not changed.",
+    "Main sequential L014/L034 lack full retained databases; four successful learning responses have no saved raw_output. This limits later rescoring from existing materials and is not repaired by rerunning learning."
+  ],
+  "updated_at": "2026-10-06T01:33:06.499886+00:00",
+  "judgment_status": {
+    "label": "GLM 判分，仅作预览",
+    "preview_only": true,
+    "decision": "DECISIONS.md 2026-10-05 评测判分改由执行者模型完成",
+    "score_triggered_reruns_suspended": true,
+    "pr5_learning_impact_not_assessed": true,
+    "next_scoring_channel": "executor model; two independent mutually invisible judging sessions using fixed scoring_v3",
+    "reuse_existing_learning_outputs": true,
+    "rerun_learning_for_rescoring": false,
+    "new_model_calls_in_this_annotation_update": 0
+  },
+  "embedding_audit": {
+    "model": "doubao-embedding-vision",
+    "scope": "All retained model_calls from both learning rounds, both connection checks, and the single main recall run; counts are attempts, including retryable failures if present.",
+    "failure_definition": "result_category != success",
+    "timeout_definition": "error_summary contains timeout, case-insensitive",
+    "http_429_definition": "status_code == 429 or error_summary == HTTP 429",
+    "failure_subcounts_overlap": true,
+    "by_run": {
+      "connection-check": {
+        "main": {
+          "calls": 1,
+          "failures": 0,
+          "timeouts": 0,
+          "http_429": 0,
+          "status_codes_not_preserved": 0,
+          "purpose_counts": {
+            "connection_check": 1
+          },
+          "result_categories": {
+            "success": 1
+          }
+        },
+        "pr5": {
+          "calls": 1,
+          "failures": 0,
+          "timeouts": 0,
+          "http_429": 0,
+          "status_codes_not_preserved": 0,
+          "purpose_counts": {
+            "connection_check": 1
+          },
+          "result_categories": {
+            "success": 1
+          }
+        }
+      },
+      "paired-1": {
+        "main": {
+          "calls": 50,
+          "failures": 0,
+          "timeouts": 0,
+          "http_429": 0,
+          "status_codes_not_preserved": 0,
+          "purpose_counts": {
+            "retrieval_query": 23,
+            "memory_embedding": 27
+          },
+          "result_categories": {
+            "success": 50
+          }
+        },
+        "pr5": {
+          "calls": 52,
+          "failures": 0,
+          "timeouts": 0,
+          "http_429": 0,
+          "status_codes_not_preserved": 0,
+          "purpose_counts": {
+            "retrieval_query": 20,
+            "memory_embedding": 32
+          },
+          "result_categories": {
+            "success": 52
+          }
+        }
+      },
+      "recall-1": {
+        "main": {
+          "calls": 77,
+          "failures": 0,
+          "timeouts": 0,
+          "http_429": 0,
+          "status_codes_not_preserved": 77,
+          "purpose_counts": {
+            "recall_eval_embedding": 77
+          },
+          "result_categories": {
+            "success": 77
+          }
+        },
+        "pr5": {
+          "calls": 0,
+          "failures": 0,
+          "timeouts": 0,
+          "http_429": 0,
+          "status_codes_not_preserved": 0,
+          "purpose_counts": {},
+          "result_categories": {}
+        }
+      },
+      "sequential-1": {
+        "main": {
+          "calls": 495,
+          "failures": 0,
+          "timeouts": 0,
+          "http_429": 0,
+          "status_codes_not_preserved": 0,
+          "purpose_counts": {
+            "retrieval_query": 250,
+            "memory_embedding": 245
+          },
+          "result_categories": {
+            "success": 495
+          }
+        },
+        "pr5": {
+          "calls": 484,
+          "failures": 0,
+          "timeouts": 0,
+          "http_429": 0,
+          "status_codes_not_preserved": 0,
+          "purpose_counts": {
+            "retrieval_query": 232,
+            "memory_embedding": 252
+          },
+          "result_categories": {
+            "success": 484
+          }
+        }
+      }
+    },
+    "by_side": {
+      "main": {
+        "calls": 623,
+        "failures": 0,
+        "timeouts": 0,
+        "http_429": 0,
+        "status_codes_not_preserved": 77,
+        "purpose_counts": {
+          "retrieval_query": 273,
+          "memory_embedding": 272,
+          "connection_check": 1,
+          "recall_eval_embedding": 77
+        },
+        "result_categories": {
+          "success": 623
+        }
+      },
+      "pr5": {
+        "calls": 537,
+        "failures": 0,
+        "timeouts": 0,
+        "http_429": 0,
+        "status_codes_not_preserved": 0,
+        "purpose_counts": {
+          "retrieval_query": 252,
+          "memory_embedding": 284,
+          "connection_check": 1
+        },
+        "result_categories": {
+          "success": 537
+        }
+      }
+    },
+    "retained_database_cross_check": {
+      "main": {
+        "databases_checked": 33,
+        "embedding_rows_exactly_match_committed_ledger": 276
+      },
+      "pr5": {
+        "databases_checked": 86,
+        "embedding_rows_exactly_match_committed_ledger": 484
+      }
+    },
+    "observed_fallback_due_to_embedding_failure": 0,
+    "interpretation": "No embedding failure, timeout, or HTTP 429 was observed in retained calls. No observed failure-count imbalance explains a difference in learning-material retrieval. Different successful call counts are not evidence of failure or fallback; other causes of full-text retrieval are not excluded.",
+    "coverage": "All 1081 learning-evaluation embedding calls preserve status_code and result_category; both connection-check embedding calls do too. The 77 recall embedding records preserve success but not HTTP status/error detail. Early failed/cancelled-case sampling may lack terminal calls; counts describe retained records, not unobserved provider activity.",
+    "observed_non_embedding_http_429": [
+      {
+        "run": "paired-1",
+        "side": "main",
+        "case": "L009",
+        "id": 6,
+        "purpose": "learning_judge",
+        "model": "glm-5.3-flash",
+        "duration_ms": 90,
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "reasoning_tokens": null,
+        "result_category": "retryable",
+        "status_code": 429,
+        "status_observed": true,
+        "error_summary": "HTTP 429",
+        "finish_reason": null,
+        "batch_id": null,
+        "created_at": "2026-10-05T14:28:25.066674+00:00",
+        "record_source": "audit"
+      }
+    ]
+  },
+  "preserved_rescoring_materials": {
+    "worktrees_retained": true,
+    "existing_checkpoints_unchanged": true,
+    "sides": {
+      "main": {
+        "worktree": "/Users/cassia/Local/Code/iris-core-glm-main",
+        "checkpoint_root": "/Users/cassia/Local/Code/iris-core-glm-main/data/learning-checkpoints",
+        "complete_case_count": 78,
+        "preservation_root": "/Users/cassia/Local/Code/iris-core-glm-main/data/glm-eval-preserved-20261005T1414",
+        "initial_complete_case_count": 11,
+        "retained_database_count": 33,
+        "copied_files": 124,
+        "copied_bytes": 77286410,
+        "source_checkpoint_hashes_unchanged": true
+      },
+      "pr5": {
+        "worktree": "/Users/cassia/Local/Code/iris-core-glm-pr5",
+        "checkpoint_root": "/Users/cassia/Local/Code/iris-core-glm-pr5/data/lc",
+        "complete_case_count": 80,
+        "preservation_root": "/Users/cassia/Local/Code/iris-core-glm-pr5/data/glm-eval-preserved-20261005T1414",
+        "initial_complete_case_count": 13,
+        "retained_database_count": 86,
+        "copied_files": 287,
+        "copied_bytes": 148428676,
+        "source_checkpoint_hashes_unchanged": true
+      }
+    },
+    "backup_verification": "Every copied file was verified byte-for-byte by SHA-256 against the existing task archive; checkpoint files were verified unchanged. Database/WAL/SHM files, completed initial checkpoints, run logs, and collected diagnostics are retained in ignored data directories; none are staged.",
+    "original_external_archive": "/private/tmp/iris-glm-baseline-20261005T1414",
+    "missing_material": "Main sequential L014 and L034 lack retained full databases and completed checkpoints; four successful learning calls lack saved raw_output. PR5 has retained databases for all 86 attempted cases. Preserve this gap; do not synthesize outputs or rerun learning for rescoring."
+  }
 }
