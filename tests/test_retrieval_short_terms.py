@@ -38,7 +38,10 @@ def test_mixed_short_and_long_terms_keep_both_lanes_without_duplicates(store, pa
     short = put(store, '围棋使用黑白棋子', vector=[0., 1.])
     long = put(store, '红楼梦是一本小说', vector=[0., -1.])
     both = put(store, '我看完红楼梦后去下围棋', vector=[.4, .916515])
-    result = retriever(store, path).search(text='围棋 红楼梦')['memories']
+    r = retriever(store, path)
+    # Exercise both lanes at 50% coverage; the calibrated default can be stricter.
+    r.overrides['lexical_min'] = .5
+    result = r.search(text='围棋 红楼梦')['memories']
     assert {m['id'] for m in result} == {short, long, both}
     assert len(result) == 3
 
@@ -104,3 +107,45 @@ def test_short_lane_applies_name_anchor_before_candidate_cap(store, monkeypatch)
     second = put(store, '江澄的围棋棋盘在阁楼', about=['p'])
     result = Retrieval(store, tokenizer='trigram').search(text='小江的围棋')['memories']
     assert {m['id'] for m in result} == {first, second}
+
+
+def test_learning_context_does_not_add_absent_person_highlights(store):
+    people(store)
+    own = put(store, '常去图书馆看建筑画册', about=['p'], vector=[0., 1.])
+    third_party = put(store, '陶泥需要在阴凉处存放', about=['q'], vector=[0., 1.])
+    result = Retrieval(store, Embeddings(store)).learning_context('江橙刚刚来过', ['p'])
+    assert own in {m['id'] for m in result}
+    assert third_party not in {m['id'] for m in result}
+
+
+@pytest.mark.parametrize('path', ['hybrid', 'trigram_fts', 'default_fallback'])
+def test_lexical_candidates_must_cover_more_than_one_incidental_short_word(store, path):
+    weak = put(store, '围棋棋盘收在阁楼', vector=[0., 1.])
+    strong = put(store, '露营时大家下围棋，后来又一起练习书法', vector=[0., -1.])
+    result = retriever(store, path).search(text='围棋 露营 书法 骑行')['memories']
+    assert strong in {m['id'] for m in result}
+    assert weak not in {m['id'] for m in result}
+
+
+@pytest.mark.parametrize('path', ['hybrid', 'trigram_fts'])
+def test_short_lane_coverage_includes_long_query_terms(store, path):
+    weak = put(store, '围棋是黑白棋子的游戏', vector=[0., 1.])
+    strong = put(store, '围棋与红楼梦、交响乐都在这场文化活动中出现', vector=[0., -1.])
+    result = retriever(store, path).search(text='围棋 红楼梦 交响乐')['memories']
+    assert strong in {m['id'] for m in result}
+    assert weak not in {m['id'] for m in result}
+
+
+@pytest.mark.parametrize('path', ['hybrid', 'trigram_fts'])
+@pytest.mark.parametrize('filtered', [False, True])
+def test_rare_long_fragment_survives_long_query_but_common_fragment_does_not(store, path, filtered):
+    people(store)
+    rare = put(store, '显微镜的镜片要保持干燥', about=['p'], vector=[0., 1.])
+    also_rare = put(store, '显微镜放在实验室的柜子里', about=['p'], vector=[0., -1.])
+    common = [put(store, text, about=[who], vector=[0., 1.]) for who, text in (
+        ('p', '天文台的门票在周三发售'), ('q', '天文台周末需要提前预约'), ('q', '天文台旁边有一座钟楼'))]
+    r = retriever(store, path)
+    r.overrides.update(lexical_min=.5, lexical_max_df=2)
+    result = r.search(text='显微镜 天文台 陶艺馆 自行车', people=['p'] if filtered else [])['memories']
+    assert {m['id'] for m in result} == {rare, also_rare}
+    assert not {m['id'] for m in result}.intersection(common)

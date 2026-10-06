@@ -173,7 +173,9 @@ def test_calibration_compares_full_prefix_grid(tmp_path, monkeypatch):
                                 tmp_path, 'dev', corpus=corpus, calibrate=True)
     trials = report['calibration']['trials']
     hybrids = [t for t in trials if 'hybrid' in t['variant']]
-    assert len(hybrids) == 2 * 4 * 3 * 3 * 2
+    assert len(hybrids) == 2 * 4 * 3 * 3 * 2 * 3 * 2
+    assert {t["settings"]["lexical_min"] for t in hybrids} == {.35, .5, .75}
+    assert {t["settings"]["lexical_max_df"] for t in hybrids} == {0, 2}
     assert len({tuple(t['settings'].values()) for t in hybrids}) == len(hybrids)
     assert {t['settings']['query_prefix'] for t in hybrids} == {'', '为这个问题检索能回答它的个人记忆：'}
     assert '天文' in seen and '为这个问题检索能回答它的个人记忆：天文' in seen

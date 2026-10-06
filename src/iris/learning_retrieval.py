@@ -1,9 +1,8 @@
 """Learning-only PR #4 selection, independent of reply preparation calibration."""
 from datetime import datetime, timezone
 
-from .retrieval import Retrieval, _filters, _people, RRF_K, CANDIDATES
+from .retrieval import Retrieval, _filters, RRF_K, CANDIDATES
 from .search_text import learning_query_terms, match_query
-from .query_analysis import SubjectNames
 
 LEARNING_DEFAULTS = {"tokenizer": "jieba", "vector_min": .65, "lexical_min": .5,
                      "embedding_model": "doubao-embedding-vision", "dtype": "float32",
@@ -20,8 +19,7 @@ class LearningRetrieval(Retrieval):
     def context(self, text, participants, limit):
         vector, _ = self._query_vector(text)
         with self.store.read() as conn:
-            people = list(dict.fromkeys([*_people(conn, participants), *SubjectNames(conn).mentioned(text)]))
-            candidates = self._rank(conn, text, vector, participants=people, highlights=True)
+            candidates = self._rank(conn, text, vector, participants=participants, highlights=True)
             return self._select(candidates, limit=limit)
 
     def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, limit=8, **filters) -> list[dict]:

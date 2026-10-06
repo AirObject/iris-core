@@ -1,1 +1,1 @@
-{"tokenizer":"jieba","vector_min":0.35,"vector_relative":0.75,"vector_weight":2.0,"query_prefix":"为这个问题检索能回答它的个人记忆：","embedding_dimensions":2048,"embedding_model":"doubao-embedding-vision","dtype":"float32","fallback_tokenizer":"jieba"}
+{"tokenizer":"trigram","vector_min":0.35,"vector_relative":0.75,"vector_weight":1.0,"query_prefix":"为这个问题检索能回答它的个人记忆：","embedding_dimensions":2048,"embedding_model":"doubao-embedding-vision","dtype":"float32","fallback_tokenizer":"trigram","lexical_min":0.75,"lexical_max_df":2}

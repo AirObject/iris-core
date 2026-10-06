@@ -60,6 +60,13 @@ def query_terms(text: str, tokenizer: str) -> list[str]:
     return learning_query_terms(cleaned, tokenizer)
 
 
+def query_coverage_terms(text: str) -> list[str]:
+    # Whole segmentation units: cut_for_search adds overlapping subwords,
+    # which must not give a long word several votes in the coverage ratio.
+    return list(dict.fromkeys(t.casefold() for t in words(_query_text(text))
+                              if re.search(r"\w", t) and t not in QUERY_STOP))[:64]
+
+
 def learning_query_terms(text: str, tokenizer: str) -> list[str]:
     """PR #4 vocabulary; reply-query stopword changes must not affect learning."""
     if tokenizer == 'jieba':

@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from .search_text import query_terms, words
+from .search_text import query_terms, query_coverage_terms, words
 
 
 class SubjectNames:
@@ -47,6 +47,7 @@ class Query:
     refers_to_self: bool = False
     short_tokens: tuple[str, ...] = ()
     name_only: bool = False
+    coverage_tokens: tuple[str, ...] = ()
 
 
 def analyze(conn, text: str, participants=(), tokenizer='jieba', *, entry_kind=None) -> Query:
@@ -76,4 +77,4 @@ def analyze(conn, text: str, participants=(), tokenizer='jieba', *, entry_kind=N
     return Query(canonical, anchors,
                  tuple(query_terms(topic, tokenizer)), names, self_reference,
                  tuple(t for t in topic_tokens if len(t) < 3) if tokenizer == 'trigram' else (),
-                 bool(anchors and not topic_tokens))
+                 bool(anchors and not topic_tokens), tuple(query_coverage_terms(topic)))

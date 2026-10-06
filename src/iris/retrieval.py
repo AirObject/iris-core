@@ -82,13 +82,15 @@ class Retrieval:
     def __init__(self, store: Store, gateway: Gateway | None = None, *, tokenizer: str | None = None,
                  vector_min: float | None = None, dtype: str | None = None,
                  vector_relative: float | None = None, vector_weight: float | None = None,
-                 query_prefix: str | None = None,
+                 query_prefix: str | None = None, lexical_min: float | None = None,
+                 lexical_max_df: int | None = None,
                  clock=None):
         self.store, self.gateway = store, gateway
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.overrides = {k: v for k, v in dict(tokenizer=tokenizer, vector_min=vector_min,
                                               vector_relative=vector_relative, vector_weight=vector_weight,
-                                              query_prefix=query_prefix, dtype=dtype).items() if v is not None}
+                                              query_prefix=query_prefix, lexical_min=lexical_min,
+                                              lexical_max_df=lexical_max_df, dtype=dtype).items() if v is not None}
         config = gateway.configs.get("embedding") if gateway else None
         self.model = config.model if config and config.model and config.base_url else ""
         self.settings = self._settings()
@@ -222,12 +224,31 @@ class Retrieval:
             marks = ','.join('?' for _ in ids)
             lexical_text = {row[0]: row for row in conn.execute(
                 f'SELECT rowid,content,tags FROM {table} WHERE rowid IN ({marks})', ids)}
+            # A rare long fragment can still identify the subject of a long
+            # conversation. Count across the whole index, before filters and
+            # the candidate cap; fetching at most max_df+1 avoids a table scan.
+            # One/two-character terms never bypass whole-query coverage.
+            rare_ids = set()
+            max_df = self.settings['lexical_max_df']
+            if ids and max_df:
+                for token in tokens:
+                    if len(token) < 3:
+                        continue
+                    matches = conn.execute(f'SELECT rowid FROM {table} WHERE {table} MATCH ? LIMIT ?',
+                                           (match_query([token]), max_df + 1)).fetchall()
+                    if len(matches) <= max_df:
+                        rare_ids.update(row[0] for row in matches)
             kept = []
             for mid in ids:
                 row = lexical_text[mid]
                 haystack = (row["content"] + " " + row["tags"]).casefold()
                 present = set(haystack.split()) if tokenizer == "jieba" else None
-                if any(t in present if present is not None else t in haystack for t in tokens):
+                # Measure against the whole non-name query, not just the
+                # short-word lane. A long query cannot pass on one incidental
+                # two-character hit; a single short keyword still covers 100%.
+                coverage = sum(t in present if present is not None else t in haystack
+                               for t in analysis.coverage_tokens) / max(1, len(analysis.coverage_tokens))
+                if coverage >= self.settings['lexical_min'] or mid in rare_ids:
                     kept.append(mid)
             return kept
 

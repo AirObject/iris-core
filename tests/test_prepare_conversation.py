@@ -112,7 +112,8 @@ def test_learning_has_own_unprefixed_thresholds_and_no_anchor_filter(store):
 def test_learning_keeps_pr4_lexical_coverage_independently(store):
     weak = put(store, '苹果')
     strong = put(store, '苹果 梨 葡萄')
-    r = Retrieval(store, vector_min=0)
+    # Reply coverage is deliberately permissive; learning keeps its own 0.5.
+    r = Retrieval(store, vector_min=0, lexical_min=.25)
     assert [m['id'] for m in r.learning_context('苹果 梨 葡萄 芒果', [])] == [strong]
     assert weak in [m['id'] for m in r.search(text='苹果 梨 葡萄 芒果')['memories']]
 

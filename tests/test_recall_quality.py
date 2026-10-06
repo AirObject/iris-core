@@ -153,7 +153,7 @@ def test_named_filter_only_inspects_candidates_and_preserves_selection(store, mo
         seen.append(text)
         return original(self, text)
     monkeypatch.setattr(SubjectNames, 'mentioned', tracked)
-    r = Retrieval(store, Embeddings(store), tokenizer='jieba', vector_min=.4, vector_relative=.75)
+    r = Retrieval(store, Embeddings(store), tokenizer='jieba', vector_min=.4, vector_relative=.75, vector_weight=2.)
     if mode == 'prepare':
         result = r.prepare('A', text='江澄的邮票', participants=['q'])
     else:

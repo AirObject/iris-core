@@ -278,13 +278,15 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
 
     def evaluate(contexts, gateway, tokenizer, prefix, dimension, name):
         choices = []
-        grid = product([.35, .45, .55, .65], [.75, .85, .95], [.5, 1., 2.]) if calibrate and gateway else [
-            (DEFAULTS['vector_min'], DEFAULTS['vector_relative'], DEFAULTS['vector_weight'])]
+        grid = product([.35, .45, .55, .65], [.75, .85, .95], [.5, 1., 2.], [.35, .5, .75], [0, 2]) if calibrate and gateway else [
+            (DEFAULTS['vector_min'], DEFAULTS['vector_relative'], DEFAULTS['vector_weight'], coverage, max_df)
+            for coverage, max_df in (product([.35, .5, .75], [0, 2]) if calibrate else
+                                     [(DEFAULTS['lexical_min'], DEFAULTS['lexical_max_df'])])]
         retrievers = [(context, Retrieval(context['store'], gateway, tokenizer=tokenizer,
                       clock=context['clock'], query_prefix=prefix)) for context in contexts]
-        for floor, relative, weight in grid:
+        for floor, relative, weight, coverage, max_df in grid:
             params = dict(tokenizer=tokenizer, vector_min=floor, vector_relative=relative,
-                          vector_weight=weight, query_prefix=prefix)
+                          vector_weight=weight, query_prefix=prefix, lexical_min=coverage, lexical_max_df=max_df)
             rows = []
             for context, retrieval in retrievers:
                 retrieval.overrides.update(params)
@@ -407,7 +409,7 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
     lines.extend(['', 'M2 参考值：Recall@8 ≥0.85、nDCG@8 ≥0.75、无关误返率 ≤0.10。拒答留到 M2，本轮只报告。',
         '按冻结文件 split 使用 dev；v2 历史 holdout 仅作报告对照，不参与选择，也不作为未见验收。验收以规划者隐藏集为准。',
         '类别可重叠；Recall/nDCG 按所有返回（含人物要点）计算，只以有答案问题为分母。无关误返只检查无答案问题的 reason=relevant 返回。',
-        '平均返回数只作诊断；relevant 标注精确率用于质量持平时比较，不设门槛；后者为标注相关的 relevant 返回数 / 全部 relevant 返回数，跨查询合并计数。空分母为 —。',
+        '平均返回数只作诊断；relevant 标注精确率用于质量持平时比较，验收另按 DECISIONS.md 2026-10-06 与基线检查退化；后者为标注相关的 relevant 返回数 / 全部 relevant 返回数，跨查询合并计数。空分母为 —。',
         report['calibration']['selection_rule'], f'本次推荐：{recommended or "未进行选择，使用已冻结参数"}。',
         '以下为各方案参数和索引块存储之和；参数网格、用量与逐条返回原因保存在同名 JSON。', ''])
     for name, variant in variants.items():
@@ -415,13 +417,13 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
     if calibrate:
         lines.extend(['', '## 完整参数网格', '',
             'Q = (Recall@8+nDCG@8)/2；有前缀为“为这个问题检索能回答它的个人记忆：”。每行均在本报告全部 dev 上评测。', '',
-            '| 方案 | 下限 | 相对比例 | 向量权重 | Recall@8 | nDCG@8 | Q | relevant 精确率 | 无关误返率 | 平均返回数 | 选定 |',
-            '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |'])
+            '| 方案 | 下限 | 相对比例 | 向量权重 | 词项覆盖率 | 长词片段最大文档频率 | Recall@8 | nDCG@8 | Q | relevant 精确率 | 无关误返率 | 平均返回数 | 选定 |',
+            '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |'])
         for trial in trials:
             p, m = trial['settings'], trial['metrics']
             chosen_row = trial['variant'] == recommended and p == report['calibration']['recommended_settings']
             quality = ((m['recall_at_8'] or 0) + (m['ndcg_at_8'] or 0)) / 2
-            lines.append(f"| {trial['variant']} | {p['vector_min']} | {p['vector_relative']} | {p['vector_weight']} | {fmt(m['recall_at_8'])} | {fmt(m['ndcg_at_8'])} | {quality:.6f} | {fmt(m['relevant_precision'])} | {fmt(m['irrelevant_return_rate'])} | {fmt(m['average_returned'])} | {'是' if chosen_row else ''} |")
+            lines.append(f"| {trial['variant']} | {p['vector_min']} | {p['vector_relative']} | {p['vector_weight']} | {p['lexical_min']} | {p['lexical_max_df']} | {fmt(m['recall_at_8'])} | {fmt(m['ndcg_at_8'])} | {quality:.6f} | {fmt(m['relevant_precision'])} | {fmt(m['irrelevant_return_rate'])} | {fmt(m['average_returned'])} | {'是' if chosen_row else ''} |")
     lines.extend(['', '评测不会修改在用数据库。规划者将以隐藏召回集复核；本报告不能替代独立验收。', ''])
     path.write_text('\n'.join(lines), encoding='utf-8')
     path.with_suffix('.json').write_text(serialized, encoding='utf-8')
