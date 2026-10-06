@@ -20,7 +20,7 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--corpus', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--variant', choices=['default', 'low'], required=True)
+    parser.add_argument('--variant', choices=['default', 'low', 'high'], required=True)
     parser.add_argument('--workers', type=int, choices=[1,4], default=4)
     args = parser.parse_args()
     os.umask(0o077)
@@ -45,7 +45,7 @@ def main():
                 f.write(json.dumps(row,ensure_ascii=False)+'\n')
     def utc():
         return datetime.now(timezone.utc).isoformat()
-    extra={} if args.variant=='default' else {'reasoning_effort':'low'}
+    extra={} if args.variant=='default' else {'reasoning_effort':args.variant}
     metadata={'variant':args.variant,'extra_request_parameters':extra,'workers':args.workers,
               'learning_timeout_seconds':600,'max_tokens':16000,'response_format':{'type':'json_object'},
               'judge_mode':'external','started_at':utc(),'corpus_file_sha256':hashlib.sha256(args.corpus.read_bytes()).hexdigest(),
