@@ -1,0 +1,886 @@
+{
+  "cases": 86,
+  "batches_main": 203,
+  "batches_pr5": 203,
+  "nonempty_main": 117,
+  "nonempty_pr5": 117,
+  "memories_main": 1322,
+  "memories_pr5": 1322,
+  "different_batches": 0,
+  "differences": [],
+  "cases_sha256": "22b4df57ac172509ef89639c3ec1dbdda5ab55f18bf76beeadefc27894453c6f",
+  "source_sha256_main": "1071bd603841372e5ac780519b3169ec0978cce16a9500a1fa04fb7d36649add",
+  "source_sha256_pr5": "4f03b652eff8e34cc33d4c4eb1eeed793e8acabd5dadaabf39df3ddfbd8c04a1",
+  "request_sha256_main": "f460a51754ddbc53c775167df6a8bd7b8439c56f8a425a4aeda23d3fbcb80b05",
+  "request_sha256_pr5": "f460a51754ddbc53c775167df6a8bd7b8439c56f8a425a4aeda23d3fbcb80b05",
+  "script_sha256": "55b587eb31cc456594cd0db57144856361560e30ce5c0b9a6d49c8485c7a0db9",
+  "normalization": [
+    "Generated now() timestamps and retrieval clock fixed at 2026-10-06T00:00:00+00:00",
+    "Trace identity is public case ID plus ordinal batch number.",
+    "No normalization of system/user message content, participant or memory refs, order, whitespace, or corpus timestamps."
+  ],
+  "case_counts_main": [
+    {
+      "case": "L001",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L002",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L003",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L004",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L005",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L006",
+      "batches": 1,
+      "memories": 5
+    },
+    {
+      "case": "L007",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L008",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L009",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L010",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L011",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L012",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L013",
+      "batches": 2,
+      "memories": 6
+    },
+    {
+      "case": "L014",
+      "batches": 2,
+      "memories": 6
+    },
+    {
+      "case": "L015",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L016",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L017",
+      "batches": 1,
+      "memories": 5
+    },
+    {
+      "case": "L018",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L019",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L020",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L021",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L022",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L023",
+      "batches": 1,
+      "memories": 4
+    },
+    {
+      "case": "L024",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L025",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L026",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L027",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L028",
+      "batches": 2,
+      "memories": 6
+    },
+    {
+      "case": "L029",
+      "batches": 1,
+      "memories": 5
+    },
+    {
+      "case": "L030",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L031",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L032",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L033",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L034",
+      "batches": 2,
+      "memories": 6
+    },
+    {
+      "case": "L035",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L036",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "V001",
+      "batches": 2,
+      "memories": 15
+    },
+    {
+      "case": "V002",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V003",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V004",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V005",
+      "batches": 2,
+      "memories": 15
+    },
+    {
+      "case": "V006",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V007",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V008",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V009",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V010",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V011",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V012",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V013",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V014",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V015",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V016",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V017",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V018",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V019",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V020",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V021",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V022",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V023",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V024",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V025",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V026",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V027",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V028",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V029",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V030",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V031",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V032",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V033",
+      "batches": 9,
+      "memories": 34
+    },
+    {
+      "case": "V034",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V035",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V036",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V037",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V038",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V039",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V040",
+      "batches": 9,
+      "memories": 35
+    },
+    {
+      "case": "F001",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F002",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "F003",
+      "batches": 3,
+      "memories": 12
+    },
+    {
+      "case": "F004",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F005",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F006",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F007",
+      "batches": 3,
+      "memories": 26
+    },
+    {
+      "case": "F008",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F009",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F010",
+      "batches": 1,
+      "memories": 12
+    }
+  ],
+  "case_counts_pr5": [
+    {
+      "case": "L001",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L002",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L003",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L004",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L005",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L006",
+      "batches": 1,
+      "memories": 5
+    },
+    {
+      "case": "L007",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L008",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L009",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L010",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L011",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L012",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L013",
+      "batches": 2,
+      "memories": 6
+    },
+    {
+      "case": "L014",
+      "batches": 2,
+      "memories": 6
+    },
+    {
+      "case": "L015",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L016",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L017",
+      "batches": 1,
+      "memories": 5
+    },
+    {
+      "case": "L018",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L019",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L020",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L021",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L022",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L023",
+      "batches": 1,
+      "memories": 4
+    },
+    {
+      "case": "L024",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L025",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L026",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L027",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L028",
+      "batches": 2,
+      "memories": 6
+    },
+    {
+      "case": "L029",
+      "batches": 1,
+      "memories": 5
+    },
+    {
+      "case": "L030",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L031",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L032",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L033",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L034",
+      "batches": 2,
+      "memories": 6
+    },
+    {
+      "case": "L035",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "L036",
+      "batches": 1,
+      "memories": 6
+    },
+    {
+      "case": "V001",
+      "batches": 2,
+      "memories": 15
+    },
+    {
+      "case": "V002",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V003",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V004",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V005",
+      "batches": 2,
+      "memories": 15
+    },
+    {
+      "case": "V006",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V007",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V008",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V009",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V010",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V011",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V012",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V013",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V014",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V015",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V016",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V017",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V018",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V019",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V020",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "V021",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V022",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V023",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V024",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V025",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V026",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V027",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V028",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V029",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V030",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V031",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V032",
+      "batches": 3,
+      "memories": 34
+    },
+    {
+      "case": "V033",
+      "batches": 9,
+      "memories": 34
+    },
+    {
+      "case": "V034",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V035",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V036",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V037",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V038",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V039",
+      "batches": 9,
+      "memories": 36
+    },
+    {
+      "case": "V040",
+      "batches": 9,
+      "memories": 35
+    },
+    {
+      "case": "F001",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F002",
+      "batches": 2,
+      "memories": 14
+    },
+    {
+      "case": "F003",
+      "batches": 3,
+      "memories": 12
+    },
+    {
+      "case": "F004",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F005",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F006",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F007",
+      "batches": 3,
+      "memories": 26
+    },
+    {
+      "case": "F008",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F009",
+      "batches": 1,
+      "memories": 12
+    },
+    {
+      "case": "F010",
+      "batches": 1,
+      "memories": 12
+    }
+  ]
+}

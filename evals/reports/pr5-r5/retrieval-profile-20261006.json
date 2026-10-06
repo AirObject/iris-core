@@ -1,0 +1,319 @@
+{
+  "baseline_commit": "bcb511f",
+  "candidate_commit": "f6dc5dc",
+  "before": {
+    "settings": {
+      "tokenizer": "jieba",
+      "vector_min": 0.35,
+      "vector_relative": 0.75,
+      "vector_weight": 2.0,
+      "query_prefix": "为这个问题检索能回答它的个人记忆：",
+      "embedding_dimensions": 2048,
+      "embedding_model": "doubao-embedding-vision",
+      "dtype": "float32",
+      "fallback_tokenizer": "jieba"
+    },
+    "samples": 5,
+    "note": "cProfile after 5 warmups on existing synthetic 50k database, named prepare. Instrumentation overhead; not an R10 benchmark.",
+    "total_profile_seconds": 3.878358208999999,
+    "returned": [
+      {
+        "id": 2,
+        "reason": "relevant"
+      },
+      {
+        "id": 102,
+        "reason": "relevant"
+      },
+      {
+        "id": 202,
+        "reason": "relevant"
+      },
+      {
+        "id": 302,
+        "reason": "relevant"
+      },
+      {
+        "id": 402,
+        "reason": "relevant"
+      },
+      {
+        "id": 502,
+        "reason": "relevant"
+      },
+      {
+        "id": 602,
+        "reason": "relevant"
+      },
+      {
+        "id": 702,
+        "reason": "relevant"
+      }
+    ],
+    "functions": [
+      {
+        "file": "retrieval.py",
+        "function": "_rank",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 1.6673726,
+        "cumulative_ms_per_prepare": 763.431625
+      },
+      {
+        "file": "retrieval.py",
+        "function": "lexical_lane",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 1.0848458,
+        "cumulative_ms_per_prepare": 639.4719080000001
+      },
+      {
+        "file": "retrieval.py",
+        "function": "anchored",
+        "primitive_calls": 2025,
+        "total_calls": 2025,
+        "self_ms_per_prepare": 372.4833614,
+        "cumulative_ms_per_prepare": 627.2896714000001
+      },
+      {
+        "file": "~",
+        "function": "<method 'execute' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 710,
+        "total_calls": 710,
+        "self_ms_per_prepare": 190.41499180000002,
+        "cumulative_ms_per_prepare": 190.41499180000002
+      },
+      {
+        "file": "query_analysis.py",
+        "function": "mentioned",
+        "primitive_calls": 102010,
+        "total_calls": 102010,
+        "self_ms_per_prepare": 21.545005,
+        "cumulative_ms_per_prepare": 103.9582972
+      },
+      {
+        "file": "vector_index.py",
+        "function": "scores",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 0.7327410000000001,
+        "cumulative_ms_per_prepare": 65.67735
+      },
+      {
+        "file": "retrieval.py",
+        "function": "_select",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 0.07260660000000001,
+        "cumulative_ms_per_prepare": 4.4920332
+      },
+      {
+        "file": "retrieval.py",
+        "function": "_hydrate",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 1.9331786,
+        "cumulative_ms_per_prepare": 3.0270248000000004
+      },
+      {
+        "file": "~",
+        "function": "<method 'close' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 25,
+        "total_calls": 25,
+        "self_ms_per_prepare": 0.457575,
+        "cumulative_ms_per_prepare": 0.457575
+      },
+      {
+        "file": "__init__.py",
+        "function": "search",
+        "primitive_calls": 1120,
+        "total_calls": 1120,
+        "self_ms_per_prepare": 0.0620372,
+        "cumulative_ms_per_prepare": 0.2250736
+      },
+      {
+        "file": "~",
+        "function": "<method 'executemany' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 0.2245664,
+        "cumulative_ms_per_prepare": 0.2245664
+      },
+      {
+        "file": "~",
+        "function": "<method 'commit' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 0.1794668,
+        "cumulative_ms_per_prepare": 0.1794668
+      },
+      {
+        "file": "~",
+        "function": "<method 'rollback' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 25,
+        "total_calls": 25,
+        "self_ms_per_prepare": 0.030483400000000004,
+        "cumulative_ms_per_prepare": 0.030483400000000004
+      }
+    ]
+  },
+  "after": {
+    "settings": {
+      "tokenizer": "trigram",
+      "vector_min": 0.35,
+      "vector_relative": 0.75,
+      "vector_weight": 1.0,
+      "query_prefix": "为这个问题检索能回答它的个人记忆：",
+      "embedding_dimensions": 2048,
+      "embedding_model": "doubao-embedding-vision",
+      "dtype": "float32",
+      "fallback_tokenizer": "trigram",
+      "lexical_min": 0.75,
+      "lexical_max_df": 2
+    },
+    "samples": 5,
+    "note": "cProfile after 5 warmups on existing synthetic 50k database, named prepare. Instrumentation overhead; not an R10 benchmark.",
+    "total_profile_seconds": 2.0450869180000004,
+    "returned": [
+      {
+        "id": 2,
+        "reason": "relevant"
+      },
+      {
+        "id": 102,
+        "reason": "relevant"
+      },
+      {
+        "id": 202,
+        "reason": "relevant"
+      },
+      {
+        "id": 302,
+        "reason": "relevant"
+      },
+      {
+        "id": 402,
+        "reason": "relevant"
+      },
+      {
+        "id": 502,
+        "reason": "relevant"
+      },
+      {
+        "id": 602,
+        "reason": "relevant"
+      },
+      {
+        "id": 702,
+        "reason": "relevant"
+      }
+    ],
+    "functions": [
+      {
+        "file": "retrieval.py",
+        "function": "_rank",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 0.549274,
+        "cumulative_ms_per_prepare": 403.7503166
+      },
+      {
+        "file": "retrieval.py",
+        "function": "lexical_lane",
+        "primitive_calls": 10,
+        "total_calls": 10,
+        "self_ms_per_prepare": 1.4043798,
+        "cumulative_ms_per_prepare": 337.8976252
+      },
+      {
+        "file": "retrieval.py",
+        "function": "anchored",
+        "primitive_calls": 3030,
+        "total_calls": 3030,
+        "self_ms_per_prepare": 191.3700416,
+        "cumulative_ms_per_prepare": 294.4399996
+      },
+      {
+        "file": "~",
+        "function": "<method 'execute' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 765,
+        "total_calls": 765,
+        "self_ms_per_prepare": 128.212974,
+        "cumulative_ms_per_prepare": 128.212974
+      },
+      {
+        "file": "vector_index.py",
+        "function": "scores",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 0.2844164,
+        "cumulative_ms_per_prepare": 34.8059832
+      },
+      {
+        "file": "query_analysis.py",
+        "function": "mentioned",
+        "primitive_calls": 102010,
+        "total_calls": 102010,
+        "self_ms_per_prepare": 7.3542246,
+        "cumulative_ms_per_prepare": 34.1463168
+      },
+      {
+        "file": "retrieval.py",
+        "function": "_select",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 0.025466000000000003,
+        "cumulative_ms_per_prepare": 1.9121416000000002
+      },
+      {
+        "file": "retrieval.py",
+        "function": "_hydrate",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 1.2341364000000001,
+        "cumulative_ms_per_prepare": 1.8152420000000002
+      },
+      {
+        "file": "~",
+        "function": "<method 'close' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 25,
+        "total_calls": 25,
+        "self_ms_per_prepare": 0.2579172,
+        "cumulative_ms_per_prepare": 0.2579172
+      },
+      {
+        "file": "__init__.py",
+        "function": "search",
+        "primitive_calls": 1120,
+        "total_calls": 1120,
+        "self_ms_per_prepare": 0.04863920000000001,
+        "cumulative_ms_per_prepare": 0.1354148
+      },
+      {
+        "file": "~",
+        "function": "<method 'commit' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 0.1060586,
+        "cumulative_ms_per_prepare": 0.1060586
+      },
+      {
+        "file": "~",
+        "function": "<method 'executemany' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 5,
+        "total_calls": 5,
+        "self_ms_per_prepare": 0.10510000000000001,
+        "cumulative_ms_per_prepare": 0.10510000000000001
+      },
+      {
+        "file": "~",
+        "function": "<method 'rollback' of 'sqlite3.Connection' objects>",
+        "primitive_calls": 25,
+        "total_calls": 25,
+        "self_ms_per_prepare": 0.0142,
+        "cumulative_ms_per_prepare": 0.0142
+      }
+    ]
+  },
+  "script": "import argparse, cProfile, hashlib, json, pstats, sys\nfrom pathlib import Path\np=argparse.ArgumentParser();p.add_argument('--source',type=Path,required=True);p.add_argument('--database',type=Path,required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args()\nsys.path.insert(0,str(a.source/'src'));sys.path.insert(0,str(a.source/'evals'))\nfrom benchmark_retrieval import Gateway\nfrom iris.db import Store\nfrom iris.retrieval import Retrieval, DEFAULTS\nstore=Store(a.database)\ntry:\n store.set_setting('retrieval',{**DEFAULTS,'embedding_model':'perf-vector','dtype':'float32','embedding_dimensions':2048})\n r=Retrieval(store,Gateway(2048));query={'text':'参与者1的天文观測记录'}\n for _ in range(5):r.prepare('bench',**query)\n profile=cProfile.Profile();profile.enable()\n for _ in range(5):result=r.prepare('bench',**query)\n profile.disable();stats=pstats.Stats(profile)\n rows=[]\n for (filename,line,name),(cc,nc,tt,ct,callers) in stats.stats.items():\n  if name in ('_rank','lexical_lane','anchored','_hydrate','_select','scores','mentioned','search') or 'sqlite3.Connection' in name:\n   rows.append({'file':Path(filename).name,'function':name,'primitive_calls':cc,'total_calls':nc,'self_ms_per_prepare':tt*200,'cumulative_ms_per_prepare':ct*200})\n data={'settings':DEFAULTS,'samples':5,'note':'cProfile after 5 warmups on existing synthetic 50k database, named prepare. Instrumentation overhead; not an R10 benchmark.',\n       'total_profile_seconds':stats.total_tt,'returned':[{'id':m['id'],'reason':m['reason']} for m in result['memories']],\n       'functions':sorted(rows,key=lambda x:-x['cumulative_ms_per_prepare'])}\n a.out.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\\n')\n print(a.out)\nfinally:store.close()\n"
+}
