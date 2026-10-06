@@ -6,7 +6,9 @@
 
 ## 分工
 
-规划者（监督者）负责规划、审查和文档，并在仓库外维护隐藏验收集；执行者负责代码、测试和评测。每个执行任务在自己的 git worktree 中进行。可以同时有多个执行会话，但同一时间只有一个修改产品代码（`src/`、`tests/`、迁移和提示词）；其余会话只运行评测、整理报告，或做互不重叠的配置。
+规划者（监督者）负责规划、审查和文档，并在仓库外维护隐藏验收集；执行者负责代码、测试和评测。每个执行任务在自己的 git worktree 中进行。可以同时有多个执行会话。同时修改产品代码（`src/`、`tests/`、迁移和提示词）的会话，改动的文件不能重叠；有重叠就排队，由规划者安排顺序。其余会话只运行评测、整理报告，或做互不重叠的配置。
+
+评测判分由执行者所用的模型按评分说明完成，不调用对话模型；`iris eval learning` 默认保留内置对话模型判分，只作预览，不作门槛依据。两次判分在互不可见的独立会话中完成，第二次不能看到第一次的结果；用于门槛判定的判分，由没有参与该轮代码和提示词修改的执行会话完成。目前只在 macOS 上验证，暂不做 Windows 验证。
 
 ## 安装和运行
 
@@ -36,7 +38,12 @@ uv run iris eval learning --judge-runs 2
 uv run iris eval recall
 uv run iris eval recall --split dev --calibrate
 uv run iris eval learning --corpus <外部 JSONL> --out <外部目录>
+uv run iris eval learning --judge-mode external --out <运行目录>
+uv run iris eval learning-export --checkpoints <检查点指纹目录> --checkpoint-report <同次报告.json> --out <材料目录>
+uv run iris eval learning-score --materials <材料目录> --judgments <第一轮目录> --judgments <第二轮目录> --judge-model <执行者模型名称> --out <报告目录>
 ```
+
+外部模式只学习并导出 `judging-materials-<时间>/`，不调用对话模型判分。已有学习用 `learning-export` 离线导出；旧检查点需同次报告以保留真实来源，新检查点有 `metadata.json` 可省略 `--checkpoint-report`。每轮目录将 `round-template.json` 复制为 `manifest.json`，按清单 `judgment_file` 保存每案例的 scoring_v3 JSON；严格核对数组长度、布尔类型与记忆 ID／顺序，理由可附但不计分。`learning-score` 的一次／两次 `--judgments` 决定轮数，`--judge-model` 必填。两轮只共享评分说明和材料，不得互看结果；格式、隔离方式和例子见 `evals/README.md`。默认模型判分及 `--judge-runs` 只作预览。材料与报告优先放仓库外，完整材料不提交。
 
 `evals/learning_v1.jsonl` 的 36 段全部为 dev；`learning_v2.jsonl` 的 16 段历史 holdout 已在 PR #2 分析，依 2026-09-29 决定只具回归意义，报告中单列但不作 holdout 判定。`learning_v3.jsonl` 的 10 段手写 dev 和 `scoring_v3.md` 在学习提示词 v4 前单独提交冻结，概况与边界修订理由见 `evals/learning_v3_notes.md`。GLM 阶段全部公开样本按 dev 使用。不要为了达标修改样本或放宽评分；真实标注错误须逐条说明理由。评测按入口真实节奏分批，最终每段判两次，分歧取不利结论；迭代允许 --judge-runs 1，不能把单判当成最终双判结果。
 

@@ -2,28 +2,39 @@
 
 ## 当前状态
 
-2026-10-05 起，开发和评测的对话模型改为 glm-5.3-flash，embedding 仍为 doubao-embedding-vision，开发设备改为 macOS（见 DECISIONS.md 同日记录）。MiniMax-M3 时期的评测报告和执行记录已从仓库删除，原文保留在 git 历史中（main `2ee81d8`）。`evals/reports/` 目前为空：仓库里没有有效的评测结果，所有门槛都要在 GLM 上重新达到。
+2026-10-05 起，开发和评测的对话模型改为 glm-5.3-flash，embedding 仍为 doubao-embedding-vision，开发设备改为 macOS（见 DECISIONS.md 同日记录）。MiniMax-M3 时期的评测报告和执行记录已从仓库删除，原文保留在 git 历史中（main `2ee81d8`）。
 
-判分仍与学习共用对话模型（设计 21.4）。换成 flash 模型后，判分偏宽的风险更大，人工抽查不能省；是否为判分单独配置模型，由用户另行决定。
+`evals/reports/` 目前只有 PR #6 的 GLM 学习运行诊断和 main 的一次召回复现。那次学习运行两边都有因超时放弃的批次，按规则作废，其中的 GLM 判分只作预览。仓库里还没有可作门槛依据的学习结果，所有门槛都要在 GLM 上重新达到。
+
+第一阶段对 GLM 的观察（PR #6）：main 一半以上的学习调用达到 120 秒总超时，推理 token 约占输出的 93%；4/189 次学习输出不是严格 JSON（前后带反引号或说明文字，现有解析器能容忍）；9 个敏感样本没有出现内容拒绝，HTTP 400 在现有网关中仍归为配置错误。
+
+评测判分改由执行者所用的模型完成，不调用对话模型（DECISIONS.md 2026-10-05）；判分通道由 PR #7 实现，命令见下文。评分说明不变；代码导出判分材料，并按执行者交回的判分计算指标。两次判分在互不可见的独立会话中完成，分歧取不利结论；用于门槛判定的判分，由没有参与该轮代码和提示词修改的执行会话完成。只在 macOS 上验证，暂不做 Windows 验证。
 
 ## GLM 重测计划
 
-| 阶段 | 评测 | 代码 | 用途 |
-| --- | --- | --- | --- |
-| 一（可并行） | 学习，全部 86 段双判 | main | GLM 基线，不判门槛 |
-| 一（可并行） | 学习，全部 86 段双判 | PR #5 | 与 main 对照，判断召回改动是否影响学习 |
-| 一（可并行） | 召回，默认配置 | main、PR #5 | 确认新设备和重新获取的 embedding 能复现以前的质量结果 |
-| 一（可并行） | 性能，5 千／5 万条 | PR #5 | R10：prepare P95 ≤ 500ms |
-| 二 | 端到端 E001—E011，双判 | 调度分支合入 PR #5 之后 | M1：至少 9/11 |
-| 三 | 学习，dev 迭代后双判 | GLM 适配之后 | M1 三项学习门槛 |
-| 四 | 规划者隐藏集：学习、召回、端到端 | 第三阶段定稿的代码 | M1 最终验收 |
-| 四 | 人工抽查至少 10%；第二家服务商对照 | 同上 | 设计 21.2、21.4 |
+| 阶段 | 工作 | 代码 | 用途 | 状态 |
+| --- | --- | --- | --- | --- |
+| 一 | 学习，全部 86 段（GLM 双判） | main、PR #5 | PR #5 的学习对照 | 两边都有超时放弃的批次，作废（PR #6） |
+| 一 | 召回，默认配置 | main、PR #5 | 确认新设备和重新获取的 embedding 能复现以前的结果 | 纯全文逐条一致，向量路径有小差异；PR #5 已在当前 embedding 上重新标定 |
+| 一 | 性能，5 千／5 万条 | PR #5 | R10：prepare P95 ≤ 500ms | 第四轮通过 |
+| 一 | 执行者判分通道 | PR #7 | 导出判分材料，按执行者判分计算指标 | 完成 |
+| 一 | 规划者隐藏召回集 | PR #5 | PR #5 的召回验收 | 第四轮的短词修复成立，但精确率退化，需第五轮 |
+| 二 | PR #5 第五轮：守住精确率；学习材料恢复为 PR #4，并做确定性比较 | PR #5 | PR #5 的合并条件（DECISIONS.md 2026-10-06） | 进行中 |
+| 二 | GLM 探测：推理开关、自然耗时、内容安全信号；在 learning_v3 dev 上用执行者单判对比 | main，不改产品代码 | GLM 适配的依据 | 进行中 |
+| 三 | 调度分支合入 PR #5 和判分通道，端到端改用执行者判分 | 调度分支 | M1-6 | PR #5 合并后开始 |
+| 四 | GLM 适配：请求参数、超时、内容安全信号 | 调度分支合入之后 | 学习能稳定完成 | — |
+| 四 | 学习：dev 迭代（执行者单判），定稿后执行者双判 | GLM 适配之后 | M1 三项学习门槛 | — |
+| 四 | 端到端 E001—E011，执行者双判 | 同上 | M1：至少 9/11 | — |
+| 五 | 规划者隐藏集：学习、端到端，召回复核 | 第四阶段定稿的代码 | M1 最终验收 | — |
+| 五 | 人工抽查至少 10%；第二家服务商对照 | 同上 | 设计 21.2、21.4 | — |
 
-第一阶段的对照规则（在看到结果之前确定）：
+对照规则（在看到结果之前确定）：
 
-- 两次学习评测在同一时间段、用同一份配置运行。任一边出现因限流或超时而放弃的批次，这次结果作废，重跑。
-- PR #5 的记忆精确率、证据正确率、归属正确率中，任一项比 main 低 3 个百分点以上时，两边各再跑一次；两次平均后仍低 3 个百分点以上，判定 PR #5 影响学习。
-- 召回只复现、不重新选参。质量指标与历史结果不一致时，先报告原因（例如 embedding 服务返回的向量有变化），由规划者决定是否重新标定。
+- 两个版本的学习对照在同一时间段、用同一份配置运行。任一边出现因限流或超时而放弃的批次，这次结果作废，重跑。
+- 以执行者判分的结果为准。新版本的记忆精确率、证据正确率、归属正确率中，任一项比旧版本低 3 个百分点以上时，两边各再跑一次；两次平均后仍低 3 个百分点以上，判定新版本使学习变差。
+- 只改召回的 PR，学习材料必须与 main 逐字一致，用确定性假模型逐批比较学习请求来证明，不跑学习对照（DECISIONS.md 2026-10-06）。
+- 召回改动同时报告 relevant 标注精确率和无答案误返率，全部查询与对话中准备分别列出，并与上一个默认方案逐项比较；无答案误返多出两条或更多查询，或精确率下降超过 0.03，先修复或由规划者决定（DECISIONS.md 2026-10-06）。
+- 复现历史召回结果时不重新选参。质量指标与历史结果不一致时，先报告原因（例如 embedding 服务返回的向量有变化），由规划者决定是否重新标定。
 
 阶段门槛要求全部公开样本和规划者隐藏集同时达到。公开语料在 GLM 阶段全部按 dev 使用；`learning_v2` 的历史 holdout 只作回归分组单列，不作 holdout 判定。
 
@@ -52,14 +63,65 @@ uv run iris eval learning --judge-runs 2
 uv run iris eval recall
 uv run iris eval recall --split dev --calibrate
 uv run iris eval learning --corpus <外部 JSONL> --out <外部目录>
+uv run iris eval learning --judge-mode external --split dev --corpus evals/learning_v3.jsonl --out <运行目录>
+uv run iris eval learning-export --checkpoints <检查点指纹目录> --checkpoint-report <同次报告.json> --out <材料目录>
+uv run iris eval learning-score --materials <材料目录> --judgments <第一轮目录> --judgments <第二轮目录> --judge-model <执行者模型名称> --out <报告目录>
 uv run iris eval recall --corpus <外部 JSON 或 JSONL> --out <外部目录>
 uv run python evals/benchmark_retrieval.py --out evals/reports
 uv run python evals/benchmark_retrieval.py --default-config --out evals/reports
 ```
 
-学习最终评测必须使用默认的双判；单判只用于 dev 迭代，不计算双判分歧率。学习评分 v3、语料和 M1 门槛保持不变。`--out` 位于仓库外时，JSON 的 `details` 保存每案例完整输入、全部记忆及来源、每次原判分和最终判分；仓库内报告保持汇总与抽查规模。
+默认 `iris eval learning` 仍调用对话模型双判，`--judge-runs 1` 可作单判预览；预览不作门槛依据。学习最终评测必须提供两轮独立的外部判分；单轮只用于 dev 迭代或流程检查，不计算双判分歧率。学习评分 v3、语料和 M1 门槛保持不变。`--out` 位于仓库外时，JSON 的 `details` 保存每案例完整输入、全部记忆及来源、每次原判分和最终判分；仓库内报告保持汇总与抽查规模。
 
-学习成功案例保存在 `data/lc/<16位指纹>`，外部报告的检查点在 `<out>/.lc/<16位指纹>`。meta.json 保存并校验完整 SHA-256。只有源码、语料、模型端点／ID／维度、判分次数都一致才复用已完成案例；失败案例重新执行，不按分数选择结果。报告列 `resumed_cases` 和源码指纹。请勿在评测运行期间编辑源码／迁移或重建当前虚拟环境。
+学习成功案例保存在 `data/lc/<16位指纹>`，外部报告的检查点在 `<out>/.lc/<16位指纹>`；meta.json 核对完整 SHA-256，metadata.json 保留导出所需的运行来源。模型预览只有源码、语料、模型端点／ID／embedding 维度、判分次数都一致才复用已完成案例；外部模式的检查点只记录学习，不依赖之后的判分轮数，两种模式的检查点分开。失败案例重新执行，不按分数选择结果。报告列 `resumed_cases` 和源码指纹。请勿在评测运行期间编辑源码／迁移或重建当前虚拟环境。
+
+### 外部判分流程与文件格式
+
+1. **只学习**：`learning --judge-mode external` 按原节奏学习，完全不调用对话模型判分。完成后打印 `judging-materials-<时间>/manifest.json`；其父目录就是 `--materials`。不生成质量报告。`--judge-runs` 只适用于模型预览；外部模式的轮数由计分时提供的 `--judgments` 数量决定。
+2. **已有学习免重跑**：`learning-export` 读取一个完整运行的全部编号检查点，保留该次学习的模型、源码指纹和语料摘要。旧检查点须用 `--checkpoint-report` 提供同次 JSON 报告；新检查点自带 `metadata.json`，可省略该参数。缺案例、来源不符或未完成时直接报错。导出目标必须为空目录；导出不改检查点。离线导出和计分都不读取模型配置、不进行模型调用。
+3. **独立判分**：给每位判分者相同的 `scoring.md` 和 `cases/*.json`，只读其中的 `input` 作判断。不要提供旧报告、原检查点或另一轮判分。可用两个没有继承对方历史的独立会话／子代理，各自只获评分说明、材料和各自输出目录的访问权限；若子代理共享文件系统，需要由调用方隔离可访问的结果，不能只靠目录名称。两轮完成前不互相讨论或传递结果。用于门槛的执行会话不得参与该轮代码和提示词修改；本任务自己的小样本单判仅检查流程。
+4. **保存每轮**：每轮新建一个目录，将材料中的 `round-template.json` 复制为该轮的 `manifest.json`，再按材料清单的 `judgment_file` 为每个案例保存一份 JSON（例如 `0000.json`）。两轮目录各自完整，不能把一个目录重复传入来充当双判。程序校验材料绑定和文件完整性；它不能证明两个不同目录中的判分来自独立会话。
+5. **计分**：`learning-score` 传一次 `--judgments` 是单判，传两次是双判；必须通过 `--judge-model` 声明执行者模型名称。先汇总所有缺失、长度、类型、ID／顺序或材料指纹错误，全部校验通过才生成报告。正常名字、alias／联系类型、必需主体的确定性检查与旧路径共用；双判仍正向项取 AND、forbidden 取 OR，确定性否决之前的原始分歧仍列出。
+
+所有文件使用 UTF-8。推荐把运行、材料、判分和报告放到仓库外；`run.json` 包含完整学习记录，不应提交。材料目录结构如下：
+
+```text
+materials/
+  manifest.json          # 格式版本、evaluation、run 元数据、案例映射及文件指纹
+  scoring.md             # 冻结 scoring_v3 原文
+  cases/0000.json         # 单案例材料；编号按原语料顺序，案例 ID 单独保存
+  run.json               # 计分所需学习记录与调用统计，供程序生成原格式报告
+  round-template.json    # 复制到各轮目录后命名为 manifest.json
+round1/
+  manifest.json          # {"materials_sha256": "材料清单中的 SHA-256"}
+  0000.json              # 对应案例的一轮判分
+round2/
+  manifest.json
+  0000.json
+```
+
+每份案例材料是 `{format_version: 1, evaluation: "learning", case_id, corpus_sha256, source_sha256, scoring_version, input}`。`input` 与旧 `_judge` 发给模型的用户输入逐字段相同：`messages`、`must`、`forbidden`、`links`、`goals`、`actual_memories`、`actual_links`、`actual_goals`、`actual_subjects`、`actual_aliases`、`target_segments`。导出只选取学习数据，移除原 `judge`、`judges`、原分歧／票数及对话模型判分调用，避免泄漏旧判分；保留完整学习输出和来源用于复核。
+
+`corpus_sha256` 延续现有定义：对本次筛选后的案例列表做 UTF-8、`ensure_ascii=False`、`sort_keys=True` 的 JSON 序列化后计算 SHA-256，不是原 JSONL 文件的字节摘要。`source_sha256` 是学习时记录的源码指纹。清单的 `materials_sha256` 覆盖元数据以及各案例、学习记录、评分说明的文件摘要；计分会复核内容和输入一致性。不要修改导出的材料或指纹。
+
+每个判分文件沿用 `scoring_v3` 输出结构，数组长度和顺序必须与输入一致，记忆 ID 必须逐项匹配，所有判定必须为 JSON 布尔值；不能写字符串 `"true"`、数字 `1`、null 或省略项。例如一个记忆、一个 must、没有联系和目标时：
+
+```json
+{
+  "memory_results": [{"id": 1, "correct_worth": true, "forbidden": false,
+                      "evidence_correct": true, "attribution_correct": true}],
+  "fact_covered": [true],
+  "link_covered": [],
+  "goal_covered": [],
+  "actual_link_correct": []
+}
+```
+
+可以在顶层增加 `reasons` 或在记忆项增加 `reason` 记录逐项理由；计分忽略额外字段，原判分保留在仓库外报告的 `details[].external_judgments`，每轮判分摘要保存在 `judgment_rounds`。校验不为错误或缺失值补 false。冻结评分说明本身不作修改。
+
+报告仍为 `learning-*.md` 与配套 JSON，沿用指标、门槛、分歧和固定种子的至少 10% 抽查清单；新增 `judge_mode`（`external`／`model`）、`judge_model`、`judge_runs`、`materials_sha256`。`chat_model` 继续表示学习模型。外部判分的 token、耗时和超时无法由本程序测量，调用统计只包含实际学习／embedding 调用；不能把其中的判分零调用读作外部模型零用量。报告比较必须语料摘要、评分版本、判分次数、学习模型和判分方式全部一致；旧报告未标方式时视为模型预览。
+
+材料封装的 `format_version`、`evaluation`、案例映射和每轮指纹绑定不依赖学习的字段结构。后续端到端评测可沿用这套导出／独立判分／离线计分约定，用自己的 `input` 和 `e2e_scoring_v1` 校验器；当前命令只接受 learning，本次不修改端到端评测。
 
 ## 召回评测
 
@@ -139,11 +201,11 @@ Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1
 - `forbidden`、`links`、`goals`：不能当作事实或“我”的认识的内容、应识别的人物联系和内部目标；
 - `links` 每项是 `{ "a": "本人名字", "b": "另一名字", "kind": "alias" }`，kind 还支持 same_as 和 roleplay。alias 的 b 必须直接属于 a 的主体别名，不能生成另一个主体或误用其他联系类型。
 
-评测按入口实际节奏分批：私聊与群聊每批最多 12 条和 4000 token，直播每批最多 4 条；正式路径默认有 4 条历史、4 条后续上下文。每段使用独立临时数据库，走正式接收、冻结和学习代码。评分固定为 `src/iris/prompts/scoring_v3.md`，每段同样输入独立判两次，不一致按不利结论计分并逐项列出。模型自己判自己可能偏高，最终报告仍须人工抽查至少 10%。
+评测按入口实际节奏分批：私聊与群聊每批最多 12 条和 4000 token，直播每批最多 4 条；正式路径默认有 4 条历史、4 条后续上下文。每段使用独立临时数据库，走正式接收、冻结和学习代码。评分固定为 `src/iris/prompts/scoring_v3.md`，每段同样输入独立判两次，不一致按不利结论计分并逐项列出。最终报告仍须人工抽查至少 10%。
 
 评分 v3 使用设计 8.3 的最新定义：自身喜好按亲历，作品／人／事的评价按观点；兼容既有标注时，自身喜好的亲历／观点都算归属和覆盖正确，这不放宽其他判分项。明确归属于他人的说法不算 forbidden；当成事实或“我”的认识才算。判分输入包括实际主体 ID、账号和别名，代码额外拒绝把数组字符串判成人名、把错误类型的联系判作 alias 覆盖。事实覆盖须具备标注必需的说话人、about 和明确指定的账号；没有任何记忆满足这些必要条件时，不能判为覆盖，语义内容仍由模型核对。既有数值门槛不变。
 
-不加参数时默认运行全部仓库样本，报告在 `evals/reports/`。`--corpus` 可与 `--split` 组合，不会拼入仓库样本，例如只检查手写 dev：`uv run iris eval learning --split dev --corpus evals/learning_v3.jsonl`。`--out` 将 Markdown、JSON 和前次报告查找都放到指定目录，不往仓库写报告。读取与写入均为 UTF-8。报告比较校验样本内容 SHA-256、评分版本与判分次数。
+不加参数时默认运行全部仓库样本，报告在 `evals/reports/`。`--corpus` 可与 `--split` 组合，不会拼入仓库样本，例如只检查手写 dev：`uv run iris eval learning --split dev --corpus evals/learning_v3.jsonl`。`--out` 将 Markdown、JSON 和前次报告查找都放到指定目录，不往仓库写报告。读取与写入均为 UTF-8。报告比较校验样本内容 SHA-256、评分版本、判分次数、学习模型与判分方式。
 
 报告单列因长度截断的**学习批次数**（同一批的首轮／修正／重试只计一批），同时列学习与判分截断调用数、生成耗时，以及按学习／判分分列的超时调用数；JSON 保留生成调用的紧凑统计字段，包含 finish_reason 与输出 token。别名覆盖率＝正确覆盖的 alias 标注／alias 标注数；别名精确率＝判对的实际学习别名／实际学习别名数；分母为零记为不可计算，不显示成 100%。其他人物联系指标包含 alias，别名另行拆出。每段判两次，所有分歧按不利结论统计并列清单。
 
