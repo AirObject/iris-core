@@ -1,0 +1,169 @@
+{
+  "settings": {
+    "tokenizer": "trigram",
+    "vector_min": 0.35,
+    "vector_relative": 0.75,
+    "vector_weight": 1.0,
+    "query_prefix": "为这个问题检索能回答它的个人记忆：",
+    "embedding_dimensions": 2048,
+    "embedding_model": "doubao-embedding-vision",
+    "dtype": "float32",
+    "fallback_tokenizer": "jieba",
+    "lexical_min": 0.75,
+    "lexical_max_df": 2,
+    "fallback_lexical_min": 0.0,
+    "fallback_lexical_max_df": 0
+  },
+  "samples": 5,
+  "note": "cProfile after 5 warmups on existing synthetic 50k database, named prepare. Instrumentation overhead; not an R10 benchmark.",
+  "total_profile_seconds": 0.6573473740000002,
+  "returned": [
+    {
+      "id": 2,
+      "reason": "relevant"
+    },
+    {
+      "id": 102,
+      "reason": "relevant"
+    },
+    {
+      "id": 202,
+      "reason": "relevant"
+    },
+    {
+      "id": 302,
+      "reason": "relevant"
+    },
+    {
+      "id": 402,
+      "reason": "relevant"
+    },
+    {
+      "id": 502,
+      "reason": "relevant"
+    },
+    {
+      "id": 602,
+      "reason": "relevant"
+    },
+    {
+      "id": 702,
+      "reason": "relevant"
+    }
+  ],
+  "functions": [
+    {
+      "file": "retrieval.py",
+      "function": "_rank",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.4598188,
+      "cumulative_ms_per_prepare": 125.38650820000001
+    },
+    {
+      "file": "~",
+      "function": "<method 'execute' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 225,
+      "total_calls": 225,
+      "self_ms_per_prepare": 51.186500200000005,
+      "cumulative_ms_per_prepare": 75.61541860000001
+    },
+    {
+      "file": "retrieval.py",
+      "function": "lexical_lane",
+      "primitive_calls": 10,
+      "total_calls": 10,
+      "self_ms_per_prepare": 1.2043670000000002,
+      "cumulative_ms_per_prepare": 75.2637416
+    },
+    {
+      "file": "vector_index.py",
+      "function": "scores",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.3028502,
+      "cumulative_ms_per_prepare": 33.453250000000004
+    },
+    {
+      "file": "retrieval.py",
+      "function": "anchored",
+      "primitive_calls": 1020,
+      "total_calls": 1020,
+      "self_ms_per_prepare": 12.176362800000001,
+      "cumulative_ms_per_prepare": 12.3809422
+    },
+    {
+      "file": "query_analysis.py",
+      "function": "mentioned",
+      "primitive_calls": 25010,
+      "total_calls": 25010,
+      "self_ms_per_prepare": 1.6766698,
+      "cumulative_ms_per_prepare": 7.2762162
+    },
+    {
+      "file": "retrieval.py",
+      "function": "_select",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.026663000000000003,
+      "cumulative_ms_per_prepare": 1.9027918000000001
+    },
+    {
+      "file": "retrieval.py",
+      "function": "_hydrate",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 1.1829622000000002,
+      "cumulative_ms_per_prepare": 1.7223084
+    },
+    {
+      "file": "~",
+      "function": "<method 'close' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 25,
+      "total_calls": 25,
+      "self_ms_per_prepare": 0.4474658,
+      "cumulative_ms_per_prepare": 0.4474658
+    },
+    {
+      "file": "~",
+      "function": "<method 'executemany' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.37645,
+      "cumulative_ms_per_prepare": 0.37645
+    },
+    {
+      "file": "~",
+      "function": "<method 'commit' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.32265820000000006,
+      "cumulative_ms_per_prepare": 0.32265820000000006
+    },
+    {
+      "file": "__init__.py",
+      "function": "search",
+      "primitive_calls": 1120,
+      "total_calls": 1120,
+      "self_ms_per_prepare": 0.0461818,
+      "cumulative_ms_per_prepare": 0.13112900000000002
+    },
+    {
+      "file": "~",
+      "function": "<method 'rollback' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 25,
+      "total_calls": 25,
+      "self_ms_per_prepare": 0.013741999999999999,
+      "cumulative_ms_per_prepare": 0.013741999999999999
+    },
+    {
+      "file": "~",
+      "function": "<method 'create_function' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.0011834,
+      "cumulative_ms_per_prepare": 0.0011834
+    }
+  ],
+  "source_sha256": "3728a8c48604692bd521b51f3578ccce1b9e29c5e08220f46b9732c0ea87f090"
+}

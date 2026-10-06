@@ -1,0 +1,161 @@
+{
+  "settings": {
+    "tokenizer": "trigram",
+    "vector_min": 0.35,
+    "vector_relative": 0.75,
+    "vector_weight": 1.0,
+    "query_prefix": "为这个问题检索能回答它的个人记忆：",
+    "embedding_dimensions": 2048,
+    "embedding_model": "doubao-embedding-vision",
+    "dtype": "float32",
+    "fallback_tokenizer": "jieba",
+    "lexical_min": 0.75,
+    "lexical_max_df": 2,
+    "fallback_lexical_min": 0.0,
+    "fallback_lexical_max_df": 0
+  },
+  "samples": 5,
+  "note": "cProfile after 5 warmups on existing synthetic 50k database, named prepare. Instrumentation overhead; not an R10 benchmark.",
+  "total_profile_seconds": 1.608607584,
+  "returned": [
+    {
+      "id": 2,
+      "reason": "relevant"
+    },
+    {
+      "id": 102,
+      "reason": "relevant"
+    },
+    {
+      "id": 202,
+      "reason": "relevant"
+    },
+    {
+      "id": 302,
+      "reason": "relevant"
+    },
+    {
+      "id": 402,
+      "reason": "relevant"
+    },
+    {
+      "id": 502,
+      "reason": "relevant"
+    },
+    {
+      "id": 602,
+      "reason": "relevant"
+    },
+    {
+      "id": 702,
+      "reason": "relevant"
+    }
+  ],
+  "functions": [
+    {
+      "file": "retrieval.py",
+      "function": "_rank",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.3450338,
+      "cumulative_ms_per_prepare": 316.3091
+    },
+    {
+      "file": "retrieval.py",
+      "function": "lexical_lane",
+      "primitive_calls": 10,
+      "total_calls": 10,
+      "self_ms_per_prepare": 1.08275,
+      "cumulative_ms_per_prepare": 256.4530666
+    },
+    {
+      "file": "retrieval.py",
+      "function": "anchored",
+      "primitive_calls": 3030,
+      "total_calls": 3030,
+      "self_ms_per_prepare": 167.89035760000002,
+      "cumulative_ms_per_prepare": 232.3383782
+    },
+    {
+      "file": "~",
+      "function": "<method 'execute' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 765,
+      "total_calls": 765,
+      "self_ms_per_prepare": 99.4034762,
+      "cumulative_ms_per_prepare": 99.4034762
+    },
+    {
+      "file": "vector_index.py",
+      "function": "scores",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.23894980000000005,
+      "cumulative_ms_per_prepare": 32.480516800000004
+    },
+    {
+      "file": "query_analysis.py",
+      "function": "mentioned",
+      "primitive_calls": 10010,
+      "total_calls": 10010,
+      "self_ms_per_prepare": 0.7031948,
+      "cumulative_ms_per_prepare": 3.1608692
+    },
+    {
+      "file": "retrieval.py",
+      "function": "_hydrate",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 1.4542952000000002,
+      "cumulative_ms_per_prepare": 2.04135
+    },
+    {
+      "file": "retrieval.py",
+      "function": "_select",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.026039,
+      "cumulative_ms_per_prepare": 1.9360666000000002
+    },
+    {
+      "file": "~",
+      "function": "<method 'commit' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.27371660000000003,
+      "cumulative_ms_per_prepare": 0.27371660000000003
+    },
+    {
+      "file": "~",
+      "function": "<method 'close' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 25,
+      "total_calls": 25,
+      "self_ms_per_prepare": 0.2514086,
+      "cumulative_ms_per_prepare": 0.2514086
+    },
+    {
+      "file": "__init__.py",
+      "function": "search",
+      "primitive_calls": 1120,
+      "total_calls": 1120,
+      "self_ms_per_prepare": 0.0474566,
+      "cumulative_ms_per_prepare": 0.1298096
+    },
+    {
+      "file": "~",
+      "function": "<method 'executemany' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 5,
+      "total_calls": 5,
+      "self_ms_per_prepare": 0.08035,
+      "cumulative_ms_per_prepare": 0.08035
+    },
+    {
+      "file": "~",
+      "function": "<method 'rollback' of 'sqlite3.Connection' objects>",
+      "primitive_calls": 25,
+      "total_calls": 25,
+      "self_ms_per_prepare": 0.0129584,
+      "cumulative_ms_per_prepare": 0.0129584
+    }
+  ],
+  "source_sha256": "3c57747742032e979f0dd5e18025c5169baaecd3d9ecc1bd62165f4d8fc9f38e"
+}

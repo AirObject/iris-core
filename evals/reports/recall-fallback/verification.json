@@ -1,0 +1,41 @@
+{
+  "3.13": {
+    "command": "uv run pytest",
+    "passed": 310,
+    "warnings": 1,
+    "seconds": 4.41,
+    "python": "3.13.15",
+    "log_sha256": "462444b147e677653b2d7e01a96f785dd4125af92196cea6561463dcd2bc29a0"
+  },
+  "3.12": {
+    "command": "uv run --locked --isolated --python 3.12 pytest",
+    "passed": 310,
+    "warnings": 4,
+    "seconds": 4.93,
+    "python": "3.12.14",
+    "log_sha256": "aed50df8ab8888cc52f796f95feb9c5d731b6ec6f9a1b0e92e347ac71ee06cdb"
+  },
+  "build": {
+    "command": "uv build",
+    "success": true,
+    "artifacts": [
+      "dist/iris_core-0.1.0.tar.gz",
+      "dist/iris_core-0.1.0-py3-none-any.whl"
+    ]
+  },
+  "test_first": {
+    "original_implementation": {
+      "failed": 9,
+      "passed": 2
+    },
+    "legacy_no_fallback_fields": {
+      "failed": 2,
+      "passed": 13
+    }
+  },
+  "warnings": [
+    "Starlette TestClient/httpx deprecation (both versions)",
+    "jieba invalid escape sequence SyntaxWarning (3.12 fresh environment)"
+  ],
+  "source_sha256": "3728a8c48604692bd521b51f3578ccce1b9e29c5e08220f46b9732c0ea87f090"
+}

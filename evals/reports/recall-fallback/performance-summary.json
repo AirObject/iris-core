@@ -1,0 +1,143 @@
+{
+  "results": [
+    {
+      "run": 1,
+      "size": 5000,
+      "query": "unnamed",
+      "vector_p50_ms": 2.9542499978560954,
+      "vector_p95_ms": 3.1121666834224015,
+      "prepare_p50_ms": 16.639249515719712,
+      "prepare_p95_ms": 22.276585732470256,
+      "http_prepare_p50_ms": 17.733624496031553,
+      "http_prepare_p95_ms": 21.371329147950743
+    },
+    {
+      "run": 1,
+      "size": 5000,
+      "query": "named",
+      "vector_p50_ms": 3.0072504887357354,
+      "vector_p95_ms": 3.2593893265584475,
+      "prepare_p50_ms": 13.855812489055097,
+      "prepare_p95_ms": 15.65897851542104,
+      "http_prepare_p50_ms": 15.094208007212728,
+      "http_prepare_p95_ms": 16.40678750409279
+    },
+    {
+      "run": 1,
+      "size": 50000,
+      "query": "unnamed",
+      "vector_p50_ms": 29.6258750022389,
+      "vector_p95_ms": 37.17302885488607,
+      "prepare_p50_ms": 112.73085401626304,
+      "prepare_p95_ms": 155.11921605211683,
+      "http_prepare_p50_ms": 113.78533352399245,
+      "http_prepare_p95_ms": 152.66613573185168
+    },
+    {
+      "run": 1,
+      "size": 50000,
+      "query": "named",
+      "vector_p50_ms": 30.54127102950588,
+      "vector_p95_ms": 40.34975865797605,
+      "prepare_p50_ms": 106.61799952504225,
+      "prepare_p95_ms": 281.523632974131,
+      "http_prepare_p50_ms": 111.00945799262263,
+      "http_prepare_p95_ms": 184.6585003630024
+    },
+    {
+      "run": 2,
+      "size": 5000,
+      "query": "unnamed",
+      "vector_p50_ms": 2.86089550354518,
+      "vector_p95_ms": 3.054702101508155,
+      "prepare_p50_ms": 15.748895530123264,
+      "prepare_p95_ms": 19.326731251203448,
+      "http_prepare_p50_ms": 16.86341702588834,
+      "http_prepare_p95_ms": 20.953722868580368
+    },
+    {
+      "run": 2,
+      "size": 5000,
+      "query": "named",
+      "vector_p50_ms": 2.8515204903669655,
+      "vector_p95_ms": 2.951710080378689,
+      "prepare_p50_ms": 13.084333477308974,
+      "prepare_p95_ms": 13.504917273530737,
+      "http_prepare_p50_ms": 14.199916506186128,
+      "http_prepare_p95_ms": 14.908397884573787
+    },
+    {
+      "run": 2,
+      "size": 50000,
+      "query": "unnamed",
+      "vector_p50_ms": 28.36164549808018,
+      "vector_p95_ms": 29.31101250287611,
+      "prepare_p50_ms": 106.53481201734394,
+      "prepare_p95_ms": 124.25695000274573,
+      "http_prepare_p50_ms": 107.44968749349937,
+      "http_prepare_p95_ms": 131.8012121511856
+    },
+    {
+      "run": 2,
+      "size": 50000,
+      "query": "named",
+      "vector_p50_ms": 28.517749975435436,
+      "vector_p95_ms": 31.068974392837845,
+      "prepare_p50_ms": 99.28535399376415,
+      "prepare_p95_ms": 114.00901280285325,
+      "http_prepare_p50_ms": 101.23820800799876,
+      "http_prepare_p95_ms": 110.9141538152471
+    },
+    {
+      "run": 3,
+      "size": 5000,
+      "query": "unnamed",
+      "vector_p50_ms": 2.847936993930489,
+      "vector_p95_ms": 2.9347792034968734,
+      "prepare_p50_ms": 15.673146001063287,
+      "prepare_p95_ms": 19.897998185479082,
+      "http_prepare_p50_ms": 16.771603986853734,
+      "http_prepare_p95_ms": 18.409993170644157
+    },
+    {
+      "run": 3,
+      "size": 5000,
+      "query": "named",
+      "vector_p50_ms": 2.8641044918913394,
+      "vector_p95_ms": 2.9430398804834113,
+      "prepare_p50_ms": 13.07108296896331,
+      "prepare_p95_ms": 13.60737566719763,
+      "http_prepare_p50_ms": 14.150520990369841,
+      "http_prepare_p95_ms": 14.649140270194039
+    },
+    {
+      "run": 3,
+      "size": 50000,
+      "query": "unnamed",
+      "vector_p50_ms": 32.14845899492502,
+      "vector_p95_ms": 81.72791248071006,
+      "prepare_p50_ms": 119.82214549789205,
+      "prepare_p95_ms": 306.13569972920226,
+      "http_prepare_p50_ms": 118.98402101360261,
+      "http_prepare_p95_ms": 322.24940864834923
+    },
+    {
+      "run": 3,
+      "size": 50000,
+      "query": "named",
+      "vector_p50_ms": 32.39839602611028,
+      "vector_p95_ms": 36.13089195569046,
+      "prepare_p50_ms": 110.66604149527848,
+      "prepare_p95_ms": 123.70881488313897,
+      "http_prepare_p50_ms": 112.63412548578344,
+      "http_prepare_p95_ms": 129.74676040466875
+    }
+  ],
+  "r10_passed_every_run": true,
+  "named_50k_p95_median_ms": 123.70881488313897,
+  "benchmark_return_comparisons": 12,
+  "benchmark_return_differences": 0,
+  "no_concurrent_tests_observed": true,
+  "audit_poll_seconds": 2,
+  "source_sha256": "3728a8c48604692bd521b51f3578ccce1b9e29c5e08220f46b9732c0ea87f090"
+}
