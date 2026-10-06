@@ -1,0 +1,45 @@
+{
+  "version": "recall_short_terms_v1",
+  "as_of": "2026-10-06T00:00:00+00:00",
+  "subjects": [
+    {"name": "阿遥"},
+    {"name": "宁序"},
+    {"name": "秋棠"}
+  ],
+  "memories": [
+    {"id": "S01", "content": "余澄每周六去社区画室练习绘画，最常用的材料是水彩。", "about": ["余澄"], "kind": "偏好"},
+    {"id": "S02", "content": "乔岳露营时会选有公共厕所的营地，从不在河滩过夜。", "about": ["乔岳"], "kind": "偏好"},
+    {"id": "S03", "content": "沈岑周三晚上在棋社下围棋，通常坐靠窗的那张桌子。", "about": ["沈岑"]},
+    {"id": "S04", "content": "许榕已经考过开放水域潜水证，下水前会再检查一次气瓶。", "about": ["许榕"]},
+    {"id": "S05", "content": "陈桐喜欢烘焙，家里的小烤箱只能放一个六寸蛋糕模。", "about": ["陈桐"], "kind": "偏好"},
+    {"id": "S06", "content": "陶川每天骑行去图书馆，雨天把头盔收在前台旁的柜子里。", "about": ["陶川"]},
+    {"id": "S07", "content": "柳禾给社区孩子上书法课，练习纸由活动室统一提供。", "about": ["柳禾"]},
+    {"id": "S08", "content": "周砚学过园艺，阳台上的薄荷需要每隔几天转一次盆。", "about": ["周砚"]},
+    {"id": "S09", "content": "镇上木工学堂的夜课教师，负责教大家做榫卯。", "about": ["沐禾"]},
+    {"id": "S10", "content": "林叔说阿遥在旧码头的急救站值班，是那里负责物资登记的护士。", "about": ["林叔"], "stance": "转述"},
+    {"id": "S11", "content": "新来的档案馆讲解员，专门负责老城区口述史展厅。", "about": ["宋霏"]},
+    {"id": "S12", "content": "宁序是社区合唱团的钢琴伴奏，每次排练都会提前调好琴凳。", "about": []},
+    {"id": "S13", "content": "沐河在汽车维修店做学徒，刚开始学习检查刹车。", "about": ["沐河"]},
+    {"id": "S14", "content": "余澄住在公交总站附近，平时午饭带自己做的饭团。", "about": ["余澄"]},
+    {"id": "S15", "content": "许容去年参加过潜水体验，但还没有考证。", "about": ["许容"]},
+    {"id": "S16", "content": "林叔在码头经营修鞋摊，星期一固定休息。", "about": ["林叔"]}
+  ],
+  "queries": [
+    {"id": "ST01", "split": "dev", "mode": "search", "text": "绘画", "filters": {"people": ["余澄"]}, "categories": ["两字关键词", "人物筛选"], "relevant": {"S01": 3}},
+    {"id": "ST02", "split": "dev", "mode": "search", "text": "露营", "filters": {"people": ["乔岳"]}, "categories": ["两字关键词", "人物筛选"], "relevant": {"S02": 3}},
+    {"id": "ST03", "split": "dev", "mode": "search", "text": "围棋", "filters": {"people": ["沈岑"]}, "categories": ["两字关键词", "人物筛选"], "relevant": {"S03": 3}},
+    {"id": "ST04", "split": "dev", "mode": "search", "text": "潜水", "filters": {"people": ["许榕"]}, "categories": ["两字关键词", "人物筛选"], "relevant": {"S04": 3}},
+    {"id": "ST05", "split": "dev", "mode": "search", "text": "烘焙", "categories": ["两字关键词", "无人物筛选"], "relevant": {"S05": 3}},
+    {"id": "ST06", "split": "dev", "mode": "search", "text": "骑行", "categories": ["两字关键词", "无人物筛选"], "relevant": {"S06": 3}},
+    {"id": "ST07", "split": "dev", "mode": "search", "text": "书法", "categories": ["两字关键词", "无人物筛选"], "relevant": {"S07": 3}},
+    {"id": "ST08", "split": "dev", "mode": "search", "text": "园艺", "categories": ["两字关键词", "无人物筛选"], "relevant": {"S08": 3}},
+    {"id": "ST09", "split": "dev", "text": "沐禾是谁？", "categories": ["两字名字", "仅涉及人"], "relevant": {"S09": 3}},
+    {"id": "ST10", "split": "dev", "text": "阿遥是谁呀", "categories": ["两字名字", "仅正文提及"], "relevant": {"S10": 3}},
+    {"id": "ST11", "split": "dev", "text": "宋霏是谁来着？", "participants": ["访客"], "entry_kind": "private", "recent_messages": [{"id": "short-recent-1", "speaker": "访客", "content": "刚才有人向我提到一个名字。"}], "categories": ["两字名字", "仅涉及人", "不在场的人"], "relevant": {"S11": 3}},
+    {"id": "ST12", "split": "dev", "text": "请问宁序是谁", "participants": ["林叔"], "categories": ["两字名字", "仅正文提及", "不在场的人"], "relevant": {"S12": 3}},
+    {"id": "ST13", "split": "dev", "mode": "search", "text": "攀岩", "filters": {"people": ["余澄"]}, "categories": ["两字关键词", "人物筛选", "无答案"], "relevant": {}},
+    {"id": "ST14", "split": "dev", "mode": "search", "text": "陶艺", "categories": ["两字关键词", "无人物筛选", "无答案"], "relevant": {}},
+    {"id": "ST15", "split": "dev", "text": "秋棠是谁？", "categories": ["两字名字", "无答案"], "relevant": {}},
+    {"id": "ST16", "split": "dev", "text": "洛白是谁呀", "categories": ["两字名字", "无答案"], "relevant": {}}
+  ]
+}

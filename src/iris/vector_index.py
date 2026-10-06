@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import numpy as np
+import threading
 
 BLOCK_SIZE = 1024
 
@@ -18,23 +19,55 @@ class VectorIndex:
         self.slots: dict[int, tuple[int, int]] = {}
         self.free: list[tuple[int, int]] = []
         self.lifecycles: dict[int, str] = {}
+        self._lock = threading.RLock()
+
+    def snapshot(self) -> VectorIndex:
+        """Pin immutable blocks briefly; scoring never holds a writer/index lock.
+
+        A subsequent update copies only a touched block (at most 1024 rows).
+        Multiple readers share the same arrays, including during numpy scoring.
+        """
+        with self._lock:
+            result = VectorIndex(self.model, self.dtype.name)
+            result.dimension = self.dimension
+            result.blocks, result.ids, result.revisions = self.blocks[:], self.ids[:], self.revisions[:]
+            for array in result.blocks + result.ids + result.revisions:
+                array.flags.writeable = False
+            result.slots, result.lifecycles = self.slots.copy(), self.lifecycles.copy()
+            return result
+
+    def _writable(self, block: int) -> None:
+        if not self.blocks[block].flags.writeable:
+            self.blocks[block] = self.blocks[block].copy()
+            self.ids[block] = self.ids[block].copy()
+            self.revisions[block] = self.revisions[block].copy()
 
     @property
     def nbytes(self) -> int:
         return sum(a.nbytes for a in self.blocks + self.ids + self.revisions)
 
     def contains(self, memory_id: int) -> bool:
-        return memory_id in self.slots
+        with self._lock:
+            return memory_id in self.slots
 
     def remove(self, memory_id: int) -> None:
+        with self._lock:
+            self._remove(memory_id)
+
+    def _remove(self, memory_id: int) -> None:
         slot = self.slots.pop(memory_id, None)
         self.lifecycles.pop(memory_id, None)
         if slot is not None:
             block, offset = slot
+            self._writable(block)
             self.ids[block][offset] = 0
             self.free.append(slot)
 
     def upsert(self, row) -> None:
+        with self._lock:
+            self._upsert(row)
+
+    def _upsert(self, row) -> None:
         mid = row["id"]
         if row["lifecycle"] == "deleted" or not row["embedding"] or row["embedding_model"] != self.model:
             self.remove(mid)
@@ -58,12 +91,16 @@ class VectorIndex:
                 self.free.extend((block, i) for i in reversed(range(BLOCK_SIZE)))
             self.slots[mid] = self.free.pop()
         block, offset = self.slots[mid]
+        self._writable(block)
         self.blocks[block][offset] = vector / norm
         self.ids[block][offset] = mid
         self.revisions[block][offset] = row["revision"]
         self.lifecycles[mid] = row["lifecycle"]
 
     def scores(self, vector, *, include_forgotten=False) -> dict[int, tuple[float, int]]:
+        return self.snapshot()._scores(vector, include_forgotten=include_forgotten)
+
+    def _scores(self, vector, *, include_forgotten=False) -> dict[int, tuple[float, int]]:
         query = np.asarray(vector, dtype=np.float32)
         norm = np.linalg.norm(query)
         if query.ndim != 1 or query.size != self.dimension or not np.isfinite(norm) or not norm:
@@ -79,9 +116,14 @@ class VectorIndex:
                     result[mid] = (float(scores[offset]), int(revisions[offset]))
         return result
 
-    def similarity(self, a: int, b: int) -> float:
-        if a not in self.slots or b not in self.slots:
-            return 0.0
-        ba, ia = self.slots[a]
-        bb, ib = self.slots[b]
-        return float(np.dot(self.blocks[ba][ia].astype(np.float32), self.blocks[bb][ib].astype(np.float32)))
+    def similarity(self, a: int, b: int, revisions=None) -> float:
+        with self._lock:
+            if a not in self.slots or b not in self.slots:
+                return 0.0
+            ba, ia = self.slots[a]
+            bb, ib = self.slots[b]
+            if revisions and (self.revisions[ba][ia], self.revisions[bb][ib]) != revisions:
+                return 0.0
+            left = self.blocks[ba][ia].astype(np.float32)
+            right = self.blocks[bb][ib].astype(np.float32)
+        return float(np.dot(left, right))

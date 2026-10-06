@@ -51,6 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     evaluation.add_argument("--judgments", type=Path, action="append", help="One round's directory; repeat for two rounds")
     evaluation.add_argument("--judge-model", help="External executor model name (required for learning-score)")
     evaluation.add_argument("--calibrate", action="store_true", help="Calibrate recall thresholds on dev only")
+    evaluation.add_argument("--compare-embeddings", action="store_true", help="Compare 1024/2048 dimensions and query prefix on dev only")
     args = parser.parse_args(argv)
     if args.command == "serve":
         from .api import create_app, loopback_host
@@ -81,8 +82,8 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError(f"--{option.replace('_', '-')} is only available for {', '.join(kinds)}")
             if args.kind != "learning" and args.judge_mode != "model":
                 raise ValueError("--judge-mode is only available for learning")
-            if args.calibrate and args.kind != "recall":
-                raise ValueError("--calibrate is only available for recall")
+            if (args.calibrate or args.compare_embeddings) and args.kind != "recall":
+                raise ValueError("--calibrate/--compare-embeddings are only available for recall")
             if args.kind in ("learning-export", "learning-score") and args.split != "all":
                 raise ValueError("offline export/scoring uses every case in the supplied run; --split is unavailable")
             if args.judge_mode == "external" and args.judge_runs is not None:
@@ -106,7 +107,8 @@ def main(argv: list[str] | None = None) -> int:
                     configs = load_test_models()
                 except FileNotFoundError:
                     configs = {}
-                path, _ = run_recall_eval(configs, Path.cwd(), args.split, corpus=args.corpus, out=args.out, calibrate=args.calibrate)
+                path, _ = run_recall_eval(configs, Path.cwd(), args.split, corpus=args.corpus, out=args.out,
+                                         calibrate=args.calibrate, compare_embeddings=args.compare_embeddings)
                 print(f"Report: {path}")
                 return 0
             options = {"judge_mode": args.judge_mode} if args.judge_mode != "model" else {}

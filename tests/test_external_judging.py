@@ -219,7 +219,7 @@ def test_offline_cli_export_and_score_do_not_load_model_config(learned, tmp_path
     directory = round_files(learned, tmp_path / "round")
     assert cli.main(["eval", "learning-score", "--materials", str(path.parent), "--judgments", str(directory),
                      "--judge-model", "executor", "--out", str(tmp_path / "reports")]) == 0
-    checkpoint = path.parent.parent / ".learning-checkpoints" / manifest["run"]["checkpoint_signature"]
+    checkpoint = path.parent.parent / ".lc" / manifest["run"]["checkpoint_signature"][:16]
     assert cli.main(["eval", "learning-export", "--checkpoints", str(checkpoint),
                      "--out", str(tmp_path / "reexport")]) == 0
     assert cli.main(["eval", "learning-score", "--materials", str(path.parent),
@@ -286,6 +286,9 @@ def test_duplicate_and_out_of_order_memory_ids_rejected():
 @pytest.mark.parametrize("arguments", [
     ["learning-score", "--corpus", "unused.jsonl"],
     ["learning-export", "--calibrate"],
+    ["learning-export", "--compare-embeddings"],
+    ["learning-score", "--compare-embeddings"],
+    ["learning", "--compare-embeddings"],
     ["learning", "--materials", "unused"],
     ["recall", "--judge-mode", "external"],
 ])
@@ -296,7 +299,7 @@ def test_cli_rejects_inapplicable_options_before_loading_models(monkeypatch, arg
 
 def test_incomplete_and_mismatched_checkpoint_cannot_be_exported(learned, tmp_path):
     path, manifest, *_ = learned
-    checkpoint = path.parent.parent / ".learning-checkpoints" / manifest["run"]["checkpoint_signature"]
+    checkpoint = path.parent.parent / ".lc" / manifest["run"]["checkpoint_signature"][:16]
     row_path = checkpoint / "0000.json"
     row = read_json(row_path)
     row["actual"]["batches"][0]["state"] = "waiting"
@@ -321,3 +324,24 @@ def test_report_redacts_full_secret_before_parse_failure_excerpt(learned, tmp_pa
                                                     secrets=["fake-secret"])
     assert report["parse_failures"][0]["first_raw"].endswith("[R")
     assert "fake-secret" not in report_path.with_suffix(".json").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("tamper", ["meta.json", "metadata.json", "missing"])
+def test_short_checkpoint_export_checks_full_fingerprint(learned, tmp_path, tamper):
+    path, manifest, *_ = learned
+    signature = manifest["run"]["checkpoint_signature"]
+    checkpoint = path.parent.parent / ".lc" / signature[:16]
+    assert len(checkpoint.name) == 16
+    exported, _ = ev.export_learning_judgments(checkpoint, tmp_path / "valid")
+    assert exported.exists()
+    if tamper == "missing":
+        (checkpoint / "meta.json").unlink()
+    else:
+        target = checkpoint / tamper
+        data = read_json(target)
+        field = "signature" if tamper == "meta.json" else "checkpoint_signature"
+        # Same short prefix, different full identity must still be rejected.
+        data[field] = signature[:16] + ("0" if signature[-1] != "0" else "1") * 48
+        write_json(target, data)
+    with pytest.raises(ValueError, match="fingerprint"):
+        ev.export_learning_judgments(checkpoint, tmp_path / "invalid")

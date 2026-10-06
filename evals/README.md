@@ -38,6 +38,28 @@
 
 阶段门槛要求全部公开样本和规划者隐藏集同时达到。公开语料在 GLM 阶段全部按 dev 使用；`learning_v2` 的历史 holdout 只作回归分组单列，不作 holdout 判定。
 
+## PR #5 本次复现（2026-10-05）
+
+以下为第一阶段的历史记录；本次完成 PR #5 的 macOS 测试、召回复现和性能测量。详见 [收尾记录](reports/pr5-macos-closeout-20261005.md)、[召回逐项对照](reports/pr5-macos-recall-comparison-20261005.md) 和 [性能报告](reports/retrieval-performance-macos-20261005.md)。
+
+Python 3.13／3.12 各 215 passed，uv build 成功。默认召回 Recall@8、nDCG@8、误返率与历史一致；relevant 标注精确率及五条 v2 返回存在差异，历史源码指纹也待追溯，未重新选参，交规划者决定。默认四组性能 R10 通过；扩展对照及 macOS RSS 口径另见报告。该阶段的真实学习对照安排现已由 2026-10-06 的确定性检查决定取代。
+
+## PR #5 第四轮短词修复（2026-10-06）
+
+按规划者的新要求，在新设备收尾提交推送后，先于 `830efb6` 单独冻结 16 条手写短词 dev，再写失败测试、实现修复和重新标定。trigram 补查已有 jieba 索引，只有已知姓名而没有话题词时从涉及人／说话人及正文提及取候选；学习检索独立不变。
+
+全部 122 条 dev 的原网格规则选择 jieba；其余默认参数不变。新集 12 条有答案全部命中、4 条无答案全空。原 128 条 Recall 不变，但误返率 0.7000 → 0.8667、relevant 标注精确率 0.5479 → 0.2966，明确列为退化；不以新增样本抬高总体 Recall 掩盖。Python 3.13／3.12 各 245 passed，构建成功，四组默认性能 R10 通过，最大 prepare P95 304.5ms。
+
+完整标定、逐语料／类别与全部查询的前后对照、内存及已知问题见 [第四轮报告](reports/pr5-r4-short-terms-20261006.md)。本轮授权取代第一阶段“只复现”的限制，未改变上方 main 两节历史原文。该阶段的学习对照安排现已作废，第五轮改为确定性请求比较。
+
+## PR #5 第五轮：学习材料一致与召回精确率（2026-10-06）
+
+合入 PR #6、PR #7 与 2026-10-06 决定，保留外部判分、短检查点及完整指纹校验。学习材料恢复为仅本批发言人，不按正文提及加入人物要点；同一确定性假模型在 main 和本分支的 86 段公开语料上各产生 203 批请求，其中 117 批已有记忆材料非空，完整 system/user 请求零差异。没有运行真实学习评测。
+
+按全部 122 条 dev 和原选择规则标定，默认改为 trigram，向量权重 1，全文覆盖率 0.75、长片段最大文档频率 2；绝对下限、相对比例、前缀和维度不变。原三集 Recall 0.9813 与第三轮相同、误返仍为 21/30、relevant 精确率 0.5479 → 0.5722；对话中准备恢复为 0.9444、2/6、0.7826，满足本轮公开约束。短词集继续 12 条有答案全中、4 条无答案为空。
+
+Python 3.13／3.12 各 292 passed，构建成功；R10 四组通过，5 万条点名 P95 为 488.6ms，较第四轮变慢并接近上限。另有纯全文降级的取舍：整体 Recall 0.8106 → 0.3924，精确率提高，短词仍通过；不能把混合检索的验收结果当成全文无退化。完整三方表、逐查询结果、剖析、已知问题见 [第五轮报告](reports/pr5-r5-precision-learning-20261006.md)，交规划者审查。
+
 ## 命令
 
 在仓库根目录运行；Windows PowerShell 中命令相同，只是路径写法不同：
@@ -54,11 +76,12 @@ uv run iris eval learning-export --checkpoints <检查点指纹目录> --checkpo
 uv run iris eval learning-score --materials <材料目录> --judgments <第一轮目录> --judgments <第二轮目录> --judge-model <执行者模型名称> --out <报告目录>
 uv run iris eval recall --corpus <外部 JSON 或 JSONL> --out <外部目录>
 uv run python evals/benchmark_retrieval.py --out evals/reports
+uv run python evals/benchmark_retrieval.py --default-config --out evals/reports
 ```
 
 默认 `iris eval learning` 仍调用对话模型双判，`--judge-runs 1` 可作单判预览；预览不作门槛依据。学习最终评测必须提供两轮独立的外部判分；单轮只用于 dev 迭代或流程检查，不计算双判分歧率。学习评分 v3、语料和 M1 门槛保持不变。`--out` 位于仓库外时，JSON 的 `details` 保存每案例完整输入、全部记忆及来源、每次原判分和最终判分；仓库内报告保持汇总与抽查规模。
 
-学习成功案例保存在 `data/learning-checkpoints/<指纹>`，外部报告的检查点在 `<out>/.learning-checkpoints/<指纹>`。模型预览只有源码、语料、模型端点／ID、判分次数都一致才复用已完成案例；外部模式的检查点只记录学习，不依赖之后的判分轮数，两种模式的检查点分开。失败案例重新执行，不按分数选择结果。报告列 `resumed_cases` 和源码指纹。请勿在评测运行期间编辑源码／迁移或重建当前虚拟环境。
+学习成功案例保存在 `data/lc/<16位指纹>`，外部报告的检查点在 `<out>/.lc/<16位指纹>`；meta.json 核对完整 SHA-256，metadata.json 保留导出所需的运行来源。模型预览只有源码、语料、模型端点／ID／embedding 维度、判分次数都一致才复用已完成案例；外部模式的检查点只记录学习，不依赖之后的判分轮数，两种模式的检查点分开。失败案例重新执行，不按分数选择结果。报告列 `resumed_cases` 和源码指纹。请勿在评测运行期间编辑源码／迁移或重建当前虚拟环境。
 
 ### 外部判分流程与文件格式
 
@@ -110,44 +133,63 @@ round2/
 
 ## 召回评测
 
-`recall_v1.json` 在 `a8af9b1` 单独冻结：40 条固定记忆、38 条手写 dev 查询、8 条无答案。没有模板或脚本生成质量语料；性能脚本中的合成记忆只用于规模测试。召回评测直接入库，不经过学习，不调用生成模型，使用正式 Retrieval.prepare／search、去冗余和记录路径。
+默认运行四份公开语料，共 139 条固定记忆、144 条查询；每份语料在独立数据库中入库。直接使用固定记忆，不经过学习，不调用生成模型，走正式 Retrieval.prepare／search、去冗余和召回记录路径。
+
+| 语料 | 来源 | 固定记忆 | 查询 | 无答案 | 原 split |
+| --- | --- | ---: | ---: | ---: | --- |
+| recall_v1.json | `a8af9b1` 单独冻结、手写 | 40 | 38 | 8 | 38 dev |
+| recall_v2.json | `95549fc` 在检索改动前单独冻结、手写 | 50 | 66 | 16 | 44 dev、22 历史 holdout |
+| recall_conversation_v1.json | `15cdd48` 在第二轮检索改动前单独冻结、手写 | 33 | 24 | 6 | 24 dev |
+| recall_short_terms_v1.json | `830efb6` 在第四轮检索改动前单独冻结、手写 | 16 | 16 | 4 | 16 dev |
+
+质量语料没有模板或脚本生成。v2 覆盖口语、改述、别名、相近名字、未知属性、参与者和近期消息去冗余；对话集覆盖私聊、群聊、直播，全部显式 `text: null`、`participants: null`，由近期消息推断当前问题和参与者。详见冻结时的 [recall_v2_notes.md](recall_v2_notes.md) 与 [recall_conversation_v1_notes.md](recall_conversation_v1_notes.md)。短词集覆盖带／不带人物筛选的两字关键词、只在涉及人或正文出现的两字名字、不在场的人及同类型无答案查询，来源和逐条分组见 [recall_short_terms_v1_notes.md](recall_short_terms_v1_notes.md)。notes 保存当时的计划，当前选参方法以下文为准；不改语料或 notes 来适应新结果。
+
+GLM 阶段全部公开样本按 dev 使用，命令和报告仍尊重冻结文件的 split，历史 holdout 仅作回归分组，不代表未见验收。PR #5 原选参只使用 v1 38 条、v2 44 条 dev 和对话集 24 条，共 106 条；原 v2 的 22 条历史 holdout 已分析，不参与选参。新设备第一阶段运行全部 128 条复现，未重新选参。第四轮按规划者要求加入短词集后，在全部 122 条 dev 上按原规则重新标定，并在全部 144 条上做最终对照；原 v2 的 22 条历史 holdout 仍不参与选参。规划者的隐藏集在仓库外，执行者不得寻找或读取。
 
 标准输入是 UTF-8 JSON：
 
 ```json
 {
   "as_of": "2026-09-29T12:00:00+00:00",
+  "subjects": [{"name": "小林", "aliases": ["林子"]}],
   "memories": [
     {"id": "tea", "content": "小林喜欢桂花乌龙茶", "about": ["小林"], "kind": "偏好"},
     {"id": "meeting", "content": "活动晚上八点开始", "source_message_ids": ["recent-1"]}
   ],
   "queries": [
-    {"id": "Q1", "split": "dev", "text": "给小林准备什么茶", "relevant": {"tea": 3}},
-    {"id": "Q2", "split": "dev", "text": "活动晚上八点开始", "relevant": {},
+    {"id": "Q1", "split": "dev", "text": "给林子准备什么茶", "relevant": {"tea": 3}},
+    {"id": "Q2", "split": "dev", "text": null, "participants": null,
+     "entry_kind": "private", "categories": ["对话中准备"], "relevant": {},
      "recent_messages": [{"id": "recent-1", "speaker": "小林", "content": "活动晚上八点开始"}]}
   ]
 }
 ```
 
-也接受 JSONL：一行 `{"memories":[...]}` 后接每行一个查询，或使用 `record_type: "memory"|"query"` 区分记录。`--corpus` 完全替换仓库输入；`--split` 只筛选查询，固定记忆集不变。规划者应在外部目录运行隐藏验收，执行者不得寻找或读取其文件。
+也接受 JSONL：一行 `{"memories":[...]}` 后接每行一个查询，或用 `record_type: "memory"|"query"` 区分记录。`--corpus` 完全替换仓库输入；`--split` 只筛选查询，固定记忆集不变。外部集合同样尊重提供的 split。
 
-记忆字段：`id`、`content`，以及可选的 `about`（名字）、`speaker`（默认“我”）、`kind`、`stance`、`belief`、`importance`、`retention`、`event_time`、`world`、`lifecycle`、`tags`、`source_message_ids`。来源消息必须出现在某个查询的 `recent_messages` 中且 ID 全局唯一；未列来源的记忆视为有未提供的历史来源，不因当前消息剔除。
+记忆字段：`id`、`content`，以及可选的 `about`（名字）、`speaker`（默认“我”）、`kind`、`stance`、`belief`、`importance`、`retention`、`event_time`、`world`、`lifecycle`、`tags`、`source_message_ids`。顶层 `subjects` 支持主体名称与 aliases；本人别名写入 subject_aliases，不伪造关系记忆。来源消息必须出现在某个查询的 `recent_messages` 中且 ID 全局唯一；未列来源的记忆视为有未提供的历史来源，不因当前消息剔除。
 
-查询字段：`id`、`split`（缺省 dev）、`text`、`relevant`（ID 到 1—3 相关等级的映射；列表简写等价于全为 1）。`participants` 缺省空列表；`known_memory_ids` 排除宿主已有记忆；`recent_messages` 模拟真正入库的本入口消息，`recent_limit` 缺省 20。已在近期消息或宿主上下文中的信息不应出现在 relevant。可选 `mode:"search"` 及 `filters` 测试结构筛选；其延迟不计入 prepare P95。默认 `as_of` 固定为 2026-09-29 12:00 UTC，只影响排名时间权重。
+查询字段：`id`、`split`（缺省 dev）、`text`（省略为空字符串，显式 null 使用近期五条消息）、`relevant`（记忆 ID 到 1—3 相关等级的映射，列表简写等价于全为 1）。`participants` 省略为空列表；显式 null 才从近期 20 条消息发送者推断，排除我与场景，按最近发言先后排列。此处省略字段的兼容行为与 HTTP prepare 的默认推断不同。`entry_kind` 缺省 group，可选 private／live；`categories` 是可重叠的分类标签。`known_memory_ids` 排除宿主已有记忆；`recent_messages` 模拟真正入库的本入口消息，`recent_limit` 缺省 20。已在近期消息或宿主上下文中的信息不应列入 relevant。可选 `mode:"search"` 和 `filters` 测试结构筛选，其延迟不计入 prepare P95。默认 `as_of` 固定为 2026-09-29 12:00 UTC，只影响排名时间权重。
 
-Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1)`，以理想前八条归一化；无关误返率只统计无答案查询中是否返回非空。报告对照 jieba、trigram、两者各自的纯全文和融合向量方案。没有配置 embedding 时只输出两组全文结果，不冒充已经完成向量比较。
+Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1)`，以理想前八条归一化。两者计全部返回，包含人物要点。无关误返率只统计无答案查询是否有 `reason=relevant` 返回，不计人物要点。relevant 标注精确率为标注相关的 relevant 返回数／全部 relevant 返回数，跨查询合并计数；平均返回数仅作诊断。空分母显示不可计算，类别可重叠；v1 无分类标签，其无答案查询仍计入总体误返。报告按语料、split、类别列指标，逐条保存返回 ID 和 reason。
 
-embedding 使用真实服务，按端点／模型／文本 SHA-256 缓存在 `data/recall-embeddings.db`；外部 --out 则将缓存放在外部。缓存中不含凭据。首次运行另记新 embedding 的调用用量与耗时；本地 prepare P95 扣除查询 embedding 等待，仍包含候选检索、去冗余和召回记录提交。外部 JSON 的 `details` 保存所有固定记忆、查询、相关性标签和完整返回，仓库内只保留结果 ID 与汇总。
+默认命令对照 jieba／trigram 的纯全文和混合向量四种方案，第五轮混合默认为 trigram。没有配置 embedding 时只输出全文结果，不能视为完成向量复现。embedding 使用真实服务，按端点／模型／维度／完整输入 SHA-256 缓存在 `data/recall-embeddings.db`；外部 --out 的缓存也在外部，不含凭据。预取与正式路径共用 prepare_query／embedding_text，新增请求单路、间隔至少 1 秒。首次运行另记新请求用量与耗时；本地 prepare P95 扣除查询 embedding 等待，包含检索、去冗余和召回记录提交。外部 JSON 的 details 另保存完整输入、记忆、标签和返回，仓库内只保留 ID 与汇总。
 
-`--calibrate` 只允许与 `--split dev` 一起使用。词项覆盖网格为 0.25／0.5／0.75／1.0；余弦网格为 0.35／0.45／0.55／0.65／0.75／0.85。按 `(Recall@8+nDCG@8)/2-无关误返率` 选择，平分依次看 Recall、nDCG 和误返率。命令只报告推荐设置，不写生产库。M2 参考值为 Recall@8≥0.85、nDCG@8≥0.75、无关误返率≤0.10，M1 不要求达到。
+`--calibrate` 只允许 `--split dev`，报告完整网格，不写在用数据库。网格为 jieba／trigram × 向量绝对下限 {0.35, 0.45, 0.55, 0.65} × 相对比例 {0.75, 0.85, 0.95} × 向量权重 {0.5, 1, 2} × 前缀 {空, “为这个问题检索能回答它的个人记忆：”}，全文权重 1；第五轮增加完整词项覆盖率 {0.35, 0.5, 0.75} 和三字以上词片段最大文档频率 {0（关闭）, 2}，共 864 个混合方案及十二个全文对照。完整词项使用 jieba cut 的去重非姓名实词，避免 cut_for_search 重叠子词重复计数，短词补查也使用完整分母。三字以上片段可按整库文档频率入选，频率不受人物筛选或候选上限影响；一／两字词不能走此通路。默认维度 2048；只有额外传入 `--compare-embeddings` 才比较 1024／2048 维。第五轮只运行 `--split dev --calibrate`，不重新比较维度。
 
-当前默认参数见 `src/iris/retrieval_defaults.json`，是在 doubao-embedding-vision 上按 dev 标定的。新数据库将默认配置保存到 `runtime_settings.retrieval`；现有数据库保留已有设置。更换 embedding 模型后须重新标定，未标定时只用全文检索并给出提示。两种 FTS 表都保留，便于可重复对照；运行检索只走设置中选定的一种。
+选择规则先计算 `Q=(Recall@8+nDCG@8)/2`，距全网格最高 Q 不足 0.01 才算持平，恰差 0.01 不算。持平先取 relevant 标注精确率较高者，再取无关误返率较低者，再看 Q，完全相同按固定网格顺序；精确率无分母按 0 处理。不得逐项链式平分或只比较每个分词器／前缀的局部赢家，不从 Q 扣除误返。M2 参考值仍为 Recall@8≥0.85、nDCG@8≥0.75、无关误返率≤0.10；无答案拒绝留到 M2，本轮只报告。
+
+当前冻结默认见 `src/iris/retrieval_defaults.json`：trigram、RRF k=60、2048 维 float32、向量权重 1／全文权重 1、绝对下限 0.35、相对比例 0.75，加上述问题前缀，词项覆盖率 0.75、长片段最大文档频率 2。无向量时降级 trigram 并补查 jieba 短词；在相同词项门槛的 dev 全文对照中，trigram 也优于 jieba。新数据库保存到 runtime_settings.retrieval，现有设置保留；更换 embedding 模型或维度须重新标定，未经标定只用全文。学习材料使用独立的 learning_retrieval 设置，不随回复选参变化。
 
 ## 性能方法
 
-`benchmark_retrieval.py` 分别生成 5 千、5 万条合成记忆，固定随机种子、2048 维向量；每个规模／dtype 在新进程测量，预热 5 次、采样 60 次。报告包含直接 prepare、进程内 HTTP／JSON 路径、向量评分 P95、索引载入时长、RSS 增量和进程峰值工作集。查询 embedding 已预先生成；不计外部网络。float16 用 float32 累加，和 float32 在相同 20 条查询上比较前八名交集。
+`benchmark_retrieval.py` 使用固定随机种子生成 5 千／5 万条合成记忆，不属于质量语料。每个规模／dtype 在新进程测量；点名与不点名各预热 5 次、采样 60 次。查询向量预生成，不计外部网络；包含 FTS、向量评分、候选锚点、去冗余、JSON 和召回记录提交。HTTP 路径为进程内 ASGI TestClient。
 
-R10 要求 prepare 在本机的 P95 不超过 500ms（不含外部 embedding 网络）。测量反映本机单进程串行负载，不是并发吞吐承诺；换开发设备后须重测。
+原命令 `uv run python evals/benchmark_retrieval.py --out evals/reports` 比较 1024／2048 维与 float32／float16，并在合成测试库中关闭向量绝对和相对截断；不点名显式传 text 和空 participants。float16 用 float32 累加，在相同 20 条合成查询上比较前八名交集。
+
+复现 PR #5 原默认方法须加 `--default-config`：固定当前 2048 维 float32 和原截断，覆盖 5 千／5 万条、点名／不点名四组。不点名请求 `{}` 从近期消息推断查询及参与者；点名显式查询“参与者1的天文观測记录”，参与者仍推断。脚本中的 settings 只写合成测试库，不修改产品默认参数或在用数据库。
+
+报告列 prepare P50／P95、HTTP P95、向量 P95、索引载入时长、索引块内存和 RSS。macOS 下脚本的 peak_working_set_mib 没有 Windows peak_wset 时退回采样末尾 RSS，不应当作真实峰值。R10 要求本机 prepare P95≤500ms，不含外部 embedding 网络；结果反映单进程串行合成负载，不承诺并发吞吐。
 
 ## 学习语料
 

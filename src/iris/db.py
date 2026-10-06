@@ -103,9 +103,13 @@ class Store:
                 self._refresh_vectors()
 
     def vector_index(self, model: str, dtype: str = "float32") -> VectorIndex:
+        # Published indexes have their own copy-on-write lock. The steady-state
+        # lookup must not queue a reader behind the database writer.
+        key = (model, dtype)
+        if key in self._vector_indexes:
+            return self._vector_indexes[key]
         with self._lock:
             assert not self._writer.in_transaction
-            key = (model, dtype)
             if key not in self._vector_indexes:
                 index = VectorIndex(model, dtype)
                 with self.read() as conn:

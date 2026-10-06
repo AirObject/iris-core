@@ -533,9 +533,14 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     sources = sorted(p for p in Path(__file__).parent.rglob("*") if p.suffix in (".py", ".md", ".sql", ".json"))
     source_hash = hashlib.sha256(b"".join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest()
     signature = hashlib.sha256(json.dumps({"sources": source_hash, "cases": cases, "judge_runs": judge_runs if judge_mode == "model" else 0,
-        "models": {k: (v.base_url, v.model) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-    checkpoints = (reports / ".learning-checkpoints" if not reports.is_relative_to(root) else root / "data/learning-checkpoints") / signature
+        "models": {k: (v.base_url, v.model, v.dimensions) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    checkpoints = (reports / ".lc" if not reports.is_relative_to(root) else root / "data/lc") / signature[:16]
     checkpoints.mkdir(parents=True, exist_ok=True)
+    # The shortened path is not the identity: verify all 256 bits before reuse.
+    metadata = checkpoints / 'meta.json'
+    if metadata.exists() and json.loads(metadata.read_text(encoding='utf-8'))['signature'] != signature:
+        raise ValueError('checkpoint fingerprint collision')
+    metadata.write_text(json.dumps({'signature': signature}), encoding='utf-8')
     def save_checkpoint(path, value):
         serialized = json.dumps(value, ensure_ascii=False, indent=2)
         for config in configs.values():
@@ -746,7 +751,15 @@ def export_learning_judgments(checkpoints: Path, out: Path, *,
     metadata = _read_json(metadata_path)
     if not isinstance(metadata, dict) or not isinstance(metadata.get("cases"), list):
         raise ValueError("checkpoint metadata must contain the expected cases list")
-    if metadata.get("checkpoint_signature") != checkpoints.name:
+    signature = metadata.get("checkpoint_signature")
+    identity_path = checkpoints / "meta.json"
+    identity = _read_json(identity_path) if identity_path.exists() else None
+    if identity is not None and (not isinstance(identity, dict) or identity.get("signature") != signature):
+        raise ValueError("checkpoint fingerprint collision")
+    # Legacy full paths remain valid. A short prefix is valid only with the
+    # independent full-fingerprint sidecar written before checkpoint reuse.
+    if signature != checkpoints.name and not (
+            identity is not None and isinstance(signature, str) and checkpoints.name == signature[:16]):
         raise ValueError("checkpoint directory fingerprint does not match metadata checkpoint_signature")
     rows, problems = [], []
     for index, expected in enumerate(metadata["cases"]):
