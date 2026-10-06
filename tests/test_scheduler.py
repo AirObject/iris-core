@@ -260,3 +260,22 @@ def test_focus_in_earlier_pending_message_shortens_idle_after_last_chatter(store
         wait_for(lambda: get_batch(store, 1).state == "succeeded")
     finally:
         scheduler.stop()
+
+
+def test_backfill_rebuilds_vectors_when_same_model_dimensions_change(store):
+    from dataclasses import replace
+    mid = put(store, "我喜欢天文摄影")
+    with FakeOpenAI().serve() as server:
+        configs = {**server.configs, "embedding": replace(server.configs["embedding"], dimensions=2)}
+        gateway = Gateway(configs, store)
+        scheduler = Scheduler(store, gateway)
+        try:
+            assert scheduler.backfill_vectors() == 1
+            gateway.replace_config("embedding", replace(configs["embedding"], dimensions=3))
+            assert scheduler.backfill_vectors() == 1
+            with store.read() as conn:
+                assert conn.execute("SELECT length(embedding) FROM memories WHERE id=?", (mid,)).fetchone()[0] == 12
+            assert scheduler.backfill_vectors() == 0
+        finally:
+            scheduler.stop()
+            gateway.close()

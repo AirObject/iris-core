@@ -8,7 +8,7 @@
 
 规划者（监督者）负责规划、审查和文档，并在仓库外维护隐藏验收集；执行者负责代码、测试和评测。每个执行任务在自己的 git worktree 中进行。可以同时有多个执行会话。同时修改产品代码（`src/`、`tests/`、迁移和提示词）的会话，改动的文件不能重叠；有重叠就排队，由规划者安排顺序。其余会话只运行评测、整理报告，或做互不重叠的配置。
 
-评测判分由执行者所用的模型按评分说明完成，不调用对话模型；`iris eval learning` 默认保留内置对话模型判分，只作预览，不作门槛依据。两次判分在互不可见的独立会话中完成，第二次不能看到第一次的结果；用于门槛判定的判分，由没有参与该轮代码和提示词修改的执行会话完成。目前只在 macOS 上验证，暂不做 Windows 验证。
+评测判分由执行者所用的模型按评分说明完成，不调用对话模型；`iris eval learning`／`iris eval e2e` 默认保留内置对话模型判分，只作预览，不作门槛依据。两次判分在互不可见的独立会话中完成，第二次不能看到第一次的结果；用于门槛判定的判分，由没有参与该轮代码和提示词修改的执行会话完成。目前只在 macOS 上验证，暂不做 Windows 验证。
 
 ## 安装和运行
 
@@ -41,6 +41,9 @@ uv run iris eval learning --corpus <外部 JSONL> --out <外部目录>
 uv run iris eval learning --judge-mode external --out <运行目录>
 uv run iris eval learning-export --checkpoints <检查点指纹目录> --checkpoint-report <同次报告.json> --out <材料目录>
 uv run iris eval learning-score --materials <材料目录> --judgments <第一轮目录> --judgments <第二轮目录> --judge-model <执行者模型名称> --out <报告目录>
+uv run iris eval e2e --judge-mode external --out <运行目录>
+uv run iris eval e2e --judge-mode external --script E001 --script E011 --out <流程检查目录>
+uv run iris eval e2e-score --materials <材料目录> --judgments <第一轮目录> --judgments <第二轮目录> --judge-model <执行者模型名称> --out <报告目录>
 ```
 
 外部模式只学习并导出 `judging-materials-<时间>/`，不调用对话模型判分。已有学习用 `learning-export` 离线导出；旧检查点需同次报告以保留真实来源，新检查点有 `metadata.json` 可省略 `--checkpoint-report`。每轮目录将 `round-template.json` 复制为 `manifest.json`，按清单 `judgment_file` 保存每案例的 scoring_v3 JSON；严格核对数组长度、布尔类型与记忆 ID／顺序，理由可附但不计分。`learning-score` 的一次／两次 `--judgments` 决定轮数，`--judge-model` 必填。两轮只共享评分说明和材料，不得互看结果；格式、隔离方式和例子见 `evals/README.md`。默认模型判分及 `--judge-runs` 只作预览。材料与报告优先放仓库外，完整材料不提交。
@@ -62,6 +65,8 @@ uv run iris eval learning-score --materials <材料目录> --judgments <第一�
 - `src/iris/learning_retrieval.py`：独立的学习材料检索，不继承回复调参。
 - `src/iris/api.py`：FastAPI 宿主接口；serve 只绑定回环地址。
 - `src/iris/evaluation.py`、`recall_evaluation.py`、`evals/`：隔离数据库的学习和召回评测。
+- `src/iris/scheduler.py`、`model_health.py`、`service_status.py`：服务内调度、模型恢复和状态。
+- `src/iris/e2e_evaluation.py`：真实 HTTP 端到端运行、材料导出和外部计分。
 - `tests/`：确定性逻辑和假模型集成测试。
 
 ## 密钥与工作规则
@@ -96,4 +101,10 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 内部设置接口为 Gateway.replace_config、Gateway.retry_now、ModelHealth.set_daily_token_limit、Scheduler.set_concurrency；后续设置页调用它们。serve 自动重新读取模型配置。离线 iris learn 必须停止服务后运行，服务／离线命令用操作系统锁互斥。模型网络调用仍在事务外，向量补算写回必须核对修订号；不要改变 learning_context 的选材。
 
-新增 `uv run iris eval e2e --judge-runs 2 --out C:\eval-results\e2e`。11 个脚本为手写 dev（原 10 个加单独冻结的跨入口 E011），评分文件 e2e_scoring_v1.md 独立于学习评分。评测使用真实 serve 子进程，只经 HTTP 接收、观察学习和准备回复，强制重启后才提问。Windows 需结束虚拟环境解释器启动的整个子进程树。默认双判、分歧取不利结论；单判仅用于迭代。完整返回只写到仓库外 --out，隐藏集由规划者运行。评测子进程密钥用环境变量传递，临时 TOML 只写 api_key_env 引用，不能写入明文密钥。仓库通过比例至少 80%（当前 9/11）不代表隐藏门槛通过。跨入口来源用 sources 的 entry_id/key 对象，近期原始消息隔离必须独立于模型判分检查。
+11 个端到端脚本为手写 dev（原 10 个加单独冻结的跨入口 E011），评分文件 e2e_scoring_v1.md 独立于学习评分，保持冻结。`e2e --judge-mode external` 使用真实 serve 子进程，只经 HTTP 接收、观察学习、强制重启和准备回复，不调用对话模型判分；`--script` 可重复传入以筛选脚本，不改语料。默认 model 模式和 --judge-runs 仍只作预览。
+
+端到端材料沿用 PR #7 的 format_version=1、evaluation="e2e"、manifest.json、round-template.json、scoring.md、cases/*.json、run.json 约定；每个实际返回的检查点一份 input，与旧 _judge 输入完全相同，另附 script_id、checkpoint_id、语料 SHA-256 和源码指纹。每轮把 round-template.json 复制为 manifest.json，按 judgment_file 写 e2e_scoring_v1 的 facts／forbidden JSON，reason 字符串必填。数组等长、真实布尔值、返回 memory_ids 和正向项支持记忆都严格校验；e2e-score 接受一轮或两轮 --judgments，--judge-model 必填，不读取模型配置、不调用模型。双判正向事实取 AND、禁止说法取 OR，列原始分歧；近期消息隔离和排空失败不能由判分覆盖，U04 独立计时。材料指纹绑定全部输入和记录；未到达的检查点没有虚构输入，其基础设施失败仍保留在脚本分母中。
+
+材料、判分和完整报告放仓库外，不提交执行记录或完整材料。两轮必须在互不可见的独立会话中完成；用于门槛的判分者不参与该轮实现。单轮小样本只检查流程，≥80%（全部公开集至少 9/11）不代表隐藏门槛通过。GLM 推理档位和方舟错误码适配留到下一任务；本轮不改变学习请求参数、超时或重试来适应慢调用。当前只在 macOS 验证，不做 Windows／深路径验证。
+
+评测子进程密钥用环境变量传递，临时 TOML 只写 api_key_env 引用，不能写入明文密钥。跨入口来源用 sources 的 entry_id/key 对象，近期原始消息隔离独立于语义判分检查。正常关闭仍等待在途线程，0.5 秒轮询仍扫描待学习正文，大积压时的扫描成本留作已知限制。

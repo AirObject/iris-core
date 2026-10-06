@@ -216,7 +216,7 @@ class Gateway:
             return False
         payload = ({"messages": [{"role": "user", "content": '只输出 JSON：{"ok":true}'}],
                     "max_tokens": 64, "response_format": {"type": "json_object"}}
-                   if kind == "chat" else {"input": "Iris 测试连接"})
+                   if kind == "chat" else self._embedding_payload("Iris 测试连接"))
         try:
             self._call(kind, "health_probe", payload, probe=True)
             return True
@@ -347,7 +347,7 @@ class Gateway:
                           data.get("usage") or {}, data.get("input_sensitive"), data.get("output_sensitive"),
                           (data.get("base_resp") or {}).get("status_code"))
 
-    def embedding(self, text: str, purpose: str = "embedding") -> list[float]:
+    def _embedding_payload(self, text: str) -> dict[str, Any]:
         config = self.configs['embedding']
         payload = {"model": config.model, "input": text}
         settings = self.store.setting('retrieval', {}) if self.store else {}
@@ -356,7 +356,10 @@ class Gateway:
             dimensions = settings.get('embedding_dimensions', 2048)
         if dimensions is not None:
             payload['dimensions'] = dimensions
-        data = self._call("embedding", purpose, payload)
+        return payload
+
+    def embedding(self, text: str, purpose: str = "embedding") -> list[float]:
+        data = self._call("embedding", purpose, self._embedding_payload(text))
         try:
             return [float(v) for v in data["data"][0]["embedding"]]
         except (KeyError, IndexError, TypeError, ValueError) as exc:

@@ -189,10 +189,17 @@ class Scheduler:
         config = self.gateway.configs.get("embedding")
         if not config or not config.model or (self.health and not self.health.allowed("embedding")):
             return 0
+        settings = self.store.setting("retrieval", {})
+        dimensions = config.dimensions
+        if dimensions is None and settings.get("embedding_model") == config.model:
+            dimensions = settings.get("embedding_dimensions", 2048)
+        vector_bytes = dimensions * 4 if dimensions is not None else None
+        needs_vector = """(embedding IS NULL OR embedding_model IS NULL OR embedding_model!=?
+                           OR (? IS NOT NULL AND length(embedding)!=?))"""
         with self.store.read() as conn:
-            rows = conn.execute("""SELECT id,content,revision FROM memories WHERE lifecycle!='deleted'
-                AND (embedding IS NULL OR embedding_model IS NULL OR embedding_model!=?) ORDER BY id LIMIT ?""",
-                (config.model, limit)).fetchall()
+            rows = conn.execute(f"""SELECT id,content,revision FROM memories WHERE lifecycle!='deleted'
+                AND {needs_vector} ORDER BY id LIMIT ?""",
+                (config.model, vector_bytes, vector_bytes, limit)).fetchall()
         count = 0
         for row in rows:
             if self._stop.is_set():
@@ -204,7 +211,8 @@ class Scheduler:
             if self.gateway.configs.get("embedding") != config:
                 break
             with self.store.write() as conn:
-                count += conn.execute("""UPDATE memories SET embedding=?,embedding_model=? WHERE id=? AND revision=?
-                    AND lifecycle!='deleted' AND (embedding IS NULL OR embedding_model IS NULL OR embedding_model!=?)""",
-                    (vector.tobytes(), config.model, row["id"], row["revision"], config.model)).rowcount
+                count += conn.execute(f"""UPDATE memories SET embedding=?,embedding_model=? WHERE id=? AND revision=?
+                    AND lifecycle!='deleted' AND {needs_vector}""",
+                    (vector.tobytes(), config.model, row["id"], row["revision"], config.model,
+                     vector_bytes, vector_bytes)).rowcount
         return count

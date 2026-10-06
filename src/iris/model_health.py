@@ -24,7 +24,7 @@ def usage_window(store, current):
 def fingerprint(config):
     if config is None:
         return "unconfigured"
-    return hashlib.sha256(json.dumps([config.base_url, config.model, config.api_key]).encode("utf-8")).hexdigest()
+    return hashlib.sha256(json.dumps([config.base_url, config.model, config.api_key, config.dimensions]).encode("utf-8")).hexdigest()
 
 
 class ModelHealth:

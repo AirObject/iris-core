@@ -39,8 +39,9 @@ def test_double_judge_disagreements_are_adverse_and_single_has_no_denominator():
     assert combine_judges([a])["decisions"] == 0
 
 
+@pytest.mark.parametrize("judge_mode", ["model", "external"])
 @pytest.mark.parametrize("cross_entry,leak", [(False, False), (True, False), (True, True)])
-def test_U05_real_serve_subprocess_http_learning_kill_restart_prepare(tmp_path, monkeypatch, cross_entry, leak):
+def test_U05_real_serve_subprocess_http_learning_kill_restart_prepare(tmp_path, monkeypatch, cross_entry, leak, judge_mode):
     corpus = tmp_path / "case.jsonl"
     script = {"id": "HTTP-restart", "split": "dev", "entries": [{"id": "a", "kind": "private", "pace": "realtime", "platform": "test"}],
               "messages": [
@@ -80,7 +81,24 @@ def test_U05_real_serve_subprocess_http_learning_kill_restart_prepare(tmp_path, 
             return 200, completion(json.dumps(result, ensure_ascii=False)), {}, 0
         server.handler = handler
         path, report = run_e2e_eval({"chat": server.configs["chat"]}, tmp_path / "repo", "dev", corpus=corpus,
-                                    out=tmp_path / "outside", judge_runs=2, wait_timeout=20)
+                                    out=tmp_path / "outside", judge_runs=2, wait_timeout=20, judge_mode=judge_mode)
+        judge_calls = [body for _, body in server.requests if "messages" in body
+                       and "端到端评分" in body["messages"][0]["content"]]
+        assert len(judge_calls) == (2 if judge_mode == "model" else 0)
+        if judge_mode == "external":
+            from iris.e2e_evaluation import score_e2e_judgments
+            materials, manifest = path.parent, report
+            rounds = []
+            for number in (1, 2):
+                directory = tmp_path / f"round{number}"
+                directory.mkdir()
+                (directory / "manifest.json").write_bytes((materials / "round-template.json").read_bytes())
+                for item in manifest["cases"]:
+                    (directory / item["judgment_file"]).write_text(json.dumps({"facts": [
+                        {"covered": True, "memory_ids": [1], "reason": "覆盖"}], "forbidden": []}), encoding="utf-8")
+                rounds.append(directory)
+            path, report = score_e2e_judgments(materials, rounds, tmp_path / "repo", judge_model="executor",
+                                               out=tmp_path / "outside")
     assert path.exists() and report["scripts"][0]["passed"] is not leak, report["scripts"]
     row = report["details"][0]
     assert row["before_restart"]["batches"][0]["state"] == "succeeded"
@@ -92,7 +110,7 @@ def test_U05_real_serve_subprocess_http_learning_kill_restart_prepare(tmp_path, 
     if cross_entry and not leak:
         assert {m["entry_id"] for m in row["checkpoints"][0]["response"]["recent_messages"]} == {"dm"}
         assert len(row["checkpoints"][0]["response"]["recent_messages"]) == 1
-    assert report["judge_runs"] == 2
+    assert report["judge_runs"] == 2 and report["judge_mode"] == judge_mode
     assert "fake-only" not in path.read_text(encoding="utf-8")
 
 

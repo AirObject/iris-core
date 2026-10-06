@@ -1,6 +1,7 @@
 """HTTP-only end-to-end evaluation against killed/restarted real serve processes."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -18,9 +19,13 @@ import httpx
 
 from .models import Gateway, ModelError, LEARNING_TOTAL_TIMEOUT, JUDGE_TOTAL_TIMEOUT
 from .service_status import percentile
+# Reuse PR #7's transport primitives; E2E keeps its own payload and validator.
+from .evaluation import (MATERIAL_FORMAT_VERSION, _json_sha256, _read_json,
+                         _write_json, _verified_material_file)
 
 
-SCORING = files("iris").joinpath("prompts", "e2e_scoring_v1.md").read_text(encoding="utf-8")
+SCORING_VERSION = "e2e_scoring_v1"
+SCORING = files("iris").joinpath("prompts", SCORING_VERSION + ".md").read_text(encoding="utf-8")
 
 
 def load_corpus(path):
@@ -201,13 +206,24 @@ class ServeProcess:
         return response.json()
 
 
+def _judge_payload(script, checkpoint, response):
+    return {"messages": script["messages"], "question": checkpoint["question"],
+            "timezone": "Asia/Shanghai", "expected": checkpoint["expected"],
+            "forbidden": checkpoint.get("forbidden", []), "memories": response["memories"]}
+
+
 def _judge(gateway, script, checkpoint, response):
-    material = {"messages": script["messages"], "question": checkpoint["question"],
-                "timezone": "Asia/Shanghai", "expected": checkpoint["expected"],
-                "forbidden": checkpoint.get("forbidden", []), "memories": response["memories"]}
+    material = _judge_payload(script, checkpoint, response)
     result = gateway.json_chat([{"role": "system", "content": SCORING},
                                {"role": "user", "content": json.dumps(material, ensure_ascii=False)}],
                               "e2e_judge", max_tokens=16000)[0]
+    return _validate_judgment(result, checkpoint, response)
+
+
+def _validate_judgment(result, checkpoint, response):
+    """The same strict frozen scoring schema for model preview and external files."""
+    if not isinstance(result, dict):
+        raise ValueError("judge result must be a JSON object")
     ids = {m["id"] for m in response["memories"]}
     for name, field, expected in (("facts", "covered", checkpoint["expected"]),
                                    ("forbidden", "present", checkpoint.get("forbidden", []))):
@@ -215,7 +231,7 @@ def _judge(gateway, script, checkpoint, response):
         if not isinstance(values, list) or len(values) != len(expected):
             raise ValueError("judge result length mismatch")
         for value in values:
-            if type(value.get(field)) is not bool or not isinstance(value.get("reason"), str):
+            if not isinstance(value, dict) or type(value.get(field)) is not bool or not isinstance(value.get("reason"), str):
                 raise ValueError("invalid judge decision")
             refs = value.get("memory_ids")
             if not isinstance(refs, list) or any(type(mid) is not int or mid not in ids for mid in refs):
@@ -241,13 +257,37 @@ def combine_judges(judges):
     return combined
 
 
-def _run_script(configs, script, judge_runs, wait_timeout):
+def _score_checkpoint(row, observed, judges):
+    """Replay semantic scoring, HTTP isolation and U04 from captured evidence."""
+    spec = next(c for c in row["script"]["checkpoints"] if c["id"] == observed["id"])
+    combined = combine_judges(judges)
+    isolation = check_recent_messages(observed["response"], spec["entry_id"],
+                                      {int(mid): message for mid, message in observed["sent_messages"].items()})
+    if not isolation["passed"]:
+        row["failure"] = "recent_messages isolation check failed"
+    sent = {(item["entry_id"], item["key"]): item["seconds"] for item in row["sent_times"]}
+    first_seen = {int(mid): seconds for mid, seconds in row["first_seen_memories"].items()}
+    entries = {entry["id"]: entry for entry in row["script"]["entries"]}
+    observed.update(judges=judges, combined=combined, recent_message_isolation=isolation,
+                    latencies=[fact_latency(expected, fact, spec["entry_id"], entries, sent, first_seen)
+                               for expected, fact in zip(spec["expected"], combined["facts"], strict=True)])
+
+
+def _finish_script(row):
+    complete = len(row["checkpoints"]) == len(row["script"]["checkpoints"])
+    if not complete and not row.get("failure"):
+        row["failure"] = "evaluation infrastructure: checkpoint not reached"
+    row["passed"] = not row.get("failure") and complete and all(c["combined"]["passed"] for c in row["checkpoints"])
+
+
+def _run_script(configs, script, judge_runs, wait_timeout, judge_mode="model"):
     entries = {e["id"]: e for e in script["entries"]}
     with tempfile.TemporaryDirectory(prefix="iris-e2e-") as temporary:
         service = ServeProcess(temporary, configs)
-        gateway = Gateway(configs)
+        gateway = Gateway(configs) if judge_mode == "model" else None
         detail = {"id": script["id"], "script": script, "checkpoints": [], "first_seen_memories": {}, "receipts": []}
-        judged_messages = []
+        judged_messages = detail["judged_messages"] = []
+        detail["sent_times"] = []
         sent_messages = {}
         sent, first_seen, observed_batches = {}, {}, set()
         origin = time.monotonic()
@@ -267,6 +307,8 @@ def _run_script(configs, script, judge_runs, wait_timeout):
                     time.sleep(message["delay_seconds"])
                 entry = entries[message["entry_id"]]
                 sent[(entry["id"], message["dedupe_key"])] = time.monotonic() - origin
+                detail["sent_times"].append({"entry_id": entry["id"], "key": message["dedupe_key"],
+                                             "seconds": sent[(entry["id"], message["dedupe_key"])]})
                 receipt = service.post(f"/api/v1/entries/{entry['id']}/messages", _message(entry, message))
                 detail["receipts"].append(receipt)
                 judged_messages.append({**message, "message_id": receipt["message_ids"][0]})
@@ -291,16 +333,18 @@ def _run_script(configs, script, judge_runs, wait_timeout):
                 detail["receipts"].append(receipt)
                 sent_messages[receipt["message_ids"][0]] = {**checkpoint["question"], "entry_id": entry["id"]}
                 response = service.post(f"/api/v1/entries/{entry['id']}/prepare", checkpoint.get("prepare", {}))
-                judges = [_judge(gateway, {**script, "messages": judged_messages}, checkpoint, response) for _ in range(judge_runs)]
-                combined = combine_judges(judges)
                 isolation = check_recent_messages(response, entry["id"], sent_messages)
                 if not isolation["passed"]:
                     detail["failure"] = "recent_messages isolation check failed"
-                latencies = [fact_latency(expected, fact, entry["id"], entries, sent, first_seen)
-                             for expected, fact in zip(checkpoint["expected"], combined["facts"])]
-                detail["checkpoints"].append({"id": checkpoint["id"], "response": response, "judges": judges,
-                                              "combined": combined, "latencies": latencies, "recent_message_isolation": isolation})
-            detail["passed"] = not detail.get("failure") and all(c["combined"]["passed"] for c in detail["checkpoints"])
+                observed = {"id": checkpoint["id"], "response": response,
+                            "sent_messages": dict(sent_messages), "recent_message_isolation": isolation}
+                if judge_mode == "model":
+                    judges = [_judge(gateway, {**script, "messages": judged_messages}, checkpoint, response)
+                              for _ in range(judge_runs)]
+                    _score_checkpoint(detail, observed, judges)
+                detail["checkpoints"].append(observed)
+            if judge_mode == "model":
+                _finish_script(detail)
             detail["final_status"] = service.status()
             return detail
         except (OSError, RuntimeError, ValueError, ModelError, httpx.HTTPError) as error:
@@ -308,29 +352,74 @@ def _run_script(configs, script, judge_runs, wait_timeout):
             return detail
         finally:
             service.stop()
-            gateway.close()
+            if gateway is not None:
+                gateway.close()
 
 
-def run_e2e_eval(configs, root, split="all", *, corpus=None, out=None, judge_runs=2, wait_timeout=900):
-    if judge_runs not in (1, 2) or split not in ("all", "dev", "holdout") or wait_timeout <= 0:
+def run_e2e_eval(configs, root, split="all", *, corpus=None, out=None, judge_runs=2, wait_timeout=900,
+                 judge_mode="model", script_ids=None):
+    if (judge_runs not in (1, 2) or split not in ("all", "dev", "holdout") or wait_timeout <= 0
+            or judge_mode not in ("model", "external")):
         raise ValueError("invalid e2e evaluation options")
     root = Path(root).resolve()
     corpus = Path(corpus).resolve() if corpus else root / "evals/e2e_v1.json"
     scripts = [s for s in load_corpus(corpus) if split == "all" or s.get("split", "dev") == split]
+    if script_ids is not None:
+        if not script_ids or len(set(script_ids)) != len(script_ids) or set(script_ids) - {s["id"] for s in scripts}:
+            raise ValueError("script IDs must be unique and present in the selected corpus/split")
+        scripts = [s for s in scripts if s["id"] in script_ids]
     if not scripts:
         raise ValueError("no e2e scripts for requested split")
     reports = Path(out).resolve() if out else root / "evals/reports"
     reports.mkdir(parents=True, exist_ok=True)
-    external = not reports.is_relative_to(root)
+    metadata = {"scoring_version": SCORING_VERSION,
+                "source_sha256": hashlib.sha256(b"".join(p.read_bytes() for p in sorted(Path(__file__).parent.rglob("*"))
+                    if p.suffix in (".py", ".sql", ".md", ".json"))).hexdigest(),
+                "corpus_sha256": hashlib.sha256(corpus.read_bytes()).hexdigest(), "split": split,
+                "script_ids": [s["id"] for s in scripts], "models": {kind: config.model for kind, config in configs.items()},
+                "chat_model": configs["chat"].model,
+                "timeouts_seconds": {"learning": LEARNING_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT}}
     rows = []
     started = time.monotonic()
     for script in scripts:
         print(f"E2E {script['id']}: HTTP intake, background learning, restart, prepare", flush=True)
         try:
-            rows.append(_run_script(configs, script, judge_runs, wait_timeout))
+            rows.append(_run_script(configs, script, judge_runs, wait_timeout, judge_mode))
         except (OSError, RuntimeError, ValueError, ModelError, httpx.HTTPError) as error:
-            rows.append({"id": script["id"], "passed": False,
+            rows.append({"id": script["id"], "script": script, "passed": False,
                          "failure": f"evaluation infrastructure: {type(error).__name__}: {error}", "checkpoints": []})
+    metadata["duration_seconds"] = round(time.monotonic() - started, 2)
+    secrets = [config.api_key for config in configs.values()]
+    if judge_mode == "external":
+        # Redact before writing any captured HTTP/status data to the material bundle.
+        serialized = json.dumps(rows, ensure_ascii=False)
+        for secret in secrets:
+            if secret:
+                serialized = serialized.replace(secret, "[REDACTED]")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        return export_e2e_judgments(json.loads(serialized), metadata, reports / f"judging-materials-{stamp}")
+    return _write_e2e_report(rows, root, reports, metadata, judge_runs=judge_runs,
+                             judge_mode="model", judge_model=configs["chat"].model, secrets=secrets)
+
+
+def _disagreements(rows):
+    differences = []
+    for row in rows:
+        for checkpoint in row["checkpoints"]:
+            judges = checkpoint["judges"]
+            if len(judges) != 2:
+                continue
+            for name, field in (("facts", "covered"), ("forbidden", "present")):
+                for index, (first, second) in enumerate(zip(judges[0][name], judges[1][name], strict=True)):
+                    if first[field] != second[field]:
+                        differences.append({"script_id": row["id"], "checkpoint_id": checkpoint["id"],
+                                            "field": name, "index": index, "first": first[field], "second": second[field]})
+    return differences
+
+
+def _write_e2e_report(rows, root, reports, metadata, *, judge_runs, judge_mode, judge_model,
+                      materials_sha256=None, judgment_rounds=(), secrets=()):
+    reports.mkdir(parents=True, exist_ok=True)
     summaries = []
     calls = []
     for row in rows:
@@ -345,26 +434,187 @@ def run_e2e_eval(configs, root, split="all", *, corpus=None, out=None, judge_run
     disagreements = sum(c["combined"]["disagreements"] for row in rows for c in row["checkpoints"])
     decisions = sum(c["combined"]["decisions"] for row in rows for c in row["checkpoints"])
     durations = [c["duration_ms"] for c in calls]
-    source = hashlib.sha256(b"".join(p.read_bytes() for p in sorted(Path(__file__).parent.rglob("*"))
-                                    if p.suffix in (".py", ".sql", ".md", ".json"))).hexdigest()
-    report = {"created_at": datetime.now(timezone.utc).isoformat(), "scoring_version": "e2e_scoring_v1", "source_sha256": source,
-              "corpus_sha256": hashlib.sha256(corpus.read_bytes()).hexdigest(), "split": split, "judge_runs": judge_runs,
-              "models": {kind: config.model for kind, config in configs.items()}, "scripts": summaries,
+    report = {**metadata, "created_at": datetime.now(timezone.utc).isoformat(), "judge_runs": judge_runs,
+              "judge_mode": judge_mode, "judge_model": judge_model, "materials_sha256": materials_sha256,
+              "judgment_rounds": list(judgment_rounds), "judge_inconsistencies": _disagreements(rows), "scripts": summaries,
               "passed": sum(row["passed"] for row in rows), "total": len(rows),
               "repository_gate": sum(row["passed"] for row in rows) / len(rows) >= .8,
               "hidden_acceptance": "not_run_by_executor", "judge_disagreements": disagreements,
               "judge_decisions": decisions, "judge_disagreement_rate": disagreements / decisions if decisions else None,
-              "duration_seconds": round(time.monotonic() - started, 2),
-              "timeouts_seconds": {"learning": LEARNING_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT},
               "learning_latency": {"count": len(durations), "p50_ms": percentile(durations, 50),
                   "p95_ms": percentile(durations, 95), "max_ms": max(durations, default=None),
                   "timeouts": sum(c["timed_out"] for c in calls)}}
-    if external:
+    if not reports.is_relative_to(root):
         report["details"] = rows
     path = reports / ("e2e-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".json")
     serialized = json.dumps(report, ensure_ascii=False, indent=2)
-    for config in configs.values():
-        if config.api_key:
-            serialized = serialized.replace(config.api_key, "[REDACTED]")
+    for secret in secrets:
+        if secret:
+            serialized = serialized.replace(secret, "[REDACTED]")
     path.write_text(serialized, encoding="utf-8")
     return path, json.loads(serialized)
+
+
+_E2E_RUN_FIELDS = ("scoring_version", "source_sha256", "corpus_sha256", "split", "script_ids",
+                   "models", "chat_model", "timeouts_seconds", "duration_seconds")
+_E2E_ROW_FIELDS = ("id", "script", "first_seen_memories", "receipts", "judged_messages", "sent_times",
+                   "before_restart", "after_restart", "final_status", "failure")
+
+
+def _e2e_rows(rows):
+    """Keep captured evidence, never previous judgments, combined votes or latencies."""
+    return [{**{key: copy.deepcopy(row[key]) for key in _E2E_ROW_FIELDS if key in row},
+             "checkpoints": [{key: copy.deepcopy(checkpoint[key]) for key in
+                              ("id", "response", "sent_messages", "recent_message_isolation") if key in checkpoint}
+                             for checkpoint in row["checkpoints"]]} for row in rows]
+
+
+def _material_cases(rows):
+    for row in rows:
+        specs = {checkpoint["id"]: checkpoint for checkpoint in row["script"]["checkpoints"]}
+        for observed in row["checkpoints"]:
+            yield row, specs[observed["id"]], observed
+
+
+def _check_e2e_run(rows, metadata):
+    for key in _E2E_RUN_FIELDS:
+        if key not in metadata:
+            raise ValueError(f"e2e metadata missing {key}")
+    if metadata["scoring_version"] != SCORING_VERSION:
+        raise ValueError("e2e scoring version mismatch")
+    for key in ("corpus_sha256", "source_sha256"):
+        value = metadata[key]
+        if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
+            raise ValueError(f"invalid e2e {key}")
+    if not isinstance(metadata["chat_model"], str) or not metadata["chat_model"].strip():
+        raise ValueError("e2e learning model is required")
+    if metadata["models"].get("chat") != metadata["chat_model"] or metadata["split"] not in ("all", "dev", "holdout"):
+        raise ValueError("inconsistent e2e run metadata")
+    ids = [row["id"] for row in rows]
+    if not ids or len(set(ids)) != len(ids) or ids != metadata["script_ids"]:
+        raise ValueError("missing or duplicate e2e scripts")
+    for row in rows:
+        specs = row["script"]["checkpoints"]
+        observed_ids = [c["id"] for c in row["checkpoints"]]
+        if (row["script"]["id"] != row["id"] or not specs or len({c["id"] for c in specs}) != len(specs)
+                or observed_ids != [c["id"] for c in specs[:len(observed_ids)]]):
+            raise ValueError("e2e script/checkpoint mapping mismatch")
+        if len(observed_ids) != len(specs) and not row.get("failure"):
+            raise ValueError("unreached e2e checkpoints require an infrastructure failure record")
+        for observed in row["checkpoints"]:
+            # These are required to recheck isolation and U04, not supplied by the judge.
+            if not isinstance(observed["sent_messages"], dict) or not isinstance(row["first_seen_memories"], dict):
+                raise ValueError("missing e2e HTTP receipts or timing evidence")
+            if not isinstance(row["sent_times"], list) or not isinstance(row["judged_messages"], list):
+                raise ValueError("missing e2e message evidence")
+
+
+def _material_document(row, spec, observed, metadata):
+    return {"format_version": MATERIAL_FORMAT_VERSION, "evaluation": "e2e",
+            "script_id": row["id"], "checkpoint_id": spec["id"],
+            "corpus_sha256": metadata["corpus_sha256"], "source_sha256": metadata["source_sha256"],
+            "scoring_version": SCORING_VERSION,
+            "input": _judge_payload({**row["script"], "messages": row["judged_messages"]}, spec, observed["response"])}
+
+
+def export_e2e_judgments(rows, metadata, out):
+    """Export every observed checkpoint; infrastructure failures remain in run.json."""
+    try:
+        rows = _e2e_rows(rows)
+        _check_e2e_run(rows, metadata)
+        documents = [_material_document(*case, metadata) for case in _material_cases(rows)]
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"Invalid e2e run structure: {error}") from error
+    out = Path(out)
+    if out.exists() and any(out.iterdir()):
+        raise ValueError(f"material output directory must be empty: {out}")
+    out.mkdir(parents=True, exist_ok=True)
+    manifest = {"format_version": MATERIAL_FORMAT_VERSION, "evaluation": "e2e",
+                "run": {key: metadata[key] for key in _E2E_RUN_FIELDS},
+                "run_sha256": _write_json(out / "run.json", {"rows": rows}), "cases": []}
+    (out / "scoring.md").write_text(SCORING, encoding="utf-8")
+    manifest["scoring_sha256"] = hashlib.sha256((out / "scoring.md").read_bytes()).hexdigest()
+    for index, document in enumerate(documents):
+        filename = f"cases/{index:04}.json"
+        manifest["cases"].append({"script_id": document["script_id"], "checkpoint_id": document["checkpoint_id"],
+                                  "file": filename, "sha256": _write_json(out / filename, document),
+                                  "judgment_file": f"{index:04}.json"})
+    manifest["materials_sha256"] = _json_sha256(manifest)
+    path = out / "manifest.json"
+    _write_json(path, manifest)
+    _write_json(out / "round-template.json", {"materials_sha256": manifest["materials_sha256"]})
+    return path, manifest
+
+
+def _load_e2e_materials(directory):
+    manifest = _read_json(directory / "manifest.json")
+    try:
+        if manifest["format_version"] != MATERIAL_FORMAT_VERSION or manifest["evaluation"] != "e2e":
+            raise ValueError("unsupported material format or evaluation kind")
+        if manifest["materials_sha256"] != _json_sha256({k: v for k, v in manifest.items() if k != "materials_sha256"}):
+            raise ValueError("manifest fingerprint mismatch")
+        rows = _read_json(_verified_material_file(directory, "run.json", manifest["run_sha256"]))["rows"]
+        scoring = _verified_material_file(directory, "scoring.md", manifest["scoring_sha256"])
+        if scoring.read_text(encoding="utf-8") != SCORING:
+            raise ValueError("material scoring rules differ from frozen e2e_scoring_v1")
+        _check_e2e_run(rows, manifest["run"])
+        cases = list(_material_cases(rows))
+        if len(cases) != len(manifest["cases"]):
+            raise ValueError("material checkpoint count mismatch")
+        for index, (entry, case) in enumerate(zip(manifest["cases"], cases, strict=True)):
+            if entry["judgment_file"] != f"{index:04}.json" or entry["file"] != f"cases/{index:04}.json":
+                raise ValueError("invalid material/judgment filename")
+            document = _read_json(_verified_material_file(directory, entry["file"], entry["sha256"]))
+            if (document != _material_document(*case, manifest["run"])
+                    or entry["script_id"] != case[0]["id"] or entry["checkpoint_id"] != case[1]["id"]):
+                raise ValueError("material input differs from captured e2e data")
+        return manifest, _e2e_rows(rows)
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"Invalid e2e material structure: {error}") from error
+
+
+def score_e2e_judgments(materials, judgments, root, *, judge_model, out=None):
+    """Strict, offline scoring of one or two complete, independently supplied rounds."""
+    judgments = [Path(directory).resolve() for directory in judgments]
+    if len(judgments) not in (1, 2):
+        raise ValueError("supply one or two judgment directories")
+    if len(set(judgments)) != len(judgments):
+        raise ValueError("two rounds require independent judgment directories")
+    if not isinstance(judge_model, str) or not judge_model.strip():
+        raise ValueError("--judge-model must declare the external executor model")
+    manifest, rows = _load_e2e_materials(Path(materials))
+    cases = list(_material_cases(rows))
+    problems, rounds, round_records = [], [], []
+    for number, directory in enumerate(judgments, 1):
+        try:
+            round_manifest = _read_json(directory / "manifest.json")
+            if not isinstance(round_manifest, dict) or round_manifest.get("materials_sha256") != manifest["materials_sha256"]:
+                raise ValueError("judgment material fingerprint mismatch")
+        except ValueError as error:
+            problems.append(f"round {number} ({directory}): {error}")
+        verdicts, records = [], []
+        expected_files = {"manifest.json", *(entry["judgment_file"] for entry in manifest["cases"])}
+        for extra in sorted({p.name for p in directory.glob("*.json")} - expected_files):
+            problems.append(f"round {number} ({directory}): unexpected judgment file {extra}")
+        for entry, (_, spec, observed) in zip(manifest["cases"], cases, strict=True):
+            try:
+                output = _read_json(directory / entry["judgment_file"])
+                _validate_judgment(output, spec, observed["response"])
+                verdicts.append(output)
+                records.append({"script_id": entry["script_id"], "checkpoint_id": entry["checkpoint_id"],
+                                "sha256": _json_sha256(output)})
+            except ValueError as error:
+                problems.append(f"round {number} ({directory}), {entry['script_id']}/{entry['checkpoint_id']}: {error}")
+        rounds.append(verdicts)
+        round_records.append({"round": number, "cases": records})
+    if problems:
+        raise ValueError("Invalid external judgments:\n- " + "\n- ".join(problems))
+    for index, (row, _, observed) in enumerate(cases):
+        _score_checkpoint(row, observed, [votes[index] for votes in rounds])
+    for row in rows:
+        _finish_script(row)
+    root = Path(root).resolve()
+    reports = Path(out).resolve() if out else root / "evals/reports"
+    return _write_e2e_report(rows, root, reports, manifest["run"], judge_runs=len(rounds), judge_mode="external",
+                             judge_model=judge_model.strip(), materials_sha256=manifest["materials_sha256"],
+                             judgment_rounds=round_records)

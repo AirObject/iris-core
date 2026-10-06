@@ -178,3 +178,43 @@ def test_explicit_content_refusal_is_not_hidden_by_another_inflight_failure(stor
         assert caught.value.category == "content_rejection" and not caught.value.paused
     finally:
         gateway.close()
+
+
+def test_embedding_dimension_change_replaces_health_config_and_rejects_old_response(store):
+    with FakeOpenAI().serve() as server:
+        health = ModelHealth(store, server.configs)
+        gateway = Gateway(server.configs, store, health=health)
+        try:
+            token = health.check("embedding", "embedding")
+            health.observe("embedding", token, "configuration", "dimension mismatch")
+            corrected = replace(server.configs["embedding"], dimensions=3)
+            assert gateway.replace_config("embedding", corrected)
+            assert health.snapshot()["embedding"]["state"] == "normal"
+            assert health.observe("embedding", token, "authentication", "stale response")
+            assert health.snapshot()["embedding"]["state"] == "normal"
+            assert gateway.embedding("query") == [1, 0, 0]
+            assert server.requests[-1][1]["dimensions"] == 3
+            health.observe("embedding", health.check("embedding", "embedding"), "configuration", "failure")
+            restored = ModelHealth(store, {**server.configs, "embedding": corrected})
+            assert restored.snapshot()["embedding"]["state"] == "configuration_error"
+            changed = ModelHealth(store, {**server.configs, "embedding": replace(corrected, dimensions=4)})
+            assert changed.snapshot()["embedding"]["state"] == "normal"
+        finally:
+            gateway.close()
+
+
+def test_embedding_health_probe_keeps_requested_dimensions(store):
+    clock = Clock()
+    with FakeOpenAI().serve() as server:
+        configs = {**server.configs, "embedding": replace(server.configs["embedding"], dimensions=3)}
+        health = ModelHealth(store, configs, clock=clock)
+        gateway = Gateway(configs, store, health=health)
+        try:
+            token = health.check("embedding", "embedding")
+            for _ in range(3):
+                health.observe("embedding", token, "retryable", "unavailable")
+            clock.advance(60)
+            assert gateway.probe("embedding")
+            assert server.requests[-1][1].get("dimensions") == 3
+        finally:
+            gateway.close()
