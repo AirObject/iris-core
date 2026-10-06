@@ -65,6 +65,7 @@ class Gateway:
 
 def worker(path, size, dtype, repeats, dimension, default_config=False):
     process = psutil.Process()
+    load_before = psutil.getloadavg()
     store = Store(path)
     settings = {**DEFAULTS, "embedding_model": "perf-vector", "dtype": dtype, "embedding_dimensions": dimension}
     if not default_config:
@@ -108,10 +109,14 @@ def worker(path, size, dtype, repeats, dimension, default_config=False):
                 response.raise_for_status()
                 http.append((time.perf_counter() - started) * 1000)
             timings[name] = {'request': query, 'samples': repeats,
+                'vector_p50_ms': float(np.percentile(vector_times, 50)),
                 'vector_p95_ms': float(np.percentile(vector_times, 95)),
                 'prepare_p50_ms': float(np.percentile(direct, 50)),
                 'prepare_p95_ms': float(np.percentile(direct, 95)),
-                'http_prepare_p95_ms': float(np.percentile(http, 95))}
+                'http_prepare_p50_ms': float(np.percentile(http, 50)),
+                'http_prepare_p95_ms': float(np.percentile(http, 95)),
+                'samples_ms': {'prepare': direct, 'http_prepare': http, 'vector': vector_times},
+                'returned': [{'id': m['id'], 'reason': m['reason']} for m in response.json()['memories']]}
         # Identical deterministic queries across fresh float32 / float16 worker processes.
         rng = np.random.default_rng(7788)
         rankings = []
@@ -120,7 +125,7 @@ def worker(path, size, dtype, repeats, dimension, default_config=False):
             rankings.append([mid for mid, _ in sorted(scores.items(), key=lambda p: (-p[1][0], p[0]))[:8]])
         info = process.memory_info()
         result = {"memories": size, "dimension": dimension, "dtype": dtype, "settings": settings, "queries": timings,
-                  "load_seconds": load_seconds, "matrix_storage_mib": retrieval.index.nbytes / 2**20,
+                  "load_seconds": load_seconds, "load_average_before": load_before, "load_average_after": psutil.getloadavg(), "matrix_storage_mib": retrieval.index.nbytes / 2**20,
                   "rss_before_mib": rss_before / 2**20, "rss_after_load_mib": rss_loaded / 2**20,
                   "rss_load_delta_mib": (rss_loaded - rss_before) / 2**20,
                   "rss_after_queries_mib": info.rss / 2**20,

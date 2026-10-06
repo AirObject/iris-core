@@ -122,7 +122,10 @@ def test_learning_context_does_not_add_absent_person_highlights(store):
 def test_lexical_candidates_must_cover_more_than_one_incidental_short_word(store, path):
     weak = put(store, '围棋棋盘收在阁楼', vector=[0., 1.])
     strong = put(store, '露营时大家下围棋，后来又一起练习书法', vector=[0., -1.])
-    result = retriever(store, path).search(text='围棋 露营 书法 骑行')['memories']
+    r = retriever(store, path)
+    # Test the coverage gate itself, independently of the calibrated fallback.
+    r.overrides['lexical_min'] = .75
+    result = r.search(text='围棋 露营 书法 骑行')['memories']
     assert strong in {m['id'] for m in result}
     assert weak not in {m['id'] for m in result}
 
@@ -131,7 +134,9 @@ def test_lexical_candidates_must_cover_more_than_one_incidental_short_word(store
 def test_short_lane_coverage_includes_long_query_terms(store, path):
     weak = put(store, '围棋是黑白棋子的游戏', vector=[0., 1.])
     strong = put(store, '围棋与红楼梦、交响乐都在这场文化活动中出现', vector=[0., -1.])
-    result = retriever(store, path).search(text='围棋 红楼梦 交响乐')['memories']
+    r = retriever(store, path)
+    r.overrides['lexical_min'] = .75
+    result = r.search(text='围棋 红楼梦 交响乐')['memories']
     assert strong in {m['id'] for m in result}
     assert weak not in {m['id'] for m in result}
 
