@@ -9,6 +9,7 @@ import math
 import random
 import tempfile
 import time
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from importlib.resources import files
@@ -118,18 +119,26 @@ def _has_required_subjects(fact: dict[str, Any], memory: dict[str, Any], identit
     return set(fact.get("about", [])) <= about_names and set(fact.get("about_account_ids", [])) <= about_accounts
 
 
+def _judge_payload(case: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
+    return {"messages": [{"id": i, **message} for i, message in enumerate(case["messages"], 1)],
+            "must": case["must"], "forbidden": case["forbidden"],
+            "links": case["links"], "goals": case["goals"], "actual_memories": actual["memories"],
+            "actual_links": actual["links"], "actual_goals": actual["goals"],
+            "actual_subjects": actual["identities"], "actual_aliases": actual.get("aliases", []),
+            "target_segments": [json.loads(batch["target_ids"]) for batch in actual["batches"]]}
+
+
 def _judge(gateway: Gateway, case: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
-    payload = {"messages": [{"id": i, **message} for i, message in enumerate(case["messages"], 1)],
-               "must": case["must"], "forbidden": case["forbidden"],
-               "links": case["links"], "goals": case["goals"], "actual_memories": actual["memories"],
-               "actual_links": actual["links"], "actual_goals": actual["goals"],
-               "actual_subjects": actual["identities"],
-               "actual_aliases": actual.get("aliases", []),
-               "target_segments": [json.loads(batch["target_ids"]) for batch in actual["batches"]]}
+    payload = _judge_payload(case, actual)
     output, *_ = gateway.json_chat(
         [{"role": "system", "content": SCORING},
          {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
         "learning_judge", max_tokens=JUDGE_MAX_TOKENS)
+    return _score_judgment(output, case, actual)
+
+
+def _score_judgment(output: dict[str, Any], case: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
+    """Legacy normalization and deterministic vetoes, shared by both judging paths."""
     memory_by_id = {item.get("id"): item for item in output.get("memory_results", []) if isinstance(item, dict)}
     results = []
     for memory in actual["memories"]:
@@ -327,13 +336,18 @@ def _fmt(value: Any) -> str:
 
 
 def _report_markdown(report: dict[str, Any]) -> str:
+    external = report.get("judge_mode", "model") == "external"
+    judging = ("外部执行者判分；外部判分的用量、耗时与超时不由本程序测量。" if external else
+               "对话模型判分（预览，不作门槛依据）；判分与学习使用同一模型。")
     lines = ["# Iris 学习评测", "", f"时间：{report['created_at']}",
-             f"学习提示词：`{report['prompt_version']}`；评分说明：`{report['scoring_version']}`；对话模型：`{report['chat_model']}`；embedding：`{report['embedding_model']}`。",
+             f"学习提示词：`{report['prompt_version']}`；评分说明：`{report['scoring_version']}`；学习模型：`{report['chat_model']}`；embedding：`{report['embedding_model']}`。",
+             f"判分方式：{'外部' if external else '对话模型预览'}；判分模型：`{report.get('judge_model', report['chat_model'])}`。",
+             f"判分材料 SHA-256：`{report.get('materials_sha256') or '不适用'}`。",
              f"每次学习请求总超时 {report.get('timeouts_seconds', {}).get('learning', CHAT_TOTAL_TIMEOUT)} 秒；"
              f"评测判分请求总超时 {report.get('timeouts_seconds', {}).get('judge', JUDGE_TOTAL_TIMEOUT)} 秒。",
              "", f"评测集：{report['corpus']['cases']} 段、{report['corpus']['messages']} 条消息、"
              f"{report['corpus']['must']} 条 must；当前运行 {report['split']}。每段判 {report.get('judge_runs', 2)} 次；双判分歧按不利结论计分，单判不计算分歧率。"
-             "判分与学习使用同一模型，仍需人工抽查。未配置单价，费用无法估算。", "",
+             f"{judging}仍需人工抽查。未配置单价，费用无法估算。", "",
              "| 指标 | dev | holdout | 全部 | M1 门槛 |", "| --- | ---: | ---: | ---: | ---: |"]
     names = [("解析直接成功率", "parse_direct", "≥98%"),
              ("因长度截断的批次数", "length_truncated_batches", "单列"),
@@ -397,7 +411,9 @@ def _report_markdown(report: dict[str, Any]) -> str:
     previous = report.get("previous")
     if (previous and previous.get("corpus") == report["corpus"]
             and previous.get("scoring_version") == report["scoring_version"]
-            and previous.get("judge_runs", 2) == report.get("judge_runs", 2)):
+            and previous.get("judge_runs", 2) == report.get("judge_runs", 2)
+            and previous.get("chat_model") == report.get("chat_model")
+            and previous.get("judge_mode", "model") == report.get("judge_mode", "model")):
         lines.append(f"上次报告：`{previous['path']}`。")
         for split in ("dev", "holdout", "all"):
             if split == "all" and not ("holdout" in previous["metrics"] and "holdout" in report["metrics"]):
@@ -409,7 +425,7 @@ def _report_markdown(report: dict[str, Any]) -> str:
                     if old is not None and new is not None:
                         lines.append(f"- {split} {key}: {_fmt(old)} → {_fmt(new)}（{(new-old)*100:+.1f} 个百分点）")
     else:
-        lines.append("没有同一评测集、评分规则和判分次数的可比前次结果。")
+        lines.append("没有同一评测集、评分规则、判分次数、学习模型和判分方式的可比前次结果。")
     lines.extend(["", "## 判分不一致清单", ""])
     if report["judge_inconsistencies"]:
         for item in report["judge_inconsistencies"]:
@@ -431,7 +447,7 @@ def _report_markdown(report: dict[str, Any]) -> str:
     for call in truncated:
         lines.append(f"- {call['case']} 批次 {call['batch_id']} {call['purpose']}：finish_reason=length，输出 {call['completion_tokens']} token。")
     if not truncated:
-        lines.append("学习与判分均无 finish_reason=length。")
+        lines.append("学习无 finish_reason=length；外部判分调用未测量。" if external else "学习与判分均无 finish_reason=length。")
     lines.extend(["", "## 随机抽查清单", "", "固定随机种子 20260928；以下为至少 10% 案例的判分，供人工核对。人工结论待填写。", ""])
     for item in report["spot_check"]:
         lines.append(f"### {item['id']}（{item['split']}）")
@@ -451,7 +467,8 @@ def _report_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs: int = 2) -> dict[str, Any]:
+def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs: int = 2,
+              judge_mode: str = "model") -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="iris-eval-") as temporary:
         store = Store(Path(temporary) / "iris.db")
         store.recover_inflight()
@@ -475,6 +492,8 @@ def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs:
                 while get_batch(store, batch.id).state == "waiting":
                     engine.run_batch(batch.id, force=True)
             actual = _case_data(store)
+            if judge_mode == "external":
+                return {"case": case, "actual": actual}
             try:
                 first = _judge(gateway, case, actual)
                 second = _judge(gateway, case, actual) if judge_runs == 2 else None
@@ -491,8 +510,11 @@ def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs:
 
 
 def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = "all", *,
-                      corpus: Path | None = None, out: Path | None = None, judge_runs: int = 2) -> tuple[Path, dict[str, Any]]:
+                      corpus: Path | None = None, out: Path | None = None, judge_runs: int = 2,
+                      judge_mode: str = "model") -> tuple[Path, dict[str, Any]]:
     root = root.resolve()
+    if judge_mode not in ("model", "external"):
+        raise ValueError("judge_mode must be model or external")
     if judge_runs not in (1, 2):
         raise ValueError("judge_runs must be 1 or 2")
     if split not in ("dev", "holdout", "all"):
@@ -510,7 +532,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     reports = out.resolve() if out is not None else root / "evals" / "reports"
     sources = sorted(p for p in Path(__file__).parent.rglob("*") if p.suffix in (".py", ".md", ".sql", ".json"))
     source_hash = hashlib.sha256(b"".join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest()
-    signature = hashlib.sha256(json.dumps({"sources": source_hash, "cases": cases, "judge_runs": judge_runs,
+    signature = hashlib.sha256(json.dumps({"sources": source_hash, "cases": cases, "judge_runs": judge_runs if judge_mode == "model" else 0,
         "models": {k: (v.base_url, v.model) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     checkpoints = (reports / ".learning-checkpoints" if not reports.is_relative_to(root) else root / "data/learning-checkpoints") / signature
     checkpoints.mkdir(parents=True, exist_ok=True)
@@ -533,7 +555,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
                 ordered[index] = json.loads(checkpoint.read_text(encoding="utf-8"))
                 resumed += 1
             else:
-                pending[pool.submit(_run_case, configs, case, judge_runs)] = index
+                pending[pool.submit(_run_case, configs, case, judge_runs, judge_mode)] = index
         for completed, future in enumerate(as_completed(pending), 1):
             index = pending[future]
             try:
@@ -550,6 +572,38 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     if failures:
         raise RuntimeError(f"{len(failures)} evaluation cases failed; completed cases retained in {checkpoints}")
     rows = [row for row in ordered if row is not None]
+    metadata = {"split": split, "checkpoint_signature": signature, "source_sha256": source_hash,
+                "resumed_cases": resumed, "elapsed_seconds": round(time.monotonic() - started, 1),
+                "prompt_version": PROMPT_VERSION, "scoring_version": SCORING_VERSION,
+                "timeouts_seconds": {"learning": CHAT_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT},
+                "chat_model": configs["chat"].model, "embedding_model": configs["embedding"].model or "unconfigured",
+                "corpus": _corpus_info(cases), "cases": [{"id": case["id"]} for case in cases]}
+    save_checkpoint(checkpoints / "metadata.json", metadata)
+    if judge_mode == "external":
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        return export_learning_judgments(checkpoints, reports / f"judging-materials-{stamp}")
+    return _write_learning_report(rows, root, reports, metadata, judge_runs=judge_runs,
+                                  judge_mode="model", judge_model=configs["chat"].model,
+                                  secrets=[config.api_key for config in configs.values()])
+
+
+def _corpus_info(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"cases": len(cases), "messages": sum(len(case["messages"]) for case in cases),
+            "must": sum(len(case["must"]) for case in cases), "sha256": _json_sha256(cases)}
+
+
+def _write_learning_report(rows: list[dict[str, Any]], root: Path, reports: Path,
+                           metadata: dict[str, Any], *, judge_runs: int, judge_mode: str,
+                           judge_model: str, secrets: Sequence[str] = (),
+                           materials_sha256: str | None = None,
+                           judgment_rounds: Sequence[dict[str, Any]] = ()) -> tuple[Path, dict[str, Any]]:
+    # Redact before truncating raw parse failures, including keys crossing the excerpt boundary.
+    serialized_rows = json.dumps(rows, ensure_ascii=False)
+    for secret in secrets:
+        if secret:
+            serialized_rows = serialized_rows.replace(secret, "[REDACTED]")
+    rows = json.loads(serialized_rows)
+    split = metadata["split"]
     metrics = {name: _metrics([row for row in rows if name == "all" or row["case"]["split"] == name])
                for name in ("dev", "holdout", "all") if name == "all" or any(row["case"]["split"] == name for row in rows)}
     reports.mkdir(parents=True, exist_ok=True)
@@ -559,7 +613,8 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
         previous_path = previous_paths[-1]
         old = json.loads(previous_path.read_text(encoding="utf-8"))
         previous = {"path": previous_path.name, "metrics": old.get("metrics", {}), "corpus": old.get("corpus"),
-                    "scoring_version": old.get("scoring_version"), "judge_runs": old.get("judge_runs", 2)}
+                    "scoring_version": old.get("scoring_version"), "judge_runs": old.get("judge_runs", 2),
+                    "chat_model": old.get("chat_model"), "judge_mode": old.get("judge_mode", "model")}
     shuffled = rows[:]
     random.Random(20260928).shuffle(shuffled)
     sample_cases = math.ceil(len(rows) * 0.1)
@@ -571,16 +626,11 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
             break
         sampled.append(row)
         covered_memories += len(row["actual"]["memories"])
-    parse_failures = _parse_failure_records(rows, configs["chat"].api_key)
-    report = {"created_at": datetime.now(timezone.utc).isoformat(), "split": split, "judge_runs": judge_runs,
-              "checkpoint_signature": signature, "source_sha256": source_hash, "resumed_cases": resumed,
-              "elapsed_seconds": round(time.monotonic() - started, 1),
-              "prompt_version": PROMPT_VERSION, "scoring_version": SCORING_VERSION,
-              "timeouts_seconds": {"learning": CHAT_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT},
-              "chat_model": configs["chat"].model, "embedding_model": configs["embedding"].model or "unconfigured",
-              "corpus": {"cases": len(cases), "messages": sum(len(row["case"]["messages"]) for row in rows),
-                         "must": sum(len(row["case"]["must"]) for row in rows),
-                         "sha256": hashlib.sha256(json.dumps(cases, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()},
+    parse_failures = _parse_failure_records(rows, "")
+    report = {**{key: value for key, value in metadata.items() if key != "cases"},
+              "created_at": datetime.now(timezone.utc).isoformat(), "judge_runs": judge_runs,
+              "judge_mode": judge_mode, "judge_model": judge_model,
+              "materials_sha256": materials_sha256, "judgment_rounds": list(judgment_rounds),
               "metrics": metrics, "previous": previous,
               "judge_inconsistencies": [item for row in rows for item in row["judge_inconsistencies"]],
               "parse_failures": parse_failures,
@@ -602,12 +652,265 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
         report["details"] = rows
     # Reports may quote model output or corpus text; redact every configured key.
     serialized = json.dumps(report, ensure_ascii=False, indent=2)
-    for config in configs.values():
-        if config.api_key:
-            serialized = serialized.replace(config.api_key, "[REDACTED]")
+    for secret in secrets:
+        if secret:
+            serialized = serialized.replace(secret, "[REDACTED]")
     report = json.loads(serialized)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     path = reports / f"learning-{stamp}-{split}.md"
     path.write_text(_report_markdown(report), encoding="utf-8")
     path.with_suffix(".json").write_text(serialized, encoding="utf-8")
     return path, report
+
+
+# The transport envelope is independent of learning's payload and scoring schema,
+# so another evaluation (e.g. e2e) can use the same manifest/round convention.
+MATERIAL_FORMAT_VERSION = 1
+_RUN_FIELDS = ("split", "checkpoint_signature", "source_sha256", "resumed_cases", "elapsed_seconds",
+               "prompt_version", "scoring_version", "timeouts_seconds", "chat_model", "embedding_model", "corpus")
+_ACTUAL_FIELDS = ("memories", "links", "goals", "attempts", "calls", "batches", "identities", "aliases")
+_MEMORY_VERDICTS = ("correct_worth", "forbidden", "evidence_correct", "attribution_correct")
+
+
+def _json_sha256(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _read_json(path: Path) -> Any:
+    def unique_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+    try:
+        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_keys)
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{path}: {error}") from error
+
+
+def _write_json(path: Path, value: Any) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.dumps(value, ensure_ascii=False, indent=2).encode("utf-8")
+    temporary = path.with_suffix(".tmp")
+    temporary.write_bytes(data)
+    temporary.replace(path)
+    return hashlib.sha256(data).hexdigest()
+
+
+def _learning_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Allowlist learning data: never export prior judgments, votes or judge calls."""
+    cleaned = []
+    for row in rows:
+        actual = {key: row["actual"][key] for key in _ACTUAL_FIELDS}
+        actual["calls"] = [call for call in actual["calls"]
+                           if call["purpose"] not in ("learning_judge", "learning_judge_repair")]
+        cleaned.append({"case": row["case"], "actual": actual})
+    return cleaned
+
+
+def _check_learning_metadata(metadata: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    problems = []
+    for key in _RUN_FIELDS:
+        if key not in metadata:
+            problems.append(f"metadata missing {key}")
+    for key in ("source_sha256", "checkpoint_signature"):
+        value = metadata.get(key)
+        if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
+            problems.append(f"metadata {key} must be a SHA-256 fingerprint")
+    if metadata.get("scoring_version") != SCORING_VERSION:
+        problems.append(f"metadata scoring_version must be {SCORING_VERSION}")
+    if not isinstance(metadata.get("chat_model"), str) or not metadata.get("chat_model", "").strip():
+        problems.append("metadata chat_model is required")
+    if metadata.get("split") not in ("dev", "holdout", "all"):
+        problems.append("metadata split must be dev, holdout or all")
+    cases = [row["case"] for row in rows]
+    if not cases or len({case["id"] for case in cases}) != len(cases):
+        problems.append("missing or duplicate evaluation case IDs")
+    if _corpus_info(cases) != metadata.get("corpus"):
+        problems.append("corpus fingerprint/counts do not match metadata; all completed cases are required")
+    for row in rows:
+        if any(batch["state"] in ("waiting", "running") for batch in row["actual"]["batches"]):
+            problems.append(f"{row['case']['id']}: incomplete learning checkpoint")
+    if problems:
+        raise ValueError("Invalid learning metadata:\n- " + "\n- ".join(problems))
+
+
+def export_learning_judgments(checkpoints: Path, out: Path, *,
+                              checkpoint_report: Path | None = None) -> tuple[Path, dict[str, Any]]:
+    """Export completed checkpoints offline, including checkpoints predating metadata.json."""
+    metadata_path = checkpoint_report if checkpoint_report is not None else checkpoints / "metadata.json"
+    if not metadata_path.exists():
+        raise ValueError("checkpoint metadata missing; supply --checkpoint-report with the original report JSON")
+    metadata = _read_json(metadata_path)
+    if not isinstance(metadata, dict) or not isinstance(metadata.get("cases"), list):
+        raise ValueError("checkpoint metadata must contain the expected cases list")
+    if metadata.get("checkpoint_signature") != checkpoints.name:
+        raise ValueError("checkpoint directory fingerprint does not match metadata checkpoint_signature")
+    rows, problems = [], []
+    for index, expected in enumerate(metadata["cases"]):
+        path = checkpoints / f"{index:04}.json"
+        try:
+            row = _read_json(path)
+            if row["case"]["id"] != expected["id"]:
+                raise ValueError(f"{path}: case ID does not match metadata")
+            rows.append(row)
+        except (ValueError, KeyError, TypeError) as error:
+            problems.append(f"{path}: {error}")
+    if problems:
+        raise ValueError("Cannot export checkpoints:\n- " + "\n- ".join(problems))
+    try:
+        rows = _learning_rows(rows)
+        _check_learning_metadata(metadata, rows)
+        payloads = [_judge_payload(row["case"], row["actual"]) for row in rows]
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"Invalid learning checkpoint structure: {error}") from error
+    # Use a fresh directory so exporting never replaces materials already being judged.
+    if out.exists() and any(out.iterdir()):
+        raise ValueError(f"material output directory must be empty: {out}")
+    out.mkdir(parents=True, exist_ok=True)
+    run = {key: metadata[key] for key in _RUN_FIELDS}
+    manifest = {"format_version": MATERIAL_FORMAT_VERSION, "evaluation": "learning", "run": run,
+                "run_sha256": _write_json(out / "run.json", {"rows": rows}), "cases": []}
+    (out / "scoring.md").write_text(SCORING, encoding="utf-8")
+    manifest["scoring_sha256"] = hashlib.sha256((out / "scoring.md").read_bytes()).hexdigest()
+    for index, (row, payload) in enumerate(zip(rows, payloads, strict=True)):
+        filename = f"cases/{index:04}.json"
+        document = {"format_version": MATERIAL_FORMAT_VERSION, "evaluation": "learning",
+                    "case_id": row["case"]["id"], "corpus_sha256": run["corpus"]["sha256"],
+                    "source_sha256": run["source_sha256"], "scoring_version": run["scoring_version"],
+                    "input": payload}
+        digest = _write_json(out / filename, document)
+        manifest["cases"].append({"case_id": row["case"]["id"], "file": filename,
+                                  "sha256": digest, "judgment_file": f"{index:04}.json"})
+    manifest["materials_sha256"] = _json_sha256(manifest)
+    path = out / "manifest.json"
+    _write_json(path, manifest)
+    _write_json(out / "round-template.json", {"materials_sha256": manifest["materials_sha256"]})
+    return path, manifest
+
+
+def _verified_material_file(directory: Path, filename: str, digest: str) -> Path:
+    path = (directory / filename).resolve()
+    if not path.is_relative_to(directory.resolve()):
+        raise ValueError(f"material file must be inside its bundle: {filename}")
+    if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+        raise ValueError(f"material fingerprint mismatch: {filename}")
+    return path
+
+
+def _load_learning_materials(directory: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    manifest = _read_json(directory / "manifest.json")
+    try:
+        if manifest["format_version"] != MATERIAL_FORMAT_VERSION or manifest["evaluation"] != "learning":
+            raise ValueError("unsupported material format or evaluation kind")
+        if manifest["materials_sha256"] != _json_sha256({k: v for k, v in manifest.items() if k != "materials_sha256"}):
+            raise ValueError("manifest fingerprint mismatch")
+        rows = _read_json(_verified_material_file(directory, "run.json", manifest["run_sha256"]))["rows"]
+        scoring = _verified_material_file(directory, "scoring.md", manifest["scoring_sha256"])
+        if scoring.read_text(encoding="utf-8") != SCORING:
+            raise ValueError("material scoring rules differ from frozen scoring_v3")
+        _check_learning_metadata(manifest["run"], rows)
+        if len(rows) != len(manifest["cases"]):
+            raise ValueError("material case count mismatch")
+        for index, (entry, row) in enumerate(zip(manifest["cases"], rows, strict=True)):
+            if entry["judgment_file"] != f"{index:04}.json":
+                raise ValueError("invalid judgment filename")
+            document = _read_json(_verified_material_file(directory, entry["file"], entry["sha256"]))
+            if (entry["case_id"] != row["case"]["id"] or document["case_id"] != entry["case_id"]
+                    or document["input"] != _judge_payload(row["case"], row["actual"])):
+                raise ValueError(f"{entry['case_id']}: material input differs from learning data")
+            for key, value in (("source_sha256", manifest["run"]["source_sha256"]),
+                               ("corpus_sha256", manifest["run"]["corpus"]["sha256"]),
+                               ("scoring_version", SCORING_VERSION), ("evaluation", "learning"),
+                               ("format_version", MATERIAL_FORMAT_VERSION)):
+                if document[key] != value:
+                    raise ValueError(f"{entry['case_id']}: inconsistent {key}")
+        return manifest, _learning_rows(rows)
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"Invalid material structure: {error}") from error
+
+
+def _judgment_errors(output: Any, case: dict[str, Any], actual: dict[str, Any]) -> list[str]:
+    """Strict scoring_v3 schema. Extra per-item or top-level reasons do not affect scores."""
+    if not isinstance(output, dict):
+        return ["judgment must be a JSON object"]
+    errors = []
+    lengths = {"memory_results": len(actual["memories"]), "fact_covered": len(case["must"]),
+               "link_covered": len(case["links"]), "goal_covered": len(case["goals"]),
+               "actual_link_correct": len(actual["links"])}
+    for key, length in lengths.items():
+        values = output.get(key)
+        if not isinstance(values, list):
+            errors.append(f"{key}: expected array of length {length}")
+            continue
+        if len(values) != length:
+            errors.append(f"{key}: expected length {length}, got {len(values)}")
+        for index, value in enumerate(values):
+            location = f"{key}[{index}]"
+            if key != "memory_results":
+                if type(value) is not bool:
+                    errors.append(f"{location}: expected boolean")
+                continue
+            if not isinstance(value, dict):
+                errors.append(f"{location}: expected object")
+                continue
+            if index < length:
+                expected_id = actual["memories"][index]["id"]
+                if type(value.get("id")) is not type(expected_id) or value["id"] != expected_id:
+                    errors.append(f"{location}.id: expected {expected_id!r} in input order")
+            for field in _MEMORY_VERDICTS:
+                if type(value.get(field)) is not bool:
+                    errors.append(f"{location}.{field}: expected boolean")
+    return errors
+
+
+def score_learning_judgments(materials: Path, judgments: list[Path], root: Path, *,
+                             judge_model: str, out: Path | None = None) -> tuple[Path, dict[str, Any]]:
+    """Score one or two independent rounds offline; reject all invalid files before reporting."""
+    if len(judgments) not in (1, 2):
+        raise ValueError("supply one or two judgment directories")
+    if len({directory.resolve() for directory in judgments}) != len(judgments):
+        raise ValueError("two rounds require independent judgment directories")
+    if not judge_model or not judge_model.strip():
+        raise ValueError("--judge-model must declare the external executor model")
+    manifest, rows = _load_learning_materials(materials)
+    problems, rounds, round_records = [], [], []
+    for number, directory in enumerate(judgments, 1):
+        try:
+            round_manifest = _read_json(directory / "manifest.json")
+            if not isinstance(round_manifest, dict) or round_manifest.get("materials_sha256") != manifest["materials_sha256"]:
+                raise ValueError("judgment material fingerprint mismatch")
+        except ValueError as error:
+            problems.append(f"round {number} ({directory}): {error}")
+        verdicts, records = [], []
+        expected_files = {"manifest.json", *(entry["judgment_file"] for entry in manifest["cases"])}
+        for extra in sorted({p.name for p in directory.glob("*.json")} - expected_files):
+            problems.append(f"round {number} ({directory}): unexpected judgment file {extra}")
+        for entry, row in zip(manifest["cases"], rows, strict=True):
+            path = directory / entry["judgment_file"]
+            try:
+                output = _read_json(path)
+                errors = _judgment_errors(output, row["case"], row["actual"])
+                if errors:
+                    raise ValueError("; ".join(errors))
+                verdicts.append(output)
+                records.append({"case_id": entry["case_id"], "sha256": _json_sha256(output)})
+            except ValueError as error:
+                problems.append(f"round {number} ({directory}), case {entry['case_id']}: {error}")
+        rounds.append(verdicts)
+        round_records.append({"round": number, "cases": records})
+    if problems:
+        raise ValueError("Invalid external judgments:\n- " + "\n- ".join(problems))
+    for index, row in enumerate(rows):
+        votes = [_score_judgment(items[index], row["case"], row["actual"]) for items in rounds]
+        judge, differences, decisions = (_combine_judges(*votes, row["case"]["id"])
+                                         if len(votes) == 2 else (votes[0], [], 0))
+        row.update(judge=judge, judges=votes, judge_inconsistencies=differences, judge_decisions=decisions,
+                   external_judgments=[items[index] for items in rounds])
+    root = root.resolve()
+    reports = out.resolve() if out is not None else root / "evals" / "reports"
+    return _write_learning_report(rows, root, reports, manifest["run"], judge_runs=len(rounds),
+                                  judge_mode="external", judge_model=judge_model.strip(),
+                                  materials_sha256=manifest["materials_sha256"], judgment_rounds=round_records)
