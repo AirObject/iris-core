@@ -205,44 +205,52 @@ class Retrieval:
         # boundaries and prevents a short name matching a longer known name.
         anchor_label = re.compile('|'.join(re.escape(label) for label, ids in analysis.names.labels.items()
                                           if anchors.intersection(ids)), re.I) if anchors else None
+        direct_anchors = set()
+        if anchors:
+            marks = ','.join('?' for _ in anchors)
+            direct_anchors = {row[0] for row in conn.execute(f"""SELECT memory_id FROM memory_subjects
+                WHERE subject_id IN ({marks}) UNION SELECT id FROM memories
+                WHERE speaker_subject_id IN ({marks})""", [*anchors, *anchors])}
+
+        def matches_anchor(mid, content):
+            if mid not in anchor_matches:
+                anchor_matches[mid] = bool(mid in direct_anchors or
+                    (anchor_label.search(content) and anchors.intersection(analysis.names.mentioned(content))))
+            return anchor_matches[mid]
+
+        if anchors:
+            # The same exact, cached predicate filters FTS matches before BM25
+            # sorting. Only FTS-matching rows reach it, and index statistics are
+            # unchanged. This avoids sorting every person's matches and then
+            # repeatedly hydrating batches merely to find 200 anchored results.
+            conn.create_function('iris_anchor', 2, matches_anchor, deterministic=True)
+
         def anchored(candidates):
             if not anchors:
                 yield from candidates
                 return
             candidates = iter(candidates)
-            marks = ','.join('?' for _ in anchors)
             while batch := list(islice(candidates, CANDIDATES)):
                 missing = list(dict.fromkeys(row[0] for row in batch if row[0] not in anchor_matches))
                 if missing:
                     ids = ','.join('?' for _ in missing)
-                    matches = conn.execute(f"""SELECT m.id,m.content,
-                        (m.speaker_subject_id IN ({marks}) OR EXISTS
-                            (SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=m.id
-                             AND ms.subject_id IN ({marks}))) AS direct
-                        FROM memories m WHERE m.id IN ({ids}) AND {where}""",
-                        [*anchors, *anchors, *missing, *args])
-                    anchor_matches.update((mid, False) for mid in missing)
+                    matches = conn.execute(f"""SELECT m.id,m.content FROM memories m
+                        WHERE m.id IN ({ids}) AND {where}""", [*missing, *args])
                     for row in matches:
-                        anchor_matches[row['id']] = bool(row['direct'] or
-                            (anchor_label.search(row['content']) and
-                             anchors.intersection(analysis.names.mentioned(row['content']))))
+                        matches_anchor(row['id'], row['content'])
+                    for mid in missing:
+                        anchor_matches.setdefault(mid, False)
                 yield from (row for row in batch if anchor_matches[row[0]])
         boosted = set(participants) | ({'self'} if analysis.refers_to_self else set())
         def lexical_lane(tokenizer, tokens, *, phrases=False):
             if not tokens:
                 return []
             table = "memory_fts_" + tokenizer
-            if anchors and not args:
-                # anchored() already checks lifecycle before the candidate cap.
-                # Avoid loading every matching memory row just to rank its FTS
-                # rowid; BM25 still uses the same whole-index statistics/order.
-                lexical = conn.execute(f"""SELECT rowid,bm25({table}) AS rank FROM {table}
-                    WHERE {table} MATCH ? ORDER BY rank,rowid""", (match_query(tokens),))
-            else:
-                lexical = conn.execute(f"""SELECT m.id,bm25({table}) AS rank FROM {table} f
-                    JOIN memories m ON m.id=f.rowid WHERE {table} MATCH ? AND {where}
-                    ORDER BY rank,m.id LIMIT ?""", [match_query(tokens), *args, -1 if anchors else CANDIDATES])
-            ids = [row[0] for row in islice(anchored(lexical), CANDIDATES)]
+            anchor_where = ' AND iris_anchor(m.id,m.content)' if anchors else ''
+            lexical = conn.execute(f"""SELECT m.id,bm25({table}) AS rank FROM {table} f
+                JOIN memories m ON m.id=f.rowid WHERE {table} MATCH ? AND {where}{anchor_where}
+                ORDER BY rank,m.id LIMIT ?""", [match_query(tokens), *args, CANDIDATES])
+            ids = [row[0] for row in lexical]
             if phrases:
                 # MATCH checks the indexed name phrase; anchored checks the
                 # original prose with longest-label and word-boundary rules.
