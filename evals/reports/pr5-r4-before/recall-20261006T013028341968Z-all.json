@@ -1,0 +1,2437 @@
+{
+  "created_at": "2026-10-06T01:30:28.337522+00:00",
+  "split": "all",
+  "elapsed_seconds": 40.09351720899576,
+  "source_sha256": "f1e4af4665af28d28cef7cef8ee8d7d30fff56def39ed471b31ff9e9f18c5527",
+  "corpus": {
+    "memories": 16,
+    "queries": 16,
+    "datasets": [
+      {
+        "name": "recall_short_terms_v1",
+        "version": "recall_short_terms_v1",
+        "memories": 16,
+        "queries": 16,
+        "sha256": "dc586139e240eae98ba9ca4507a9f95f6cba1c34a3dfe49275d5c2b389685e95"
+      }
+    ]
+  },
+  "embedding_model": "doubao-embedding-vision",
+  "dimensions": [
+    2048
+  ],
+  "embedding_cache_misses": 32,
+  "embedding_calls": [
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 261,
+      "prompt_tokens": 36,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 209,
+      "prompt_tokens": 36,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 641,
+      "prompt_tokens": 36,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 195,
+      "prompt_tokens": 36,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 216,
+      "prompt_tokens": 36,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 242,
+      "prompt_tokens": 37,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 251,
+      "prompt_tokens": 35,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 206,
+      "prompt_tokens": 35,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 223,
+      "prompt_tokens": 34,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 175,
+      "prompt_tokens": 40,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 183,
+      "prompt_tokens": 32,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 212,
+      "prompt_tokens": 36,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 266,
+      "prompt_tokens": 33,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 207,
+      "prompt_tokens": 34,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 344,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 212,
+      "prompt_tokens": 32,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 463,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 182,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 220,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 164,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 179,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 203,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 207,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 250,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 185,
+      "prompt_tokens": 34,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 205,
+      "prompt_tokens": 34,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 262,
+      "prompt_tokens": 36,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 263,
+      "prompt_tokens": 34,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 175,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 191,
+      "prompt_tokens": 31,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 188,
+      "prompt_tokens": 34,
+      "completion_tokens": null
+    },
+    {
+      "purpose": "recall_eval_embedding",
+      "model": "doubao-embedding-vision",
+      "result_category": "success",
+      "duration_ms": 356,
+      "prompt_tokens": 34,
+      "completion_tokens": null
+    }
+  ],
+  "variants": {
+    "jieba_fts": {
+      "settings": {
+        "tokenizer": "jieba",
+        "vector_min": 0.35,
+        "vector_relative": 0.75,
+        "vector_weight": 2.0,
+        "query_prefix": "",
+        "embedding_dimensions": null,
+        "embedding_model": "doubao-embedding-vision"
+      },
+      "metrics": {
+        "queries": 16,
+        "answerable": 12,
+        "no_answer": 4,
+        "recall_at_8": 0.75,
+        "ndcg_at_8": 0.75,
+        "irrelevant_return_rate": 0.0,
+        "average_returned": 0.5625,
+        "relevant_precision": 1.0,
+        "relevant_returned": 9,
+        "relevant_correct": 9,
+        "prepare_p95_ms": 0.9686042467365041
+      },
+      "groups": {
+        "dev": {
+          "all": {
+            "queries": 16,
+            "answerable": 12,
+            "no_answer": 4,
+            "recall_at_8": 0.75,
+            "ndcg_at_8": 0.75,
+            "irrelevant_return_rate": 0.0,
+            "average_returned": 0.5625,
+            "relevant_precision": 1.0,
+            "relevant_returned": 9,
+            "relevant_correct": 9,
+            "prepare_p95_ms": 0.9686042467365041
+          },
+          "categories": {
+            "不在场的人": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 0.5,
+              "ndcg_at_8": 0.5,
+              "irrelevant_return_rate": null,
+              "average_returned": 0.5,
+              "relevant_precision": 1.0,
+              "relevant_returned": 1,
+              "relevant_correct": 1,
+              "prepare_p95_ms": 0.9956041933037341
+            },
+            "两字关键词": {
+              "queries": 10,
+              "answerable": 8,
+              "no_answer": 2,
+              "recall_at_8": 1.0,
+              "ndcg_at_8": 1.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.8,
+              "relevant_precision": 1.0,
+              "relevant_returned": 8,
+              "relevant_correct": 8,
+              "prepare_p95_ms": null
+            },
+            "两字名字": {
+              "queries": 6,
+              "answerable": 4,
+              "no_answer": 2,
+              "recall_at_8": 0.25,
+              "ndcg_at_8": 0.25,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.16666666666666666,
+              "relevant_precision": 1.0,
+              "relevant_returned": 1,
+              "relevant_correct": 1,
+              "prepare_p95_ms": 0.9686042467365041
+            },
+            "人物筛选": {
+              "queries": 5,
+              "answerable": 4,
+              "no_answer": 1,
+              "recall_at_8": 1.0,
+              "ndcg_at_8": 1.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.8,
+              "relevant_precision": 1.0,
+              "relevant_returned": 4,
+              "relevant_correct": 4,
+              "prepare_p95_ms": null
+            },
+            "仅正文提及": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": null,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 0.828927691327408
+            },
+            "仅涉及人": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 0.5,
+              "ndcg_at_8": 0.5,
+              "irrelevant_return_rate": null,
+              "average_returned": 0.5,
+              "relevant_precision": 1.0,
+              "relevant_returned": 1,
+              "relevant_correct": 1,
+              "prepare_p95_ms": 0.9972208441467956
+            },
+            "无人物筛选": {
+              "queries": 5,
+              "answerable": 4,
+              "no_answer": 1,
+              "recall_at_8": 1.0,
+              "ndcg_at_8": 1.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.8,
+              "relevant_precision": 1.0,
+              "relevant_returned": 4,
+              "relevant_correct": 4,
+              "prepare_p95_ms": null
+            },
+            "无答案": {
+              "queries": 4,
+              "answerable": 0,
+              "no_answer": 4,
+              "recall_at_8": null,
+              "ndcg_at_8": null,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 0.8115288481349126
+            }
+          }
+        }
+      },
+      "corpora": {
+        "recall_short_terms_v1": {
+          "dev": {
+            "all": {
+              "queries": 16,
+              "answerable": 12,
+              "no_answer": 4,
+              "recall_at_8": 0.75,
+              "ndcg_at_8": 0.75,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.5625,
+              "relevant_precision": 1.0,
+              "relevant_returned": 9,
+              "relevant_correct": 9,
+              "prepare_p95_ms": 0.9686042467365041
+            },
+            "categories": {
+              "不在场的人": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 0.5,
+                "ndcg_at_8": 0.5,
+                "irrelevant_return_rate": null,
+                "average_returned": 0.5,
+                "relevant_precision": 1.0,
+                "relevant_returned": 1,
+                "relevant_correct": 1,
+                "prepare_p95_ms": 0.9956041933037341
+              },
+              "两字关键词": {
+                "queries": 10,
+                "answerable": 8,
+                "no_answer": 2,
+                "recall_at_8": 1.0,
+                "ndcg_at_8": 1.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.8,
+                "relevant_precision": 1.0,
+                "relevant_returned": 8,
+                "relevant_correct": 8,
+                "prepare_p95_ms": null
+              },
+              "两字名字": {
+                "queries": 6,
+                "answerable": 4,
+                "no_answer": 2,
+                "recall_at_8": 0.25,
+                "ndcg_at_8": 0.25,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.16666666666666666,
+                "relevant_precision": 1.0,
+                "relevant_returned": 1,
+                "relevant_correct": 1,
+                "prepare_p95_ms": 0.9686042467365041
+              },
+              "人物筛选": {
+                "queries": 5,
+                "answerable": 4,
+                "no_answer": 1,
+                "recall_at_8": 1.0,
+                "ndcg_at_8": 1.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.8,
+                "relevant_precision": 1.0,
+                "relevant_returned": 4,
+                "relevant_correct": 4,
+                "prepare_p95_ms": null
+              },
+              "仅正文提及": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 0.0,
+                "ndcg_at_8": 0.0,
+                "irrelevant_return_rate": null,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 0.828927691327408
+              },
+              "仅涉及人": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 0.5,
+                "ndcg_at_8": 0.5,
+                "irrelevant_return_rate": null,
+                "average_returned": 0.5,
+                "relevant_precision": 1.0,
+                "relevant_returned": 1,
+                "relevant_correct": 1,
+                "prepare_p95_ms": 0.9972208441467956
+              },
+              "无人物筛选": {
+                "queries": 5,
+                "answerable": 4,
+                "no_answer": 1,
+                "recall_at_8": 1.0,
+                "ndcg_at_8": 1.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.8,
+                "relevant_precision": 1.0,
+                "relevant_returned": 4,
+                "relevant_correct": 4,
+                "prepare_p95_ms": null
+              },
+              "无答案": {
+                "queries": 4,
+                "answerable": 0,
+                "no_answer": 4,
+                "recall_at_8": null,
+                "ndcg_at_8": null,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 0.8115288481349126
+              }
+            }
+          }
+        }
+      },
+      "queries": [
+        {
+          "id": "ST01",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S01": 3
+          },
+          "returned": [
+            "S01"
+          ],
+          "reasons": {
+            "S01": "relevant"
+          },
+          "local_ms": 1.4300410402938724
+        },
+        {
+          "id": "ST02",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S02": 3
+          },
+          "returned": [
+            "S02"
+          ],
+          "reasons": {
+            "S02": "relevant"
+          },
+          "local_ms": 0.7166669820435345
+        },
+        {
+          "id": "ST03",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S03": 3
+          },
+          "returned": [
+            "S03"
+          ],
+          "reasons": {
+            "S03": "relevant"
+          },
+          "local_ms": 0.6914170226082206
+        },
+        {
+          "id": "ST04",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S04": 3
+          },
+          "returned": [
+            "S04"
+          ],
+          "reasons": {
+            "S04": "relevant"
+          },
+          "local_ms": 0.8272079867310822
+        },
+        {
+          "id": "ST05",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S05": 3
+          },
+          "returned": [
+            "S05"
+          ],
+          "reasons": {
+            "S05": "relevant"
+          },
+          "local_ms": 0.6728339940309525
+        },
+        {
+          "id": "ST06",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S06": 3
+          },
+          "returned": [
+            "S06"
+          ],
+          "reasons": {
+            "S06": "relevant"
+          },
+          "local_ms": 0.7200409891083837
+        },
+        {
+          "id": "ST07",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S07": 3
+          },
+          "returned": [
+            "S07"
+          ],
+          "reasons": {
+            "S07": "relevant"
+          },
+          "local_ms": 0.7158339722082019
+        },
+        {
+          "id": "ST08",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S08": 3
+          },
+          "returned": [
+            "S08"
+          ],
+          "reasons": {
+            "S08": "relevant"
+          },
+          "local_ms": 0.6355000077746809
+        },
+        {
+          "id": "ST09",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅涉及人"
+          ],
+          "relevant": {
+            "S09": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.8612920064479113
+        },
+        {
+          "id": "ST10",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅正文提及"
+          ],
+          "relevant": {
+            "S10": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.8283330244012177
+        },
+        {
+          "id": "ST11",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅涉及人",
+            "不在场的人"
+          ],
+          "relevant": {
+            "S11": 3
+          },
+          "returned": [
+            "S11"
+          ],
+          "reasons": {
+            "S11": "relevant"
+          },
+          "local_ms": 1.0043749934993684
+        },
+        {
+          "id": "ST12",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅正文提及",
+            "不在场的人"
+          ],
+          "relevant": {
+            "S12": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.8289589895866811
+        },
+        {
+          "id": "ST13",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.573708035517484
+        },
+        {
+          "id": "ST14",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.5446670111268759
+        },
+        {
+          "id": "ST15",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.7796250283718109
+        },
+        {
+          "id": "ST16",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.8132079965434968
+        }
+      ],
+      "index_bytes": 0
+    },
+    "trigram_fts": {
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.35,
+        "vector_relative": 0.75,
+        "vector_weight": 2.0,
+        "query_prefix": "",
+        "embedding_dimensions": null,
+        "embedding_model": "doubao-embedding-vision"
+      },
+      "metrics": {
+        "queries": 16,
+        "answerable": 12,
+        "no_answer": 4,
+        "recall_at_8": 0.0,
+        "ndcg_at_8": 0.0,
+        "irrelevant_return_rate": 0.0,
+        "average_returned": 0.0,
+        "relevant_precision": null,
+        "relevant_returned": 0,
+        "relevant_correct": 0,
+        "prepare_p95_ms": 0.8438962395302951
+      },
+      "groups": {
+        "dev": {
+          "all": {
+            "queries": 16,
+            "answerable": 12,
+            "no_answer": 4,
+            "recall_at_8": 0.0,
+            "ndcg_at_8": 0.0,
+            "irrelevant_return_rate": 0.0,
+            "average_returned": 0.0,
+            "relevant_precision": null,
+            "relevant_returned": 0,
+            "relevant_correct": 0,
+            "prepare_p95_ms": 0.8438962395302951
+          },
+          "categories": {
+            "不在场的人": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": null,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 0.8439464378170669
+            },
+            "两字关键词": {
+              "queries": 10,
+              "answerable": 8,
+              "no_answer": 2,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": null
+            },
+            "两字名字": {
+              "queries": 6,
+              "answerable": 4,
+              "no_answer": 2,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 0.8438962395302951
+            },
+            "人物筛选": {
+              "queries": 5,
+              "answerable": 4,
+              "no_answer": 1,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": null
+            },
+            "仅正文提及": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": null,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 0.8433068374870345
+            },
+            "仅涉及人": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": null,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 0.8425392967183143
+            },
+            "无人物筛选": {
+              "queries": 5,
+              "answerable": 4,
+              "no_answer": 1,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": null
+            },
+            "无答案": {
+              "queries": 4,
+              "answerable": 0,
+              "no_answer": 4,
+              "recall_at_8": null,
+              "ndcg_at_8": null,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 0.7699274079641327
+            }
+          }
+        }
+      },
+      "corpora": {
+        "recall_short_terms_v1": {
+          "dev": {
+            "all": {
+              "queries": 16,
+              "answerable": 12,
+              "no_answer": 4,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 0.8438962395302951
+            },
+            "categories": {
+              "不在场的人": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 0.0,
+                "ndcg_at_8": 0.0,
+                "irrelevant_return_rate": null,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 0.8439464378170669
+              },
+              "两字关键词": {
+                "queries": 10,
+                "answerable": 8,
+                "no_answer": 2,
+                "recall_at_8": 0.0,
+                "ndcg_at_8": 0.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": null
+              },
+              "两字名字": {
+                "queries": 6,
+                "answerable": 4,
+                "no_answer": 2,
+                "recall_at_8": 0.0,
+                "ndcg_at_8": 0.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 0.8438962395302951
+              },
+              "人物筛选": {
+                "queries": 5,
+                "answerable": 4,
+                "no_answer": 1,
+                "recall_at_8": 0.0,
+                "ndcg_at_8": 0.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": null
+              },
+              "仅正文提及": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 0.0,
+                "ndcg_at_8": 0.0,
+                "irrelevant_return_rate": null,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 0.8433068374870345
+              },
+              "仅涉及人": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 0.0,
+                "ndcg_at_8": 0.0,
+                "irrelevant_return_rate": null,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 0.8425392967183143
+              },
+              "无人物筛选": {
+                "queries": 5,
+                "answerable": 4,
+                "no_answer": 1,
+                "recall_at_8": 0.0,
+                "ndcg_at_8": 0.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": null
+              },
+              "无答案": {
+                "queries": 4,
+                "answerable": 0,
+                "no_answer": 4,
+                "recall_at_8": null,
+                "ndcg_at_8": null,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 0.7699274079641327
+              }
+            }
+          }
+        }
+      },
+      "queries": [
+        {
+          "id": "ST01",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S01": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.8247090154327452
+        },
+        {
+          "id": "ST02",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S02": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.5923749995417893
+        },
+        {
+          "id": "ST03",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S03": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.5383330280892551
+        },
+        {
+          "id": "ST04",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S04": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.522333022672683
+        },
+        {
+          "id": "ST05",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S05": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.5068330210633576
+        },
+        {
+          "id": "ST06",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S06": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.511875026859343
+        },
+        {
+          "id": "ST07",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S07": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.5094580119475722
+        },
+        {
+          "id": "ST08",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S08": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.5039999959990382
+        },
+        {
+          "id": "ST09",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅涉及人"
+          ],
+          "relevant": {
+            "S09": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.8203340112231672
+        },
+        {
+          "id": "ST10",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅正文提及"
+          ],
+          "relevant": {
+            "S10": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.8309159893542528
+        },
+        {
+          "id": "ST11",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅涉及人",
+            "不在场的人"
+          ],
+          "relevant": {
+            "S11": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.843707995954901
+        },
+        {
+          "id": "ST12",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅正文提及",
+            "不在场的人"
+          ],
+          "relevant": {
+            "S12": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.8439589873887599
+        },
+        {
+          "id": "ST13",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.5363340023905039
+        },
+        {
+          "id": "ST14",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.5229589878581464
+        },
+        {
+          "id": "ST15",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.7700420101173222
+        },
+        {
+          "id": "ST16",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 0.7677499670535326
+        }
+      ],
+      "index_bytes": 0
+    },
+    "jieba_hybrid": {
+      "settings": {
+        "tokenizer": "jieba",
+        "vector_min": 0.35,
+        "vector_relative": 0.75,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 2048,
+        "embedding_model": "doubao-embedding-vision"
+      },
+      "metrics": {
+        "queries": 16,
+        "answerable": 12,
+        "no_answer": 4,
+        "recall_at_8": 0.9166666666666666,
+        "ndcg_at_8": 0.9166666666666666,
+        "irrelevant_return_rate": 0.0,
+        "average_returned": 0.6875,
+        "relevant_precision": 1.0,
+        "relevant_returned": 11,
+        "relevant_correct": 11,
+        "prepare_p95_ms": 2.6357909955549985
+      },
+      "groups": {
+        "dev": {
+          "all": {
+            "queries": 16,
+            "answerable": 12,
+            "no_answer": 4,
+            "recall_at_8": 0.9166666666666666,
+            "ndcg_at_8": 0.9166666666666666,
+            "irrelevant_return_rate": 0.0,
+            "average_returned": 0.6875,
+            "relevant_precision": 1.0,
+            "relevant_returned": 11,
+            "relevant_correct": 11,
+            "prepare_p95_ms": 2.6357909955549985
+          },
+          "categories": {
+            "不在场的人": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 1.0,
+              "ndcg_at_8": 1.0,
+              "irrelevant_return_rate": null,
+              "average_returned": 1.0,
+              "relevant_precision": 1.0,
+              "relevant_returned": 2,
+              "relevant_correct": 2,
+              "prepare_p95_ms": 2.4187134724343196
+            },
+            "两字关键词": {
+              "queries": 10,
+              "answerable": 8,
+              "no_answer": 2,
+              "recall_at_8": 1.0,
+              "ndcg_at_8": 1.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.8,
+              "relevant_precision": 1.0,
+              "relevant_returned": 8,
+              "relevant_correct": 8,
+              "prepare_p95_ms": null
+            },
+            "两字名字": {
+              "queries": 6,
+              "answerable": 4,
+              "no_answer": 2,
+              "recall_at_8": 0.75,
+              "ndcg_at_8": 0.75,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.5,
+              "relevant_precision": 1.0,
+              "relevant_returned": 3,
+              "relevant_correct": 3,
+              "prepare_p95_ms": 2.6357909955549985
+            },
+            "人物筛选": {
+              "queries": 5,
+              "answerable": 4,
+              "no_answer": 1,
+              "recall_at_8": 1.0,
+              "ndcg_at_8": 1.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.8,
+              "relevant_precision": 1.0,
+              "relevant_returned": 4,
+              "relevant_correct": 4,
+              "prepare_p95_ms": null
+            },
+            "仅正文提及": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 1.0,
+              "ndcg_at_8": 1.0,
+              "irrelevant_return_rate": null,
+              "average_returned": 1.0,
+              "relevant_precision": 1.0,
+              "relevant_returned": 2,
+              "relevant_correct": 2,
+              "prepare_p95_ms": 2.5741952063981444
+            },
+            "仅涉及人": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 0.5,
+              "ndcg_at_8": 0.5,
+              "irrelevant_return_rate": null,
+              "average_returned": 0.5,
+              "relevant_precision": 1.0,
+              "relevant_returned": 1,
+              "relevant_correct": 1,
+              "prepare_p95_ms": 2.6364077435573563
+            },
+            "无人物筛选": {
+              "queries": 5,
+              "answerable": 4,
+              "no_answer": 1,
+              "recall_at_8": 1.0,
+              "ndcg_at_8": 1.0,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.8,
+              "relevant_precision": 1.0,
+              "relevant_returned": 4,
+              "relevant_correct": 4,
+              "prepare_p95_ms": null
+            },
+            "无答案": {
+              "queries": 4,
+              "answerable": 0,
+              "no_answer": 4,
+              "recall_at_8": null,
+              "ndcg_at_8": null,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 1.839628498419188
+            }
+          }
+        }
+      },
+      "corpora": {
+        "recall_short_terms_v1": {
+          "dev": {
+            "all": {
+              "queries": 16,
+              "answerable": 12,
+              "no_answer": 4,
+              "recall_at_8": 0.9166666666666666,
+              "ndcg_at_8": 0.9166666666666666,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.6875,
+              "relevant_precision": 1.0,
+              "relevant_returned": 11,
+              "relevant_correct": 11,
+              "prepare_p95_ms": 2.6357909955549985
+            },
+            "categories": {
+              "不在场的人": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 1.0,
+                "ndcg_at_8": 1.0,
+                "irrelevant_return_rate": null,
+                "average_returned": 1.0,
+                "relevant_precision": 1.0,
+                "relevant_returned": 2,
+                "relevant_correct": 2,
+                "prepare_p95_ms": 2.4187134724343196
+              },
+              "两字关键词": {
+                "queries": 10,
+                "answerable": 8,
+                "no_answer": 2,
+                "recall_at_8": 1.0,
+                "ndcg_at_8": 1.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.8,
+                "relevant_precision": 1.0,
+                "relevant_returned": 8,
+                "relevant_correct": 8,
+                "prepare_p95_ms": null
+              },
+              "两字名字": {
+                "queries": 6,
+                "answerable": 4,
+                "no_answer": 2,
+                "recall_at_8": 0.75,
+                "ndcg_at_8": 0.75,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.5,
+                "relevant_precision": 1.0,
+                "relevant_returned": 3,
+                "relevant_correct": 3,
+                "prepare_p95_ms": 2.6357909955549985
+              },
+              "人物筛选": {
+                "queries": 5,
+                "answerable": 4,
+                "no_answer": 1,
+                "recall_at_8": 1.0,
+                "ndcg_at_8": 1.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.8,
+                "relevant_precision": 1.0,
+                "relevant_returned": 4,
+                "relevant_correct": 4,
+                "prepare_p95_ms": null
+              },
+              "仅正文提及": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 1.0,
+                "ndcg_at_8": 1.0,
+                "irrelevant_return_rate": null,
+                "average_returned": 1.0,
+                "relevant_precision": 1.0,
+                "relevant_returned": 2,
+                "relevant_correct": 2,
+                "prepare_p95_ms": 2.5741952063981444
+              },
+              "仅涉及人": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 0.5,
+                "ndcg_at_8": 0.5,
+                "irrelevant_return_rate": null,
+                "average_returned": 0.5,
+                "relevant_precision": 1.0,
+                "relevant_returned": 1,
+                "relevant_correct": 1,
+                "prepare_p95_ms": 2.6364077435573563
+              },
+              "无人物筛选": {
+                "queries": 5,
+                "answerable": 4,
+                "no_answer": 1,
+                "recall_at_8": 1.0,
+                "ndcg_at_8": 1.0,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.8,
+                "relevant_precision": 1.0,
+                "relevant_returned": 4,
+                "relevant_correct": 4,
+                "prepare_p95_ms": null
+              },
+              "无答案": {
+                "queries": 4,
+                "answerable": 0,
+                "no_answer": 4,
+                "recall_at_8": null,
+                "ndcg_at_8": null,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 1.839628498419188
+              }
+            }
+          }
+        }
+      },
+      "queries": [
+        {
+          "id": "ST01",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S01": 3
+          },
+          "returned": [
+            "S01"
+          ],
+          "reasons": {
+            "S01": "relevant"
+          },
+          "local_ms": 6.901916931383312
+        },
+        {
+          "id": "ST02",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S02": 3
+          },
+          "returned": [
+            "S02"
+          ],
+          "reasons": {
+            "S02": "relevant"
+          },
+          "local_ms": 3.636999987065792
+        },
+        {
+          "id": "ST03",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S03": 3
+          },
+          "returned": [
+            "S03"
+          ],
+          "reasons": {
+            "S03": "relevant"
+          },
+          "local_ms": 2.8772090445272624
+        },
+        {
+          "id": "ST04",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S04": 3
+          },
+          "returned": [
+            "S04"
+          ],
+          "reasons": {
+            "S04": "relevant"
+          },
+          "local_ms": 2.802208997309208
+        },
+        {
+          "id": "ST05",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S05": 3
+          },
+          "returned": [
+            "S05"
+          ],
+          "reasons": {
+            "S05": "relevant"
+          },
+          "local_ms": 2.291749988216907
+        },
+        {
+          "id": "ST06",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S06": 3
+          },
+          "returned": [
+            "S06"
+          ],
+          "reasons": {
+            "S06": "relevant"
+          },
+          "local_ms": 2.010291034821421
+        },
+        {
+          "id": "ST07",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S07": 3
+          },
+          "returned": [
+            "S07"
+          ],
+          "reasons": {
+            "S07": "relevant"
+          },
+          "local_ms": 1.961542060598731
+        },
+        {
+          "id": "ST08",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S08": 3
+          },
+          "returned": [
+            "S08"
+          ],
+          "reasons": {
+            "S08": "relevant"
+          },
+          "local_ms": 1.9685409497469664
+        },
+        {
+          "id": "ST09",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅涉及人"
+          ],
+          "relevant": {
+            "S09": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 2.646790992002934
+        },
+        {
+          "id": "ST10",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅正文提及"
+          ],
+          "relevant": {
+            "S10": 3
+          },
+          "returned": [
+            "S10"
+          ],
+          "reasons": {
+            "S10": "relevant"
+          },
+          "local_ms": 2.6027910062111914
+        },
+        {
+          "id": "ST11",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅涉及人",
+            "不在场的人"
+          ],
+          "relevant": {
+            "S11": 3
+          },
+          "returned": [
+            "S11"
+          ],
+          "reasons": {
+            "S11": "relevant"
+          },
+          "local_ms": 2.439126023091376
+        },
+        {
+          "id": "ST12",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅正文提及",
+            "不在场的人"
+          ],
+          "relevant": {
+            "S12": 3
+          },
+          "returned": [
+            "S12"
+          ],
+          "reasons": {
+            "S12": "relevant"
+          },
+          "local_ms": 2.0308750099502504
+        },
+        {
+          "id": "ST13",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.4669160009361804
+        },
+        {
+          "id": "ST14",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.5266250120475888
+        },
+        {
+          "id": "ST15",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.848915999289602
+        },
+        {
+          "id": "ST16",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.6631659818813205
+        }
+      ],
+      "index_bytes": 8404992
+    },
+    "trigram_hybrid": {
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.35,
+        "vector_relative": 0.75,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 2048,
+        "embedding_model": "doubao-embedding-vision"
+      },
+      "metrics": {
+        "queries": 16,
+        "answerable": 12,
+        "no_answer": 4,
+        "recall_at_8": 0.3333333333333333,
+        "ndcg_at_8": 0.3333333333333333,
+        "irrelevant_return_rate": 0.0,
+        "average_returned": 0.25,
+        "relevant_precision": 1.0,
+        "relevant_returned": 4,
+        "relevant_correct": 4,
+        "prepare_p95_ms": 2.0063537813257426
+      },
+      "groups": {
+        "dev": {
+          "all": {
+            "queries": 16,
+            "answerable": 12,
+            "no_answer": 4,
+            "recall_at_8": 0.3333333333333333,
+            "ndcg_at_8": 0.3333333333333333,
+            "irrelevant_return_rate": 0.0,
+            "average_returned": 0.25,
+            "relevant_precision": 1.0,
+            "relevant_returned": 4,
+            "relevant_correct": 4,
+            "prepare_p95_ms": 2.0063537813257426
+          },
+          "categories": {
+            "不在场的人": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 0.5,
+              "ndcg_at_8": 0.5,
+              "irrelevant_return_rate": null,
+              "average_returned": 0.5,
+              "relevant_precision": 1.0,
+              "relevant_returned": 1,
+              "relevant_correct": 1,
+              "prepare_p95_ms": 1.6962764610070735
+            },
+            "两字关键词": {
+              "queries": 10,
+              "answerable": 8,
+              "no_answer": 2,
+              "recall_at_8": 0.25,
+              "ndcg_at_8": 0.25,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.2,
+              "relevant_precision": 1.0,
+              "relevant_returned": 2,
+              "relevant_correct": 2,
+              "prepare_p95_ms": null
+            },
+            "两字名字": {
+              "queries": 6,
+              "answerable": 4,
+              "no_answer": 2,
+              "recall_at_8": 0.5,
+              "ndcg_at_8": 0.5,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.3333333333333333,
+              "relevant_precision": 1.0,
+              "relevant_returned": 2,
+              "relevant_correct": 2,
+              "prepare_p95_ms": 2.0063537813257426
+            },
+            "人物筛选": {
+              "queries": 5,
+              "answerable": 4,
+              "no_answer": 1,
+              "recall_at_8": 0.25,
+              "ndcg_at_8": 0.25,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.2,
+              "relevant_precision": 1.0,
+              "relevant_returned": 1,
+              "relevant_correct": 1,
+              "prepare_p95_ms": null
+            },
+            "仅正文提及": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 1.0,
+              "ndcg_at_8": 1.0,
+              "irrelevant_return_rate": null,
+              "average_returned": 1.0,
+              "relevant_precision": 1.0,
+              "relevant_returned": 2,
+              "relevant_correct": 2,
+              "prepare_p95_ms": 2.087837172439322
+            },
+            "仅涉及人": {
+              "queries": 2,
+              "answerable": 2,
+              "no_answer": 0,
+              "recall_at_8": 0.0,
+              "ndcg_at_8": 0.0,
+              "irrelevant_return_rate": null,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 1.6064573428593576
+            },
+            "无人物筛选": {
+              "queries": 5,
+              "answerable": 4,
+              "no_answer": 1,
+              "recall_at_8": 0.25,
+              "ndcg_at_8": 0.25,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.2,
+              "relevant_precision": 1.0,
+              "relevant_returned": 1,
+              "relevant_correct": 1,
+              "prepare_p95_ms": null
+            },
+            "无答案": {
+              "queries": 4,
+              "answerable": 0,
+              "no_answer": 4,
+              "recall_at_8": null,
+              "ndcg_at_8": null,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.0,
+              "relevant_precision": null,
+              "relevant_returned": 0,
+              "relevant_correct": 0,
+              "prepare_p95_ms": 1.3936700561316684
+            }
+          }
+        }
+      },
+      "corpora": {
+        "recall_short_terms_v1": {
+          "dev": {
+            "all": {
+              "queries": 16,
+              "answerable": 12,
+              "no_answer": 4,
+              "recall_at_8": 0.3333333333333333,
+              "ndcg_at_8": 0.3333333333333333,
+              "irrelevant_return_rate": 0.0,
+              "average_returned": 0.25,
+              "relevant_precision": 1.0,
+              "relevant_returned": 4,
+              "relevant_correct": 4,
+              "prepare_p95_ms": 2.0063537813257426
+            },
+            "categories": {
+              "不在场的人": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 0.5,
+                "ndcg_at_8": 0.5,
+                "irrelevant_return_rate": null,
+                "average_returned": 0.5,
+                "relevant_precision": 1.0,
+                "relevant_returned": 1,
+                "relevant_correct": 1,
+                "prepare_p95_ms": 1.6962764610070735
+              },
+              "两字关键词": {
+                "queries": 10,
+                "answerable": 8,
+                "no_answer": 2,
+                "recall_at_8": 0.25,
+                "ndcg_at_8": 0.25,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.2,
+                "relevant_precision": 1.0,
+                "relevant_returned": 2,
+                "relevant_correct": 2,
+                "prepare_p95_ms": null
+              },
+              "两字名字": {
+                "queries": 6,
+                "answerable": 4,
+                "no_answer": 2,
+                "recall_at_8": 0.5,
+                "ndcg_at_8": 0.5,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.3333333333333333,
+                "relevant_precision": 1.0,
+                "relevant_returned": 2,
+                "relevant_correct": 2,
+                "prepare_p95_ms": 2.0063537813257426
+              },
+              "人物筛选": {
+                "queries": 5,
+                "answerable": 4,
+                "no_answer": 1,
+                "recall_at_8": 0.25,
+                "ndcg_at_8": 0.25,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.2,
+                "relevant_precision": 1.0,
+                "relevant_returned": 1,
+                "relevant_correct": 1,
+                "prepare_p95_ms": null
+              },
+              "仅正文提及": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 1.0,
+                "ndcg_at_8": 1.0,
+                "irrelevant_return_rate": null,
+                "average_returned": 1.0,
+                "relevant_precision": 1.0,
+                "relevant_returned": 2,
+                "relevant_correct": 2,
+                "prepare_p95_ms": 2.087837172439322
+              },
+              "仅涉及人": {
+                "queries": 2,
+                "answerable": 2,
+                "no_answer": 0,
+                "recall_at_8": 0.0,
+                "ndcg_at_8": 0.0,
+                "irrelevant_return_rate": null,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 1.6064573428593576
+              },
+              "无人物筛选": {
+                "queries": 5,
+                "answerable": 4,
+                "no_answer": 1,
+                "recall_at_8": 0.25,
+                "ndcg_at_8": 0.25,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.2,
+                "relevant_precision": 1.0,
+                "relevant_returned": 1,
+                "relevant_correct": 1,
+                "prepare_p95_ms": null
+              },
+              "无答案": {
+                "queries": 4,
+                "answerable": 0,
+                "no_answer": 4,
+                "recall_at_8": null,
+                "ndcg_at_8": null,
+                "irrelevant_return_rate": 0.0,
+                "average_returned": 0.0,
+                "relevant_precision": null,
+                "relevant_returned": 0,
+                "relevant_correct": 0,
+                "prepare_p95_ms": 1.3936700561316684
+              }
+            }
+          }
+        }
+      },
+      "queries": [
+        {
+          "id": "ST01",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S01": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.4849160215817392
+        },
+        {
+          "id": "ST02",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S02": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.2992089614272118
+        },
+        {
+          "id": "ST03",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S03": 3
+          },
+          "returned": [
+            "S03"
+          ],
+          "reasons": {
+            "S03": "relevant"
+          },
+          "local_ms": 1.4165000175125897
+        },
+        {
+          "id": "ST04",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选"
+          ],
+          "relevant": {
+            "S04": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.328375015873462
+        },
+        {
+          "id": "ST05",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S05": 3
+          },
+          "returned": [
+            "S05"
+          ],
+          "reasons": {
+            "S05": "relevant"
+          },
+          "local_ms": 1.3138739741407335
+        },
+        {
+          "id": "ST06",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S06": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.2864170130342245
+        },
+        {
+          "id": "ST07",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S07": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.3445420190691948
+        },
+        {
+          "id": "ST08",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选"
+          ],
+          "relevant": {
+            "S08": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.7814169987104833
+        },
+        {
+          "id": "ST09",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅涉及人"
+          ],
+          "relevant": {
+            "S09": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.529666013084352
+        },
+        {
+          "id": "ST10",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅正文提及"
+          ],
+          "relevant": {
+            "S10": 3
+          },
+          "returned": [
+            "S10"
+          ],
+          "reasons": {
+            "S10": "relevant"
+          },
+          "local_ms": 2.1082080202177167
+        },
+        {
+          "id": "ST11",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅涉及人",
+            "不在场的人"
+          ],
+          "relevant": {
+            "S11": 3
+          },
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.6104989917948842
+        },
+        {
+          "id": "ST12",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "仅正文提及",
+            "不在场的人"
+          ],
+          "relevant": {
+            "S12": 3
+          },
+          "returned": [
+            "S12"
+          ],
+          "reasons": {
+            "S12": "relevant"
+          },
+          "local_ms": 1.7007910646498203
+        },
+        {
+          "id": "ST13",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "人物筛选",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.1540420236997306
+        },
+        {
+          "id": "ST14",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字关键词",
+            "无人物筛选",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.182250038255006
+        },
+        {
+          "id": "ST15",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.3965409016236663
+        },
+        {
+          "id": "ST16",
+          "corpus": "recall_short_terms_v1",
+          "split": "dev",
+          "categories": [
+            "两字名字",
+            "无答案"
+          ],
+          "relevant": {},
+          "returned": [],
+          "reasons": {},
+          "local_ms": 1.3391239917837083
+        }
+      ],
+      "index_bytes": 8404992
+    }
+  },
+  "calibration": {
+    "enabled": false,
+    "compare_embeddings": false,
+    "trials": [],
+    "selection_rule": "(Recall@8+nDCG@8)/2 距全网格最高值不足 0.01 视为持平；取 relevant 标注精确率高者，再取无关误返率低者。其后质量高者优先，完全相同时保留固定网格顺序。仅 dev 选择，历史 holdout 不参与。",
+    "recommended_variant": null,
+    "recommended_settings": null
+  },
+  "m2_reference": {
+    "recall_at_8": 0.85,
+    "ndcg_at_8": 0.75,
+    "irrelevant_return_rate": 0.1
+  }
+}

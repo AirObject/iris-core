@@ -33,6 +33,14 @@
 
 Python 3.13／3.12 各 215 passed，uv build 成功。默认召回 Recall@8、nDCG@8、误返率与历史一致；relevant 标注精确率及五条 v2 返回存在差异，历史源码指纹也待追溯，未重新选参，交规划者决定。默认四组性能 R10 通过；扩展对照及 macOS RSS 口径另见报告。学习影响由「test: GLM 学习基线与 PR #5 对照」另行测量。
 
+## PR #5 第四轮短词修复（2026-10-06）
+
+按规划者的新要求，在新设备收尾提交推送后，先于 `830efb6` 单独冻结 16 条手写短词 dev，再写失败测试、实现修复和重新标定。trigram 补查已有 jieba 索引，只有已知姓名而没有话题词时从涉及人／说话人及正文提及取候选；学习检索独立不变。
+
+全部 122 条 dev 的原网格规则选择 jieba；其余默认参数不变。新集 12 条有答案全部命中、4 条无答案全空。原 128 条 Recall 不变，但误返率 0.7000 → 0.8667、relevant 标注精确率 0.5479 → 0.2966，明确列为退化；不以新增样本抬高总体 Recall 掩盖。Python 3.13／3.12 各 245 passed，构建成功，四组默认性能 R10 通过，最大 prepare P95 304.5ms。
+
+完整标定、逐语料／类别与全部查询的前后对照、内存及已知问题见 [第四轮报告](reports/pr5-r4-short-terms-20261006.md)。本轮授权取代第一阶段“只复现”的限制，未改变上方 main 两节历史原文。学习影响仍由「test: GLM 学习基线与 PR #5 对照」另行测量。
+
 ## 命令
 
 在仓库根目录运行；Windows PowerShell 中命令相同，只是路径写法不同：
@@ -55,17 +63,18 @@ uv run python evals/benchmark_retrieval.py --default-config --out evals/reports
 
 ## 召回评测
 
-默认运行三份公开语料，共 123 条固定记忆、128 条查询；每份语料在独立数据库中入库。直接使用固定记忆，不经过学习，不调用生成模型，走正式 Retrieval.prepare／search、去冗余和召回记录路径。
+默认运行四份公开语料，共 139 条固定记忆、144 条查询；每份语料在独立数据库中入库。直接使用固定记忆，不经过学习，不调用生成模型，走正式 Retrieval.prepare／search、去冗余和召回记录路径。
 
 | 语料 | 来源 | 固定记忆 | 查询 | 无答案 | 原 split |
 | --- | --- | ---: | ---: | ---: | --- |
 | recall_v1.json | `a8af9b1` 单独冻结、手写 | 40 | 38 | 8 | 38 dev |
 | recall_v2.json | `95549fc` 在检索改动前单独冻结、手写 | 50 | 66 | 16 | 44 dev、22 历史 holdout |
 | recall_conversation_v1.json | `15cdd48` 在第二轮检索改动前单独冻结、手写 | 33 | 24 | 6 | 24 dev |
+| recall_short_terms_v1.json | `830efb6` 在第四轮检索改动前单独冻结、手写 | 16 | 16 | 4 | 16 dev |
 
-质量语料没有模板或脚本生成。v2 覆盖口语、改述、别名、相近名字、未知属性、参与者和近期消息去冗余；对话集覆盖私聊、群聊、直播，全部显式 `text: null`、`participants: null`，由近期消息推断当前问题和参与者。详见冻结时的 [recall_v2_notes.md](recall_v2_notes.md) 与 [recall_conversation_v1_notes.md](recall_conversation_v1_notes.md)。notes 保存当时的计划，当前选参方法以下文为准；不改语料或 notes 来适应新结果。
+质量语料没有模板或脚本生成。v2 覆盖口语、改述、别名、相近名字、未知属性、参与者和近期消息去冗余；对话集覆盖私聊、群聊、直播，全部显式 `text: null`、`participants: null`，由近期消息推断当前问题和参与者。详见冻结时的 [recall_v2_notes.md](recall_v2_notes.md) 与 [recall_conversation_v1_notes.md](recall_conversation_v1_notes.md)。短词集覆盖带／不带人物筛选的两字关键词、只在涉及人或正文出现的两字名字、不在场的人及同类型无答案查询，来源和逐条分组见 [recall_short_terms_v1_notes.md](recall_short_terms_v1_notes.md)。notes 保存当时的计划，当前选参方法以下文为准；不改语料或 notes 来适应新结果。
 
-GLM 阶段全部公开样本按 dev 使用，命令和报告仍尊重冻结文件的 split，历史 holdout 仅作回归分组，不代表未见验收。PR #5 原选参只使用 v1 38 条、v2 44 条 dev 和对话集 24 条，共 106 条；原 v2 的 22 条历史 holdout 已分析，不参与选参。新设备阶段运行全部 128 条复现，不重新选参。规划者的隐藏集在仓库外，执行者不得寻找或读取。
+GLM 阶段全部公开样本按 dev 使用，命令和报告仍尊重冻结文件的 split，历史 holdout 仅作回归分组，不代表未见验收。PR #5 原选参只使用 v1 38 条、v2 44 条 dev 和对话集 24 条，共 106 条；原 v2 的 22 条历史 holdout 已分析，不参与选参。新设备第一阶段运行全部 128 条复现，未重新选参。第四轮按规划者要求加入短词集后，在全部 122 条 dev 上按原规则重新标定，并在全部 144 条上做最终对照；原 v2 的 22 条历史 holdout 仍不参与选参。规划者的隐藏集在仓库外，执行者不得寻找或读取。
 
 标准输入是 UTF-8 JSON：
 
@@ -94,13 +103,13 @@ GLM 阶段全部公开样本按 dev 使用，命令和报告仍尊重冻结文�
 
 Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1)`，以理想前八条归一化。两者计全部返回，包含人物要点。无关误返率只统计无答案查询是否有 `reason=relevant` 返回，不计人物要点。relevant 标注精确率为标注相关的 relevant 返回数／全部 relevant 返回数，跨查询合并计数；平均返回数仅作诊断。空分母显示不可计算，类别可重叠；v1 无分类标签，其无答案查询仍计入总体误返。报告按语料、split、类别列指标，逐条保存返回 ID 和 reason。
 
-默认命令对照 jieba／trigram 的纯全文和混合向量四种方案，混合默认为 trigram。没有配置 embedding 时只输出全文结果，不能视为完成向量复现。embedding 使用真实服务，按端点／模型／维度／完整输入 SHA-256 缓存在 `data/recall-embeddings.db`；外部 --out 的缓存也在外部，不含凭据。预取与正式路径共用 prepare_query／embedding_text，新增请求单路、间隔至少 1 秒。首次运行另记新请求用量与耗时；本地 prepare P95 扣除查询 embedding 等待，包含检索、去冗余和召回记录提交。外部 JSON 的 details 另保存完整输入、记忆、标签和返回，仓库内只保留 ID 与汇总。
+默认命令对照 jieba／trigram 的纯全文和混合向量四种方案，第四轮混合默认为 jieba。没有配置 embedding 时只输出全文结果，不能视为完成向量复现。embedding 使用真实服务，按端点／模型／维度／完整输入 SHA-256 缓存在 `data/recall-embeddings.db`；外部 --out 的缓存也在外部，不含凭据。预取与正式路径共用 prepare_query／embedding_text，新增请求单路、间隔至少 1 秒。首次运行另记新请求用量与耗时；本地 prepare P95 扣除查询 embedding 等待，包含检索、去冗余和召回记录提交。外部 JSON 的 details 另保存完整输入、记忆、标签和返回，仓库内只保留 ID 与汇总。
 
-`--calibrate` 只允许 `--split dev`，报告完整网格，不写在用数据库。网格为 jieba／trigram × 向量绝对下限 {0.35, 0.45, 0.55, 0.65} × 相对比例 {0.75, 0.85, 0.95} × 向量权重 {0.5, 1, 2} × 前缀 {空, “为这个问题检索能回答它的个人记忆：”}，全文权重 1，共 144 个混合方案及两个纯全文对照。默认维度 2048；只有额外传入 `--compare-embeddings` 才比较 1024／2048 维。本次不运行这些选参选项。
+`--calibrate` 只允许 `--split dev`，报告完整网格，不写在用数据库。网格为 jieba／trigram × 向量绝对下限 {0.35, 0.45, 0.55, 0.65} × 相对比例 {0.75, 0.85, 0.95} × 向量权重 {0.5, 1, 2} × 前缀 {空, “为这个问题检索能回答它的个人记忆：”}，全文权重 1，共 144 个混合方案及两个纯全文对照。默认维度 2048；只有额外传入 `--compare-embeddings` 才比较 1024／2048 维。第四轮只运行 `--split dev --calibrate`，不重新比较维度。
 
 选择规则先计算 `Q=(Recall@8+nDCG@8)/2`，距全网格最高 Q 不足 0.01 才算持平，恰差 0.01 不算。持平先取 relevant 标注精确率较高者，再取无关误返率较低者，再看 Q，完全相同按固定网格顺序；精确率无分母按 0 处理。不得逐项链式平分或只比较每个分词器／前缀的局部赢家，不从 Q 扣除误返。M2 参考值仍为 Recall@8≥0.85、nDCG@8≥0.75、无关误返率≤0.10；无答案拒绝留到 M2，本轮只报告。
 
-当前冻结默认见 `src/iris/retrieval_defaults.json`：trigram、RRF k=60、2048 维 float32、向量权重 2／全文权重 1、绝对下限 0.35、相对比例 0.75，加上述问题前缀。无向量时降级 jieba。新数据库保存到 runtime_settings.retrieval，现有设置保留；更换 embedding 模型或维度须重新标定，未经标定只用全文。学习材料使用独立的 learning_retrieval 设置，不随回复选参变化。
+当前冻结默认见 `src/iris/retrieval_defaults.json`：jieba、RRF k=60、2048 维 float32、向量权重 2／全文权重 1、绝对下限 0.35、相对比例 0.75，加上述问题前缀。无向量时降级 jieba。新数据库保存到 runtime_settings.retrieval，现有设置保留；更换 embedding 模型或维度须重新标定，未经标定只用全文。学习材料使用独立的 learning_retrieval 设置，不随回复选参变化。
 
 ## 性能方法
 
