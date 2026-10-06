@@ -1,0 +1,391 @@
+{
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "python": "3.13.15",
+  "sqlite": "3.53.1",
+  "numpy": "2.5.3",
+  "logical_cpus": 10,
+  "physical_memory_gib": 16.0,
+  "note": "Fresh process per size/dtype; precomputed synthetic query embedding; 5 warmups per query (unnamed and named); FTS, vector ranking, metadata, JSON and recall record included. HTTP uses in-process ASGI TestClient; no external embedding network.",
+  "results": [
+    {
+      "memories": 5000,
+      "dimension": 1024,
+      "dtype": "float32",
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.0,
+        "vector_relative": 0.0,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 1024,
+        "embedding_model": "perf-vector",
+        "dtype": "float32",
+        "fallback_tokenizer": "jieba"
+      },
+      "queries": {
+        "unnamed": {
+          "request": {
+            "text": "天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 1.979486847994849,
+          "prepare_p50_ms": 11.363625002559274,
+          "prepare_p95_ms": 12.048819035408082,
+          "http_prepare_p95_ms": 12.981487493379973
+        },
+        "named": {
+          "request": {
+            "text": "参与者1的天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 2.2517642995808274,
+          "prepare_p50_ms": 24.215396028012037,
+          "prepare_p95_ms": 36.770108676864766,
+          "http_prepare_p95_ms": 28.831376478774473
+        }
+      },
+      "load_seconds": 0.07533299998613074,
+      "matrix_storage_mib": 20.078125,
+      "rss_before_mib": 129.984375,
+      "rss_after_load_mib": 159.359375,
+      "rss_load_delta_mib": 29.375,
+      "rss_after_queries_mib": 144.9375,
+      "peak_working_set_mib": 144.9375
+    },
+    {
+      "memories": 5000,
+      "dimension": 1024,
+      "dtype": "float16",
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.0,
+        "vector_relative": 0.0,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 1024,
+        "embedding_model": "perf-vector",
+        "dtype": "float16",
+        "fallback_tokenizer": "jieba"
+      },
+      "queries": {
+        "unnamed": {
+          "request": {
+            "text": "天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 2.9019621753832325,
+          "prepare_p50_ms": 12.675083504291251,
+          "prepare_p95_ms": 15.767172604682852,
+          "http_prepare_p95_ms": 20.202437863918018
+        },
+        "named": {
+          "request": {
+            "text": "参与者1的天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 13.505631583393548,
+          "prepare_p50_ms": 73.40966651099734,
+          "prepare_p95_ms": 144.2783291364321,
+          "http_prepare_p95_ms": 156.24584407487416
+        }
+      },
+      "load_seconds": 0.05718258302658796,
+      "matrix_storage_mib": 10.078125,
+      "rss_before_mib": 130.109375,
+      "rss_after_load_mib": 144.515625,
+      "rss_load_delta_mib": 14.40625,
+      "rss_after_queries_mib": 62.578125,
+      "peak_working_set_mib": 62.578125,
+      "top8_overlap_with_float32": 1.0
+    },
+    {
+      "memories": 50000,
+      "dimension": 1024,
+      "dtype": "float32",
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.0,
+        "vector_relative": 0.0,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 1024,
+        "embedding_model": "perf-vector",
+        "dtype": "float32",
+        "fallback_tokenizer": "jieba"
+      },
+      "queries": {
+        "unnamed": {
+          "request": {
+            "text": "天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 19.48631702689454,
+          "prepare_p50_ms": 62.43583300965838,
+          "prepare_p95_ms": 63.628937501925975,
+          "http_prepare_p95_ms": 71.62769407441374
+        },
+        "named": {
+          "request": {
+            "text": "参与者1的天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 55.44535588123835,
+          "prepare_p50_ms": 484.91820850176737,
+          "prepare_p95_ms": 1420.7951854536066,
+          "http_prepare_p95_ms": 1549.1773398884102
+        }
+      },
+      "load_seconds": 0.4902845000033267,
+      "matrix_storage_mib": 196.765625,
+      "rss_before_mib": 131.875,
+      "rss_after_load_mib": 343.03125,
+      "rss_load_delta_mib": 211.15625,
+      "rss_after_queries_mib": 307.1875,
+      "peak_working_set_mib": 307.1875
+    },
+    {
+      "memories": 50000,
+      "dimension": 1024,
+      "dtype": "float16",
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.0,
+        "vector_relative": 0.0,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 1024,
+        "embedding_model": "perf-vector",
+        "dtype": "float16",
+        "fallback_tokenizer": "jieba"
+      },
+      "queries": {
+        "unnamed": {
+          "request": {
+            "text": "天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 22.378768754424524,
+          "prepare_p50_ms": 65.16877099056728,
+          "prepare_p95_ms": 66.50131216156296,
+          "http_prepare_p95_ms": 73.86121187009849
+        },
+        "named": {
+          "request": {
+            "text": "参与者1的天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 22.229389249696396,
+          "prepare_p50_ms": 484.8513960314449,
+          "prepare_p95_ms": 492.60155278025195,
+          "http_prepare_p95_ms": 514.5158083323621
+        }
+      },
+      "load_seconds": 0.3187191250035539,
+      "matrix_storage_mib": 98.765625,
+      "rss_before_mib": 130.03125,
+      "rss_after_load_mib": 244.59375,
+      "rss_load_delta_mib": 114.5625,
+      "rss_after_queries_mib": 271.984375,
+      "peak_working_set_mib": 271.984375,
+      "top8_overlap_with_float32": 0.9875
+    },
+    {
+      "memories": 5000,
+      "dimension": 2048,
+      "dtype": "float32",
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.0,
+        "vector_relative": 0.0,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 2048,
+        "embedding_model": "perf-vector",
+        "dtype": "float32",
+        "fallback_tokenizer": "jieba"
+      },
+      "queries": {
+        "unnamed": {
+          "request": {
+            "text": "天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 2.9950955940876156,
+          "prepare_p50_ms": 12.40333350142464,
+          "prepare_p95_ms": 12.879237465676852,
+          "http_prepare_p95_ms": 14.168577681994066
+        },
+        "named": {
+          "request": {
+            "text": "参与者1的天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 3.0305642692837864,
+          "prepare_p50_ms": 24.18895799200982,
+          "prepare_p95_ms": 25.058568781241775,
+          "http_prepare_p95_ms": 26.56953955593053
+        }
+      },
+      "load_seconds": 0.05833504197653383,
+      "matrix_storage_mib": 40.078125,
+      "rss_before_mib": 130.078125,
+      "rss_after_load_mib": 176.46875,
+      "rss_load_delta_mib": 46.390625,
+      "rss_after_queries_mib": 172.328125,
+      "peak_working_set_mib": 172.328125
+    },
+    {
+      "memories": 5000,
+      "dimension": 2048,
+      "dtype": "float16",
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.0,
+        "vector_relative": 0.0,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 2048,
+        "embedding_model": "perf-vector",
+        "dtype": "float16",
+        "fallback_tokenizer": "jieba"
+      },
+      "queries": {
+        "unnamed": {
+          "request": {
+            "text": "天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 3.592069062869996,
+          "prepare_p50_ms": 13.200332992710173,
+          "prepare_p95_ms": 13.612210439168848,
+          "http_prepare_p95_ms": 14.936498261522502
+        },
+        "named": {
+          "request": {
+            "text": "参与者1的天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 3.5844704863848165,
+          "prepare_p50_ms": 24.720187531784177,
+          "prepare_p95_ms": 25.914223564905114,
+          "http_prepare_p95_ms": 26.65921104780864
+        }
+      },
+      "load_seconds": 0.05569033301435411,
+      "matrix_storage_mib": 20.078125,
+      "rss_before_mib": 130.0625,
+      "rss_after_load_mib": 152.875,
+      "rss_load_delta_mib": 22.8125,
+      "rss_after_queries_mib": 158.640625,
+      "peak_working_set_mib": 158.640625,
+      "top8_overlap_with_float32": 0.99375
+    },
+    {
+      "memories": 50000,
+      "dimension": 2048,
+      "dtype": "float32",
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.0,
+        "vector_relative": 0.0,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 2048,
+        "embedding_model": "perf-vector",
+        "dtype": "float32",
+        "fallback_tokenizer": "jieba"
+      },
+      "queries": {
+        "unnamed": {
+          "request": {
+            "text": "天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 30.297364608850327,
+          "prepare_p50_ms": 73.24204198084772,
+          "prepare_p95_ms": 75.92247919237707,
+          "http_prepare_p95_ms": 82.76121186790988
+        },
+        "named": {
+          "request": {
+            "text": "参与者1的天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 37.93181809305678,
+          "prepare_p50_ms": 504.28077098331414,
+          "prepare_p95_ms": 639.170356892282,
+          "http_prepare_p95_ms": 644.6495896030682
+        }
+      },
+      "load_seconds": 0.8438422079780139,
+      "matrix_storage_mib": 392.765625,
+      "rss_before_mib": 129.9375,
+      "rss_after_load_mib": 539.8125,
+      "rss_load_delta_mib": 409.875,
+      "rss_after_queries_mib": 504.203125,
+      "peak_working_set_mib": 504.203125
+    },
+    {
+      "memories": 50000,
+      "dimension": 2048,
+      "dtype": "float16",
+      "settings": {
+        "tokenizer": "trigram",
+        "vector_min": 0.0,
+        "vector_relative": 0.0,
+        "vector_weight": 2.0,
+        "query_prefix": "为这个问题检索能回答它的个人记忆：",
+        "embedding_dimensions": 2048,
+        "embedding_model": "perf-vector",
+        "dtype": "float16",
+        "fallback_tokenizer": "jieba"
+      },
+      "queries": {
+        "unnamed": {
+          "request": {
+            "text": "天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 52.5113673415035,
+          "prepare_p50_ms": 90.52043801057152,
+          "prepare_p95_ms": 120.50654168415348,
+          "http_prepare_p95_ms": 126.47854819952043
+        },
+        "named": {
+          "request": {
+            "text": "参与者1的天文观測记录",
+            "participants": []
+          },
+          "samples": 60,
+          "vector_p95_ms": 73.35668126761446,
+          "prepare_p50_ms": 704.9171664984897,
+          "prepare_p95_ms": 953.9605181460502,
+          "http_prepare_p95_ms": 935.965072576073
+        }
+      },
+      "load_seconds": 0.4353930000215769,
+      "matrix_storage_mib": 196.765625,
+      "rss_before_mib": 130.0,
+      "rss_after_load_mib": 340.46875,
+      "rss_load_delta_mib": 210.46875,
+      "rss_after_queries_mib": 306.53125,
+      "peak_working_set_mib": 306.53125,
+      "top8_overlap_with_float32": 1.0
+    }
+  ]
+}

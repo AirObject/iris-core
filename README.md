@@ -1,24 +1,27 @@
 # Iris M1：学习、召回、后台调度与宿主接口
 
-需要 [uv](https://docs.astral.sh/uv/) 和 Python 3.12 及以上。uv 会直接使用机器上已有的兼容 Python；没有时才下载。国内网络下载解释器较慢时，可设置 `UV_PYTHON_INSTALL_MIRROR`，或用 `uv run --python <解释器绝对路径>` 指定已安装的 Python 3.12／3.13。
+需要 [uv](https://docs.astral.sh/uv/) 和 Python 3.12 及以上。开发设备为 macOS，仓库内 `.venv` 使用 Python 3.13；以下命令也适用于 Linux 和 Windows PowerShell：
 
-```powershell
-uv sync
+```bash
+uv sync --python 3.13
 uv run pytest
+uv run --locked --isolated --python 3.12 pytest
 ```
+
+两个版本的测试依次运行，不同时运行；3.12 使用临时环境，保持仓库 `.venv` 为 3.13。
 
 可用 `uv run iris setup --name Iris` 创建初始角色。学习命令行可用 `uv run iris ingest messages.jsonl` 接收 UTF-8 消息，再执行 `uv run iris learn <入口标识> --force`。JSONL 每行至少包含 `entry_id`、`platform`、`sender`、`content`、带时区的 ISO `occurred_at` 和入口内唯一的 `dedupe_key`；可选 `kind` 为 `message`、`self_output`、`action_result` 或 `event`。引用可带 `quote_author`、`quote_author_account_id` 和 `quote_content`；场景事件有固定的“场景”主体，行动结果属于“我”。
 
-把 `test-models.example.toml` 复制为仓库根目录的 `test-models.toml` 并填写测试模型配置；该文件被 Git 忽略。也可设置 `IRIS_TEST_MODELS` 指向工作树外的配置文件。然后运行：
+把 `test-models.example.toml` 复制为仓库根目录的 `test-models.toml` 并填写测试模型配置；该文件被 Git 忽略。在其他 worktree 中设置 `IRIS_TEST_MODELS` 指向同一份配置的绝对路径，不复制密钥文件。2026-10-05 起对话模型为 glm-5.3-flash，embedding 为 doubao-embedding-vision。然后运行：
 
-```powershell
+```bash
 uv run iris models check
 uv run iris eval learning
 ```
 
 ## 本机服务
 
-```powershell
+```bash
 uv run iris setup --name Iris
 uv run iris serve
 # 也可指定数据库和本机端口：
@@ -70,7 +73,9 @@ print(httpx.post("http://127.0.0.1:8080/api/v1/entries/group-a/learn").json())
 
 默认同时学习 2 个批次，同一入口严格串行。可用 `iris serve --learning-concurrency 1` 修改并持久保存并发数（1—32）。手动请求持久保存到请求当时的消息位置，重启后继续处理该范围的尾部。正常关闭服务时等待在途任务完成；强制终止后由下次启动恢复。
 
-准备结果还包含空的 `state`、未结束的 `goals`、运行 `hints` 和 `recall_id`。`participants` 接受主体 ID 或无歧义的名字／别名；同名账号必须使用主体 ID。省略参与者时从返回的近期消息推断，传空数组可不取人物要点。`recent_limit=0` 关闭近期消息；记忆最多 8 条、1500 个估算 token，目标最多 10 个。模型故障时仍返回已有资料，并说明全文检索降级。
+准备结果还包含空的 `state`、未结束的 `goals`、运行 `hints` 和 `recall_id`。查询省略或为 null 时使用最近五条消息。`participants` 接受主体 ID 或无歧义名字／别名，同名账号用 ID；省略或为 null 时从最近 20 条消息推断，按最近发言顺序排列，传空数组不取人物要点。参与者不会排除关于我自己或其他人的记忆。
+
+相关记忆先入选（`reason: "relevant"`），剩余名额按参与者轮流用其重要记忆补位（`reason: "person_highlight"`），要点合计最多三条，不包含我和场景。人物要点是对方的背景，不表示回答了当前问题。文本点名的主体或别名限定范围：记忆须涉及、出自或正文提及此人，同名主体都保留。`recent_limit=0` 关闭近期消息返回，记忆合计最多 8 条、1500 个估算 token，目标最多 10 个。模型失败时说明全文检索降级。定向 search 不补人物要点。
 
 定向查询和状态示例：
 
@@ -102,18 +107,25 @@ embedding 暂停时网关直接返回可降级错误，回复准备和查询使�
 
 ## 评测
 
-```powershell
+```bash
 uv run iris eval learning --split dev --judge-runs 1
 uv run iris eval learning --judge-runs 2
 uv run iris eval recall
 uv run iris eval recall --split dev --calibrate
-uv run iris eval recall --corpus C:\eval-data\recall.json --out C:\eval-results
-uv run iris eval e2e --split dev --judge-runs 1
-uv run iris eval e2e --judge-runs 2 --out C:\eval-results\e2e
-uv run python evals/benchmark_retrieval.py
+# 如需重新比较 1024／2048 维，再加 --compare-embeddings
+uv run iris eval recall --corpus <外部 JSON 或 JSONL> --out <外部目录>
+uv run python evals/benchmark_retrieval.py --default-config
 ```
 
-语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。端到端评测在临时目录启动真实服务，只经 HTTP 写入和提问，并跨越强制重启。最终双判要求通过比例至少 80%（当前公开集至少 9/11）；最终验收仍需规划者运行隐藏集。
+语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。学习和召回的最终验收仍需规划者运行隐藏集。
+
+当前回复检索默认 trigram＋2048 维 float32，向量下限 0.35、相对比例 0.75、向量／全文权重 1:1，查询加“为这个问题检索能回答它的个人记忆：”前缀；全文覆盖率 0.75，长片段最大文档频率 2。无向量时用 trigram 加 jieba 短词补查。新数据库写入这些默认值，已有设置保留。学习材料保持独立的 PR #4 设置。
+
+trigram 查询中的一字／两字实词会补查已有 jieba 索引；只询问已知姓名时，也能按涉及人、说话人及正文提及取回候选。长短词结果按全查询词项覆盖率筛选，稀有长词片段也可按整库文档频率入选，之后合并去重，人物与类型等过滤继续生效，混合检索和全文降级均覆盖短词。
+
+召回评测默认运行四份公开集，共 144 条查询。GLM 阶段全部按 dev 使用，保留原 split 作历史分组；第四轮新增 16 条手写短词查询，先单独冻结；第五轮继续按原规则在 122 条 dev 上重新标定。选参、逐项对照和已知问题见 [evals/README.md](evals/README.md)。无答案拒绝留到 M2。
+
+点名检查仅读取检索和人物要点候选的正文。性能脚本加 `--default-config` 覆盖当前默认的 5 千／5 万条、点名／不点名四组；不带该参数还会比较维度和 dtype，并在合成测试库中关闭向量截断。性能方法和本次报告入口见 [evals/README.md](evals/README.md)。学习影响按 2026-10-06 决定改为全部公开学习语料的确定性请求比较；第一阶段真实学习对照已作废。
 
 端到端公开集现为 11 个手写脚本，包括群聊学习、重启后私聊提问的 E011。prepare 的查询文本只省略或使用提问原文；评测器另行校验近期原始消息没有跨入口。跨入口来源格式见 [评测说明](evals/README.md)。
 

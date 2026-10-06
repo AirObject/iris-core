@@ -1,4 +1,5 @@
 import json
+import pytest
 from pathlib import Path
 
 from iris import evaluation
@@ -146,12 +147,16 @@ class EvaluationGateway(FakeGateway):
         pass
 
 
-def test_external_corpus_and_out_use_production_path_and_respect_split(tmp_path, monkeypatch):
+@pytest.mark.parametrize('deep', [False, True])
+def test_external_corpus_and_out_use_production_path_and_respect_split(tmp_path, monkeypatch, deep):
     monkeypatch.setattr(evaluation, "Gateway", EvaluationGateway)
     root = tmp_path / "workspace"
     root.mkdir()
     corpus = tmp_path / "external.jsonl"
     out = tmp_path / "outside-reports"
+    if deep:
+        # Under MAX_PATH only the legacy checkpoint suffix would exceed 260.
+        out = tmp_path / ('d' * max(1, 204 - len(str(tmp_path))))
     case = {"id": "external-dev", "split": "dev", "entry_type": "private", "tags": [],
             "messages": [{"at": "2026-10-01T09:00:00+08:00", "speaker": "小林", "type": "message",
                           "content": "叫我阿灯，我喜欢薄荷茶"}],
@@ -170,6 +175,15 @@ def test_external_corpus_and_out_use_production_path_and_respect_split(tmp_path,
     assert not (root / "evals").exists()
     assert "因长度截断的批次数" in path.read_text(encoding="utf-8")
     assert "隐藏" in path.read_text(encoding="utf-8")
+    _, resumed = run_learning_eval(configs, root, 'dev', corpus=corpus, out=out)
+    assert resumed['resumed_cases'] == 1
+    assert max(len(str(p)) for p in out.rglob('*')) < 260
+    metadata = next(out.glob('.lc/*/meta.json'))
+    saved = json.loads(metadata.read_text(encoding='utf-8'))
+    assert saved['signature'] == report['checkpoint_signature']
+    metadata.write_text(json.dumps({'signature': 'different'}), encoding='utf-8')
+    with pytest.raises(ValueError, match='fingerprint'):
+        run_learning_eval(configs, root, 'dev', corpus=corpus, out=out)
 
 
 def test_cli_forwards_corpus_out_and_preserves_default_arguments(tmp_path, monkeypatch):

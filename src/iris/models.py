@@ -31,6 +31,7 @@ class ModelConfig:
     base_url: str
     api_key: str = field(repr=False)
     model: str
+    dimensions: int | None = None
 
 
 @dataclass
@@ -70,6 +71,7 @@ def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
             str(group.get("base_url", "")).rstrip("/"),
             api_key,
             str(group.get("model", "")),
+            group.get("dimensions"),
         )
     return result
 
@@ -304,6 +306,8 @@ class Gateway:
                         vector = data["data"][0]["embedding"]
                         if not isinstance(vector, list) or not vector or any(not math.isfinite(float(v)) for v in vector) or not any(float(v) for v in vector):
                             raise ValueError("invalid embedding vector")
+                        if payload.get('dimensions') is not None and len(vector) != payload['dimensions']:
+                            raise ValueError('embedding dimensions do not match request')
                     elif not choices or not isinstance(content, str):
                         raise ValueError("missing chat choice")
                     status_code = provider_status or status_code
@@ -344,7 +348,15 @@ class Gateway:
                           (data.get("base_resp") or {}).get("status_code"))
 
     def embedding(self, text: str, purpose: str = "embedding") -> list[float]:
-        data = self._call("embedding", purpose, {"input": text})
+        config = self.configs['embedding']
+        payload = {"model": config.model, "input": text}
+        settings = self.store.setting('retrieval', {}) if self.store else {}
+        dimensions = config.dimensions
+        if dimensions is None and settings.get('embedding_model') == config.model:
+            dimensions = settings.get('embedding_dimensions', 2048)
+        if dimensions is not None:
+            payload['dimensions'] = dimensions
+        data = self._call("embedding", purpose, payload)
         try:
             return [float(v) for v in data["data"][0]["embedding"]]
         except (KeyError, IndexError, TypeError, ValueError) as exc:

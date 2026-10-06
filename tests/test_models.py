@@ -126,6 +126,26 @@ def test_embedding_uses_configured_plan_path(store):
     assert paths == ["/api/plan/v3/embeddings"]
 
 
+def test_embedding_dimension_payload_and_mismatched_response(store):
+    from dataclasses import replace
+    configured = configs()
+    configured['embedding'] = replace(configured['embedding'], dimensions=1024)
+    seen = []
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={'data':[{'embedding':[1.] * (1024 if len(seen) == 1 else 2048)}]})
+    gateway = Gateway(configured, store, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    try:
+        assert len(gateway.embedding('维度检查')) == 1024
+        assert seen[0]['dimensions'] == 1024
+        with pytest.raises(ModelError):
+            gateway.embedding('不匹配的向量')
+        with store.read() as conn:
+            assert conn.execute('SELECT result_category FROM model_calls ORDER BY id DESC LIMIT 1').fetchone()[0] == 'configuration'
+    finally:
+        gateway.close()
+
+
 @pytest.mark.parametrize(("purpose", "deadline"), [
     ("test", 120), ("learning", 180), ("learning_repair", 180),
     ("learning_judge", 240), ("learning_judge_repair", 240),

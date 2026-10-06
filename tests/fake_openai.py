@@ -39,7 +39,7 @@ class FakeOpenAI:
                     scripted = owner.responses.popleft() if owner.responses else None
                 if owner.handler:
                     scripted = owner.handler(self.path, payload)
-                default = {"data": [{"embedding": [1.0, 0.0]}], "usage": {"prompt_tokens": 2}}
+                default = {"data": [{"embedding": [1.0] + [0.0] * (payload.get("dimensions", 2) - 1)}], "usage": {"prompt_tokens": 2}}
                 status, body, headers, delay = scripted or (200, default if self.path.endswith("embeddings") else completion(), {}, 0)
                 time.sleep(delay)
                 raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
