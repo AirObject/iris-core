@@ -27,11 +27,36 @@ def segmented(text: str) -> str:
     return " ".join(terms(text))
 
 
+def _query_text(text: str) -> str:
+    # A listed function word can be split by jieba (e.g. 来着 -> 来 / 着).
+    # Match only complete segmentation units, so removing it cannot cut into
+    # another word. Keep the shared index and learning tokenizer unchanged.
+    pieces = words(text)
+    max_length = max(map(len, QUERY_STOP))
+    result = []
+    start = 0
+    while start < len(pieces):
+        joined, stop_end = '', None
+        for end in range(start, min(len(pieces), start + max_length)):
+            joined += pieces[end]
+            if len(joined) > max_length:
+                break
+            if joined in QUERY_STOP:
+                stop_end = end + 1
+        if stop_end is not None:
+            result.append(' ')
+            start = stop_end
+        else:
+            result.append(pieces[start])
+            start += 1
+    return ''.join(result)
+
+
 def query_terms(text: str, tokenizer: str) -> list[str]:
+    cleaned = _query_text(text)
     if tokenizer == "jieba":
-        return list(dict.fromkeys(t.casefold() for t in _tokenizer.cut_for_search(text, HMM=False)
+        return list(dict.fromkeys(t.casefold() for t in _tokenizer.cut_for_search(cleaned, HMM=False)
                                   if re.search(r"\w", t) and t not in QUERY_STOP))[:64]
-    cleaned = ''.join(' ' if word in QUERY_STOP else word for word in words(text))
     return learning_query_terms(cleaned, tokenizer)
 
 

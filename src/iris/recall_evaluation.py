@@ -241,7 +241,7 @@ def grouped_metrics(rows):
     return result
 
 
-PUBLIC_CORPORA = ('recall_v1.json', 'recall_v2.json', 'recall_conversation_v1.json')
+PUBLIC_CORPORA = ('recall_v1.json', 'recall_v2.json', 'recall_conversation_v1.json', 'recall_short_terms_v1.json')
 
 
 def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = None, out: Path | None = None,

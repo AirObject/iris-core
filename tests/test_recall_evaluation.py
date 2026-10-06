@@ -21,7 +21,7 @@ def test_public_corpora_exclude_historical_holdout_from_calibration(tmp_path):
     from iris.recall_evaluation import PUBLIC_CORPORA
     folder = tmp_path / 'evals'
     folder.mkdir()
-    for name, topic in zip(PUBLIC_CORPORA, ('天文', '水彩', '陶艺'), strict=True):
+    for name, topic in zip(PUBLIC_CORPORA, ('天文', '水彩', '陶艺', '围棋'), strict=True):
         (folder / name).write_text(json.dumps({
             'memories': [{'id': 'm', 'content': topic}],
             'queries': [
@@ -30,11 +30,11 @@ def test_public_corpora_exclude_historical_holdout_from_calibration(tmp_path):
         }, ensure_ascii=False), encoding='utf-8')
     _, report = run_recall_eval({}, tmp_path, 'dev', calibrate=True)
     variant = report['variants']['jieba_fts']
-    assert variant['metrics']['queries'] == 3 and variant['metrics']['recall_at_8'] == 1
-    assert len(variant['corpora']) == 3
+    assert variant['metrics']['queries'] == len(PUBLIC_CORPORA) and variant['metrics']['recall_at_8'] == 1
+    assert len(variant['corpora']) == len(PUBLIC_CORPORA)
     assert all(q['id'] == 'dev' and q['returned'] == ['m'] for q in variant['queries'])
     _, final = run_recall_eval({}, tmp_path)
-    assert final['variants']['jieba_fts']['groups']['holdout']['all']['queries'] == 3
+    assert final['variants']['jieba_fts']['groups']['holdout']['all']['queries'] == len(PUBLIC_CORPORA)
     assert all(json.loads((folder / name).read_text(encoding='utf-8'))['queries'][1]['split'] == 'holdout'
                for name in PUBLIC_CORPORA)
 
@@ -153,7 +153,8 @@ def test_external_recall_corpus_details_use_production_redundancy(tmp_path):
     assert report["details"]["memories"] == data["memories"]
     row = report["details"]["variants"]["jieba_fts"][0]
     assert row["returned"] == ["b"] and row["response"]["recent_messages"]
-    assert report["variants"]["trigram_fts"]["metrics"]["recall_at_8"] == 0
+    assert report["variants"]["trigram_fts"]["metrics"]["recall_at_8"] == 1
+    assert report["details"]["variants"]["trigram_fts"][0]["returned"] == ["b"]
     assert "M2" in path.read_text(encoding="utf-8")
 
 

@@ -45,6 +45,8 @@ class Query:
     tokens: tuple[str, ...]
     names: SubjectNames
     refers_to_self: bool = False
+    short_tokens: tuple[str, ...] = ()
+    name_only: bool = False
 
 
 def analyze(conn, text: str, participants=(), tokenizer='jieba', *, entry_kind=None) -> Query:
@@ -70,5 +72,8 @@ def analyze(conn, text: str, participants=(), tokenizer='jieba', *, entry_kind=N
     # A role-only address never narrows scope. If a label is ambiguous with
     # another subject, preserve every matching ID, including self.
     anchors = mentioned if any(sid != 'self' for sid in mentioned) else ()
+    topic_tokens = query_terms(topic, 'jieba')
     return Query(canonical, anchors,
-                 tuple(query_terms(topic, tokenizer)), names, self_reference)
+                 tuple(query_terms(topic, tokenizer)), names, self_reference,
+                 tuple(t for t in topic_tokens if len(t) < 3) if tokenizer == 'trigram' else (),
+                 bool(anchors and not topic_tokens))

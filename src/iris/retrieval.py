@@ -14,7 +14,7 @@ from typing import Any
 from .db import Store, dumps, now
 from .models import Gateway, ModelError
 from .queue import estimate_tokens
-from .search_text import match_query
+from .search_text import match_query, terms
 from .query_analysis import analyze
 
 RRF_K = 60
@@ -207,27 +207,51 @@ class Retrieval:
                             anchors.intersection(analysis.names.mentioned(row['content'])))
                 yield from (row for row in batch if anchor_matches[row[0]])
         boosted = set(participants) | ({'self'} if analysis.refers_to_self else set())
-        tokens = analysis.tokens
-        table = "memory_fts_" + self.settings["tokenizer"]
-        if tokens:
+        def lexical_lane(tokenizer, tokens, *, phrases=False):
+            if not tokens:
+                return []
+            table = "memory_fts_" + tokenizer
             lexical = conn.execute(f"""SELECT m.id,bm25({table}) AS rank FROM {table} f
                 JOIN memories m ON m.id=f.rowid WHERE {table} MATCH ? AND {where}
                 ORDER BY rank,m.id LIMIT ?""", [match_query(tokens), *args, -1 if anchors else CANDIDATES])
-            lexical_ids = [row[0] for row in islice(anchored(lexical), CANDIDATES)]
-            # Sorting BM25 needs only IDs/ranks; fetch tokenized prose for the
-            # retained candidates, not every FTS match in the corpus.
-            marks = ','.join('?' for _ in lexical_ids)
+            ids = [row[0] for row in islice(anchored(lexical), CANDIDATES)]
+            if phrases:
+                # MATCH checks the indexed name phrase; anchored checks the
+                # original prose with longest-label and word-boundary rules.
+                return ids
+            marks = ','.join('?' for _ in ids)
             lexical_text = {row[0]: row for row in conn.execute(
-                f'SELECT rowid,content,tags FROM {table} WHERE rowid IN ({marks})', lexical_ids)}
-            for mid in lexical_ids:
+                f'SELECT rowid,content,tags FROM {table} WHERE rowid IN ({marks})', ids)}
+            kept = []
+            for mid in ids:
                 row = lexical_text[mid]
                 haystack = (row["content"] + " " + row["tags"]).casefold()
-                present = set(haystack.split()) if self.settings["tokenizer"] == "jieba" else None
-                hits = sum(t in present if present is not None else t in haystack for t in tokens)
-                if hits:
-                    lexical_scores[mid] = hits
-            for rank, mid in enumerate(lexical_scores, 1):
-                scores[mid] = 1 / (RRF_K + rank)
+                present = set(haystack.split()) if tokenizer == "jieba" else None
+                if any(t in present if present is not None else t in haystack for t in tokens):
+                    kept.append(mid)
+            return kept
+
+        lanes = [lexical_lane(self.settings['tokenizer'], analysis.tokens)]
+        if analysis.short_tokens:
+            # Trigrams cannot match one/two-character terms. Reuse the existing
+            # jieba index, including when longer terms are present as well.
+            lanes.append(lexical_lane('jieba', analysis.short_tokens))
+        if analysis.name_only:
+            marks = ','.join('?' for _ in anchors)
+            direct = conn.execute(f"""SELECT m.id FROM memories m WHERE m.id IN (
+                SELECT memory_id FROM memory_subjects WHERE subject_id IN ({marks})
+                UNION SELECT id FROM memories WHERE speaker_subject_id IN ({marks})) AND {where}
+                ORDER BY m.importance DESC,m.id LIMIT ?""", [*anchors, *anchors, *args, CANDIDATES])
+            lanes.append([row[0] for row in direct])
+            labels = list(dict.fromkeys(' '.join(terms(label)) for label, ids in analysis.names.labels.items()
+                                       if anchors.intersection(ids) and terms(label)))
+            lanes.append(lexical_lane('jieba', labels, phrases=True))
+        # Interleave lane ranks, deduplicate, then keep the existing total cap.
+        # Each memory receives one lexical rank, never an extra score for
+        # matching both indexes; BM25 values across indexes are not comparable.
+        lexical_ids = dict.fromkeys(mid for row in zip_longest(*lanes) for mid in row if mid is not None)
+        for rank, mid in enumerate(islice(lexical_ids, CANDIDATES), 1):
+            lexical_scores[mid] = scores[mid] = 1 / (RRF_K + rank)
         if vector is not None and self.index:
             vector_scores = self.index.scores(vector, include_forgotten=bool(filters.get("include_forgotten")))
             # Apply structured filters before truncating vector ranks.
