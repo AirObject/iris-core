@@ -10,7 +10,7 @@ from test_retrieval import put
 
 @pytest.fixture
 def client(store):
-    with TestClient(create_app(store=store)) as c:
+    with TestClient(create_app(store=store), base_url="http://127.0.0.1") as c:
         yield c
 
 

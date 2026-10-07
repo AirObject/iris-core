@@ -13,6 +13,7 @@ from fastapi import Body, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .db import Store
 from .models import Gateway
@@ -22,6 +23,8 @@ from .retrieval import Retrieval
 from .scheduler import Scheduler
 from .service_status import service_status, add_health_hints
 from .process_lock import StoreLease
+from .admin import install_admin
+from .trial import TrialReplies
 
 
 def loopback_host(host: str) -> str:
@@ -140,6 +143,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             app.state.health = health
             app.state.scheduler = scheduler
             app.state.retrieval = Retrieval(active_store, active_gateway)
+            app.state.trial_replies = TrialReplies(active_store, active_gateway, health)
             scheduler.start()
             app.state.ready = True
             yield
@@ -157,6 +161,10 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             return JSONResponse({"error": {"code": "unavailable", "message": "服务尚未就绪", "retry_after_seconds": 1}},
                                 status_code=503, headers={"Retry-After": "1"})
         return await call_next(request)
+
+    # Registered last so Host is checked before readiness and every API/static route.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
+                       www_redirect=False)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, error):
@@ -217,4 +225,5 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     def status():
         return service_status(app.state.store, app.state.scheduler, app.state.health)
 
+    install_admin(app)
     return app
