@@ -396,7 +396,15 @@ class LearningEngine:
                             raise ValueError("missing corrected content")
                     elif not str(item.get("content") or "").strip():
                         raise ValueError("empty goal")
-                    accepted[section].append({**item, "evidence": ev})
+                    accepted_item = {**item, "evidence": ev}
+                    if section == "updates" and item["action"] != "确认" and "event_time" in item:
+                        if item["event_time"] is not None and not isinstance(item["event_time"], str):
+                            raise ValueError("invalid corrected event time")
+                        first_target = next(i for i in ev if i in target)
+                        accepted_item["event_time"] = normalize_event_time(
+                            item["event_time"], messages[first_target]["occurred_at"],
+                            str(self.store.setting("timezone", "Asia/Shanghai")))
+                    accepted[section].append(accepted_item)
                 except ValueError as exc:
                     dropped.append({"section": section, "item": item, "reason": str(exc)})
         for item in output.get("questions", []) if isinstance(output.get("questions", []), list) else []:
@@ -553,9 +561,10 @@ class LearningEngine:
                         continue
                     before = {key: current[key] for key in ("content", "kind", "stance", "belief", "importance", "event_time")}
                     belief = _score(item.get("belief"), current["belief"])
-                    conn.execute("UPDATE memories SET content=?,belief=?,revision=revision+1,updated_at=? WHERE id=?",
-                                 (content, belief, now(), current["id"]))
-                    after = {**before, "content": content, "belief": belief}
+                    event_time = item.get("event_time", current["event_time"])
+                    conn.execute("UPDATE memories SET content=?,belief=?,event_time=?,revision=revision+1,updated_at=? WHERE id=?",
+                                 (content, belief, event_time, now(), current["id"]))
+                    after = {**before, "content": content, "belief": belief, "event_time": event_time}
                     conn.execute("""INSERT INTO memory_revisions(memory_id,revision_before,revision_after,before_json,after_json,
                         reason,actor,created_at) VALUES(?,?,?,?,?,?,?,?)""",
                         (current["id"], current["revision"], current["revision"] + 1, dumps(before), dumps(after),

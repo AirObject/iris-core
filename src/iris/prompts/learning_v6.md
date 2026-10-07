@@ -51,14 +51,14 @@ speaker 和 about：已列在参与者材料中的人，使用其原有 P 编号
 
 时间先从证据确定一次，再同时用于正文和 event_time。相对日期以对应证据消息的 occurred_at 和材料时区为基准，不以当前运行日期、批次中另一条消息的日期或保存时间换算。保留将来、过去和不确定范围。
 
-同一条记忆的 event_time 指向它所记核心事件的时间，不是消息时间或旁带提到的另一件事。正文写了核心事件的具体日期时，event_time 必须是同一天，不能两处各算一遍而差一天。只能确定原始时间表达、无法可靠换算时，保留原表达；根本不知道事件时间就用 null，不猜一个日期补齐。输出前把正文日期、星期及 event_time 一起对照证据检查，冲突时回到证据修正。
+同一条记忆的 event_time 指向它所记核心事件的时间，不是消息时间或旁带提到的另一件事。计划或约定写预定发生的时间，不能误填说出这项计划的日期。正文写了核心事件的具体日期时，event_time 必须是同一天，不能两处各算一遍而差一天。只能确定原始时间表达、无法可靠换算时，保留原表达；根本不知道事件时间就用 null，不猜一个日期补齐。输出前把正文日期、星期及 event_time 一起对照证据检查，冲突时回到证据修正。
 
 ## updates 与 goals
 
 逐条检查相关已有 M 记忆：
 
-- **确认**只追加新目标段证据和保留强度，**不会写入 content 或 belief**。原正文已完整准确、不需要增加任何细节时才用。
-- **修正**用于新细节、明确纠正、计划改变。content 写完整的新正文，保留未被推翻的信息，并用新 evidence 支持变化。不能把补充正文塞进“确认”；也不能另建一条同一事实。若多个时间、地点或细节一起变化，全部修正，不只改一半。
+- **确认**只追加新目标段证据和保留强度，**不会写入 content、belief 或 event_time**。原正文已完整准确、不需要增加任何细节时才用。
+- **修正**用于新细节、明确纠正、计划改变。content 写完整的新正文，保留未被推翻的信息，并用新 evidence 支持变化。不能把补充正文塞进“确认”；也不能另建一条同一事实。若多个时间、地点或细节一起变化，全部修正，不只改一半。核心事件的时间改变时，在该 updates 项显式填写 event_time，与新正文一致；明确撤销原时间且新时间未知时填 null。省略 event_time 会保留旧值，因此不能只改正文日期。
 - **反驳**用于相反证据，保留来源、时间和争议；未经确认的新说法不能直接成为定论。
 
 新增记忆若必须依赖已有记忆中的细节，填写 derived_from 的真实 M 编号；只凭本批消息支持的部分才可直接当新记忆。不要编造 M 引用，不能把已有细节写进正文却只引用不含这些细节的新消息。角色、persona 或同一人的重复复述不增加独立证据。
@@ -83,6 +83,6 @@ questions 只列影响理解且尚未明确的问题。已清楚的昵称不再�
 
 {"updates":[],"memories":[{"speaker":"P1","stance":"亲历","about":["P1"],"content":"…","evidence":[1],"type":"事实","tags":[],"belief":80,"importance":50,"event_time":null}],"people":[],"goals":[],"questions":[]}
 
-可用字段：updates 的 ref（M 编号）、action（确认／修正／反驳）、content、belief、evidence、reason；memories 的上述字段及 derived_from（M 编号数组）；people 的 name、alias／same_as／roleplay 三选一、world、belief、evidence；goals 的 content、deadline、evidence；questions 为字符串数组。
+可用字段：updates 的 ref（M 编号）、action（确认／修正／反驳）、content、belief、可选 event_time、evidence、reason；memories 的上述字段及 derived_from（M 编号数组）；people 的 name、alias／same_as／roleplay 三选一、world、belief、evidence；goals 的 content、deadline、evidence；questions 为字符串数组。
 
 type 只选事件／事实／偏好／关系／观点／计划／自我／其他；计划是 type，不是 stance。evidence 为消息数字编号数组。每条新记忆不超过 1000 字，每批最多 20 条，belief、importance 为 0—100。event_time 可换算就用 ISO 日期或时间，否则保留原表达，不知道用 null。没有内容的数组留空。字符串内引语用中文引号，不写未转义英文双引号。
