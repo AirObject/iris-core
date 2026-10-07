@@ -1,0 +1,11 @@
+/Users/cassia/Local/Code/iris-core-fallback/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+/Users/cassia/Local/Code/iris-core-fallback/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+5000 d2048 float32 unnamed: prepare P95 18.6 ms, HTTP P95 20.9 ms
+5000 d2048 float32 named: prepare P95 28.4 ms, HTTP P95 30.9 ms
+/Users/cassia/Local/Code/iris-core-fallback/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+50000 d2048 float32 unnamed: prepare P95 134.8 ms, HTTP P95 127.1 ms
+50000 d2048 float32 named: prepare P95 765.3 ms, HTTP P95 839.8 ms
+/Users/cassia/Local/Code/iris-core-fallback/evals/reports/recall-fallback/optimized-2/retrieval-performance-pr5-r3.json

@@ -1,0 +1,29 @@
+{
+  "before": {
+    "utc": "2026-10-06T05:39:51.658009+00:00",
+    "uptime": "13:39  up 7 days, 12:55, 2 users, load averages: 5.23 4.75 4.17",
+    "load_average": [
+      5.23095703125,
+      4.74951171875,
+      4.1650390625
+    ],
+    "memory_available_mib": 3372.703125,
+    "swap_used_mib": 6600.5625,
+    "other_tests_or_benchmarks": []
+  },
+  "after": {
+    "utc": "2026-10-06T05:40:38.560627+00:00",
+    "uptime": "13:40  up 7 days, 12:56, 2 users, load averages: 4.24 4.56 4.13",
+    "load_average": [
+      4.24072265625,
+      4.5625,
+      4.12548828125
+    ],
+    "memory_available_mib": 3290.640625,
+    "swap_used_mib": 6568.5625,
+    "other_tests_or_benchmarks": []
+  },
+  "other_test_or_benchmark_observations_during_run": [],
+  "poll_seconds": 2,
+  "exit_code": 0
+}

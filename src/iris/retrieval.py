@@ -83,14 +83,18 @@ class Retrieval:
                  vector_min: float | None = None, dtype: str | None = None,
                  vector_relative: float | None = None, vector_weight: float | None = None,
                  query_prefix: str | None = None, lexical_min: float | None = None,
-                 lexical_max_df: int | None = None,
+                 lexical_max_df: int | None = None, fallback_tokenizer: str | None = None,
+                 fallback_lexical_min: float | None = None, fallback_lexical_max_df: int | None = None,
                  clock=None):
         self.store, self.gateway = store, gateway
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.overrides = {k: v for k, v in dict(tokenizer=tokenizer, vector_min=vector_min,
                                               vector_relative=vector_relative, vector_weight=vector_weight,
                                               query_prefix=query_prefix, lexical_min=lexical_min,
-                                              lexical_max_df=lexical_max_df, dtype=dtype).items() if v is not None}
+                                              lexical_max_df=lexical_max_df, dtype=dtype,
+                                              fallback_tokenizer=fallback_tokenizer,
+                                              fallback_lexical_min=fallback_lexical_min,
+                                              fallback_lexical_max_df=fallback_lexical_max_df).items() if v is not None}
         config = gateway.configs.get("embedding") if gateway else None
         self.model = config.model if config and config.model and config.base_url else ""
         self.settings = self._settings()
@@ -106,6 +110,10 @@ class Retrieval:
         if saved:
             saved.setdefault('embedding_dimensions', 2048)
             saved.setdefault('query_prefix', '')
+        # New fallback defaults apply only to new databases. Even an empty
+        # legacy settings object keeps the interpretation of its shared fields.
+        for key in ('tokenizer', 'lexical_min', 'lexical_max_df'):
+            saved.setdefault('fallback_' + key, saved.get(key, DEFAULTS[key]))
         return {**DEFAULTS, **saved, **self.overrides}
 
     def embedding_text(self, text: str, participants=(), *, entry_kind=None) -> str:
@@ -140,10 +148,15 @@ class Retrieval:
             self.last_embedding_ms = (time.perf_counter() - started) * 1000
 
     def _fulltext_fallback(self):
-        # Preserve explicit tokenizer comparisons; only the normal configured
-        # path selects its independently measured full-text fallback.
-        if 'tokenizer' not in self.overrides and self.settings.get('fallback_tokenizer'):
-            self.settings = {**self.settings, 'tokenizer': self.settings['fallback_tokenizer']}
+        # Explicit lane overrides remain useful for controlled comparisons.
+        # Normal queries select all three independently calibrated FTS fields;
+        # learning has no fallback fields and keeps its own settings unchanged.
+        for key in ('tokenizer', 'lexical_min', 'lexical_max_df'):
+            fallback = 'fallback_' + key
+            if fallback in self.settings and (key not in self.overrides or fallback in self.overrides):
+                self.settings[key] = self.settings[fallback]
+        if self.settings['tokenizer'] not in ('jieba', 'trigram'):
+            raise ValueError('unknown FTS tokenizer')
 
     def _hydrate(self, conn, ids: list[int]) -> dict[int, dict]:
         if not ids:
@@ -187,36 +200,57 @@ class Retrieval:
         # Cache the predicate across FTS, vector and participant highlights.
         anchor_matches = {}
         anchors = set(analysis.people)
+        # Reject prose without any anchor label before the full longest-label
+        # matcher. Same regex case rules; the final matcher still enforces word
+        # boundaries and prevents a short name matching a longer known name.
+        anchor_label = re.compile('|'.join(re.escape(label) for label, ids in analysis.names.labels.items()
+                                          if anchors.intersection(ids)), re.I) if anchors else None
+        direct_anchors = set()
+        if anchors:
+            marks = ','.join('?' for _ in anchors)
+            direct_anchors = {row[0] for row in conn.execute(f"""SELECT memory_id FROM memory_subjects
+                WHERE subject_id IN ({marks}) UNION SELECT id FROM memories
+                WHERE speaker_subject_id IN ({marks})""", [*anchors, *anchors])}
+
+        def matches_anchor(mid, content):
+            if mid not in anchor_matches:
+                anchor_matches[mid] = bool(mid in direct_anchors or
+                    (anchor_label.search(content) and anchors.intersection(analysis.names.mentioned(content))))
+            return anchor_matches[mid]
+
+        if anchors:
+            # The same exact, cached predicate filters FTS matches before BM25
+            # sorting. Only FTS-matching rows reach it, and index statistics are
+            # unchanged. This avoids sorting every person's matches and then
+            # repeatedly hydrating batches merely to find 200 anchored results.
+            conn.create_function('iris_anchor', 2, matches_anchor, deterministic=True)
+
         def anchored(candidates):
             if not anchors:
                 yield from candidates
                 return
             candidates = iter(candidates)
-            marks = ','.join('?' for _ in anchors)
             while batch := list(islice(candidates, CANDIDATES)):
                 missing = list(dict.fromkeys(row[0] for row in batch if row[0] not in anchor_matches))
                 if missing:
                     ids = ','.join('?' for _ in missing)
-                    matches = conn.execute(f"""SELECT m.id,m.content,
-                        (m.speaker_subject_id IN ({marks}) OR EXISTS
-                            (SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=m.id
-                             AND ms.subject_id IN ({marks}))) AS direct
-                        FROM memories m WHERE m.id IN ({ids}) AND {where}""",
-                        [*anchors, *anchors, *missing, *args])
-                    anchor_matches.update((mid, False) for mid in missing)
+                    matches = conn.execute(f"""SELECT m.id,m.content FROM memories m
+                        WHERE m.id IN ({ids}) AND {where}""", [*missing, *args])
                     for row in matches:
-                        anchor_matches[row['id']] = bool(row['direct'] or
-                            anchors.intersection(analysis.names.mentioned(row['content'])))
+                        matches_anchor(row['id'], row['content'])
+                    for mid in missing:
+                        anchor_matches.setdefault(mid, False)
                 yield from (row for row in batch if anchor_matches[row[0]])
         boosted = set(participants) | ({'self'} if analysis.refers_to_self else set())
         def lexical_lane(tokenizer, tokens, *, phrases=False):
             if not tokens:
                 return []
             table = "memory_fts_" + tokenizer
+            anchor_where = ' AND iris_anchor(m.id,m.content)' if anchors else ''
             lexical = conn.execute(f"""SELECT m.id,bm25({table}) AS rank FROM {table} f
-                JOIN memories m ON m.id=f.rowid WHERE {table} MATCH ? AND {where}
-                ORDER BY rank,m.id LIMIT ?""", [match_query(tokens), *args, -1 if anchors else CANDIDATES])
-            ids = [row[0] for row in islice(anchored(lexical), CANDIDATES)]
+                JOIN memories m ON m.id=f.rowid WHERE {table} MATCH ? AND {where}{anchor_where}
+                ORDER BY rank,m.id LIMIT ?""", [match_query(tokens), *args, CANDIDATES])
+            ids = [row[0] for row in lexical]
             if phrases:
                 # MATCH checks the indexed name phrase; anchored checks the
                 # original prose with longest-label and word-boundary rules.

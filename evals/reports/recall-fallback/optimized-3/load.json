@@ -1,0 +1,25 @@
+{
+  "before": {
+    "utc": "2026-10-06T05:28:10.521966+00:00",
+    "uptime": "13:28  up 7 days, 12:43, 2 users, load averages: 4.92 3.65 3.60",
+    "load_average": [
+      4.92333984375,
+      3.65478515625,
+      3.60107421875
+    ],
+    "other_tests_or_benchmarks": []
+  },
+  "after": {
+    "utc": "2026-10-06T05:30:13.702948+00:00",
+    "uptime": "13:30  up 7 days, 12:45, 2 users, load averages: 4.64 3.96 3.72",
+    "load_average": [
+      4.642578125,
+      3.95556640625,
+      3.72265625
+    ],
+    "other_tests_or_benchmarks": []
+  },
+  "other_test_or_benchmark_observations_during_run": [],
+  "poll_seconds": 2,
+  "exit_code": 0
+}

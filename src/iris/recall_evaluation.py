@@ -280,8 +280,9 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
         choices = []
         grid = product([.35, .45, .55, .65], [.75, .85, .95], [.5, 1., 2.], [.35, .5, .75], [0, 2]) if calibrate and gateway else [
             (DEFAULTS['vector_min'], DEFAULTS['vector_relative'], DEFAULTS['vector_weight'], coverage, max_df)
-            for coverage, max_df in (product([.35, .5, .75], [0, 2]) if calibrate else
-                                     [(DEFAULTS['lexical_min'], DEFAULTS['lexical_max_df'])])]
+            for coverage, max_df in (product([0., .1, .25, .35, .5, .75], [0, 2]) if calibrate else
+                                     [(DEFAULTS['lexical_min' if gateway else 'fallback_lexical_min'],
+                                       DEFAULTS['lexical_max_df' if gateway else 'fallback_lexical_max_df'])])]
         retrievers = [(context, Retrieval(context['store'], gateway, tokenizer=tokenizer,
                       clock=context['clock'], query_prefix=prefix)) for context in contexts]
         for floor, relative, weight, coverage, max_df in grid:
@@ -361,17 +362,25 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
             for context in contexts:
                 with context['store'].read() as conn:
                     usage.extend(dict(r) for r in conn.execute('SELECT purpose,model,result_category,duration_ms,prompt_tokens,completion_tokens FROM model_calls'))
-    # Select from the FULL grid, not per-variant winners: a local 0.01 tie
-    # band can differ from the global one. Keep the exact selected trial visible.
-    chosen = select_trial(t for choices in evaluated.values() for t in choices) if calibrate else None
+    # Keep the global quality band within each retrieval path. A hybrid winner
+    # cannot set the full-text fallback's thresholds (or vice versa).
+    all_choices = [t for choices in evaluated.values() for t in choices]
+    fulltext = [t for t in all_choices if t['variant'].endswith('_fts')]
+    hybrids = [t for t in all_choices if '_hybrid' in t['variant']]
+    fallback = select_trial(fulltext) if calibrate else None
+    chosen = select_trial(hybrids or fulltext) if calibrate else None
     recommended = chosen['variant'] if chosen else None
-    if chosen:
-        variant = variants[recommended]
-        variant.update(settings=chosen['settings'], metrics=chosen['metrics'], groups=grouped_metrics(chosen['rows']),
-            corpora={name: grouped_metrics([r for r in chosen['rows'] if r['corpus'] == name]) for name in variant['corpora']},
+    fallback_settings = {'fallback_' + key: fallback['settings'][key]
+                         for key in ('tokenizer', 'lexical_min', 'lexical_max_df')} if fallback else None
+    for winner in (chosen, fallback):
+        if winner is None:
+            continue
+        variant = variants[winner['variant']]
+        variant.update(settings=winner['settings'], metrics=winner['metrics'], groups=grouped_metrics(winner['rows']),
+            corpora={name: grouped_metrics([r for r in winner['rows'] if r['corpus'] == name]) for name in variant['corpora']},
             queries=[{k: r[k] for k in ('id', 'corpus', 'split', 'categories', 'relevant', 'returned', 'reasons', 'local_ms')}
-                     for r in chosen['rows']])
-        details[recommended] = chosen['rows']
+                     for r in winner['rows']])
+        details[winner['variant']] = winner['rows']
     sources = sorted(p for p in Path(__file__).parent.rglob('*') if p.suffix in ('.py', '.md', '.sql', '.json'))
     report = {'created_at': now(), 'split': split, 'elapsed_seconds': time.perf_counter() - started,
         'source_sha256': hashlib.sha256(b''.join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest(),
@@ -383,7 +392,9 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
         'embedding_cache_misses': misses, 'embedding_calls': usage, 'variants': variants,
         'calibration': {'enabled': calibrate, 'compare_embeddings': compare_embeddings, 'trials': trials,
             'selection_rule': '(Recall@8+nDCG@8)/2 距全网格最高值不足 0.01 视为持平；取 relevant 标注精确率高者，再取无关误返率低者。其后质量高者优先，完全相同时保留固定网格顺序。仅 dev 选择，历史 holdout 不参与。',
-            'recommended_variant': recommended, 'recommended_settings': variants[recommended]['settings'] if recommended else None},
+            'recommended_variant': recommended, 'recommended_settings': chosen['settings'] if chosen else None,
+            'recommended_fallback_variant': fallback['variant'] if fallback else None,
+            'recommended_fallback_settings': fallback_settings},
         'm2_reference': {'recall_at_8': .85, 'ndcg_at_8': .75, 'irrelevant_return_rate': .10}}
     if external:
         report['details'] = {'memories': datasets[0][1]['memories'] if len(datasets) == 1 else {n: d['memories'] for n, d in datasets},
@@ -410,7 +421,10 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
         '按冻结文件 split 使用 dev；v2 历史 holdout 仅作报告对照，不参与选择，也不作为未见验收。验收以规划者隐藏集为准。',
         '类别可重叠；Recall/nDCG 按所有返回（含人物要点）计算，只以有答案问题为分母。无关误返只检查无答案问题的 reason=relevant 返回。',
         '平均返回数只作诊断；relevant 标注精确率用于质量持平时比较，验收另按 DECISIONS.md 2026-10-06 与基线检查退化；后者为标注相关的 relevant 返回数 / 全部 relevant 返回数，跨查询合并计数。空分母为 —。',
-        report['calibration']['selection_rule'], f'本次推荐：{recommended or "未进行选择，使用已冻结参数"}。',
+        report['calibration']['selection_rule'],
+        '混合与纯全文分别在各自完整网格内应用上述规则，互不借用门槛。',
+        f'混合推荐（无 embedding 时为纯全文）：{recommended or "未进行选择，使用已冻结参数"}。',
+        f'独立降级推荐：{json.dumps(fallback_settings, ensure_ascii=False) if fallback else "未进行选择，使用已冻结参数"}。',
         '以下为各方案参数和索引块存储之和；参数网格、用量与逐条返回原因保存在同名 JSON。', ''])
     for name, variant in variants.items():
         lines.append(f"- {name}: {json.dumps(variant['settings'], ensure_ascii=False)}；块存储 {variant['index_bytes']/2**20:.3f} MiB。")
@@ -421,7 +435,8 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
             '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |'])
         for trial in trials:
             p, m = trial['settings'], trial['metrics']
-            chosen_row = trial['variant'] == recommended and p == report['calibration']['recommended_settings']
+            chosen_row = any(winner and trial['variant'] == winner['variant'] and p == winner['settings']
+                             for winner in (chosen, fallback))
             quality = ((m['recall_at_8'] or 0) + (m['ndcg_at_8'] or 0)) / 2
             lines.append(f"| {trial['variant']} | {p['vector_min']} | {p['vector_relative']} | {p['vector_weight']} | {p['lexical_min']} | {p['lexical_max_df']} | {fmt(m['recall_at_8'])} | {fmt(m['ndcg_at_8'])} | {quality:.6f} | {fmt(m['relevant_precision'])} | {fmt(m['irrelevant_return_rate'])} | {fmt(m['average_returned'])} | {'是' if chosen_row else ''} |")
     lines.extend(['', '评测不会修改在用数据库。规划者将以隐藏召回集复核；本报告不能替代独立验收。', ''])
