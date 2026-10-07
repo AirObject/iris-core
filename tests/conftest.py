@@ -54,3 +54,19 @@ def batch(store, gateway, *, entry="A", count=2):
     formed = form_batch(store, entry, PROMPT_VERSION, target_count=count, future_count=2, history_count=2)
     assert formed is not None
     return formed, LearningEngine(store, gateway).run_batch(formed.id, force=True)
+
+
+def login_admin(client):
+    """Enter the real setup/login flow for tests that exercise protected UI routes."""
+    client.headers["Content-Type"] = "application/json"
+    state = client.get('/admin/api/session').json()
+    client.headers['X-Iris-CSRF'] = state['csrf_token']
+    path = '/admin/api/login' if state['admin_exists'] else '/admin/api/setup/password'
+    response = client.post(path, json={'password': 'deterministic-test-admin'})
+    assert response.status_code == 200, response.text
+    client.headers['X-Iris-CSRF'] = client.get('/admin/api/session').json()['csrf_token']
+    if not state['configured']:
+        role = client.get('/admin/api/settings').json()['role']
+        role['timezone'] = role['timezone'] or 'Asia/Shanghai'
+        response = client.post('/admin/api/setup/complete', json=role)
+        assert response.status_code == 200, response.text

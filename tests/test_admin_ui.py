@@ -5,6 +5,7 @@ from threading import Event
 
 import pytest
 from fastapi.testclient import TestClient
+from conftest import login_admin
 
 from conftest import FakeGateway, batch, msg
 from iris.api import create_app
@@ -18,7 +19,8 @@ from test_batches import memory
 
 @pytest.fixture
 def client(store):
-    with TestClient(create_app(store=store), base_url="http://127.0.0.1") as client:
+    with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as client:
+        login_admin(client)
         yield client
 
 
@@ -73,7 +75,8 @@ def test_message_validation_and_host_entry_cannot_be_used(client, store):
 def test_trial_reply_uses_prepare_and_persona_publishes_once_and_learns_self_output(store):
     setup_role(store, "Iris", "表达温和")
     gateway = FakeGateway({"reply": "好，祝你上海之行顺利。"}, hook=lambda _: assert_outside_transaction(store))
-    with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1") as c:
+    with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        login_admin(c)
         c.app.state.scheduler.stop()  # Explicit deterministic learning below.
         a = trial(c)
         trigger = send(c, a).json()["message_id"]
@@ -112,7 +115,8 @@ def assert_outside_transaction(store):
 @pytest.mark.parametrize("reply", [{}, {"reply": " "}, {"reply": 5}, {"reply": "中" * 10923}, ModelError("retryable", "do not expose this provider response")])
 def test_failed_reply_never_publishes_model_material_or_loses_input(store, reply):
     gateway = FakeGateway(reply)
-    with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1") as c:
+    with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        login_admin(c)
         c.app.state.scheduler.stop()
         a = trial(c)
         trigger = send(c, a).json()["message_id"]
@@ -129,7 +133,8 @@ def test_parallel_reply_is_rejected_and_retry_is_idempotent(store):
         entered.set()
         assert release.wait(5)
     gateway = FakeGateway({"reply": "好的"}, hook=block)
-    with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1") as c, ThreadPoolExecutor() as pool:
+    with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c, ThreadPoolExecutor() as pool:
+        login_admin(c)
         c.app.state.scheduler.stop()
         a = trial(c)
         trigger = send(c, a).json()["message_id"]
@@ -236,7 +241,8 @@ def test_trial_snapshot_includes_memories_updated_from_another_entry(client, sto
 
 def test_reply_to_message_outside_prepared_window_is_rejected_without_generation(store):
     gateway = FakeGateway({"reply": "不该生成"})
-    with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1") as c:
+    with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        login_admin(c)
         c.app.state.scheduler.stop()
         a = trial(c)
         first = send(c, a).json()["message_id"]
@@ -259,13 +265,15 @@ def test_admin_strict_revision_fields_utf8_and_reserved_reply_key(client, store)
 
 def test_reply_dedupe_survives_service_restart(store):
     first_gateway = FakeGateway({"reply": "已经发出的话"})
-    with TestClient(create_app(store=store, gateway=first_gateway), base_url="http://127.0.0.1") as c:
+    with TestClient(create_app(store=store, gateway=first_gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        login_admin(c)
         c.app.state.scheduler.stop()
         a = trial(c)
         mid = send(c, a).json()["message_id"]
         first = c.post(f"/admin/api/trial/entries/{a['id']}/reply", json={"message_id": mid}).json()
     next_gateway = FakeGateway(RuntimeError("must not call model again"))
-    with TestClient(create_app(store=store, gateway=next_gateway), base_url="http://127.0.0.1") as c:
+    with TestClient(create_app(store=store, gateway=next_gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        login_admin(c)
         c.app.state.scheduler.stop()
         second = c.post(f"/admin/api/trial/entries/{a['id']}/reply", json={"message_id": mid}).json()
         assert second["reused"] and second["message"]["id"] == first["message"]["id"]

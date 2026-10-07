@@ -1,0 +1,161 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import App from "./App";
+let configured = false,
+  authenticated = false,
+  admin = false;
+let calls: { path: string; init?: RequestInit }[];
+const blank = {
+  enabled: false,
+  base_url: "",
+  model: "",
+  key_set: false,
+  dimensions: null,
+  reasoning_effort: null,
+};
+let settings: any;
+beforeEach(() => {
+  configured = authenticated = admin = false;
+  calls = [];
+  location.hash = "#/trial";
+  settings = {
+    role: { name: "Iris", background: "", timezone: null },
+    models: { chat: { ...blank }, embedding: { ...blank } },
+    model_source: "local",
+    learning_concurrency: 2,
+    daily_token_limit: null,
+    presets: [
+      {
+        id: "ark-glm",
+        name: "火山方舟 · GLM（Agent Plan）",
+        base_url: "https://ark.cn-beijing.volces.com/api/plan/v3",
+        model: "glm-5.3-flash",
+        reasoning_effort: "low",
+      },
+    ],
+    operations: [],
+    health: {
+      chat: { state: "configuration_error" },
+      embedding: { state: "configuration_error" },
+    },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      calls.push({ path, init });
+      let data: any = {};
+      if (path.endsWith("/session"))
+        data = {
+          configured,
+          authenticated,
+          admin_exists: admin,
+          csrf_token: "csrf-test",
+        };
+      else if (path.endsWith("/setup/password") || path.endsWith("/login")) {
+        admin = authenticated = true;
+        data = { ok: true };
+      } else if (path.endsWith("/logout")) authenticated = false;
+      else if (path.endsWith("/setup/complete")) {
+        configured = true;
+        data = { ok: true };
+      } else if (path.endsWith("/test"))
+        data = { ok: false, message: "密钥无效", duration_ms: 12 };
+      else if (path.endsWith("/settings") || path.includes("/settings/"))
+        data = settings;
+      else if (path.endsWith("/status"))
+        data = {
+          model_health: {
+            chat: { state: "configuration_error", last_error: "模型尚未配置" },
+            embedding: { state: "configuration_error" },
+          },
+          entries: [],
+          scheduler: {},
+          usage: { today: {} },
+          budget: {},
+          models: [],
+        };
+      else if (path.endsWith("/trial"))
+        data = { entries: [], speakers: [], role_name: "Iris" };
+      return { ok: true, status: 200, json: async () => data };
+    }),
+  );
+});
+afterEach(() => vi.unstubAllGlobals());
+test("首次设置创建密码后可不配模型进入试用", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", { name: "首次设置" }),
+  ).toBeInTheDocument();
+  await user.type(screen.getByLabelText("管理员密码"), "local-password");
+  await user.type(screen.getByLabelText("确认密码"), "local-password");
+  await user.click(screen.getByRole("button", { name: "设置密码并继续" }));
+  const name = await screen.findByLabelText("角色名");
+  await user.clear(name);
+  await user.type(name, "星星");
+  await user.click(screen.getByRole("button", { name: "完成设置并开始试用" }));
+  expect(await screen.findByText(/未配置模型，暂不学习/)).toBeInTheDocument();
+  const req = calls.find((c) => c.path.endsWith("/setup/complete"))!;
+  expect(JSON.parse(String(req.init?.body)).name).toBe("星星");
+  expect((req.init?.headers as any)["X-Iris-CSRF"]).toBe("csrf-test");
+});
+test("登录后显示管理页面，退出后回登录", async () => {
+  configured = admin = true;
+  const user = userEvent.setup();
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", { name: "管理员登录" }),
+  ).toBeInTheDocument();
+  expect(calls.some((c) => c.path.endsWith("/trial"))).toBe(false);
+  await user.type(screen.getByLabelText("管理员密码"), "local-password");
+  await user.click(screen.getByRole("button", { name: "登录" }));
+  await user.click(await screen.findByRole("button", { name: "退出登录" }));
+  expect(
+    await screen.findByRole("heading", { name: "管理员登录" }),
+  ).toBeInTheDocument();
+});
+test("设置页保存 low 预设、测试连接和限制，不回显旧密钥", async () => {
+  configured = authenticated = admin = true;
+  location.hash = "#/settings";
+  settings.models.chat = {
+    ...blank,
+    enabled: true,
+    key_set: true,
+    model: "old",
+    base_url: "https://example.test/v1",
+  };
+  const user = userEvent.setup();
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", { name: "设置" }),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("对话模型 API key")).toHaveValue("");
+  await user.selectOptions(
+    screen.getByLabelText("对话模型服务商预设"),
+    "ark-glm",
+  );
+  expect(screen.getByLabelText("对话模型推理档位")).toHaveValue("low");
+  await user.click(screen.getByRole("button", { name: "测试对话模型连接" }));
+  expect(await screen.findByText(/密钥无效.*12/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "保存对话模型" }));
+  await user.click(screen.getByRole("button", { name: "保存用量与并发" }));
+  expect(
+    calls.some(
+      (c) =>
+        c.path.endsWith("/settings/models/chat") && c.init?.method === "PUT",
+    ),
+  ).toBe(true);
+  expect(calls.some((c) => c.path.endsWith("/settings/limits"))).toBe(true);
+});
+test("外部模型配置只读", async () => {
+  configured = authenticated = admin = true;
+  location.hash = "#/settings";
+  settings.model_source = "external";
+  render(<App />);
+  expect(await screen.findByText(/配置来自外部文件/)).toBeInTheDocument();
+  expect(screen.getByLabelText("对话模型接口地址")).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: "保存对话模型" }),
+  ).not.toBeInTheDocument();
+});

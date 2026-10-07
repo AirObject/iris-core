@@ -2,6 +2,7 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+from conftest import login_admin
 
 from iris.api import create_app, loopback_host
 from iris.cli import main
@@ -10,7 +11,8 @@ from test_retrieval import put
 
 @pytest.fixture
 def client(store):
-    with TestClient(create_app(store=store), base_url="http://127.0.0.1") as c:
+    with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        login_admin(c)
         yield c
 
 

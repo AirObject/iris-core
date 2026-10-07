@@ -25,6 +25,9 @@ from .service_status import service_status, add_health_hints
 from .process_lock import StoreLease
 from .admin import install_admin
 from .trial import TrialReplies
+from .auth import Sessions, install_auth
+from .configuration import RuntimeConfig
+from .settings_api import install_settings
 
 
 def loopback_host(host: str) -> str:
@@ -122,7 +125,7 @@ class RevisionConflict(Exception):
 
 
 def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = None, configs=None,
-               gateway: Gateway | None = None, config_loader=None, learning_concurrency=None) -> FastAPI:
+               gateway: Gateway | None = None, config_loader=None, learning_concurrency=None, open_browser_url=None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         resources = ExitStack()
@@ -132,13 +135,20 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             active_store = store or Store(db_path)
             if store is None:
                 resources.callback(active_store.close)
-            health = getattr(gateway, "health", None) or ModelHealth(active_store, configs or (gateway.configs if gateway else {}))
-            active_gateway = gateway or Gateway(configs or {}, active_store, health=health)
+            external_loader = config_loader
+            if external_loader is None and (configs is not None or gateway is not None):
+                external_loader = lambda: configs if configs is not None else gateway.configs
+            runtime = RuntimeConfig(active_store, external_loader=external_loader)
+            loaded = runtime.load()
+            health = getattr(gateway, "health", None) or ModelHealth(active_store, loaded)
+            active_gateway = gateway or Gateway(loaded, active_store, health=health)
             if gateway is None:
                 resources.callback(active_gateway.close)
-            scheduler = Scheduler(active_store, active_gateway, config_loader=config_loader, max_concurrent=learning_concurrency)
+            scheduler = Scheduler(active_store, active_gateway, config_loader=runtime.load, max_concurrent=learning_concurrency)
             resources.callback(scheduler.stop)
             app.state.store = active_store
+            app.state.runtime_config = runtime
+            app.state.sessions = Sessions(active_store)
             app.state.gateway = active_gateway
             app.state.health = health
             app.state.scheduler = scheduler
@@ -146,6 +156,14 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             app.state.trial_replies = TrialReplies(active_store, active_gateway, health)
             scheduler.start()
             app.state.ready = True
+            if open_browser_url and not active_store.setting('setup_complete', False):
+                import webbrowser
+                # Uvicorn binds after lifespan startup; delay opening without delaying startup.
+                from threading import Timer
+                opener = Timer(0.7, webbrowser.open, args=(open_browser_url + '/setup',))
+                opener.daemon = True
+                opener.start()
+                resources.callback(opener.cancel)
             yield
         finally:
             app.state.ready = False
@@ -161,6 +179,9 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             return JSONResponse({"error": {"code": "unavailable", "message": "服务尚未就绪", "retry_after_seconds": 1}},
                                 status_code=503, headers={"Retry-After": "1"})
         return await call_next(request)
+
+    install_auth(app)
+    install_settings(app)
 
     # Registered last so Host is checked before readiness and every API/static route.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
