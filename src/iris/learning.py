@@ -537,6 +537,16 @@ class LearningEngine:
                 if item["action"] == "确认":
                     confirm_once(current["id"])
                 else:
+                    # A later confirmation or metadata-only revision must not erase
+                    # the last actual content editor. Model-supplied reasons alone
+                    # cannot mark a learning revision as a manual edit.
+                    content_edit = conn.execute("""SELECT actor,reason FROM memory_revisions
+                        WHERE memory_id=? AND json_extract(before_json,'$.content')
+                            IS NOT json_extract(after_json,'$.content')
+                        ORDER BY revision_after DESC,id DESC LIMIT 1""", (current["id"],)).fetchone()
+                    if content_edit and content_edit["actor"] != "learning" and content_edit["reason"] == "manual edit":
+                        dropped.append({"section": "updates", "item": item, "reason": "memory manually edited"})
+                        continue
                     content = str(item.get("content") or "").strip()
                     if len(content) > 1000:
                         dropped.append({"section": "updates", "item": item, "reason": "overlong corrected content"})
