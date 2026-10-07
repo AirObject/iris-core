@@ -20,7 +20,7 @@ from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
 
 
-PROMPT_VERSION = "learning_v5"
+PROMPT_VERSION = "learning_v6"
 LEARNING_MAX_TOKENS = 16000
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
@@ -288,8 +288,21 @@ class LearningEngine:
                                     (messages[i]["sender_subject_id"], messages[i]["quote_author_subject_id"])]
                     if not target.intersection(own_evidence):
                         raise ValueError("alias subject has no own evidence in target segment")
+                    subject_name = next(s["name"] for s in snapshot["subjects"] if s["id"] == owner)
+                    if item["alias"].casefold() == subject_name.strip().casefold():
+                        raise ValueError("alias duplicates subject name")
+                    # Necessary evidence boundary, not a semantic claim that every mention
+                    # declares an alias. The prompt still requires an explicit self-declaration.
+                    alias_text = item["alias"].casefold()
+                    own_mentions = [i for i in own_evidence if i in target and (
+                        (messages[i]["sender_subject_id"] == owner and
+                         alias_text in messages[i]["content"].casefold()) or
+                        (messages[i]["quote_author_subject_id"] == owner and
+                         alias_text in (messages[i]["quote_content"] or "").casefold()))]
+                    if not own_mentions:
+                        raise ValueError("alias absent from own target evidence")
                     item["_subject_id"] = owner
-                    item["_source_message_id"] = next(i for i in own_evidence if i in target)
+                    item["_source_message_id"] = own_mentions[0]
                     alias = {"subject_id": owner, "alias": item["alias"]}
                     if alias not in snapshot["aliases"]:
                         snapshot["aliases"].append(alias)

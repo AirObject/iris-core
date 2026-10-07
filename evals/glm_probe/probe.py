@@ -47,11 +47,10 @@ def main():
         return datetime.now(timezone.utc).isoformat()
     extra={} if args.variant=='default' else {'reasoning_effort':args.variant}
     metadata={'variant':args.variant,'extra_request_parameters':extra,'workers':args.workers,
-              'learning_timeout_seconds':600,'max_tokens':16000,'response_format':{'type':'json_object'},
+              'learning_timeout_seconds':models.LEARNING_TOTAL_TIMEOUT,'max_tokens':16000,'response_format':{'type':'json_object'},
               'judge_mode':'external','started_at':utc(),'corpus_file_sha256':hashlib.sha256(args.corpus.read_bytes()).hexdigest(),
               'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
     (out/'probe-metadata.json').write_text(json.dumps(metadata,ensure_ascii=False,indent=2),encoding='utf-8')
-    models.CHAT_TOTAL_TIMEOUT=evaluation.CHAT_TOTAL_TIMEOUT=600
     original_init=models.Gateway.__init__
     original_call=models.Gateway._call
     original_record=models.Gateway._record
@@ -66,7 +65,8 @@ def main():
             self.counts={}
         def post(self,url,**kwargs):
             payload=kwargs['json']
-            context=dict(self.contexts[id(payload)])
+            key=json.dumps({k:v for k,v in payload.items() if k!='model'},ensure_ascii=False,sort_keys=True)
+            context=dict(self.contexts[key])
             logical=context['logical_call']
             with lock:
                 attempt=self.counts.get(logical,0)+1
@@ -111,13 +111,13 @@ def main():
         def close(self):
             self.inner.close()
 
-    def initialize(self, configs, store=None, client=None, sleeper=time.sleep):
+    def initialize(self, configs, store=None, client=None, sleeper=time.sleep, **kwargs):
         if client is not None:
             raise RuntimeError('Probe expects the standard evaluator client')
         self.probe_case=getattr(local,'case','unknown')
-        original_init(self,configs,store,RecordingClient(self.probe_case),sleeper)
+        original_init(self,configs,store,RecordingClient(self.probe_case),sleeper,**kwargs)
 
-    def call(self,kind,purpose,payload,*,batch_id=None):
+    def call(self,kind,purpose,payload,*,batch_id=None,**kwargs):
         if purpose in ('learning_judge','learning_judge_repair'):
             raise RuntimeError('Dialogue-model judging is forbidden in this probe')
         payload=dict(payload)
@@ -125,13 +125,14 @@ def main():
             payload.update(extra)
         logical=uuid.uuid4().hex
         self.probe_logical=logical
-        self.client.contexts[id(payload)]={'logical_call':logical,'kind':kind,'purpose':purpose,'batch_id':batch_id}
+        key=json.dumps({k:v for k,v in payload.items() if k!='model'},ensure_ascii=False,sort_keys=True)
+        self.client.contexts[key]={'logical_call':logical,'kind':kind,'purpose':purpose,'batch_id':batch_id}
         if kind=='chat':
             write('requests.jsonl',{'logical_call':logical,'case':self.probe_case,'purpose':purpose,'batch_id':batch_id,'payload':payload})
-        return original_call(self,kind,purpose,payload,batch_id=batch_id)
+        return original_call(self,kind,purpose,payload,batch_id=batch_id,**kwargs)
 
-    def record(self,purpose,model,duration_ms,category,error,usage=None,flags=None,status_code=None,*,finish_reason=None,batch_id=None):
-        original_record(self,purpose,model,duration_ms,category,error,usage,flags,status_code,finish_reason=finish_reason,batch_id=batch_id)
+    def record(self,purpose,model,duration_ms,category,error,usage=None,flags=None,status_code=None,*,finish_reason=None,batch_id=None,**kwargs):
+        original_record(self,purpose,model,duration_ms,category,error,usage,flags,status_code,finish_reason=finish_reason,batch_id=batch_id,**kwargs)
         write('gateway-attempts.jsonl',{'logical_call':self.probe_logical,'case':self.probe_case,'purpose':purpose,
               'batch_id':batch_id,'duration_ms':duration_ms,'category':category,'error':error,'usage':usage,
               'status_code':status_code,'finish_reason':finish_reason,'recorded_at':utc()})
