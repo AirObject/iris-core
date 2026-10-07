@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -30,6 +31,8 @@ def main():
     out.mkdir(parents=True)
     (out/'responses').mkdir()
     configs = models.load_test_models()
+    if args.variant != 'default' and hasattr(configs['chat'], 'reasoning_effort'):
+        configs['chat'] = replace(configs['chat'], reasoning_effort=args.variant)
     secrets = [v for c in configs.values() for v in (c.api_key,c.base_url,urlsplit(c.base_url).hostname) if v]
     def sanitized(value):
         serialized=json.dumps(value,ensure_ascii=False)
@@ -47,6 +50,7 @@ def main():
         return datetime.now(timezone.utc).isoformat()
     extra={} if args.variant=='default' else {'reasoning_effort':args.variant}
     metadata={'variant':args.variant,'extra_request_parameters':extra,'workers':args.workers,
+              'effective_reasoning_effort':getattr(configs['chat'],'reasoning_effort',None),
               'learning_timeout_seconds':models.LEARNING_TOTAL_TIMEOUT,'max_tokens':16000,'response_format':{'type':'json_object'},
               'judge_mode':'external','started_at':utc(),'corpus_file_sha256':hashlib.sha256(args.corpus.read_bytes()).hexdigest(),
               'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
@@ -123,6 +127,9 @@ def main():
         payload=dict(payload)
         if kind=='chat':
             payload.update(extra)
+            effort=getattr(self.configs['chat'],'reasoning_effort',None)
+            if effort is not None:
+                payload['reasoning_effort']=effort
         logical=uuid.uuid4().hex
         self.probe_logical=logical
         key=json.dumps({k:v for k,v in payload.items() if k!='model'},ensure_ascii=False,sort_keys=True)
