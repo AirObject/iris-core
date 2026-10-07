@@ -5,6 +5,7 @@ from importlib.resources import files
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from conftest import login_admin
 
 from iris.api import create_app
 from test_retrieval import put
@@ -25,7 +26,8 @@ READ_ROUTES = [
 
 @pytest.fixture
 def client(store):
-    with TestClient(create_app(store=store), base_url="http://127.0.0.1") as client:
+    with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as client:
+        login_admin(client)
         client.app.state.scheduler.stop()
         yield client
 

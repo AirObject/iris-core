@@ -1,5 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 
+let csrf = "";
+export function setCSRF(value: string) {
+  csrf = value;
+}
+
 export class ApiError extends Error {
   constructor(
     public code: string,
@@ -12,14 +17,20 @@ export class ApiError extends Error {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/admin/api${path}`, {
     ...init,
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
+      ...(csrf ? { "X-Iris-CSRF": csrf } : {}),
       ...init?.headers,
     },
   });
   const body = await response.json();
   if (!response.ok) {
     const error = body.error || {};
+    if (
+      ["login_required", "setup_required", "csrf_failed"].includes(error.code)
+    )
+      dispatchEvent(new Event("iris-auth"));
     throw new ApiError(
       error.code || "request_failed",
       error.message ||

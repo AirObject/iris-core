@@ -94,7 +94,14 @@ beforeEach(() => {
       requests.push({ url, method, body });
       let data: unknown = {},
         code = 200;
-      if (url === "/admin/api/status") data = status;
+      if (url === "/admin/api/session")
+        data = {
+          configured: true,
+          authenticated: true,
+          admin_exists: true,
+          csrf_token: "test-csrf",
+        };
+      else if (url === "/admin/api/status") data = status;
       else if (url === "/admin/api/trial")
         data = {
           entries: freshCatalog ? [] : [entry],

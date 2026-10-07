@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -20,18 +21,24 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(prog="iris")
-    parser.add_argument("--db", default="data/iris.db", help="SQLite database path")
-    commands = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--db", help="Explicit SQLite database path (legacy/development override)")
+    parser.add_argument("--data-dir", type=Path, help="Data directory; overrides IRIS_DATA_DIR and iris.toml")
+    parser.add_argument("--config", type=Path, help="Deployment iris.toml path")
+    parser.set_defaults(host=None, port=None, learning_concurrency=None, models_config=None, no_open=False)
+    commands = parser.add_subparsers(dest="command")
     setup = commands.add_parser("setup", help="Create initial role and persona")
     setup.add_argument("--name", default="Iris")
     setup.add_argument("--background", default="")
     setup.add_argument("--timezone", default="Asia/Shanghai")
     serve = commands.add_parser("serve", help="Serve the local host API")
-    serve.add_argument("--host", default="127.0.0.1")
-    serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument("--host")
+    serve.add_argument("--port", type=int)
+    serve.add_argument("--models-config", type=Path, help="External read-only model TOML; overrides IRIS_TEST_MODELS")
+    serve.add_argument("--no-open", action="store_true", help="Do not open a browser on first startup")
     serve.add_argument("--learning-concurrency", type=int, help="Concurrent learning batches, default 2 (1..32)")
     models = commands.add_parser("models", help="Model connection commands")
-    models.add_argument("action", choices=["check"])
+    models.add_argument("action", choices=["check", "import"])
+    models.add_argument("--from", dest="import_path", type=Path, help="Import model TOML; defaults to IRIS_TEST_MODELS")
     ingest = commands.add_parser("ingest", help="Add UTF-8 JSONL messages")
     ingest.add_argument("file", type=Path)
     learn = commands.add_parser("learn", help="Process an entry's pending messages")
@@ -56,31 +63,57 @@ def main(argv: list[str] | None = None) -> int:
     evaluation.add_argument("--calibrate", action="store_true", help="Calibrate recall thresholds on dev only")
     evaluation.add_argument("--compare-embeddings", action="store_true", help="Compare 1024/2048 dimensions and query prefix on dev only")
     args = parser.parse_args(argv)
+    args.command = args.command or "serve"
+    from .configuration import RuntimeConfig, deployment
+    try:
+        deploy = deployment(config=args.config, data_dir=args.data_dir, host=args.host, port=args.port)
+        args.db = str(Path(args.db).resolve()) if args.db else str(deploy['data_dir'] / 'iris.db')
+        data_dir = Path(args.db).parent
+    except (ValueError, OSError):
+        print("部署配置无效，请检查数据目录、监听地址和端口。", file=sys.stderr)
+        return 1
+    if args.command == "models" and args.action == "import":
+        path = args.import_path or os.environ.get('IRIS_TEST_MODELS')
+        if not path:
+            print("请指定 IRIS_TEST_MODELS 或 models import --from。", file=sys.stderr)
+            return 1
+        try:
+            configs = load_test_models(path)
+            store = Store(args.db)
+            try:
+                RuntimeConfig(store).save({kind: config if config.base_url and config.model else None
+                                          for kind, config in configs.items()}, actor='local_import')
+            finally:
+                store.close()
+            print("已导入模型配置；密钥仅保存在数据目录的 secrets.json，不显示。")
+            return 0
+        except (ValueError, OSError):
+            print("模型配置导入失败，请检查输入文件及数据目录权限。", file=sys.stderr)
+            return 1
     if args.command == "serve":
         from .api import create_app, loopback_host
         import uvicorn
         try:
-            host = loopback_host(args.host)
-            if not 1 <= args.port <= 65535:
+            host = loopback_host(deploy['host'])
+            port = deploy['port']
+            if not 1 <= port <= 65535:
                 raise ValueError("port must be 1..65535")
-            try:
-                configs = load_test_models()
-            except FileNotFoundError:
-                configs = None
+            path = args.models_config or os.environ.get('IRIS_TEST_MODELS')
+            configs = load_test_models(path) if path else None
             if args.learning_concurrency is not None and not 1 <= args.learning_concurrency <= 32:
                 raise ValueError("learning concurrency must be 1..32")
             from .runtime_logging import configure_logging
-            configure_logging(Path(args.db).resolve().parent, configs or {})
-            def reload_configs():
-                try:
-                    return load_test_models()
-                except FileNotFoundError:
-                    return {}
-            uvicorn.run(create_app(args.db, configs=configs, config_loader=reload_configs,
-                                  learning_concurrency=args.learning_concurrency), host=host, port=args.port, workers=1)
+            configure_logging(data_dir, configs or {})
+            loader = (lambda: load_test_models(path)) if path else None
+            # External evaluation subprocesses do not open a browser.
+            browser_url = None if args.no_open or path else f"http://{'['+host+']' if ':' in host else host}:{port}"
+            print(f"Iris 已启动： http://{'['+host+']' if ':' in host else host}:{port}")
+            uvicorn.run(create_app(args.db, configs=configs, config_loader=loader,
+                                  learning_concurrency=args.learning_concurrency, open_browser_url=browser_url),
+                        host=host, port=port, workers=1, proxy_headers=False)
             return 0
-        except (ValueError, OSError) as error:
-            print(str(error), file=sys.stderr)
+        except (ValueError, OSError):
+            print("服务配置无效：请检查回环监听地址、端口、并发和模型文件。", file=sys.stderr)
             return 1
     if args.command == "eval":
         try:

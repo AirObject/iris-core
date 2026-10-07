@@ -15,3 +15,7 @@ dist/
 # UI development dependencies (built assets in src/iris/web are committed)
 frontend/node_modules/
 frontend/coverage/
+
+# Runtime credentials (never commit, even with a custom data directory)
+secrets.json
+.secrets-*

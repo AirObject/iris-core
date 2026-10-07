@@ -52,7 +52,7 @@ trigram 下不足三个字符的实词另查现有 jieba 索引，包括长短�
 
 ## 回复准备、查询与反馈
 
-`iris serve` 使用 FastAPI＋Uvicorn 单进程、单 worker，默认 `127.0.0.1:8080`。尚无管理员密码，命令在打开数据库之前拒绝非回环监听；`localhost` 固定为 `127.0.0.1`。没有宿主鉴权；调度和 HTTP 立即学习随服务启动。
+`iris serve` 使用 FastAPI＋Uvicorn 单进程、单 worker，默认 `127.0.0.1:8080`。命令在打开数据库之前拒绝非回环监听；`localhost` 固定为 `127.0.0.1`。没有宿主鉴权；调度和 HTTP 立即学习随服务启动。
 
 `api.create_app` 以 Starlette `TrustedHostMiddleware` 在就绪检查之前校验所有请求的 Host。白名单精确限定 `127.0.0.1`、`localhost`、`[::1]`，支持可选端口，关闭 www 重定向；不根据 DNS 解析或转发头扩展白名单。非法／缺失 Host 统一返回 400 和固定错误文本，不能读取 API、界面、静态资源或触发写操作。该防线阻断域名重绑定到回环地址的访问，不提供身份认证，不增加 CORS；第二步加入管理员会话后仍保留（2026-10-07「本地服务校验 Host 请求头」）。
 
@@ -82,7 +82,7 @@ FastAPI lifespan 持有进程数据库锁、Store、ModelHealth、Gateway 和 Sc
 
 迁移 005 仅增加 entries.learn_requested_through、model_calls.model_kind／timed_out 和索引。**本阶段不建立设计 20.5 的通用任务表**：学习任务由 batches 表表达，手动请求保存消息水位，补算向量从 memories 推导。梦境整理加入时再引入通用任务表，避免维护两套学习状态。重启先回收 running 批次，计一次中断尝试；消息、记忆、来源与最终批次状态仍在同一事务提交。
 
-ModelHealth 使用 runtime_settings 分别保存 chat 和 embedding 状态、配置摘要、连续失败数和下次探测时间。数据库不保存 API key，摘要只用于判断配置是否实际变化，包含 embedding 请求维度。Gateway.replace_config 替换内存配置并恢复用途；Gateway.retry_now 仅解除暂时不可用／账户问题，不能绕过密钥或配置错误。服务循环重新读取当前 TOML；文件暂时无效时保留上次有效配置。成功的旧在途请求不能解除已经暂停的用途，配置改变后的旧响应也不提交。
+ModelHealth 使用 runtime_settings 分别保存 chat 和 embedding 状态、配置摘要、连续失败数和下次探测时间。数据库不保存 API key，摘要只用于判断配置是否实际变化，包含 embedding 请求维度。Gateway.replace_config 替换内存配置并恢复用途；Gateway.retry_now 仅解除暂时不可用／账户问题，不能绕过密钥或配置错误。服务循环重新读取当前配置来源（显式 TOML 或数据库与 secrets.json）；文件暂时无效时保留上次有效配置。成功的旧在途请求不能解除已经暂停的用途，配置改变后的旧响应也不提交。
 
 每次真实 HTTP 请求失败都算一次连续错误，包含调用内重试；成功或明确内容拒绝中断连续可重试错误。第三次网络／超时／429／5xx 错误打开暂停状态，触发暂停的失败以及暂停时请求均带 paused 标志，LearningEngine 不增加 attempt_count。格式修正失败仍消耗正常批次尝试，不当作服务整体故障。401／403、404、账户与内容拒绝分别分类；不保存服务商错误正文。暂时不可用和账户问题的固定短探测由独立维护执行器执行，间隔 60、120、240、480、600 秒；成功恢复正常处理顺序。
 
@@ -110,7 +110,7 @@ ModelHealth 使用 runtime_settings 分别保存 chat 和 embedding 状态、配
 
 ## M1 界面第一步
 
-`api.create_app` 继续持有唯一 Store、Gateway、ModelHealth 和 Scheduler，在同一 lifespan 中增加 TrialReplies。`admin.py` 挂载独立 `/admin/api` 路由及包内 `web/index.html`、`/assets`；未知宿主或管理 API 不会回落成 HTML。React＋Vite＋TypeScript 源码在 `frontend/`，npm 锁定依赖，构建产物提交到 `src/iris/web/`，Hatch 将其装入 wheel，运行时无需 Node。当前仍只监听回环地址且不鉴权，首次设置和密钥存储不在本步。
+`api.create_app` 继续持有唯一 Store、Gateway、ModelHealth 和 Scheduler，在同一 lifespan 中增加 TrialReplies。`admin.py` 挂载独立 `/admin/api` 路由及包内 `web/index.html`、`/assets`；未知宿主或管理 API 不会回落成 HTML。React＋Vite＋TypeScript 源码在 `frontend/`，npm 锁定依赖，构建产物提交到 `src/iris/web/`，Hatch 将其装入 wheel，运行时无需 Node。当前仍只监听回环地址；管理员会话和配置路径见下文第二步。
 
 `trial.py` 使用既有 entries／subjects／platform_identities 表，试用平台固定为 iris-trial，入口默认 realtime；用户发言与角色 self 分离。消息复用 add_message 和入口去重键。TrialReplies 每入口串行，同一触发消息用 `trial-reply:<消息ID>` 持久去重；网络调用和回复格式校验在事务外，校验成功才把 reply 正文保存为 self_output。保存就是发布，响应丢失后可以重新读取，失败不写输出。试用调用用现有 json_chat（用途 trial_reply，16000 输出 token，其他生成的 120 秒预算），不改模型网关；只读取 prepare 结果，不把准备材料重新送入学习，不自动反馈所有召回记忆为已使用。
 
@@ -119,3 +119,15 @@ ModelHealth 使用 runtime_settings 分别保存 chat 和 embedding 状态、配
 memory_ops 的人工正文编辑与删除都核对预期修订号，并在同一个写事务保存 memory_revisions。详情的人工操作记录直接投影这张表中的 actor=admin 行（动作、时间、对象、前后修订），不建立重复审计存储。删除留下永久 tombstone，更新既有 FTS 和向量索引，不删除共享来源或派生对象。在途学习不能覆盖新修订；后续新批次的人工编辑保护由并行学习会话补齐，本分支未改 learning.py，合并时需一起核对设计 12.5。来源变化的实际重新整理仍是 M2。
 
 页面以 batches 作为学习结果依据，单独显示接收、等待、运行、重试、成功无记忆、成功有变化、放弃／拒绝；详情分列被召回／被使用／相信程度。运行页直接复用 service_status 的健康、用量、学习延迟、超时和错误摘要，未引入另一套统计口径。当前状态为空、persona 与目标只读，费用暂无定价不估算。
+
+## M1 界面第二步：设置与管理员边界
+
+服务默认读取数据目录的运行设置与 secrets.json；显式 TOML／IRIS_TEST_MODELS 通过只读加载器覆盖本地模型配置，保持端到端评测子进程协议不变。`RuntimeConfig` 用独立配置文件锁协调页面保存与本机导入，secrets.json 通过 0600 临时文件、fsync、原子替换落盘，模型设置仅保存随机 api_key_ref。先发布包含旧引用和新引用的文件，再提交数据库引用；中断留下的未引用密钥在后续保存时清理，不会错配服务商。配置加载器供 Scheduler 原有轮询使用，设置接口保存后也立即调用 Gateway.replace_config；不改学习选材或提示词。
+
+部署配置仅 data_dir、host、port，来自显式 CLI、环境变量或 iris.toml。默认子命令 serve；未完成设置时延迟自动打开系统浏览器，--no-open 和外部模型模式关闭该行为。数据目录保存 iris.db、logs、secrets.json；媒体目录随后续媒体功能建立。导入仅同步模型和密钥，不创建管理员或自动完成设置。
+
+迁移 007 新增 admin_credentials（scrypt 密码与盐）、admin_sessions（随机 Cookie 摘要、权限和到期时间）、admin_login_limits（持久限流）、admin_operations（操作者、动作、非敏感细节和时间）。首次设置分两次提交：先创建唯一管理员及会话，再在单个事务中调用 setup_role／update_role、写 setup_complete 与操作记录。中断后可登录继续，旧 CLI 初始化的角色也可保留并补齐管理员。
+
+中间件顺序为 Host 校验、管理员边界、就绪检查、路由。未设置页面 303 到 /setup，未登录页面 303 到 /login；管理 JSON 分别返回 409／401 与 redirect 提示。登录／设置壳和静态资源可公开，管理数据全部要求会话；/api/v1 保持宿主协议。初始设置按实际客户端 IP 判断本机，Uvicorn 关闭代理头信任。登录发放新 Cookie、退出删除摘要、12 小时绝对过期；匿名会话仅供登录和首次设置的 CSRF，30 分钟到期。CSRF 用会话值派生 HMAC，通过自定义头提交，并校验 Origin、Fetch Metadata 与 JSON 类型；不启用 CORS。HttpOnly、Strict、禁缓存和禁止 iframe 与 Host 白名单叠加，仍不代替未来宿主令牌。
+
+设置页限于角色／按用途模型／每日上限／学习并发。角色改名不重复生成设定；背景更新撤销旧初始设定并写修订，保留学习记忆与旧 persona 版本。模型草稿测试使用独立 Gateway，已保存配置测试使用在用 Gateway，固定请求一次、10 秒总预算，记录紧凑调用统计；无原始结果或服务商正文回传。真实 401 沿用现有 invalid_key 状态，改配置后恢复；用量与并发沿用现有内部接口，所有设置修改有操作记录。

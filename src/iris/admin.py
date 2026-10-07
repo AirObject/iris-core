@@ -192,6 +192,8 @@ def install_admin(app):
     web = files("iris").joinpath("web")
     app.mount("/assets", StaticFiles(directory=str(web.joinpath("assets")), check_dir=False), name="ui-assets")
 
+    @app.get("/setup", include_in_schema=False)
+    @app.get("/login", include_in_schema=False)
     @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(str(web.joinpath("index.html")), headers={"Cache-Control": "no-cache"})
