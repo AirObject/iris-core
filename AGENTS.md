@@ -1,6 +1,6 @@
 # Iris 后续实现说明
 
-产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；本机试用对话、记忆列表／详情／编辑／删除和运行状态界面已实现；首次设置、设置页、secrets.json 和鉴权尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
+产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；本机试用对话、记忆列表／详情／编辑／删除和运行状态界面已实现；首次设置、管理员会话、设置页和 secrets.json 已实现；宿主令牌仍在 M4。不要复制 `dev-0`、`dev-1` 分支的代码。
 
 2026-10-05 起，开发与评测的对话模型改为 glm-5.3-flash，开发设备改为 macOS。MiniMax-M3 时期的评测结果全部作废；GLM 重测计划及新设备召回复现见 `evals/README.md`。
 
@@ -97,9 +97,9 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 服务启动先恢复中断批次，默认同时学习两个批次，同入口串行；学习状态以 batches 为准。手动请求的消息位置持久保存在 entries，向量补算由 memories 的缺失向量推导。暂不建立通用任务表，梦境整理阶段再引入。接收后不能假设消息已经被学习；等待状态接口的批次结果。
 
-模型健康按 chat／embedding 分开并持久保存，连续三次可重试的网络请求错误（包括调用内重试）暂停用途；触发暂停的批次失败不扣尝试次数。探测间隔 60／120／240／480／600 秒。错误分类优先看服务商 error.code，再以 HTTP 兜底：401 为密钥无效，404／参数错误为配置错误，均只在配置变化后恢复；403 权限、欠费／订阅及额度用尽为账户问题，不作调用内短间隔重试。每日 token 上限默认不限，按角色时区恢复；在途调用及服务商未报告的 token 无法事先扣减。模型配置仍只从 test-models.toml／IRIS_TEST_MODELS 加载，不把凭据存入数据库。
+模型健康按 chat／embedding 分开并持久保存，连续三次可重试的网络请求错误（包括调用内重试）暂停用途；触发暂停的批次失败不扣尝试次数。探测间隔 60／120／240／480／600 秒。错误分类优先看服务商 error.code，再以 HTTP 兜底：401 为密钥无效，404／参数错误为配置错误，均只在配置变化后恢复；403 权限、欠费／订阅及额度用尽为账户问题，不作调用内短间隔重试。每日 token 上限默认不限，按角色时区恢复；在途调用及服务商未报告的 token 无法事先扣减。serve 默认使用数据库模型设置＋数据目录 secrets.json；显式 --models-config 或 IRIS_TEST_MODELS 优先且在页面只读。API key 不进数据库。评测与离线命令仍可使用测试 TOML。
 
-内部设置接口为 Gateway.replace_config、Gateway.retry_now、ModelHealth.set_daily_token_limit、Scheduler.set_concurrency；后续设置页调用它们。serve 自动重新读取模型配置。离线 iris learn 必须停止服务后运行，服务／离线命令用操作系统锁互斥。模型网络调用仍在事务外，向量补算写回必须核对修订号；不要改变 learning_context 的选材。
+内部设置接口为 Gateway.replace_config、Gateway.retry_now、ModelHealth.set_daily_token_limit、Scheduler.set_concurrency；设置页通过管理接口调用它们。serve 自动重新读取模型配置。离线 iris learn 必须停止服务后运行，服务／离线命令用操作系统锁互斥。模型网络调用仍在事务外，向量补算写回必须核对修订号；不要改变 learning_context 的选材。
 
 11 个端到端脚本为手写 dev（原 10 个加单独冻结的跨入口 E011），评分文件 e2e_scoring_v1.md 独立于学习评分，保持冻结。`e2e --judge-mode external` 使用真实 serve 子进程，只经 HTTP 接收、观察学习、强制重启和准备回复，不调用对话模型判分；`--script` 可重复传入以筛选脚本，不改语料。默认 model 模式和 --judge-runs 仍只作预览。
 
@@ -117,4 +117,14 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 管理路由 `/admin/api` 在 admin.py，管理只读投影在 admin_data.py，试用收发及 JSON 回复在 trial.py，提示词为 trial_reply_v1.md；宿主 `/api/v1` 不生成回复。试用入口默认实时节奏，“我（用户）”是 person，只有已发布角色回复使用 self_output。回复失败保留原消息，不回灌准备材料；每入口最多一条在途回复，同一消息的成功输出持久去重。列表和轮询不是召回，不增加调用或使用次数；来源前后文只读，不能当作新经历入队。
 
-编辑、删除必须核对 expected_revision；memory_revisions 同时作为人工操作记录的持久来源。删除只撤销对象，不清除来源、历史或其他记忆，原 ID 永不复活。后续学习批次也保护最近的人工正文修改；修订号仍拦截在途冲突，确认不改正文或相信程度。置顶／遗忘／恢复／彻底清除／按旧内容新建留到 M2。首次设置、密码、模型设置和密钥存储是第二步；本步继续只监听回环地址，不新增迁移。
+编辑、删除必须核对 expected_revision；memory_revisions 同时作为人工操作记录的持久来源。删除只撤销对象，不清除来源、历史或其他记忆，原 ID 永不复活。后续学习批次也保护最近的人工正文修改；修订号仍拦截在途冲突，确认不改正文或相信程度。置顶／遗忘／恢复／彻底清除／按旧内容新建留到 M2。第二步已补首次设置、管理员会话和模型设置；仍只监听回环地址。
+
+## 界面第二步
+
+`uv run iris` 默认启动服务，部署参数优先级为命令行 > IRIS_DATA_DIR／IRIS_HOST／IRIS_PORT > iris.toml > 默认值；`serve --no-open` 关闭首次浏览器打开。模型优先级为 `serve --models-config` > IRIS_TEST_MODELS > 数据库非敏感设置＋secrets.json。外部模式不隐式打开浏览器，页面模型只读；不要为评测跳过管理员会话，宿主 /api/v1 本身保持原有行为。
+
+`configuration.py` 负责部署与模型配置、原子密钥文件，`auth.py` 负责密码／会话／CSRF，`settings_api.py` 负责首次设置和本阶段设置。迁移 007 加入管理员密码、会话摘要、登录限流与设置操作记录。设置写入使用短事务并留操作记录，模型测试在事务外使用既有 Gateway，固定短请求共用 10 秒预算且不返回原始输出。SecretStr 请求字段不允许回显；不要把完整请求、密钥文件、密码或 Cookie 写入日志、异常和报告。secrets.json 与临时密钥文件始终忽略，Unix 0600；跨文件提交使用随机引用保证中断不会把新密钥配给旧端点。
+
+管理员写接口须有 JSON Content-Type、会话绑定 X-Iris-CSRF，通过 Origin／Sec-Fetch-Site 检查；Host 白名单保留。会话 Cookie HttpOnly、SameSite=Strict，有效期 12 小时；HTTPS 才设置 Secure。本阶段不开放非回环监听、不信任代理转发地址。首次设置核对连接来源的回环地址。已有 UI 测试通过 conftest.login_admin 走正式设置／登录流程，不增加测试专用鉴权绕过。
+
+开发导入：`IRIS_TEST_MODELS=<绝对路径> uv run iris --data-dir <数据目录> models import`；也可 `models import --from <文件>`。程序读取文件并把密钥写到目标 secrets.json，不打印内容；手动验证配置同样不要复制或打印。导入可以在本地配置服务运行时执行，调度器重载后自动替换配置；若当前为外部模式，须取消外部参数再启动才能使用导入结果。截图和实际试用数据仍放仓库外。

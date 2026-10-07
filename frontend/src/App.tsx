@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { useData } from "./api";
+import { api, json, useData } from "./api";
 import { Notice, healthLabel } from "./ui";
+import Access from "./Access";
+import SettingsPage from "./Settings";
 import Trial from "./Trial";
 import { MemoryList, MemoryDetail } from "./Memory";
 import StatusPage from "./Status";
@@ -10,6 +12,7 @@ const routes = [
   { id: "trial", name: "试用对话", icon: "chat" },
   { id: "memories", name: "记忆", icon: "memory" },
   { id: "status", name: "运行状态", icon: "status" },
+  { id: "settings", name: "设置", icon: "settings" },
 ];
 function Icon({ name }: { name: string }) {
   return (
@@ -38,6 +41,9 @@ function Icon({ name }: { name: string }) {
   );
 }
 export default function App() {
+  return <Access>{(refresh) => <Workspace refreshSession={refresh} />}</Access>;
+}
+function Workspace({ refreshSession }: { refreshSession: () => void }) {
   const [route, setRoute] = useState(location.hash.slice(2) || "trial");
   const [selected, setSelected] = useState<number | null>(null);
   const [version, setVersion] = useState(0);
@@ -86,6 +92,15 @@ export default function App() {
             </a>
           ))}
         </nav>
+        <button
+          className="text-button logout-button"
+          onClick={async () => {
+            await api("/logout", json("POST", {}));
+            refreshSession();
+          }}
+        >
+          退出登录
+        </button>
         <span className="local-badge">
           <span aria-hidden>◉</span> 仅本机
         </span>
@@ -109,7 +124,9 @@ export default function App() {
               消息仍可接收。<a href="#/status">查看运行状态</a>
             </Notice>
           )}
-          {route === "memories" ? (
+          {route === "settings" ? (
+            <SettingsPage />
+          ) : route === "memories" ? (
             <MemoryList version={version} openMemory={openMemory} />
           ) : route === "status" ? (
             <StatusPage data={status.data} />

@@ -22,19 +22,63 @@ uv run iris eval learning
 ## 本机服务
 
 ```bash
-uv run iris setup --name Iris
-uv run iris serve
-# 也可指定数据库和本机端口：
-uv run iris --db data/iris.db serve --host 127.0.0.1 --port 8080
+uv run iris
 ```
 
-默认地址为 `http://127.0.0.1:8080`，打开即进入中文试用界面；交互接口文档在 `/docs`，OpenAPI 在 `/openapi.json`。服务启动时恢复中断批次，然后自动调度学习。没有模型配置也能启动、接收和使用全文检索；配置 embedding 后可以融合向量检索。当前没有管理员密码和宿主令牌，只允许监听回环地址（`127.0.0.1`、`::1`、`localhost`）。首次设置、管理员密码与会话、模型设置和 secrets.json 是界面第二步；本步仍通过现有命令行与测试 TOML 配置角色和模型。
+首次运行会创建 `./data` 并自动在系统浏览器打开 `http://127.0.0.1:8080/setup`。在页面设置管理员密码、角色名、可选背景和模型即可进入试用；不配置模型也可以完成，顶部持续提示“未配置模型，暂不学习”，接收与全文召回照常。`uv run iris serve --no-open` 关闭自动打开。运行服务无需 Node；Docker 与对外监听留到后续阶段，目前只在 macOS 验证。
 
-服务还会在所有路由之前校验 HTTP `Host`，仅接受 `127.0.0.1`、`localhost`、`[::1]`（可带端口）。其他域名即使解析到回环地址，也返回 400，不返回业务数据或执行操作；界面、静态资源、`/admin/api`、`/api/v1`、接口文档均受保护。此检查用于阻断 DNS 重绑定，不解析域名、不信任转发 Host，也不启用 CORS。它不代替身份鉴权；第二步加入管理员会话后仍保留。浏览器和宿主客户端请使用上述本机地址，不使用自定义域名。
+部署优先级为 **命令行 > 环境变量 > iris.toml > 默认值**。环境变量为 `IRIS_DATA_DIR`、`IRIS_HOST`、`IRIS_PORT`；当前目录的 `iris.toml` 只接受以下顶层项，可用 `--config <文件>` 指定其他文件。文件中的相对数据目录相对该配置文件解析。`--data-dir` 放在子命令前；兼容原来的 `--db`，显式传入时其父目录就是数据目录。
+
+```toml
+data_dir = "./data"
+host = "127.0.0.1"
+port = 8080
+```
+
+```bash
+uv run iris --data-dir /path/to/iris-data serve --port 8081 --no-open
+```
+
+角色、模型的非敏感字段、每日 token 上限与学习并发保存在 `iris.db`；API key 仅在同目录的 `secrets.json`，Unix 权限为 0600，页面与接口只显示是否已设置。模型配置优先级：**serve --models-config <文件> > IRIS_TEST_MODELS > 数据库设置＋secrets.json**。前两种模式明确显示“配置来自外部文件，只读”，不自动打开浏览器，但管理界面仍要求设置密码／登录。未显式指定时，serve 不会隐式读取当前目录的 test-models.toml；评测和旧离线命令仍沿用测试模型配置约定。
+
+开发时可用下面的命令导入，文件由程序读取，命令不显示密钥。导入可以在服务运行时执行；本地配置模式下自动重载并恢复对应用途，外部配置模式仍以外部文件为准。要在页面编辑导入后的模型，启动服务时须取消 IRIS_TEST_MODELS。
+
+```bash
+IRIS_TEST_MODELS=/absolute/path/test-models.toml uv run iris --data-dir /path/to/iris-data models import
+# 也可用 models import --from /absolute/path/test-models.toml
+# 随后在没有 IRIS_TEST_MODELS 的环境中启动：
+uv run iris --data-dir /path/to/iris-data serve
+```
+
+`/setup`、`/login` 及其静态资源可在本机打开；完成设置后，试用／记忆／状态／设置页与管理接口均要求管理员会话。交互接口文档 `/docs`、`/openapi.json` 也要求登录。宿主 `/api/v1` 保持原有行为，宿主令牌在 M4；本阶段继续只绑定回环地址。
+
+服务还会在所有路由之前校验 HTTP `Host`，仅接受 `127.0.0.1`、`localhost`、`[::1]`（可带端口）。其他域名即使解析到回环地址，也返回 400，不返回业务数据或执行操作；界面、静态资源、`/admin/api`、`/api/v1`、接口文档均受保护。此检查用于阻断 DNS 重绑定，不解析域名、不信任转发 Host，也不启用 CORS。它与管理员会话和 CSRF 校验共同生效。浏览器和宿主客户端请使用上述本机地址，不使用自定义域名。
+
+## 首次设置、登录与设置
+
+首次设置先建立管理员密码，再填写角色（默认 Iris、浏览器时区）及可选模型。对话模型提供火山方舟 GLM（Agent Plan，reasoning_effort=low）、DeepSeek 和本机服务预设；模型名和可选推理档位以服务商为准。方舟预设使用 [Agent Plan 官方接入地址](https://docs.volcengine.com/docs/ark/agent-plan-enterprise-other-tools?lang=zh) `/api/plan/v3`，应使用对应套餐密钥；其他方舟产品请按所用产品填写自定义地址。“测试连接”只发送固定短请求，单次总预算 10 秒，展示结果和毫秒耗时，不返回服务商正文；它不保存草稿，测试已保存配置时更新现有用途健康状态。
+
+设置页只提供本阶段的角色名称／背景／时区、对话和 embedding 模型、每日 token 上限、学习并发（1—32，默认 2）与模型立即重试。保存后调用既有内部接口对新工作生效，401 显示“密钥无效”；接收和召回仍可用，改对后恢复学习。API key 留空保留原值，勾选“移除”才清除。更换背景撤销旧的初始设定对象、保存修订并建立新设定，学习所得记忆保留；角色名变化不重复建立初始记忆，persona 保留版本历史。修改均写入操作记录，设置页显示最近 30 条。
+
+管理员密码以随机盐＋scrypt（N=32768、r=8、p=3）保存，使用 [OWASP 的 scrypt 参数组合](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#scrypt)。会话为 256 位随机值，数据库仅存摘要，绝对有效期 12 小时，登录轮换、退出撤销；Cookie 为 HttpOnly、SameSite=Strict、Path=/，HTTPS 时增加 Secure（M1 本机 HTTP 不启用 TLS）。写请求必须携带会话绑定的 `X-Iris-CSRF` 与 JSON Content-Type，同时检查 Origin 和 Sec-Fetch-Site；不能只依赖 SameSite。五分钟内五次错误密码后暂停登录一分钟，计数持久保存。首次设置核对实际客户端回环地址，serve 不信任代理转发地址；Host 白名单继续覆盖所有路由，不启用 CORS。
+
+管理接口未登录返回 401，未完成设置返回 409，JSON 的 error.redirect 指向 /login 或 /setup；页面本身返回 303。`GET /admin/api/session` 返回状态与 CSRF token，并建立短期匿名会话，首次设置和登录也需要该 token。匿名响应不含角色、记忆或模型配置。页面／管理响应不缓存，页面拒绝被 iframe 嵌入。
+
+| 方法与 `/admin/api` 下的路径 | 用途 |
+| --- | --- |
+| `GET /session` | 登录／设置状态和会话绑定的 CSRF token |
+| `POST /setup/password`、`POST /setup/complete` | 首次管理员密码、完成角色设置 |
+| `POST /login`、`POST /logout` | 登录、撤销当前会话 |
+| `GET /settings` | 角色、脱敏模型、限制、健康和最近操作 |
+| `PATCH /settings/role` | 保存 name、background、timezone |
+| `PUT /settings/models/{chat\|embedding}` | 保存模型；api_key 省略保留，空字符串清除，enabled=false 停用 |
+| `POST /settings/models/{chat\|embedding}/test` | 空 JSON 测已保存配置，模型 JSON 测草稿 |
+| `POST /settings/models/{chat\|embedding}/retry` | 对暂时不可用／账户问题请求重试 |
+| `PATCH /settings/limits` | daily_token_limit（null 不限）、learning_concurrency |
 
 ## 中文试用与管理界面
 
-服务根路径 `/` 提供 React＋Vite＋TypeScript 界面，适配桌面和手机；`/#/trial` 是试用对话，`/#/memories` 是记忆管理，`/#/status` 是运行状态。构建产物已经提交到 `src/iris/web/` 并随 wheel 分发，运行服务不需要 Node，也不从 CDN 加载脚本或字体。
+服务根路径 `/` 提供 React＋Vite＋TypeScript 界面，适配桌面和手机；`/#/trial` 是试用对话，`/#/memories` 是记忆管理，`/#/status` 是运行状态，`/#/settings` 是设置。构建产物已经提交到 `src/iris/web/` 并随 wheel 分发，运行服务不需要 Node，也不从 CDN 加载脚本或字体。
 
 - **试用对话**：先创建一个群聊或私聊入口，默认发言人“我（用户）”是他人主体，区别于角色的 `self`。可添加虚拟发言人；同一发言人跨试用入口保持身份，同名新增发言人仍是独立主体。入口默认实时节奏，可请求立即学习。消息列表每次取最近 100 条，支持读取更早消息。
 - **角色回复**：默认关闭。开启后通过现有 `prepare` 取 persona、记忆、本入口近期消息、状态和目标，再用 `trial_reply_v1` 和 `json_chat` 生成 JSON。只有校验后的 `reply` 正文发布为角色实际输出 `self_output`，进入正常学习队列；失败保留原消息且不发布输出。每入口最多一个回复调用，同一消息成功回复后重试复用已发布输出（含服务重启后）；没有成功输出且原消息已超出近期 20 条上下文时拒绝生成。不自动把召回记忆标成已使用。对外 `/api/v1` 继续只准备材料，不生成回复。
@@ -62,7 +106,7 @@ uv run iris --db data/iris.db serve --host 127.0.0.1 --port 8080
 | `DELETE /admin/api/memories/{id}` | 撤销对象：JSON 中传 `expected_revision` |
 | `GET /admin/api/status` | 现有服务状态的管理入口 |
 
-编辑／删除在同一事务中写 `memory_revisions`；该记录包含对象、操作者、时间、前后内容、动作理由，详情分别投影为修订历史与人工操作记录。不新增迁移或第二套操作日志。人工编辑与在途学习的冲突通过修订号拦截；最近一次正文修改来自人工编辑时，后续学习也不会自动改写正文或相信程度，会跳过该项并记录原因。再次确认仍增加保留强度（设计 12.5）。来源修订不匹配的派生记忆在详情标为待复核，实际重整留到 M2。
+编辑／删除在同一事务中写 `memory_revisions`；该记录包含对象、操作者、时间、前后内容、动作理由，详情分别投影为修订历史与人工操作记录。记忆操作保留既有记录；设置操作使用迁移 007 的 admin_operations。人工编辑与在途学习的冲突通过修订号拦截；最近一次正文修改来自人工编辑时，后续学习也不会自动改写正文或相信程度，会跳过该项并记录原因。再次确认仍增加保留强度（设计 12.5）。来源修订不匹配的派生记忆在详情标为待复核，实际重整留到 M2。
 
 只有修改界面时需要 [Node 与 npm](https://vite.dev/guide/)（Node 22.12 及以上）：
 
@@ -77,7 +121,7 @@ uv run --locked --isolated --python 3.12 pytest
 uv build
 ```
 
-`npm test` 使用 Vitest＋Testing Library＋jsdom，覆盖发送和状态区分、角色回复失败、编辑冲突、删除确认、筛选与状态页。`npm run build` 先执行 TypeScript 检查，再更新 Python 包内的资源；源码和产物要一起提交。`npm run format` 格式化前端。开发时先启动 `iris serve`，再在 `frontend/` 执行 `npm run dev`；Vite 仅监听回环地址，代理 `/admin/api` 到本机 8080 端口。静态包没有前端开发依赖。
+`npm test` 使用 Vitest＋Testing Library＋jsdom，覆盖开发代理的同源 CSRF、首次设置、登录／退出、模型设置及外部只读，以及发送、角色回复、编辑冲突、删除、筛选与状态页。`npm run build` 先执行 TypeScript 检查，再更新 Python 包内的资源；源码和产物要一起提交。`npm run format` 格式化前端。开发时先启动 `iris serve`，再在 `frontend/` 执行 `npm run dev`；Vite 仅监听回环地址，代理 `/admin/api` 到本机 8080 端口，保留浏览器 Host，使 Origin／CSRF 校验仍按浏览器同源执行。静态包没有前端开发依赖。
 
 ## 宿主接入
 
@@ -150,7 +194,7 @@ print(httpx.get("http://127.0.0.1:8080/api/v1/status").json())
 
 对话和 embedding 分别维护状态：`normal`、`temporarily_unavailable`、`invalid_key`、`configuration_error`、`account_problem`；每日上限造成学习暂停时，对话用途显示 `usage_limit`。连续三次可重试的网络／超时／限流／5xx 请求错误会暂停该用途（包含调用内重试的失败），触发暂停的批次失败不扣尝试次数。探测使用固定短请求，间隔为 1、2、4、8、10 分钟，之后保持 10 分钟；成功即恢复。分类优先识别结构化 `error.code`，其次兼容已知 `error.type`，最后按 HTTP 状态兜底。401 是密钥无效，404 及 `InvalidParameter`／`MissingParameter` 是配置错误，只在配置实际改变后恢复；403 权限、欠费、订阅及 `QuotaExceeded`／`SetLimitExceeded` 属账户问题，不作调用内短间隔重试，保留定时探测和内部立即重试。`AccountRateLimitExceeded`、`ServerOverloaded`、`RequestBurstTooFast`、500、传输错误、超时及审核服务故障 `ContentSecurityDetectionError` 可重试。方舟 `SensitiveContentDetected` 家族、输入／输出文本审核和风控命中，以及 `finish_reason=content_filter`，直接进入内容拒绝终态，不修正 JSON、不写记忆；原 MiniMax 敏感字段与 `base_resp` 识别保留。码表来源见[方舟官方文档](https://docs.volcengine.com/docs/ark/error-codes?lang=zh)。
 
-服务会重新读取 `test-models.toml` 或 `IRIS_TEST_MODELS` 指向的文件，修改模型配置（含推理档位）后对新工作生效。设置页以后可调用 `Gateway.replace_config(kind, ModelConfig(...))`、`Gateway.retry_now(kind)`；这两个内部函数不提供 HTTP 设置入口，也不把凭据写入数据库。`ModelHealth.set_daily_token_limit(整数或 None)` 设置每日 token 上限，默认不限；按角色 `timezone` 的次日零点或调高上限恢复。额度根据服务商已报告用量计算，在途请求可能越过上限，未报告 token 的调用不能计量。接收和召回始终照常。
+服务会重新读取当前模型配置来源，修改模型配置（含推理档位）后对新工作生效。管理设置接口调用 `Gateway.replace_config(kind, ModelConfig(...))`、`Gateway.retry_now(kind)`，凭据只保存到 secrets.json；外部文件模式保持只读。`ModelHealth.set_daily_token_limit(整数或 None)` 设置每日 token 上限，默认不限；按角色 `timezone` 的次日零点或调高上限恢复。额度根据服务商已报告用量计算，在途请求可能越过上限，未报告 token 的调用不能计量。接收和召回始终照常。
 
 embedding 暂停时网关直接返回可降级错误，回复准备和查询使用全文，并附 `model_paused` 提示。缺少向量的记忆照常进入全文索引，恢复后后台按修订号补算。embedding 维度参与配置变化检测、恢复探测和旧向量补算；改变模型或维度后仍须重新标定召回。`GET /api/v1/status` 提供 `model_health`、各入口 `current_batch`／`latest_batch`、`memory_gap_count`、今日／本周 `usage`、`learning_latency_24h`（P50／P95／最大耗时／超时数）和 `scheduler.running`；兼容保留最近调用 `models` 和积压 `backlog`。
 
@@ -188,6 +232,6 @@ trigram 查询中的一字／两字实词会补查已有 jieba 索引；只询�
 
 端到端公开集现为 11 个手写脚本，包括群聊学习、重启后私聊提问的 E011。prepare 的查询文本只省略或使用提问原文；评测器另行校验近期原始消息没有跨入口。跨入口来源格式见 [评测说明](evals/README.md)。
 
-评测启动子进程时，临时 TOML 只记录端点、模型和 `api_key_env` 变量名，密钥仅通过该子进程环境传递；不会修改调用者环境。平时的配置来源仍为 `test-models.toml`／`IRIS_TEST_MODELS`。需要时也可在模型配置组中用 `api_key_env` 引用已设置的环境变量，不能与 `api_key` 同时填写；变量缺失会明确报错。
+评测启动子进程时，临时 TOML 只记录端点、模型和 `api_key_env` 变量名，密钥仅通过该子进程环境传递；不会修改调用者环境。评测的配置来源仍为 `test-models.toml`／`IRIS_TEST_MODELS`，serve 的配置优先级见上文。需要时也可在模型配置组中用 `api_key_env` 引用已设置的环境变量，不能与 `api_key` 同时填写；变量缺失会明确报错。
 
-GLM 开发配置使用 low 推理档位，学习共享 180 秒预算。学习提示词默认 v6，先筛长期价值，再核对完整证据、人物归属、别名声明和时间一致性；v5 保留用于对照。公开样本的单判及流程试用不能作为 M1 通过结论，最终仍需独立双判和规划者隐藏集。
+GLM 服务商默认 max 推理可能耗尽 180 秒学习预算；设置页的方舟预设使用 low，未指定档位的外部配置仍由服务商决定。开发配置使用 low，学习共享 180 秒预算。学习提示词默认 v6，先筛长期价值，再核对完整证据、人物归属、别名声明和时间一致性；v5 保留用于对照。推理档位和方舟错误码适配已合入；公开样本的单判及流程试用不能作为 M1 通过结论，最终仍需独立双判和规划者隐藏集。

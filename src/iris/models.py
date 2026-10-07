@@ -314,7 +314,9 @@ class Gateway:
             if remaining <= 0:
                 raise ModelError("retryable", "total timeout")
             url = config.base_url + ("/chat/completions" if kind == "chat" else "/embeddings")
-            headers = {"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"}
+            headers = {"Content-Type": "application/json"}
+            if config.api_key:
+                headers["Authorization"] = f"Bearer {config.api_key}"
             timeout = httpx.Timeout(remaining, connect=min(10, remaining))
             started = self.monotonic()
             response = None

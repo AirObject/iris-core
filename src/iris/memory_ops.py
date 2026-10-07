@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import Store, dumps, now
 
 
-def setup_role(store: Store, name: str, background: str = "", timezone_name: str = "Asia/Shanghai") -> str:
+def setup_role(store: Store, name: str, background: str = "", timezone_name: str = "Asia/Shanghai", *, _conn=None) -> str:
     try:
         ZoneInfo(timezone_name)
     except ZoneInfoNotFoundError as exc:
@@ -17,7 +18,7 @@ def setup_role(store: Store, name: str, background: str = "", timezone_name: str
     name = name.strip() or "Iris"
     sentences = [part.strip() for part in re.split(r"[\n。！？]+", background) if part.strip()]
     persona = (f"我是{name}。" + ("初始设定：" + "；".join(sentences) + "。" if sentences else "尚无预设经历，会在相处中逐渐认识自己。"))
-    with store.write() as conn:
+    with (store.write() if _conn is None else nullcontext(_conn)) as conn:
         existing = conn.execute("SELECT id FROM persona_versions WHERE is_current=1 LIMIT 1").fetchone()
         if existing:
             raise ValueError("role already initialized")
@@ -83,3 +84,42 @@ def delete_memory(store: Store, memory_id: int, expected_revision: int, *, actor
             reason,actor,created_at) VALUES(?,?,?,?,?,?,?,?)""",
             (memory_id, expected_revision, expected_revision + 1, dumps(before), dumps(after), "manual delete", actor, stamp))
         return True
+
+
+def update_role(store, name, background, timezone_name, *, _conn=None):
+    """Update initial settings while preserving revoked memories and persona history."""
+    ZoneInfo(timezone_name)
+    with (store.write() if _conn is None else nullcontext(_conn)) as conn:
+        current = conn.execute("SELECT id FROM persona_versions WHERE is_current=1").fetchone()
+        if not current:
+            return setup_role(store, name, background, timezone_name, _conn=conn)
+        previous = {r[0]: json.loads(r[1]) for r in conn.execute(
+            "SELECT key,value_json FROM runtime_settings WHERE key IN ('role_name','background','timezone','persona_goal','persona_rules')")}
+        if previous.get('role_name') == name and previous.get('background') == background:
+            conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('timezone',?)", (dumps(timezone_name),))
+            return
+        conn.execute("UPDATE persona_versions SET is_current=0 WHERE is_current=1")
+        # Only initial-setting objects are replaced. Learned memories remain intact.
+        if previous.get('background') != background:
+            rows = conn.execute("SELECT * FROM memories WHERE lifecycle!='deleted' AND id IN (SELECT memory_id FROM sources WHERE kind='initial_setting')").fetchall()
+            for row in rows:
+                before = {k: row[k] for k in ('content', 'kind', 'stance', 'belief', 'importance', 'event_time', 'lifecycle')}
+                after = {**before, 'lifecycle': 'deleted'}
+                conn.execute("UPDATE memories SET lifecycle='deleted',revision=revision+1,updated_at=?,embedding=NULL,embedding_model=NULL WHERE id=?", (now(), row['id']))
+                conn.execute("INSERT INTO memory_revisions(memory_id,revision_before,revision_after,before_json,after_json,reason,actor,created_at) VALUES(?,?,?,?,?,'initial background changed','admin',?)", (row['id'], row['revision'], row['revision']+1, dumps(before), dumps(after), now()))
+        # setup_role already owns deterministic initial persona/background conversion.
+        for key in ('role_name', 'background', 'timezone', 'persona_goal', 'persona_rules'):
+            conn.execute('DELETE FROM runtime_settings WHERE key=?', (key,))
+        if previous.get('background') == background:
+            # A name-only change must not duplicate initial memories.
+            setup_role(store, name, '', timezone_name, _conn=conn)
+            sentences = [part.strip() for part in re.split(r"[\n。！？]+", background) if part.strip()]
+            persona = f"我是{name}。" + ("初始设定："+"；".join(sentences)+"。" if sentences else "尚无预设经历，会在相处中逐渐认识自己。")
+            conn.execute('UPDATE persona_versions SET content=? WHERE is_current=1', (persona,))
+            conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('background',?)", (dumps(background),))
+        else:
+            setup_role(store, name, background, timezone_name, _conn=conn)
+
+        for key in ('persona_goal', 'persona_rules'):
+            if key in previous:
+                conn.execute('INSERT OR REPLACE INTO runtime_settings VALUES(?,?)', (key, dumps(previous[key])))
