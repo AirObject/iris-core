@@ -198,6 +198,9 @@ def main(argv: list[str] | None = None) -> int:
                 results = []
                 for kind in ("chat", "embedding"):
                     started = time.monotonic()
+                    if kind == "chat":
+                        effort = configs[kind].reasoning_effort
+                        print(f"chat: reasoning_effort={effort if effort is not None else '未配置（不发送）'}")
                     try:
                         if kind == "chat":
                             gateway.json_chat([{"role": "user", "content": "只输出 JSON：{\"ok\":true}"}], "connection_check", 3000)

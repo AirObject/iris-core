@@ -43,7 +43,9 @@ def service_status(store, scheduler, health, *, clock=utc_now):
             result["tokens"] = result["prompt_tokens"] + result["completion_tokens"]
             result["failure_rate"] = result["failures"] / result["calls"] if result["calls"] else None
             return result
-        learning = conn.execute("""SELECT purpose,batch_id,duration_ms,timed_out,error_summary FROM model_calls
+        learning = conn.execute("""SELECT purpose,batch_id,duration_ms,timed_out,error_summary,
+            result_category,status_code,finish_reason,prompt_tokens,completion_tokens,reasoning_tokens,
+            reasoning_effort,reasoning_present,reasoning_chars FROM model_calls
             WHERE purpose IN ('learning','learning_repair') AND julianday(created_at)>=julianday(?)
             AND julianday(created_at)<=julianday(?)""", ((current-timedelta(hours=24)).isoformat(), current.isoformat())).fetchall()
         durations = [r["duration_ms"] for r in learning]
@@ -54,7 +56,9 @@ def service_status(store, scheduler, health, *, clock=utc_now):
                   "learning_latency_24h": {"count": len(durations), "p50_ms": percentile(durations, 50),
                       "p95_ms": percentile(durations, 95), "max_ms": max(durations, default=None),
                       "timeouts": sum(bool(r["timed_out"]) or "timeout" in (r["error_summary"] or "").casefold() for r in learning)}}
-    result.update(model_health=health.snapshot(), budget=health.budget(),
+    chat = health.configs.get("chat")
+    result.update(chat_reasoning_effort=chat.reasoning_effort if chat else None,
+                  model_health=health.snapshot(), budget=health.budget(),
                   scheduler={"running": scheduler.running, "max_concurrent": store.setting("learning_concurrency", 2),
                              "last_error": scheduler.last_error},
                   timeouts_seconds={"learning": LEARNING_TOTAL_TIMEOUT, "chat": CHAT_TOTAL_TIMEOUT,

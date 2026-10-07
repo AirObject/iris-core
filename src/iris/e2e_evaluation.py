@@ -377,8 +377,15 @@ def run_e2e_eval(configs, root, split="all", *, corpus=None, out=None, judge_run
                     if p.suffix in (".py", ".sql", ".md", ".json"))).hexdigest(),
                 "corpus_sha256": hashlib.sha256(corpus.read_bytes()).hexdigest(), "split": split,
                 "script_ids": [s["id"] for s in scripts], "models": {kind: config.model for kind, config in configs.items()},
-                "chat_model": configs["chat"].model,
+                "chat_model": configs["chat"].model, "chat_reasoning_effort": configs["chat"].reasoning_effort,
                 "timeouts_seconds": {"learning": LEARNING_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT}}
+    # Identity is hashed, not printed: no endpoint or credential enters reports.
+    metadata["checkpoint_signature"] = _json_sha256({
+        "sources": metadata["source_sha256"], "corpus": metadata["corpus_sha256"],
+        "split": split, "script_ids": metadata["script_ids"], "judge_mode": judge_mode,
+        "judge_runs": judge_runs if judge_mode == "model" else 0,
+        "models": {kind: (config.base_url, config.model, config.dimensions,
+                          config.reasoning_effort if kind == "chat" else None) for kind, config in configs.items()}})
     rows = []
     started = time.monotonic()
     for script in scripts:
@@ -457,6 +464,7 @@ def _write_e2e_report(rows, root, reports, metadata, *, judge_runs, judge_mode, 
 
 _E2E_RUN_FIELDS = ("scoring_version", "source_sha256", "corpus_sha256", "split", "script_ids",
                    "models", "chat_model", "timeouts_seconds", "duration_seconds")
+_E2E_OPTIONAL_RUN_FIELDS = ("chat_reasoning_effort", "checkpoint_signature")
 _E2E_ROW_FIELDS = ("id", "script", "first_seen_memories", "receipts", "judged_messages", "sent_times",
                    "before_restart", "after_restart", "final_status", "failure")
 
@@ -480,6 +488,13 @@ def _check_e2e_run(rows, metadata):
     for key in _E2E_RUN_FIELDS:
         if key not in metadata:
             raise ValueError(f"e2e metadata missing {key}")
+    effort = metadata.get("chat_reasoning_effort")
+    if effort is not None and (not isinstance(effort, str) or not effort.strip()):
+        raise ValueError("invalid e2e chat_reasoning_effort")
+    signature = metadata.get("checkpoint_signature")
+    if "checkpoint_signature" in metadata and (not isinstance(signature, str) or len(signature) != 64
+            or any(c not in "0123456789abcdef" for c in signature)):
+        raise ValueError("invalid e2e checkpoint_signature")
     if metadata["scoring_version"] != SCORING_VERSION:
         raise ValueError("e2e scoring version mismatch")
     for key in ("corpus_sha256", "source_sha256"):
@@ -530,7 +545,7 @@ def export_e2e_judgments(rows, metadata, out):
         raise ValueError(f"material output directory must be empty: {out}")
     out.mkdir(parents=True, exist_ok=True)
     manifest = {"format_version": MATERIAL_FORMAT_VERSION, "evaluation": "e2e",
-                "run": {key: metadata[key] for key in _E2E_RUN_FIELDS},
+                "run": {key: metadata[key] for key in (*_E2E_RUN_FIELDS, *_E2E_OPTIONAL_RUN_FIELDS) if key in metadata},
                 "run_sha256": _write_json(out / "run.json", {"rows": rows}), "cases": []}
     (out / "scoring.md").write_text(SCORING, encoding="utf-8")
     manifest["scoring_sha256"] = hashlib.sha256((out / "scoring.md").read_bytes()).hexdigest()
