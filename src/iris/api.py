@@ -13,6 +13,7 @@ from fastapi import Body, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .db import Store
 from .models import Gateway
@@ -160,6 +161,10 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             return JSONResponse({"error": {"code": "unavailable", "message": "服务尚未就绪", "retry_after_seconds": 1}},
                                 status_code=503, headers={"Retry-After": "1"})
         return await call_next(request)
+
+    # Registered last so Host is checked before readiness and every API/static route.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
+                       www_redirect=False)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, error):

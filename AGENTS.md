@@ -113,6 +113,8 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 界面源码 `frontend/` 使用 React＋Vite＋TypeScript，npm 依赖锁定在 package-lock.json；运行服务不需要 Node。修改前端后依次 `npm ci`、`npm test`、`npm run build`（在 frontend 内），将源码与 `src/iris/web/` 构建产物一起提交，再执行两个 Python 版本测试和 `uv build`。Vitest＋Testing Library＋jsdom 的组件测试覆盖主要交互，桌面／手机布局用浏览器检查；截图和真实试用数据在仓库外。
 
+所有 HTTP 路由（含宿主 API、管理 API、界面、静态资源与文档）在就绪检查之前校验 Host，只允许 `127.0.0.1`、`localhost`、`[::1]`，可带端口；其他／缺失 Host 返回 400，不信任转发 Host，不增加 CORS。此 DNS 重绑定防护在第二步加入管理员会话后仍保留，不代替鉴权。TestClient 必须显式使用本机 `base_url`，不能为测试把 testserver 加入产品白名单。
+
 管理路由 `/admin/api` 在 admin.py，管理只读投影在 admin_data.py，试用收发及 JSON 回复在 trial.py，提示词为 trial_reply_v1.md；宿主 `/api/v1` 不生成回复。试用入口默认实时节奏，“我（用户）”是 person，只有已发布角色回复使用 self_output。回复失败保留原消息，不回灌准备材料；每入口最多一条在途回复，同一消息的成功输出持久去重。列表和轮询不是召回，不增加调用或使用次数；来源前后文只读，不能当作新经历入队。
 
 编辑、删除必须核对 expected_revision；memory_revisions 同时作为人工操作记录的持久来源。删除只撤销对象，不清除来源、历史或其他记忆，原 ID 永不复活。后续新批次不覆盖人工编辑的保护由并行学习会话实现，本分支保持文件边界；未合入前应明确这项限制。置顶／遗忘／恢复／彻底清除／按旧内容新建留到 M2。首次设置、密码、模型设置和密钥存储是第二步；本步继续只监听回环地址，不新增迁移。
