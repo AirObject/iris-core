@@ -24,7 +24,11 @@ def usage_window(store, current):
 def fingerprint(config):
     if config is None:
         return "unconfigured"
-    return hashlib.sha256(json.dumps([config.base_url, config.model, config.api_key, config.dimensions]).encode("utf-8")).hexdigest()
+    values = [config.base_url, config.model, config.api_key, config.dimensions]
+    # Preserve existing pauses across upgrades when the optional setting is absent.
+    if config.reasoning_effort is not None:
+        values.append(config.reasoning_effort)
+    return hashlib.sha256(json.dumps(values).encode("utf-8")).hexdigest()
 
 
 class ModelHealth:

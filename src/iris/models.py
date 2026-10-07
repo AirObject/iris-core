@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import random
 import re
 import time
 import tomllib
@@ -32,6 +33,13 @@ class ModelConfig:
     api_key: str = field(repr=False)
     model: str
     dimensions: int | None = None
+    reasoning_effort: str | None = None
+
+    def __post_init__(self):
+        # Values are provider-defined; do not impose Ark's enum on other providers.
+        if self.reasoning_effort is not None and (
+                not isinstance(self.reasoning_effort, str) or not self.reasoning_effort.strip()):
+            raise ValueError("reasoning_effort must be a nonempty string when configured")
 
 
 @dataclass
@@ -72,6 +80,7 @@ def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
             api_key,
             str(group.get("model", "")),
             group.get("dimensions"),
+            group.get("reasoning_effort") if name == "chat" else None,
         )
     return result
 
@@ -83,16 +92,71 @@ def _summary(message: str, key: str) -> str:
     return clean[:300]
 
 
-def _retry_after(value: str | None) -> float | None:
+def _retry_after(value: str | None, current: datetime | None = None) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        seconds = float(value)
+        return max(0.0, seconds) if math.isfinite(seconds) else None
     except ValueError:
         try:
-            return max(0.0, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
+            return max(0.0, (parsedate_to_datetime(value) - (current or datetime.now(timezone.utc))).total_seconds())
         except (TypeError, ValueError, OverflowError):
             return None
+
+
+# Ark error codes (including dotted subcodes), checked 2026-10-07:
+# https://docs.volcengine.com/docs/ark/error-codes?lang=zh
+# A code takes precedence over HTTP status: e.g. quota exhaustion is also 429,
+# and ContentSecurityDetectionError is a retryable moderation service failure.
+# QuotaExceeded is overloaded for queued jobs in Ark's other APIs; this gateway
+# calls synchronous chat/embeddings and conservatively treats it as account quota.
+_ERROR_CODES = {
+    "content_rejection": (
+        "SensitiveContentDetected", "InputTextSensitiveContentDetected", "OutputTextSensitiveContentDetected",
+        "InputTextRiskDetection", "OutputTextRiskDetection",
+        "content_filter", "content_policy_violation", "content_safety", "sensitive_content"),
+    "configuration": ("InvalidParameter", "MissingParameter", "InvalidEndpoint", "InvalidEndpointOrModel"),
+    "authentication": ("AuthenticationError", "authentication_error", "invalid_api_key"),
+    "account": (
+        "InvalidSubscription", "InvalidAccountStatus", "AccountOverdueError", "OperationDenied", "AccessDenied",
+        "QuotaExceeded", "SetLimitExceeded", "ModelNotOpen", "insufficient_quota", "insufficient_balance",
+        "account_suspended", "account_deactivated", "billing_hard_limit_reached", "balance_not_enough", "arrearage"),
+    "retryable": (
+        "AccountRateLimitExceeded", "RateLimitExceeded", "ModelAccountRpmRateLimitExceeded",
+        "ModelAccountTpmRateLimitExceeded", "ModelAccountFlexTpmRateLimitExceeded", "APIAccountRpmRateLimitExceeded",
+        "ModelAccountIpmRateLimitExceeded", "InflightBatchsizeExceeded", "ServerOverloaded", "RequestBurstTooFast",
+        "ContentSecurityDetectionError", "InternalServiceError"),
+}
+
+
+def _http_error_category(status: int, data: Any) -> str:
+    error = data.get("error") if isinstance(data, dict) else None
+    error = error if isinstance(error, dict) else {}
+    # Some OpenAI-compatible providers use only type; Ark may leave it empty.
+    for field in ("code", "type"):
+        code = error.get(field)
+        if not isinstance(code, str):
+            continue
+        code = code.casefold()
+        for category, names in _ERROR_CODES.items():
+            if any(code == name.casefold() or code.startswith(name.casefold() + ".") for name in names):
+                return category
+    if status == 401:
+        return "authentication"
+    if status in (402, 403, 423):
+        return "account"
+    if status in (408, 429) or status >= 500:
+        return "retryable"
+    return "configuration"
+
+
+def _reasoning_diagnostics(message: dict[str, Any]) -> tuple[bool, int | None]:
+    # Ark returns message.reasoning_content; some compatible providers use reasoning.
+    # Count Unicode characters only. Never retain the reasoning text in call records.
+    values = [message[key] for key in ("reasoning_content", "reasoning") if key in message]
+    chars = sum(len(value) for value in values) if all(isinstance(value, str) for value in values) else None
+    return bool(values), chars
 
 
 def repair_unescaped_value_quotes(candidate: str) -> str:
@@ -166,7 +230,7 @@ def parse_json_object(raw: str) -> dict[str, Any]:
 
 class Gateway:
     def __init__(self, configs: dict[str, ModelConfig], store: Store | None = None, client: httpx.Client | None = None,
-                 sleeper=time.sleep, *, health=None, clock=None, monotonic=time.monotonic):
+                 sleeper=time.sleep, *, health=None, clock=None, monotonic=time.monotonic, jitter=random.uniform):
         self.health = health
         self.configs = health.configs if health else dict(configs)
         self.store = store
@@ -175,6 +239,7 @@ class Gateway:
         self.sleeper = sleeper
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.monotonic = monotonic
+        self.jitter = jitter
         self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-model")
 
     def close(self) -> None:
@@ -185,7 +250,8 @@ class Gateway:
     def _record(self, purpose: str, model: str, duration_ms: int, category: str, error: str | None,
                 usage: dict[str, Any] | None = None, flags: dict[str, Any] | None = None, status_code: int | None = None,
                 *, finish_reason: str | None = None, batch_id: int | None = None,
-                kind: str | None = None, timed_out: bool = False) -> None:
+                kind: str | None = None, timed_out: bool = False, reasoning_effort: str | None = None,
+                reasoning_present: bool | None = None, reasoning_chars: int | None = None) -> None:
         if not self.store:
             return
         usage = usage or {}
@@ -194,11 +260,13 @@ class Gateway:
         with self.store.write() as conn:
             conn.execute("""INSERT INTO model_calls
                 (purpose,model,duration_ms,prompt_tokens,completion_tokens,reasoning_tokens,result_category,
-                 error_summary,input_sensitive,output_sensitive,status_code,created_at,finish_reason,batch_id,model_kind,timed_out)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 error_summary,input_sensitive,output_sensitive,status_code,created_at,finish_reason,batch_id,model_kind,timed_out,
+                 reasoning_effort,reasoning_present,reasoning_chars)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (purpose, model, duration_ms, usage.get("prompt_tokens"), usage.get("completion_tokens"),
                  details.get("reasoning_tokens"), category, error, flags.get("input_sensitive"),
-                 flags.get("output_sensitive"), status_code, self.clock().isoformat(), finish_reason, batch_id, kind, int(timed_out)))
+                 flags.get("output_sensitive"), status_code, self.clock().isoformat(), finish_reason, batch_id, kind, int(timed_out),
+                 reasoning_effort, reasoning_present, reasoning_chars))
 
     def replace_config(self, kind: str, config: ModelConfig) -> bool:
         if self.health:
@@ -253,10 +321,15 @@ class Gateway:
             flags, usage = {}, {}
             finish_reason, status_code = None, None
             category, summary, timed_out = "success", None, False
-            retry_delay = (2, 8)[min(attempt, 1)]
+            retry_after = None
+            reasoning_present, reasoning_chars = None, None
+            reasoning_effort = config.reasoning_effort if kind == "chat" else None
+            request_payload = {**payload, "model": config.model}
+            if reasoning_effort is not None:
+                request_payload["reasoning_effort"] = reasoning_effort
             try:
                 request = self._pool.submit(self.client.post, url, headers=headers,
-                                            json={**payload, "model": config.model}, timeout=timeout)
+                                            json=request_payload, timeout=timeout)
                 response = request.result(timeout=remaining)
                 status_code = response.status_code
                 if status_code >= 400:
@@ -264,35 +337,22 @@ class Gateway:
                         error_data = response.json()
                     except ValueError:
                         error_data = {}
-                    error = error_data.get("error", {}) if isinstance(error_data, dict) else {}
-                    error = error if isinstance(error, dict) else {}
-                    # Inspect structured codes for classification, but never persist provider prose.
-                    code = str(error.get("code") or error.get("type") or "").casefold()
-                    if status_code in (401, 403):
-                        category = "authentication"
-                    elif status_code == 404:
-                        category = "configuration"
-                    elif status_code in (402, 423) or code in (
-                            "insufficient_quota", "insufficient_balance", "account_suspended", "account_deactivated",
-                            "billing_hard_limit_reached", "balance_not_enough", "arrearage"):
-                        category = "account"
-                    elif code in ("content_filter", "content_policy_violation", "content_safety", "sensitive_content"):
-                        category = "content_rejection"
-                    elif status_code == 429 or status_code >= 500:
-                        category = "retryable"
-                    else:
-                        category = "configuration"
+                    category = _http_error_category(status_code, error_data)
+                    # Provider prose can echo credentials or input; do not persist it.
                     summary = f"HTTP {status_code}"
-                    retry_delay = max(retry_delay, _retry_after(response.headers.get("Retry-After")) or 0)
+                    retry_after = _retry_after(response.headers.get("Retry-After"), self.clock())
                 else:
                     data = response.json()
                     flags = {"input_sensitive": data.get("input_sensitive"), "output_sensitive": data.get("output_sensitive")}
-                    usage = data.get("usage") or {}
+                    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
                     body = data.get("base_resp") or {}
                     provider_status = body.get("status_code")
                     choices = data.get("choices") or []
                     choice = choices[0] if choices else {}
-                    content = (choice.get("message") or {}).get("content")
+                    message = choice.get("message") or {}
+                    content = message.get("content")
+                    if kind == "chat":
+                        reasoning_present, reasoning_chars = _reasoning_diagnostics(message)
                     finish_reason = choice.get("finish_reason")
                     if kind == "chat" and (finish_reason == "content_filter" or
                             (choice.get("message") or {}).get("refusal") or (any(flags.values()) and not content)):
@@ -323,7 +383,8 @@ class Gateway:
             if category == "success" and self.monotonic() > deadline:
                 category, summary, timed_out = "retryable", "total timeout", True
             self._record(purpose, config.model, duration, category, summary, usage, flags, status_code,
-                         finish_reason=finish_reason, batch_id=batch_id, kind=kind, timed_out=timed_out)
+                         finish_reason=finish_reason, batch_id=batch_id, kind=kind, timed_out=timed_out,
+                         reasoning_effort=reasoning_effort, reasoning_present=reasoning_present, reasoning_chars=reasoning_chars)
             paused = self.health.observe(kind, token, category, summary, probe=probe) if self.health else False
             if category == "content_rejection":
                 paused = False  # Explicit safety refusal is a terminal batch result even during another outage.
@@ -333,6 +394,8 @@ class Gateway:
                 return data
             if category != "retryable" or paused or attempt == attempts - 1:
                 raise ModelError(category, summary, paused=paused)
+            base_delay = 2 * (2 ** attempt)
+            retry_delay = retry_after if retry_after is not None else base_delay + self.jitter(0, base_delay)
             if deadline - self.monotonic() <= retry_delay:
                 raise ModelError(category, summary, paused=paused)
             self.sleeper(retry_delay)

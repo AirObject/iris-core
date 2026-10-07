@@ -85,7 +85,7 @@ def worker(path, size, dtype, repeats, dimension, default_config=False):
     gateway = Gateway(dimension)
     rss_before = process.memory_info().rss
     start = time.perf_counter()
-    with TestClient(create_app(store=store, gateway=gateway)) as client:
+    with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1") as client:
         retrieval = client.app.state.retrieval
         load_seconds = time.perf_counter() - start
         rss_loaded = process.memory_info().rss

@@ -181,7 +181,7 @@ def test_embedding_pause_fallback_backfill_and_revision_check(store):
             server.enqueue(401)
             with pytest.raises(ModelError):
                 gateway.embedding("probe")
-            with TestClient(create_app(store=store, gateway=gateway)) as client:
+            with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1") as client:
                 result = client.post("/api/v1/memories/search", json={"text": "天文摄影"}).json()
                 assert result["memories"][0]["id"] == mid
                 assert any(h["code"] == "model_paused" and h["kind"] == "embedding" for h in result["hints"])
@@ -208,7 +208,7 @@ def test_embedding_pause_fallback_backfill_and_revision_check(store):
 
 
 def test_manual_learning_accepted_while_paused_and_status_fields(store):
-    with TestClient(create_app(store=store)) as client:
+    with TestClient(create_app(store=store), base_url="http://127.0.0.1") as client:
         payload = {"sender": "小林", "content": "喜欢猫", "occurred_at": "2026-10-04T08:00:00+08:00", "dedupe_key": "1"}
         assert client.post("/api/v1/entries/A/messages", json=payload).status_code == 200
         result = client.post("/api/v1/entries/A/learn").json()

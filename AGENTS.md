@@ -1,6 +1,6 @@
 # Iris 后续实现说明
 
-产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；界面、首次设置、设置页、secrets.json 和鉴权尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
+产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；本机试用对话、记忆列表／详情／编辑／删除和运行状态界面已实现；首次设置、设置页、secrets.json 和鉴权尚未实现。不要复制 `dev-0`、`dev-1` 分支的代码。
 
 2026-10-05 起，开发与评测的对话模型改为 glm-5.3-flash，开发设备改为 macOS。MiniMax-M3 时期的评测结果全部作废；GLM 重测计划及新设备召回复现见 `evals/README.md`。
 
@@ -97,7 +97,7 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 服务启动先恢复中断批次，默认同时学习两个批次，同入口串行；学习状态以 batches 为准。手动请求的消息位置持久保存在 entries，向量补算由 memories 的缺失向量推导。暂不建立通用任务表，梦境整理阶段再引入。接收后不能假设消息已经被学习；等待状态接口的批次结果。
 
-模型健康按 chat／embedding 分开并持久保存，连续三次可重试的网络请求错误（包括调用内重试）暂停用途；触发暂停的批次失败不扣尝试次数。探测间隔 60／120／240／480／600 秒。401／403 与 404 分别为密钥无效、配置错误，只在配置变化后恢复。每日 token 上限默认不限，按角色时区恢复；在途调用及服务商未报告的 token 无法事先扣减。模型配置仍只从 test-models.toml／IRIS_TEST_MODELS 加载，不把凭据存入数据库。
+模型健康按 chat／embedding 分开并持久保存，连续三次可重试的网络请求错误（包括调用内重试）暂停用途；触发暂停的批次失败不扣尝试次数。探测间隔 60／120／240／480／600 秒。错误分类优先看服务商 error.code，再以 HTTP 兜底：401 为密钥无效，404／参数错误为配置错误，均只在配置变化后恢复；403 权限、欠费／订阅及额度用尽为账户问题，不作调用内短间隔重试。每日 token 上限默认不限，按角色时区恢复；在途调用及服务商未报告的 token 无法事先扣减。模型配置仍只从 test-models.toml／IRIS_TEST_MODELS 加载，不把凭据存入数据库。
 
 内部设置接口为 Gateway.replace_config、Gateway.retry_now、ModelHealth.set_daily_token_limit、Scheduler.set_concurrency；后续设置页调用它们。serve 自动重新读取模型配置。离线 iris learn 必须停止服务后运行，服务／离线命令用操作系统锁互斥。模型网络调用仍在事务外，向量补算写回必须核对修订号；不要改变 learning_context 的选材。
 
@@ -105,6 +105,16 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 端到端材料沿用 PR #7 的 format_version=1、evaluation="e2e"、manifest.json、round-template.json、scoring.md、cases/*.json、run.json 约定；每个实际返回的检查点一份 input，与旧 _judge 输入完全相同，另附 script_id、checkpoint_id、语料 SHA-256 和源码指纹。每轮把 round-template.json 复制为 manifest.json，按 judgment_file 写 e2e_scoring_v1 的 facts／forbidden JSON，reason 字符串必填。数组等长、真实布尔值、返回 memory_ids 和正向项支持记忆都严格校验；e2e-score 接受一轮或两轮 --judgments，--judge-model 必填，不读取模型配置、不调用模型。双判正向事实取 AND、禁止说法取 OR，列原始分歧；近期消息隔离和排空失败不能由判分覆盖，U04 独立计时。材料指纹绑定全部输入和记录；未到达的检查点没有虚构输入，其基础设施失败仍保留在脚本分母中。
 
-材料、判分和完整报告放仓库外，不提交执行记录或完整材料。两轮必须在互不可见的独立会话中完成；用于门槛的判分者不参与该轮实现。单轮小样本只检查流程，≥80%（全部公开集至少 9/11）不代表隐藏门槛通过。GLM 推理档位和方舟错误码适配留到下一任务；本轮不改变学习请求参数、超时或重试来适应慢调用。当前只在 macOS 验证，不做 Windows／深路径验证。
+材料、判分和完整报告放仓库外，不提交执行记录或完整材料。两轮必须在互不可见的独立会话中完成；用于门槛的判分者不参与该轮实现。单轮小样本只检查流程，≥80%（全部公开集至少 9/11）不代表隐藏门槛通过。方舟 GLM 在 [chat] 显式配置 reasoning_effort="low"；未配置时不发送，不能关闭推理。档位写入调用记录、评测指纹及报告；推理字段仅存出现标志、字符数和 usage 推理 token，不保存全文。学习仍共享 180 秒预算；内容拒绝不修正 JSON、不写记忆。当前只在 macOS 验证，不做 Windows／深路径验证。
 
 评测子进程密钥用环境变量传递，临时 TOML 只写 api_key_env 引用，不能写入明文密钥。跨入口来源用 sources 的 entry_id/key 对象，近期原始消息隔离独立于语义判分检查。正常关闭仍等待在途线程，0.5 秒轮询仍扫描待学习正文，大积压时的扫描成本留作已知限制。
+
+## 界面第一步
+
+界面源码 `frontend/` 使用 React＋Vite＋TypeScript，npm 依赖锁定在 package-lock.json；运行服务不需要 Node。修改前端后依次 `npm ci`、`npm test`、`npm run build`（在 frontend 内），将源码与 `src/iris/web/` 构建产物一起提交，再执行两个 Python 版本测试和 `uv build`。Vitest＋Testing Library＋jsdom 的组件测试覆盖主要交互，桌面／手机布局用浏览器检查；截图和真实试用数据在仓库外。
+
+所有 HTTP 路由（含宿主 API、管理 API、界面、静态资源与文档）在就绪检查之前校验 Host，只允许 `127.0.0.1`、`localhost`、`[::1]`，可带端口；其他／缺失 Host 返回 400，不信任转发 Host，不增加 CORS。此 DNS 重绑定防护在第二步加入管理员会话后仍保留，不代替鉴权。TestClient 必须显式使用本机 `base_url`，不能为测试把 testserver 加入产品白名单。
+
+管理路由 `/admin/api` 在 admin.py，管理只读投影在 admin_data.py，试用收发及 JSON 回复在 trial.py，提示词为 trial_reply_v1.md；宿主 `/api/v1` 不生成回复。试用入口默认实时节奏，“我（用户）”是 person，只有已发布角色回复使用 self_output。回复失败保留原消息，不回灌准备材料；每入口最多一条在途回复，同一消息的成功输出持久去重。列表和轮询不是召回，不增加调用或使用次数；来源前后文只读，不能当作新经历入队。
+
+编辑、删除必须核对 expected_revision；memory_revisions 同时作为人工操作记录的持久来源。删除只撤销对象，不清除来源、历史或其他记忆，原 ID 永不复活。后续新批次不覆盖人工编辑的保护由并行学习会话实现，本分支保持文件边界；未合入前应明确这项限制。置顶／遗忘／恢复／彻底清除／按旧内容新建留到 M2。首次设置、密码、模型设置和密钥存储是第二步；本步继续只监听回环地址，不新增迁移。
