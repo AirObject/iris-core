@@ -1,4 +1,4 @@
-# 学习与召回评测
+# 学习、召回与端到端评测
 
 ## 当前状态
 
@@ -10,7 +10,7 @@
 
 GLM 探测（PR #8）：方舟上的 glm-5.3-flash 不能关闭推理，`reasoning_effort` 默认为 max。max 档在 learning_v3 上的学习调用 P50 约 90 秒、P95 约 324 秒，有一次推理用尽 16000 token 输出上限、正文为空；low 档 P50 约 6 秒，最长约 21 秒。learning_v3 的执行者单判：max 档记忆精确率 70.4%、事实召回率 75.0%、归属正确率 88.9%，low 档分别为 66.7%、71.4%、71.4%（各一次、10 段，只作 dev 参考）。内容安全拒绝按方舟的 `error.code` 和 `finish_reason=content_filter` 识别，实际的拒绝路径尚未验证。
 
-评测判分改由执行者所用的模型完成，不调用对话模型（DECISIONS.md 2026-10-05）；判分通道由 PR #7 实现，命令见下文。评分说明不变；代码导出判分材料，并按执行者交回的判分计算指标。两次判分在互不可见的独立会话中完成，分歧取不利结论；用于门槛判定的判分，由没有参与该轮代码和提示词修改的执行会话完成。只在 macOS 上验证，暂不做 Windows 验证。
+评测判分改由执行者所用的模型完成，不调用对话模型（DECISIONS.md 2026-10-05）；学习判分通道由 PR #7 实现，端到端沿用其材料与独立轮次约定，命令见下文。评分说明不变；代码导出判分材料，并按执行者交回的判分计算指标。两次判分在互不可见的独立会话中完成，分歧取不利结论；用于门槛判定的判分，由没有参与该轮代码和提示词修改的执行会话完成。只在 macOS 上验证，暂不做 Windows 验证。
 
 ## GLM 重测计划
 
@@ -133,7 +133,7 @@ round2/
 
 报告仍为 `learning-*.md` 与配套 JSON，沿用指标、门槛、分歧和固定种子的至少 10% 抽查清单；新增 `judge_mode`（`external`／`model`）、`judge_model`、`judge_runs`、`materials_sha256`。`chat_model` 继续表示学习模型。外部判分的 token、耗时和超时无法由本程序测量，调用统计只包含实际学习／embedding 调用；不能把其中的判分零调用读作外部模型零用量。报告比较必须语料摘要、评分版本、判分次数、学习模型和判分方式全部一致；旧报告未标方式时视为模型预览。
 
-材料封装的 `format_version`、`evaluation`、案例映射和每轮指纹绑定不依赖学习的字段结构。后续端到端评测可沿用这套导出／独立判分／离线计分约定，用自己的 `input` 和 `e2e_scoring_v1` 校验器；当前命令只接受 learning，本次不修改端到端评测。
+材料封装的 `format_version`、`evaluation`、案例映射和每轮指纹绑定不依赖学习的字段结构。端到端评测沿用同一约定，但使用 `evaluation="e2e"`、自己的 `input` 和 `e2e_scoring_v1` 校验器，见下文；学习与端到端的计分命令拒绝混用材料。
 
 ## 召回评测
 
@@ -221,7 +221,7 @@ Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1
 
 报告单列因长度截断的**学习批次数**（同一批的首轮／修正／重试只计一批），同时列学习与判分截断调用数、生成耗时，以及按学习／判分分列的超时调用数；JSON 保留生成调用的紧凑统计字段，包含 finish_reason 与输出 token。别名覆盖率＝正确覆盖的 alias 标注／alias 标注数；别名精确率＝判对的实际学习别名／实际学习别名数；分母为零记为不可计算，不显示成 100%。其他人物联系指标包含 alias，别名另行拆出。每段判两次，所有分歧按不利结论统计并列清单。
 
-学习与判分的输出额度均为 16000 token，不限制额外推理长度。学习请求总超时 120 秒，评测判分及其修正请求 240 秒，报告记录两者。确定性名称／联系类型及必需主体检查只把不可能正确的正向判分改为 false；即使检查使两次最终结果相同，原模型判分的分歧仍列出。
+学习与判分的输出额度均为 16000 token，不限制额外推理长度。学习首次请求、调用内重试和 JSON 修正共享 180 秒预算，评测判分及其修正请求共享 240 秒预算，报告记录两者。确定性名称／联系类型及必需主体检查只把不可能正确的正向判分改为 false；即使检查使两次最终结果相同，原模型判分的分歧仍列出。
 
 独立隐藏验收集由规划者在仓库外维护，执行者不得寻找或读取。M1 的最终学习门槛须隐藏集和全部公开样本同时达到；公开样本即使全部达标，也不能据此宣布通过。后续真正新 holdout 仅用于最后一次评估；分析其失败后须转作 dev 并另写新集。
 
@@ -229,3 +229,99 @@ Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1
 
 - L025—L036：原 holdout 已在 PR #1 审查中被分析，逐段改为 dev；事实和其他标注未改。
 - L018 第一条 must：小林说的是母亲养狗及狗名，即转述另一人的状况，立场由“亲历”改为“转述”。其余 must 按 8.3 逐条核对，未发现需更正的立场。
+
+## 端到端脚本（M1-6）
+
+```bash
+uv run iris eval e2e --judge-mode external --out <运行目录>
+uv run iris eval e2e --judge-mode external --script E001 --script E011 --out <流程检查目录>
+uv run iris eval e2e --judge-mode external --corpus <外部脚本.json> --out <运行目录>
+uv run iris eval e2e-score --materials <材料目录> --judgments <第一轮目录> --judgments <第二轮目录> --judge-model <执行者模型名称> --out <报告目录>
+# 默认的对话模型双判仅作预览，单判预览用 --judge-runs 1
+uv run iris eval e2e --split dev --judge-runs 1
+```
+
+默认读取手写 `e2e_v1.json` 的 11 个 dev 脚本；JSON 使用 `{"version":1,"scripts":[...]}` 或脚本数组，JSONL 每行一个脚本。`--corpus` 完全替换输入，`--split dev|holdout|all` 按脚本筛选，默认 all；`--script ID` 可重复指定，按原语料顺序运行所选脚本，不修改冻结语料；`--out` 替换输出目录，默认 evals/reports。隐藏脚本由规划者按相同格式运行，执行者不得查找或读取。
+
+每脚本是如下对象（缩短示例仅说明格式，不是评测语料）：
+
+```json
+{
+  "id": "external-example",
+  "split": "dev",
+  "entries": [{"id":"a", "name":"聊天", "platform":"chat", "kind":"private", "pace":"realtime"}],
+  "messages": [
+    {"entry_id":"a", "dedupe_key":"m1", "sender":"小林", "account_id":"lin", "kind":"message", "content":"我喜欢天文摄影。", "occurred_at":"2026-10-04T09:00:00+08:00"},
+    {"entry_id":"a", "dedupe_key":"m2", "sender":"Iris", "account_id":"iris", "kind":"self_output", "content":"听见了。", "occurred_at":"2026-10-04T09:00:10+08:00"}
+  ],
+  "checkpoints": [{
+    "id":"after-restart", "entry_id":"a",
+    "question":{"sender":"小林", "account_id":"lin", "kind":"message", "content":"我喜欢什么摄影？", "occurred_at":"2026-10-05T09:00:00+08:00", "dedupe_key":"q1"},
+    "prepare":{"recent_limit":1},
+    "expected":[{"fact":"小林喜欢天文摄影。", "source_keys":["m1"]}],
+    "forbidden":["Iris 喜欢天文摄影。"]
+  }]
+}
+```
+
+入口字段 `kind` 包括 private、group、live，`pace` 使用 realtime／standard／economy（默认 standard），或与 HTTP API 相同的自定义对象 `{"count":6,"idle_seconds":30,"max_wait_seconds":180}`。每条消息都写明账号、发言人、类型、带时区时间和去重键；按脚本数组顺序发送，多入口可交错。`occurred_at` 是原事件时间，不会加速调度器的接收时钟。可选 `delay_seconds` 在发出该条前实际等待（0—3600 秒）；没有指定则连续经 HTTP 发出。角色默认为 Iris，时区 Asia/Shanghai，服务启动在全新临时数据目录，没有通过离线命令预设记忆。
+
+检查点先写入 `question` 消息，再原样向 prepare 发送可选 `prepare` 对象。省略 text 和 participants 测试最近消息推断；预算字段与正式 API 一致。expected 为非空列表，每项包含 fact，以及 source_keys 或 sources 二者之一，用来计算该事实从证据发出到记忆出现的时间；禁止说法是字符串列表。提问的去重键应与既有消息、其他检查点不同。不同账号即使同名也不合并；评分输入包含接收回执中的 message_id，可核对记忆来源和原账号。
+
+同入口来源仍写 `"source_keys":["m1"]`，字符串始终是提问入口中的完整去重键，不解析冒号。跨入口来源写 `"sources":[{"entry_id":"group","key":"g1"}]`，允许同一事实引用多个入口；所有来源必须存在于同一脚本的 messages 中，不能引用检查点问题。两种格式不能同时出现。例：在 group 学到、到 dm 提问时，期望项可写 `{"fact":"Iris 答应带热茶。","sources":[{"entry_id":"group","key":"g4"}]}`。评分仍只使用 prepare 实际返回的记忆。
+
+每个检查点还执行确定性的 `recent_message_isolation` 检查：使用 HTTP 接收回执的消息 ID 核对入口、正文、类型及提供的引用正文，确保 recent_messages 只包含本提问入口已发送的原始消息。其他入口已形成的记忆允许共享；即使模型判分通过，原始消息隔离失败也使整个脚本失败，报告保留失败的消息 ID 和完整响应（后者仅外部 --out）。
+
+每脚本执行：启动真实 `iris serve` → HTTP 写入全部消息 → 轮询 status 等待后台自然排空 → 强制结束整个服务进程树 → 原目录重新启动 → 按检查点写入提问并调用 prepare → 导出执行者判分材料（或保留的默认对话模型预览）。评测器不调用 `/learn`，不直接调用学习函数，不读写被测数据库。`--wait-timeout` 默认 900 秒，只限制写完消息后的排空等待，不改变学习节奏；标准尾部可能自然等 10 分钟、省流尾部等 30 分钟，需要时增大它。脚本按顺序执行以降低并发限流。
+
+固定评分为 `src/iris/prompts/e2e_scoring_v1.md`，只判断 memories 是否覆盖事实，不用 recent_messages、persona 或常识补答案。默认模型预览每检查点判两次；外部计分由 --judgments 的次数决定轮数。双判事实覆盖取 AND，禁止说法出现取 OR；记录两份理由和分歧数，所有检查点通过脚本才通过。`--judge-runs 1` 仅供迭代，分歧率为 null，不能冒充最终双判。模型预览的评分错误、服务异常或排空超时均保留为失败，不筛掉脚本；外部判分文件不合法时先报错，全部修正后才生成报告。
+
+报告 JSON 包含每脚本结论和原因、事实延迟、U04（实时入口 ≤60 秒）单独判定、双判分歧、源码／语料指纹、模型 ID、学习调用的 P50／P95／最大耗时和超时数。U04 按来源入口的学习节奏判定（全部来源为 realtime 时适用），从 source_keys／sources 中最早证据发出开始，以对应记忆新增／最新修订在 HTTP 状态中首次被观察到为终点；轮询间隔约 0.2 秒，长发送间隔会给出更保守的上界。双判引用多条记忆时取最晚出现的必要记忆。
+
+完整输入、接收回执、prepare 返回、各轮原判分及重启前后状态仅在仓库外 --out 的 details 中保存；仓库内只保存汇总、判分结论和耗时。临时服务目录在运行后删除；临时 TOML 仅含 api_key_env 变量名，密钥通过子进程环境传递，不落到临时文件或报告。全部公开脚本至少 9/11 只是可见集门槛，规划者的隐藏脚本也须达到，不能据此宣布 M1 最终验收通过。小样本单判只是流程检查；报告的 repository_gate 仅按本次脚本计算 ≥80%，不能把子集结果当成全量验收。当前仅在 macOS 验证，Windows／深路径验证暂停。
+
+`E001`、`E005`、`E007`、新增跨入口 `E011` 不传查询文本和参与者。`E005` 用默认近期 20 条；其他多数检查点按较小的宿主上下文预算（2／5 条）检查召回，防止已在近期消息里的事实被正确去重后误判为召回失败。预算在真实评测前随脚本冻结，不按运行分数更改。
+
+第二轮查询文本修正已于 `ce34fa1` 单独提交：公开脚本的 prepare.text 只省略或传提问原文；具体修改保留在该提交中，执行记录不再提交到仓库。
+
+E011 的群聊 → 私聊共享记忆脚本在真实评测前另行冻结，加入后公开集为 11 个手写 dev；通过比例仍为 ≥80%（至少 9/11）。原 10 个脚本和新增跨入口脚本均逐项报告，不用新增样本掩盖原集失败。
+
+### 端到端外部判分流程与文件格式
+
+1. `e2e --judge-mode external` 正常运行 HTTP 接收、自然学习、强制重启及 prepare，不调用对话模型判分。完成后打印 judging-materials-<时间>/manifest.json，不生成质量报告；其父目录作为 --materials。此模式不能带 --judge-runs。
+2. 给判分者相同的 scoring.md 和 cases/*.json，只按 input 判分；不提供旧报告或另一轮结果。两轮在互不可见的独立会话中进行，用于门槛的判分者不得参与该轮实现。目录绑定只能验证材料，不能证明会话独立。
+3. 每轮建独立目录，将 round-template.json 复制为 manifest.json，按清单 judgment_file 保存一份检查点判分。e2e-score 的一次／两次 --judgments 分别是单轮／双轮，--judge-model 必填。离线计分不读取测试模型配置、不启动服务、不调用任何模型。缺失／多余文件、数组长度、非布尔值、无效 ID、无支持记忆的正向结论、非字符串 reason 都会报错，不自动补 false。错误按轮次和检查点汇总。
+
+所有文件使用 UTF-8，材料与结果留在仓库外。目录结构沿用学习判分：
+
+```text
+materials/
+  manifest.json          # format_version=1、evaluation="e2e"、run、cases 和文件指纹
+  scoring.md             # 冻结 e2e_scoring_v1 原文
+  cases/0000.json         # 一个脚本的一个实际返回检查点
+  run.json               # HTTP 观测、回执、重启状态、学习调用和 U04 原始时间
+  round-template.json    # {"materials_sha256":"材料清单中的 SHA-256"}
+round1/
+  manifest.json          # 从 round-template.json 复制
+  0000.json              # 按 manifest.cases[].judgment_file 保存
+round2/
+  manifest.json
+  0000.json
+```
+
+每份材料是 `{format_version:1, evaluation:"e2e", script_id, checkpoint_id, corpus_sha256, source_sha256, scoring_version:"e2e_scoring_v1", input}`。`input` 与原 `_judge` 用户输入逐字段一致：`messages`（含 HTTP 回执的 message_id）、`question`、`timezone`、`expected`、`forbidden`、`memories`。script_id／checkpoint_id 只用于映射，不直接拼入文件路径。语料 SHA-256 延续端到端旧定义，为输入文件原始字节摘要；本次筛选后的 script_ids 单列于 run，区别于学习评测的案例列表摘要。源码指纹在运行前记录。
+
+materials_sha256 覆盖清单元数据及各文件 SHA-256，计分复核清单、材料、run.json、评分说明与输入映射。不要修改导出材料。run.json 不含旧 judges／combined／latencies；保存的消息回执和时间用于重新计算确定性隔离检查及 U04。若服务故障导致某检查点没有 HTTP 返回，不伪造待判材料，脚本失败仍在 run.json 和最终分母中保留。排空超时也照常导出已经取得的返回，但语义判分不能覆盖该失败。
+
+每份判分沿用冻结格式；facts 与 expected、forbidden 与同名输入数组等长且顺序一致。memory_ids 只能是本次 prepare 返回的整数 ID，covered=true 或 present=true 必须至少列一条支持记忆。reason 字符串为原格式必需字段；额外字段不会改变计分，原判分留在外部报告 details[].checkpoints[].judges 中。例如一条 expected、一条 forbidden：
+
+```json
+{
+  "facts": [{"covered": true, "memory_ids": [1], "reason": "记忆 1 完整保留事实、主体和时间。"}],
+  "forbidden": [{"present": false, "memory_ids": [], "reason": "返回记忆没有该禁止说法。"}]
+}
+```
+
+输出仍为 e2e-<时间>.json，保留旧脚本、U04、学习延迟和超时字段，新增 judge_mode、judge_model、chat_model、materials_sha256、judgment_rounds 和 judge_inconsistencies 清单。models.chat 同样表示学习模型；外部判分耗时、用量及超时未测量，不能把模型判分零调用理解为执行者零用量。单轮分歧率为 null。双轮事实取 AND、禁止项取 OR，支持 ID 取并集，分歧按原始判定逐项列出；两条路径共用校验、combine_judges、确定性否决和 U04 计算。
+
+GLM max 推理可能触发 180 秒学习总超时，流程试用照实保留超时与排空失败，不调整超时、重试或学习请求参数。正式 GLM 学习／端到端门槛等待推理档位与方舟错误码适配后重测。

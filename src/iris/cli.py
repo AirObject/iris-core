@@ -29,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     serve = commands.add_parser("serve", help="Serve the local host API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument("--learning-concurrency", type=int, help="Concurrent learning batches, default 2 (1..32)")
     models = commands.add_parser("models", help="Model connection commands")
     models.add_argument("action", choices=["check"])
     ingest = commands.add_parser("ingest", help="Add UTF-8 JSONL messages")
@@ -37,19 +38,21 @@ def main(argv: list[str] | None = None) -> int:
     learn.add_argument("entry_id")
     learn.add_argument("--force", action="store_true", help="Run a waiting batch now")
     evaluation = commands.add_parser("eval", help="Run a frozen evaluation")
-    evaluation.add_argument("kind", choices=["learning", "recall", "learning-export", "learning-score"])
+    evaluation.add_argument("kind", choices=["learning", "recall", "learning-export", "learning-score", "e2e", "e2e-score"])
     evaluation.add_argument("--split", choices=["dev", "holdout", "all"], default="all")
     evaluation.add_argument("--corpus", type=Path, help="UTF-8 JSONL corpus, including files outside the repository")
     evaluation.add_argument("--out", type=Path, help="Report output directory (default: evals/reports)")
     evaluation.add_argument("--judge-runs", type=int, choices=[1, 2],
                             help="Model preview judgments per case (default: 2)")
     evaluation.add_argument("--judge-mode", choices=["model", "external"], default="model",
-                            help="Model preview (default), or learning only with external judging materials")
+                            help="Model preview (default), or collect learning/E2E materials for external judging")
     evaluation.add_argument("--checkpoints", type=Path, help="Completed learning checkpoint signature directory")
     evaluation.add_argument("--checkpoint-report", type=Path, help="Original JSON report for checkpoints without metadata")
     evaluation.add_argument("--materials", type=Path, help="Exported judging material directory")
     evaluation.add_argument("--judgments", type=Path, action="append", help="One round's directory; repeat for two rounds")
-    evaluation.add_argument("--judge-model", help="External executor model name (required for learning-score)")
+    evaluation.add_argument("--wait-timeout", type=float, help="E2E natural learning drain deadline, seconds")
+    evaluation.add_argument("--script", dest="script_ids", action="append", help="E2E script ID; repeat to select scripts")
+    evaluation.add_argument("--judge-model", help="External executor model name (required for learning-score/e2e-score)")
     evaluation.add_argument("--calibrate", action="store_true", help="Calibrate recall thresholds on dev only")
     evaluation.add_argument("--compare-embeddings", action="store_true", help="Compare 1024/2048 dimensions and query prefix on dev only")
     args = parser.parse_args(argv)
@@ -64,7 +67,17 @@ def main(argv: list[str] | None = None) -> int:
                 configs = load_test_models()
             except FileNotFoundError:
                 configs = None
-            uvicorn.run(create_app(args.db, configs=configs), host=host, port=args.port, workers=1)
+            if args.learning_concurrency is not None and not 1 <= args.learning_concurrency <= 32:
+                raise ValueError("learning concurrency must be 1..32")
+            from .runtime_logging import configure_logging
+            configure_logging(Path(args.db).resolve().parent, configs or {})
+            def reload_configs():
+                try:
+                    return load_test_models()
+                except FileNotFoundError:
+                    return {}
+            uvicorn.run(create_app(args.db, configs=configs, config_loader=reload_configs,
+                                  learning_concurrency=args.learning_concurrency), host=host, port=args.port, workers=1)
             return 0
         except (ValueError, OSError) as error:
             print(str(error), file=sys.stderr)
@@ -73,26 +86,35 @@ def main(argv: list[str] | None = None) -> int:
         try:
             for option, kinds in (("checkpoints", ("learning-export",)),
                                   ("checkpoint_report", ("learning-export",)),
-                                  ("materials", ("learning-score",)),
-                                  ("judgments", ("learning-score",)),
-                                  ("judge_model", ("learning-score",)),
-                                  ("corpus", ("learning", "recall")),
-                                  ("judge_runs", ("learning",))):
+                                  ("materials", ("learning-score", "e2e-score")),
+                                  ("judgments", ("learning-score", "e2e-score")),
+                                  ("judge_model", ("learning-score", "e2e-score")),
+                                  ("corpus", ("learning", "recall", "e2e")),
+                                  ("judge_runs", ("learning", "e2e")),
+                                  ("script_ids", ("e2e",)), ("wait_timeout", ("e2e",))):
                 if getattr(args, option) is not None and args.kind not in kinds:
                     raise ValueError(f"--{option.replace('_', '-')} is only available for {', '.join(kinds)}")
-            if args.kind != "learning" and args.judge_mode != "model":
-                raise ValueError("--judge-mode is only available for learning")
+            if args.kind not in ("learning", "e2e") and args.judge_mode != "model":
+                raise ValueError("--judge-mode is only available for learning/e2e")
             if (args.calibrate or args.compare_embeddings) and args.kind != "recall":
                 raise ValueError("--calibrate/--compare-embeddings are only available for recall")
-            if args.kind in ("learning-export", "learning-score") and args.split != "all":
+            if args.kind in ("learning-export", "learning-score", "e2e-score") and args.split != "all":
                 raise ValueError("offline export/scoring uses every case in the supplied run; --split is unavailable")
             if args.judge_mode == "external" and args.judge_runs is not None:
-                raise ValueError("--judge-runs is for model preview; external rounds are supplied to learning-score")
+                raise ValueError("--judge-runs is for model preview; external rounds are supplied to learning-score/e2e-score")
             if args.kind == "learning-export":
                 if args.checkpoints is None or args.out is None:
                     raise ValueError("learning-export requires --checkpoints and --out")
                 path, _ = export_learning_judgments(args.checkpoints, args.out, checkpoint_report=args.checkpoint_report)
                 print(f"Judging materials: {path}")
+                return 0
+            if args.kind == "e2e-score":
+                from .e2e_evaluation import score_e2e_judgments
+                if args.materials is None or not args.judgments or not args.judge_model:
+                    raise ValueError("e2e-score requires --materials, --judgments and --judge-model")
+                path, _ = score_e2e_judgments(args.materials, args.judgments, Path.cwd(),
+                                             judge_model=args.judge_model, out=args.out)
+                print(f"Report: {path}")
                 return 0
             if args.kind == "learning-score":
                 if args.materials is None or not args.judgments or not args.judge_model:
@@ -111,6 +133,18 @@ def main(argv: list[str] | None = None) -> int:
                                          calibrate=args.calibrate, compare_embeddings=args.compare_embeddings)
                 print(f"Report: {path}")
                 return 0
+            if args.kind == "e2e":
+                from .e2e_evaluation import run_e2e_eval
+                path, report = run_e2e_eval(load_test_models(), Path.cwd(), args.split, corpus=args.corpus,
+                                          out=args.out, judge_runs=args.judge_runs or 2,
+                                          wait_timeout=args.wait_timeout if args.wait_timeout is not None else 900,
+                                          judge_mode=args.judge_mode, script_ids=args.script_ids)
+                if args.judge_mode == "external":
+                    print(f"Judging materials: {path}")
+                    return 0
+                print(f"Report: {path}")
+                print(f"E2E: {report['passed']}/{report['total']}; judge runs={report['judge_runs']}")
+                return 0
             options = {"judge_mode": args.judge_mode} if args.judge_mode != "model" else {}
             path, report = run_learning_eval(load_test_models(), Path.cwd(), args.split, corpus=args.corpus,
                                              out=args.out, judge_runs=args.judge_runs or 2, **options)
@@ -124,7 +158,15 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError, ModelError, RuntimeError) as error:
             print(f"Evaluation failed: {error}", file=sys.stderr)
             return 1
-    store = Store(args.db)
+    from .process_lock import StoreLease
+    lease = StoreLease(args.db)
+    try:
+        lease.__enter__()
+        store = Store(args.db)
+    except (ValueError, OSError) as error:
+        lease.__exit__()
+        print(str(error), file=sys.stderr)
+        return 1
     try:
         if args.command == "setup":
             print(setup_role(store, args.name, args.background, args.timezone))
@@ -184,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             gateway.close()
     finally:
         store.close()
+        lease.__exit__()
     return 1
 
 

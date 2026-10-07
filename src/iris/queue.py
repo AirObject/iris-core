@@ -22,6 +22,21 @@ PACE = {
 FOCUS = re.compile(r"@|记住|别忘了")
 
 
+def pace_parameters(pace):
+    if isinstance(pace, str):
+        if pace in PACE:
+            return PACE[pace]
+        try:
+            pace = json.loads(pace)
+        except ValueError as error:
+            raise ValueError("invalid learning pace") from error
+    limits = {"count": 1000, "idle_seconds": 86400, "max_wait_seconds": 604800}
+    if not isinstance(pace, dict) or set(pace) != set(limits) or any(
+            type(pace[key]) is not int or not 1 <= pace[key] <= limit for key, limit in limits.items()):
+        raise ValueError("custom pace needs count (1..1000), idle_seconds (1..86400), max_wait_seconds (1..604800)")
+    return pace["count"], timedelta(seconds=pace["idle_seconds"]), timedelta(seconds=pace["max_wait_seconds"])
+
+
 @dataclass(frozen=True)
 class Batch:
     id: int
@@ -59,7 +74,7 @@ def should_learn(pending_count: int, oldest_at: datetime | None, latest_at: date
                  latest_content: str = "") -> bool:
     if pending_count <= 0:
         return False
-    count, idle, max_wait = PACE[pace]
+    count, idle, max_wait = pace_parameters(pace)
     if role_name and role_name in latest_content:
         focus = True
     focus = focus or bool(FOCUS.search(latest_content))
@@ -107,11 +122,13 @@ def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, 
                 account_id: str | None = None, scene_identity: str | None = None,
                 quote_author: str | None = None, quote_author_account_id: str | None = None,
                 quote_content: str | None = None,
-                pace: str = "standard", _conn: sqlite3.Connection | None = None) -> int:
+                pace: str | dict = "standard", _conn: sqlite3.Connection | None = None) -> int:
     if kind not in ("message", "self_output", "action_result", "event"):
         raise ValueError("invalid message type")
-    if not entry_id or not dedupe_key or pace not in PACE:
+    if not entry_id or not dedupe_key:
         raise ValueError("entry, dedupe key, and pace are required")
+    pace_parameters(pace)
+    stored_pace = dumps(pace) if isinstance(pace, dict) else pace
     try:
         occurrence = datetime.fromisoformat(occurred_at)
     except ValueError as exc:
@@ -122,7 +139,7 @@ def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, 
         raise ValueError("message exceeds 32 KB")
     with (nullcontext(_conn) if _conn is not None else store.write()) as conn:
         conn.execute("INSERT OR IGNORE INTO entries(id,name,platform,kind,pace) VALUES(?,?,?,?,?)",
-                     (entry_id, entry_name, platform, entry_kind, pace))
+                     (entry_id, entry_name, platform, entry_kind, stored_pace))
         existing = conn.execute("SELECT id FROM messages WHERE entry_id=? AND dedupe_key=?", (entry_id, dedupe_key)).fetchone()
         if existing:
             return int(existing[0])
@@ -163,7 +180,7 @@ def form_batch(store: Store, entry_id: str, prompt_version: str, *, target_count
         pending = conn.execute("SELECT id,content FROM messages WHERE entry_id=? AND learning_state='pending' ORDER BY id", (entry_id,)).fetchall()
         if not pending:
             return None
-        maximum = target_count or PACE[entry["pace"]][0]
+        maximum = target_count or pace_parameters(entry["pace"])[0]
         selected: list[int] = []
         total = 0
         for row in pending:

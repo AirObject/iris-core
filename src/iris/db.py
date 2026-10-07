@@ -47,13 +47,13 @@ class Store:
         self._writer.execute("INSERT OR IGNORE INTO runtime_settings(key,value_json) VALUES('retrieval',?)",
             (files("iris").joinpath("retrieval_defaults.json").read_text(encoding="utf-8"),))
 
-    def recover_inflight(self) -> None:
+    def recover_inflight(self, *, current=None) -> None:
         # A running batch had no committed result. Count the interrupted attempt once.
         with self.write() as conn:
             for batch in conn.execute("SELECT id,entry_id,target_ids,attempt_count FROM batches WHERE state='running'").fetchall():
                 count = batch["attempt_count"] + 1
                 state = "abandoned" if count >= 4 else "waiting"
-                stamp = now()
+                stamp = current().isoformat() if current else now()
                 number = conn.execute("SELECT COALESCE(MAX(number),0)+1 FROM batch_attempts WHERE batch_id=?", (batch["id"],)).fetchone()[0]
                 conn.execute("""INSERT INTO batch_attempts(batch_id,number,started_at,finished_at,parse_status,error,duration_ms)
                     VALUES(?,?,?,?,'failed','interrupted by restart',0)""", (batch["id"], number, stamp, stamp))

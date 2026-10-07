@@ -7,7 +7,7 @@ import difflib
 import json
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from importlib.resources import files
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -98,10 +98,11 @@ def _memory_ref(value: Any) -> str | None:
 
 
 class LearningEngine:
-    def __init__(self, store: Store, gateway: Gateway):
+    def __init__(self, store: Store, gateway: Gateway, *, clock=None):
         self.store = store
         self.gateway = gateway
         self.retrieval = Retrieval(store, gateway)
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
 
     def _snapshot(self, batch: Batch) -> dict[str, Any]:
         ids = batch.history_ids + batch.target_ids + batch.future_ids
@@ -612,8 +613,10 @@ class LearningEngine:
 
     def _fail(self, batch: Batch, attempt: dict[str, Any], error: ModelError) -> str:
         with self.store.write() as conn:
-            count = batch.attempt_count + 1
-            if error.category == "content_rejection":
+            count = batch.attempt_count + (0 if error.paused else 1)
+            if error.paused:
+                state, message_state, gap = "waiting", "batched", None
+            elif error.category == "content_rejection":
                 state, message_state, gap = "refused", "refused", "content_rejection"
             elif count >= 4:
                 state, message_state, gap = "abandoned", "abandoned", "attempts_exhausted"
@@ -622,7 +625,7 @@ class LearningEngine:
             attempt["error"] = error.summary
             attempt["parse_status"] = "failed"
             self._write_attempt(conn, batch.id, attempt)
-            next_at = (datetime.fromisoformat(now()) + timedelta(seconds=RETRY_DELAYS[min(count - 1, 2)])).isoformat() if state == "waiting" else None
+            next_at = (self.clock() + timedelta(seconds=RETRY_DELAYS[min(count - 1, 2)])).isoformat() if state == "waiting" and not error.paused else None
             conn.execute("UPDATE batches SET state=?,attempt_count=?,next_retry_at=?,last_error=?,finished_at=? WHERE id=?",
                          (state, count, next_at, error.summary, now() if state != "waiting" else None, batch.id))
             if state != "waiting":
@@ -640,10 +643,15 @@ class LearningEngine:
         if batch.state != "waiting":
             raise ValueError(f"batch {batch_id} is {batch.state}")
         with self.store.write() as conn:
-            row = conn.execute("SELECT next_retry_at,attempt_count FROM batches WHERE id=?", (batch_id,)).fetchone()
+            row = conn.execute("SELECT state,next_retry_at,attempt_count FROM batches WHERE id=?", (batch_id,)).fetchone()
+            if row["state"] != "waiting":
+                raise ValueError("batch is already claimed")
+            if conn.execute("SELECT 1 FROM batches WHERE entry_id=? AND id<? AND state IN ('waiting','running')",
+                            (batch.entry_id, batch_id)).fetchone():
+                raise ValueError("earlier batch must finish first")
             if row["attempt_count"] >= 4:
                 raise ValueError("batch has exhausted attempts")
-            if row["next_retry_at"] and not force and datetime.fromisoformat(row["next_retry_at"]) > datetime.fromisoformat(now()):
+            if row["next_retry_at"] and not force and datetime.fromisoformat(row["next_retry_at"]) > self.clock():
                 raise ValueError("batch is waiting for retry time")
             conn.execute("UPDATE batches SET state='running',next_retry_at=NULL WHERE id=?", (batch_id,))
         started = time.monotonic()

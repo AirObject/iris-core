@@ -43,14 +43,14 @@ def test_embedding_deadline_is_two_seconds_without_retries_or_waiting_in_transac
     seen = []
     class Future:
         def result(self, timeout):
-            assert timeout == 2
+            assert timeout == pytest.approx(2, abs=.01)
             raise FutureTimeout()
         def cancel(self):
             seen.append("cancel")
     class Pool:
         def submit(self, *args, **kwargs):
             assert not store._writer.in_transaction
-            assert kwargs["timeout"].read == kwargs["timeout"].connect == 2
+            assert kwargs["timeout"].read == kwargs["timeout"].connect == pytest.approx(2, abs=.01)
             seen.append("request")
             return Future()
     gateway = Gateway({"embedding": ModelConfig("https://example.invalid", "", "fake-vector")}, store,

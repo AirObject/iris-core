@@ -168,7 +168,7 @@ def test_external_corpus_and_out_use_production_path_and_respect_split(tmp_path,
     assert path.parent == out and path.with_suffix(".json").exists()
     assert report["corpus"]["cases"] == 1 and report["cases"][0]["id"] == "external-dev"
     assert report["metrics"]["all"]["alias_recall"] == 1
-    assert report["timeouts_seconds"] == {"learning": 120, "judge": 240}
+    assert report["timeouts_seconds"] == {"learning": 180, "judge": 240}
     assert len(report["details"]) == 1
     assert report["details"][0]["actual"]["memories"]
     assert len(report["details"][0]["judges"]) == 2
