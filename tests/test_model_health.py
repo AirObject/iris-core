@@ -10,7 +10,7 @@ from iris.models import Gateway, ModelError
 
 
 @pytest.mark.parametrize(("status", "body", "state"), [
-    (401, {}, "invalid_key"), (403, {}, "invalid_key"), (404, {}, "configuration_error"),
+    (401, {}, "invalid_key"), (403, {}, "account_problem"), (404, {}, "configuration_error"),
     (402, {}, "account_problem"), (429, {"error": {"code": "insufficient_quota"}}, "account_problem"),
     (400, {"error": {"code": "content_filter"}}, "normal"),
 ])
@@ -49,7 +49,7 @@ def test_three_transport_errors_pause_probe_backoff_restart_and_recover(store):
             assert caught.value.paused
             state = health.snapshot()["chat"]
             assert state["state"] == "temporarily_unavailable" and state["consecutive_errors"] == 3
-            assert clock.elapsed == 11
+            assert clock.elapsed == 6  # Both valid Retry-After headers are 3 seconds.
             for _ in range(5):
                 with pytest.raises(ModelError):
                     gateway.chat([], "learning")

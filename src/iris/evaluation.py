@@ -65,7 +65,8 @@ def _case_data(store: Store) -> dict[str, Any]:
         attempts = [dict(r) for r in conn.execute("""SELECT a.number,a.parse_status,a.duration_ms,a.error,
             a.raw_output,a.batch_id FROM batch_attempts a ORDER BY a.id""")]
         calls = [dict(r) for r in conn.execute("""SELECT purpose,prompt_tokens,completion_tokens,reasoning_tokens,result_category,
-            finish_reason,batch_id,duration_ms,error_summary
+            finish_reason,batch_id,duration_ms,error_summary,status_code,timed_out,
+            reasoning_effort,reasoning_present,reasoning_chars
             FROM model_calls ORDER BY id""")]
         batches = [dict(r) for r in conn.execute("SELECT id,state,target_ids,result_json FROM batches ORDER BY id")]
         identities = [dict(r) for r in conn.execute("""SELECT s.id,s.name,p.account_id FROM subjects s
@@ -341,6 +342,7 @@ def _report_markdown(report: dict[str, Any]) -> str:
                "对话模型判分（预览，不作门槛依据）；判分与学习使用同一模型。")
     lines = ["# Iris 学习评测", "", f"时间：{report['created_at']}",
              f"学习提示词：`{report['prompt_version']}`；评分说明：`{report['scoring_version']}`；学习模型：`{report['chat_model']}`；embedding：`{report['embedding_model']}`。",
+             f"对话推理档位：`{report.get('chat_reasoning_effort', '未知（旧记录）') or '未配置（不发送）'}`。",
              f"判分方式：{'外部' if external else '对话模型预览'}；判分模型：`{report.get('judge_model', report['chat_model'])}`。",
              f"判分材料 SHA-256：`{report.get('materials_sha256') or '不适用'}`。",
              f"学习请求（含重试和 JSON 修正）总超时 {report.get('timeouts_seconds', {}).get('learning', LEARNING_TOTAL_TIMEOUT)} 秒；"
@@ -533,7 +535,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     sources = sorted(p for p in Path(__file__).parent.rglob("*") if p.suffix in (".py", ".md", ".sql", ".json"))
     source_hash = hashlib.sha256(b"".join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest()
     signature = hashlib.sha256(json.dumps({"sources": source_hash, "cases": cases, "judge_runs": judge_runs if judge_mode == "model" else 0,
-        "models": {k: (v.base_url, v.model, v.dimensions) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        "models": {k: (v.base_url, v.model, v.dimensions, v.reasoning_effort if k == "chat" else None) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     checkpoints = (reports / ".lc" if not reports.is_relative_to(root) else root / "data/lc") / signature[:16]
     checkpoints.mkdir(parents=True, exist_ok=True)
     # The shortened path is not the identity: verify all 256 bits before reuse.
@@ -581,7 +583,8 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
                 "resumed_cases": resumed, "elapsed_seconds": round(time.monotonic() - started, 1),
                 "prompt_version": PROMPT_VERSION, "scoring_version": SCORING_VERSION,
                 "timeouts_seconds": {"learning": LEARNING_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT},
-                "chat_model": configs["chat"].model, "embedding_model": configs["embedding"].model or "unconfigured",
+                "chat_model": configs["chat"].model, "chat_reasoning_effort": configs["chat"].reasoning_effort,
+                "embedding_model": configs["embedding"].model or "unconfigured",
                 "corpus": _corpus_info(cases), "cases": [{"id": case["id"]} for case in cases]}
     save_checkpoint(checkpoints / "metadata.json", metadata)
     if judge_mode == "external":
@@ -619,7 +622,7 @@ def _write_learning_report(rows: list[dict[str, Any]], root: Path, reports: Path
         old = json.loads(previous_path.read_text(encoding="utf-8"))
         previous = {"path": previous_path.name, "metrics": old.get("metrics", {}), "corpus": old.get("corpus"),
                     "scoring_version": old.get("scoring_version"), "judge_runs": old.get("judge_runs", 2),
-                    "chat_model": old.get("chat_model"), "judge_mode": old.get("judge_mode", "model")}
+                    "chat_model": old.get("chat_model"), "chat_reasoning_effort": old.get("chat_reasoning_effort"), "judge_mode": old.get("judge_mode", "model")}
     shuffled = rows[:]
     random.Random(20260928).shuffle(shuffled)
     sample_cases = math.ceil(len(rows) * 0.1)
@@ -640,7 +643,9 @@ def _write_learning_report(rows: list[dict[str, Any]], root: Path, reports: Path
               "judge_inconsistencies": [item for row in rows for item in row["judge_inconsistencies"]],
               "parse_failures": parse_failures,
               "generation_calls": [{"case": row["case"]["id"], **{key: call.get(key) for key in
-                                     ("purpose", "batch_id", "finish_reason", "completion_tokens", "duration_ms", "result_category")}}
+                                     ("purpose", "batch_id", "finish_reason", "prompt_tokens", "completion_tokens", "reasoning_tokens",
+                                      "duration_ms", "result_category", "status_code", "timed_out",
+                                      "reasoning_effort", "reasoning_present", "reasoning_chars")}}
                                    for row in rows for call in row["actual"]["calls"]
                                    if call["purpose"] in ("learning", "learning_repair", "learning_judge", "learning_judge_repair")],
               "spot_check": [{"id": row["case"]["id"], "split": row["case"]["split"], "must": row["case"]["must"],
@@ -673,6 +678,7 @@ def _write_learning_report(rows: list[dict[str, Any]], root: Path, reports: Path
 MATERIAL_FORMAT_VERSION = 1
 _RUN_FIELDS = ("split", "checkpoint_signature", "source_sha256", "resumed_cases", "elapsed_seconds",
                "prompt_version", "scoring_version", "timeouts_seconds", "chat_model", "embedding_model", "corpus")
+_OPTIONAL_RUN_FIELDS = ("chat_reasoning_effort",)  # Older materials remain scoreable without inventing a setting.
 _ACTUAL_FIELDS = ("memories", "links", "goals", "attempts", "calls", "batches", "identities", "aliases")
 _MEMORY_VERDICTS = ("correct_worth", "forbidden", "evidence_correct", "attribution_correct")
 
@@ -724,6 +730,9 @@ def _check_learning_metadata(metadata: dict[str, Any], rows: list[dict[str, Any]
         value = metadata.get(key)
         if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
             problems.append(f"metadata {key} must be a SHA-256 fingerprint")
+    effort = metadata.get("chat_reasoning_effort")
+    if effort is not None and (not isinstance(effort, str) or not effort.strip()):
+        problems.append("metadata chat_reasoning_effort must be a nonempty string or null")
     if metadata.get("scoring_version") != SCORING_VERSION:
         problems.append(f"metadata scoring_version must be {SCORING_VERSION}")
     if not isinstance(metadata.get("chat_model"), str) or not metadata.get("chat_model", "").strip():
@@ -783,7 +792,7 @@ def export_learning_judgments(checkpoints: Path, out: Path, *,
     if out.exists() and any(out.iterdir()):
         raise ValueError(f"material output directory must be empty: {out}")
     out.mkdir(parents=True, exist_ok=True)
-    run = {key: metadata[key] for key in _RUN_FIELDS}
+    run = {key: metadata[key] for key in (*_RUN_FIELDS, *_OPTIONAL_RUN_FIELDS) if key in metadata}
     manifest = {"format_version": MATERIAL_FORMAT_VERSION, "evaluation": "learning", "run": run,
                 "run_sha256": _write_json(out / "run.json", {"rows": rows}), "cases": []}
     (out / "scoring.md").write_text(SCORING, encoding="utf-8")

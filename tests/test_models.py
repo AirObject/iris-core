@@ -52,9 +52,9 @@ def test_retry_after_then_backoff_and_reasoning_usage(store):
     def handler(request):
         return sequence.pop(0)
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    gateway = Gateway(configs(), store, client=client, sleeper=slept.append)
+    gateway = Gateway(configs(), store, client=client, sleeper=slept.append, jitter=lambda low, high: 0)
     assert gateway.chat([{"role": "user", "content": "test"}], "test").content == '{"ok":true}'
-    assert slept == [3, 8]
+    assert slept == [3, 4]
     with store.read() as conn:
         calls = conn.execute("SELECT result_category,reasoning_tokens,error_summary FROM model_calls ORDER BY id").fetchall()
     assert [c[0] for c in calls] == ["retryable", "retryable", "success"]
@@ -171,14 +171,14 @@ def test_generation_has_hard_total_timeout_and_two_retries(store, purpose, deadl
     def sleep(seconds):
         sleeps.append(seconds)
         clock.advance(seconds)
-    gateway = Gateway(configs(), store, sleeper=sleep, monotonic=clock.monotonic)
+    gateway = Gateway(configs(), store, sleeper=sleep, monotonic=clock.monotonic, jitter=lambda low, high: 0)
     gateway._pool.shutdown(wait=False)
     gateway._pool = Pool()
     with pytest.raises(ModelError) as caught:
         gateway.chat([{"role": "user", "content": "test"}], purpose)
     assert caught.value.category == "retryable"
-    assert sleeps == [2, 8]
-    assert seen == [deadline, deadline - 3, deadline - 12]
+    assert sleeps == [2, 4]
+    assert seen == [deadline, deadline - 3, deadline - 8]
 
 
 def test_provider_account_status_is_classified_without_body_in_record(store):
