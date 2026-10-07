@@ -46,7 +46,7 @@ def edit_memory(store: Store, memory_id: int, expected_revision: int, *, content
         row = conn.execute("SELECT * FROM memories WHERE id=? AND lifecycle='active'", (memory_id,)).fetchone()
         if row is None or row["revision"] != expected_revision:
             return False
-        before = {key: row[key] for key in ("content", "kind", "stance", "belief", "importance", "event_time")}
+        before = {key: row[key] for key in ("content", "kind", "stance", "belief", "importance", "event_time", "lifecycle")}
         after = {**before, "content": content.strip()}
         conn.execute("UPDATE memories SET content=?,revision=revision+1,updated_at=? WHERE id=?",
                      (content.strip(), now(), memory_id))
@@ -66,3 +66,20 @@ def set_subject_link_status(store: Store, link_id: int, status: str) -> None:
         raise ValueError("invalid link status")
     with store.write() as conn:
         conn.execute("UPDATE subject_links SET status=? WHERE id=?", (status, link_id))
+
+
+def delete_memory(store: Store, memory_id: int, expected_revision: int, *, actor: str = "admin") -> bool:
+    """Revoke one object, retaining its ID, history, and shared source messages."""
+    with store.write() as conn:
+        row = conn.execute("SELECT * FROM memories WHERE id=? AND lifecycle!='deleted'", (memory_id,)).fetchone()
+        if row is None or row["revision"] != expected_revision:
+            return False
+        before = {key: row[key] for key in ("content", "kind", "stance", "belief", "importance", "event_time", "lifecycle")}
+        after = {**before, "lifecycle": "deleted"}
+        stamp = now()
+        conn.execute("UPDATE memories SET lifecycle='deleted',revision=revision+1,updated_at=?,embedding=NULL,embedding_model=NULL WHERE id=?",
+                     (stamp, memory_id))
+        conn.execute("""INSERT INTO memory_revisions(memory_id,revision_before,revision_after,before_json,after_json,
+            reason,actor,created_at) VALUES(?,?,?,?,?,?,?,?)""",
+            (memory_id, expected_revision, expected_revision + 1, dumps(before), dumps(after), "manual delete", actor, stamp))
+        return True

@@ -22,6 +22,8 @@ from .retrieval import Retrieval
 from .scheduler import Scheduler
 from .service_status import service_status, add_health_hints
 from .process_lock import StoreLease
+from .admin import install_admin
+from .trial import TrialReplies
 
 
 def loopback_host(host: str) -> str:
@@ -140,6 +142,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             app.state.health = health
             app.state.scheduler = scheduler
             app.state.retrieval = Retrieval(active_store, active_gateway)
+            app.state.trial_replies = TrialReplies(active_store, active_gateway, health)
             scheduler.start()
             app.state.ready = True
             yield
@@ -217,4 +220,5 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     def status():
         return service_status(app.state.store, app.state.scheduler, app.state.health)
 
+    install_admin(app)
     return app

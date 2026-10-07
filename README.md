@@ -1,4 +1,4 @@
-# Iris M1：学习、召回、后台调度与宿主接口
+# Iris M1：试用对话、记忆管理与宿主接口
 
 需要 [uv](https://docs.astral.sh/uv/) 和 Python 3.12 及以上。开发设备为 macOS，仓库内 `.venv` 使用 Python 3.13；以下命令也适用于 Linux 和 Windows PowerShell：
 
@@ -28,7 +28,56 @@ uv run iris serve
 uv run iris --db data/iris.db serve --host 127.0.0.1 --port 8080
 ```
 
-默认地址为 `http://127.0.0.1:8080`，交互接口文档在 `/docs`，OpenAPI 在 `/openapi.json`。服务启动时恢复中断批次，然后自动调度学习。没有模型配置也能启动、接收和使用全文检索；配置 embedding 后可以融合向量检索。当前没有管理员密码和宿主令牌，只允许监听回环地址（`127.0.0.1`、`::1`、`localhost`）。首次设置、界面、鉴权和 secrets.json 留到后续 PR。
+默认地址为 `http://127.0.0.1:8080`，打开即进入中文试用界面；交互接口文档在 `/docs`，OpenAPI 在 `/openapi.json`。服务启动时恢复中断批次，然后自动调度学习。没有模型配置也能启动、接收和使用全文检索；配置 embedding 后可以融合向量检索。当前没有管理员密码和宿主令牌，只允许监听回环地址（`127.0.0.1`、`::1`、`localhost`）。首次设置、管理员密码与会话、模型设置和 secrets.json 是界面第二步；本步仍通过现有命令行与测试 TOML 配置角色和模型。
+
+## 中文试用与管理界面
+
+服务根路径 `/` 提供 React＋Vite＋TypeScript 界面，适配桌面和手机；`/#/trial` 是试用对话，`/#/memories` 是记忆管理，`/#/status` 是运行状态。构建产物已经提交到 `src/iris/web/` 并随 wheel 分发，运行服务不需要 Node，也不从 CDN 加载脚本或字体。
+
+- **试用对话**：先创建一个群聊或私聊入口，默认发言人“我（用户）”是他人主体，区别于角色的 `self`。可添加虚拟发言人；同一发言人跨试用入口保持身份，同名新增发言人仍是独立主体。入口默认实时节奏，可请求立即学习。消息列表每次取最近 100 条，支持读取更早消息。
+- **角色回复**：默认关闭。开启后通过现有 `prepare` 取 persona、记忆、本入口近期消息、状态和目标，再用 `trial_reply_v1` 和 `json_chat` 生成 JSON。只有校验后的 `reply` 正文发布为角色实际输出 `self_output`，进入正常学习队列；失败保留原消息且不发布输出。每入口最多一个回复调用，同一消息成功回复后重试复用已发布输出（含服务重启后）；没有成功输出且原消息已超出近期 20 条上下文时拒绝生成。不自动把召回记忆标成已使用。对外 `/api/v1` 继续只准备材料，不生成回复。
+- **学习动态**：每两秒刷新待学习数量、当前／最近批次、本入口最近 12 条新增或更新记忆，可展开来源与前后文。接收、学习成功、形成记忆、等待重试、放弃和拒绝分别显示；回复准备结果只在发送或请求回复时获取，轮询不会反复记召回记录。Persona、当前状态和目标为只读；当前状态仍是 M1 空分区。
+- **记忆管理**：按正文／标签文本、人物、类型、出处入口、事件日期筛选（无事件日期时用创建时间），按文本相关度、更新时间或保留强度排序，分页每页 30 条。全文使用已有 jieba 索引，管理浏览不调用模型、不写召回记录。已删除历史可按原正文子串查询。详情显示分数、人物、来源前后文、派生关系、修订和人工操作、真实召回／使用次数。正文编辑和删除都携带 `expected_revision`；409 时保留草稿并要求重新读取最新修订。
+- **删除**：只把目标对象标为 deleted，保留它的 ID、来源和修订，不删除共享消息或其他记忆；原 ID 不会复活，也不参与普通／深度召回。有效记忆可编辑／删除，遗忘与已删除历史只读。置顶、遗忘、恢复、彻底清除与按旧内容新建留到 M2。
+- **运行状态**：复用既有状态数据，显示对话／embedding 的健康与错误、队列、今日 token 用量、近 24 小时学习耗时／超时，以及最近用途和调度错误摘要。没有定价信息时不估算费用；状态接口不提供滚动日志全文。
+
+管理请求和响应使用 UTF-8 JSON，额外字段和非法值被拒绝；消息正文沿用 32KB UTF-8 上限。所有管理接口在 `/admin/api`，与宿主接口分开：
+
+| 方法与路径 | 用途 |
+| --- | --- |
+| `GET /admin/api/trial` | 试用入口、发言人、角色名 |
+| `POST /admin/api/trial/entries` | 建立入口：`name`、`kind=group/private` |
+| `POST /admin/api/trial/speakers` | 添加虚拟发言人：`name` |
+| `GET /admin/api/trial/entries/{id}` | 对话、最近记忆与角色上下文；可传 `before` 读取早期消息 |
+| `POST /admin/api/trial/entries/{id}/messages` | 接收：`speaker_id`、`content`、`dedupe_key` |
+| `POST /admin/api/trial/entries/{id}/learn` | 请求立即学习，暂停时仍接受请求 |
+| `POST /admin/api/trial/entries/{id}/prepare` | 获取回复准备材料 |
+| `POST /admin/api/trial/entries/{id}/reply` | 为 `message_id` 生成并发布试用回复 |
+| `GET /admin/api/catalog` | 记忆筛选用人物、入口目录 |
+| `GET /admin/api/memories` | `text/person_id/kind/entry_id/time_from/time_to/lifecycle/sort/limit/offset` |
+| `GET /admin/api/memories/{id}` | 详情（包括已删除历史） |
+| `PATCH /admin/api/memories/{id}` | 编辑正文：`expected_revision`、`content` |
+| `DELETE /admin/api/memories/{id}` | 撤销对象：JSON 中传 `expected_revision` |
+| `GET /admin/api/status` | 现有服务状态的管理入口 |
+
+编辑／删除在同一事务中写 `memory_revisions`；该记录包含对象、操作者、时间、前后内容、动作理由，详情分别投影为修订历史与人工操作记录。不新增迁移或第二套操作日志。人工编辑与在途学习的冲突通过修订号拦截；**后续新批次不能覆盖人工编辑的长期保护由并行的学习会话补齐，本分支尚不提供该保护**（设计 12.5）。来源修订不匹配的派生记忆在详情标为待复核，实际重整留到 M2。
+
+只有修改界面时需要 [Node 与 npm](https://vite.dev/guide/)（Node 22.12 及以上）：
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+cd ..
+uv run pytest
+uv run --locked --isolated --python 3.12 pytest
+uv build
+```
+
+`npm test` 使用 Vitest＋Testing Library＋jsdom，覆盖发送和状态区分、角色回复失败、编辑冲突、删除确认、筛选与状态页。`npm run build` 先执行 TypeScript 检查，再更新 Python 包内的资源；源码和产物要一起提交。`npm run format` 格式化前端。开发时先启动 `iris serve`，再在 `frontend/` 执行 `npm run dev`；Vite 仅监听回环地址，代理 `/admin/api` 到本机 8080 端口。静态包没有前端开发依赖。
+
+## 宿主接入
 
 下面的 Python 示例依次调用接收消息、回复准备和使用反馈；请求与响应均使用 UTF-8 JSON：
 
