@@ -21,7 +21,7 @@ RRF_K = 60
 CANDIDATES = 200
 CONVERSATION_QUERIES = ('latest_1', 'latest_2', 'latest_3', 'window_5',
                         'session_6', 'speaker_6', 'adaptive_6')
-CONVERSATION_QUERY = 'latest_2'
+CONVERSATION_QUERY = 'adaptive_6'
 # Grammatical references only; no domain vocabulary or answer-attribute list.
 CONTEXT_REFERENCE = re.compile(r'(?:[他她它]们?|[这那](?:个|些|里|边|儿|[位家段件种次份条张台杯本只座辆部间双场])?)')
 DEFAULTS = json.loads(files("iris").joinpath("retrieval_defaults.json").read_text(encoding="utf-8"))

@@ -172,7 +172,7 @@ round2/
 
 GLM 阶段全部公开样本按 dev 使用，命令和报告仍尊重冻结文件的 split，历史 holdout 仅作回归分组，不代表未见验收。PR #5 原选参只使用 v1 38 条、v2 44 条 dev 和对话集 24 条，共 106 条；原 v2 的 22 条历史 holdout 已分析，不参与选参。新设备第一阶段运行全部 128 条复现，未重新选参。第四轮按规划者要求加入短词集后，在全部 122 条 dev 上按原规则重新标定，并在全部 144 条上做最终对照；原 v2 的 22 条历史 holdout 仍不参与选参。规划者的隐藏集在仓库外，执行者不得寻找或读取。
 
-PR #18 第二轮新增的 [对话 v3](recall_conversation_v3_notes.md) 覆盖话题切换、插话、远处省略和空泛催促。三个预定候选只在对话 v1/v2/v3 的 68 条 dev 上比较；结果和逐查询返回见 [第二轮报告](reports/conversation-prepare-20261008.md#第二轮)。三种候选都未通过 v2 relevant 精确率守则，默认仍保留第一轮 latest_2；内部 conversation_query 候选参数用于复现比较，不代表已选定的新默认。
+PR #18 第二轮新增的 [对话 v3](recall_conversation_v3_notes.md) 覆盖话题切换、插话、远处省略和空泛催促。三个预定候选只在对话 v1/v2/v3 的 68 条 dev 上比较；结果和逐查询返回见 [第二轮报告](reports/conversation-prepare-20261008.md#第二轮)。三个候选混合 Q 相同，adaptive_6 的 relevant 精确率最高。规划者结合预演 5/5 命中及其独立维护的隐藏集复核，批准 adaptive_6 为默认，并明确接受守则例外：conversation_v2 relevant 精确率由 0.8182 降至 0.7500（下降 0.0682），conversation_v3 无答案误返由 1/4 增至 3/4。这不是原精确率守则通过，也不修改通用守则或冻结标签。内部 conversation_query 参数仍保留其他候选供复现比较。
 
 标准输入是 UTF-8 JSON：
 
@@ -197,7 +197,7 @@ PR #18 第二轮新增的 [对话 v3](recall_conversation_v3_notes.md) 覆盖话
 
 记忆字段：`id`、`content`，以及可选的 `about`（名字）、`speaker`（默认“我”）、`kind`、`stance`、`belief`、`importance`、`retention`、`event_time`、`world`、`lifecycle`、`tags`、`source_message_ids`。顶层 `subjects` 支持主体名称与 aliases；本人别名写入 subject_aliases，不伪造关系记忆。来源消息必须出现在某个查询的 `recent_messages` 中且 ID 全局唯一；未列来源的记忆视为有未提供的历史来源，不因当前消息剔除。
 
-查询字段：`id`、`split`（缺省 dev）、`text`（省略为空字符串，显式 null 使用最新两条他人消息）、`relevant`（记忆 ID 到 1—3 相关等级的映射，列表简写等价于全为 1）。`participants` 省略为空列表；显式 null 才从近期 20 条消息发送者推断，排除我与场景，按最近发言先后排列。此处省略字段的兼容行为与 HTTP prepare 的默认推断不同。`entry_kind` 缺省 group，可选 private／live；`categories` 是可重叠的分类标签。`known_memory_ids` 排除宿主已有记忆；`recent_messages` 模拟真正入库的本入口消息，`recent_limit` 缺省 20；消息的 `kind` 缺省 message，也支持 self_output／action_result／event。自动查询只使用 kind=message 且发送者不是 self／scene 的最新两条，只有最新一条中的点名作为锚点。角色回复及事件仍保留在返回的近期上下文里。已在近期消息或宿主上下文中的信息不应列入 relevant。可选 `mode:"search"` 和 `filters` 测试结构筛选，其延迟不计入 prepare P95。默认 `as_of` 固定为 2026-09-29 12:00 UTC，只影响排名时间权重。
+查询字段：`id`、`split`（缺省 dev）、`text`（省略为空字符串，显式 null 使用下述 adaptive_6 组成）、`relevant`（记忆 ID 到 1—3 相关等级的映射，列表简写等价于全为 1）。`participants` 省略为空列表；显式 null 才从近期 20 条消息发送者推断，排除我与场景，按最近发言先后排列。此处省略字段的兼容行为与 HTTP prepare 的默认推断不同。`entry_kind` 缺省 group，可选 private／live；`categories` 是可重叠的分类标签。`known_memory_ids` 排除宿主已有记忆；`recent_messages` 模拟真正入库的本入口消息，`recent_limit` 缺省 20；消息的 `kind` 缺省 message，也支持 self_output／action_result／event。自动查询只使用 kind=message 且发送者不是 self／scene 的消息：检查最近 20 条，取最新消息及其之前五分钟内连续的他人消息，最多 6 条，按原顺序拼接；超过五分钟、无法解析或逆序时间会中断前文。角色输出、行动结果和场景事件不进入查询。可用消息超过两条时，若最新消息本身足够完整（既有 coverage_tokens 至少 6 个不同词项）、又不含第三人称／指示代词，只用最新消息；含指代或内容不足时带前文。只有 1—2 条可用消息时全部保留，这是冻结 adaptive_6 的短上下文边界。只有最新一条他人消息中的姓名／别名作锚点；显式 text（包括空字符串）行为不变。角色回复及事件仍保留在返回的近期上下文里。已在近期消息或宿主上下文中的信息不应列入 relevant。可选 `mode:"search"` 和 `filters` 测试结构筛选，其延迟不计入 prepare P95。默认 `as_of` 固定为 2026-09-29 12:00 UTC，只影响排名时间权重。
 
 Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1)`，以理想前八条归一化。两者计全部返回，包含人物要点。无关误返率只统计无答案查询是否有 `reason=relevant` 返回，不计人物要点。relevant 标注精确率为标注相关的 relevant 返回数／全部 relevant 返回数，跨查询合并计数；平均返回数仅作诊断。空分母显示不可计算，类别可重叠；v1 无分类标签，其无答案查询仍计入总体误返。报告按语料、split、类别列指标，逐条保存返回 ID 和 reason。
 
@@ -211,9 +211,9 @@ Recall@8 是有答案查询的宏平均；nDCG@8 使用 `(2^grade-1)/log2(rank+1
 
 ## 对话中准备的查询组成（2026-10-08）
 
-[长对话 dev 与冻结方案](recall_conversation_v2_notes.md) 包含角色输出、话题切换、旧点名、否认记得、省略问句和跨入口。四个预定候选为最新 1／2／3 条他人消息，以及最近 5 条消息去掉角色输出、行动结果和事件。只在 recall_conversation_v1＋v2 的 48 条 dev 上用现有 Q／精确率／误返选择规则比较；其余集合只检查回归，不参与选择。最终采用最新两条，保留省略问句所需前文；只有最新一条点名的人限定范围。
+[长对话 dev 与冻结方案](recall_conversation_v2_notes.md) 包含角色输出、话题切换、旧点名、否认记得、省略问句和跨入口。四个预定候选为最新 1／2／3 条他人消息，以及最近 5 条消息去掉角色输出、行动结果和事件。只在 recall_conversation_v1＋v2 的 48 条 dev 上用现有 Q／精确率／误返选择规则比较；其余集合只检查回归，不参与选择。第一轮采用最新两条，保留省略问句所需前文；第二轮在新增 v3 冻结后比较三份对话 dev，最终由规划者批准 adaptive_6 为默认。两轮都只有最新一条他人消息中点名的人限定范围。
 
-[本轮报告](reports/conversation-prepare-20261008.md) 逐查询列出四个候选返回。新集混合 Recall@8／nDCG@8 由 0.889／0.889 提高到 1.000／1.000，误返 3/6 → 2/6，relevant 精确率 0.727 → 0.818；原四集 144 条返回 ID、顺序、reason 逐条不变。全文、向量、融合与降级门槛没有重新标定。报告另列纯全文结果、R10、四个无判分端到端流程及预演复现的证据边界；隐藏集仍由规划者复核。
+[本轮报告](reports/conversation-prepare-20261008.md) 分轮逐查询列出候选返回。第一轮 v2 集混合 Recall@8／nDCG@8 由 0.889／0.889 提高到 1.000／1.000，误返 3/6 → 2/6，relevant 精确率 0.727 → 0.818；原四集 144 条返回 ID、顺序、reason 逐条不变。全文、向量、融合与降级门槛没有重新标定。第二轮 v3 集混合 Recall@8／nDCG@8 由 latest_2 的 0.5625／0.5394 提高到 1.0000／1.0000；v2 精确率与 v3 无答案误返的代价按上文规划者例外接受。报告另列最终默认六集表、纯全文结果、R10、四个无判分端到端流程及真实预演 5/5 命中和复放边界；隐藏集仍由规划者复核。
 
 ## 性能方法
 

@@ -101,7 +101,7 @@ def test_anchor_is_frozen_with_query_before_embedding(store):
     assert [m['id'] for m in response['memories']] == [ids['new']]
 
 
-@pytest.mark.parametrize('strategy,count', [('latest_1', 1), ('latest_2', 2), ('latest_3', 3), ('window_5', 2)])
+@pytest.mark.parametrize('strategy,count', [(None, 3), ('latest_1', 1), ('latest_2', 2), ('latest_3', 3), ('window_5', 2)])
 def test_candidate_composition_uses_only_other_messages(store, strategy, count):
     from iris.memory_ops import setup_role
     setup_role(store, 'Iris')
@@ -140,7 +140,7 @@ def conversation(store, messages):
     return entries['focus']
 
 
-@pytest.mark.parametrize('strategy', ['session_6', 'speaker_6', 'adaptive_6'])
+@pytest.mark.parametrize('strategy', [None, 'session_6', 'speaker_6', 'adaptive_6'])
 @pytest.mark.parametrize('age,include', [(300, True), (301, False), (-1, False)])
 def test_topic_time_boundary_uses_message_time_and_excludes_outputs(store, strategy, age, include):
     from datetime import datetime, timedelta, timezone
@@ -165,7 +165,7 @@ def test_invalid_time_keeps_latest_without_crossing_unknown_boundary(store):
     assert Retrieval(store, conversation_query='session_6').prepare_query(entry)[0] == '继续呢？'
 
 
-@pytest.mark.parametrize('strategy', ['session_6', 'speaker_6', 'adaptive_6'])
+@pytest.mark.parametrize('strategy', [None, 'session_6', 'speaker_6', 'adaptive_6'])
 def test_interruption_keeps_earlier_question_without_changing_latest_anchor(store, strategy):
     entry = conversation(store, [
         {'id': 'a', 'speaker': '访客', 'content': '齐峦的玻璃水壶应该用什么清洗？'},
@@ -181,32 +181,58 @@ def test_interruption_keeps_earlier_question_without_changing_latest_anchor(stor
         assert '屏幕太暗了' not in query and '调亮一点' in query
 
 
+@pytest.mark.parametrize('strategy', [None, 'adaptive_6'])
 @pytest.mark.parametrize('latest,context', [
     ('清理铜版画的印刷滚筒需要什么溶剂，最后如何擦干存放？', False),
     ('她清理铜版画的印刷滚筒需要什么溶剂，最后如何擦干存放？', True),
     ('那台设备清理铜版画的印刷滚筒需要什么溶剂，最后如何擦干存放？', True),
     ('再想想？我跟你说过的。', True)])
-def test_adaptive_query_preserves_references_and_reminders_but_focuses_new_question(store, latest, context):
+def test_adaptive_query_preserves_references_and_reminders_but_focuses_new_question(store, strategy, latest, context):
     entry = conversation(store, [
         {'id': 'a', 'speaker': '访客', 'content': '较早介绍的对象'},
         {'id': 'b', 'speaker': '访客', 'content': '附带的一句'},
         {'id': 'c', 'speaker': '访客', 'content': latest}])
-    query, _, anchor = Retrieval(store, conversation_query='adaptive_6')._prepare_context(entry, None)
-    assert ('较早介绍的对象' in query) is context
-    assert query.endswith(latest) and anchor == latest
+    query, _, anchor = Retrieval(store, conversation_query=strategy)._prepare_context(entry, None)
+    assert query == ('较早介绍的对象\n附带的一句\n' + latest if context else latest)
+    assert anchor == latest
 
 
-def test_topic_history_is_bounded(store):
+@pytest.mark.parametrize('strategy', [None, 'session_6'])
+def test_topic_history_is_bounded(store, strategy):
     messages = [{'id': str(i), 'speaker': '访客', 'content': f'第{i}句上文'} for i in range(22)]
     entry = conversation(store, messages)
-    retrieval = Retrieval(store, conversation_query='session_6')
+    retrieval = Retrieval(store, conversation_query=strategy)
     assert retrieval.prepare_query(entry)[0].splitlines() == [m['content'] for m in messages[-6:]]
 
 
-@pytest.mark.parametrize('strategy', ['session_6', 'speaker_6', 'adaptive_6'])
+@pytest.mark.parametrize('strategy', [None, 'session_6', 'speaker_6', 'adaptive_6'])
 def test_new_compositions_leave_explicit_empty_and_nonempty_text_unchanged(store, strategy):
     _, entry = scenario(store)
     retrieval = Retrieval(store, conversation_query=strategy)
     for text in ('', '宿主自己写的查询'):
         query, _, anchor = retrieval._prepare_context(entry, text)
         assert query == text and anchor is None
+
+
+def test_default_conversation_query_is_adaptive_six(store):
+    from iris.retrieval import CONVERSATION_QUERY
+    assert CONVERSATION_QUERY == 'adaptive_6'
+    assert Retrieval(store).conversation_query == 'adaptive_6'
+
+
+def test_default_time_window_is_relative_to_latest_and_stops_at_first_gap(store):
+    entry = conversation(store, [
+        {'id': 'a', 'speaker': '访客', 'content': '不能跨过断点取这一句', 'occurred_at': '2026-10-08T11:59:00+00:00'},
+        {'id': 'b', 'speaker': '访客', 'content': '超过五分钟的断点', 'occurred_at': '2026-10-08T11:54:59+00:00'},
+        {'id': 'c', 'speaker': '访客', 'content': '五分钟内的对象', 'occurred_at': '2026-10-08T11:55:00+00:00'},
+        {'id': 'd', 'speaker': '访客', 'content': '中间催促', 'occurred_at': '2026-10-08T11:58:00+00:00'},
+        {'id': 'e', 'speaker': '访客', 'content': '那件呢？', 'occurred_at': '2026-10-08T12:00:00+00:00'}])
+    assert Retrieval(store).prepare_query(entry)[0] == '五分钟内的对象\n中间催促\n那件呢？'
+
+
+def test_default_retains_frozen_short_history_exception(store):
+    latest = '清理铜版画的印刷滚筒需要什么溶剂，最后如何擦干存放？'
+    entry = conversation(store, [
+        {'id': 'a', 'speaker': '访客', 'content': '仅有的一句上文'},
+        {'id': 'b', 'speaker': '访客', 'content': latest}])
+    assert Retrieval(store).prepare_query(entry)[0] == '仅有的一句上文\n' + latest

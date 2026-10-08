@@ -62,6 +62,14 @@ class Gateway:
     def embedding(self, text, purpose="embedding"):
         return self.vector
 
+    def json_chat(self, messages, purpose, max_tokens=16000, *, batch_id=None):
+        # TestClient starts the real scheduler. Synthetic pending messages may
+        # become due, but must not change the fixed performance memory corpus.
+        if purpose != "learning":
+            raise ValueError("benchmark gateway only supports empty learning")
+        output = {"memories": []}
+        return output, json.dumps(output), None, "direct"
+
 
 def worker(path, size, dtype, repeats, dimension, default_config=False):
     process = psutil.Process()
