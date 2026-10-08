@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from . import admin_data, trial
 from .auth import audit, error
-from .queue import reset_batch
+from .queue import reset_batch, update_entry_settings, pace_parameters, filter_parameters, FILTER_DEFAULTS, PACE
 from .memory_ops import edit_memory, delete_memory, manage_memory, purge_memory, recreate_memory, operation, missing_batch_targets
 from .retrieval import Retrieval
 from .service_status import service_status, add_health_hints
@@ -35,6 +35,33 @@ class Name(Input):
 
 class NewEntry(Name):
     kind: Literal["group", "private"] = "group"
+
+
+class EntrySettings(Input):
+    pace: str | dict | None = None
+    filters: dict | None = None
+
+    @field_validator("pace", mode="before")
+    @classmethod
+    def valid_pace(cls, value):
+        if isinstance(value, str) and value not in PACE:
+            raise ValueError("使用预设名称或自定义节奏对象")
+        pace_parameters(value)
+        return value
+
+    @field_validator("filters", mode="before")
+    @classmethod
+    def valid_filters(cls, value):
+        if not isinstance(value, dict):
+            raise ValueError("过滤设置必须为对象")
+        filter_parameters({**FILTER_DEFAULTS, **value})
+        return value
+
+    @model_validator(mode="after")
+    def changes(self):
+        if not self.model_fields_set or self.model_fields_set == {"filters"} and not self.filters:
+            raise ValueError("至少提供一个修改字段")
+        return self
 
 
 class TrialMessage(Input):
@@ -305,6 +332,16 @@ def install_admin(app):
     def entries():
         return admin_data.learning_entries(app.state.store)
 
+    @router.get("/entries/{entry_id}/settings")
+    def learning_settings(entry_id: str):
+        return admin_data.entry_learning_settings(app.state.store, entry_id)
+
+    @router.patch("/entries/{entry_id}/settings")
+    def change_learning_settings(entry_id: str, payload: EntrySettings):
+        result = update_entry_settings(app.state.store, entry_id, **payload.model_dump(exclude_unset=True))
+        app.state.scheduler.wake()
+        return result
+
     @router.get("/batches")
     def batches(query: Annotated[LearningQuery, Query()]):
         return admin_data.learning_batches(app.state.store, **query.model_dump())
@@ -335,7 +372,9 @@ def install_admin(app):
 
     @router.get("/status")
     def status():
-        return service_status(app.state.store, app.state.scheduler, app.state.health)
+        result = service_status(app.state.store, app.state.scheduler, app.state.health)
+        admin_data.add_entry_waits(app.state.store, result["entries"])
+        return result
 
     @app.exception_handler(trial.TrialBusy)
     async def busy(request, error):

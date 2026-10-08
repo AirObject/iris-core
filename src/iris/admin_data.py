@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from .retrieval import Retrieval
 from .memory_ops import lifecycle_settings, missing_batch_targets
 from .model_health import utc_now
+from .queue import entry_settings, batch_rate_status
 from .search_text import segmented
 
 MEMORY_COLUMNS = """m.id,m.content,m.kind,m.speaker_subject_id,m.stance,m.belief,m.importance,
@@ -170,13 +171,55 @@ def batch_summary(row):
     return item
 
 
+def entry_learning_settings(store, entry_id):
+    with store.read() as conn:
+        entry = conn.execute("SELECT * FROM entries WHERE id=?", (entry_id,)).fetchone()
+        if entry is None:
+            raise KeyError(entry_id)
+        return entry_settings(entry)
+
+
+def entry_queue_wait(conn, entry, current):
+    filters = json.loads(entry["filters_json"])
+    counts = conn.execute("""SELECT
+        COALESCE(SUM(learning_state='pending'),0),
+        COALESCE(SUM(learning_state='pending' AND a.decided=0),0),
+        COALESCE(SUM(learning_state='filtered'),0)
+        FROM messages m LEFT JOIN message_admission a ON a.message_id=m.id
+        WHERE m.entry_id=?""", (entry["id"],)).fetchone()
+    undecided = counts[1] if filters["min_chars"] or filters["mention_only"] else 0
+    rate = batch_rate_status(conn, entry["id"], filters["max_batches_per_hour"], current)
+    active = conn.execute("SELECT 1 FROM batches WHERE entry_id=? AND state IN ('waiting','running') LIMIT 1", (entry["id"],)).fetchone()
+    reason = None
+    if not active:
+        if counts[0] > undecided and rate["retry_at"]:
+            reason = "hourly_batch_limit"
+        elif undecided and counts[0] == undecided:
+            reason = "filter_context"
+    return {**rate, "reason": reason, "retry_at": rate["retry_at"] if reason == "hourly_batch_limit" else None,
+            "filter_waiting_count": undecided, "filtered_count": counts[2]}
+
+
+def add_entry_waits(store, items):
+    """Enrich management status without changing host/retrieval diagnostics."""
+    current = utc_now()
+    with store.read() as conn:
+        for item in items:
+            entry = conn.execute("SELECT * FROM entries WHERE id=?", (item["entry_id"],)).fetchone()
+            item["queue_wait"] = entry_queue_wait(conn, entry, current)
+
+
 def learning_entries(store):
+    instant = utc_now()
     with store.read() as conn:
         items = [dict(r) for r in conn.execute("""SELECT e.*,
             (SELECT COUNT(*) FROM messages m WHERE m.entry_id=e.id
                 AND m.learning_state IN ('pending','batched')) AS pending_count
             FROM entries e ORDER BY e.name,e.id""")]
         for entry in items:
+            entry["filters"] = json.loads(entry["filters_json"])
+            entry["queue_wait"] = entry_queue_wait(conn, entry, instant)
+            entry.pop("filters_json")
             latest = conn.execute(f"SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=? ORDER BY b.id DESC LIMIT 1", (entry["id"],)).fetchone()
             current = conn.execute(f"""SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=?
                 AND b.state IN ('waiting','running') ORDER BY b.id LIMIT 1""", (entry["id"],)).fetchone()
@@ -223,7 +266,11 @@ def learning_batches(store, *, entry_id=None, time_from=None, time_to=None, limi
             ORDER BY b.id DESC LIMIT ? OFFSET ?""", [*args, limit, offset])]
         for item in items:
             item["relearning"] = bool(item.pop("has_gap") and item["state"] in ("waiting", "running"))
-    return {"items": items, "total": total, "limit": limit, "offset": offset}
+        entries = conn.execute("SELECT * FROM entries" + (" WHERE id=?" if entry_id else "") + " ORDER BY id",
+                               (entry_id,) if entry_id else ()).fetchall()
+        instant = utc_now()
+        waits = [{"entry_id": e["id"], "queue_wait": entry_queue_wait(conn, e, instant)} for e in entries]
+    return {"items": items, "total": total, "limit": limit, "offset": offset, "entry_waits": waits}
 
 
 def batch_detail(store, batch_id):
@@ -233,6 +280,8 @@ def batch_detail(store, batch_id):
             raise KeyError(batch_id)
         detail = batch_summary(dict(row) | {"targets_missing": bool(missing_batch_targets(conn, batch_id))})
         detail["result"] = json.loads(row["result_json"])
+        snapshot = detail.pop("entry_settings_json")
+        detail["entry_settings"] = json.loads(snapshot) if snapshot else None
         detail["entry"] = dict(conn.execute("SELECT id,name,platform,kind,pace FROM entries WHERE id=?", (row["entry_id"],)).fetchone())
         detail["segments"] = {}
         for segment, column in (("history", "history_ids"), ("target", "target_ids"), ("future", "future_ids")):

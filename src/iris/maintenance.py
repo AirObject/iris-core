@@ -132,7 +132,7 @@ class Maintenance:
             params = [run["cursor_id"], run["memory_through"]]
         elif phase == "messages":
             select = """SELECT id,id AS cursor_id,CAST(id AS TEXT) AS item_key FROM messages
-                WHERE id>? AND id<=? AND learning_state IN ('learned','abandoned','refused')
+                WHERE id>? AND id<=? AND learning_state IN ('learned','abandoned','refused','filtered')
                 AND julianday(received_at)<julianday(?)"""
             params = [run["cursor_id"], run["message_through"], (current-timedelta(days=config["message_retention_days"])).isoformat()]
         else:
@@ -248,7 +248,7 @@ class Maintenance:
             return ("dependencies_weakened" if result["retention"] < memory["retention"] else "checked"), None, details
         if phase == "messages":
             message = conn.execute("SELECT learning_state,received_at FROM messages WHERE id=?", (mid,)).fetchone()
-            if not message or message["learning_state"] not in ("learned", "abandoned", "refused") or current-datetime.fromisoformat(message["received_at"]) <= timedelta(days=config["message_retention_days"]):
+            if not message or message["learning_state"] not in ("learned", "abandoned", "refused", "filtered") or current-datetime.fromisoformat(message["received_at"]) <= timedelta(days=config["message_retention_days"]):
                 return "skipped", "no_longer_eligible", {}
             references = message_references(conn, mid)
             if references:
