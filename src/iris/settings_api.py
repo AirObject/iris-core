@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 
 from .auth import audit, error, local
 from .db import dumps
-from .memory_ops import update_role
+from .memory_ops import update_role, lifecycle_settings, operation
 from .models import Gateway, ModelConfig, ModelError
 
 CONNECTION_TIMEOUT = 10
@@ -85,12 +85,28 @@ class Limits(Input):
     learning_concurrency: int = Field(default=2, ge=1, le=32, strict=True)
 
 
+class Lifecycle(Input):
+    forget_threshold: int = Field(default=20, ge=1, le=99, strict=True)
+    restore_threshold: int = Field(default=35, ge=2, le=100, strict=True)
+    feedback_increment: int = Field(default=8, ge=0, le=100, strict=True)
+    confirmation_increment: int = Field(default=5, ge=0, le=100, strict=True)
+    decay_amount: int = Field(default=1, ge=0, le=100, strict=True)
+    auto_delete_enabled: bool = Field(default=True, strict=True)
+    auto_delete_days: int = Field(default=180, ge=1, le=36500, strict=True)
+    upcoming_delete_days: int = Field(default=14, ge=1, le=36500, strict=True)
+    message_retention_days: int = Field(default=30, ge=1, le=36500, strict=True)
+    maintenance_time: str = Field(default="03:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    abandoned_retry_enabled: bool = Field(default=True, strict=True)
+    dependency_penalty: int = Field(default=10, ge=0, le=100, strict=True)
+
+
 def install_settings(app):
     router = APIRouter(prefix='/admin/api')
 
     def snapshot():
         store = app.state.store
         with store.read() as conn:
+            lifecycle = lifecycle_settings(conn)
             operations = [dict(r) for r in conn.execute('SELECT id,actor,action,created_at FROM admin_operations ORDER BY id DESC LIMIT 30')]
         return {'role': {'name': store.setting('role_name', 'Iris'), 'background': store.setting('background', ''),
                          'timezone': store.setting('timezone', None)},
@@ -98,6 +114,7 @@ def install_settings(app):
                 'model_source': 'external' if app.state.runtime_config.external_loader else 'local',
                 'daily_token_limit': store.setting('daily_token_limit'),
                 'learning_concurrency': store.setting('learning_concurrency', 2),
+                'lifecycle': lifecycle,
                 'health': app.state.health.snapshot(), 'presets': PRESETS, 'operations': operations}
 
     def sync_models():
@@ -121,6 +138,18 @@ def install_settings(app):
             conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('setup_complete','true')")
             audit(conn, 'setup_completed')
         return {'ok': True}
+
+    @router.patch('/settings/lifecycle')
+    def save_lifecycle(payload: Lifecycle):
+        with app.state.store.write() as conn:
+            values = {**lifecycle_settings(conn), **payload.model_dump(exclude_unset=True)}
+            # Validate the merged settings: PATCH must not reset unspecified fields.
+            if values['restore_threshold'] <= values['forget_threshold']:
+                raise ValueError('恢复阈值 H 必须大于遗忘阈值 F')
+            conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('lifecycle',?)", (dumps(values),))
+            operation(conn, 'lifecycle_saved', 'settings', 'lifecycle', payload.model_dump(exclude_unset=True))
+        app.state.scheduler.wake()
+        return snapshot()
 
     @router.patch('/settings/role')
     def role(payload: Role):
@@ -169,6 +198,8 @@ def install_settings(app):
                 current = Model.model_validate(payload).config(current, kind)
             except ValidationError:
                 return error('invalid_request', '模型配置无效，请检查输入')
+        with app.state.store.write() as conn:
+            operation(conn, 'model_test', 'model', kind)
         if not current:
             return {'ok': False, 'message': '未配置模型', 'category': 'configuration', 'duration_ms': 0}
         active = app.state.gateway.configs.get(kind) == current

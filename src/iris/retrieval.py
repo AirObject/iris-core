@@ -572,6 +572,7 @@ class Retrieval:
         return result
 
     def feedback(self, recall_id: str, memory_ids: list[int]) -> dict:
+        from .memory_ops import adjust_retention, lifecycle_settings, operation
         ids = list(dict.fromkeys(memory_ids))
         with self.store.write() as conn:
             recall = conn.execute("SELECT created_at FROM recalls WHERE id=?", (recall_id,)).fetchone()
@@ -588,6 +589,7 @@ class Retrieval:
             for mid in ids:
                 changed = conn.execute("UPDATE recall_items SET used_at=? WHERE recall_id=? AND memory_id=? AND used_at IS NULL", (now(), recall_id, mid)).rowcount
                 if changed:
-                    conn.execute("UPDATE memories SET retention=MIN(100,retention+8) WHERE id=? AND lifecycle!='deleted'", (mid,))
+                    adjust_retention(self.store, mid, lifecycle_settings(conn)["feedback_increment"], _conn=conn)
                     strengthened.append(mid)
+            operation(conn, "feedback", "recall", recall_id, {"memory_ids": ids, "strengthened": strengthened}, actor="host")
         return {"recall_id": recall_id, "accepted": ids, "strengthened": strengthened}
