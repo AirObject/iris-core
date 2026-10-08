@@ -74,6 +74,7 @@ def add_health_hints(result, health):
         if state["state"] != "normal":
             result["hints"].append({"code": "model_paused", "kind": kind, **state,
                 "message": {"embedding": "embedding 已暂停，使用全文检索。",
-                            "recall_judge": "召回判断已暂停，保留原召回。",
+                            "recall_judge": ("召回判断限流退避中，保留原召回。" if state["state"] == "rate_limited"
+                                             else "召回判断已暂停，保留原召回。"),
                             "chat": "学习已暂停，消息仍正常接收。"}.get(kind, "模型用途已暂停。")})
     return result

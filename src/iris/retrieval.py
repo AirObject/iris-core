@@ -15,7 +15,7 @@ from .db import Store, dumps, now
 from .models import Gateway, ModelError
 from .queue import estimate_tokens
 from .search_text import match_query, terms, words
-from .query_analysis import analyze
+from .query_analysis import SubjectNames, analyze
 
 RRF_K = 60
 CANDIDATES = 200
@@ -559,8 +559,6 @@ class Retrieval:
             if not conn.execute("SELECT 1 FROM entries WHERE id=?", (entry_id,)).fetchone():
                 raise KeyError(entry_id)
             recent = self._recent(conn, entry_id, recent_limit)
-            context_version = self._context_version(conn, entry_id)
-            aliases = self._judge_aliases(conn)
             participant_ids = _people(conn, participants) if participants is not None else list(dict.fromkeys(
                 r[0] for r in conn.execute('SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,))
                 if r[0] not in ('self', 'scene')))
@@ -568,6 +566,7 @@ class Retrieval:
                                     entry_kind=entry_kind, anchor_text=anchor_text)
             memories = self._select(candidates, limit=min(memory_limit, 8), token_budget=min(token_budget, 1500),
                                     recent_ids=[m["id"] for m in recent], known_ids=known_memory_ids)
+            aliases = self._judge_aliases(conn, memories, participant_ids, recent, text, entry_kind)
             persona = conn.execute("SELECT id AS version,content,created_at AS generated_at FROM persona_versions WHERE is_current=1 ORDER BY id DESC LIMIT 1").fetchone()
             gaps = [dict(r) for r in conn.execute("SELECT started_at,ended_at,reason FROM memory_gaps WHERE entry_id=? ORDER BY id", (entry_id,))]
             if gaps:
@@ -586,10 +585,6 @@ class Retrieval:
         # slip between revision/lifecycle/context validation and feedback eligibility.
         with self.store.write() as conn:
             recent = self._recent(conn, entry_id, recent_limit)
-            context_changed = (context_version != self._context_version(conn, entry_id)
-                               or aliases != self._judge_aliases(conn))
-            if diagnostic['status'] == 'applied' and context_changed:
-                diagnostic.update(status='degraded', reason='context_changed', removed_memory_ids=[])
             current = self._hydrate(conn, [m['id'] for m in memories])
             recent_ids = {m['id'] for m in recent}
             final, stale = [], []
@@ -605,9 +600,6 @@ class Retrieval:
             if stale:
                 diagnostic['stale_memory_ids'] = stale
                 diagnostic['removed_memory_ids'] = [mid for mid in diagnostic['removed_memory_ids'] if mid not in stale]
-                if diagnostic['status'] == 'applied':
-                    diagnostic.update(status='degraded', reason='candidate_changed', removed_memory_ids=[])
-                    final = [{**old, **self._public(current[old['id']])} for old in memories if old['id'] not in stale]
             # A setting switched off while the call was in flight must take effect.
             row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='recall_judge'").fetchone()
             if judge and row and not json.loads(row[0]).get('enabled', True):
@@ -631,17 +623,22 @@ class Retrieval:
         return recent
 
     @staticmethod
-    def _context_version(conn, entry_id):
-        # Detect arrivals/removal, even if the host requests recent_limit=0.
-        return tuple(tuple(r) for r in conn.execute(
-            'SELECT id,kind,content,sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,)))
-
-    @staticmethod
-    def _judge_aliases(conn):
-        people = {}
-        for row in conn.execute('SELECT s.id,s.name,a.alias FROM subject_aliases a JOIN subjects s ON s.id=a.subject_id ORDER BY s.id,a.alias'):
-            people.setdefault(row['id'], {'name': row['name'], 'aliases': []})['aliases'].append(row['alias'])
-        return list(people.values())
+    def _judge_aliases(conn, memories, participant_ids, recent, text, entry_kind):
+        # Restrict the payload, using the same longest-name/boundary matcher as
+        # retrieval. A shared name still includes every matching subject.
+        people = set(participant_ids) | {m['sender_subject_id'] for m in recent}
+        people.update(SubjectNames(conn, ('主播',) if entry_kind == 'live' else ()).mentioned(text))
+        for memory in [m for m in memories if m['reason'] == 'relevant'][:8]:
+            people.add(memory['speaker_subject_id'])
+            people.update(p['id'] for p in memory['about'])
+        if not people:
+            return []
+        aliases = {}
+        marks = ','.join('?' for _ in people)
+        for row in conn.execute(f"""SELECT s.id,s.name,a.alias FROM subject_aliases a
+                JOIN subjects s ON s.id=a.subject_id WHERE s.id IN ({marks}) ORDER BY s.id,a.alias""", sorted(people)):
+            aliases.setdefault(row['id'], {'name': row['name'], 'aliases': []})['aliases'].append(row['alias'])
+        return list(aliases.values())
 
     def feedback(self, recall_id: str, memory_ids: list[int]) -> dict:
         from .memory_ops import adjust_retention, lifecycle_settings, operation
