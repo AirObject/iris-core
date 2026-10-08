@@ -25,11 +25,11 @@ M2（记忆质量）的范围、跨阶段划分和门槛口径见 DECISIONS.md 2
 
 | 阶段 | 工作线 | 内容 | 主要文件 | 前置 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 一 | 生命周期 | 迁移 008；遗忘与恢复的双阈值、置顶、管理员调整分数；每日确定性维护；反馈触发的恢复；彻底清除；按旧内容新建；操作记录与查询；生命周期设置的管理接口 | migrations、memory_ops.py、新维护模块、scheduler.py、retrieval.py（只改反馈）、api.py、admin.py、admin_data.py、settings_api.py | — | 待派发 |
-| 一 | 学习 | 新 dev 集 learning_v4（M2 学习行为，单独冻结）；确定性去重修订（含遗忘记忆）；评测报告增加重复记忆的确定性统计 | evals/learning_v4*、learning.py、evaluation.py | — | 待派发 |
+| 一 | 生命周期 | 迁移 008；遗忘与恢复的双阈值、置顶、管理员调整分数；每日确定性维护；反馈触发的恢复；彻底清除；按旧内容新建；操作记录与查询；生命周期设置的管理接口 | migrations、memory_ops.py、新维护模块、scheduler.py、retrieval.py（只改反馈）、api.py、admin.py、admin_data.py、settings_api.py | — | PR #24 审查中（第二轮） |
+| 一 | 学习 | 新 dev 集 learning_v4（M2 学习行为，单独冻结）；评测报告增加重复记忆的确定性统计；v6 基线 | evals/learning_v4*、evaluation.py | — | 完成（PR #26）：learning_v4 在 `aa95ef8` 冻结（18 段、342 条消息、26 条 must、71 条 forbidden）。v6 high 单判基线：全部 104 段精确率 88.5%、事实召回率 81.9%、误记率 0%、证据 90.2%、归属 84.6%；v4 为 70.7%／73.1%／0%／82.9%／73.2% |
 | 一 | 召回 | 无答案 dev 集（单独冻结）；不改产品默认，探测拒绝方法 | evals/、仓库外脚本 | — | 完成（PR #25）：recall_no_answer_v1 在 `7d696a7` 冻结（48 条记忆、40 条查询、22 条无答案）；规则选中 GLM high 判断前 8 个候选，七份公开 dev 合并 Recall@8 0.986、误返 1/66；用户决定采用（DECISIONS.md 2026-10-09） |
 | 一 | 规划者 | M2 隐藏学习集、隐藏召回集 | 仓库外 | — | 完成：学习 30 段（127 条 must）、召回 45 条查询（17 条无答案），经独立审核修正后冻结 |
-| 二 | 学习 | 学习提示词 v7 | prompts/learning_v7.md、learning.py | 学习线一合并 | — |
+| 二 | 学习 | 学习提示词 v7；确定性去重接入生命周期接口（含遗忘记忆） | prompts/learning_v7.md、learning.py | 学习线一合并；去重部分等生命周期合并 | 进行中 |
 | 二 | 召回 | 召回判断的产品实现：独立用途、并发限制与暂停恢复、降级提示、宿主开关和预算 | retrieval.py、models.py、model_health.py、configuration.py、api.py 等 | 生命周期合并 | — |
 | 二 | 入口 | 高流量入口过滤及其管理接口 | queue.py、scheduler.py、admin.py、迁移 009 | 生命周期合并 | — |
 | 二 | 界面 | 记忆操作、即将删除、操作记录、维护报告、生命周期设置 | frontend/、src/iris/web/ | 生命周期合并 | — |
