@@ -9,18 +9,20 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files
+from itertools import groupby
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
 
 from .db import Store, dumps, now
+from .memory_ops import confirm_retention
 from .models import Gateway, ModelError
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
 
 
-PROMPT_VERSION = "learning_v6"
+PROMPT_VERSION = "learning_v7"
 LEARNING_MAX_TOKENS = 16000
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
@@ -43,6 +45,16 @@ def _normalize(text: str) -> str:
 def _similar(a: str, b: str) -> bool:
     left, right = _normalize(a), _normalize(b)
     return bool(left and right and (left == right or difflib.SequenceMatcher(None, left, right).ratio() >= 0.88))
+
+
+def _same_claim_sequences(a: str, b: str) -> bool:
+    """R13 number/negation guard, also recognizing non-decimal numeric text."""
+    left, right = _normalize(a), _normalize(b)
+    def numbers(text: str) -> list[str]:
+        # Unicode numeric characters include written weekday/count numerals.
+        return ["".join(chars) for numeric, chars in groupby(text, str.isnumeric) if numeric]
+    return (numbers(left) == numbers(right) and
+            re.findall(r"不|没|无|未|否", left) == re.findall(r"不|没|无|未|否", right))
 
 
 GOAL_TIME = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|(?:上|本|这|下)周[一二三四五六日天]|"
@@ -170,13 +182,17 @@ class LearningEngine:
             ref = f"P{len(participants)+1}"
             snapshot["participant_refs"][ref] = sid
             identity = next((p for p in snapshot["identities"] if p["subject_id"] == sid), None)
-            account = f"（{identity['platform']} {identity['account_id']}）" if identity else ""
+            account = ("；定位数据（非人物属性）：" + json.dumps(
+                {"platform": identity["platform"], "account_id": identity["account_id"]}, ensure_ascii=False)
+                if identity else "")
             participants.append(f"{ref} {name}{account}")
             aliases = [a["alias"] for a in snapshot["aliases"] if a["subject_id"] == sid]
             if aliases:
                 participants[-1] += "；别名：" + "、".join(aliases)
         subject_refs = {sid: ref for ref, sid in snapshot["participant_refs"].items()}
         def subject_label(sid: str, name: str) -> str:
+            if sid == "self":
+                return "我"
             return f"{subject_refs[sid]} {name}" if sid in subject_refs else name
         refs = {f"M{i}": memory for i, memory in enumerate(related, 1)}
         lines = ["角色与 persona（数据）：", "名字：" + str(self.store.setting("role_name", "Iris")),
@@ -184,6 +200,11 @@ class LearningEngine:
                  "相关已有记忆（数据）："]
         for ref, memory in refs.items():
             lines.append(f"[{ref}] {memory['content']}（说话人 {memory['speaker_name']}；相信 {memory['belief']}）")
+            metadata = {"speaker": subject_label(memory["speaker_subject_id"], memory["speaker_name"]),
+                        "stance": memory["stance"],
+                        "about": [subject_label(person["id"], person["name"]) for person in memory["about"]],
+                        "event_time": memory["event_time"]}
+            lines.append(f"[{ref} 元数据] " + json.dumps(metadata, ensure_ascii=False))
         number_to_id: dict[int, int] = {}
         sequence = [("历史段（仅供理解）", history), ("目标段（只从这里学习）", batch.target_ids),
                     ("后续段（仅供理解）", future)]
@@ -196,7 +217,12 @@ class LearningEngine:
                 m = messages[message_id]
                 dt = datetime.fromisoformat(m["occurred_at"]).astimezone(role_timezone)
                 label_type = {"message": "他人消息", "self_output": "我实际发言", "action_result": "我行动结果", "event": "场景事件"}[m["kind"]]
-                quote = f"；引用作者 {subject_label(m['quote_author_subject_id'], m['quote_author_name'])}：{m['quote_content'] or ''}" if m["quote_author_name"] else ""
+                quote = ""
+                if m["quote_author_name"]:
+                    quoted = json.dumps(truncate_material(m["quote_content"] or ""), ensure_ascii=False)
+                    quote = (f"；引用作者 {subject_label(m['quote_author_subject_id'], m['quote_author_name'])}"
+                             f"；引用原话（数据）={quoted}"
+                             f"；正文作者 {subject_label(m['sender_subject_id'], m['sender_name'])}")
                 scene = f"（{m['scene_identity']}）" if m["scene_identity"] else ""
                 prefix = f"#{number} [{dt.strftime('%Y-%m-%d 周')}{'一二三四五六日'[dt.weekday()]} {dt.strftime('%H:%M')}] "
                 if m["kind"] == "event":
@@ -541,10 +567,9 @@ class LearningEngine:
             def confirm_once(memory_id: int) -> None:
                 if memory_id in confirmed_once:
                     return
-                conn.execute("UPDATE memories SET retention=MIN(100,retention+5),last_confirmed_at=? WHERE id=?",
-                             (now(), memory_id))
-                confirmed_once.add(memory_id)
-                confirmed.append(memory_id)
+                if confirm_retention(self.store, memory_id, _conn=conn) is not None:
+                    confirmed_once.add(memory_id)
+                    confirmed.append(memory_id)
 
             row = conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()
             if not row or row[0] != "running":
@@ -555,19 +580,61 @@ class LearningEngine:
                         ON CONFLICT(subject_id,alias) DO UPDATE SET
                         source_message_id=COALESCE(subject_aliases.source_message_id,excluded.source_message_id)""",
                         (item["_subject_id"], item["alias"], item["_source_message_id"]))
+            # Apply explicit corrections before comparing proposed new memories.
+            for item in accepted["updates"]:
+                original = refs[item["ref"]]
+                current = conn.execute("SELECT * FROM memories WHERE id=?", (original["id"],)).fetchone()
+                if (not current or current["revision"] != original["revision"] or current["lifecycle"] == "deleted"
+                        or (item["action"] != "确认" and current["lifecycle"] != "active")):
+                    dropped.append({"section": "updates", "item": item, "reason": "memory revision changed"})
+                    continue
+                if item["action"] == "确认":
+                    confirm_once(current["id"])
+                else:
+                    # A later confirmation or metadata-only revision must not erase
+                    # the last actual content editor. Model-supplied reasons alone
+                    # cannot mark a learning revision as a manual edit.
+                    content_edit = conn.execute("""SELECT actor,reason FROM memory_revisions
+                        WHERE memory_id=? AND json_extract(before_json,'$.content')
+                            IS NOT json_extract(after_json,'$.content')
+                        ORDER BY revision_after DESC,id DESC LIMIT 1""", (current["id"],)).fetchone()
+                    if content_edit and content_edit["actor"] != "learning" and content_edit["reason"] == "manual edit":
+                        dropped.append({"section": "updates", "item": item, "reason": "memory manually edited"})
+                        continue
+                    content = str(item.get("content") or "").strip()
+                    if len(content) > 1000:
+                        dropped.append({"section": "updates", "item": item, "reason": "overlong corrected content"})
+                        continue
+                    before = {key: current[key] for key in ("content", "kind", "stance", "belief", "importance", "event_time")}
+                    belief = _score(item.get("belief"), current["belief"])
+                    event_time = item.get("event_time", current["event_time"])
+                    conn.execute("UPDATE memories SET content=?,belief=?,event_time=?,revision=revision+1,updated_at=?,embedding=NULL,embedding_model=NULL WHERE id=?",
+                                 (content, belief, event_time, now(), current["id"]))
+                    after = {**before, "content": content, "belief": belief, "event_time": event_time}
+                    conn.execute("""INSERT INTO memory_revisions(memory_id,revision_before,revision_after,before_json,after_json,
+                        reason,actor,created_at) VALUES(?,?,?,?,?,?,?,?)""",
+                        (current["id"], current["revision"], current["revision"] + 1, dumps(before), dumps(after),
+                         str(item.get("reason") or item["action"]), "learning", now()))
+                    updated.append(current["id"])
+                for message_id in item["evidence"]:
+                    if message_id in target:
+                        self._source(conn, current["id"], message_id)
             for item in accepted["memories"]:
                 speaker_id = item["speaker_id"]
                 about_ids = {self._resolve_subject(conn, name, snapshot) for name in item["about"]}
                 # Composite index narrows by the same speaker/claim before fetching prose or vectors.
                 scope = " AND id IN (SELECT memory_id FROM memory_subjects WHERE subject_id=?)" if about_ids else " AND NOT EXISTS (SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=memories.id)"
-                parameters = [speaker_id, item["kind"], item["stance"], item["event_time"]]
+                parameters = [speaker_id, item["stance"], item["event_time"]]
                 if about_ids:
                     parameters.append(sorted(about_ids)[0])
-                existing = conn.execute("""SELECT * FROM memories WHERE speaker_subject_id=? AND kind=?
-                    AND stance=? AND event_time IS ? AND lifecycle='active'""" + scope, parameters).fetchall()
+                existing = conn.execute("""SELECT * FROM memories WHERE speaker_subject_id=?
+                    AND stance=? AND event_time IS ? AND world='real' AND lifecycle IN ('active','forgotten')"""
+                    + scope + " ORDER BY id", parameters).fetchall()
                 existing_about = {m["id"]: {r[0] for r in conn.execute(
                     "SELECT subject_id FROM memory_subjects WHERE memory_id=?", (m["id"],))} for m in existing}
                 def same_meaning(memory: Any) -> bool:
+                    if not _same_claim_sequences(memory["content"], item["content"]):
+                        return False
                     if _similar(memory["content"], item["content"]):
                         return True
                     if item.get("_embedding") is None or memory["embedding"] is None:
@@ -581,7 +648,7 @@ class LearningEngine:
                     denominator = float(np.linalg.norm(prior) * np.linalg.norm(current_vector))
                     return bool(denominator and float(np.dot(prior, current_vector) / denominator) >= dedupe_threshold)
                 duplicate = next((m for m in existing if m["speaker_subject_id"] == speaker_id and
-                                  m["kind"] == item["kind"] and m["stance"] == item["stance"] and
+                                  m["stance"] == item["stance"] and
                                   m["event_time"] == item["event_time"] and
                                   existing_about.get(m["id"], set()) == about_ids and same_meaning(m)), None)
                 if duplicate:
@@ -613,43 +680,6 @@ class LearningEngine:
                     conn.execute("INSERT INTO sources(memory_id,kind,source_memory_id,source_revision,created_at) VALUES(?,'memory',?,?,?)",
                                  (memory_id, source_memory["id"], source_memory["revision"], stamp))
                 created.append(memory_id)
-            for item in accepted["updates"]:
-                original = refs[item["ref"]]
-                current = conn.execute("SELECT * FROM memories WHERE id=?", (original["id"],)).fetchone()
-                if not current or current["revision"] != original["revision"] or current["lifecycle"] != "active":
-                    dropped.append({"section": "updates", "item": item, "reason": "memory revision changed"})
-                    continue
-                if item["action"] == "确认":
-                    confirm_once(current["id"])
-                else:
-                    # A later confirmation or metadata-only revision must not erase
-                    # the last actual content editor. Model-supplied reasons alone
-                    # cannot mark a learning revision as a manual edit.
-                    content_edit = conn.execute("""SELECT actor,reason FROM memory_revisions
-                        WHERE memory_id=? AND json_extract(before_json,'$.content')
-                            IS NOT json_extract(after_json,'$.content')
-                        ORDER BY revision_after DESC,id DESC LIMIT 1""", (current["id"],)).fetchone()
-                    if content_edit and content_edit["actor"] != "learning" and content_edit["reason"] == "manual edit":
-                        dropped.append({"section": "updates", "item": item, "reason": "memory manually edited"})
-                        continue
-                    content = str(item.get("content") or "").strip()
-                    if len(content) > 1000:
-                        dropped.append({"section": "updates", "item": item, "reason": "overlong corrected content"})
-                        continue
-                    before = {key: current[key] for key in ("content", "kind", "stance", "belief", "importance", "event_time")}
-                    belief = _score(item.get("belief"), current["belief"])
-                    event_time = item.get("event_time", current["event_time"])
-                    conn.execute("UPDATE memories SET content=?,belief=?,event_time=?,revision=revision+1,updated_at=? WHERE id=?",
-                                 (content, belief, event_time, now(), current["id"]))
-                    after = {**before, "content": content, "belief": belief, "event_time": event_time}
-                    conn.execute("""INSERT INTO memory_revisions(memory_id,revision_before,revision_after,before_json,after_json,
-                        reason,actor,created_at) VALUES(?,?,?,?,?,?,?,?)""",
-                        (current["id"], current["revision"], current["revision"] + 1, dumps(before), dumps(after),
-                         str(item.get("reason") or item["action"]), "learning", now()))
-                    updated.append(current["id"])
-                for message_id in item["evidence"]:
-                    if message_id in target:
-                        self._source(conn, current["id"], message_id)
             for item in accepted["people"]:
                 if "alias" in item:
                     continue

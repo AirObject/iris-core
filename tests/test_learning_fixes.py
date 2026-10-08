@@ -132,7 +132,8 @@ def test_material_numbers_sender_and_quote_author_for_same_name_accounts(store):
     _, result = batch(store, fake, count=3)
     assert len(result["created"]) == 2 and len(result["dropped"]) == 1
     material = fake.materials[0]
-    assert "P1 小米（test a）" in material and "P2 小米（test b）" in material
+    assert 'P1 小米；定位数据（非人物属性）：{"platform": "test", "account_id": "a"}' in material
+    assert 'P2 小米；定位数据（非人物属性）：{"platform": "test", "account_id": "b"}' in material
     assert "[他人消息] P1 小米" in material and "[他人消息] P2 小米" in material
     assert "引用作者 P2 小米" in material
     with store.read() as conn:
@@ -147,7 +148,7 @@ def test_v4_promise_and_detail_preserving_summary_pass_through_learning(store):
               "goals": [{"content": "在小林公开前保密入学计划", "evidence": [1, 2]}], "questions": []}
     fake = FakeGateway(output)
     formed, result = batch(store, fake)
-    assert PROMPT_VERSION == "learning_v6"
+    assert PROMPT_VERSION == "learning_v7"
     assert fake.requests[0]["max_tokens"] == 16000
     assert fake.requests[0]["batch_id"] == formed.id
     assert len(result["created"]) == 2
