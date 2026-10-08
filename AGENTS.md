@@ -107,7 +107,7 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 端到端材料沿用 PR #7 的 format_version=1、evaluation="e2e"、manifest.json、round-template.json、scoring.md、cases/*.json、run.json 约定；每个实际返回的检查点一份 input，与旧 _judge 输入完全相同，另附 script_id、checkpoint_id、语料 SHA-256 和源码指纹。每轮把 round-template.json 复制为 manifest.json，按 judgment_file 写 e2e_scoring_v1 的 facts／forbidden JSON，reason 字符串必填。数组等长、真实布尔值、返回 memory_ids 和正向项支持记忆都严格校验；e2e-score 接受一轮或两轮 --judgments，--judge-model 必填，不读取模型配置、不调用模型。双判正向事实取 AND、禁止说法取 OR，列原始分歧；近期消息隔离和排空失败不能由判分覆盖，U04 独立计时。材料指纹绑定全部输入和记录；未到达的检查点没有虚构输入，其基础设施失败仍保留在脚本分母中。
 
-材料、判分和完整报告放仓库外，不提交执行记录或完整材料。两轮必须在互不可见的独立会话中完成；用于门槛的判分者不参与该轮实现。单轮小样本只检查流程，≥80%（全部公开集至少 9/11）不代表隐藏门槛通过。方舟 GLM 在 [chat] 显式配置 reasoning_effort="low"；未配置时不发送，不能关闭推理。档位写入调用记录、评测指纹及报告；推理字段仅存出现标志、字符数和 usage 推理 token，不保存全文。学习仍共享 180 秒预算；内容拒绝不修正 JSON、不写记忆。当前只在 macOS 验证，不做 Windows／深路径验证。
+材料、判分和完整报告放仓库外，不提交执行记录或完整材料。两轮必须在互不可见的独立会话中完成；用于门槛的判分者不参与该轮实现。单轮小样本只检查流程，≥80%（全部公开集至少 9/11）不代表隐藏门槛通过。依据 `DECISIONS.md` 2026-10-08「GLM 默认推理档位改为 high」，方舟 GLM 在 [chat] 显式配置 reasoning_effort="high"；未配置时不发送，不能关闭推理。产品预设仅影响以后选用该预设的配置，已保存的模型配置不自动改写。high 的学习调用更慢（隐藏集上批次 P95 约 35—43 秒），实时入口的 1 分钟目标需在预演中复核。档位写入调用记录、评测指纹及报告；推理字段仅存出现标志、字符数和 usage 推理 token，不保存全文。学习仍共享 180 秒预算；内容拒绝不修正 JSON、不写记忆。当前只在 macOS 验证，不做 Windows／深路径验证。
 
 评测子进程密钥用环境变量传递，临时 TOML 只写 api_key_env 引用，不能写入明文密钥。跨入口来源用 sources 的 entry_id/key 对象，近期原始消息隔离独立于语义判分检查。正常关闭仍等待在途线程，0.5 秒轮询仍扫描待学习正文，大积压时的扫描成本留作已知限制。
 

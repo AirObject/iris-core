@@ -16,9 +16,10 @@ base_url = ""  # 接口地址
 api_key = ""
 model = ""     # 模型 ID
 # 可选的服务商推理档位字符串；未配置时完全不发送该参数，不按模型名或主机猜测。
-# 方舟 GLM-5.3-Flash 不能关闭推理，推荐 low；none/minimal 也只是映射为 low。
+# 方舟 GLM-5.3-Flash 不能关闭推理，推荐 high；依据 DECISIONS.md 2026-10-08「GLM 默认推理档位改为 high」。
+# high 的学习调用更慢（隐藏集上批次 P95 约 35—43 秒），实时入口的 1 分钟目标需在预演中复核。
 # 其他 OpenAI 兼容模型请按服务商文档设置，不支持时保持注释。
-# reasoning_effort = "low"
+# reasoning_effort = "high"
 
 # embedding 模型：为记忆和查询生成向量。
 # 三项都留空时，测试只用全文检索（11.6）。

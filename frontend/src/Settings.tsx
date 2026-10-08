@@ -102,7 +102,10 @@ function ModelFields({
   settings: Settings;
 }) {
   const label = kind === "chat" ? "对话模型" : "Embedding 模型",
-    readonly = settings.model_source === "external";
+    readonly = settings.model_source === "external",
+    arkEffort = settings.presets.find(
+      (p) => p.id === "ark-glm",
+    )?.reasoning_effort;
   const [result, setResult] = useState(""),
     [busy, setBusy] = useState(false);
   const test = async () => {
@@ -217,7 +220,7 @@ function ModelFields({
                 change({ ...value, reasoning_effort: e.target.value || null })
               }
             />
-            <small>火山方舟 GLM 预设使用 low。</small>
+            {arkEffort && <small>火山方舟 GLM 预设使用 {arkEffort}。</small>}
           </label>
         ) : (
           <label>

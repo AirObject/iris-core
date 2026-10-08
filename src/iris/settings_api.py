@@ -16,7 +16,7 @@ from .models import Gateway, ModelConfig, ModelError
 
 CONNECTION_TIMEOUT = 10
 PRESETS = [
-    {'id': 'ark-glm', 'name': '火山方舟 · GLM（Agent Plan）', 'base_url': 'https://ark.cn-beijing.volces.com/api/plan/v3', 'model': 'glm-5.3-flash', 'reasoning_effort': 'low'},
+    {'id': 'ark-glm', 'name': '火山方舟 · GLM（Agent Plan）', 'base_url': 'https://ark.cn-beijing.volces.com/api/plan/v3', 'model': 'glm-5.3-flash', 'reasoning_effort': 'high'},
     {'id': 'deepseek', 'name': 'DeepSeek', 'base_url': 'https://api.deepseek.com/v1', 'model': 'deepseek-chat', 'reasoning_effort': None},
     {'id': 'local', 'name': 'Ollama（本机）', 'base_url': 'http://127.0.0.1:11434/v1', 'model': '', 'reasoning_effort': None},
 ]

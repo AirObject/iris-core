@@ -31,7 +31,7 @@ beforeEach(() => {
         name: "火山方舟 · GLM（Agent Plan）",
         base_url: "https://ark.cn-beijing.volces.com/api/plan/v3",
         model: "glm-5.3-flash",
-        reasoning_effort: "low",
+        reasoning_effort: "high",
       },
     ],
     operations: [],
@@ -115,39 +115,47 @@ test("登录后显示管理页面，退出后回登录", async () => {
     await screen.findByRole("heading", { name: "管理员登录" }),
   ).toBeInTheDocument();
 });
-test("设置页保存 low 预设、测试连接和限制，不回显旧密钥", async () => {
-  configured = authenticated = admin = true;
-  location.hash = "#/settings";
-  settings.models.chat = {
-    ...blank,
-    enabled: true,
-    key_set: true,
-    model: "old",
-    base_url: "https://example.test/v1",
-  };
-  const user = userEvent.setup();
-  render(<App />);
-  expect(
-    await screen.findByRole("heading", { name: "设置" }),
-  ).toBeInTheDocument();
-  expect(screen.getByLabelText("对话模型 API key")).toHaveValue("");
-  await user.selectOptions(
-    screen.getByLabelText("对话模型服务商预设"),
-    "ark-glm",
-  );
-  expect(screen.getByLabelText("对话模型推理档位")).toHaveValue("low");
-  await user.click(screen.getByRole("button", { name: "测试对话模型连接" }));
-  expect(await screen.findByText(/密钥无效.*12/)).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "保存对话模型" }));
-  await user.click(screen.getByRole("button", { name: "保存用量与并发" }));
-  expect(
-    calls.some(
+test.each(["high", "medium"])(
+  "设置页保存接口返回的 %s 预设、测试连接和限制，不回显旧密钥",
+  async (effort) => {
+    settings.presets[0].reasoning_effort = effort;
+    configured = authenticated = admin = true;
+    location.hash = "#/settings";
+    settings.models.chat = {
+      ...blank,
+      enabled: true,
+      key_set: true,
+      model: "old",
+      reasoning_effort: "low",
+      base_url: "https://example.test/v1",
+    };
+    const user = userEvent.setup();
+    render(<App />);
+    expect(
+      await screen.findByRole("heading", { name: "设置" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("对话模型 API key")).toHaveValue("");
+    expect(screen.getByLabelText("对话模型推理档位")).toHaveValue("low");
+    expect(
+      screen.getByText(`火山方舟 GLM 预设使用 ${effort}。`),
+    ).toBeInTheDocument();
+    await user.selectOptions(
+      screen.getByLabelText("对话模型服务商预设"),
+      "ark-glm",
+    );
+    expect(screen.getByLabelText("对话模型推理档位")).toHaveValue(effort);
+    await user.click(screen.getByRole("button", { name: "测试对话模型连接" }));
+    expect(await screen.findByText(/密钥无效.*12/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "保存对话模型" }));
+    await user.click(screen.getByRole("button", { name: "保存用量与并发" }));
+    const saved = calls.find(
       (c) =>
         c.path.endsWith("/settings/models/chat") && c.init?.method === "PUT",
-    ),
-  ).toBe(true);
-  expect(calls.some((c) => c.path.endsWith("/settings/limits"))).toBe(true);
-});
+    )!;
+    expect(JSON.parse(String(saved.init?.body)).reasoning_effort).toBe(effort);
+    expect(calls.some((c) => c.path.endsWith("/settings/limits"))).toBe(true);
+  },
+);
 test("外部模型配置只读", async () => {
   configured = authenticated = admin = true;
   location.hash = "#/settings";

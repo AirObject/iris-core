@@ -109,6 +109,16 @@ def test_login_rate_limit_and_expired_session(client, store):
     assert client.get('/admin/api/settings').status_code == 401
 
 
+def test_settings_presets_default_only_ark_glm_to_high(client):
+    start_setup(client)
+    snapshot = client.get('/admin/api/settings').json()
+    assert {preset['id']: preset['reasoning_effort'] for preset in snapshot['presets']} == {
+        'ark-glm': 'high', 'deepseek': None, 'local': None,
+    }
+    assert not snapshot['models']['chat']['enabled']
+    assert snapshot['models']['chat']['reasoning_effort'] is None
+
+
 def test_settings_hot_replace_secret_permissions_and_audit(client, store):
     start_setup(client)
     finish_setup(client)
@@ -122,6 +132,9 @@ def test_settings_hot_replace_secret_permissions_and_audit(client, store):
     assert key in secret.read_text()
     snapshot = client.get('/admin/api/settings').json()
     assert snapshot['models']['chat']['key_set'] and 'api_key' not in snapshot['models']['chat']
+    assert snapshot['models']['chat']['reasoning_effort'] == 'low'
+    assert RuntimeConfig(store).load()['chat'].reasoning_effort == 'low'
+    assert client.app.state.gateway.configs['chat'].reasoning_effort == 'low'
     assert key not in json.dumps(snapshot)
     with store.read() as conn:
         assert key not in '\n'.join(conn.iterdump())
