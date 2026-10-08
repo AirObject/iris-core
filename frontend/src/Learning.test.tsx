@@ -11,6 +11,20 @@ const entry = {
   kind: "group",
   pace: "realtime",
   pending_count: 2,
+  filters: {
+    min_chars: 3,
+    mention_only: true,
+    context_messages: 2,
+    max_batches_per_hour: 1,
+  },
+  queue_wait: {
+    reason: "hourly_batch_limit",
+    retry_at: "2026-10-09T04:00:00Z",
+    limit: 1,
+    batches_last_hour: 1,
+    filter_waiting_count: 0,
+    filtered_count: 5,
+  },
 };
 const batch = {
   id: 8,
@@ -85,10 +99,16 @@ beforeEach(() => {
           state = "waiting";
           body = { accepted: true, state };
         }
-      } else if (url === "/admin/api/batches/8")
+      } else if (url.endsWith("/entries/A/settings"))
+        body = { pace: entry.pace, filters: entry.filters };
+      else if (url === "/admin/api/batches/8")
         body = {
           ...current,
           entry,
+          entry_settings: {
+            pace: "realtime",
+            filters: { ...entry.filters, min_chars: 1 },
+          },
           segments: {
             history: [
               {
@@ -171,7 +191,13 @@ beforeEach(() => {
           unassigned_calls: [],
         };
       else if (url.startsWith("/admin/api/batches?"))
-        body = { items: [current], total: 1, offset: 0, limit: 30 };
+        body = {
+          items: [current],
+          total: 1,
+          offset: 0,
+          limit: 30,
+          entry_waits: [{ entry_id: "A", queue_wait: entry.queue_wait }],
+        };
       else if (url.startsWith("/admin/api/memory-gaps?"))
         body = {
           items: [
@@ -208,6 +234,25 @@ test("entry list includes trial and host, pace, queue and latest batch", async (
   for (const text of ["宿主私聊", "实时", "标准", "待学习 2 条"])
     expect(screen.getByText(text)).toBeVisible();
   await openBatch();
+});
+test("入口页能编辑过滤，保存后刷新列表，批次显示当前等待和冻结快照", async () => {
+  render(<LearningPage openMemory={openMemory} />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "修改入口设置 · 试用群聊 A" }),
+  );
+  expect(await screen.findByLabelText("最短字数")).toHaveValue(3);
+  await userEvent.click(screen.getByRole("button", { name: "保存入口设置" }));
+  expect(await screen.findByText("入口设置已保存")).toBeVisible();
+  await userEvent.click(
+    screen.getByRole("button", { name: "查看批次 · 试用群聊 A" }),
+  );
+  expect(await screen.findByText(/达到每小时批次上限/)).toBeVisible();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "查看批次 #8" }),
+  );
+  await userEvent.click(await screen.findByText("组成批次时的入口设置"));
+  expect(screen.getByText("最短字数：1 字")).toBeVisible();
+  expect(requests.filter((r) => r.init?.method === "PATCH")).toHaveLength(1);
 });
 test("detail shows segments, body, call diagnostics, dropped items and memory link safely", async () => {
   render(<LearningPage openMemory={openMemory} />);

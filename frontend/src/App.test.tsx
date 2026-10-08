@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import App from "./App";
+import type { Judgment } from "./types";
 
 const entry = {
   id: "trial-a",
@@ -78,6 +79,7 @@ let requests: { url: string; method: string; body: Record<string, unknown> }[];
 let conflict = false;
 let freshCatalog = false;
 let trialEntries = [entry];
+let duplicateSpeaker: boolean;
 let learningCalls: {
   purpose: string;
   batch_id: number;
@@ -86,10 +88,17 @@ let learningCalls: {
 }[] = [];
 let detail = { ...memory };
 let messages: Record<string, unknown>[] = [];
+let judgment: Judgment | undefined;
+let preparedMemories: Record<string, unknown>[] = [];
+let pendingPeople: number;
+let replyMode: "failed" | "success" | "reused";
+let judgeHealth: string | null;
+let judgeEnabled: boolean;
 
 beforeEach(() => {
   localStorage.clear();
   trialEntries = [entry];
+  duplicateSpeaker = false;
   learningCalls = [];
   location.hash = "#/trial";
   requests = [];
@@ -97,6 +106,12 @@ beforeEach(() => {
   freshCatalog = false;
   detail = { ...memory };
   messages = [];
+  judgment = undefined;
+  preparedMemories = [];
+  pendingPeople = 0;
+  replyMode = "failed";
+  judgeHealth = null;
+  judgeEnabled = true;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string, init?: RequestInit) => {
@@ -114,7 +129,32 @@ beforeEach(() => {
           csrf_token: "test-csrf",
         };
       else if (url === "/admin/api/status")
-        data = { ...status, learning_calls_24h: learningCalls };
+        data = {
+          ...status,
+          model_health: {
+            ...status.model_health,
+            ...(judgeHealth
+              ? {
+                  recall_judge: {
+                    state: judgeHealth,
+                    retry_at: "2026-10-09T04:00:00Z",
+                  },
+                }
+              : {}),
+          },
+          timeouts_seconds: { learning: 180, recall_judge: 10 },
+          learning_calls_24h: learningCalls,
+        };
+      else if (url === "/admin/api/settings")
+        data = {
+          recall_judge: {
+            enabled: judgeEnabled,
+            concurrency: 1,
+            queue_limit: 8,
+          },
+        };
+      else if (url.startsWith("/admin/api/people?"))
+        data = { items: [], total: pendingPeople, offset: 0, limit: 30 };
       else if (url.startsWith("/admin/api/maintenance?"))
         data = { items: [], total: 0, limit: 1, offset: 0 };
       else if (url.startsWith("/admin/api/operations?"))
@@ -124,7 +164,12 @@ beforeEach(() => {
           entries: freshCatalog ? [] : trialEntries,
           speakers: freshCatalog
             ? []
-            : [{ id: "user", name: "我（用户）", is_default: true }],
+            : [
+                { id: "user", name: "我（用户）", is_default: true },
+                ...(duplicateSpeaker
+                  ? [{ id: "user", name: "我（用户）", is_default: false }]
+                  : []),
+              ],
           role_name: "Iris",
         };
       else if (url === "/admin/api/trial/entries") {
@@ -144,7 +189,8 @@ beforeEach(() => {
         data = { message_id: 1, pending_count: 1, learning_state: "pending" };
       } else if (url.endsWith("/prepare"))
         data = {
-          memories: [],
+          memories: preparedMemories,
+          judgment,
           persona: { content: "我是 Iris", version: 1 },
           state: {},
           goals: [],
@@ -154,13 +200,24 @@ beforeEach(() => {
       else if (url.endsWith("/learn"))
         data = { accepted: true, paused: false, pending_count: 1 };
       else if (url.endsWith("/reply")) {
-        data = {
-          error: {
-            code: "reply_failed",
-            message: "角色回复失败，原消息已保存",
-          },
-        };
-        code = 502;
+        if (replyMode !== "failed")
+          data = {
+            message: {},
+            reused: replyMode === "reused",
+            prepared:
+              replyMode === "reused"
+                ? null
+                : { memories: preparedMemories, judgment, hints: [] },
+          };
+        else {
+          data = {
+            error: {
+              code: "reply_failed",
+              message: "角色回复失败，原消息已保存",
+            },
+          };
+          code = 502;
+        }
       } else if (
         trialEntries.some((e) => url === `/admin/api/trial/entries/${e.id}`)
       )
@@ -201,6 +258,146 @@ beforeEach(() => {
       });
     }),
   );
+});
+
+test.each(["true", "false", ""])(
+  "置顶筛选 %s 发送正确布尔查询并保留人物条件",
+  async (pinned) => {
+    location.hash = "#/memories?person_id=user&lifecycle=all";
+    render(<App />);
+    await screen.findByRole("option", { name: "我（用户）" });
+    expect(screen.getByLabelText("涉及的人")).toHaveValue("user");
+    expect(screen.getByLabelText("状态")).toHaveValue("all");
+    await userEvent.selectOptions(screen.getByLabelText("置顶筛选"), pinned);
+    await userEvent.click(screen.getByRole("button", { name: "搜索" }));
+    await waitFor(() => {
+      const last = requests
+        .filter((r) => r.url.startsWith("/admin/api/memories?"))
+        .at(-1)!;
+      const params = new URL(last.url, "http://localhost").searchParams;
+      expect(params.get("pinned")).toBe(pinned || null);
+      expect(params.get("person_id")).toBe("user");
+      expect(params.get("lifecycle")).toBe("all");
+    });
+  },
+);
+test("试用与导航提示待确认人物，点击进入已筛选的人物页", async () => {
+  pendingPeople = 2;
+  render(<App />);
+  expect(await screen.findByText(/2 位人物有待确认/)).toBeVisible();
+  expect(screen.getByLabelText("有待确认的人物联系")).toBeVisible();
+  await userEvent.click(screen.getByRole("link", { name: "查看待确认联系" }));
+  expect(await screen.findByRole("heading", { name: "人物" })).toBeVisible();
+  expect(screen.getByLabelText("只看待确认")).toBeChecked();
+});
+test.each([
+  ["applied", null, "正常"],
+  ["applied", "no_candidates", "没有需要判断的相关候选"],
+  ["disabled", "configuration_disabled", "设置中已关闭判断"],
+  ["degraded", "rate_limited", "服务商限流，正在退避"],
+  ["degraded", "queue_timeout", "排队超时"],
+  ["degraded", "invalid_output", "判断输出格式无效"],
+])("试用显示判断 %s/%s 和后端返回的移除数量", async (state, reason, label) => {
+  judgment = {
+    status: state,
+    reason,
+    duration_ms: 2000,
+    budget_seconds: 10,
+    removed_memory_ids: state === "applied" && !reason ? [2, 3] : [],
+    stale_memory_ids: [4],
+  };
+  render(<App />);
+  await userEvent.type(
+    await screen.findByLabelText("消息内容"),
+    "给小林准备什么？",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+  expect(await screen.findByText(label!)).toBeVisible();
+  expect(
+    screen.getByText(`被判断去掉 ${judgment.removed_memory_ids.length} 条记忆`),
+  ).toBeVisible();
+  expect(screen.getByText("另有 1 条记忆在复核时失效")).toBeVisible();
+  expect(requests.filter((r) => r.url.endsWith("/prepare"))).toHaveLength(1);
+});
+test("角色回复返回的判断结果及人物标注呈现在试用页", async () => {
+  replyMode = "success";
+  judgment = {
+    status: "applied",
+    reason: null,
+    duration_ms: 1,
+    budget_seconds: 10,
+    removed_memory_ids: [2],
+  };
+  preparedMemories = [
+    {
+      ...memory,
+      reason: "relevant",
+      subject_annotations: {
+        possible_same_as: [
+          {
+            link_id: 5,
+            belief: 70,
+            subjects: [
+              { id: "A", name: "小林" },
+              { id: "B", name: "林同学" },
+            ],
+          },
+        ],
+        roleplay: [
+          {
+            link_id: 6,
+            actor: { name: "小林" },
+            character: { name: "船长" },
+            worlds: [null],
+            belief: 90,
+          },
+        ],
+      },
+    },
+  ];
+  render(<App />);
+  await userEvent.click(await screen.findByLabelText("角色回复"));
+  await userEvent.type(screen.getByLabelText("消息内容"), "继续聊");
+  await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+  expect(await screen.findByText("被判断去掉 1 条记忆")).toBeVisible();
+  expect(screen.getByRole("link", { name: "核对人物联系" })).toHaveAttribute(
+    "href",
+    "#/people?id=A",
+  );
+  expect(screen.getByText(/扮演关系（虚构）.*场景未知/)).toBeVisible();
+  expect(requests.some((r) => r.url.endsWith("/prepare"))).toBe(false);
+});
+test("复用已发布回复时说明诊断未返回，不重新 prepare", async () => {
+  replyMode = "reused";
+  render(<App />);
+  await userEvent.click(await screen.findByLabelText("角色回复"));
+  await userEvent.type(screen.getByLabelText("消息内容"), "重试回复");
+  await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+  expect(await screen.findByText(/后端未返回当时的回复准备结果/)).toBeVisible();
+  expect(screen.queryByText(/被判断去掉/)).not.toBeInTheDocument();
+  expect(requests.some((r) => r.url.endsWith("/prepare"))).toBe(false);
+});
+test.each([
+  ["rate_limited", "限流退避中"],
+  ["usage_limit", "达到今日用量上限"],
+  ["temporarily_unavailable", "暂时不可用"],
+])("运行状态展示召回判断 %s、降级和预算", async (state, label) => {
+  judgeHealth = state;
+  location.hash = "#/status";
+  render(<App />);
+  expect(await screen.findByText("召回判断模型")).toBeVisible();
+  expect(screen.getByText(label)).toBeVisible();
+  expect(screen.getByText(/总预算 10 秒（含排队）/)).toBeVisible();
+  expect(screen.getByText(/召回判断暂停或退避时降级/)).toBeVisible();
+});
+test("运行状态区分模型正常与判断已关闭", async () => {
+  judgeHealth = "normal";
+  judgeEnabled = false;
+  location.hash = "#/status";
+  render(<App />);
+  expect(
+    await screen.findByText("召回判断已关闭，保留基础召回。"),
+  ).toBeVisible();
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -343,6 +540,18 @@ test("first entry loads its newly created default speaker and can send", async (
   await userEvent.type(screen.getByLabelText("消息内容"), "第一条消息");
   await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
   expect(await screen.findByText("第一条消息")).toBeVisible();
+});
+test("合并人物拥有多个试用账号时只显示一个发言人并保留默认选择", async () => {
+  duplicateSpeaker = true;
+  render(<App />);
+  const speaker = await screen.findByLabelText("发言人");
+  expect(within(speaker).getAllByRole("option")).toHaveLength(1);
+  expect(speaker).toHaveValue("user");
+  await userEvent.type(screen.getByLabelText("消息内容"), "合并后的消息");
+  await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+  expect(
+    requests.find((r) => r.url.endsWith("/messages"))?.body.speaker_id,
+  ).toBe("user");
 });
 
 test("abandoned and refused messages are never labeled remembered", async () => {

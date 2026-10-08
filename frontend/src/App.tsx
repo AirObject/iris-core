@@ -8,11 +8,13 @@ import { MemoryPage, MemoryDetail } from "./Memory";
 import Operations from "./Operations";
 import StatusPage from "./Status";
 import LearningPage from "./Learning";
-import type { Status } from "./types";
+import People from "./People";
+import type { Page, PersonSummary, Status } from "./types";
 
 const routes = [
   { id: "trial", name: "试用对话", icon: "chat" },
   { id: "memories", name: "记忆", icon: "memory" },
+  { id: "people", name: "人物", icon: "people" },
   { id: "learning", name: "入口与学习", icon: "learning" },
   { id: "status", name: "运行状态", icon: "status" },
   { id: "operations", name: "操作记录", icon: "memory" },
@@ -31,6 +33,11 @@ function Icon({ name }: { name: string }) {
     >
       {name === "chat" ? (
         <path d="M20 11.5a8 8 0 0 1-8 8H5l-3 2 1.5-5A8 8 0 1 1 20 11.5ZM7 10h8M7 14h5" />
+      ) : name === "people" ? (
+        <>
+          <circle cx="9" cy="7" r="3" />
+          <path d="M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v3" />
+        </>
       ) : name === "learning" ? (
         <>
           <path d="M4 4h16v5H4zM4 14h7v6H4zM16 14h4v6h-4M8 9v5M18 9v5" />
@@ -56,6 +63,10 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [version, setVersion] = useState(0);
   const status = useData<Status>("/status", 2000);
+  const pendingPeople = useData<Page<PersonSummary>>(
+    "/people?pending_only=true&limit=1&offset=0",
+    5000,
+  );
   const routePath = route.split("?")[0];
   const memoryChanged = () => {
     setVersion((v) => v + 1);
@@ -102,6 +113,9 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
             >
               <Icon name={r.icon} />
               {r.name}
+              {r.id === "people" && !!pendingPeople.data?.total && (
+                <span className="nav-dot" aria-label="有待确认的人物联系" />
+              )}
             </a>
           ))}
         </nav>
@@ -120,6 +134,18 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
       </header>
       <main id="main" tabIndex={-1}>
         <div className="content-wrap">
+          {!!pendingPeople.data?.total && routePath === "trial" && (
+            <Notice>
+              {pendingPeople.data.total} 位人物有待确认的“可能是同一人”联系。
+              <a href="#/people?pending_only=true">查看待确认联系</a>
+            </Notice>
+          )}
+          {pendingPeople.error && routePath === "trial" && (
+            <Notice error>
+              人物联系提示暂时无法更新。
+              <button onClick={pendingPeople.refresh}>重试人物提示</button>
+            </Notice>
+          )}
           {status.error && (
             <Notice error>
               {status.error}。以下数据可能尚未更新。
@@ -141,9 +167,20 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
             <SettingsPage />
           ) : routePath === "memories" ? (
             <MemoryPage
+              key={route}
+              initialQuery={route.split("?")[1]}
               version={version}
               openMemory={openMemory}
               onChange={memoryChanged}
+            />
+          ) : routePath === "people" ? (
+            <People
+              key={route}
+              initialQuery={route.split("?")[1]}
+              onChange={() => {
+                pendingPeople.refresh();
+                memoryChanged();
+              }}
             />
           ) : routePath === "operations" ? (
             <Operations key={route} initialQuery={route.split("?")[1]} />

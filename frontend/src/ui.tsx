@@ -59,6 +59,7 @@ export const healthLabel = (value: string) =>
     configuration_error: "配置错误",
     account_problem: "账户异常",
     usage_limit: "达到今日用量上限",
+    rate_limited: "限流退避中",
   })[value] || value;
 export const messageState = (value: string) =>
   ({
@@ -67,6 +68,7 @@ export const messageState = (value: string) =>
     learned: "学习已完成",
     abandoned: "学习放弃 · 未记住",
     refused: "内容拒绝 · 未记住",
+    filtered: "已过滤 · 不参与学习",
   })[value] || value;
 export function batchLabel(batch?: Batch | null) {
   if (!batch) return "暂无批次";
@@ -153,7 +155,7 @@ export function Dialog({
       if (e.key === "Tab") {
         const targets = [
           ...(ref.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled),a[href],input,textarea,select,[tabindex="0"]',
+            'button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]',
           ) || []),
         ];
         const first = targets[0],

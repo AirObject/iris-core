@@ -22,7 +22,12 @@ beforeEach(() => {
   location.hash = "#/trial";
   settings = {
     role: { name: "Iris", background: "", timezone: null },
-    models: { chat: { ...blank }, embedding: { ...blank } },
+    models: {
+      chat: { ...blank },
+      embedding: { ...blank },
+      recall_judge: { ...blank, inherited: true },
+    },
+    recall_judge: { enabled: true, concurrency: 1, queue_limit: 8 },
     model_source: "local",
     learning_concurrency: 2,
     daily_token_limit: null,

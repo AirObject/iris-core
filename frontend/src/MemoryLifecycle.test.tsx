@@ -241,7 +241,7 @@ test("列表状态与保留强度排序交给服务端，重新筛选回到首�
       ),
     ).toBe(true),
   );
-  expect(screen.getByLabelText("置顶筛选")).toBeDisabled();
+  expect(screen.getByLabelText("置顶筛选")).toBeEnabled();
 });
 
 test("即将删除直接恢复，使用该行修订号并刷新列表", async () => {
