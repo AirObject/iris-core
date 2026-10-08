@@ -181,6 +181,14 @@ print(httpx.post("http://127.0.0.1:8080/api/v1/entries/group-a/learn").json())
 
 相关记忆先入选（`reason: "relevant"`），剩余名额按参与者轮流用其重要记忆补位（`reason: "person_highlight"`），要点合计最多三条，不包含我和场景。人物要点是对方的背景，不表示回答了当前问题。显式查询文本点名的主体或别名限定范围；自动查询仅以最新他人消息点名：记忆须涉及、出自或正文提及此人，同名主体都保留。`recent_limit=0` 关闭近期消息返回，记忆合计最多 8 条、1500 个估算 token，目标最多 10 个。模型失败时说明全文检索降级。定向 search 不补人物要点。
 
+回复准备默认对前 8 个 `relevant` 候选做召回判断，支持分 ≥50 才保留；人物要点不判断，删去的相关项不改为人物要点，也不补位，其他顺序不变。`/memories/search` 不判断。试用回复使用同一个 prepare。
+
+prepare 可以传 `"judge": false` 关闭本次判断，或 `"judge_budget_seconds": 3` 缩短预算（必须 >0 且 ≤10 秒）。响应的 `judgment` 和 `hints` 标明 `applied`／`disabled`／`degraded`、`reason`、`duration_ms`、`queue_ms`、`network_ms` 和 `removed_memory_ids`。未配置、暂停、额度耗尽、排队满、超时或非法输出都保留仍有效的原候选；修订、生命周期或近期上下文在调用期间变化时重新复核，失效记忆不返回。只有最终返回的记忆取得本次反馈资格。
+
+`recall_judge` 是独立模型用途，未单独配置时继承 chat 的接口、密钥和模型，推理档位固定默认 high；chat 的暂停不暂停判断，判断的暂停也不暂停学习。可在测试配置中增加 `[recall_judge]`，或通过已有管理员接口 `PUT /admin/api/settings/models/recall_judge` 保存独立模型及档位；`enabled:false` 清除该独立配置、恢复继承。全局关闭使用 `PATCH /admin/api/settings/recall-judge` 的 `enabled:false`。此 PATCH 还支持 `concurrency`（1—8，默认 1）和 `queue_limit`（0—64，默认 8），省略字段保留现值；模型来自外部文件时模型配置仍只读。管理设置响应列出实际配置、`inherited` 和独立健康状态，现有设置页随后接入。
+
+判断最长总预算 10 秒，包含排队，只有一次网络尝试，不修正 JSON。达到并发／队列上限时有界等待或立即降级；429 及账户限额按服务商错误码优先分类，立即降级并独立退避。网络连续三次错误触发暂停，后台按 60／120／240／480／600 秒探测；临时限流还遵守更长的 Retry-After。判断与学习使用独立并发槽位；同账号仍共享服务商额度，不能保证没有账号限流。已达每日 token 上限时不再开始判断或判断恢复探测，基础召回继续。
+
 定向查询和状态示例：
 
 ```python
@@ -231,7 +239,7 @@ print(httpx.get("http://127.0.0.1:8080/api/v1/status").json())
 
 ## 模型故障与状态
 
-学习首次请求、调用内重试和 JSON 修正共享 180 秒总预算；其他生成请求为 120 秒，embedding 为 30 秒，召回查询 embedding 仍限 2 秒且不重试，评测判分为 240 秒。调用内最多再试两次；有有效 `Retry-After` 时按秒数或 HTTP 日期等待，否则分别以 2、4 秒为基数，加上 0 到基数之间的均匀随机抖动。等待和后续请求不得超过同一个总预算。批次重试间隔为 1／5／15 分钟，共四次尝试。
+学习首次请求、调用内重试和 JSON 修正共享 180 秒总预算；其他生成请求为 120 秒，embedding 为 30 秒，召回查询 embedding 仍限 2 秒且不重试，评测判分为 240 秒。召回判断另有包含排队的 10 秒总预算、仅一次尝试。其他调用内最多再试两次；有有效 `Retry-After` 时按秒数或 HTTP 日期等待，否则分别以 2、4 秒为基数，加上 0 到基数之间的均匀随机抖动。等待和后续请求不得超过同一个总预算。批次重试间隔为 1／5／15 分钟，共四次尝试。
 
 对话和 embedding 分别维护状态：`normal`、`temporarily_unavailable`、`invalid_key`、`configuration_error`、`account_problem`；每日上限造成学习暂停时，对话用途显示 `usage_limit`。连续三次可重试的网络／超时／限流／5xx 请求错误会暂停该用途（包含调用内重试的失败），触发暂停的批次失败不扣尝试次数。探测使用固定短请求，间隔为 1、2、4、8、10 分钟，之后保持 10 分钟；成功即恢复。分类优先识别结构化 `error.code`，其次兼容已知 `error.type`，最后按 HTTP 状态兜底。401 是密钥无效，404 及 `InvalidParameter`／`MissingParameter` 是配置错误，只在配置实际改变后恢复；403 权限、欠费、订阅及 `QuotaExceeded`／`SetLimitExceeded` 属账户问题，不作调用内短间隔重试，保留定时探测和内部立即重试。`AccountRateLimitExceeded`、`ServerOverloaded`、`RequestBurstTooFast`、500、传输错误、超时及审核服务故障 `ContentSecurityDetectionError` 可重试。方舟 `SensitiveContentDetected` 家族、输入／输出文本审核和风控命中，以及 `finish_reason=content_filter`，直接进入内容拒绝终态，不修正 JSON、不写记忆；原 MiniMax 敏感字段与 `base_resp` 识别保留。码表来源见[方舟官方文档](https://docs.volcengine.com/docs/ark/error-codes?lang=zh)。
 
@@ -265,7 +273,7 @@ uv run python evals/benchmark_retrieval.py --default-config
 
 trigram 查询中的一字／两字实词会补查已有 jieba 索引；只询问已知姓名时，也能按涉及人、说话人及正文提及取回候选。长短词结果按全查询词项覆盖率筛选，稀有长词片段也可按整库文档频率入选，之后合并去重，人物与类型等过滤继续生效，混合检索和全文降级均覆盖短词。
 
-召回评测默认运行六份公开集，共 195 条固定记忆、188 条查询。GLM 阶段全部按 dev 使用，保留原 split 作历史分组；第四轮新增 16 条手写短词查询，先单独冻结；第五轮继续按原规则在 122 条 dev 上重新标定。选参、逐项对照和已知问题见 [evals/README.md](evals/README.md)。本次对话查询默认值由规划者批准为守则例外：conversation_v2 relevant 精确率下降 0.0682，conversation_v3 无答案误返由 1/4 增至 3/4，见 [第二轮报告](evals/reports/conversation-prepare-20261008.md#第二轮)。无答案拒绝留到 M2。
+召回评测默认运行七份公开集（含 recall_no_answer_v1），共 243 条固定记忆、228 条查询。`default_judged` 使用正式 prepare 判断路径；原全文／混合对照关闭判断。报告单列判断降级次数和占比；有降级的运行不能作为正常路径结果。GLM 阶段全部按 dev 使用，保留原 split 作历史分组；第四轮新增 16 条手写短词查询，先单独冻结；第五轮继续按原规则在 122 条 dev 上重新标定。选参、逐项对照和已知问题见 [evals/README.md](evals/README.md)。本次对话查询默认值由规划者批准为守则例外：conversation_v2 relevant 精确率下降 0.0682，conversation_v3 无答案误返由 1/4 增至 3/4，见 [第二轮报告](evals/reports/conversation-prepare-20261008.md#第二轮)。召回判断按 PR #25 已批准方案固定，不重新选参。
 
 点名检查仅读取检索和人物要点候选的正文。性能脚本加 `--default-config` 覆盖当前默认的 5 千／5 万条、点名／不点名四组；不带该参数还会比较维度和 dtype，并在合成测试库中关闭向量截断。性能方法和本次报告入口见 [evals/README.md](evals/README.md)。学习影响按 2026-10-06 决定改为全部公开学习语料的确定性请求比较；第一阶段真实学习对照已作废。
 

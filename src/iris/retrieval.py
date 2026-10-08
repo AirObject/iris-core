@@ -413,12 +413,14 @@ class Retrieval:
             highlight_count += m.get('reason') == 'person_highlight'
         return [self._public(m) for m in selected]
 
-    def _record(self, entry_id: str | None, request: dict, memories: list[dict]) -> str:
+    def _record(self, entry_id: str | None, request: dict, memories: list[dict], *, _conn=None) -> str:
+        if _conn is None:
+            with self.store.write() as conn:
+                return self._record(entry_id, request, memories, _conn=conn)
         recall_id = uuid.uuid4().hex
-        with self.store.write() as conn:
-            conn.execute("INSERT INTO recalls VALUES(?,?,?,?)", (recall_id, entry_id, dumps(request), now()))
-            conn.executemany("INSERT INTO recall_items(recall_id,memory_id,revision) VALUES(?,?,?)",
-                             [(recall_id, m["id"], m["revision"]) for m in memories])
+        _conn.execute("INSERT INTO recalls VALUES(?,?,?,?)", (recall_id, entry_id, dumps(request), now()))
+        _conn.executemany("INSERT INTO recall_items(recall_id,memory_id,revision) VALUES(?,?,?)",
+                          [(recall_id, m["id"], m["revision"]) for m in memories])
         return recall_id
 
     def search(self, *, text: str = "", people=(), kinds=(), stances=(), time_from=None, time_to=None,
@@ -538,9 +540,17 @@ class Retrieval:
         return query, kind
 
     def prepare(self, entry_id: str, *, text: str | None = None, participants: list[str] | None = None,
-                known_memory_ids=(), recent_limit=20, memory_limit=8, token_budget=1500, goal_limit=10) -> dict:
+                known_memory_ids=(), recent_limit=20, memory_limit=8, token_budget=1500, goal_limit=10,
+                judge=True, judge_budget_seconds=10.0) -> dict:
+        from .recall_judge import judge as apply_judgment, validate_budget
+        validate_budget(judge_budget_seconds)
+        if type(judge) is not bool:
+            raise ValueError('judge must be a boolean')
+        known_memory_ids = tuple(known_memory_ids)
+        participants = list(participants) if participants is not None else None
         request = dict(text=text, participants=participants, known_memory_ids=list(known_memory_ids), recent_limit=recent_limit,
-                       memory_limit=memory_limit, token_budget=token_budget, goal_limit=goal_limit)
+                       memory_limit=memory_limit, token_budget=token_budget, goal_limit=goal_limit,
+                       judge=judge, judge_budget_seconds=judge_budget_seconds)
         # No read or write transaction spans the model call. The final response
         # uses one independent snapshot; arrivals during embedding are allowed.
         text, entry_kind, anchor_text = self._prepare_context(entry_id, text)
@@ -548,11 +558,9 @@ class Retrieval:
         with self.store.read() as conn:
             if not conn.execute("SELECT 1 FROM entries WHERE id=?", (entry_id,)).fetchone():
                 raise KeyError(entry_id)
-            recent = [dict(r) for r in reversed(conn.execute("""SELECT m.*,s.name AS sender_name,q.name AS quote_author_name
-                FROM messages m JOIN subjects s ON s.id=m.sender_subject_id LEFT JOIN subjects q ON q.id=m.quote_author_subject_id
-                WHERE m.entry_id=? ORDER BY m.id DESC LIMIT ?""", (entry_id, recent_limit)).fetchall())]
-            for m in recent:
-                m["unlearned"] = m["learning_state"] != "learned"
+            recent = self._recent(conn, entry_id, recent_limit)
+            context_version = self._context_version(conn, entry_id)
+            aliases = self._judge_aliases(conn)
             participant_ids = _people(conn, participants) if participants is not None else list(dict.fromkeys(
                 r[0] for r in conn.execute('SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,))
                 if r[0] not in ('self', 'scene')))
@@ -568,8 +576,72 @@ class Retrieval:
             result = {"persona": dict(persona) if persona else {"version": None, "content": "", "generated_at": None},
                       "memories": memories, "recent_messages": recent, "state": {},
                       "goals": self._goals(conn, entry_id, min(goal_limit, 10)), "hints": hints}
-        result["recall_id"] = self._record(entry_id, request, memories)
+        diagnostic = apply_judgment(self.gateway, self.store, memories, {
+            'role_name': self.store.setting('role_name', 'Iris'), 'query_hint': request['text'],
+            'retrieval_query': text, 'participants': participants or [], 'subject_aliases': aliases,
+            'recent_messages': [{k: m.get(k) for k in ('kind', 'sender_name', 'content', 'occurred_at')} for m in recent],
+        }, enabled=judge, budget_seconds=judge_budget_seconds)
+        self.last_judgment_network_ms = diagnostic['network_ms']
+        # Recheck and record in the SAME short write transaction: no mutation can
+        # slip between revision/lifecycle/context validation and feedback eligibility.
+        with self.store.write() as conn:
+            recent = self._recent(conn, entry_id, recent_limit)
+            context_changed = (context_version != self._context_version(conn, entry_id)
+                               or aliases != self._judge_aliases(conn))
+            if diagnostic['status'] == 'applied' and context_changed:
+                diagnostic.update(status='degraded', reason='context_changed', removed_memory_ids=[])
+            current = self._hydrate(conn, [m['id'] for m in memories])
+            recent_ids = {m['id'] for m in recent}
+            final, stale = [], []
+            for old in memories:
+                m = current.get(old['id'])
+                if (not m or m['revision'] != old['revision'] or m['lifecycle'] != 'active'
+                        or m['id'] in known_memory_ids
+                        or (m['_messages'] and not m['_other_source'] and m['_messages'] <= recent_ids)):
+                    stale.append(old['id'])
+                    continue
+                if old['id'] not in diagnostic['removed_memory_ids']:
+                    final.append({**old, **self._public(m)})
+            if stale:
+                diagnostic['stale_memory_ids'] = stale
+                diagnostic['removed_memory_ids'] = [mid for mid in diagnostic['removed_memory_ids'] if mid not in stale]
+                if diagnostic['status'] == 'applied':
+                    diagnostic.update(status='degraded', reason='candidate_changed', removed_memory_ids=[])
+                    final = [{**old, **self._public(current[old['id']])} for old in memories if old['id'] not in stale]
+            # A setting switched off while the call was in flight must take effect.
+            row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='recall_judge'").fetchone()
+            if judge and row and not json.loads(row[0]).get('enabled', True):
+                diagnostic.update(status='disabled', reason='configuration_disabled', removed_memory_ids=[])
+                final = [{**old, **self._public(current[old['id']])} for old in memories if old['id'] not in stale]
+            result.update(memories=final, recent_messages=recent, judgment=diagnostic)
+            result['hints'].append({'code': 'recall_judgment', **diagnostic,
+                'message': {'applied': '召回判断已完成。', 'disabled': '召回判断已关闭。',
+                            'degraded': '召回判断降级，保留仍有效的原候选。'}[diagnostic['status']]})
+            request['judgment'] = diagnostic
+            result['recall_id'] = self._record(entry_id, request, final, _conn=conn)
         return result
+
+    @staticmethod
+    def _recent(conn, entry_id, limit):
+        recent = [dict(r) for r in reversed(conn.execute("""SELECT m.*,s.name AS sender_name,q.name AS quote_author_name
+            FROM messages m JOIN subjects s ON s.id=m.sender_subject_id LEFT JOIN subjects q ON q.id=m.quote_author_subject_id
+            WHERE m.entry_id=? ORDER BY m.id DESC LIMIT ?""", (entry_id, limit)).fetchall())]
+        for m in recent:
+            m['unlearned'] = m['learning_state'] != 'learned'
+        return recent
+
+    @staticmethod
+    def _context_version(conn, entry_id):
+        # Detect arrivals/removal, even if the host requests recent_limit=0.
+        return tuple(tuple(r) for r in conn.execute(
+            'SELECT id,kind,content,sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,)))
+
+    @staticmethod
+    def _judge_aliases(conn):
+        people = {}
+        for row in conn.execute('SELECT s.id,s.name,a.alias FROM subject_aliases a JOIN subjects s ON s.id=a.subject_id ORDER BY s.id,a.alias'):
+            people.setdefault(row['id'], {'name': row['name'], 'aliases': []})['aliases'].append(row['alias'])
+        return list(people.values())
 
     def feedback(self, recall_id: str, memory_ids: list[int]) -> dict:
         from .memory_ops import adjust_retention, lifecycle_settings, operation

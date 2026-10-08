@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .db import Store
+from .models import MODEL_KINDS, effective_configs
 
 
 def utc_now():
@@ -34,12 +35,13 @@ def fingerprint(config):
 class ModelHealth:
     def __init__(self, store: Store, configs, *, clock=utc_now):
         self.store, self.clock = store, clock
-        self.configs = dict(configs)
+        self._raw_configs = dict(configs)
+        self.configs = effective_configs(configs)
         self._lock = threading.RLock()
         self._states = {}
-        for kind in ("chat", "embedding"):
+        for kind in MODEL_KINDS:
             saved = store.setting("model_health." + kind, {})
-            self._states[kind] = saved if saved.get("fingerprint") == fingerprint(configs.get(kind)) else self._fresh(kind)
+            self._states[kind] = saved if saved.get("fingerprint") == fingerprint(self.configs.get(kind)) else self._fresh(kind)
             self._save(kind)
 
     def _fresh(self, kind):
@@ -73,8 +75,9 @@ class ModelHealth:
             result = {kind: {k: v for k, v in state.items() if k != "fingerprint"}
                       for kind, state in self._states.items()}
         budget = self.budget()
-        if budget["exhausted"] and result["chat"]["state"] == "normal":
-            result["chat"].update(state="usage_limit", last_error="达到每日 token 上限", next_probe_at=budget["reset_at"])
+        for kind in ('chat', 'recall_judge'):
+            if budget['exhausted'] and result[kind]['state'] == 'normal':
+                result[kind].update(state='usage_limit', last_error='达到每日 token 上限', next_probe_at=budget['reset_at'])
         return result
 
     def learning_allowed(self):
@@ -89,13 +92,13 @@ class ModelHealth:
         with self._lock:
             state = self._states[kind]
             if not probe and state["state"] != "normal":
-                raise ModelError("paused", state["last_error"] or state["state"], paused=True)
+                raise ModelError("paused", state["last_error"] or state["state"], paused=True, reason=state["state"])
             token = state["fingerprint"]
-        if not probe and purpose in ("learning", "learning_repair") and self.budget()["exhausted"]:
-            raise ModelError("paused", "达到每日 token 上限", paused=True)
+        if ((not probe and purpose in ("learning", "learning_repair")) or kind == "recall_judge") and self.budget()["exhausted"]:
+            raise ModelError("paused", "达到每日 token 上限", paused=True, reason="usage_limit")
         return token
 
-    def observe(self, kind, token, category, summary=None, *, probe=False):
+    def observe(self, kind, token, category, summary=None, *, probe=False, rate_limited=False, retry_after=None):
         """Returns whether the caller must wait without spending a batch attempt."""
         with self._lock:
             state = self._states[kind]
@@ -111,11 +114,12 @@ class ModelHealth:
             elif category == "retryable":
                 state["consecutive_errors"] += 1
                 state["last_error"] = summary
-                if probe or state["consecutive_errors"] >= 3:
+                if probe or state["consecutive_errors"] >= 3 or (kind == "recall_judge" and rate_limited):
                     state["state"] = "account_problem" if previous == "account_problem" else "temporarily_unavailable"
                     if probe:
                         state["probe_delay_seconds"] = min(600, state["probe_delay_seconds"] * 2)
-                    state["next_probe_at"] = (self.clock() + timedelta(seconds=state["probe_delay_seconds"])).isoformat()
+                    delay = max(state["probe_delay_seconds"], retry_after or 0)
+                    state["next_probe_at"] = (self.clock() + timedelta(seconds=delay)).isoformat()
             elif category in ("authentication", "configuration", "account"):
                 state.update(state={"authentication": "invalid_key", "configuration": "configuration_error",
                                     "account": "account_problem"}[category], last_error=summary, consecutive_errors=0)
@@ -135,21 +139,28 @@ class ModelHealth:
             return current != "normal"
 
     def due_probes(self):
+        judge_available = (self.store.setting('recall_judge', {}).get('enabled', True) and not self.budget()['exhausted'])
         with self._lock:
             return [kind for kind, state in self._states.items()
-                    if state["state"] in ("temporarily_unavailable", "account_problem")
+                    if (kind != "recall_judge" or judge_available)
+                    and state["state"] in ("temporarily_unavailable", "account_problem")
                     and state["next_probe_at"] and datetime.fromisoformat(state["next_probe_at"]) <= self.clock()]
 
     def replace_config(self, kind, config):
         if kind not in self._states:
             raise ValueError("unknown model purpose")
         with self._lock:
-            if fingerprint(config) == self._states[kind]["fingerprint"]:
-                return False
-            self.configs[kind] = config
-            self._states[kind] = self._fresh(kind)
-            self._save(kind)
-            return True
+            self._raw_configs[kind] = config
+            updated = effective_configs(self._raw_configs)
+            changed = False
+            for purpose in MODEL_KINDS:
+                candidate = updated.get(purpose)
+                if fingerprint(candidate) != self._states[purpose]['fingerprint']:
+                    self.configs[purpose] = candidate
+                    self._states[purpose] = self._fresh(purpose)
+                    self._save(purpose)
+                    changed = True
+            return changed
 
     def retry_now(self, kind):
         with self._lock:
