@@ -28,6 +28,7 @@ from .trial import TrialReplies
 from .auth import Sessions, install_auth
 from .configuration import RuntimeConfig
 from .settings_api import install_settings
+from .memory_ops import operation
 
 
 def loopback_host(host: str) -> str:
@@ -187,17 +188,30 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
                        www_redirect=False)
 
+    def rejected_host_write(request, status):
+        path = request.url.path
+        if request.method != "POST" or not (path == "/api/v1/feedback" or (
+                path.startswith("/api/v1/entries/") and path.endswith("/learn"))):
+            return
+        action = "feedback_rejected" if path == "/api/v1/feedback" else "learn_rejected"
+        # Do not read or log the unvalidated body, URL identifiers, or exception text.
+        with app.state.store.write() as conn:
+            operation(conn, action, "request", "host", {"status": status}, actor="host")
+
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, error):
+        rejected_host_write(request, 400)
         return JSONResponse({"error": {"code": "invalid_request", "fields": [
             {"field": ".".join(map(str, e["loc"])), "message": e["msg"]} for e in error.errors()]}}, status_code=400)
 
     @app.exception_handler(ValueError)
     async def invalid_content(request, error):
+        rejected_host_write(request, 400)
         return JSONResponse({"error": {"code": "invalid_request", "message": str(error)}}, status_code=400)
 
     @app.exception_handler(KeyError)
     async def missing(request, error):
+        rejected_host_write(request, 404)
         return JSONResponse({"error": {"code": "not_found", "message": "对象不存在或已删除"}}, status_code=404)
 
     @app.exception_handler(RevisionConflict)

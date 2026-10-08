@@ -11,6 +11,8 @@ import numpy as np
 from .db import Store
 from .learning import LearningEngine, PROMPT_VERSION
 from .model_health import utc_now
+from .maintenance import Maintenance
+from .memory_ops import operation
 from .models import ModelError
 from .queue import FOCUS, form_batch, get_batch, should_learn
 
@@ -31,6 +33,9 @@ class Scheduler:
         self._maintenance = ThreadPoolExecutor(max_workers=3, thread_name_prefix="iris-maintenance")
         self._active, self._probes = {}, {}
         self._vectors = None
+        self.lifecycle = Maintenance(store, clock=clock)
+        self._lifecycle_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="iris-lifecycle")
+        self._lifecycle_job = None
         self._stop, self._wake = threading.Event(), threading.Event()
         self._thread = None
         self._tick_lock = threading.Lock()
@@ -77,9 +82,10 @@ class Scheduler:
         # Finish accepted work before the shared Store and Gateway are closed.
         self._pool.shutdown(wait=True, cancel_futures=True)
         self._maintenance.shutdown(wait=True, cancel_futures=True)
+        self._lifecycle_pool.shutdown(wait=True, cancel_futures=True)
         log.info("scheduler stopped")
 
-    def request_learning(self, entry_id):
+    def request_learning(self, entry_id, *, actor="host"):
         with self.store.write() as conn:
             if not conn.execute("SELECT 1 FROM entries WHERE id=?", (entry_id,)).fetchone():
                 raise KeyError(entry_id)
@@ -87,10 +93,33 @@ class Scheduler:
                 WHERE entry_id=? AND learning_state IN ('pending','batched')""", (entry_id,)).fetchone()
             conn.execute("UPDATE entries SET learn_requested_through=? WHERE id=?", (through, entry_id))
             conn.execute("UPDATE batches SET next_retry_at=NULL WHERE entry_id=? AND state='waiting'", (entry_id,))
+            operation(conn, "learn_requested", "entry", entry_id, {"pending_count": pending}, actor=actor)
         state = self.health.snapshot()["chat"] if self.health else {"state": "normal", "last_error": None}
         self.wake()
         return {"accepted": True, "pending_count": pending, "paused": state["state"] != "normal",
                 "reason": state["last_error"] if state["state"] != "normal" else None}
+
+    def request_maintenance(self):
+        run_id = self.lifecycle.request(actor="admin")
+        self.wake()
+        return {"accepted": True, "run_id": run_id}
+
+    def _schedule_lifecycle(self):
+        if self._lifecycle_job is not None:
+            if not self._lifecycle_job.done():
+                return
+            try:
+                self._lifecycle_job.result()
+            except Exception as error:
+                log.error("lifecycle task interrupted category=%s", type(error).__name__)
+            self._lifecycle_job = None
+        run_id = self.lifecycle.pending()
+        if run_id is None:
+            due = self.lifecycle.due()
+            if due:
+                run_id = self.lifecycle.request(trigger=due[0], schedule_key=due[1])
+        if run_id is not None:
+            self._lifecycle_job = self._lifecycle_pool.submit(self.lifecycle.run, run_id, stop=self._stop.is_set)
 
     def _execute(self, batch_id):
         engine = LearningEngine(self.store, self.gateway, clock=self.clock)
@@ -124,6 +153,7 @@ class Scheduler:
                 return
             self._reap(self._active)
             self._reap(self._probes)
+            self._schedule_lifecycle()
             if self.config_loader:
                 try:
                     configs = self.config_loader()

@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from . import admin_data, trial
 from .auth import audit, error
 from .queue import reset_batch
-from .memory_ops import edit_memory, delete_memory
+from .memory_ops import edit_memory, delete_memory, manage_memory, purge_memory, recreate_memory, operation
 from .retrieval import Retrieval
 from .service_status import service_status, add_health_hints
 
@@ -69,6 +69,32 @@ class Edit(Revision):
     content: str = Field(min_length=1, max_length=1000)
 
 
+class LifecycleEdit(Revision):
+    pinned: bool | None = Field(default=None, strict=True)
+    importance: int | None = Field(default=None, ge=0, le=100, strict=True)
+    retention: int | None = Field(default=None, ge=0, le=100, strict=True)
+
+    @model_validator(mode="after")
+    def changes(self):
+        keys = self.model_fields_set - {"expected_revision"}
+        if not keys or any(getattr(self, key) is None for key in keys):
+            raise ValueError("至少提供一个非空修改字段")
+        return self
+
+
+class Purge(Revision):
+    confirm: bool = Field(strict=True)
+
+
+class Recreate(Revision):
+    source_revision: int = Field(gt=0, strict=True)
+
+
+class Page(Input):
+    limit: int = Field(default=30, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=1000000)
+
+
 class MemoryQuery(Input):
     text: str = Field(default="", max_length=1000)
     person_id: str | None = Field(default=None, max_length=100)
@@ -112,8 +138,26 @@ class LearningQuery(Input):
         return MemoryQuery.valid_time(value)
 
 
+class OperationQuery(Page):
+    action: str | None = Field(default=None, max_length=100)
+    actor: str | None = Field(default=None, max_length=100)
+    object_type: str | None = Field(default=None, max_length=100)
+    object_id: str | None = Field(default=None, max_length=200)
+    time_from: str | None = Field(default=None, max_length=40)
+    time_to: str | None = Field(default=None, max_length=40)
+
+    @field_validator("time_from", "time_to")
+    @classmethod
+    def valid_time(cls, value):
+        return MemoryQuery.valid_time(value)
+
+
 def install_admin(app):
     router = APIRouter(prefix="/admin/api", tags=["本机管理界面"])
+
+    def record(action, object_type, object_id, details=None):
+        with app.state.store.write() as conn:
+            operation(conn, action, object_type, object_id, details)
 
     @router.get("/trial")
     def trial_catalog():
@@ -121,11 +165,15 @@ def install_admin(app):
 
     @router.post("/trial/entries", status_code=201)
     def create_entry(payload: NewEntry):
-        return trial.create_entry(app.state.store, payload.name, payload.kind)
+        result = trial.create_entry(app.state.store, payload.name, payload.kind)
+        record("trial_entry_created", "entry", result["id"])
+        return result
 
     @router.post("/trial/speakers", status_code=201)
     def create_speaker(payload: Name):
-        return trial.create_speaker(app.state.store, payload.name)
+        result = trial.create_speaker(app.state.store, payload.name)
+        record("trial_speaker_created", "subject", result["id"])
+        return result
 
     @router.get("/trial/entries/{entry_id}")
     def entry(entry_id: str, before: Annotated[int | None, Query(gt=0)] = None):
@@ -136,6 +184,7 @@ def install_admin(app):
         if len(payload.content.encode("utf-8")) > 32768:
             return JSONResponse({"error": {"code": "message_too_large", "message": "正文超过 32KB UTF-8 上限"}}, status_code=413)
         result = trial.receive(app.state.store, entry_id, **payload.model_dump())
+        record("trial_message_received", "entry", entry_id, {"message_id": result["message_id"]})
         app.state.scheduler.wake()
         return result
 
@@ -143,17 +192,20 @@ def install_admin(app):
     def learn(entry_id: str):
         with app.state.store.read() as conn:
             trial.require_entry(conn, entry_id)
-        return app.state.scheduler.request_learning(entry_id)
+        return app.state.scheduler.request_learning(entry_id, actor="admin")
 
     @router.post("/trial/entries/{entry_id}/prepare")
     def prepare(entry_id: str):
         with app.state.store.read() as conn:
             trial.require_entry(conn, entry_id)
-        return add_health_hints(Retrieval(app.state.store, app.state.gateway).prepare(entry_id), app.state.health)
+        result = add_health_hints(Retrieval(app.state.store, app.state.gateway).prepare(entry_id), app.state.health)
+        record("trial_prepare", "entry", entry_id, {"recall_id": result["recall_id"]})
+        return result
 
     @router.post("/trial/entries/{entry_id}/reply")
     def reply(entry_id: str, payload: Reply):
         result = app.state.trial_replies.reply(entry_id, payload.message_id)
+        record("trial_reply", "entry", entry_id, {"message_id": result["message"]["id"], "reused": result["reused"]})
         app.state.scheduler.wake()
         return result
 
@@ -165,13 +217,17 @@ def install_admin(app):
     def memories(query: Annotated[MemoryQuery, Query()]):
         return admin_data.list_memories(app.state.store, **query.model_dump())
 
+    @router.get("/memories/upcoming-deletion")
+    def upcoming(query: Annotated[Page, Query()]):
+        return admin_data.upcoming_deletion(app.state.store, **query.model_dump())
+
     @router.get("/memories/{memory_id}")
     def memory(memory_id: int):
         return admin_data.memory_detail(app.state.store, memory_id)
 
     def require_editable(memory_id):
         detail = admin_data.memory_detail(app.state.store, memory_id)
-        if detail["lifecycle"] != "active":
+        if detail["lifecycle"] == "deleted":
             raise KeyError(memory_id)
 
     @router.patch("/memories/{memory_id}")
@@ -190,6 +246,60 @@ def install_admin(app):
         if not delete_memory(app.state.store, memory_id, payload.expected_revision):
             raise RevisionConflict()
         return admin_data.memory_detail(app.state.store, memory_id)
+
+    def changed_memory(memory_id, payload, **changes):
+        from .api import RevisionConflict
+        require_editable(memory_id)
+        if not manage_memory(app.state.store, memory_id, **payload.model_dump(), **changes):
+            raise RevisionConflict()
+        return admin_data.memory_detail(app.state.store, memory_id)
+
+    @router.patch("/memories/{memory_id}/lifecycle")
+    def lifecycle(memory_id: int, payload: LifecycleEdit):
+        return changed_memory(memory_id, payload)
+
+    @router.post("/memories/{memory_id}/forget")
+    def forget(memory_id: int, payload: Revision):
+        return changed_memory(memory_id, payload, action="forget")
+
+    @router.post("/memories/{memory_id}/restore")
+    def restore(memory_id: int, payload: Revision):
+        return changed_memory(memory_id, payload, action="restore")
+
+    @router.post("/memories/{memory_id}/purge")
+    def purge(memory_id: int, payload: Purge):
+        from .api import RevisionConflict
+        admin_data.memory_detail(app.state.store, memory_id)
+        result = purge_memory(app.state.store, memory_id, **payload.model_dump())
+        if result is None:
+            raise RevisionConflict()
+        return result
+
+    @router.post("/memories/{memory_id}/recreate", status_code=201)
+    def recreate(memory_id: int, payload: Recreate):
+        from .api import RevisionConflict
+        admin_data.memory_detail(app.state.store, memory_id)
+        result = recreate_memory(app.state.store, memory_id, **payload.model_dump())
+        if result is None:
+            raise RevisionConflict()
+        app.state.scheduler.wake()
+        return admin_data.memory_detail(app.state.store, result)
+
+    @router.get("/operations")
+    def operations(query: Annotated[OperationQuery, Query()]):
+        return admin_data.operations(app.state.store, **query.model_dump())
+
+    @router.get("/maintenance")
+    def maintenance(query: Annotated[Page, Query()]):
+        return admin_data.maintenance_runs(app.state.store, **query.model_dump())
+
+    @router.get("/maintenance/{run_id}")
+    def maintenance_report(run_id: int):
+        return app.state.scheduler.lifecycle.report(run_id)
+
+    @router.post("/maintenance", status_code=202)
+    def maintain(payload: Input):
+        return app.state.scheduler.request_maintenance()
 
     @router.get("/entries")
     def entries():
