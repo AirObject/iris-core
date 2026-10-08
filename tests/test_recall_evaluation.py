@@ -21,7 +21,7 @@ def test_public_corpora_exclude_historical_holdout_from_calibration(tmp_path):
     from iris.recall_evaluation import PUBLIC_CORPORA
     folder = tmp_path / 'evals'
     folder.mkdir()
-    for name, topic in zip(PUBLIC_CORPORA, ('天文', '水彩', '陶艺', '围棋'), strict=True):
+    for name, topic in zip(PUBLIC_CORPORA, ('天文', '水彩', '陶艺', '围棋', '书法'), strict=True):
         (folder / name).write_text(json.dumps({
             'memories': [{'id': 'm', 'content': topic}],
             'queries': [
