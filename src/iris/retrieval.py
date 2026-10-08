@@ -14,11 +14,16 @@ from typing import Any
 from .db import Store, dumps, now
 from .models import Gateway, ModelError
 from .queue import estimate_tokens
-from .search_text import match_query, terms
+from .search_text import match_query, terms, words
 from .query_analysis import analyze
 
 RRF_K = 60
 CANDIDATES = 200
+CONVERSATION_QUERIES = ('latest_1', 'latest_2', 'latest_3', 'window_5',
+                        'session_6', 'speaker_6', 'adaptive_6')
+CONVERSATION_QUERY = 'adaptive_6'
+# Grammatical references only; no domain vocabulary or answer-attribute list.
+CONTEXT_REFERENCE = re.compile(r'(?:[他她它]们?|[这那](?:个|些|里|边|儿|[位家段件种次份条张台杯本只座辆部间双场])?)')
 DEFAULTS = json.loads(files("iris").joinpath("retrieval_defaults.json").read_text(encoding="utf-8"))
 MEMORY_COLUMNS = """m.id,m.content,m.kind,m.speaker_subject_id,m.stance,m.belief,m.importance,m.retention,
     m.event_time,m.lifecycle,m.revision,m.entry_id,m.world,m.created_at,m.updated_at,s.name AS speaker_name"""
@@ -85,8 +90,11 @@ class Retrieval:
                  query_prefix: str | None = None, lexical_min: float | None = None,
                  lexical_max_df: int | None = None, fallback_tokenizer: str | None = None,
                  fallback_lexical_min: float | None = None, fallback_lexical_max_df: int | None = None,
-                 clock=None):
+                 conversation_query: str | None = None, clock=None):
         self.store, self.gateway = store, gateway
+        self.conversation_query = conversation_query or CONVERSATION_QUERY
+        if self.conversation_query not in CONVERSATION_QUERIES:
+            raise ValueError('unknown conversation query composition')
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.overrides = {k: v for k, v in dict(tokenizer=tokenizer, vector_min=vector_min,
                                               vector_relative=vector_relative, vector_weight=vector_weight,
@@ -189,7 +197,8 @@ class Retrieval:
                 row["_other_source"] = True
         return rows
 
-    def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, entry_kind=None, limit=8, **filters) -> list[dict]:
+    def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, entry_kind=None,
+              anchor_text: str | None = None, limit=8, **filters) -> list[dict]:
         where, args = _filters(conn, **filters)
         scores: dict[int, float] = {}
         lexical_scores: dict[int, float] = {}
@@ -199,7 +208,11 @@ class Retrieval:
         # existing per-lane cap is filled, so unrelated people cannot exhaust it.
         # Cache the predicate across FTS, vector and participant highlights.
         anchor_matches = {}
-        anchors = set(analysis.people)
+        # Automatic preparation may use earlier prose for context, but only
+        # the latest other person's message can restrict the subject scope.
+        anchor_analysis = (analysis if anchor_text is None else
+                           analyze(conn, anchor_text, tokenizer=self.settings['tokenizer'], entry_kind=entry_kind))
+        anchors = set(anchor_analysis.people)
         # Reject prose without any anchor label before the full longest-label
         # matcher. Same regex case rules; the final matcher still enforces word
         # boundaries and prevents a short name matching a longer known name.
@@ -291,7 +304,7 @@ class Retrieval:
             # Trigrams cannot match one/two-character terms. Reuse the existing
             # jieba index, including when longer terms are present as well.
             lanes.append(lexical_lane('jieba', analysis.short_tokens))
-        if analysis.name_only:
+        if anchor_analysis.name_only:
             marks = ','.join('?' for _ in anchors)
             direct = conn.execute(f"""SELECT m.id FROM memories m WHERE m.id IN (
                 SELECT memory_id FROM memory_subjects WHERE subject_id IN ({marks})
@@ -453,15 +466,76 @@ class Retrieval:
             g["due_soon"] = remaining is not None and 0 <= remaining <= 86400
         return goals
 
-    def prepare_query(self, entry_id: str, text: str | None = None) -> tuple[str, str]:
-        """The same query derivation is used by prepare and evaluation prefetch."""
+    def _prepare_context(self, entry_id: str, text: str | None) -> tuple[str, str, str | None]:
+        """Freeze composition and anchor prose together before the model call."""
         with self.store.read() as conn:
             entry = conn.execute('SELECT kind FROM entries WHERE id=?', (entry_id,)).fetchone()
             if entry is None:
                 raise KeyError(entry_id)
-            if text is None:
-                text = "\n".join(r[0] for r in reversed(conn.execute("SELECT content FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 5", (entry_id,)).fetchall()))
-            return text, entry['kind']
+            if text is not None:
+                return text, entry['kind'], None
+            other = "kind='message' AND sender_subject_id NOT IN ('self','scene')"
+            if self.conversation_query == 'window_5':
+                recent = conn.execute("""SELECT content,kind,sender_subject_id FROM messages
+                    WHERE entry_id=? ORDER BY id DESC LIMIT 5""", (entry_id,)).fetchall()
+                selected = [r for r in recent if r['kind'] == 'message' and r['sender_subject_id'] not in ('self', 'scene')]
+                latest = conn.execute(f"SELECT content FROM messages WHERE entry_id=? AND {other} ORDER BY id DESC LIMIT 1",
+                                      (entry_id,)).fetchone()
+                anchor_text = latest[0] if latest else ''
+            elif self.conversation_query.startswith('latest_'):
+                count = int(self.conversation_query.rsplit('_', 1)[1])
+                selected = conn.execute(f"SELECT content FROM messages WHERE entry_id=? AND {other} ORDER BY id DESC LIMIT ?",
+                                        (entry_id, count)).fetchall()
+                anchor_text = selected[0]['content'] if selected else ''
+            else:
+                recent = conn.execute(f"""SELECT content,sender_subject_id,occurred_at FROM messages
+                    WHERE entry_id=? AND {other} ORDER BY id DESC LIMIT 20""", (entry_id,)).fetchall()
+                anchor_text = recent[0]['content'] if recent else ''
+                selected = self._conversation_suffix(conn, recent, entry['kind'])
+            return "\n".join(r['content'] for r in reversed(selected)), entry['kind'], anchor_text
+
+    def _conversation_suffix(self, conn, recent, entry_kind):
+        """Bound context by elapsed message time; never infer a topic from names."""
+        if not recent:
+            return []
+
+        def timestamp(row):
+            stamp = datetime.fromisoformat(row['occurred_at'])
+            return stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp
+
+        selected = [recent[0]]
+        try:
+            latest = previous = timestamp(recent[0])
+            for row in recent[1:]:
+                stamp = timestamp(row)
+                if stamp > previous or (latest - stamp).total_seconds() > 300:
+                    break
+                selected.append(row)
+                previous = stamp
+        except (TypeError, ValueError):
+            # Keep the valid suffix, including the latest message even if its
+            # own timestamp is invalid. Do not cross an unknown time boundary.
+            pass
+        if len(selected) <= 2:
+            return selected
+        if self.conversation_query == 'speaker_6':
+            speaker = recent[0]['sender_subject_id']
+            own = [row for row in selected if row['sender_subject_id'] == speaker]
+            if len(own) > 1:
+                selected = [row for i, row in enumerate(selected)
+                            if row['sender_subject_id'] == speaker or i == 1]
+        elif self.conversation_query == 'adaptive_6':
+            text = recent[0]['content']
+            analysis = analyze(conn, text, entry_kind=entry_kind)
+            reference = any(CONTEXT_REFERENCE.fullmatch(word) for word in words(text))
+            if len(analysis.coverage_tokens) >= 6 and not reference:
+                return selected[:1]
+        return selected[:6]
+
+    def prepare_query(self, entry_id: str, text: str | None = None) -> tuple[str, str]:
+        """The same query derivation is used by prepare and evaluation prefetch."""
+        query, kind, _ = self._prepare_context(entry_id, text)
+        return query, kind
 
     def prepare(self, entry_id: str, *, text: str | None = None, participants: list[str] | None = None,
                 known_memory_ids=(), recent_limit=20, memory_limit=8, token_budget=1500, goal_limit=10) -> dict:
@@ -469,7 +543,7 @@ class Retrieval:
                        memory_limit=memory_limit, token_budget=token_budget, goal_limit=goal_limit)
         # No read or write transaction spans the model call. The final response
         # uses one independent snapshot; arrivals during embedding are allowed.
-        text, entry_kind = self.prepare_query(entry_id, text)
+        text, entry_kind, anchor_text = self._prepare_context(entry_id, text)
         vector, hints = self._query_vector(text, entry_kind=entry_kind)
         with self.store.read() as conn:
             if not conn.execute("SELECT 1 FROM entries WHERE id=?", (entry_id,)).fetchone():
@@ -482,7 +556,8 @@ class Retrieval:
             participant_ids = _people(conn, participants) if participants is not None else list(dict.fromkeys(
                 r[0] for r in conn.execute('SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,))
                 if r[0] not in ('self', 'scene')))
-            candidates = self._rank(conn, text, vector, participants=participant_ids, highlights=True, entry_kind=entry_kind)
+            candidates = self._rank(conn, text, vector, participants=participant_ids, highlights=True,
+                                    entry_kind=entry_kind, anchor_text=anchor_text)
             memories = self._select(candidates, limit=min(memory_limit, 8), token_budget=min(token_budget, 1500),
                                     recent_ids=[m["id"] for m in recent], known_ids=known_memory_ids)
             persona = conn.execute("SELECT id AS version,content,created_at AS generated_at FROM persona_versions WHERE is_current=1 ORDER BY id DESC LIMIT 1").fetchone()

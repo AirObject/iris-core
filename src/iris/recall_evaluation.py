@@ -21,7 +21,7 @@ from .db import Store, now
 from .memory_ops import setup_role
 from .models import Gateway
 from .queue import add_message
-from .retrieval import DEFAULTS, Retrieval
+from .retrieval import CONVERSATION_QUERY, DEFAULTS, Retrieval
 
 
 def recall_metrics(rows: list[dict]) -> dict:
@@ -241,7 +241,8 @@ def grouped_metrics(rows):
     return result
 
 
-PUBLIC_CORPORA = ('recall_v1.json', 'recall_v2.json', 'recall_conversation_v1.json', 'recall_short_terms_v1.json')
+PUBLIC_CORPORA = ('recall_v1.json', 'recall_v2.json', 'recall_conversation_v1.json', 'recall_short_terms_v1.json',
+                  'recall_conversation_v2.json', 'recall_conversation_v3.json')
 
 
 def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = None, out: Path | None = None,
@@ -383,6 +384,7 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
         details[winner['variant']] = winner['rows']
     sources = sorted(p for p in Path(__file__).parent.rglob('*') if p.suffix in ('.py', '.md', '.sql', '.json'))
     report = {'created_at': now(), 'split': split, 'elapsed_seconds': time.perf_counter() - started,
+        'conversation_query': CONVERSATION_QUERY,
         'source_sha256': hashlib.sha256(b''.join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest(),
         'corpus': {'memories': sum(len(data['memories']) for _, data in datasets), 'queries': count,
                   'datasets': [{'name': name, 'version': data.get('version'), 'memories': len(data['memories']),
@@ -408,7 +410,8 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
     path = reports / f'recall-{stamp}-{split}.md'
     lines = ['# Iris 召回评测', '', f"固定记忆 {report['corpus']['memories']} 条，查询 {count} 条；各语料隔离入库，不调用生成模型。",
         f"embedding：{report['embedding_model']}，维度 {dimensions}；新请求 {misses} 次。缓存键含端点、模型、维度和实际输入文本。",
-        'P95 为正式 prepare 路径，扣除查询 embedding 阶段；包含召回记录写入。', '',
+        'P95 为正式 prepare 路径，扣除查询 embedding 阶段；包含召回记录写入。',
+        f'自动查询组成：{CONVERSATION_QUERY}；只有最新他人消息中的姓名作为锚点。', '',
         '| 方案 | 语料 | 分组 | 类别 | 查询数 | Recall@8 | nDCG@8 | 无关误返率 | 平均返回数 | relevant 标注精确率 | P95 ms |',
         '| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
     fmt = lambda n: '—' if n is None else f'{n:.3f}'
