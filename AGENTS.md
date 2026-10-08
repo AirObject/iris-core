@@ -1,6 +1,6 @@
 # Iris 后续实现说明
 
-产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。M1 已于 2026-10-08 完成（DECISIONS.md「M1 完成」），下一阶段为 M2。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；本机试用对话、记忆列表／详情／编辑／删除和运行状态界面已实现；首次设置、管理员会话、设置页和 secrets.json 已实现；宿主令牌仍在 M4。不要复制 `dev-0`、`dev-1` 分支的代码。
+产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。M1 已于 2026-10-08 完成（DECISIONS.md「M1 完成」），当前为 M2：范围、分工顺序、门槛口径和对照规则见 DECISIONS.md 2026-10-08「M2 计划」及 `evals/README.md`「M2 计划」。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；本机试用对话、记忆列表／详情／编辑／删除和运行状态界面已实现；首次设置、管理员会话、设置页和 secrets.json 已实现；宿主令牌仍在 M4。不要复制 `dev-0`、`dev-1` 分支的代码。
 
 2026-10-05 起，开发与评测的对话模型改为 glm-5.3-flash，开发设备改为 macOS。MiniMax-M3 时期的评测结果全部作废；GLM 重测计划及新设备召回复现见 `evals/README.md`。
 
