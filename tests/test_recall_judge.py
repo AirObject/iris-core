@@ -337,3 +337,72 @@ def test_network_error_pause_and_daily_limit_skip_probe(store):
         health.set_daily_token_limit(None)
         store.set_setting('recall_judge', {'enabled': False})
         assert 'recall_judge' not in health.due_probes()
+
+
+@pytest.mark.parametrize(('kind', 'message'), [
+    ('chat', '学习已暂停，消息仍正常接收。'),
+    ('embedding', 'embedding 已暂停，使用全文检索。'),
+    ('recall_judge', '召回判断已暂停，保留原召回。'),
+])
+def test_status_budget_and_pause_hints_keep_purposes_separate(store, kind, message):
+    from types import SimpleNamespace
+    from iris.service_status import add_health_hints, service_status
+    configs = {purpose: ModelConfig('https://example.invalid/v1', '', 'stub')
+               for purpose in ('chat', 'embedding')}
+    health = ModelHealth(store, configs)
+    token = health.check(kind, kind)
+    health.observe(kind, token, 'authentication', 'HTTP 401')
+    result = add_health_hints({'hints': []}, health)
+    assert len(result['hints']) == 1
+    assert result['hints'][0]['kind'] == kind
+    assert result['hints'][0]['message'] == message
+    assert result['hints'][0]['state'] == 'invalid_key'
+    status = service_status(store, SimpleNamespace(running=True, last_error=None), health)
+    assert status['model_health'][kind]['state'] == 'invalid_key'
+    assert all(state['state'] == 'normal' for purpose, state in status['model_health'].items()
+               if purpose != kind)
+    assert status['timeouts_seconds']['recall_judge'] == 10
+    assert status['timeouts_seconds']['learning'] == 180
+    assert status['timeouts_seconds']['judge'] == 240
+
+
+@pytest.mark.parametrize('failure', ['rate_limit', 'invalid_output'])
+def test_api_reports_recall_pause_and_per_request_degradation(store, failure):
+    from fastapi.testclient import TestClient
+    from iris.api import create_app
+    entry(store)
+    mid = put(store, '摄影器材要防潮')
+    health = ModelHealth(store, {'chat': ModelConfig('https://example.invalid/v1', '', 'stub')})
+    calls = []
+    def handler(request):
+        calls.append(request)
+        if failure == 'rate_limit':
+            return httpx.Response(429, json={'error': {'code': 'RateLimitExceeded'}})
+        return httpx.Response(200, json=response('{}'))
+    with gateway(store, handler, health=health) as g:
+        with TestClient(create_app(store=store, gateway=g), base_url='http://127.0.0.1') as client:
+            reply = client.post('/api/v1/entries/A/prepare', json={'text': '摄影器材', 'participants': []})
+            assert reply.status_code == 200
+            result = reply.json()
+            assert [m['id'] for m in result['memories']] == [mid]
+            hint = next(h for h in result['hints'] if h['code'] == 'recall_judgment')
+            assert hint['status'] == 'degraded'
+            assert hint['reason'] == result['judgment']['reason']
+            assert hint['budget_seconds'] == 10
+            assert hint['message'] == '召回判断降级，保留仍有效的原候选。'
+            paused = [h for h in result['hints'] if h['code'] == 'model_paused' and h['kind'] == 'recall_judge']
+            if failure == 'rate_limit':
+                assert len(paused) == 1
+                assert paused[0]['message'] == '召回判断已暂停，保留原召回。'
+                second = client.post('/api/v1/entries/A/prepare', json={'text': '摄影器材', 'participants': []}).json()
+                assert second['judgment']['reason'] == 'temporarily_unavailable'
+            else:
+                assert not paused
+                assert hint['reason'] == 'invalid_output'
+            assert all('学习已暂停' not in h.get('message', '') for h in result['hints'])
+            status = client.get('/api/v1/status').json()
+            assert status['model_health']['chat']['state'] == 'normal'
+            assert status['model_health']['recall_judge']['state'] == (
+                'temporarily_unavailable' if failure == 'rate_limit' else 'normal')
+            assert status['timeouts_seconds']['recall_judge'] == 10
+            assert len(calls) == 1

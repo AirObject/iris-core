@@ -2,7 +2,7 @@
 
 固定方案已接入 prepare：GLM 5.3 Flash high、前 8 个 relevant、support ≥50、10 秒总预算、默认开启。没有重新选参。七集默认实测 Recall@8 **0.9825**、nDCG@8 **0.9808**、误返 **0/66**、relevant 精确率 **0.9880**；217 次 prepare 中降级 **0**。公开 dev 达到三个数值参考线，不代表 M2 独立验收通过。
 
-**仍待范围答复**：用户的文件清单没有 `service_status.py`。该文件把所有非 embedding 暂停提示写成“学习已暂停”；新增用途实际与学习独立，需补一处文案分支和 10 秒预算展示。已在实施中询问最小范围扩展，未收到答复，因此本报告版本保留该文件不动。完整可应用补丁在外部材料 `service-status-proposal.patch`，已通过语法与 `git apply --check`。prepare 的 `judgment`、管理配置中的独立健康状态均已提供；暂停时旧公共提示仍可能误报学习暂停，PR 先保持草稿。
+**状态展示补充已获批准并完成**：仅将产品范围扩展到 `service_status.py`，按 chat／embedding／recall_judge 分别显示暂停原因，召回判断不再误报为“学习已暂停”；运行状态的 `timeouts_seconds.recall_judge` 展示 10 秒预算。prepare 继续提供独立的 judgment 降级原因及运行提示。新增回归测试先复现原问题，再验证修正。此次只调整状态展示，按规划者指示不重跑真实召回评测，下面的真实质量、耗时和用量仍来自首次实现。
 
 ## 实施范围与固定输入
 
@@ -10,7 +10,7 @@
 
 提示词来自 PR #25 `evals/no_answer_probe/judgment_prompt.txt`，逐字复制到 `src/iris/prompts/recall_judge_v1.md`；SHA-256 为 `0260a07b58977c42435a3379dbdb23455a653a53060c82df2e773abdbf1f2ed3`。七份冻结语料及 notes 保持原样。新无答案集沿用冻结提交 `7d696a7d1145b701edbe7431e3e5ab4539c6e415`，JSON SHA-256 为 `74b20e93a267c43626797417e6a66ab2b8623ad1e57fd27af2a50422220a8895`。
 
-两轮真实召回、学习请求对照使用相同产品源码 SHA-256 `b53862a18a4f312674449c261b11275d5cfac23e942d988d26035a619ec0fdef`（src/iris 下 .py、.md、.sql、.json，按既有评测算法）。每集独立建库；固定 243 条记忆、228 条查询，全部公开样本作为 dev，保留原 split 仅作历史分组。未读取或寻找隐藏集。
+首次两轮真实召回与学习请求对照使用相同产品源码 SHA-256 `b53862a18a4f312674449c261b11275d5cfac23e942d988d26035a619ec0fdef`（src/iris 下 .py、.md、.sql、.json，按既有评测算法）。每集独立建库；固定 243 条记忆、228 条查询，全部公开样本作为 dev，保留原 split 仅作历史分组。未读取或寻找隐藏集。
 
 模型实际为 `glm-5.3-flash` / high，使用已配置的方舟兼容 Chat 接口。检索为已冻结的 2048 维 embedding 和 adaptive_6 等默认参数。仅按端点、模型、维度及完整公开输入文本的哈希复用 PR #25 embedding 缓存，新增 embedding 请求为 0；所有判断均为本次真实调用。定向 search 的 11 条查询不调用判断，PR #25 这 11 条的选中方案本来就未改变原返回。
 
@@ -166,7 +166,7 @@ PR #25 首轮 high/K8 200 次调用的 P50／P95 为 2139.0／4496.9 ms，输入
 
 ## 学习不变与 R10
 
-104 段全部公开学习语料，main 与本分支均为 244 批，其中 140 批的相关已有记忆非空；消息正文、顺序、空白、主体／记忆引用及调用参数全部逐字一致，差异 **0**。请求 SHA-256 均为 `f9dd2ab0401ba883faee3e7441aaa3aaeff6281321de364d8479caef815695c4`。未调用真实学习模型。
+104 段全部公开学习语料，main 与本分支均为 244 批，其中 140 批的相关已有记忆非空；消息正文、顺序、空白、主体／记忆引用及调用参数全部逐字一致，差异 **0**。请求 SHA-256 均为 `f9dd2ab0401ba883faee3e7441aaa3aaeff6281321de364d8479caef815695c4`。未调用真实学习模型。状态展示补充后再次以同一 main 基线 `4613467` 运行 `compare_learning_requests.py`，仍为 104 段、244 批（140 批相关已有记忆非空）、差异 0，请求哈希不变；本次源码 SHA-256 为 `73cda9bc5a0230dc47270398d5f9abd63c32fac1a6783c5c4658acae804996d3`。新完整材料在 `learning-requests-status/`，不覆盖原运行。
 
 R10 使用原默认 2048 维 float32、5 千／5 万条、点名／不点名四组，每组预热 5 次、采样 60 次；即时假 HTTP 判断经过正式网关、校验和最终记录流程，不扣除其本地开销。原不点名合成场景只有人物要点，判断按真实规则跳过（no_candidates）；点名两组实际调用假判断。测试在两轮真实评测之间单独运行。
 
@@ -183,18 +183,18 @@ R10 使用原默认 2048 维 float32、5 千／5 万条、点名／不点名四�
 ## 测试与复现
 
 - 先新增严格 JSON、保留／去掉／不补位、人物要点、预算与迟到请求槽位、429 立即降级、健康独立／恢复、每日上限、并发／有界队列、修订／生命周期／近期来源竞态、宿主关闭及召回记录／反馈资格的假模型测试，确认新模块缺失时失败后实现。
-- Python 3.13 最终全套：857 passed，120.15 秒。
-- Python 3.12 隔离全套：857 passed，127.41 秒；使用 --locked --isolated --python 3.12，.venv 保持 3.13。
-- uv build 通过；wheel 内的新模块和冻结提示词已验证，提示词逐字一致。
+- 状态展示补充新增 5 个回归用例：三个用途的独立暂停提示与预算，以及 429 暂停／非法输出单次降级的实际 API 响应；修正前 5 项失败，修正后召回判断测试 37 passed。
+- 状态展示补充后的 Python 3.13 最终全套：862 passed，119.97 秒。
+- 随后 Python 3.12 隔离全套：862 passed，127.14 秒；使用 --locked --isolated --python 3.12，.venv 保持 3.13。
+- 首次实现时 uv build 通过；wheel 内的新模块和冻结提示词已验证，提示词逐字一致。
 - 两种版本顺序运行；模型评测期间没有改源码、迁移或重建环境。全部验证在 macOS。
 
-完整材料根目录 `/Users/cassia/Local/Code/iris-eval-artifacts/m2-recall-judge`：run-1（正常默认）、fulltext-1（含降级全文）、calls 下逐调用请求／原始正文／usage（不存推理全文）、comparison.json 全部逐查询差异、learning-requests、r10、测试日志及执行脚本。manifest.json 绑定提示词、语料和源码。仓库只提交本汇总报告，不提交完整材料或原始输出。
+完整材料根目录 `/Users/cassia/Local/Code/iris-eval-artifacts/m2-recall-judge`：run-1（正常默认）、fulltext-1（含降级全文）、calls 下逐调用请求／原始正文／usage（不存推理全文）、comparison.json 全部逐查询差异、learning-requests、r10、测试日志及执行脚本。manifest.json 绑定提示词、语料和源码。本次补充的日志为 status-red-tests.log、status-focused-tests.log、status-pytest-313.log、status-pytest-312.log 和 learning-requests-status.log。仓库只提交本汇总报告，不提交完整材料或原始输出。
 
 复现真实评测：在该 worktree 使用指定 IRIS_TEST_MODELS，执行外部 run_evaluation.py；纯全文使用 run_fulltext.py（只清空该实验的 embedding 配置），每次使用新的 --name，不覆盖完成运行。标准 `iris eval recall --out <仓库外目录>` 也默认覆盖七集并输出 default_judged。学习对照运行 evals/compare_learning_requests.py，baseline 指向外部 baseline-4613467，candidate 指向本分支。R10 使用 evals/benchmark_retrieval.py --default-config --repeats 60 --out <仓库外目录>。
 
 ## 交给规划者的事项
 
-1. 批准 `service_status.py` 的上述最小范围扩展后，应用已备好的补丁并补充提示测试，方可将草稿 PR 标为待正式审查；无需改动判断参数或提示词。
-2. 界面线接入独立用途、全局开关、并发／队列设置及判断诊断。复用新模型管理接口；新增用途显示名需要界面线处理。
-3. 复核 Q05 的低等级相关项漏保留和 NA03 的额外返回；仍按冻结标签计分。按既定分工另做隐藏验收，本执行报告不替代它。
-4. AGENTS 的默认语料数量应更新到七集 243／228、模型用途增加 recall_judge；补记 10 秒判断预算、失败降级和学习请求对照结果。设计／DECISIONS 已批准的参数无需改变，具体接口字段、整组继承和限流实现可由规划者酌情补记。上述文档未修改。
+1. 界面线接入独立用途、全局开关、并发／队列设置及判断诊断。复用新模型管理接口；新增用途显示名需要界面线处理。
+2. 复核 Q05 的低等级相关项漏保留和 NA03 的额外返回；仍按冻结标签计分。按既定分工另做隐藏验收，本执行报告不替代它。
+3. AGENTS 的默认语料数量应更新到七集 243／228、模型用途增加 recall_judge；补记 10 秒判断预算、失败降级和学习请求对照结果。设计／DECISIONS 已批准的参数无需改变，具体接口字段、整组继承和限流实现可由规划者酌情补记。上述文档未修改。
