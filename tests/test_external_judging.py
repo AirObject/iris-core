@@ -73,20 +73,24 @@ def test_material_payload_is_exactly_legacy_input_and_resumes_learning(learned, 
     assert document["corpus_sha256"] == manifest["run"]["corpus"]["sha256"]
     assert document["source_sha256"] == manifest["run"]["source_sha256"]
     assert document["scoring_version"] == "scoring_v3"
+    assert document["input"]["role"] == row["actual"]["role"] == {"name": "Iris", "self_subject_id": "self"}
     assert set(document["input"]) == {"messages", "must", "forbidden", "links", "goals", "actual_memories",
-                                       "actual_links", "actual_goals", "actual_subjects", "actual_aliases", "target_segments"}
+                                       "actual_links", "actual_goals", "actual_subjects", "actual_aliases", "target_segments", "role"}
     monkeypatch.setattr(ev, "_run_case", lambda *a, **kw: pytest.fail("must reuse completed learning"))
     _, resumed = ev.run_learning_eval(configs, root, "dev", corpus=corpus, out=path.parent.parent,
                                       judge_mode="external", judge_runs=1)
     assert resumed["run"]["resumed_cases"] == 1
 
 
-def test_export_legacy_checkpoint_removes_all_previous_scores(learned, tmp_path, monkeypatch):
+@pytest.mark.parametrize("has_role", [False, True])
+def test_export_legacy_checkpoint_removes_all_previous_scores(learned, tmp_path, monkeypatch, has_role):
     path, manifest, *_ = learned
     run = read_json(path.parent / "run.json")
     metadata = {**manifest["run"], "cases": [{"id": row["case"]["id"]} for row in run["rows"]]}
     checkpoint = tmp_path / metadata["checkpoint_signature"]
     row = run["rows"][0]
+    if not has_role:
+        row["actual"].pop("role")
     row.update(judge={"bias": "old-score"}, judges=[{"bias": "old-score"}],
                judge_decisions=1, judge_inconsistencies=[{"bias": "old-score"}])
     row["actual"]["calls"].append({"purpose": "learning_judge", "completion_tokens": 900,
@@ -98,8 +102,10 @@ def test_export_legacy_checkpoint_removes_all_previous_scores(learned, tmp_path,
     exported, result = ev.export_learning_judgments(checkpoint, tmp_path / "export", checkpoint_report=report)
     assert result["run"]["source_sha256"] == metadata["source_sha256"]
     assert result["run"]["chat_model"] == "fake-learning"
-    assert read_json(exported.parent / result["cases"][0]["file"])["input"] == read_json(
-        path.parent / manifest["cases"][0]["file"])["input"]
+    expected = read_json(path.parent / manifest["cases"][0]["file"])["input"]
+    if not has_role:
+        expected.pop("role")
+    assert read_json(exported.parent / result["cases"][0]["file"])["input"] == expected
     for file in exported.parent.rglob("*.json"):
         text = file.read_text(encoding="utf-8")
         assert "old-score" not in text and '"judges"' not in text
@@ -345,3 +351,41 @@ def test_short_checkpoint_export_checks_full_fingerprint(learned, tmp_path, tamp
         write_json(target, data)
     with pytest.raises(ValueError, match="fingerprint"):
         ev.export_learning_judgments(checkpoint, tmp_path / "invalid")
+
+
+@pytest.mark.parametrize("has_role", [False, True])
+def test_learning_score_accepts_both_material_versions(learned, tmp_path, monkeypatch, has_role):
+    path, manifest, _, root, _ = learned
+    if not has_role:
+        run = read_json(path.parent / "run.json")
+        for row in run["rows"]:
+            row["actual"].pop("role", None)
+        manifest["run_sha256"] = ev._write_json(path.parent / "run.json", run)
+        for entry in manifest["cases"]:
+            document = read_json(path.parent / entry["file"])
+            document["input"].pop("role", None)
+            entry["sha256"] = ev._write_json(path.parent / entry["file"], document)
+        manifest["materials_sha256"] = ev._json_sha256({k: v for k, v in manifest.items() if k != "materials_sha256"})
+        write_json(path, manifest)
+    document = read_json(path.parent / manifest["cases"][0]["file"])
+    assert ("role" in document["input"]) == has_role
+    directory = round_files(learned, tmp_path / "round")
+    monkeypatch.setattr(ev, "Gateway", lambda *a, **kw: pytest.fail("scoring must not call models"))
+    monkeypatch.setattr(cli, "load_test_models", lambda: pytest.fail("scoring must not load model config"))
+    assert cli.main(["eval", "learning-score", "--materials", str(path.parent), "--judgments", str(directory),
+                     "--judge-model", "executor-test", "--out", str(tmp_path / "reports")]) == 0
+    report = read_json(next((tmp_path / "reports").glob("learning-*.json")))
+    assert report["metrics"]["all"]["precision"] == 1
+
+
+def test_role_information_is_bound_to_learning_data(learned, tmp_path):
+    path, manifest, _, root, _ = learned
+    entry = manifest["cases"][0]
+    document = read_json(path.parent / entry["file"])
+    document["input"]["role"] = {"name": "wrong role", "self_subject_id": "self"}
+    entry["sha256"] = ev._write_json(path.parent / entry["file"], document)
+    manifest["materials_sha256"] = ev._json_sha256({k: v for k, v in manifest.items() if k != "materials_sha256"})
+    write_json(path, manifest)
+    directory = round_files(learned, tmp_path / "round")
+    with pytest.raises(ValueError, match="input differs"):
+        ev.score_learning_judgments(path.parent, [directory], root, judge_model="executor-test")

@@ -224,3 +224,20 @@ def test_single_judge_report_does_not_claim_two_judges_agree(tmp_path, monkeypat
     assert "两次判分结论一致" not in prose
     assert "本次为单判" in prose
     assert "个百分点" not in prose
+
+
+@pytest.mark.parametrize("name", ["Iris", "星漪"])
+def test_learning_judge_receives_runtime_role_name(store, name):
+    from iris.memory_ops import setup_role
+    setup_role(store, name)
+    msg(store, 1, "我会带热茶", sender="我", kind="self_output")
+    batch(store, FakeGateway({"memories": [memory(f"{name}答应带热茶", [1], "我", ["我"])]}))
+    actual = _case_data(store)
+    assert actual["role"] == {"name": name, "self_subject_id": "self"}
+    fake = FakeGateway({})
+    case = {"messages": [], "must": [], "forbidden": [], "links": [], "goals": []}
+    _judge(fake, case, actual)
+    payload = json.loads(fake.materials[0])
+    assert payload["role"] == actual["role"]
+    assert next(p for p in payload["actual_subjects"] if p["id"] == "self")["name"] == "我"
+    assert payload["actual_memories"][0]["content"] == f"{name}答应带热茶"

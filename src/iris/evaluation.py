@@ -73,7 +73,8 @@ def _case_data(store: Store) -> dict[str, Any]:
             LEFT JOIN platform_identities p ON p.subject_id=s.id ORDER BY s.id""")]
         for person in identities:
             person["aliases"] = [a["alias"] for a in aliases if a["subject_id"] == person["id"]]
-    return {"memories": memories, "links": links, "goals": goals, "attempts": attempts,
+    return {"role": {"name": str(store.setting("role_name", "Iris")), "self_subject_id": "self"},
+            "memories": memories, "links": links, "goals": goals, "attempts": attempts,
             "calls": calls, "batches": batches, "identities": identities, "aliases": aliases}
 
 
@@ -121,7 +122,8 @@ def _has_required_subjects(fact: dict[str, Any], memory: dict[str, Any], identit
 
 
 def _judge_payload(case: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
-    return {"messages": [{"id": i, **message} for i, message in enumerate(case["messages"], 1)],
+    return {**({"role": actual["role"]} if "role" in actual else {}),
+            "messages": [{"id": i, **message} for i, message in enumerate(case["messages"], 1)],
             "must": case["must"], "forbidden": case["forbidden"],
             "links": case["links"], "goals": case["goals"], "actual_memories": actual["memories"],
             "actual_links": actual["links"], "actual_goals": actual["goals"],
@@ -715,6 +717,8 @@ def _learning_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     cleaned = []
     for row in rows:
         actual = {key: row["actual"][key] for key in _ACTUAL_FIELDS}
+        if "role" in row["actual"]:
+            actual["role"] = row["actual"]["role"]
         actual["calls"] = [call for call in actual["calls"]
                            if call["purpose"] not in ("learning_judge", "learning_judge_repair")]
         cleaned.append({"case": row["case"], "actual": actual})
