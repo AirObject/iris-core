@@ -41,7 +41,7 @@ uv run iris --data-dir /path/to/iris-data serve --port 8081 --no-open
 
 角色、模型的非敏感字段、每日 token 上限与学习并发保存在 `iris.db`；API key 仅在同目录的 `secrets.json`，Unix 权限为 0600，页面与接口只显示是否已设置。模型配置优先级：**serve --models-config <文件> > IRIS_TEST_MODELS > 数据库设置＋secrets.json**。前两种模式明确显示“配置来自外部文件，只读”，不自动打开浏览器，但管理界面仍要求设置密码／登录。未显式指定时，serve 不会隐式读取当前目录的 test-models.toml；评测和旧离线命令仍沿用测试模型配置约定。
 
-开发时可用下面的命令导入，文件由程序读取，命令不显示密钥。导入可以在服务运行时执行；本地配置模式下自动重载并恢复对应用途，外部配置模式仍以外部文件为准。要在页面编辑导入后的模型，启动服务时须取消 IRIS_TEST_MODELS。
+开发时可用下面的命令导入，文件由程序读取，命令不显示密钥。导入可以在服务运行时执行；本地配置模式下自动重载并恢复对应用途，外部配置模式仍以外部文件为准。导入和页面保存遇到配置锁占用时最多等待 3 秒，超时提示稍后重试；后台重载遇忙留到下次轮询。要在页面编辑导入后的模型，启动服务时须取消 IRIS_TEST_MODELS。
 
 ```bash
 IRIS_TEST_MODELS=/absolute/path/test-models.toml uv run iris --data-dir /path/to/iris-data models import
