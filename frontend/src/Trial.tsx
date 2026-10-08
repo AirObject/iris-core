@@ -147,7 +147,22 @@ function Conversation({
   const [speakerForm, setSpeakerForm] = useState(false);
   const [speakerName, setSpeakerName] = useState("");
   const [draft, setDraft] = useState("");
-  const [replies, setReplies] = useState(false);
+  const repliesKey = `iris.trial.replies.${entryId}`;
+  const [replies, setReplies] = useState(() => {
+    try {
+      return window.localStorage.getItem(repliesKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+  function changeReplies(enabled: boolean) {
+    try {
+      window.localStorage.setItem(repliesKey, String(enabled));
+      setReplies(enabled);
+    } catch {
+      setReplies(false);
+    }
+  }
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
   const [error, setError] = useState("");
@@ -417,7 +432,7 @@ function Conversation({
                   type="checkbox"
                   checked={replies}
                   disabled={busy}
-                  onChange={(e) => setReplies(e.target.checked)}
+                  onChange={(e) => changeReplies(e.target.checked)}
                 />
                 <span>角色回复</span>
               </label>

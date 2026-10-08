@@ -65,7 +65,7 @@ class Store:
                     conn.executemany("UPDATE messages SET learning_state='abandoned' WHERE id=?", ((i,) for i in ids))
                     placeholders = ",".join("?" for _ in ids)
                     bounds = conn.execute(f"SELECT MIN(occurred_at),MAX(occurred_at) FROM messages WHERE id IN ({placeholders})", ids).fetchone()
-                    conn.execute("""INSERT INTO memory_gaps(batch_id,entry_id,started_at,ended_at,reason,created_at)
+                    conn.execute("""INSERT OR REPLACE INTO memory_gaps(batch_id,entry_id,started_at,ended_at,reason,created_at)
                         VALUES(?,?,?,?,?,?)""", (batch["id"], batch["entry_id"], bounds[0], bounds[1], "attempts_exhausted", stamp))
 
     def _migrate(self, existed: bool) -> None:

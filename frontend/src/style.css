@@ -1512,3 +1512,314 @@ tr:last-child td {
     font-size: 12px;
   }
 }
+
+/* Entry and learning inspection, with the original message segments side by side. */
+.learning-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  flex-wrap: wrap;
+}
+.learning-tabs button {
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.learning-tabs button[aria-pressed="true"] {
+  background: var(--purple-soft);
+  color: var(--purple);
+  font-weight: 600;
+}
+.learning-intro {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin-bottom: 20px;
+}
+.entry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.learning-entry {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.learning-entry .text-button {
+  align-self: flex-start;
+  margin-top: auto;
+}
+.learning-entry-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.learning-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.learning-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 22px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.learning-row p {
+  margin-top: 8px;
+  line-height: 1.6;
+}
+.learning-row .text-button {
+  flex-shrink: 0;
+}
+.learning-filters {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.learning-filters label:first-child {
+  min-width: 180px;
+}
+.learning-date-help {
+  margin: 12px 0 20px;
+  font-size: 12px;
+}
+.learning-pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+  align-items: center;
+  margin-top: 22px;
+  font-size: 13px;
+}
+.learning-pagination button {
+  padding: 8px;
+}
+.batch-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.batch-detail > .text-button {
+  align-self: flex-start;
+}
+.batch-detail .panel {
+  padding: 22px;
+  min-width: 0;
+}
+.batch-detail p {
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.batch-detail h2 {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+.batch-detail h3 {
+  overflow-wrap: anywhere;
+}
+.batch-detail .section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.relearn-action {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin: 16px 0;
+}
+.relearn-action button {
+  flex-shrink: 0;
+}
+.batch-segments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.segment-target {
+  border-color: #cbbce4;
+  background: #fcfaff;
+}
+.batch-message {
+  padding: 15px 0;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.batch-message .message-body {
+  white-space: pre-wrap;
+  margin: 10px 0;
+}
+.batch-message blockquote {
+  border-left: 2px solid var(--line);
+  margin: 8px 0;
+  padding-left: 12px;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.batch-attempt {
+  margin-top: 16px;
+}
+.learning-calls {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+  font-size: 12px;
+}
+.learning-calls > div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-wrap: anywhere;
+}
+.learning-calls dl {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+.learning-calls dt {
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.learning-calls dd {
+  margin: 0;
+}
+.learning-output {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.batch-detail summary {
+  cursor: pointer;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.batch-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 360px;
+  overflow: auto;
+  background: #f7f8fb;
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.batch-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.result-item {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-top: 14px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.result-item small {
+  display: block;
+  margin-top: 6px;
+}
+@media (max-width: 1100px) {
+  .entry-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .app-header {
+    gap: 16px;
+  }
+  nav a {
+    padding: 12px 13px;
+  }
+}
+@media (max-width: 800px) {
+  .batch-segments {
+    grid-template-columns: 1fr;
+  }
+  .batch-results {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 580px) {
+  .entry-grid {
+    grid-template-columns: 1fr;
+  }
+  .learning-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .relearn-action {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .batch-detail .panel {
+    padding: 18px;
+  }
+  .learning-filters label {
+    flex: 1;
+  }
+  .learning-filters label:first-child {
+    flex-basis: 100%;
+  }
+  .learning-tabs button {
+    padding: 10px 13px;
+  }
+}
+
+.learning-entry .section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .app-header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 16px 24px;
+  }
+  .app-header nav {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+  .brand {
+    flex: 1;
+  }
+}
+@media (max-width: 760px) {
+  .app-header nav a {
+    padding: 8px 4px;
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.learning-row > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.learning-row .text-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}

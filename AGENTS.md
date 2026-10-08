@@ -128,3 +128,11 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 管理员写接口须有 JSON Content-Type、会话绑定 X-Iris-CSRF，通过 Origin／Sec-Fetch-Site 检查；Host 白名单保留。会话 Cookie HttpOnly、SameSite=Strict，有效期 12 小时；HTTPS 才设置 Secure。本阶段不开放非回环监听、不信任代理转发地址。首次设置核对连接来源的回环地址。已有 UI 测试通过 conftest.login_admin 走正式设置／登录流程，不增加测试专用鉴权绕过。
 
 开发导入：`IRIS_TEST_MODELS=<绝对路径> uv run iris --data-dir <数据目录> models import`；也可 `models import --from <文件>`。程序读取文件并把密钥写到目标 secrets.json，不打印内容；手动验证配置同样不要复制或打印。导入可以在本地配置服务运行时执行，调度器重载后自动替换配置；若当前为外部模式，须取消外部参数再启动才能使用导入结果。截图和实际试用数据仍放仓库外。
+
+## 界面第三步：入口与学习
+
+`/#/learning` 展示所有入口、学习批次和记忆缺口。`admin_data.py` 的只读快照提供 `/admin/api/entries`、`/batches`、`/batches/{id}` 和 `/memory-gaps`；批次与缺口列表支持入口、日期和分页筛选。批次详情的原始／修正输出直接来自 batch_attempts（只有正文），model_calls 仅投影用途、时间、耗时、结果、finish_reason 和 reasoning_effort，不返回推理字段。调用按批次 ID 和尝试时间关联，无法可靠关联的单列，未知档位不按当前配置补写。
+
+`POST /admin/api/batches/{id}/relearn` 使用既有管理员会话与 CSRF，JSON 体为 `{}`。只接收 abandoned／refused；在一个写事务中调用 reset_batch 并写 admin_operations 的 batch_relearn，重复或并发请求只有一次成功，其余 409。保留原三段与 batch_attempts，attempt_count 归零，历史尝试编号继续增长；缺口必须保留到 learning.py 现有成功事务清除。再次失败沿用 batch_id 唯一缺口的更新；recover_inflight 同样用 INSERT OR REPLACE，管理接口及页面用 batch_id 标识缺口，不用替换时会改变的行号。页面在 waiting／running 仍有缺口时显示“重新学习中”；waiting 的普通失败走既有自动重试，不重置额度。读页面不会触发重新学习。学习逻辑和提示词由学习会话维护。
+
+运行状态的 learning_calls_24h 按 created_at、id 倒序返回，页面取前 12 条；统计仍使用全部 24 小时记录。角色回复开关按入口存于浏览器 localStorage，新入口与存储失败时默认关闭；不把它变成服务端设置。

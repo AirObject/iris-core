@@ -200,11 +200,11 @@ def form_batch(store: Store, entry_id: str, prompt_version: str, *, target_count
     return get_batch(store, batch_id)
 
 
-def reset_batch(store: Store, batch_id: int) -> None:
-    with store.write() as conn:
+def reset_batch(store: Store, batch_id: int, *, _conn: sqlite3.Connection | None = None) -> None:
+    with (nullcontext(_conn) if _conn is not None else store.write()) as conn:
         row = conn.execute("SELECT state,target_ids FROM batches WHERE id=?", (batch_id,)).fetchone()
         if row is None or row["state"] not in ("abandoned", "refused"):
             raise ValueError("batch cannot be relearned")
         conn.execute("UPDATE batches SET state='waiting',attempt_count=0,next_retry_at=NULL,last_error=NULL WHERE id=?", (batch_id,))
-        conn.execute("DELETE FROM memory_gaps WHERE batch_id=?", (batch_id,))
+        # Design 7.6/17.7: the successful learning transaction resolves the gap.
         conn.executemany("UPDATE messages SET learning_state='batched' WHERE id=?", ((i,) for i in json.loads(row["target_ids"])))

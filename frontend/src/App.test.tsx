@@ -75,10 +75,20 @@ const status = {
 let requests: { url: string; method: string; body: Record<string, unknown> }[];
 let conflict = false;
 let freshCatalog = false;
+let trialEntries = [entry];
+let learningCalls: {
+  purpose: string;
+  batch_id: number;
+  duration_ms: number;
+  timed_out: boolean;
+}[] = [];
 let detail = { ...memory };
 let messages: Record<string, unknown>[] = [];
 
 beforeEach(() => {
+  localStorage.clear();
+  trialEntries = [entry];
+  learningCalls = [];
   location.hash = "#/trial";
   requests = [];
   conflict = false;
@@ -101,10 +111,11 @@ beforeEach(() => {
           admin_exists: true,
           csrf_token: "test-csrf",
         };
-      else if (url === "/admin/api/status") data = status;
+      else if (url === "/admin/api/status")
+        data = { ...status, learning_calls_24h: learningCalls };
       else if (url === "/admin/api/trial")
         data = {
-          entries: freshCatalog ? [] : [entry],
+          entries: freshCatalog ? [] : trialEntries,
           speakers: freshCatalog
             ? []
             : [{ id: "user", name: "我（用户）", is_default: true }],
@@ -144,7 +155,9 @@ beforeEach(() => {
           },
         };
         code = 502;
-      } else if (url === "/admin/api/trial/entries/trial-a")
+      } else if (
+        trialEntries.some((e) => url === `/admin/api/trial/entries/${e.id}`)
+      )
         data = {
           entry,
           messages,
@@ -184,6 +197,7 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -334,3 +348,85 @@ test("skip link focuses content without changing the active page", async () => {
   expect(location.hash).toBe("#/memories");
   expect(screen.getByRole("main")).toHaveFocus();
 });
+
+test("recent learning calls show the first 12 of the API's newest-first list", async () => {
+  location.hash = "#/status";
+  learningCalls = Array.from({ length: 15 }, (_, i) => ({
+    purpose: "learning",
+    batch_id: 100 - i,
+    duration_ms: 1000,
+    timed_out: false,
+  }));
+  render(<App />);
+  await screen.findByText("批次 #100 · 学习");
+  expect(
+    screen.getAllByText(/^批次 #\d+ · 学习$/).map((node) => node.textContent),
+  ).toEqual(Array.from({ length: 12 }, (_, i) => `批次 #${100 - i} · 学习`));
+  expect(screen.queryByText("批次 #88 · 学习")).not.toBeInTheDocument();
+});
+
+test("role replies persist per entry across switching and remounting", async () => {
+  trialEntries = [
+    entry,
+    { ...entry, id: "trial-b", name: "试用私聊 B", kind: "private" },
+  ];
+  const first = render(<App />);
+  const toggle = () => screen.getByRole("checkbox", { name: "角色回复" });
+  const select = (id: string) =>
+    userEvent.selectOptions(screen.getByLabelText("当前入口"), id);
+  expect(
+    await screen.findByRole("checkbox", { name: "角色回复" }),
+  ).not.toBeChecked();
+  await userEvent.click(toggle());
+  await select("trial-b");
+  expect(toggle()).not.toBeChecked();
+  await select("trial-a");
+  expect(toggle()).toBeChecked();
+  first.unmount();
+  render(<App />);
+  expect(
+    await screen.findByRole("checkbox", { name: "角色回复" }),
+  ).toBeChecked();
+  await select("trial-b");
+  expect(toggle()).not.toBeChecked();
+  await userEvent.click(toggle());
+  await select("trial-a");
+  expect(toggle()).toBeChecked();
+  await userEvent.click(toggle());
+  await select("trial-b");
+  expect(toggle()).toBeChecked();
+  await select("trial-a");
+  expect(toggle()).not.toBeChecked();
+});
+
+test.each(["read", "write", "unavailable"])(
+  "storage %s failure keeps replies off and messages usable",
+  async (failure) => {
+    if (failure === "unavailable")
+      vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
+        throw new Error("disabled");
+      });
+    else
+      vi.spyOn(
+        Storage.prototype,
+        failure === "read" ? "getItem" : "setItem",
+      ).mockImplementation(() => {
+        throw new Error("disabled");
+      });
+    render(<App />);
+    const toggle = await screen.findByRole("checkbox", { name: "角色回复" });
+    expect(toggle).not.toBeChecked();
+    if (failure !== "read") {
+      await userEvent.click(toggle);
+      expect(toggle).not.toBeChecked();
+    }
+    await userEvent.type(
+      screen.getByLabelText("消息内容"),
+      "存储异常时仍可发送",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+    expect(await screen.findByText("存储异常时仍可发送")).toBeVisible();
+    expect(requests.some((r) => r.url.endsWith("/reply"))).toBe(false);
+    expect(requests.some((r) => r.url.endsWith("/prepare"))).toBe(true);
+  },
+);

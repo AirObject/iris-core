@@ -11,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from . import admin_data, trial
+from .auth import audit, error
+from .queue import reset_batch
 from .memory_ops import edit_memory, delete_memory
 from .retrieval import Retrieval
 from .service_status import service_status, add_health_hints
@@ -97,6 +99,19 @@ class MemoryQuery(Input):
         return self
 
 
+class LearningQuery(Input):
+    entry_id: str | None = Field(default=None, max_length=200)
+    time_from: str | None = Field(default=None, max_length=40)
+    time_to: str | None = Field(default=None, max_length=40)
+    limit: int = Field(default=30, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=1000000)
+
+    @field_validator("time_from", "time_to")
+    @classmethod
+    def valid_time(cls, value):
+        return MemoryQuery.valid_time(value)
+
+
 def install_admin(app):
     router = APIRouter(prefix="/admin/api", tags=["本机管理界面"])
 
@@ -175,6 +190,36 @@ def install_admin(app):
         if not delete_memory(app.state.store, memory_id, payload.expected_revision):
             raise RevisionConflict()
         return admin_data.memory_detail(app.state.store, memory_id)
+
+    @router.get("/entries")
+    def entries():
+        return admin_data.learning_entries(app.state.store)
+
+    @router.get("/batches")
+    def batches(query: Annotated[LearningQuery, Query()]):
+        return admin_data.learning_batches(app.state.store, **query.model_dump())
+
+    @router.get("/batches/{batch_id}")
+    def batch(batch_id: int):
+        return admin_data.batch_detail(app.state.store, batch_id)
+
+    @router.post("/batches/{batch_id}/relearn")
+    def relearn(batch_id: int, payload: Input):
+        with app.state.store.write() as conn:
+            row = conn.execute("SELECT entry_id,state FROM batches WHERE id=?", (batch_id,)).fetchone()
+            if row is None:
+                raise KeyError(batch_id)
+            try:
+                reset_batch(app.state.store, batch_id, _conn=conn)
+            except ValueError:
+                return error("batch_conflict", "仅放弃或内容拒绝的批次可以重新学习；请刷新状态", 409)
+            audit(conn, "batch_relearn", {"batch_id": batch_id, "entry_id": row["entry_id"], "previous_state": row["state"]})
+        app.state.scheduler.wake()
+        return {"accepted": True, "batch_id": batch_id, "state": "waiting"}
+
+    @router.get("/memory-gaps")
+    def gaps(query: Annotated[LearningQuery, Query()]):
+        return admin_data.memory_gaps(app.state.store, **query.model_dump())
 
     @router.get("/status")
     def status():
