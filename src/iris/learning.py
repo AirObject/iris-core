@@ -20,7 +20,7 @@ from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
 
 
-PROMPT_VERSION = "learning_v5"
+PROMPT_VERSION = "learning_v6"
 LEARNING_MAX_TOKENS = 16000
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
@@ -288,8 +288,21 @@ class LearningEngine:
                                     (messages[i]["sender_subject_id"], messages[i]["quote_author_subject_id"])]
                     if not target.intersection(own_evidence):
                         raise ValueError("alias subject has no own evidence in target segment")
+                    subject_name = next(s["name"] for s in snapshot["subjects"] if s["id"] == owner)
+                    if item["alias"].casefold() == subject_name.strip().casefold():
+                        raise ValueError("alias duplicates subject name")
+                    # Necessary evidence boundary, not a semantic claim that every mention
+                    # declares an alias. The prompt still requires an explicit self-declaration.
+                    alias_text = item["alias"].casefold()
+                    own_mentions = [i for i in own_evidence if i in target and (
+                        (messages[i]["sender_subject_id"] == owner and
+                         alias_text in messages[i]["content"].casefold()) or
+                        (messages[i]["quote_author_subject_id"] == owner and
+                         alias_text in (messages[i]["quote_content"] or "").casefold()))]
+                    if not own_mentions:
+                        raise ValueError("alias absent from own target evidence")
                     item["_subject_id"] = owner
-                    item["_source_message_id"] = next(i for i in own_evidence if i in target)
+                    item["_source_message_id"] = own_mentions[0]
                     alias = {"subject_id": owner, "alias": item["alias"]}
                     if alias not in snapshot["aliases"]:
                         snapshot["aliases"].append(alias)
@@ -383,7 +396,15 @@ class LearningEngine:
                             raise ValueError("missing corrected content")
                     elif not str(item.get("content") or "").strip():
                         raise ValueError("empty goal")
-                    accepted[section].append({**item, "evidence": ev})
+                    accepted_item = {**item, "evidence": ev}
+                    if section == "updates" and item["action"] != "确认" and "event_time" in item:
+                        if item["event_time"] is not None and not isinstance(item["event_time"], str):
+                            raise ValueError("invalid corrected event time")
+                        first_target = next(i for i in ev if i in target)
+                        accepted_item["event_time"] = normalize_event_time(
+                            item["event_time"], messages[first_target]["occurred_at"],
+                            str(self.store.setting("timezone", "Asia/Shanghai")))
+                    accepted[section].append(accepted_item)
                 except ValueError as exc:
                     dropped.append({"section": section, "item": item, "reason": str(exc)})
         for item in output.get("questions", []) if isinstance(output.get("questions", []), list) else []:
@@ -524,15 +545,26 @@ class LearningEngine:
                 if item["action"] == "确认":
                     confirm_once(current["id"])
                 else:
+                    # A later confirmation or metadata-only revision must not erase
+                    # the last actual content editor. Model-supplied reasons alone
+                    # cannot mark a learning revision as a manual edit.
+                    content_edit = conn.execute("""SELECT actor,reason FROM memory_revisions
+                        WHERE memory_id=? AND json_extract(before_json,'$.content')
+                            IS NOT json_extract(after_json,'$.content')
+                        ORDER BY revision_after DESC,id DESC LIMIT 1""", (current["id"],)).fetchone()
+                    if content_edit and content_edit["actor"] != "learning" and content_edit["reason"] == "manual edit":
+                        dropped.append({"section": "updates", "item": item, "reason": "memory manually edited"})
+                        continue
                     content = str(item.get("content") or "").strip()
                     if len(content) > 1000:
                         dropped.append({"section": "updates", "item": item, "reason": "overlong corrected content"})
                         continue
                     before = {key: current[key] for key in ("content", "kind", "stance", "belief", "importance", "event_time")}
                     belief = _score(item.get("belief"), current["belief"])
-                    conn.execute("UPDATE memories SET content=?,belief=?,revision=revision+1,updated_at=? WHERE id=?",
-                                 (content, belief, now(), current["id"]))
-                    after = {**before, "content": content, "belief": belief}
+                    event_time = item.get("event_time", current["event_time"])
+                    conn.execute("UPDATE memories SET content=?,belief=?,event_time=?,revision=revision+1,updated_at=? WHERE id=?",
+                                 (content, belief, event_time, now(), current["id"]))
+                    after = {**before, "content": content, "belief": belief, "event_time": event_time}
                     conn.execute("""INSERT INTO memory_revisions(memory_id,revision_before,revision_after,before_json,after_json,
                         reason,actor,created_at) VALUES(?,?,?,?,?,?,?,?)""",
                         (current["id"], current["revision"], current["revision"] + 1, dumps(before), dumps(after),

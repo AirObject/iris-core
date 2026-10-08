@@ -41,10 +41,10 @@ def test_feedback_inference_about_self_preserves_explicit_self(store):
         assert "self" in {r[0] for r in conn.execute("SELECT subject_id FROM memory_subjects")}
 
 
-def test_v5_distinct_facts_stay_separate_without_inferred_gender(store):
-    assert PROMPT_VERSION == "learning_v5"
-    assert "不推断性别" in PROMPT and "不用“他”“她”" in PROMPT
-    assert "谁带什么" in PROMPT and "活动时间" in PROMPT
+def test_distinct_facts_stay_separate_without_inferred_gender(store):
+    assert PROMPT_VERSION == "learning_v6"
+    assert "不推断性别" in PROMPT and "不要为避免重复自行加“他”“她”" in PROMPT
+    assert "不同命题分开" in PROMPT and "不同人的独立观点" in PROMPT
     msg(store, 1, "我带望远镜，活动在周六下午三点", sender="大鹏")
     items = [memory("大鹏带望远镜", ["P1"]), memory("观星活动在周六下午三点", ["P1"])]
     _, result = batch(store, FakeGateway({"memories": items}), count=1)
