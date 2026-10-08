@@ -7,11 +7,11 @@ from iris.queue import add_message
 from conftest import FakeGateway, batch, msg
 
 
-def test_learning_uses_v6_with_original_output_budget(store):
+def test_current_learning_keeps_original_output_budget(store):
     msg(store, 1, "收到", sender="沈砚")
     gateway = FakeGateway({})
     batch(store, gateway, count=1)
-    assert PROMPT_VERSION == "learning_v6"
+    assert PROMPT_VERSION == "learning_v7"
     assert gateway.requests[0]["messages"][0]["content"] == PROMPT
     assert gateway.requests[0]["max_tokens"] == 16000
 

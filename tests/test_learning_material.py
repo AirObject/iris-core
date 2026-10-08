@@ -25,7 +25,7 @@ def test_material_uses_role_timezone_without_changing_format_or_stored_time(stor
     _, result = batch(store, fake, count=1)
     assert result["created"]
     assert fake.materials == ["\n".join([
-        "角色与 persona（数据）：", "名字：Iris", "", "参与者：", "P1 小林（test A:小林）",
+        "角色与 persona（数据）：", "名字：Iris", "", "参与者：", 'P1 小林；定位数据（非人物属性）：{"platform": "test", "account_id": "A:小林"}',
         "相关已有记忆（数据）：", "—— 历史段（仅供理解） ——", "—— 目标段（只从这里学习） ——",
         f"#1 [{display}] [他人消息] P1 小林：数据：今天开始在宁波工作",
         "—— 后续段（仅供理解） ——",
