@@ -12,6 +12,7 @@ from itertools import islice, zip_longest
 from typing import Any
 
 from .db import Store, dumps, now
+from .claim_sequences import normalize_claim, same_claim_sequences
 from .models import Gateway, ModelError
 from .people import annotate_memories, canonical_subject
 from .queue import estimate_tokens
@@ -381,13 +382,10 @@ class Retrieval:
     def _duplicate(self, a: dict, b: dict) -> bool:
         if any(a[k] != b[k] for k in ("speaker_subject_id", "stance", "world", "event_time")) or a["about"] != b["about"]:
             return False
-        normalize = lambda text: re.sub(r"[\W_]+", "", text.casefold())
-        left, right = normalize(a["content"]), normalize(b["content"])
-        # Similar numbers or opposite judgments are not duplicates.
-        if re.findall(r"\d+", left) != re.findall(r"\d+", right):
+        # The same conservative number/negation boundary as learning dedupe.
+        if not same_claim_sequences(a["content"], b["content"]):
             return False
-        if re.findall(r"不|没|无|未|否", left) != re.findall(r"不|没|无|未|否", right):
-            return False
+        left, right = normalize_claim(a["content"]), normalize_claim(b["content"])
         return difflib.SequenceMatcher(None, left, right).ratio() >= .88 or bool(self.index and self.index.similarity(a["id"], b["id"], (a['revision'], b['revision'])) >= .96)
 
     @staticmethod

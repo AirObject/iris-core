@@ -278,10 +278,6 @@ def test_annotations_after_selection_preserve_budget_order_reasons_and_learning_
     assert char['subject_annotations']['roleplay'][0]['actor']['id'] == 'a'
 
 
-LEARNING_PENDING = pytest.mark.xfail(strict=True, raises=(AssertionError, sqlite3.IntegrityError), reason='等待学习提示词 v7 合入后，在 learning.py 接入最终主体解析；人物线第 1 步不改该文件')
-
-
-@LEARNING_PENDING
 def test_learning_fresh_snapshot_excludes_merged_tombstone(store, pair):
     say(store)
     confirm(store, pair)
@@ -293,7 +289,6 @@ def test_learning_fresh_snapshot_excludes_merged_tombstone(store, pair):
     assert 'b' not in {s['id'] for s in snapshot['subjects']}
 
 
-@LEARNING_PENDING
 @pytest.mark.parametrize('mode', ['memory', 'alias', 'link', 'parent', 'same_subject', 'duplicate'])
 def test_learning_inflight_merge_uses_current_subject_before_dedupe(store, pair, mode):
     say(store)
@@ -453,3 +448,56 @@ def test_can_deny_invalid_identity_suggestion_to_special_subject(store, pair, ot
     lid = link(store, 'b', other)
     result = people.deny_link(store, lid, expected_revision=1)
     assert result['status'] == 'denied'
+
+
+def test_fresh_learning_maps_historical_authors_quotes_and_folded_aliases(store, pair):
+    first = say(store, 'b')
+    quoted = say(store, 'c', key='quote', quote='林同学')
+    for sid in ('a', 'b'):
+        people.add_alias(store, sid, '共同昵称', expected_revision=revision(store, sid))
+    confirm(store, pair)
+    formed = form_batch(store, 'chat', PROMPT_VERSION, target_count=2)
+    engine = LearningEngine(store, FakeGateway())
+    snapshot = engine._snapshot(formed)
+    material, _, _ = engine._material(formed, snapshot, [])
+    assert snapshot['messages'][first]['sender_subject_id'] == 'a'
+    assert snapshot['messages'][first]['sender_name'] == '小林'
+    assert snapshot['messages'][quoted]['quote_author_subject_id'] == 'a'
+    assert snapshot['messages'][quoted]['quote_author_name'] == '小林'
+    assert list(snapshot['participant_refs'].values()) == ['a', 'c']
+    assert engine._known_subject('共同昵称', snapshot) == 'a'
+    assert '引用作者 P1 小林' in material
+    assert not any(a['subject_id'] == 'b' for a in snapshot['aliases'])
+    gateway = FakeGateway({'memories': [{'content': '小林喜欢猫', 'type': '偏好', 'speaker': 'P1',
+        'about': ['林同学'], 'stance': '亲历', 'importance': 60, 'evidence': [1]}],
+        'people': [{'name': 'P1', 'alias': '林林', 'evidence': [1]}]})
+    result = LearningEngine(store, gateway).run_batch(formed.id)
+    assert len(result['created']) == 1 and not result['dropped']
+    with store.read() as conn:
+        assert conn.execute('SELECT speaker_subject_id FROM memories WHERE id=?', (result['created'][0],)).fetchone()[0] == 'a'
+        assert conn.execute("SELECT subject_id FROM subject_aliases WHERE alias='林林'").fetchone()[0] == 'a'
+        assert conn.execute('SELECT sender_subject_id FROM messages WHERE id=?', (first,)).fetchone()[0] == 'b'
+        assert conn.execute('SELECT quote_author_subject_id FROM messages WHERE id=?', (quoted,)).fetchone()[0] == 'b'
+
+
+def test_inflight_alias_cannot_become_survivor_display_name(store, pair):
+    say(store, content='大家叫我小林')
+    formed = form_batch(store, 'chat', PROMPT_VERSION, target_count=1)
+    gateway = FakeGateway({'people': [{'name': 'P1', 'alias': '小林', 'evidence': [1]}]},
+                          hook=lambda _: confirm(store, pair))
+    result = LearningEngine(store, gateway).run_batch(formed.id)
+    assert any(d['reason'] == 'alias duplicates subject name' for d in result['dropped'])
+    with store.read() as conn:
+        assert not conn.execute("SELECT 1 FROM subject_aliases WHERE subject_id='a' AND alias='小林'").fetchone()
+
+
+def test_unmerged_learning_keeps_main_alias_order(store, pair):
+    say(store, 'b')
+    for alias in ('zeta', 'alpha'):
+        people.add_alias(store, 'b', alias, expected_revision=revision(store, 'b'))
+    formed = form_batch(store, 'chat', PROMPT_VERSION, target_count=1)
+    engine = LearningEngine(store, FakeGateway())
+    snapshot = engine._snapshot(formed)
+    material, _, _ = engine._material(formed, snapshot, [])
+    # main's covering (subject_id, alias) key yields this existing order.
+    assert '；别名：alpha、zeta' in material

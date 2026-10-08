@@ -1,7 +1,7 @@
 """Administrator-controlled identities and read-only subject annotations.
 
 canonical_subject is the common transaction-local resolver for intake, recall,
-and (after the learning-line handoff) learning commits. It never guesses by name.
+and learning commits. It never guesses by name.
 """
 from __future__ import annotations
 
