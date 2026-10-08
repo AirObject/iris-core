@@ -20,6 +20,7 @@ import numpy as np
 from .db import Store, now
 from .memory_ops import setup_role
 from .models import Gateway
+from .model_health import ModelHealth
 from .queue import add_message
 from .retrieval import CONVERSATION_QUERY, DEFAULTS, Retrieval
 
@@ -194,20 +195,25 @@ def cache_embeddings(configs, texts: list[str], store: Store, cache_path: Path):
     return CachedEmbeddings(configs, vectors), len(missing)
 
 
-def _run_queries(retrieval, queries, ids, entries, *, details=False):
+def _run_queries(retrieval, queries, ids, entries, *, details=False, judge=False, judge_interval=0):
     reverse = {mid: key for key, mid in ids.items()}
     rows = []
     for q in queries:
+        if judge and judge_interval and q.get('mode') != 'search':
+            time.sleep(judge_interval)  # Evaluation pacing only, outside the product budget.
         start = time.perf_counter()
         if q.get("mode") == "search":
             response = retrieval.search(text=q.get("text", ""), limit=8, **q.get("filters", {}))
         else:
             response = retrieval.prepare(entries[q["id"]], text=q.get("text", ""), participants=q.get("participants", []),
                 known_memory_ids=[ids[key] for key in q.get("known_memory_ids", [])],
-                recent_limit=q.get("recent_limit", 20))
-        local_ms = max(0, (time.perf_counter() - start) * 1000 - retrieval.last_embedding_ms)
+                recent_limit=q.get("recent_limit", 20), judge=judge)
+        diagnostic = response.get('judgment', {})
+        local_ms = max(0, (time.perf_counter() - start) * 1000 - retrieval.last_embedding_ms
+                       - diagnostic.get('network_ms', 0))
         row = {"id": q["id"], "split": q['split'], "categories": q.get('categories', []),
-               "mode": q.get("mode", "prepare"), "relevant": q["relevant"],
+               "mode": q.get("mode", "prepare"), "relevant": q["relevant"], "judgment": diagnostic,
+               "conversation_prepare": q.get("mode") != "search" and q.get("text", "") is None,
                "reasons": {reverse[m['id']]: m['reason'] for m in response['memories']},
                "returned": [reverse[m["id"]] for m in response["memories"]], "local_ms": local_ms}
         if details:
@@ -242,11 +248,11 @@ def grouped_metrics(rows):
 
 
 PUBLIC_CORPORA = ('recall_v1.json', 'recall_v2.json', 'recall_conversation_v1.json', 'recall_short_terms_v1.json',
-                  'recall_conversation_v2.json', 'recall_conversation_v3.json')
+                  'recall_conversation_v2.json', 'recall_conversation_v3.json', 'recall_no_answer_v1.json')
 
 
 def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = None, out: Path | None = None,
-                    calibrate=False, compare_embeddings=False) -> tuple[Path, dict]:
+                    calibrate=False, compare_embeddings=False, judge_interval=1.0, gateway_factory=None) -> tuple[Path, dict]:
     root = root.resolve()
     public_paths = [(root / 'evals' / name).resolve() for name in PUBLIC_CORPORA]
     paths = [corpus.resolve()] if corpus else public_paths
@@ -277,22 +283,32 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
     prefixes = ['', '为这个问题检索能回答它的个人记忆：'] if calibrate or compare_embeddings else [DEFAULTS['query_prefix']]
     misses = 0
 
-    def evaluate(contexts, gateway, tokenizer, prefix, dimension, name):
+    def evaluate(contexts, gateway, tokenizer, prefix, dimension, name, *, judging=False):
         choices = []
         grid = product([.35, .45, .55, .65], [.75, .85, .95], [.5, 1., 2.], [.35, .5, .75], [0, 2]) if calibrate and gateway else [
             (DEFAULTS['vector_min'], DEFAULTS['vector_relative'], DEFAULTS['vector_weight'], coverage, max_df)
             for coverage, max_df in (product([0., .1, .25, .35, .5, .75], [0, 2]) if calibrate else
                                      [(DEFAULTS['lexical_min' if gateway else 'fallback_lexical_min'],
                                        DEFAULTS['lexical_max_df' if gateway else 'fallback_lexical_max_df'])])]
-        retrievers = [(context, Retrieval(context['store'], gateway, tokenizer=tokenizer,
-                      clock=context['clock'], query_prefix=prefix)) for context in contexts]
+        retrievers, owned = [], []
+        for context in contexts:
+            active = gateway
+            if judging:
+                store = context['store']
+                active = (gateway_factory or Gateway)(configs, store, health=ModelHealth(store, configs))
+                owned.append(active)
+                if gateway:
+                    active.embedding = gateway.embedding  # Exact cache; judgment is always a fresh call.
+            retrievers.append((context, Retrieval(context['store'], active, tokenizer=tokenizer,
+                               clock=context['clock'], query_prefix=prefix)))
         for floor, relative, weight, coverage, max_df in grid:
             params = dict(tokenizer=tokenizer, vector_min=floor, vector_relative=relative,
                           vector_weight=weight, query_prefix=prefix, lexical_min=coverage, lexical_max_df=max_df)
             rows = []
             for context, retrieval in retrievers:
                 retrieval.overrides.update(params)
-                current = _run_queries(retrieval, context['queries'], context['ids'], context['entries'], details=external)
+                current = _run_queries(retrieval, context['queries'], context['ids'], context['entries'], details=external,
+                                       judge=judging, judge_interval=judge_interval if judging else 0)
                 rows.extend(dict(row, corpus=context['name']) for row in current)
             metrics = recall_metrics(rows)
             settings = {**params, 'embedding_dimensions': dimension, 'embedding_model': config.model if config else ''}
@@ -304,9 +320,20 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
         variants[name] = {'settings': best['settings'], 'metrics': best['metrics'], 'groups': grouped_metrics(best['rows']),
             'corpora': {context['name']: grouped_metrics([r for r in best['rows'] if r['corpus'] == context['name']])
                         for context in contexts},
-            'queries': [{k: r[k] for k in ('id', 'corpus', 'split', 'categories', 'relevant', 'returned', 'reasons', 'local_ms')}
+            'queries': [{k: r[k] for k in ('id', 'corpus', 'split', 'categories', 'mode', 'conversation_prepare', 'relevant', 'returned', 'reasons', 'local_ms', 'judgment')}
                         for r in best['rows']],
             'index_bytes': sum(r.index.nbytes if r.index else 0 for _, r in retrievers)}
+        for active in owned:
+            active.close()
+        prepare_rows = [r for r in best['rows'] if r['mode'] == 'prepare']
+        degraded = [r for r in prepare_rows if r['judgment'].get('status') == 'degraded']
+        variants[name]['judgment'] = {'enabled': judging, 'prepare_queries': len(prepare_rows),
+            'degraded': len(degraded), 'degraded_fraction': len(degraded) / len(prepare_rows) if prepare_rows else 0,
+            'normal_path_valid': judging and not degraded,
+            'reasons': {reason: sum(r['judgment'].get('reason') == reason for r in degraded)
+                        for reason in sorted({r['judgment']['reason'] for r in degraded})}}
+        variants[name]['all_public_dev'] = recall_metrics(best['rows'])
+        variants[name]['conversation_prepare'] = recall_metrics([r for r in best['rows'] if r['conversation_prepare']])
         details[name] = best['rows']
         m = best['metrics']
         print(f"{name}: Recall@8={m['recall_at_8']}, nDCG@8={m['ndcg_at_8']}, false={m['irrelevant_return_rate']}", flush=True)
@@ -360,9 +387,13 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
                         if calibrate or compare_embeddings:
                             name += f'_d{dimension}_' + ('instruction' if prefix else 'plain')
                         evaluate(contexts, gateway, tokenizer, prefix, dimension, name)
+            if not calibrate and not compare_embeddings:
+                evaluate(contexts, gateway if vector_enabled else None,
+                         DEFAULTS['tokenizer' if vector_enabled else 'fallback_tokenizer'], DEFAULTS['query_prefix'],
+                         dimension, 'default_judged', judging=True)
             for context in contexts:
                 with context['store'].read() as conn:
-                    usage.extend(dict(r) for r in conn.execute('SELECT purpose,model,result_category,duration_ms,prompt_tokens,completion_tokens FROM model_calls'))
+                    usage.extend(dict(r) for r in conn.execute('SELECT purpose,model,model_kind,reasoning_effort,result_category,duration_ms,prompt_tokens,completion_tokens,reasoning_tokens,timed_out FROM model_calls'))
     # Keep the global quality band within each retrieval path. A hybrid winner
     # cannot set the full-text fallback's thresholds (or vice versa).
     all_choices = [t for choices in evaluated.values() for t in choices]
@@ -379,7 +410,7 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
         variant = variants[winner['variant']]
         variant.update(settings=winner['settings'], metrics=winner['metrics'], groups=grouped_metrics(winner['rows']),
             corpora={name: grouped_metrics([r for r in winner['rows'] if r['corpus'] == name]) for name in variant['corpora']},
-            queries=[{k: r[k] for k in ('id', 'corpus', 'split', 'categories', 'relevant', 'returned', 'reasons', 'local_ms')}
+            queries=[{k: r[k] for k in ('id', 'corpus', 'split', 'categories', 'mode', 'conversation_prepare', 'relevant', 'returned', 'reasons', 'local_ms', 'judgment')}
                      for r in winner['rows']])
         details[winner['variant']] = winner['rows']
     sources = sorted(p for p in Path(__file__).parent.rglob('*') if p.suffix in ('.py', '.md', '.sql', '.json'))
@@ -391,7 +422,10 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
                                 'queries': len(selected[name]), 'sha256': hashlib.sha256(
                       json.dumps(data, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()} for name, data in datasets]},
         'embedding_model': config.model if vector_enabled else 'unconfigured', 'dimensions': dimensions,
-        'embedding_cache_misses': misses, 'embedding_calls': usage, 'variants': variants,
+        'embedding_cache_misses': misses, 'embedding_calls': [r for r in usage if r['model_kind'] == 'embedding'],
+        'judgment_calls': [r for r in usage if r['model_kind'] == 'recall_judge'],
+        'judgment_interval_seconds': judge_interval, 'default_variant': 'default_judged' if not calibrate and not compare_embeddings else None,
+        'variants': variants,
         'calibration': {'enabled': calibrate, 'compare_embeddings': compare_embeddings, 'trials': trials,
             'selection_rule': '(Recall@8+nDCG@8)/2 距全网格最高值不足 0.01 视为持平；取 relevant 标注精确率高者，再取无关误返率低者。其后质量高者优先，完全相同时保留固定网格顺序。仅 dev 选择，历史 holdout 不参与。',
             'recommended_variant': recommended, 'recommended_settings': chosen['settings'] if chosen else None,
@@ -408,9 +442,9 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
     report = json.loads(serialized)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     path = reports / f'recall-{stamp}-{split}.md'
-    lines = ['# Iris 召回评测', '', f"固定记忆 {report['corpus']['memories']} 条，查询 {count} 条；各语料隔离入库，不调用生成模型。",
+    lines = ['# Iris 召回评测', '', f"固定记忆 {report['corpus']['memories']} 条，查询 {count} 条；各语料隔离入库；default_judged 使用真实召回判断，其余对照关闭判断。",
         f"embedding：{report['embedding_model']}，维度 {dimensions}；新请求 {misses} 次。缓存键含端点、模型、维度和实际输入文本。",
-        'P95 为正式 prepare 路径，扣除查询 embedding 阶段；包含召回记录写入。',
+        'P95 为正式 prepare 路径，扣除查询 embedding 阶段和判断网络等待；包含本地判断处理、排队和最终召回记录写入。',
         f'自动查询组成：{CONVERSATION_QUERY}；只有最新他人消息中的姓名作为锚点。', '',
         '| 方案 | 语料 | 分组 | 类别 | 查询数 | Recall@8 | nDCG@8 | 无关误返率 | 平均返回数 | relevant 标注精确率 | P95 ms |',
         '| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
@@ -420,7 +454,7 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
             for group, values in groups.items():
                 for category, m in [('全部', values['all']), *values['categories'].items()]:
                     lines.append(f"| {name} | {corpus_name} | {group} | {category} | {m['queries']} | {fmt(m['recall_at_8'])} | {fmt(m['ndcg_at_8'])} | {fmt(m['irrelevant_return_rate'])} | {fmt(m['average_returned'])} | {fmt(m['relevant_precision'])} | {fmt(m['prepare_p95_ms'])} |")
-    lines.extend(['', 'M2 参考值：Recall@8 ≥0.85、nDCG@8 ≥0.75、无关误返率 ≤0.10。拒答留到 M2，本轮只报告。',
+    lines.extend(['', 'M2 参考值：Recall@8 ≥0.85、nDCG@8 ≥0.75、无关误返率 ≤0.10。包含降级的判断运行不能作为正常路径质量结论。',
         '按冻结文件 split 使用 dev；v2 历史 holdout 仅作报告对照，不参与选择，也不作为未见验收。验收以规划者隐藏集为准。',
         '类别可重叠；Recall/nDCG 按所有返回（含人物要点）计算，只以有答案问题为分母。无关误返只检查无答案问题的 reason=relevant 返回。',
         '平均返回数只作诊断；relevant 标注精确率用于质量持平时比较，验收另按 DECISIONS.md 2026-10-06 与基线检查退化；后者为标注相关的 relevant 返回数 / 全部 relevant 返回数，跨查询合并计数。空分母为 —。',

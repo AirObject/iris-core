@@ -157,7 +157,7 @@ class Scheduler:
             if self.config_loader:
                 try:
                     configs = self.config_loader()
-                    for kind in ("chat", "embedding"):
+                    for kind in ("chat", "embedding", "recall_judge"):
                         if configs.get(kind) != self._loaded_configs.get(kind):
                             self.gateway.replace_config(kind, configs.get(kind))
                     self._loaded_configs = dict(configs)

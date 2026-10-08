@@ -3,7 +3,8 @@ import json
 from datetime import timedelta, timezone
 
 from .model_health import usage_window, utc_now
-from .models import CHAT_TOTAL_TIMEOUT, EMBEDDING_TOTAL_TIMEOUT, JUDGE_TOTAL_TIMEOUT, LEARNING_TOTAL_TIMEOUT
+from .models import (CHAT_TOTAL_TIMEOUT, EMBEDDING_TOTAL_TIMEOUT, JUDGE_TOTAL_TIMEOUT,
+                     LEARNING_TOTAL_TIMEOUT, RECALL_JUDGE_TOTAL_TIMEOUT)
 from .retrieval import backlog, latest_models
 
 
@@ -63,7 +64,8 @@ def service_status(store, scheduler, health, *, clock=utc_now):
                   scheduler={"running": scheduler.running, "max_concurrent": store.setting("learning_concurrency", 2),
                              "last_error": scheduler.last_error},
                   timeouts_seconds={"learning": LEARNING_TOTAL_TIMEOUT, "chat": CHAT_TOTAL_TIMEOUT,
-                                    "embedding": EMBEDDING_TOTAL_TIMEOUT, "retrieval_query": 2, "judge": JUDGE_TOTAL_TIMEOUT})
+                                    "embedding": EMBEDDING_TOTAL_TIMEOUT, "retrieval_query": 2, "judge": JUDGE_TOTAL_TIMEOUT,
+                                    "recall_judge": RECALL_JUDGE_TOTAL_TIMEOUT})
     return result
 
 
@@ -71,5 +73,8 @@ def add_health_hints(result, health):
     for kind, state in health.snapshot().items():
         if state["state"] != "normal":
             result["hints"].append({"code": "model_paused", "kind": kind, **state,
-                "message": ("embedding 已暂停，使用全文检索。" if kind == "embedding" else "学习已暂停，消息仍正常接收。")})
+                "message": {"embedding": "embedding 已暂停，使用全文检索。",
+                            "recall_judge": ("召回判断限流退避中，保留原召回。" if state["state"] == "rate_limited"
+                                             else "召回判断已暂停，保留原召回。"),
+                            "chat": "学习已暂停，消息仍正常接收。"}.get(kind, "模型用途已暂停。")})
     return result

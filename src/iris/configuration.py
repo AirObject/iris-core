@@ -13,10 +13,10 @@ from pathlib import Path
 
 from .auth import audit
 from .db import dumps
-from .models import ModelConfig
+from .models import MODEL_KINDS, ModelConfig, effective_configs
 from .process_lock import StoreLease
 
-KINDS = ('chat', 'embedding')
+KINDS = MODEL_KINDS
 
 
 def deployment(*, config=None, data_dir=None, host=None, port=None):
@@ -142,8 +142,10 @@ class RuntimeConfig:
                 audit(conn, 'models_saved', {'purposes': sorted(updates)}, actor=actor)
 
     def public(self):
-        configs = self.load()
-        return {kind: {'enabled': bool(configs.get(kind) and configs[kind].base_url and configs[kind].model),
+        raw = self.load()
+        configs = effective_configs(raw)
+        return {kind: {'inherited': kind == 'recall_judge' and not raw.get(kind),
+                       'enabled': bool(configs.get(kind) and configs[kind].base_url and configs[kind].model),
                        'base_url': configs[kind].base_url if configs.get(kind) else '',
                        'model': configs[kind].model if configs.get(kind) else '',
                        'dimensions': configs[kind].dimensions if configs.get(kind) else None,

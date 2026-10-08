@@ -78,7 +78,10 @@ class Message(Input):
 
 
 class Prepare(Input):
-    text: str | None = Field(default=None, max_length=8000, description="查询提示；省略时使用本入口最近 5 条消息")
+    judge: bool = Field(default=True, strict=True, description="是否运行召回判断")
+    judge_budget_seconds: float = Field(default=10.0, gt=0, le=10, strict=True, allow_inf_nan=False,
+                                        description="判断总预算，包含排队；仅可缩短默认 10 秒")
+    text: str | None = Field(default=None, max_length=8000, description="查询提示；省略时使用本入口自适应近期消息")
     participants: list[str] | None = Field(default=None, max_length=100, description="主体 ID 或无歧义的名字；空数组不取人物要点")
     known_memory_ids: list[int] = Field(default_factory=list, max_length=1000, description="宿主上下文已经包含的记忆")
     recent_limit: int = Field(default=20, ge=0, le=100)
@@ -244,7 +247,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     def learn(entry_id: str):
         return app.state.scheduler.request_learning(entry_id)
 
-    @app.post("/api/v1/entries/{entry_id}/prepare", summary="准备回复材料，不调用生成模型")
+    @app.post("/api/v1/entries/{entry_id}/prepare", summary="准备回复材料，不生成回复正文")
     def prepare(entry_id: str, payload: Prepare):
         return add_health_hints(Retrieval(app.state.store, app.state.gateway).prepare(entry_id, **payload.model_dump()), app.state.health)
 

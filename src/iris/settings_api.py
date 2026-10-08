@@ -1,6 +1,7 @@
 """Authenticated setup/settings commands and bounded connection checks."""
 from __future__ import annotations
 
+import json
 import time
 from typing import Literal
 from urllib.parse import urlsplit
@@ -12,7 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 from .auth import audit, error, local
 from .db import dumps
 from .memory_ops import update_role, lifecycle_settings, operation
-from .models import Gateway, ModelConfig, ModelError
+from .models import MODEL_KINDS, Gateway, ModelConfig, ModelError
+from .recall_judge import settings as judge_settings
 
 CONNECTION_TIMEOUT = 10
 PRESETS = [
@@ -75,9 +77,18 @@ class Model(Input):
         if not self.enabled:
             return None
         key = self.api_key.get_secret_value() if self.api_key is not None else (saved.api_key if saved else '')
+        effort = self.reasoning_effort
+        if kind == 'recall_judge' and effort is None:
+            effort = 'high'
         return ModelConfig(self.base_url.rstrip('/'), key, self.model.strip(),
                            self.dimensions if kind == 'embedding' else None,
-                           self.reasoning_effort if kind == 'chat' else None)
+                           effort if kind != 'embedding' else None)
+
+
+class RecallJudge(Input):
+    enabled: bool = Field(default=True, strict=True)
+    concurrency: int = Field(default=1, ge=1, le=8, strict=True)
+    queue_limit: int = Field(default=8, ge=0, le=64, strict=True)
 
 
 class Limits(Input):
@@ -114,12 +125,12 @@ def install_settings(app):
                 'model_source': 'external' if app.state.runtime_config.external_loader else 'local',
                 'daily_token_limit': store.setting('daily_token_limit'),
                 'learning_concurrency': store.setting('learning_concurrency', 2),
-                'lifecycle': lifecycle,
+                'lifecycle': lifecycle, 'recall_judge': judge_settings(store),
                 'health': app.state.health.snapshot(), 'presets': PRESETS, 'operations': operations}
 
     def sync_models():
         configs = app.state.runtime_config.load()
-        for kind in ('chat', 'embedding'):
+        for kind in MODEL_KINDS:
             app.state.gateway.replace_config(kind, configs.get(kind))
 
     @router.get('/settings')
@@ -159,13 +170,22 @@ def install_settings(app):
         return snapshot()
 
     @router.put('/settings/models/{kind}')
-    def model(kind: Literal['chat', 'embedding'], payload: Model):
+    def model(kind: Literal['chat', 'embedding', 'recall_judge'], payload: Model):
         runtime = app.state.runtime_config
         if runtime.external_loader:
             return error('external_config', '模型配置来自外部文件，只读', 409)
-        config = payload.config(runtime.load().get(kind), kind)
+        config = payload.config(app.state.gateway.configs.get(kind), kind)
         runtime.save({kind: config})
         sync_models()
+        return snapshot()
+
+    @router.patch('/settings/recall-judge')
+    def recall_judge(payload: RecallJudge):
+        with app.state.store.write() as conn:
+            row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='recall_judge'").fetchone()
+            values = {**(json.loads(row[0]) if row else {}), **payload.model_dump(exclude_unset=True)}
+            conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('recall_judge',?)", (dumps(values),))
+            audit(conn, 'recall_judge_saved', payload.model_dump(exclude_unset=True))
         return snapshot()
 
     @router.patch('/settings/limits')
@@ -179,16 +199,16 @@ def install_settings(app):
         return snapshot()
 
     @router.post('/settings/models/{kind}/retry')
-    def retry(kind: Literal['chat', 'embedding']):
+    def retry(kind: Literal['chat', 'embedding', 'recall_judge']):
         app.state.gateway.retry_now(kind)
         with app.state.store.write() as conn:
             audit(conn, 'model_retry', {'purpose': kind})
         return snapshot()
 
     @router.post('/settings/models/{kind}/test')
-    def connection(kind: Literal['chat', 'embedding'], payload: dict):
+    def connection(kind: Literal['chat', 'embedding', 'recall_judge'], payload: dict):
         runtime = app.state.runtime_config
-        current = runtime.load().get(kind)
+        current = app.state.gateway.configs.get(kind)
         if payload and runtime.external_loader:
             return error('external_config', '外部模型配置只能测试已保存的值', 409)
         if payload:
@@ -207,10 +227,10 @@ def install_settings(app):
         started = time.monotonic()
         try:
             body = ({'messages': [{'role': 'user', 'content': '只输出 JSON：{"ok":true}'}],
-                     'max_tokens': 3000, 'response_format': {'type': 'json_object'}} if kind == 'chat'
+                     'max_tokens': 3000, 'response_format': {'type': 'json_object'}} if kind != 'embedding'
                     else gateway._embedding_payload('Iris 测试连接'))
             result = gateway._call(kind, 'connection_check', body, probe=True, deadline=gateway.monotonic()+CONNECTION_TIMEOUT)
-            valid = (bool((result.get('choices') or [{}])[0].get('message', {}).get('content')) if kind == 'chat'
+            valid = (bool((result.get('choices') or [{}])[0].get('message', {}).get('content')) if kind != 'embedding'
                      else bool(result.get('data') and result['data'][0].get('embedding')))
             if not valid:
                 raise ModelError('configuration', 'invalid model response')

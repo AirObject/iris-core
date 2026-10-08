@@ -10,7 +10,7 @@ import re
 import time
 import tomllib
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -25,6 +25,8 @@ CHAT_TOTAL_TIMEOUT = 120
 LEARNING_TOTAL_TIMEOUT = 180
 EMBEDDING_TOTAL_TIMEOUT = 30
 JUDGE_TOTAL_TIMEOUT = 240
+RECALL_JUDGE_TOTAL_TIMEOUT = 10
+MODEL_KINDS = ("chat", "embedding", "recall_judge")
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,15 @@ class ModelConfig:
             raise ValueError("reasoning_effort must be a nonempty string when configured")
 
 
+def effective_configs(configs):
+    result = dict(configs)
+    if result.get('recall_judge') is None and result.get('chat'):
+        result['recall_judge'] = replace(result['chat'], dimensions=None, reasoning_effort='high')
+    elif result.get('recall_judge') and result['recall_judge'].reasoning_effort is None:
+        result['recall_judge'] = replace(result['recall_judge'], reasoning_effort='high')
+    return result
+
+
 @dataclass
 class ModelReply:
     content: str
@@ -54,20 +65,23 @@ class ModelReply:
 
 class ModelError(Exception):
     def __init__(self, category: str, summary: str, raw_output: str | None = None,
-                 first_raw: str | None = None, *, paused: bool = False):
+                 first_raw: str | None = None, *, paused: bool = False, reason: str | None = None):
         super().__init__(summary)
         self.category = category
         self.summary = summary
         self.raw_output = raw_output
         self.first_raw = first_raw
         self.paused = paused
+        self.reason = reason
 
 
 def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
     chosen = Path(path or os.environ.get("IRIS_TEST_MODELS", "test-models.toml"))
     data = tomllib.loads(chosen.read_text(encoding="utf-8"))
     result = {}
-    for name in ("chat", "embedding"):
+    for name in MODEL_KINDS:
+        if name == "recall_judge" and name not in data:
+            continue
         group = data.get(name, {})
         api_key = str(group.get("api_key", ""))
         if "api_key_env" in group:
@@ -80,7 +94,7 @@ def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
             api_key,
             str(group.get("model", "")),
             group.get("dimensions"),
-            group.get("reasoning_effort") if name == "chat" else None,
+            group.get("reasoning_effort", "high" if name == "recall_judge" else None) if name != "embedding" else None,
         )
     return result
 
@@ -232,7 +246,8 @@ class Gateway:
     def __init__(self, configs: dict[str, ModelConfig], store: Store | None = None, client: httpx.Client | None = None,
                  sleeper=time.sleep, *, health=None, clock=None, monotonic=time.monotonic, jitter=random.uniform):
         self.health = health
-        self.configs = health.configs if health else dict(configs)
+        self._raw_configs = dict(configs)
+        self.configs = health.configs if health else effective_configs(configs)
         self.store = store
         self.client = client or httpx.Client()
         self._own_client = client is None
@@ -241,9 +256,13 @@ class Gateway:
         self.monotonic = monotonic
         self.jitter = jitter
         self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-model")
+        from .recall_judge import Admission
+        self._judge_admission = Admission()
+        self._judge_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-recall-judge")
 
     def close(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
+        self._judge_pool.shutdown(wait=False, cancel_futures=True)
         if self._own_client:
             self.client.close()
 
@@ -271,9 +290,11 @@ class Gateway:
     def replace_config(self, kind: str, config: ModelConfig) -> bool:
         if self.health:
             return self.health.replace_config(kind, config)
-        changed = self.configs.get(kind) != config
-        self.configs[kind] = config
-        return changed
+        before = dict(self.configs)
+        self._raw_configs[kind] = config
+        self.configs.clear()
+        self.configs.update(effective_configs(self._raw_configs))
+        return before != self.configs
 
     def retry_now(self, kind: str) -> None:
         if self.health:
@@ -284,7 +305,7 @@ class Gateway:
             return False
         payload = ({"messages": [{"role": "user", "content": '只输出 JSON：{"ok":true}'}],
                     "max_tokens": 64, "response_format": {"type": "json_object"}}
-                   if kind == "chat" else self._embedding_payload("Iris 测试连接"))
+                   if kind != "embedding" else self._embedding_payload("Iris 测试连接"))
         try:
             self._call(kind, "health_probe", payload, probe=True)
             return True
@@ -293,6 +314,8 @@ class Gateway:
 
     @staticmethod
     def timeout_for(kind, purpose):
+        if kind == "recall_judge":
+            return RECALL_JUDGE_TOTAL_TIMEOUT
         if kind == "embedding":
             return 2 if purpose == "retrieval_query" else EMBEDDING_TOTAL_TIMEOUT
         if purpose in ("learning", "learning_repair"):
@@ -302,9 +325,33 @@ class Gateway:
         return CHAT_TOTAL_TIMEOUT
 
     def _call(self, kind: str, purpose: str, payload: dict[str, Any], *, batch_id: int | None = None,
-              deadline: float | None = None, probe: bool = False) -> dict[str, Any]:
+              deadline: float | None = None, probe: bool = False, validator=None, _lease=None) -> dict[str, Any]:
+        if kind == 'recall_judge' and _lease is None:
+            from .recall_judge import settings
+            started = self.monotonic()
+            deadline = min(deadline, started + RECALL_JUDGE_TOTAL_TIMEOUT) if deadline is not None else started + RECALL_JUDGE_TOTAL_TIMEOUT
+            if self.health:
+                self.health.check(kind, purpose, probe=probe)
+            options = settings(self.store)
+            try:
+                lease = self._judge_admission.acquire(deadline, options['concurrency'], options['queue_limit'], self.monotonic)
+            except ModelError as exc:
+                exc.queue_ms = (self.monotonic() - started) * 1000
+                raise
+            queued = (self.monotonic() - started) * 1000
+            try:
+                data = self._call(kind, purpose, payload, batch_id=batch_id, deadline=deadline,
+                                  probe=probe, validator=validator, _lease=lease)
+                data['_iris_queue_ms'] = queued
+                return data
+            except ModelError as exc:
+                exc.queue_ms = queued
+                raise
+            finally:
+                if not lease.deferred:
+                    lease.release()
         deadline = deadline if deadline is not None else self.monotonic() + self.timeout_for(kind, purpose)
-        attempts = 1 if probe or purpose == "retrieval_query" else 3
+        attempts = 1 if probe or purpose == "retrieval_query" or kind == "recall_judge" else 3
         for attempt in range(attempts):
             token = self.health.check(kind, purpose, probe=probe) if self.health else None
             config = self.configs.get(kind)
@@ -312,8 +359,8 @@ class Gateway:
                 raise ModelError("configuration", f"{kind} model is not configured", paused=bool(self.health))
             remaining = deadline - self.monotonic()
             if remaining <= 0:
-                raise ModelError("retryable", "total timeout")
-            url = config.base_url + ("/chat/completions" if kind == "chat" else "/embeddings")
+                raise ModelError("retryable", "total timeout", reason="timeout")
+            url = config.base_url + ("/chat/completions" if kind != "embedding" else "/embeddings")
             headers = {"Content-Type": "application/json"}
             if config.api_key:
                 headers["Authorization"] = f"Bearer {config.api_key}"
@@ -324,13 +371,15 @@ class Gateway:
             finish_reason, status_code = None, None
             category, summary, timed_out = "success", None, False
             retry_after = None
+            rate_limited = False
             reasoning_present, reasoning_chars = None, None
-            reasoning_effort = config.reasoning_effort if kind == "chat" else None
+            reasoning_effort = config.reasoning_effort if kind != "embedding" else None
             request_payload = {**payload, "model": config.model}
             if reasoning_effort is not None:
                 request_payload["reasoning_effort"] = reasoning_effort
             try:
-                request = self._pool.submit(self.client.post, url, headers=headers,
+                pool = self._judge_pool if kind == "recall_judge" else self._pool
+                request = pool.submit(self.client.post, url, headers=headers,
                                             json=request_payload, timeout=timeout)
                 response = request.result(timeout=remaining)
                 status_code = response.status_code
@@ -340,6 +389,10 @@ class Gateway:
                     except ValueError:
                         error_data = {}
                     category = _http_error_category(status_code, error_data)
+                    error = error_data.get('error', {}) if isinstance(error_data, dict) else {}
+                    code = str(error.get('code') or error.get('type') or '') if isinstance(error, dict) else ''
+                    rate_limited = category == 'retryable' and (status_code == 429 or any(
+                        part in code.casefold() for part in ('ratelimit', 'inflightbatchsize', 'requestburst')))
                     # Provider prose can echo credentials or input; do not persist it.
                     summary = f"HTTP {status_code}"
                     retry_after = _retry_after(response.headers.get("Retry-After"), self.clock())
@@ -353,10 +406,10 @@ class Gateway:
                     choice = choices[0] if choices else {}
                     message = choice.get("message") or {}
                     content = message.get("content")
-                    if kind == "chat":
+                    if kind != "embedding":
                         reasoning_present, reasoning_chars = _reasoning_diagnostics(message)
                     finish_reason = choice.get("finish_reason")
-                    if kind == "chat" and (finish_reason == "content_filter" or
+                    if kind != "embedding" and (finish_reason == "content_filter" or
                             (choice.get("message") or {}).get("refusal") or (any(flags.values()) and not content)):
                         category, summary = "content_rejection", "provider content safety refusal"
                     elif provider_status not in (None, 0, 200) and not content:
@@ -372,14 +425,20 @@ class Gateway:
                             raise ValueError('embedding dimensions do not match request')
                     elif not choices or not isinstance(content, str):
                         raise ValueError("missing chat choice")
+                    if category == 'success' and validator:
+                        if finish_reason != 'stop':
+                            raise ValueError('incomplete judgment')
+                        validator(content)
                     status_code = provider_status or status_code
             except (httpx.TransportError, FutureTimeout) as exc:
                 request.cancel()
+                if _lease and not request.done():
+                    _lease.defer(request)
                 timed_out = isinstance(exc, (FutureTimeout, httpx.TimeoutException))
                 category = "retryable"
                 summary = "total timeout" if isinstance(exc, FutureTimeout) else type(exc).__name__
-            except (ValueError, KeyError, IndexError, TypeError) as exc:
-                category, summary = "configuration", f"invalid provider response: {type(exc).__name__}"
+            except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+                category, summary = ("invalid_output" if kind == "recall_judge" else "configuration"), f"invalid provider response: {type(exc).__name__}"
             duration = round((self.monotonic() - started) * 1000)
             # Even an HTTP client that returns just after the deadline cannot commit a late result.
             if category == "success" and self.monotonic() > deadline:
@@ -387,21 +446,39 @@ class Gateway:
             self._record(purpose, config.model, duration, category, summary, usage, flags, status_code,
                          finish_reason=finish_reason, batch_id=batch_id, kind=kind, timed_out=timed_out,
                          reasoning_effort=reasoning_effort, reasoning_present=reasoning_present, reasoning_chars=reasoning_chars)
-            paused = self.health.observe(kind, token, category, summary, probe=probe) if self.health else False
+            paused = self.health.observe(kind, token, category, summary, probe=probe,
+                rate_limited=rate_limited, retry_after=retry_after) if self.health else False
             if category == "content_rejection":
                 paused = False  # Explicit safety refusal is a terminal batch result even during another outage.
             if category == "success":
                 if self.configs.get(kind) != config:
-                    raise ModelError("paused", "model configuration changed during request", paused=True)
+                    error = ModelError("paused", "model configuration changed during request", paused=True, reason='configuration_changed')
+                    error.network_ms = duration
+                    raise error
+                if kind == 'recall_judge':
+                    data['_iris_network_ms'] = duration
                 return data
             if category != "retryable" or paused or attempt == attempts - 1:
-                raise ModelError(category, summary, paused=paused)
+                error = ModelError(category, summary, paused=paused,
+                                   reason='timeout' if timed_out else ('rate_limited' if rate_limited else category))
+                error.network_ms = duration
+                raise error
             base_delay = 2 * (2 ** attempt)
             retry_delay = retry_after if retry_after is not None else base_delay + self.jitter(0, base_delay)
             if deadline - self.monotonic() <= retry_delay:
                 raise ModelError(category, summary, paused=paused)
             self.sleeper(retry_delay)
         raise AssertionError("unreachable")
+
+    def recall_judge(self, messages, ids, *, budget_seconds=10):
+        from .recall_judge import validate_budget, validate_scores
+        budget = validate_budget(budget_seconds)
+        data = self._call('recall_judge', 'recall_judge', {'messages': messages, 'temperature': 0,
+                          'response_format': {'type': 'json_object'}, 'max_tokens': 4096},
+                          deadline=self.monotonic() + budget, validator=lambda raw: validate_scores(raw, ids))
+        raw = data['choices'][0]['message']['content']
+        return {'scores': validate_scores(raw, ids), 'queue_ms': data['_iris_queue_ms'],
+                'network_ms': data['_iris_network_ms'], 'usage': data.get('usage') or {}}
 
     def chat(self, messages: list[dict[str, str]], purpose: str, max_tokens: int = 3500, *, batch_id: int | None = None,
              _deadline: float | None = None) -> ModelReply:

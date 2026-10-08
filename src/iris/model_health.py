@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .db import Store
+from .models import MODEL_KINDS, effective_configs
 
 
 def utc_now():
@@ -34,21 +35,32 @@ def fingerprint(config):
 class ModelHealth:
     def __init__(self, store: Store, configs, *, clock=utc_now):
         self.store, self.clock = store, clock
-        self.configs = dict(configs)
+        self._raw_configs = dict(configs)
+        self.configs = effective_configs(configs)
         self._lock = threading.RLock()
         self._states = {}
-        for kind in ("chat", "embedding"):
+        for kind in MODEL_KINDS:
             saved = store.setting("model_health." + kind, {})
-            self._states[kind] = saved if saved.get("fingerprint") == fingerprint(configs.get(kind)) else self._fresh(kind)
+            self._states[kind] = saved if saved.get("fingerprint") == fingerprint(self.configs.get(kind)) else self._fresh(kind)
             self._save(kind)
 
     def _fresh(self, kind):
         config = self.configs.get(kind)
         configured = config and config.base_url and config.model
-        return {"state": "normal" if configured else "configuration_error",
+        state = {"state": "normal" if configured else "configuration_error",
                 "last_error": None if configured else "模型尚未配置",
                 "consecutive_errors": 0, "next_probe_at": None, "probe_delay_seconds": 60,
                 "fingerprint": fingerprint(config)}
+        if kind == 'recall_judge':
+            state.update(retry_at=None, consecutive_rate_limits=0)
+        return state
+
+    def _cooling(self, state):
+        return (state['state'] == 'rate_limited' and state.get('retry_at') is not None
+                and self.clock() < datetime.fromisoformat(state['retry_at']))
+
+    def _available(self, state):
+        return state['state'] == 'normal' or (state['state'] == 'rate_limited' and not self._cooling(state))
 
     def _save(self, kind):
         self.store.set_setting("model_health." + kind, self._states[kind])
@@ -72,9 +84,13 @@ class ModelHealth:
         with self._lock:
             result = {kind: {k: v for k, v in state.items() if k != "fingerprint"}
                       for kind, state in self._states.items()}
+        for state in result.values():
+            if state['state'] == 'rate_limited' and not self._cooling(state):
+                state.update(state='normal', retry_at=None)
         budget = self.budget()
-        if budget["exhausted"] and result["chat"]["state"] == "normal":
-            result["chat"].update(state="usage_limit", last_error="达到每日 token 上限", next_probe_at=budget["reset_at"])
+        for kind in ('chat', 'recall_judge'):
+            if budget['exhausted'] and result[kind]['state'] == 'normal':
+                result[kind].update(state='usage_limit', last_error='达到每日 token 上限', next_probe_at=budget['reset_at'])
         return result
 
     def learning_allowed(self):
@@ -82,20 +98,20 @@ class ModelHealth:
 
     def allowed(self, kind):
         with self._lock:
-            return self._states[kind]["state"] == "normal"
+            return self._available(self._states[kind])
 
     def check(self, kind, purpose, *, probe=False):
         from .models import ModelError
         with self._lock:
             state = self._states[kind]
-            if not probe and state["state"] != "normal":
-                raise ModelError("paused", state["last_error"] or state["state"], paused=True)
+            if not probe and not self._available(state):
+                raise ModelError("paused", state["last_error"] or state["state"], paused=True, reason=state["state"])
             token = state["fingerprint"]
-        if not probe and purpose in ("learning", "learning_repair") and self.budget()["exhausted"]:
-            raise ModelError("paused", "达到每日 token 上限", paused=True)
+        if ((not probe and purpose in ("learning", "learning_repair")) or kind == "recall_judge") and self.budget()["exhausted"]:
+            raise ModelError("paused", "达到每日 token 上限", paused=True, reason="usage_limit")
         return token
 
-    def observe(self, kind, token, category, summary=None, *, probe=False):
+    def observe(self, kind, token, category, summary=None, *, probe=False, rate_limited=False, retry_after=None):
         """Returns whether the caller must wait without spending a batch attempt."""
         with self._lock:
             state = self._states[kind]
@@ -104,19 +120,38 @@ class ModelHealth:
             previous = state["state"]
             if previous in ("invalid_key", "configuration_error"):
                 return True  # Only replacing configuration may clear these states.
+            cooldown_until = datetime.fromisoformat(state['retry_at']) if kind == 'recall_judge' and self._cooling(state) else None
             if category == "success":
                 # Only a probe may close an open circuit; an older in-flight call may finish later.
-                if probe or previous == "normal":
+                if probe or self._available(state):
                     self._states[kind] = self._fresh(kind)
             elif category == "retryable":
                 state["consecutive_errors"] += 1
                 state["last_error"] = summary
-                if probe or state["consecutive_errors"] >= 3:
+                if kind == 'recall_judge':
+                    state['consecutive_rate_limits'] = state.get('consecutive_rate_limits', 0) + 1 if rate_limited else 0
+                if (probe or state["consecutive_errors"] >= 3
+                        or (kind == 'recall_judge' and previous in ('temporarily_unavailable', 'account_problem'))):
                     state["state"] = "account_problem" if previous == "account_problem" else "temporarily_unavailable"
+                    if kind == 'recall_judge':
+                        state['retry_at'] = None
                     if probe:
                         state["probe_delay_seconds"] = min(600, state["probe_delay_seconds"] * 2)
-                    state["next_probe_at"] = (self.clock() + timedelta(seconds=state["probe_delay_seconds"])).isoformat()
+                    delay = max(state["probe_delay_seconds"], retry_after or 0)
+                    resume_at = self.clock() + timedelta(seconds=delay)
+                    state["next_probe_at"] = max(resume_at, cooldown_until or resume_at).isoformat()
+                elif kind == 'recall_judge' and rate_limited:
+                    # First two consecutive limits: Retry-After exactly, or 2/4 s.
+                    # New prepares fail before admission; expiry needs no probe.
+                    delay = retry_after if retry_after is not None else 2 ** state['consecutive_rate_limits']
+                    resume_at = self.clock() + timedelta(seconds=delay)
+                    state.update(state='rate_limited', next_probe_at=None,
+                                 retry_at=max(resume_at, cooldown_until or resume_at).isoformat())
+                elif previous == 'rate_limited' and not self._cooling(state):
+                    state.update(state='normal', retry_at=None)
             elif category in ("authentication", "configuration", "account"):
+                if kind == 'recall_judge':
+                    state.update(retry_at=None, consecutive_rate_limits=0)
                 state.update(state={"authentication": "invalid_key", "configuration": "configuration_error",
                                     "account": "account_problem"}[category], last_error=summary, consecutive_errors=0)
                 delay = min(600, state["probe_delay_seconds"] * 2) if probe else 60
@@ -125,6 +160,10 @@ class ModelHealth:
             else:
                 # A content refusal demonstrates availability; it is not a circuit failure.
                 state["consecutive_errors"] = 0
+                if kind == 'recall_judge':
+                    state['consecutive_rate_limits'] = 0
+                    if self._available(state):
+                        state.update(state='normal', retry_at=None)
                 if probe:
                     state["probe_delay_seconds"] = min(600, state["probe_delay_seconds"] * 2)
                     state["next_probe_at"] = (self.clock() + timedelta(seconds=state["probe_delay_seconds"])).isoformat()
@@ -132,24 +171,31 @@ class ModelHealth:
             current = self._states[kind]["state"]
             if previous != current:
                 logging.getLogger("iris.models").info("model state kind=%s state=%s", kind, current)
-            return current != "normal"
+            return not self._available(self._states[kind])
 
     def due_probes(self):
+        judge_available = (self.store.setting('recall_judge', {}).get('enabled', True) and not self.budget()['exhausted'])
         with self._lock:
             return [kind for kind, state in self._states.items()
-                    if state["state"] in ("temporarily_unavailable", "account_problem")
+                    if (kind != "recall_judge" or judge_available)
+                    and state["state"] in ("temporarily_unavailable", "account_problem")
                     and state["next_probe_at"] and datetime.fromisoformat(state["next_probe_at"]) <= self.clock()]
 
     def replace_config(self, kind, config):
         if kind not in self._states:
             raise ValueError("unknown model purpose")
         with self._lock:
-            if fingerprint(config) == self._states[kind]["fingerprint"]:
-                return False
-            self.configs[kind] = config
-            self._states[kind] = self._fresh(kind)
-            self._save(kind)
-            return True
+            self._raw_configs[kind] = config
+            updated = effective_configs(self._raw_configs)
+            changed = False
+            for purpose in MODEL_KINDS:
+                candidate = updated.get(purpose)
+                if fingerprint(candidate) != self._states[purpose]['fingerprint']:
+                    self.configs[purpose] = candidate
+                    self._states[purpose] = self._fresh(purpose)
+                    self._save(purpose)
+                    changed = True
+            return changed
 
     def retry_now(self, kind):
         with self._lock:

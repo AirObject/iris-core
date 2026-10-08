@@ -14,13 +14,15 @@ import sys
 import time
 from pathlib import Path
 
+import httpx
 import numpy as np
 import psutil
 from fastapi.testclient import TestClient
 
 from iris.api import create_app
 from iris.db import Store
-from iris.models import ModelConfig
+from iris.models import Gateway as ModelGateway, ModelConfig
+from iris.model_health import ModelHealth
 from iris.queue import add_message
 from iris.retrieval import DEFAULTS
 
@@ -53,10 +55,17 @@ def build(path, size, dimension):
         store.close()
 
 
-class Gateway:
-    configs = {"embedding": ModelConfig("local-cached", "", "perf-vector")}
-
-    def __init__(self, dimension):
+class Gateway(ModelGateway):
+    def __init__(self, dimension, store=None):
+        configs = {'embedding': ModelConfig('local-cached', '', 'perf-vector', dimension),
+                   'chat': ModelConfig('https://example.invalid/v1', '', 'instant-judge', reasoning_effort='high')}
+        def handler(request):
+            payload = json.loads(request.content)
+            candidates = json.loads(payload['messages'][-1]['content'])['candidates']
+            content = json.dumps({'scores': [{'id': c['id'], 'support': 100} for c in candidates]})
+            return httpx.Response(200, json={'choices': [{'message': {'content': content}, 'finish_reason': 'stop'}]})
+        super().__init__(configs, store, client=httpx.Client(transport=httpx.MockTransport(handler)),
+                         health=ModelHealth(store, configs) if store else None)
         self.vector = np.random.default_rng(4321).normal(size=dimension).astype(np.float32)
 
     def embedding(self, text, purpose="embedding"):
@@ -90,7 +99,7 @@ def worker(path, size, dtype, repeats, dimension, default_config=False):
             add_message(store, entry_id='bench', entry_name='bench', platform='perf', entry_kind='group',
                         kind='message', sender=f'参与者{i}', account_id=f'bench{i}', content='今晚整理天文观測记录，继续聊聊观星。',
                         occurred_at=STAMP, dedupe_key=f'prepare-default-{i}')
-    gateway = Gateway(dimension)
+    gateway = Gateway(dimension, store)
     rss_before = process.memory_info().rss
     start = time.perf_counter()
     with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1") as client:
@@ -124,6 +133,7 @@ def worker(path, size, dtype, repeats, dimension, default_config=False):
                 'http_prepare_p50_ms': float(np.percentile(http, 50)),
                 'http_prepare_p95_ms': float(np.percentile(http, 95)),
                 'samples_ms': {'prepare': direct, 'http_prepare': http, 'vector': vector_times},
+                'judgment': response.json()['judgment'],
                 'returned': [{'id': m['id'], 'reason': m['reason']} for m in response.json()['memories']]}
         # Identical deterministic queries across fresh float32 / float16 worker processes.
         rng = np.random.default_rng(7788)
@@ -139,6 +149,7 @@ def worker(path, size, dtype, repeats, dimension, default_config=False):
                   "rss_after_queries_mib": info.rss / 2**20,
                   "peak_working_set_mib": getattr(info, "peak_wset", info.rss) / 2**20,
                   "top8": rankings}
+    gateway.close()
     store.close()
     return result
 
@@ -153,7 +164,7 @@ def main():
     parser.add_argument("--repeats", type=int, default=60)
     parser.add_argument("--default-config", action="store_true", help="Only 5k/50k using current default dimension, dtype and cutoffs")
     args = parser.parse_args()
-    folder = Path("data/performance")
+    folder = args.out / "performance-data"
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"memories-{args.size}-{args.dimension}.db"
     if args.worker:
@@ -165,7 +176,7 @@ def main():
         for size in (5000, 50000):
             build(folder / f"memories-{size}-{dimension}.db", size, dimension)
             for dtype in ([DEFAULTS['dtype']] if args.default_config else ("float32", "float16")):
-                subprocess.run([sys.executable, "-X", "utf8", __file__, "--worker", "--size", str(size), "--dimension", str(dimension), "--dtype", dtype, "--repeats", str(args.repeats)] + (["--default-config"] if args.default_config else []), check=True)
+                subprocess.run([sys.executable, "-X", "utf8", __file__, "--worker", "--size", str(size), "--dimension", str(dimension), "--dtype", dtype, "--repeats", str(args.repeats), "--out", str(args.out)] + (["--default-config"] if args.default_config else []), check=True)
                 row = json.loads((folder / f"result-{size}-{dimension}-{dtype}.json").read_text(encoding="utf-8"))
                 results.append(row)
                 for name, timing in row['queries'].items():
@@ -177,7 +188,7 @@ def main():
         row.pop("top8")
     report = {"platform": platform.platform(), "python": platform.python_version(), "sqlite": sqlite3.sqlite_version,
               "numpy": np.__version__, "logical_cpus": os.cpu_count(), "physical_memory_gib": psutil.virtual_memory().total / 2**30,
-              "note": "Fresh process per size/dtype; precomputed synthetic query embedding; 5 warmups per query (unnamed and named); FTS, vector ranking, metadata, JSON and recall record included. HTTP uses in-process ASGI TestClient; no external embedding network.",
+              "note": "Fresh process per size/dtype; precomputed synthetic query embedding; 5 warmups per query (unnamed and named); FTS, vector ranking, metadata, JSON and recall record included. HTTP uses in-process ASGI TestClient; no external embedding/judgment network. Judgment uses the real gateway with an immediate fake HTTP response; its local overhead is included.",
               "results": results}
     args.out.mkdir(parents=True, exist_ok=True)
     target = args.out / ("retrieval-performance-pr5-r3.json" if args.default_config else "retrieval-performance-comparison-r3.json")

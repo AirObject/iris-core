@@ -21,7 +21,7 @@ def test_public_corpora_exclude_historical_holdout_from_calibration(tmp_path):
     from iris.recall_evaluation import PUBLIC_CORPORA
     folder = tmp_path / 'evals'
     folder.mkdir()
-    for name, topic in zip(PUBLIC_CORPORA, ('天文', '水彩', '陶艺', '围棋', '书法', '舞蹈'), strict=True):
+    for name, topic in zip(PUBLIC_CORPORA, ('天文', '水彩', '陶艺', '围棋', '书法', '舞蹈', '电影'), strict=True):
         (folder / name).write_text(json.dumps({
             'memories': [{'id': 'm', 'content': topic}],
             'queries': [
@@ -182,3 +182,29 @@ def test_calibration_compares_full_prefix_grid(tmp_path, monkeypatch):
     chosen = evaluation.select_trial(trials)
     assert report['calibration']['recommended_settings'] == chosen['settings']
     assert report['variants'][chosen['variant']]['settings'] == chosen['settings']
+
+
+def test_default_judgment_uses_prepare_only_and_exposes_degradation(tmp_path, monkeypatch):
+    from iris import recall_evaluation as evaluation
+    from iris.models import ModelConfig, ModelError
+    seen = []
+    class Judge:
+        def __init__(self, configs, store, **kwargs):
+            self.configs = configs
+        def recall_judge(self, messages, ids, **kwargs):
+            seen.append(ids)
+            raise ModelError('queue_full', 'queue_full')
+        def close(self):
+            pass
+    monkeypatch.setattr(evaluation, 'Gateway', Judge)
+    corpus = tmp_path / 'c.json'
+    corpus.write_text(json.dumps({'memories': [{'id':'m','content':'星空摄影'}], 'queries': [
+        {'id':'p','text':'星空摄影','relevant': {'m':3}},
+        {'id':'s','mode':'search','text':'星空摄影','relevant': {'m':3}}]}, ensure_ascii=False))
+    _, report = evaluation.run_recall_eval({'chat': ModelConfig('fake', '', 'fake')}, tmp_path, corpus=corpus, judge_interval=0)
+    assert len(seen) == 1
+    judged = report['variants']['default_judged']
+    assert judged['judgment']['degraded'] == 1
+    assert judged['judgment']['prepare_queries'] == 1
+    assert not judged['judgment']['normal_path_valid']
+    assert judged['metrics']['recall_at_8'] == 1
