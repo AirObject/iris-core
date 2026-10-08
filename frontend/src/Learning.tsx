@@ -10,7 +10,20 @@ import {
   seconds,
   time,
 } from "./ui";
-import type { Batch, Entry, Message } from "./types";
+import {
+  EntrySettingsDialog,
+  EntryQueueWait,
+  FilterSummary,
+  paceLabel,
+} from "./EntrySettings";
+import type {
+  Batch,
+  Entry,
+  Message,
+  EntryFilters,
+  QueueWait,
+  EntrySettings,
+} from "./types";
 
 type Summary = Batch & {
   entry_id: string;
@@ -26,6 +39,8 @@ type LearningEntry = Entry & {
   pending_count: number;
   latest_batch?: Summary;
   current_batch?: Summary;
+  filters?: EntryFilters;
+  queue_wait?: QueueWait;
 };
 type Call = {
   id: number;
@@ -59,6 +74,7 @@ type BatchMessage = Message & {
 };
 type Detail = Omit<Summary, "result"> & {
   entry: LearningEntry;
+  entry_settings?: EntrySettings | null;
   segments: Record<"history" | "target" | "future", BatchMessage[]>;
   attempts: Attempt[];
   unassigned_calls: Call[];
@@ -111,16 +127,6 @@ const gapReason = (value: string) =>
     content_rejection: "内容拒绝，未学习",
     interrupted: "学习中断",
   })[value] || value;
-function pace(value: string) {
-  const label = { realtime: "实时", standard: "标准", economy: "省流" }[value];
-  if (label) return label;
-  try {
-    const v = JSON.parse(value);
-    return `自定义 · ${v.count} 条 / 空闲 ${v.idle_seconds} 秒 / 最长 ${v.max_wait_seconds} 秒`;
-  } catch {
-    return value;
-  }
-}
 const pretty = (value: unknown) =>
   typeof value === "string" ? value : JSON.stringify(value, null, 2);
 
@@ -131,6 +137,8 @@ export default function LearningPage({
 }) {
   const [tab, setTab] = useState<"entries" | "batches" | "gaps">("entries");
   const [selected, setSelected] = useState<number | null>(null);
+  const [editingEntry, setEditingEntry] = useState<LearningEntry | null>(null);
+  const [notice, setNotice] = useState("");
   const [filter, setFilter] = useState({
     entry_id: "",
     time_from: "",
@@ -142,10 +150,11 @@ export default function LearningPage({
   const params = new URLSearchParams({ limit: "30", offset: String(offset) });
   for (const [key, value] of Object.entries(applied))
     if (value) params.set(key, value);
-  const batches = useData<Page<Summary>>(
-    tab === "batches" && selected === null ? `/batches?${params}` : null,
-    3000,
-  );
+  const batches = useData<
+    Page<Summary> & {
+      entry_waits?: { entry_id: string; queue_wait: QueueWait }[];
+    }
+  >(tab === "batches" && selected === null ? `/batches?${params}` : null, 3000);
   const gaps = useData<Page<Gap>>(
     tab === "gaps" && selected === null ? `/memory-gaps?${params}` : null,
     3000,
@@ -199,6 +208,18 @@ export default function LearningPage({
           <button onClick={entries.refresh}>重试</button>
         </Notice>
       )}
+      {notice && <Notice>{notice}</Notice>}
+      {editingEntry && (
+        <EntrySettingsDialog
+          entry={editingEntry}
+          onClose={() => setEditingEntry(null)}
+          onSaved={() => {
+            setEditingEntry(null);
+            setNotice("入口设置已保存");
+            refresh();
+          }}
+        />
+      )}
       {selected !== null ? (
         <BatchDetail
           key={selected}
@@ -232,9 +253,11 @@ export default function LearningPage({
                       : `宿主入口 · ${entry.platform}`}
                   </p>
                   <div className="learning-entry-meta">
-                    <Badge>{pace(entry.pace)}</Badge>
+                    <Badge>{paceLabel(entry.pace)}</Badge>
                     <strong>待学习 {entry.pending_count} 条</strong>
                   </div>
+                  <FilterSummary value={entry.filters} />
+                  <EntryQueueWait value={entry.queue_wait} />
                   <p>
                     最近批次
                     {entry.latest_batch ? ` #${entry.latest_batch.id}` : ""}
@@ -247,6 +270,16 @@ export default function LearningPage({
                         {batchLabel(entry.current_batch)}
                       </p>
                     )}
+                  <button
+                    className="secondary"
+                    aria-label={`修改入口设置 · ${entry.name}`}
+                    onClick={() => {
+                      setNotice("");
+                      setEditingEntry(entry);
+                    }}
+                  >
+                    修改节奏与过滤
+                  </button>
                   <button
                     className="text-button"
                     aria-label={`查看批次 · ${entry.name}`}
@@ -327,6 +360,20 @@ export default function LearningPage({
               <button onClick={listing.refresh}>重试</button>
             </Notice>
           )}
+          {tab === "batches" &&
+            batches.data?.entry_waits
+              ?.filter((e) => e.queue_wait.reason)
+              .map((e) => (
+                <div className="panel" key={e.entry_id}>
+                  <strong>
+                    {entries.data?.items.find(
+                      (entry) => entry.id === e.entry_id,
+                    )?.name || e.entry_id}{" "}
+                    · 当前入口等待
+                  </strong>
+                  <EntryQueueWait value={e.queue_wait} />
+                </div>
+              ))}
           {!listing.data ? (
             <p>正在读取…</p>
           ) : (
@@ -554,6 +601,17 @@ function BatchDetail({
           </div>
           <section>
             <h2>三段消息</h2>
+            <details className="panel">
+              <summary>组成批次时的入口设置</summary>
+              {batch.entry_settings ? (
+                <>
+                  <p>学习节奏：{paceLabel(batch.entry_settings.pace)}</p>
+                  <FilterSummary value={batch.entry_settings.filters} />
+                </>
+              ) : (
+                <p>该批次没有保存入口设置快照。</p>
+              )}
+            </details>
             <p className="muted">
               三段范围已冻结；历史与后续只帮助理解，只有目标段可以形成记忆。这里保留消息原文。
             </p>

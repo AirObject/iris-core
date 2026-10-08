@@ -9,6 +9,8 @@ import {
 } from "./ui";
 import { useData } from "./api";
 import { MaintenancePanel } from "./Maintenance";
+import { EntryQueueWait } from "./EntrySettings";
+import { modelNames, type Settings } from "./Settings";
 import type { Entry, Status as StatusData } from "./types";
 
 const purposes: Record<string, string> = {
@@ -19,6 +21,8 @@ const purposes: Record<string, string> = {
   embedding: "向量生成",
   retrieval_query: "召回查询",
   health_probe: "健康探测",
+  recall_judge: "召回判断",
+  connection_check: "连接测试",
 };
 export default function Status({
   data,
@@ -28,6 +32,7 @@ export default function Status({
   openMemory: (id: number) => void;
 }) {
   const catalog = useData<{ entries: Entry[] }>("/catalog");
+  const settings = useData<Pick<Settings, "recall_judge">>("/settings", 5000);
   if (!data) return <Empty title="正在读取运行状态" />;
   const latency = data.learning_latency_24h;
   const errors = data.models.filter((m) => m.result_category !== "success");
@@ -84,9 +89,7 @@ export default function Status({
           {Object.entries(data.model_health).map(([kind, h]) => (
             <div className="model-row" key={kind}>
               <div className="model-title">
-                <strong>
-                  {kind === "chat" ? "对话模型" : "Embedding 模型"}
-                </strong>
+                <strong>{modelNames[kind] || kind}</strong>
                 <Badge tone={h.state === "normal" ? "green" : "danger"}>
                   {healthLabel(h.state)}
                 </Badge>
@@ -94,8 +97,34 @@ export default function Status({
               <p className="muted">
                 {kind === "chat"
                   ? "用于学习与角色回复"
-                  : "用于记忆向量与语义检索"}
+                  : kind === "recall_judge"
+                    ? "判断相关候选能否回答当前请求"
+                    : "用于记忆向量与语义检索"}
               </p>
+              {kind === "recall_judge" && (
+                <>
+                  {data.timeouts_seconds.recall_judge != null && (
+                    <p>
+                      总预算 {data.timeouts_seconds.recall_judge} 秒（含排队）
+                    </p>
+                  )}
+                  {settings.error && (
+                    <p className="muted">
+                      判断开关状态暂时无法读取。
+                      <button onClick={settings.refresh}>重新读取</button>
+                    </p>
+                  )}
+                  {settings.data?.recall_judge?.enabled === false ? (
+                    <p>召回判断已关闭，保留基础召回。</p>
+                  ) : (
+                    h.state !== "normal" && (
+                      <p>召回判断暂停或退避时降级，保留仍有效的原召回。</p>
+                    )
+                  )}
+                  {h.retry_at && <p>退避截止：{time(h.retry_at)}</p>}
+                  <a href="#/settings">管理召回判断设置</a>
+                </>
+              )}
               {h.last_error && (
                 <p className="error-summary">最近错误：{h.last_error}</p>
               )}
@@ -155,6 +184,7 @@ export default function Status({
                   <th>入口</th>
                   <th>待学习</th>
                   <th>当前批次</th>
+                  <th>过滤与等待</th>
                   <th>最近结束的批次</th>
                   <th>未记住的消息</th>
                 </tr>
@@ -165,6 +195,9 @@ export default function Status({
                     <td>{names.get(e.entry_id) || e.entry_id}</td>
                     <td>{e.pending_count}</td>
                     <td>{batchLabel(e.current_batch)}</td>
+                    <td>
+                      <EntryQueueWait value={e.queue_wait} />
+                    </td>
                     <td>{batchLabel(e.latest_batch)}</td>
                     <td>{e.gap_message_count || 0}</td>
                   </tr>

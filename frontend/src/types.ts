@@ -1,4 +1,67 @@
 export type Person = { id: string; name: string; is_default?: boolean };
+export type Alias = {
+  id: number;
+  alias: string;
+  evidence_message_ids: number[];
+};
+export type PersonSummary = Person & {
+  revision: number;
+  kind: string;
+  aliases: Alias[];
+  pending_links: number;
+  memory_count: number;
+  merged_into: string | null;
+  canonical_id: string;
+};
+export type PersonLink = {
+  id: number;
+  revision: number;
+  status: string;
+  belief: number;
+  subjects: Person[];
+  evidence_messages: Message[];
+};
+export type Roleplay = {
+  actor: Person;
+  character: Person;
+  worlds: (string | null)[];
+  belief: number;
+  fictional: boolean;
+};
+export type PersonDetail = Omit<PersonSummary, "pending_links"> & {
+  platform_identities: {
+    platform: string;
+    account_id: string;
+    display_name: string;
+  }[];
+  memory_counts: Record<string, number>;
+  memories_url: string;
+  same_as: PersonLink[];
+  roleplay: (PersonLink & Roleplay)[];
+};
+export type EntryFilters = {
+  min_chars: number;
+  mention_only: boolean;
+  context_messages: number;
+  max_batches_per_hour: number;
+};
+export type CustomPace = {
+  count: number;
+  idle_seconds: number;
+  max_wait_seconds: number;
+};
+export type EntrySettings = {
+  pace: string | CustomPace;
+  filters: EntryFilters;
+};
+export type QueueWait = {
+  reason: string | null;
+  retry_at: string | null;
+  limit: number;
+  batches_last_hour: number | null;
+  filter_waiting_count: number;
+  filtered_count: number;
+};
 export type Entry = {
   id: string;
   name: string;
@@ -18,6 +81,8 @@ export type Message = {
   received_at: string;
   occurred_at?: string;
   batch_id?: number;
+  quote_content?: string | null;
+  quote_author_subject_id?: string | null;
 };
 export type Persona = {
   content: string;
@@ -173,12 +238,36 @@ export type TrialSnapshot = {
   goals: Goal[];
 };
 export type Prepared = {
-  memories: (Memory & { reason: string })[];
+  memories: (Memory & {
+    reason: string;
+    subject_annotations?: {
+      possible_same_as: {
+        link_id: number;
+        belief: number;
+        subjects: Person[];
+      }[];
+      roleplay: (Roleplay & { link_id: number })[];
+    };
+  })[];
   persona: Persona;
   state: Record<string, unknown>;
   goals: Goal[];
   hints: { code: string; message?: string }[];
   recall_id: string;
+  judgment?: Judgment;
+};
+export type Judgment = {
+  status: string;
+  reason: string | null;
+  duration_ms: number;
+  budget_seconds: number;
+  removed_memory_ids: number[];
+  stale_memory_ids?: number[];
+};
+export type RecallJudgeConfig = {
+  enabled: boolean;
+  concurrency: number;
+  queue_limit: number;
 };
 export type Batch = {
   id: number;
@@ -193,6 +282,7 @@ export type Health = {
   last_error?: string;
   next_probe_at?: string;
   consecutive_errors?: number;
+  retry_at?: string | null;
 };
 export type Backlog = {
   entry_id: string;
@@ -200,6 +290,7 @@ export type Backlog = {
   gap_message_count: number;
   current_batch?: Batch;
   latest_batch?: Batch;
+  queue_wait?: QueueWait;
 };
 export type Status = {
   service: string;
@@ -238,7 +329,7 @@ export type Status = {
     timed_out: boolean;
     error_summary?: string;
   }[];
-  timeouts_seconds: { learning: number };
+  timeouts_seconds: { learning: number; recall_judge?: number };
   memory_gap_count: number;
   missing_vectors: number;
 };

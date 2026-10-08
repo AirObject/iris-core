@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, json, useData, errorText } from "./api";
 import { Badge, Empty, Notice, time, batchLabel, messageState } from "./ui";
+import { EntryQueueWait, paceLabel } from "./EntrySettings";
+import { JudgmentSummary, SubjectAnnotations } from "./RecallJudgment";
 import type {
   Entry,
   TrialCatalog,
@@ -25,6 +27,19 @@ export default function Trial(props: Props) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const entries = catalog.data?.entries || [];
+  const uniqueCatalog = useMemo(() => {
+    if (!catalog.data) return null;
+    // A merged person can own several trial accounts; the selector uses people.
+    const speakers = new Map<string, Person>();
+    for (const person of catalog.data.speakers) {
+      const previous = speakers.get(person.id);
+      speakers.set(person.id, {
+        ...person,
+        is_default: !!(person.is_default || previous?.is_default),
+      });
+    }
+    return { ...catalog.data, speakers: [...speakers.values()] };
+  }, [catalog.data]);
   useEffect(() => {
     if (!selected && entries.length) setSelected(entries[0].id);
   }, [selected, entries]);
@@ -56,7 +71,11 @@ export default function Trial(props: Props) {
           <h1>试用对话</h1>
           <p>聊一件小事，看看它如何成为记忆。</p>
         </div>
-        <Badge tone="purple">实时学习</Badge>
+        <Badge tone="purple">
+          {entries.find((e) => e.id === selected)
+            ? `${paceLabel(entries.find((e) => e.id === selected)!.pace)}学习`
+            : "试用入口"}
+        </Badge>
       </div>
       {(catalog.error || error) && (
         <Notice error>{catalog.error || error}</Notice>
@@ -111,11 +130,11 @@ export default function Trial(props: Props) {
       {!catalog.data && !catalog.error && (
         <p className="muted">正在读取试用入口…</p>
       )}
-      {selected && catalog.data && (
+      {selected && uniqueCatalog && (
         <Conversation
           key={selected}
           entryId={selected}
-          catalog={catalog.data}
+          catalog={uniqueCatalog}
           refreshCatalog={catalog.refresh}
           {...props}
         />
@@ -169,6 +188,7 @@ function Conversation({
   const [notice, setNotice] = useState("");
   const [retry, setRetry] = useState<number | null>(null);
   const [prepared, setPrepared] = useState<Prepared | null>(null);
+  const [prepareNote, setPrepareNote] = useState("");
   const [older, setOlder] = useState<Message[]>([]);
   const [moreOlder, setMoreOlder] = useState<boolean | null>(null);
   const [paging, setPaging] = useState(false);
@@ -209,18 +229,31 @@ function Conversation({
   }
   async function prepareOrReply(mid: number, reply: boolean) {
     setPhase(reply ? "角色正在回复…" : "正在准备回复材料…");
-    if (reply) {
-      setRetry(mid);
-      const result = await api<{ prepared: Prepared | null }>(
-        `/trial/entries/${entryId}/reply`,
-        json("POST", { message_id: mid }),
-      );
-      setPrepared(result.prepared);
-      setRetry(null);
-    } else {
-      setPrepared(
-        await api<Prepared>(`/trial/entries/${entryId}/prepare`, json("POST")),
-      );
+    setPrepareNote("");
+    try {
+      if (reply) {
+        setRetry(mid);
+        const result = await api<{ prepared: Prepared | null }>(
+          `/trial/entries/${entryId}/reply`,
+          json("POST", { message_id: mid }),
+        );
+        setPrepared(result.prepared);
+        if (!result.prepared)
+          setPrepareNote(
+            "后端未返回当时的回复准备结果（已发布的回复可能被复用），无法展示召回判断状态。",
+          );
+        setRetry(null);
+      } else {
+        setPrepared(
+          await api<Prepared>(
+            `/trial/entries/${entryId}/prepare`,
+            json("POST"),
+          ),
+        );
+      }
+    } catch (e) {
+      setPrepareNote("本次回复准备结果未返回，无法展示召回判断状态。");
+      throw e;
     }
   }
   async function send(e: FormEvent) {
@@ -230,6 +263,7 @@ function Conversation({
     setError("");
     setNotice("");
     setPrepared(null);
+    setPrepareNote("");
     setRetry(null);
     setPhase("正在发送…");
     // Reuse the same dedupe key if transport failed before a receipt arrived.
@@ -495,6 +529,7 @@ function Conversation({
             </div>
           )}
           <p className="fine-print">学习成功也可能没有值得记住的内容。</p>
+          <EntryQueueWait value={state?.queue_wait} />
         </section>
         <section className="panel">
           <div className="panel-heading">
@@ -526,40 +561,54 @@ function Conversation({
           <div className="panel-heading">
             <h2>这次回复准备</h2>
             <span className="muted">
-              {prepared ? `${prepared.memories.length} 条召回` : "等待发送"}
+              {prepared
+                ? `${prepared.memories.length} 条召回`
+                : prepareNote
+                  ? "未返回材料"
+                  : busy
+                    ? "准备中"
+                    : "等待发送"}
             </span>
           </div>
           {!prepared ? (
-            <p className="quiet">发送消息后展示召回结果。</p>
+            <p className="quiet">
+              {prepareNote ||
+                (busy ? "正在准备回复材料…" : "发送消息后展示召回结果。")}
+            </p>
           ) : (
             <>
+              <JudgmentSummary value={prepared.judgment} />
               {prepared.memories.length === 0 && (
                 <p className="quiet">
                   没有额外召回记忆，近期原文仍在对话上下文中。
                 </p>
               )}
               {prepared.memories.map((m) => (
-                <button
-                  className="memory-preview"
-                  key={m.id}
-                  onClick={() => openMemory(m.id)}
-                >
-                  <Badge tone="purple">
-                    {m.reason === "person_highlight"
-                      ? "人物要点"
-                      : "与当前内容相关"}
-                  </Badge>
-                  <span>{m.content}</span>
-                </button>
+                <div key={m.id}>
+                  <button
+                    className="memory-preview"
+                    onClick={() => openMemory(m.id)}
+                  >
+                    <Badge tone="purple">
+                      {m.reason === "person_highlight"
+                        ? "人物要点"
+                        : "与当前内容相关"}
+                    </Badge>
+                    <span>{m.content}</span>
+                  </button>
+                  <SubjectAnnotations value={m.subject_annotations} />
+                </div>
               ))}
               <p className="fine-print">
                 被召回不等于被使用，也不代表内容已证实。
               </p>
-              {prepared.hints.map((h, i) => (
-                <p key={i} className="fine-print">
-                  {h.message}
-                </p>
-              ))}
+              {prepared.hints
+                .filter((h) => h.code !== "recall_judgment")
+                .map((h, i) => (
+                  <p key={i} className="fine-print">
+                    {h.message}
+                  </p>
+                ))}
             </>
           )}
         </section>

@@ -30,10 +30,12 @@ export function MemoryPage({
   openMemory,
   version,
   onChange,
+  initialQuery,
 }: {
   openMemory: (id: number) => void;
   version: number;
   onChange: () => void;
+  initialQuery?: string;
 }) {
   const [tab, setTab] = useState("all");
   return (
@@ -57,7 +59,11 @@ export function MemoryPage({
         </button>
       </div>
       {tab === "all" ? (
-        <MemoryList openMemory={openMemory} version={version} />
+        <MemoryList
+          openMemory={openMemory}
+          version={version}
+          initialQuery={initialQuery}
+        />
       ) : (
         <UpcomingDeletion
           openMemory={openMemory}
@@ -71,22 +77,30 @@ export function MemoryPage({
 export function MemoryList({
   openMemory,
   version,
+  initialQuery = "",
 }: {
   openMemory: (id: number) => void;
   version: number;
+  initialQuery?: string;
 }) {
   const catalog = useData<{ people: Person[]; entries: Entry[] }>("/catalog");
+  const initial = new URLSearchParams(initialQuery);
   const [filters, setFilters] = useState({
     text: "",
-    person_id: "",
+    person_id: initial.get("person_id") || "",
     kind: "",
     entry_id: "",
     time_from: "",
     time_to: "",
-    lifecycle: "active",
+    lifecycle: initial.get("lifecycle") === "all" ? "all" : "active",
+    pinned: "",
     sort: "time",
   });
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() =>
+    new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => !!v),
+    ).toString(),
+  );
   const [offset, setOffset] = useState(0);
   const [filterError, setFilterError] = useState("");
   const list = useData<{ items: Memory[]; total: number }>(
@@ -198,13 +212,14 @@ export function MemoryList({
             <label>
               置顶筛选
               <select
-                disabled
                 aria-label="置顶筛选"
-                aria-describedby="pin-filter-help"
+                value={filters.pinned}
+                onChange={(e) => field("pinned", e.target.value)}
               >
-                <option>全部</option>
+                <option value="">全部</option>
+                <option value="true">已置顶</option>
+                <option value="false">未置顶</option>
               </select>
-              <small id="pin-filter-help">置顶筛选暂不可用</small>
             </label>
             <label>
               开始日期
