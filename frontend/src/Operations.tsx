@@ -1,0 +1,230 @@
+import { useState, type FormEvent } from "react";
+import { useData } from "./api";
+import { Empty, Notice, Pagination, fullTime } from "./ui";
+import type { Operation, Page } from "./types";
+
+export const operationNames: Record<string, string> = {
+  memory_adjust: "调整记忆",
+  memory_forget: "手动遗忘",
+  memory_restore: "恢复记忆",
+  memory_purge: "彻底清除记忆",
+  memory_recreate: "按旧内容新建",
+  memory_revision: "人工修订记忆",
+  lifecycle_saved: "更新生命周期设置",
+  maintenance_requested: "请求维护",
+  maintenance_completed: "维护完成",
+  batch_relearn: "重新学习批次",
+  batch_result: "批次结果",
+  learn_requested: "请求立即学习",
+  feedback: "使用反馈",
+  feedback_rejected: "使用反馈被拒绝",
+  learn_rejected: "立即学习请求被拒绝",
+  trial_entry_created: "创建试用入口",
+  trial_speaker_created: "创建发言人",
+  trial_message_received: "试用消息接收",
+  trial_prepare: "试用回复准备",
+  trial_reply: "试用角色回复",
+  setup_password: "设置管理员密码",
+  setup_completed: "完成首次设置",
+  models_saved: "更新模型配置",
+  role_saved: "更新角色设置",
+  limits_saved: "更新用量与并发",
+  model_retry: "请求模型重试",
+  model_test: "测试模型连接",
+  models_imported: "导入模型配置",
+  login: "管理员登录",
+  logout: "退出登录",
+};
+export const actorNames: Record<string, string> = {
+  admin: "管理员",
+  host: "宿主",
+  system: "系统",
+  maintenance: "维护",
+  local_import: "本机导入",
+};
+const objectNames: Record<string, string> = {
+  memory: "记忆",
+  batch: "批次",
+  entry: "入口",
+  subject: "主体",
+  model: "模型",
+  settings: "设置",
+  maintenance: "维护",
+  recall: "召回",
+  request: "请求",
+};
+
+export default function Operations({
+  initialQuery = "",
+}: {
+  initialQuery?: string;
+}) {
+  const initial = new URLSearchParams(initialQuery);
+  const [filters, setFilters] = useState({
+    time_from: "",
+    time_to: "",
+    action: "",
+    actor: "",
+    object_type: initial.get("object_type") || "",
+    object_id: initial.get("object_id") || "",
+  });
+  const encode = (values: typeof filters) =>
+    new URLSearchParams(
+      Object.entries(values).filter(([, v]) => !!v),
+    ).toString();
+  const [query, setQuery] = useState(() => encode(filters)),
+    [offset, setOffset] = useState(0);
+  const [error, setError] = useState("");
+  const list = useData<Page<Operation>>(
+    `/operations?${query}&limit=30&offset=${offset}`,
+  );
+  const change = (key: keyof typeof filters, value: string) =>
+    setFilters((f) => ({ ...f, [key]: value }));
+  function filter(event: FormEvent) {
+    event.preventDefault();
+    if (
+      filters.time_from &&
+      filters.time_to &&
+      filters.time_from > filters.time_to
+    ) {
+      setError("开始日期不能晚于结束日期");
+      return;
+    }
+    setError("");
+    setOffset(0);
+    setQuery(encode(filters));
+    list.refresh();
+  }
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">每次变更，均有记录</p>
+          <h1>操作记录</h1>
+          <p>查看管理员、宿主与系统保存的操作摘要。</p>
+        </div>
+      </div>
+      <section className="panel">
+        <form onSubmit={filter} className="memory-filters">
+          <div className="filter-grid operation-filters">
+            <label>
+              开始日期
+              <input
+                type="date"
+                value={filters.time_from}
+                onChange={(e) => change("time_from", e.target.value)}
+              />
+            </label>
+            <label>
+              结束日期
+              <input
+                type="date"
+                value={filters.time_to}
+                onChange={(e) => change("time_to", e.target.value)}
+              />
+            </label>
+            <label>
+              操作类型
+              <select
+                value={filters.action}
+                onChange={(e) => change("action", e.target.value)}
+              >
+                <option value="">全部类型</option>
+                {Object.entries(operationNames).map(([value, label]) => (
+                  <option value={value} key={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              操作者
+              <select
+                value={filters.actor}
+                onChange={(e) => change("actor", e.target.value)}
+              >
+                <option value="">全部操作者</option>
+                {Object.entries(actorNames).map(([value, label]) => (
+                  <option value={value} key={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              对象类型
+              <select
+                value={filters.object_type}
+                onChange={(e) => change("object_type", e.target.value)}
+              >
+                <option value="">全部对象</option>
+                {Object.entries(objectNames).map(([value, label]) => (
+                  <option value={value} key={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              对象标识
+              <input
+                value={filters.object_id}
+                maxLength={200}
+                placeholder="如记忆编号 8"
+                onChange={(e) => change("object_id", e.target.value)}
+              />
+            </label>
+          </div>
+          <p className="fine-print">
+            日期筛选按角色时区解释，结束日期包含当天；记录时间按本机时区显示。
+          </p>
+          <div className="actions">
+            <button className="primary">筛选记录</button>
+            <button type="button" className="secondary" onClick={list.refresh}>
+              刷新记录
+            </button>
+          </div>
+        </form>
+      </section>
+      {(error || list.error) && <Notice error>{error || list.error}</Notice>}
+      <div className="list-heading">
+        <span>{list.data ? `共 ${list.data.total} 条` : "正在读取…"}</span>
+      </div>
+      {list.data?.items.length === 0 && (
+        <Empty title="没有符合条件的操作记录" />
+      )}
+      <div className="learning-list">
+        {list.data?.items.map((o) => (
+          <article key={o.id} className="panel operation-card">
+            <div className="panel-heading">
+              <h2>{operationNames[o.action] || o.action}</h2>
+              <span className="muted">记录 #{o.id}</span>
+            </div>
+            <p>
+              {fullTime(o.created_at)} · {actorNames[o.actor] || o.actor}
+            </p>
+            {o.object_type && (
+              <p>
+                对象：{objectNames[o.object_type] || o.object_type}
+                {o.object_id !== null ? ` · ${o.object_id}` : ""}
+              </p>
+            )}
+            <details>
+              <summary>查看记录详情</summary>
+              <pre className="record-json">
+                {JSON.stringify(o.details, null, 2)}
+              </pre>
+            </details>
+          </article>
+        ))}
+      </div>
+      {list.data && (
+        <Pagination
+          total={list.data.total}
+          offset={offset}
+          change={setOffset}
+        />
+      )}
+    </>
+  );
+}

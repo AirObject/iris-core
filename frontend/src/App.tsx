@@ -4,7 +4,8 @@ import { Notice, healthLabel } from "./ui";
 import Access from "./Access";
 import SettingsPage from "./Settings";
 import Trial from "./Trial";
-import { MemoryList, MemoryDetail } from "./Memory";
+import { MemoryPage, MemoryDetail } from "./Memory";
+import Operations from "./Operations";
 import StatusPage from "./Status";
 import LearningPage from "./Learning";
 import type { Status } from "./types";
@@ -14,6 +15,7 @@ const routes = [
   { id: "memories", name: "记忆", icon: "memory" },
   { id: "learning", name: "入口与学习", icon: "learning" },
   { id: "status", name: "运行状态", icon: "status" },
+  { id: "operations", name: "操作记录", icon: "memory" },
   { id: "settings", name: "设置", icon: "settings" },
 ];
 function Icon({ name }: { name: string }) {
@@ -54,6 +56,11 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [version, setVersion] = useState(0);
   const status = useData<Status>("/status", 2000);
+  const routePath = route.split("?")[0];
+  const memoryChanged = () => {
+    setVersion((v) => v + 1);
+    status.refresh();
+  };
   useEffect(() => {
     const changed = () => {
       setRoute(location.hash.slice(2) || "trial");
@@ -91,7 +98,7 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
             <a
               key={r.id}
               href={`#/${r.id}`}
-              aria-current={route === r.id ? "page" : undefined}
+              aria-current={routePath === r.id ? "page" : undefined}
             >
               <Icon name={r.icon} />
               {r.name}
@@ -130,14 +137,20 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
               消息仍可接收。<a href="#/status">查看运行状态</a>
             </Notice>
           )}
-          {route === "settings" ? (
+          {routePath === "settings" ? (
             <SettingsPage />
-          ) : route === "memories" ? (
-            <MemoryList version={version} openMemory={openMemory} />
-          ) : route === "learning" ? (
+          ) : routePath === "memories" ? (
+            <MemoryPage
+              version={version}
+              openMemory={openMemory}
+              onChange={memoryChanged}
+            />
+          ) : routePath === "operations" ? (
+            <Operations key={route} initialQuery={route.split("?")[1]} />
+          ) : routePath === "learning" ? (
             <LearningPage openMemory={openMemory} />
-          ) : route === "status" ? (
-            <StatusPage data={status.data} />
+          ) : routePath === "status" ? (
+            <StatusPage data={status.data} openMemory={openMemory} />
           ) : (
             <Trial
               status={status.data}
@@ -154,10 +167,7 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
           id={selected}
           onClose={closeMemory}
           openMemory={openMemory}
-          onChange={() => {
-            setVersion((v) => v + 1);
-            status.refresh();
-          }}
+          onChange={memoryChanged}
         />
       )}
     </div>

@@ -151,9 +151,13 @@ class LearningEngine:
 
     def _material(self, batch: Batch, snapshot: dict[str, Any], related: list[dict[str, Any]]) -> tuple[str, dict[int, int], dict[str, dict[str, Any]]]:
         messages = snapshot["messages"]
+        # Ended batches can outlive their optional context messages. Targets must
+        # still exist; never turn a cleared target into a partial learning batch.
+        history = [mid for mid in batch.history_ids if mid in messages]
+        future = [mid for mid in batch.future_ids if mid in messages]
         role_timezone = ZoneInfo(str(self.store.setting("timezone", "Asia/Shanghai")))
         names: dict[str, str] = {}
-        for message_id in batch.history_ids + batch.target_ids + batch.future_ids:
+        for message_id in history + batch.target_ids + future:
             m = messages[message_id]
             names[m["sender_subject_id"]] = m["sender_name"]
             if m["quote_author_subject_id"]:
@@ -190,8 +194,8 @@ class LearningEngine:
                         "event_time": memory["event_time"]}
             lines.append(f"[{ref} 元数据] " + json.dumps(metadata, ensure_ascii=False))
         number_to_id: dict[int, int] = {}
-        sequence = [("历史段（仅供理解）", batch.history_ids), ("目标段（只从这里学习）", batch.target_ids),
-                    ("后续段（仅供理解）", batch.future_ids)]
+        sequence = [("历史段（仅供理解）", history), ("目标段（只从这里学习）", batch.target_ids),
+                    ("后续段（仅供理解）", future)]
         number = 0
         for label, ids in sequence:
             lines.append("—— " + label + " ——")

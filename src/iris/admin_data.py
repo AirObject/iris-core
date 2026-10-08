@@ -6,10 +6,13 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .retrieval import Retrieval
+from .memory_ops import lifecycle_settings, missing_batch_targets
+from .model_health import utc_now
+from .queue import entry_settings, batch_rate_status
 from .search_text import segmented
 
 MEMORY_COLUMNS = """m.id,m.content,m.kind,m.speaker_subject_id,m.stance,m.belief,m.importance,
-    m.retention,m.event_time,m.lifecycle,m.revision,m.entry_id,m.world,m.created_at,m.updated_at"""
+    m.retention,m.event_time,m.lifecycle,m.forgotten_at,m.pinned,m.revision,m.entry_id,m.world,m.created_at,m.updated_at"""
 
 
 def memory_rows(conn, sql, args=()):
@@ -29,7 +32,7 @@ def catalog(store):
 
 def list_memories(store, *, text="", person_id=None, kind=None, entry_id=None,
                   time_from=None, time_to=None, lifecycle="active", sort="time", limit=30, offset=0):
-    clauses, args = [], []
+    clauses, args = ["m.purged_at IS NULL"], []
     if lifecycle != "all":
         clauses.append("m.lifecycle=?")
         args.append(lifecycle)
@@ -89,7 +92,7 @@ def messages(conn, entry_id, *, before=None, limit=100):
 
 def memory_detail(store, memory_id):
     with store.read() as conn:
-        rows = memory_rows(conn, f"SELECT {MEMORY_COLUMNS} FROM memories m WHERE m.id=?", (memory_id,))
+        rows = memory_rows(conn, f"SELECT {MEMORY_COLUMNS} FROM memories m WHERE m.id=? AND m.purged_at IS NULL", (memory_id,))
         if not rows:
             raise KeyError(memory_id)
         detail = rows[0]
@@ -147,7 +150,9 @@ def trial_snapshot(store, entry_id, *, before=None):
 
 
 BATCH_COLUMNS = """b.id,b.entry_id,b.state,b.attempt_count,b.next_retry_at,b.last_error,
-    b.prompt_version,b.created_at,b.finished_at,b.result_json"""
+    b.prompt_version,b.created_at,b.finished_at,b.result_json,
+    EXISTS(SELECT 1 FROM json_each(b.target_ids) j LEFT JOIN messages m ON m.id=j.value
+        WHERE m.id IS NULL) AS targets_missing"""
 CALL_COLUMNS = """id,purpose,model,duration_ms,result_category,error_summary,status_code,
     created_at,finish_reason,reasoning_effort,timed_out"""
 
@@ -160,17 +165,61 @@ def batch_summary(row):
     # this new run. Attempts and the gap still retain the historical timestamps.
     if item["state"] in ("waiting", "running"):
         item["finished_at"] = None
-    item["can_relearn"] = item["state"] in ("abandoned", "refused")
+    cleared = bool(item.pop("targets_missing", False))
+    item["can_relearn"] = item["state"] in ("abandoned", "refused") and not cleared
+    item["relearn_blocked_reason"] = "目标段消息已清理，无法重新学习" if cleared else None
     return item
 
 
+def entry_learning_settings(store, entry_id):
+    with store.read() as conn:
+        entry = conn.execute("SELECT * FROM entries WHERE id=?", (entry_id,)).fetchone()
+        if entry is None:
+            raise KeyError(entry_id)
+        return entry_settings(entry)
+
+
+def entry_queue_wait(conn, entry, current):
+    filters = json.loads(entry["filters_json"])
+    counts = conn.execute("""SELECT
+        COALESCE(SUM(learning_state='pending'),0),
+        COALESCE(SUM(learning_state='pending' AND a.decided=0),0),
+        COALESCE(SUM(learning_state='filtered'),0)
+        FROM messages m LEFT JOIN message_admission a ON a.message_id=m.id
+        WHERE m.entry_id=?""", (entry["id"],)).fetchone()
+    undecided = counts[1] if filters["min_chars"] or filters["mention_only"] else 0
+    rate = batch_rate_status(conn, entry["id"], filters["max_batches_per_hour"], current)
+    active = conn.execute("SELECT 1 FROM batches WHERE entry_id=? AND state IN ('waiting','running') LIMIT 1", (entry["id"],)).fetchone()
+    reason = None
+    if not active:
+        if counts[0] > undecided and rate["retry_at"]:
+            reason = "hourly_batch_limit"
+        elif undecided and counts[0] == undecided:
+            reason = "filter_context"
+    return {**rate, "reason": reason, "retry_at": rate["retry_at"] if reason == "hourly_batch_limit" else None,
+            "filter_waiting_count": undecided, "filtered_count": counts[2]}
+
+
+def add_entry_waits(store, items):
+    """Enrich management status without changing host/retrieval diagnostics."""
+    current = utc_now()
+    with store.read() as conn:
+        for item in items:
+            entry = conn.execute("SELECT * FROM entries WHERE id=?", (item["entry_id"],)).fetchone()
+            item["queue_wait"] = entry_queue_wait(conn, entry, current)
+
+
 def learning_entries(store):
+    instant = utc_now()
     with store.read() as conn:
         items = [dict(r) for r in conn.execute("""SELECT e.*,
             (SELECT COUNT(*) FROM messages m WHERE m.entry_id=e.id
                 AND m.learning_state IN ('pending','batched')) AS pending_count
             FROM entries e ORDER BY e.name,e.id""")]
         for entry in items:
+            entry["filters"] = json.loads(entry["filters_json"])
+            entry["queue_wait"] = entry_queue_wait(conn, entry, instant)
+            entry.pop("filters_json")
             latest = conn.execute(f"SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=? ORDER BY b.id DESC LIMIT 1", (entry["id"],)).fetchone()
             current = conn.execute(f"""SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=?
                 AND b.state IN ('waiting','running') ORDER BY b.id LIMIT 1""", (entry["id"],)).fetchone()
@@ -217,7 +266,11 @@ def learning_batches(store, *, entry_id=None, time_from=None, time_to=None, limi
             ORDER BY b.id DESC LIMIT ? OFFSET ?""", [*args, limit, offset])]
         for item in items:
             item["relearning"] = bool(item.pop("has_gap") and item["state"] in ("waiting", "running"))
-    return {"items": items, "total": total, "limit": limit, "offset": offset}
+        entries = conn.execute("SELECT * FROM entries" + (" WHERE id=?" if entry_id else "") + " ORDER BY id",
+                               (entry_id,) if entry_id else ()).fetchall()
+        instant = utc_now()
+        waits = [{"entry_id": e["id"], "queue_wait": entry_queue_wait(conn, e, instant)} for e in entries]
+    return {"items": items, "total": total, "limit": limit, "offset": offset, "entry_waits": waits}
 
 
 def batch_detail(store, batch_id):
@@ -225,8 +278,10 @@ def batch_detail(store, batch_id):
         row = conn.execute("SELECT * FROM batches WHERE id=?", (batch_id,)).fetchone()
         if row is None:
             raise KeyError(batch_id)
-        detail = batch_summary(row)
+        detail = batch_summary(dict(row) | {"targets_missing": bool(missing_batch_targets(conn, batch_id))})
         detail["result"] = json.loads(row["result_json"])
+        snapshot = detail.pop("entry_settings_json")
+        detail["entry_settings"] = json.loads(snapshot) if snapshot else None
         detail["entry"] = dict(conn.execute("SELECT id,name,platform,kind,pace FROM entries WHERE id=?", (row["entry_id"],)).fetchone())
         detail["segments"] = {}
         for segment, column in (("history", "history_ids"), ("target", "target_ids"), ("future", "future_ids")):
@@ -235,7 +290,7 @@ def batch_detail(store, batch_id):
                 JOIN subjects s ON s.id=m.sender_subject_id LEFT JOIN subjects q ON q.id=m.quote_author_subject_id
                 WHERE m.id IN ({','.join('?' for _ in ids)})""", ids).fetchall() if ids else []
             by_id = {r["id"]: dict(r) for r in rows}
-            detail["segments"][segment] = [by_id.get(i, {"id": i, "missing": True}) for i in ids]
+            detail["segments"][segment] = [by_id.get(i, {"id": i, "missing": True, "content": "已清理"}) for i in ids]
         attempts = [dict(r) for r in conn.execute("SELECT * FROM batch_attempts WHERE batch_id=? ORDER BY number", (batch_id,))]
         # The gateway stores only message.content in raw/repair_output. Project a
         # whitelist of call diagnostics, never provider envelopes or reasoning.
@@ -275,3 +330,45 @@ def memory_gaps(store, *, entry_id=None, time_from=None, time_to=None, limit=30,
         for item in items:
             item["relearning"] = item["batch_state"] in ("waiting", "running")
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+def upcoming_deletion(store, *, limit=30, offset=0, current=None):
+    current = current or utc_now()
+    with store.read() as conn:
+        config = lifecycle_settings(conn)
+        if not config["auto_delete_enabled"]:
+            return {"items": [], "total": 0, "limit": limit, "offset": offset, "enabled": False}
+        # Include overdue objects: a stopped service may not have removed them yet.
+        due = current+timedelta(days=config["upcoming_delete_days"]-config["auto_delete_days"])
+        where = "m.lifecycle='forgotten' AND m.pinned=0 AND julianday(m.forgotten_at)<=julianday(?)"
+        total = conn.execute(f"SELECT COUNT(*) FROM memories m WHERE {where}", (due.isoformat(),)).fetchone()[0]
+        items = memory_rows(conn, f"SELECT {MEMORY_COLUMNS} FROM memories m WHERE {where} ORDER BY julianday(m.forgotten_at),m.id LIMIT ? OFFSET ?",
+                            (due.isoformat(), limit, offset))
+        for item in items:
+            item["delete_after"] = (datetime.fromisoformat(item["forgotten_at"])+timedelta(days=config["auto_delete_days"])).isoformat()
+        return {"items": items, "total": total, "limit": limit, "offset": offset, "enabled": True}
+
+
+def operations(store, *, action=None, actor=None, object_type=None, object_id=None,
+               time_from=None, time_to=None, limit=30, offset=0):
+    where, args = learning_filter(store, entry_id=None, time_from=time_from, time_to=time_to,
+                                  entry_column="o.object_id", start_column="o.created_at", end_column="o.created_at")
+    for key, value in (("action", action), ("actor", actor), ("object_type", object_type), ("object_id", object_id)):
+        if value is not None:
+            where += f" AND o.{key}=?"
+            args.append(value)
+    with store.read() as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM admin_operations o WHERE {where}", args).fetchone()[0]
+        items = [dict(r) for r in conn.execute(f"SELECT o.* FROM admin_operations o WHERE {where} ORDER BY julianday(o.created_at) DESC,o.id DESC LIMIT ? OFFSET ?", [*args, limit, offset])]
+        for item in items:
+            item["details"] = json.loads(item.pop("details_json"))
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+def maintenance_runs(store, *, limit=30, offset=0):
+    with store.read() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM maintenance_runs").fetchone()[0]
+        items = [dict(r) for r in conn.execute("SELECT id,trigger,state,phase,created_at,finished_at,summary_json FROM maintenance_runs ORDER BY id DESC LIMIT ? OFFSET ?", (limit,offset))]
+        for item in items:
+            item["summary"] = json.loads(item.pop("summary_json"))
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
