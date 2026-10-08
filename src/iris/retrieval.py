@@ -12,7 +12,9 @@ from itertools import islice, zip_longest
 from typing import Any
 
 from .db import Store, dumps, now
+from .claim_sequences import normalize_claim, same_claim_sequences
 from .models import Gateway, ModelError
+from .people import annotate_memories, canonical_subject
 from .queue import estimate_tokens
 from .search_text import match_query, terms, words
 from .query_analysis import SubjectNames, analyze
@@ -32,12 +34,13 @@ MEMORY_COLUMNS = """m.id,m.content,m.kind,m.speaker_subject_id,m.stance,m.belief
 def _people(conn, values: list[str]) -> list[str]:
     result = []
     for value in values:
+        exact_id = conn.execute("SELECT id FROM subjects WHERE id=?", (value,)).fetchone()
+        if exact_id:
+            result.append(canonical_subject(conn, value))
+            continue
         rows = conn.execute("""SELECT DISTINCT s.id FROM subjects s LEFT JOIN subject_aliases a ON a.subject_id=s.id
-            WHERE s.id=? OR s.name=? OR a.alias=?""", (value, value, value)).fetchall()
-        exact = next((r[0] for r in rows if r[0] == value), None)
-        if exact:
-            result.append(exact)
-        elif len(rows) > 1:
+            AND a.folded_into IS NULL WHERE s.merged_into IS NULL AND (s.id=? OR s.name=? OR a.alias=?)""", (value, value, value)).fetchall()
+        if len(rows) > 1:
             raise ValueError(f"ambiguous person: {value}; use subject ID")
         elif rows:
             result.append(rows[0][0])
@@ -379,13 +382,10 @@ class Retrieval:
     def _duplicate(self, a: dict, b: dict) -> bool:
         if any(a[k] != b[k] for k in ("speaker_subject_id", "stance", "world", "event_time")) or a["about"] != b["about"]:
             return False
-        normalize = lambda text: re.sub(r"[\W_]+", "", text.casefold())
-        left, right = normalize(a["content"]), normalize(b["content"])
-        # Similar numbers or opposite judgments are not duplicates.
-        if re.findall(r"\d+", left) != re.findall(r"\d+", right):
+        # The same conservative number/negation boundary as learning dedupe.
+        if not same_claim_sequences(a["content"], b["content"]):
             return False
-        if re.findall(r"不|没|无|未|否", left) != re.findall(r"不|没|无|未|否", right):
-            return False
+        left, right = normalize_claim(a["content"]), normalize_claim(b["content"])
         return difflib.SequenceMatcher(None, left, right).ratio() >= .88 or bool(self.index and self.index.similarity(a["id"], b["id"], (a['revision'], b['revision'])) >= .96)
 
     @staticmethod
@@ -431,6 +431,7 @@ class Retrieval:
         with self.store.read() as conn:
             candidates = self._rank(conn, text, vector, **{k: v for k, v in request.items() if k != "text"})
             memories = self._select(candidates, limit=limit)
+            annotate_memories(conn, memories)
             hints.extend(self._model_hints(conn))
             result = {"memories": memories, "hints": hints}
             if include_goals:
@@ -560,7 +561,7 @@ class Retrieval:
                 raise KeyError(entry_id)
             recent = self._recent(conn, entry_id, recent_limit)
             participant_ids = _people(conn, participants) if participants is not None else list(dict.fromkeys(
-                r[0] for r in conn.execute('SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,))
+                canonical_subject(conn, r[0]) for r in conn.execute('SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,))
                 if r[0] not in ('self', 'scene')))
             candidates = self._rank(conn, text, vector, participants=participant_ids, highlights=True,
                                     entry_kind=entry_kind, anchor_text=anchor_text)
@@ -605,6 +606,7 @@ class Retrieval:
             if judge and row and not json.loads(row[0]).get('enabled', True):
                 diagnostic.update(status='disabled', reason='configuration_disabled', removed_memory_ids=[])
                 final = [{**old, **self._public(current[old['id']])} for old in memories if old['id'] not in stale]
+            annotate_memories(conn, final)
             result.update(memories=final, recent_messages=recent, judgment=diagnostic)
             result['hints'].append({'code': 'recall_judgment', **diagnostic,
                 'message': {'applied': '召回判断已完成。', 'disabled': '召回判断已关闭。',
@@ -631,12 +633,13 @@ class Retrieval:
         for memory in [m for m in memories if m['reason'] == 'relevant'][:8]:
             people.add(memory['speaker_subject_id'])
             people.update(p['id'] for p in memory['about'])
+        people = {canonical_subject(conn, sid) for sid in people}
         if not people:
             return []
         aliases = {}
         marks = ','.join('?' for _ in people)
         for row in conn.execute(f"""SELECT s.id,s.name,a.alias FROM subject_aliases a
-                JOIN subjects s ON s.id=a.subject_id WHERE s.id IN ({marks}) ORDER BY s.id,a.alias""", sorted(people)):
+                JOIN subjects s ON s.id=a.subject_id WHERE s.id IN ({marks}) AND a.folded_into IS NULL AND s.merged_into IS NULL ORDER BY s.id,a.alias""", sorted(people)):
             aliases.setdefault(row['id'], {'name': row['name'], 'aliases': []})['aliases'].append(row['alias'])
         return list(aliases.values())
 

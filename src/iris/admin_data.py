@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .retrieval import Retrieval
+from .people import list_people, person_detail, canonical_subject
 from .memory_ops import lifecycle_settings, missing_batch_targets
 from .model_health import utc_now
 from .queue import entry_settings, batch_rate_status
@@ -26,16 +27,20 @@ def memory_rows(conn, sql, args=()):
 
 def catalog(store):
     with store.read() as conn:
-        return {"people": [dict(r) for r in conn.execute("SELECT id,name,kind FROM subjects ORDER BY name,id")],
+        return {"people": [dict(r) for r in conn.execute("SELECT id,name,kind FROM subjects WHERE merged_into IS NULL ORDER BY name,id")],
                 "entries": [dict(r) for r in conn.execute("SELECT id,name,kind FROM entries ORDER BY name,id")]}
 
 
 def list_memories(store, *, text="", person_id=None, kind=None, entry_id=None,
-                  time_from=None, time_to=None, lifecycle="active", sort="time", limit=30, offset=0):
+                  time_from=None, time_to=None, lifecycle="active", sort="time", limit=30, offset=0, pinned=None):
     clauses, args = ["m.purged_at IS NULL"], []
     if lifecycle != "all":
         clauses.append("m.lifecycle=?")
         args.append(lifecycle)
+    if pinned is not None:
+        clauses.append("m.pinned=?")
+        args.append(int(pinned))
+    person_arg = len(args)
     if person_id:
         clauses.append("(m.speaker_subject_id=? OR EXISTS (SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=m.id AND ms.subject_id=?))")
         args.extend([person_id, person_id])
@@ -74,6 +79,9 @@ def list_memories(store, *, text="", person_id=None, kind=None, entry_id=None,
     order = {"time": "julianday(m.updated_at) DESC,m.id DESC", "retention": "m.retention DESC,m.id DESC",
              "relevance": f"{rank} ASC,julianday(m.updated_at) DESC,m.id DESC"}[sort]
     with store.read() as conn:
+        if person_id and conn.execute("SELECT 1 FROM subjects WHERE id=?", (person_id,)).fetchone():
+            canonical = canonical_subject(conn, person_id)
+            args[person_arg:person_arg + 2] = [canonical, canonical]
         total = conn.execute(f"SELECT COUNT(*) FROM memories m {join} WHERE {where}", [*prefix, *args]).fetchone()[0]
         items = memory_rows(conn, f"SELECT {MEMORY_COLUMNS} FROM memories m {join} WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?",
                             [*prefix, *args, limit, offset])

@@ -41,7 +41,7 @@ uv run iris --data-dir /path/to/iris-data serve --port 8081 --no-open
 
 角色、模型的非敏感字段、每日 token 上限与学习并发保存在 `iris.db`；API key 仅在同目录的 `secrets.json`，Unix 权限为 0600，页面与接口只显示是否已设置。模型配置优先级：**serve --models-config <文件> > IRIS_TEST_MODELS > 数据库设置＋secrets.json**。前两种模式明确显示“配置来自外部文件，只读”，不自动打开浏览器，但管理界面仍要求设置密码／登录。未显式指定时，serve 不会隐式读取当前目录的 test-models.toml；评测和旧离线命令仍沿用测试模型配置约定。
 
-开发时可用下面的命令导入，文件由程序读取，命令不显示密钥。导入可以在服务运行时执行；本地配置模式下自动重载并恢复对应用途，外部配置模式仍以外部文件为准。要在页面编辑导入后的模型，启动服务时须取消 IRIS_TEST_MODELS。
+开发时可用下面的命令导入，文件由程序读取，命令不显示密钥。导入可以在服务运行时执行；本地配置模式下自动重载并恢复对应用途，外部配置模式仍以外部文件为准。导入和页面保存遇到配置锁占用时最多等待 3 秒，超时提示稍后重试；后台重载遇忙留到下次轮询。要在页面编辑导入后的模型，启动服务时须取消 IRIS_TEST_MODELS。
 
 ```bash
 IRIS_TEST_MODELS=/absolute/path/test-models.toml uv run iris --data-dir /path/to/iris-data models import
@@ -233,6 +233,44 @@ print(httpx.get("http://127.0.0.1:8080/api/v1/status").json())
 ```
 
 深度查询显式设置 include_forgotten，结果的 lifecycle 标明 active／forgotten；读取不改变状态。反馈有效期为 24 小时，同次召回同条记忆只强化一次（默认 +8，上限 100），按双阈值决定恢复，不改变相信程度或修订号；已删除对象不能反馈。错误码：400 参数／反馈无效、404 不存在／已删除、413 消息过大、503 暂不可用；409 保留用于修订冲突，当前宿主接口不修改记忆正文。
+
+## M2 人物与身份联系（后端）
+
+人物管理接口沿用管理员会话、CSRF、JSON Content-Type 和本机 Host 校验；页面由界面线随后接入。
+
+| 接口 | 输入与行为 |
+| --- | --- |
+| `GET /admin/api/people` | `text` 搜索名字／有效别名；`pending_only=true` 只列有待确认联系的人；`include_merged=true` 包含占位。支持 `limit`、`offset`，返回 `pending_links`、别名、记忆数与主体 `revision`。默认不列 self／scene。 |
+| `GET /admin/api/people/{id}` | 平台身份、别名、记忆数及按生命周期分组、`memories_url`、same_as 联系的相信程度和证据消息、扮演关系。合并占位带 `merged_into`、`canonical_id`。 |
+| `POST /admin/api/people/links/{id}/deny` | `{ "expected_revision": 1 }`，使用联系修订号；保留该联系为 denied，后续学习不能恢复或反向重建。 |
+| `POST /admin/api/people/links/{id}/confirm` | `{ "target_id": "A", "expected_revision": 1, "expected_source_revision": 2, "expected_target_revision": 2 }`；A 必须为联系一方，另一方 B 合并到 A。确认直接合并，没有暂存的确认态。 |
+| `POST /admin/api/people/{id}/aliases` | `{ "alias": "阿林", "expected_revision": 2 }`，使用主体修订号；返回稳定别名 ID。 |
+| `DELETE /admin/api/people/{id}/aliases/{alias_id}` | `{ "expected_revision": 3 }`；移除别名及折叠证据，并阻止学习自动加回这个别名。管理员显式添加可以恢复。 |
+
+成功操作与变更在同一写事务保存到 `/admin/api/operations`。修订过期、重复确认或操作已合并主体返回 409；对象不存在为 404，输入错误为 400。合并拒绝 self／scene、扮演者与其角色、从属人物与其祖先之间的合并。
+
+B 的账号、有效别名、记忆涉及人和说话人转到 A，B 的名字成为 A 的别名（与 A 同名时不重复添加）；从属于 B 的人物改从属于 A。记忆正文、修订号、相信程度、保留强度和向量不变，也不因身份合并去重现存记忆。B 和历史消息作者保留用于追溯，新消息的 B 账号解析到 A。合并记录保存平台账号键、记忆／别名／联系／从属主体 ID，以及折叠目标 ID，不保存记忆或消息正文。
+
+同一对主体的联系折叠时，否认优先；状态相同时保留目标方已有联系的相信程度，不取最大分。扮演保持方向，折叠时保留每个原场景。折叠的旧联系和重复别名保留为证据档案，仍保护证据消息；人物页读取有效联系时汇总这些证据。手动删掉的别名在合并后仍不会自动回来；确认身份本身明确授权把 B 的显示名添加为 A 的别名。
+
+prepare 和 search 为每条最终返回的记忆追加 `subject_annotations`，涉及者按 `about` 和 `speaker_subject_id` 判断：
+
+```json
+{
+  "possible_same_as": [
+    {"link_id": 1, "belief": 70, "subjects": [{"id": "A", "name": "小林"}, {"id": "B", "name": "林同学"}]}
+  ],
+  "roleplay": [
+    {"link_id": 2, "actor": {"id": "A", "name": "小林"}, "character": {"id": "C", "name": "船长"}, "worlds": ["海岛游戏"], "belief": 90, "fictional": true}
+  ]
+}
+```
+
+场景未知时 `worlds` 中保留 null，不假称现实。被否认的联系不出现在标注中；标注不返回证据原文，也不将扮演者与角色的经历相互归属。标注在名额、记忆 token 预算及召回判断完成后追加，因此不占用原来的记忆选取预算，不改变顺序、reason、选取名额或判断请求。宿主应将这些附加元数据计入自身的完整上下文预算。学习选材不增加这些字段。
+
+记忆管理列表支持可选布尔 `pinned`：省略为全部，`true` 为已置顶，`false` 为未置顶；分页与 total 使用相同筛选。现有前端的置顶筛选仍是禁用占位，由界面线接入。
+
+学习 v7 已接入同一个最终主体解析接口：新快照排除占位和折叠别名，把历史消息／引用作者映射为最终主体；提交事务内在去重之前重新解析说话人、涉及人、别名所属人、联系双方和新从属主体的 parent。两端映射为同一人的 same_as 丢弃，别名若在合并后等于保留主体的显示名也丢弃。回复 R13 与学习共用数字／否定词比较，中文数字（如周三／周五）不同的记忆不会被近似去重。
 
 ## M2 生命周期与每日维护（后端）
 

@@ -39,7 +39,7 @@ def test_r13_duplicate_report_counts_all_pairs_and_excludes_inactive_and_setup(s
 @pytest.mark.parametrize("difference", ["speaker", "about", "stance", "world", "event_time", "number", "negation"])
 def test_r13_duplicate_report_keeps_structural_numeric_and_negative_boundaries(store, difference):
     with store.write() as conn:
-        conn.execute("INSERT INTO subjects VALUES('other','person','我',NULL,?)", (now(),))
+        conn.execute("INSERT INTO subjects(id,kind,name,parent_id,created_at) VALUES('other','person','我',NULL,?)", (now(),))
     text = "我每周练习大提琴3次"
     put(store, text, vector=[1, 0])
     options = {"vector": [1, 0]}

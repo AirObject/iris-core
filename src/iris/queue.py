@@ -14,6 +14,7 @@ from typing import Any
 
 from .db import Store, dumps, now
 from .memory_ops import operation
+from .people import canonical_subject
 
 
 PACE = {
@@ -216,7 +217,7 @@ def should_learn(pending_count: int, oldest_at: datetime | None, latest_at: date
 def _subject(conn: sqlite3.Connection, platform: str, account_id: str, name: str) -> str:
     row = conn.execute("SELECT subject_id FROM platform_identities WHERE platform=? AND account_id=?", (platform, account_id)).fetchone()
     if row:
-        return row[0]
+        return canonical_subject(conn, row[0])
     subject_id = uuid.uuid4().hex
     conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)", (subject_id, name, now()))
     conn.execute("INSERT INTO platform_identities(subject_id,platform,account_id,display_name) VALUES(?,?,?,?)",
@@ -231,11 +232,15 @@ def _quote_subject(conn: sqlite3.Connection, *, entry_id: str, platform: str,
         return None
     if account_id:
         return _subject(conn, platform, account_id, name or account_id)
-    participants = {row[0] for row in conn.execute("""SELECT DISTINCT m.sender_subject_id
+    participants = {canonical_subject(conn, row[0]) for row in conn.execute("""SELECT DISTINCT m.sender_subject_id
         FROM messages m JOIN subjects s ON s.id=m.sender_subject_id
-        WHERE m.entry_id=? AND m.kind='message' AND s.name=?""", (entry_id, name))}
-    if current_sender_id and conn.execute("SELECT name FROM subjects WHERE id=?", (current_sender_id,)).fetchone()[0] == name:
-        participants.add(current_sender_id)
+        LEFT JOIN subject_aliases a ON a.subject_id=s.id AND a.folded_into IS NULL
+        WHERE m.entry_id=? AND m.kind='message' AND (s.name=? OR (a.alias=? AND EXISTS(SELECT 1 FROM subjects retired WHERE retired.merged_into=s.id)))""", (entry_id, name, name))}
+    if current_sender_id:
+        current_sender_id = canonical_subject(conn, current_sender_id)
+        if conn.execute("""SELECT 1 FROM subjects s LEFT JOIN subject_aliases a ON a.subject_id=s.id
+            AND a.folded_into IS NULL WHERE s.id=? AND (s.name=? OR (a.alias=? AND EXISTS(SELECT 1 FROM subjects retired WHERE retired.merged_into=s.id)))""", (current_sender_id, name, name)).fetchone():
+            participants.add(current_sender_id)
     if len(participants) == 1:
         return next(iter(participants))
     # A display name alone never binds this mention to a platform account.

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from . import admin_data, trial
+from . import admin_data, trial, people
 from .auth import audit, error
 from .queue import reset_batch, update_entry_settings, pace_parameters, filter_parameters, FILTER_DEFAULTS, PACE
 from .memory_ops import edit_memory, delete_memory, manage_memory, purge_memory, recreate_memory, operation, missing_batch_targets
@@ -122,6 +122,29 @@ class Page(Input):
     offset: int = Field(default=0, ge=0, le=1000000)
 
 
+class PeopleQuery(Page):
+    text: str = Field(default="", max_length=100)
+    pending_only: bool = False
+    include_merged: bool = False
+
+
+class Alias(Revision):
+    alias: str = Field(min_length=1, max_length=100)
+
+    @field_validator("alias")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("别名不能为空")
+        return value.strip()
+
+
+class ConfirmPerson(Revision):
+    target_id: str = Field(min_length=1, max_length=100)
+    expected_source_revision: int = Field(gt=0, strict=True)
+    expected_target_revision: int = Field(gt=0, strict=True)
+
+
 class MemoryQuery(Input):
     text: str = Field(default="", max_length=1000)
     person_id: str | None = Field(default=None, max_length=100)
@@ -130,6 +153,7 @@ class MemoryQuery(Input):
     time_from: str | None = None
     time_to: str | None = None
     lifecycle: Literal["active", "forgotten", "deleted", "all"] = "active"
+    pinned: bool | None = None
     sort: Literal["relevance", "time", "retention"] = "time"
     limit: int = Field(default=30, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=1000000)
@@ -239,6 +263,30 @@ def install_admin(app):
     @router.get("/catalog")
     def catalog():
         return admin_data.catalog(app.state.store)
+
+    @router.get("/people")
+    def people_list(query: Annotated[PeopleQuery, Query()]):
+        return admin_data.list_people(app.state.store, **query.model_dump())
+
+    @router.get("/people/{subject_id}")
+    def person_detail(subject_id: str):
+        return admin_data.person_detail(app.state.store, subject_id)
+
+    @router.post("/people/links/{link_id}/deny")
+    def deny_person_link(link_id: int, payload: Revision):
+        return people.deny_link(app.state.store, link_id, **payload.model_dump())
+
+    @router.post("/people/links/{link_id}/confirm")
+    def confirm_person_link(link_id: int, payload: ConfirmPerson):
+        return people.confirm_link(app.state.store, link_id, **payload.model_dump())
+
+    @router.post("/people/{subject_id}/aliases", status_code=201)
+    def add_person_alias(subject_id: str, payload: Alias):
+        return people.add_alias(app.state.store, subject_id, **payload.model_dump())
+
+    @router.delete("/people/{subject_id}/aliases/{alias_id}")
+    def delete_person_alias(subject_id: str, alias_id: int, payload: Revision):
+        return people.delete_alias(app.state.store, subject_id, alias_id, **payload.model_dump())
 
     @router.get("/memories")
     def memories(query: Annotated[MemoryQuery, Query()]):
@@ -383,6 +431,10 @@ def install_admin(app):
     @app.exception_handler(trial.TrialReplyFailed)
     async def failed(request, error):
         return JSONResponse({"error": {"code": "reply_failed", "message": "角色回复失败，原消息已保存；可查看运行状态后重试"}}, status_code=502)
+
+    @app.exception_handler(people.PeopleConflict)
+    async def people_conflict(request, exc):
+        return error("subject_conflict", str(exc), 409)
 
     app.include_router(router)
     web = files("iris").joinpath("web")

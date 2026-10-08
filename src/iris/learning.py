@@ -9,13 +9,14 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files
-from itertools import groupby
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
 
 from .db import Store, dumps, now
+from .claim_sequences import normalize_claim as _normalize, same_claim_sequences as _same_claim_sequences
+from .people import canonical_subject
 from .memory_ops import confirm_retention
 from .models import Gateway, ModelError
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
@@ -38,23 +39,9 @@ def _score(value: Any, default: int) -> int:
         return default
 
 
-def _normalize(text: str) -> str:
-    return re.sub(r"[\W_]+", "", text.casefold())
-
-
 def _similar(a: str, b: str) -> bool:
     left, right = _normalize(a), _normalize(b)
     return bool(left and right and (left == right or difflib.SequenceMatcher(None, left, right).ratio() >= 0.88))
-
-
-def _same_claim_sequences(a: str, b: str) -> bool:
-    """R13 number/negation guard, also recognizing non-decimal numeric text."""
-    left, right = _normalize(a), _normalize(b)
-    def numbers(text: str) -> list[str]:
-        # Unicode numeric characters include written weekday/count numerals.
-        return ["".join(chars) for numeric, chars in groupby(text, str.isnumeric) if numeric]
-    return (numbers(left) == numbers(right) and
-            re.findall(r"不|没|无|未|否", left) == re.findall(r"不|没|无|未|否", right))
 
 
 GOAL_TIME = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|(?:上|本|这|下)周[一二三四五六日天]|"
@@ -147,11 +134,20 @@ class LearningEngine:
             rows = conn.execute(f"""SELECT m.*,s.name AS sender_name,q.name AS quote_author_name
                 FROM messages m JOIN subjects s ON s.id=m.sender_subject_id
                 LEFT JOIN subjects q ON q.id=m.quote_author_subject_id WHERE m.id IN ({placeholders})""", ids).fetchall()
-            subjects = conn.execute("SELECT id,name,parent_id FROM subjects").fetchall()
-            aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases").fetchall()
+            subjects = conn.execute("SELECT id,name,parent_id FROM subjects WHERE merged_into IS NULL").fetchall()
+            aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE folded_into IS NULL ORDER BY subject_id,alias").fetchall()
             identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities").fetchall()
             persona = conn.execute("SELECT content FROM persona_versions WHERE is_current=1 ORDER BY id DESC LIMIT 1").fetchone()
-        messages = {r["id"]: _row_dict(r) for r in rows}
+            messages = {r["id"]: _row_dict(r) for r in rows}
+            names = {r["id"]: r["name"] for r in subjects}
+            # Preserve stored provenance; use final identities consistently in
+            # this snapshot's participant labels and evidence validation.
+            for message in messages.values():
+                for field, label in (("sender_subject_id", "sender_name"),
+                                     ("quote_author_subject_id", "quote_author_name")):
+                    if message[field] is not None:
+                        sid = canonical_subject(conn, message[field])
+                        message[field], message[label] = sid, names[sid]
         return {"messages": messages, "subjects": [_row_dict(r) for r in subjects],
                 "aliases": [_row_dict(r) for r in aliases], "identities": [_row_dict(r) for r in identities],
                 "persona": persona[0] if persona else "", "role_name": str(self.store.setting("role_name", "Iris"))}
@@ -538,7 +534,7 @@ class LearningEngine:
         name = self._subject_reference(name, snapshot)
         known = self._known_subject(name, snapshot)
         if known:
-            return known
+            return canonical_subject(conn, known)
         import uuid
         parent_id = None
         if name.endswith("的妈妈"):
@@ -576,10 +572,15 @@ class LearningEngine:
                 raise RuntimeError("batch state changed before commit")
             for item in accepted["people"]:
                 if "alias" in item:
+                    owner = canonical_subject(conn, item["_subject_id"])
+                    name = conn.execute("SELECT name FROM subjects WHERE id=?", (owner,)).fetchone()[0]
+                    if item["alias"].casefold() == name.strip().casefold():
+                        dropped.append({"section": "people", "item": item, "reason": "alias duplicates subject name"})
+                        continue
                     conn.execute("""INSERT INTO subject_aliases(subject_id,alias,source_message_id) VALUES(?,?,?)
                         ON CONFLICT(subject_id,alias) DO UPDATE SET
                         source_message_id=COALESCE(subject_aliases.source_message_id,excluded.source_message_id)""",
-                        (item["_subject_id"], item["alias"], item["_source_message_id"]))
+                        (owner, item["alias"], item["_source_message_id"]))
             # Apply explicit corrections before comparing proposed new memories.
             for item in accepted["updates"]:
                 original = refs[item["ref"]]
@@ -620,7 +621,7 @@ class LearningEngine:
                     if message_id in target:
                         self._source(conn, current["id"], message_id)
             for item in accepted["memories"]:
-                speaker_id = item["speaker_id"]
+                speaker_id = canonical_subject(conn, item["speaker_id"])
                 about_ids = {self._resolve_subject(conn, name, snapshot) for name in item["about"]}
                 # Composite index narrows by the same speaker/claim before fetching prose or vectors.
                 scope = " AND id IN (SELECT memory_id FROM memory_subjects WHERE subject_id=?)" if about_ids else " AND NOT EXISTS (SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=memories.id)"

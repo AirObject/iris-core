@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 import tempfile
@@ -10,13 +11,26 @@ import tomllib
 from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
+from time import monotonic
 
 from .auth import audit
 from .db import dumps
 from .models import MODEL_KINDS, ModelConfig, effective_configs
-from .process_lock import StoreLease
+from .process_lock import LeaseBusyError, StoreLease
 
 KINDS = MODEL_KINDS
+CONFIG_LOCK_WAIT_SECONDS = 3.0
+log = logging.getLogger(__name__)
+
+
+def _lock_busy(timeout):
+    if timeout > 0:
+        message = f'配置锁等待超时（{timeout:g} 秒），请稍后重试'
+        # The import CLI intentionally suppresses exception details. Emit only
+        # this fixed diagnostic so its timeout remains visible without secrets.
+        log.warning(message)
+        return ValueError(message)
+    return ValueError('配置正在更新，请稍后重试')
 
 
 def deployment(*, config=None, data_dir=None, host=None, port=None):
@@ -47,17 +61,26 @@ class RuntimeConfig:
         self._lock = threading.RLock()
 
     @contextmanager
-    def locked(self):
-        with self._lock:
+    def locked(self, *, timeout=0.0):
+        # Readers (including scheduler reloads) never wait. Writers share one
+        # deadline across the in-process lock and the inter-process file lease.
+        deadline = monotonic() + timeout
+        if not self._lock.acquire(timeout=timeout):
+            raise _lock_busy(timeout)
+        try:
             try:
-                lease = StoreLease(self.data_dir / '.configuration')
+                lease = StoreLease(self.data_dir / '.configuration', timeout=max(0.0, deadline - monotonic()))
                 lease.__enter__()
+            except LeaseBusyError:
+                raise _lock_busy(timeout) from None
             except (OSError, ValueError):
                 raise ValueError('配置正在更新，请稍后重试') from None
             try:
                 yield
             finally:
                 lease.__exit__()
+        finally:
+            self._lock.release()
 
     def _secrets(self):
         try:
@@ -115,7 +138,7 @@ class RuntimeConfig:
     def save(self, updates, *, actor='admin'):
         if self.external_loader:
             raise ValueError('模型配置来自外部文件，只读')
-        with self.locked():
+        with self.locked(timeout=CONFIG_LOCK_WAIT_SECONDS):
             old = self.store.setting('models', {})
             keys = self._secrets()
             # Keep current references until the database commit. A crash cannot pair
