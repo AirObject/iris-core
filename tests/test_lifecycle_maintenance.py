@@ -54,7 +54,7 @@ def test_daily_schedule_respects_timezone_durable_slot_and_latest_missed_run_onl
     assert maintenance.request(trigger=trigger, schedule_key=key) > rid
 
 
-def test_cleanup_protects_unlearned_refused_and_all_foreign_or_frozen_references(store):
+def test_cleanup_protects_unlearned_evidence_but_not_finished_batch_references(store):
     mids = [msg(store, i, f"清理用消息 {i}") for i in range(1, 11)]
     old = (Clock()()-timedelta(days=31)).isoformat()
     with store.write() as conn:
@@ -71,8 +71,8 @@ def test_cleanup_protects_unlearned_refused_and_all_foreign_or_frozen_references
     with store.read() as conn:
         present = {r[0] for r in conn.execute("SELECT id FROM messages")}
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
-    assert present == set(mids)-{mids[0],mids[3]}
-    assert report["summary"]["messages_deleted"]["count"] == 2
+    assert present == {mids[1], mids[7], mids[8], mids[9]}
+    assert report["summary"]["messages_deleted"]["count"] == 6
 
 
 def test_abandoned_yesterday_retries_once_preserves_attempts_gap_and_refused_is_excluded(store):
@@ -219,7 +219,7 @@ def test_revision_conflict_on_expiry_preserves_latest_admin_edit(store,monkeypat
     rid=maintenance.request()
     maintenance.run(rid)
     assert row(store,mid)["lifecycle"] == "forgotten"
-    assert any(i["phase"] == "expiry" and i["reason"] == "revision_conflict" for i in maintenance.report(rid)["items"])
+    assert maintenance.report(rid)["summary"]["skipped"]["reasons"]["revision_conflict"] == 1
 
 
 def test_defaults_match_migration_and_validated_api_model(store):
@@ -228,7 +228,7 @@ def test_defaults_match_migration_and_validated_api_model(store):
     assert store.setting("lifecycle") == LIFECYCLE_DEFAULTS == Lifecycle().model_dump()
 
 
-def test_cleanup_protects_subject_link_learning_request_and_trial_reply_key(store):
+def test_cleanup_protects_subject_link_learning_request_but_not_trial_reply_key(store):
     ids=[msg(store,i,"旧证据") for i in range(1,5)]
     clock=Clock()
     with store.write() as conn:
@@ -239,10 +239,10 @@ def test_cleanup_protects_subject_link_learning_request_and_trial_reply_key(stor
         conn.execute("UPDATE messages SET dedupe_key=? WHERE id=?",(f"trial-reply:{ids[2]}",ids[3]))
     report=run(store,clock)
     with store.read() as conn:
-        assert {r[0] for r in conn.execute("SELECT id FROM messages")} >= set(ids[:3])
+        assert {r[0] for r in conn.execute("SELECT id FROM messages")} == set(ids[:2])
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
-    protected=[i["details"]["references"] for i in report["items"] if i["reason"] == "referenced"]
-    assert ["subject_link"] in protected and ["learning_request"] in protected and ["trial_reply"] in protected
+    assert report["summary"]["skipped"]["reasons"]["referenced"] == 2
+    assert report["summary"]["messages_deleted"]["object_ids"] == ids[2:]
 
 
 def test_D03_store_reopen_resumes_exact_journal_without_repeat(tmp_path,monkeypatch):

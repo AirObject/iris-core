@@ -209,6 +209,7 @@ def manage_memory(store, memory_id, expected_revision, *, action=None, pinned=No
         if pinned is not None:
             conn.execute("UPDATE memories SET pinned=? WHERE id=?", (int(pinned), memory_id))
         if action == "forget":
+            conn.execute("UPDATE memories SET pinned=0 WHERE id=?", (memory_id,))
             retention = min(row["retention"], config["forget_threshold"] - 1)
         elif action == "restore":
             retention = max(row["retention"], config["restore_threshold"])
@@ -221,20 +222,24 @@ def manage_memory(store, memory_id, expected_revision, *, action=None, pinned=No
 
 
 def message_references(conn, message_id):
-    """All persisted references, including frozen JSON segments and trial reply keys."""
+    """Evidence and live work protect messages; finished batches and reply keys do not."""
     checks = (
         ("memory_source", "SELECT 1 FROM sources WHERE message_id=? LIMIT 1"),
-        ("batch_segment", "SELECT 1 FROM batch_message_refs WHERE message_id=? LIMIT 1"),
+        ("batch_segment", """SELECT 1 FROM batch_message_refs r JOIN batches b ON b.id=r.batch_id
+            WHERE r.message_id=? AND b.state IN ('waiting','running') LIMIT 1"""),
         ("goal_source", "SELECT 1 FROM goal_sources WHERE message_id=? LIMIT 1"),
         ("subject_alias", "SELECT 1 FROM subject_aliases WHERE source_message_id=? LIMIT 1"),
         ("subject_link", "SELECT 1 FROM subject_links WHERE source_message_id=? LIMIT 1"),
         ("learning_request", "SELECT 1 FROM entries WHERE learn_requested_through=? LIMIT 1"),
     )
     reasons = [name for name, sql in checks if conn.execute(sql, (message_id,)).fetchone()]
-    if conn.execute("""SELECT 1 FROM messages source JOIN messages reply ON reply.entry_id=source.entry_id
-        WHERE source.id=? AND reply.dedupe_key=? LIMIT 1""", (message_id, f"trial-reply:{message_id}")).fetchone():
-        reasons.append("trial_reply")
     return reasons
+
+
+def missing_batch_targets(conn, batch_id):
+    """Check within the caller's transaction, before reset can protect the batch again."""
+    return [r[0] for r in conn.execute("""SELECT j.value FROM batches b,json_each(b.target_ids) j
+        LEFT JOIN messages m ON m.id=j.value WHERE b.id=? AND m.id IS NULL ORDER BY j.key""", (batch_id,))]
 
 
 def purge_memory(store, memory_id, expected_revision, *, confirm=False):

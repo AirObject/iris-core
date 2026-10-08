@@ -145,13 +145,17 @@ def test_M12_decay_counts_only_eligible_actual_visits_and_pinned_never_decays(st
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_M06_expiry_and_pin_does_not_prevent_deletion(store, enabled):
+def test_M06_expiry_waits_until_unpinned_and_respects_toggle(store, enabled):
     mid = put(store, "遗忘信息", importance=70)
     clock = Clock()
     adjust_retention(store, mid, value=19, current=clock())
     manage_memory(store, mid, 1, pinned=True)
     configure(store, auto_delete_enabled=enabled)
     clock.advance(days=180)
+    report = run(store, clock)
+    assert row(store, mid)["lifecycle"] == "forgotten"
+    assert not report["summary"]["deleted"]["memory_ids"]
+    manage_memory(store, mid, 1, pinned=False)
     report = run(store, clock)
     assert row(store, mid)["lifecycle"] == ("deleted" if enabled else "forgotten")
     assert bool(report["summary"].get("deleted", {}).get("memory_ids")) == enabled
@@ -251,7 +255,7 @@ def test_D02_snapshot_revision_conflict_is_reported_and_retried_next_run(store, 
     rid = maintenance.request()
     maintenance.run(rid)
     assert row(store, mid)["retention"] == 50
-    assert any(i["reason"] == "revision_conflict" for i in maintenance.report(rid)["items"])
+    assert maintenance.report(rid)["summary"]["skipped"]["reasons"]["revision_conflict"] == 1
     run(store)
     assert row(store, mid)["retention"] == 49
 

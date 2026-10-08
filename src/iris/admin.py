@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from . import admin_data, trial
 from .auth import audit, error
 from .queue import reset_batch
-from .memory_ops import edit_memory, delete_memory, manage_memory, purge_memory, recreate_memory, operation
+from .memory_ops import edit_memory, delete_memory, manage_memory, purge_memory, recreate_memory, operation, missing_batch_targets
 from .retrieval import Retrieval
 from .service_status import service_status, add_health_hints
 
@@ -319,6 +319,8 @@ def install_admin(app):
             row = conn.execute("SELECT entry_id,state FROM batches WHERE id=?", (batch_id,)).fetchone()
             if row is None:
                 raise KeyError(batch_id)
+            if missing_batch_targets(conn, batch_id):
+                return error("batch_targets_cleared", "目标段消息已清理，无法重新学习；记忆缺口仍保留", 409)
             try:
                 reset_batch(app.state.store, batch_id, _conn=conn)
             except ValueError:

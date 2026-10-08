@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .db import dumps
-from .memory_ops import adjust_retention, delete_memory, lifecycle_settings, message_references, operation
+from .memory_ops import adjust_retention, delete_memory, lifecycle_settings, message_references, missing_batch_targets, operation
 from .model_health import utc_now
 from .queue import reset_batch
 
@@ -85,8 +85,8 @@ class Maintenance:
         return rid
 
     def run(self, run_id, *, stop=None):
-        # A single service worker owns normal execution. The journal additionally
-        # guards each item in its write transaction, even for duplicate invocations.
+        # Progress is committed with each item, even when it needs no audit row.
+        # The persisted cursor also rejects duplicate/stale worker invocations.
         with self._lock:
             while not (stop and stop()):
                 with self.store.read() as conn:
@@ -103,7 +103,7 @@ class Maintenance:
                 candidates = self._candidates(run, phase)
                 if not candidates:
                     with self.store.write() as conn:
-                        conn.execute("UPDATE maintenance_runs SET phase=phase+1 WHERE id=? AND phase=?", (run_id, run["phase"]))
+                        conn.execute("UPDATE maintenance_runs SET phase=phase+1,cursor_id=0 WHERE id=? AND phase=?", (run_id, run["phase"]))
                     continue
                 for candidate in candidates:
                     if stop and stop():
@@ -113,59 +113,78 @@ class Maintenance:
     def _candidates(self, run, phase):
         config = json.loads(run["settings_json"])
         current = datetime.fromisoformat(run["created_at"])
-        params = []
         if phase in ("decay", "expiry"):
-            where = "m.id<=? AND m.lifecycle!='deleted'"
-            params = [run["memory_through"]]
+            where = "m.id>? AND m.id<=? AND m.lifecycle!='deleted'"
+            params = [run["cursor_id"], run["memory_through"]]
             if phase == "expiry":
                 if not config["auto_delete_enabled"]:
                     return []
                 where += " AND m.lifecycle='forgotten' AND julianday(m.forgotten_at)<=julianday(?)"
                 params.append((current-timedelta(days=config["auto_delete_days"])).isoformat())
-            select = "SELECT m.id,m.revision,CAST(m.id AS TEXT) AS item_key FROM memories m WHERE " + where
+            select = "SELECT m.id,m.id AS cursor_id,m.revision,CAST(m.id AS TEXT) AS item_key FROM memories m WHERE " + where
         elif phase == "dependency":
-            select = """SELECT d.memory_id AS id,m.revision,d.source_memory_id,
+            # Loss rows are never deleted. rowid visits newly generated cascades
+            # even when their child ID is lower than the previous child.
+            select = """SELECT d.memory_id AS id,d.rowid AS cursor_id,m.revision,d.source_memory_id,
                 CAST(d.memory_id AS TEXT)||':'||CAST(d.source_memory_id AS TEXT) AS item_key
                 FROM memory_dependency_losses d JOIN memories m ON m.id=d.memory_id
-                WHERE d.applied_at IS NULL AND d.memory_id<=?"""
-            params = [run["memory_through"]]
+                WHERE d.rowid>? AND d.applied_at IS NULL AND d.memory_id<=?"""
+            params = [run["cursor_id"], run["memory_through"]]
         elif phase == "messages":
-            select = """SELECT id,CAST(id AS TEXT) AS item_key FROM messages
-                WHERE id<=? AND learning_state IN ('learned','abandoned') AND julianday(received_at)<julianday(?)"""
-            params = [run["message_through"], (current-timedelta(days=config["message_retention_days"])).isoformat()]
+            select = """SELECT id,id AS cursor_id,CAST(id AS TEXT) AS item_key FROM messages
+                WHERE id>? AND id<=? AND learning_state IN ('learned','abandoned','refused')
+                AND julianday(received_at)<julianday(?)"""
+            params = [run["cursor_id"], run["message_through"], (current-timedelta(days=config["message_retention_days"])).isoformat()]
         else:
             if not config["abandoned_retry_enabled"]:
                 return []
             date = current.astimezone(ZoneInfo(run["timezone"])).replace(hour=0, minute=0, second=0, microsecond=0)
-            select = """SELECT id,CAST(id AS TEXT) AS item_key FROM batches b
-                WHERE id<=? AND state='abandoned' AND julianday(finished_at)>=julianday(?) AND julianday(finished_at)<julianday(?)
+            select = """SELECT id,id AS cursor_id,CAST(id AS TEXT) AS item_key FROM batches b
+                WHERE id>? AND id<=? AND state='abandoned'
+                AND julianday(finished_at)>=julianday(?) AND julianday(finished_at)<julianday(?)
                 AND NOT EXISTS(SELECT 1 FROM maintenance_batch_retries r WHERE r.batch_id=b.id)"""
-            params = [run["batch_through"], (date-timedelta(days=1)).isoformat(), date.isoformat()]
+            params = [run["cursor_id"], run["batch_through"], (date-timedelta(days=1)).isoformat(), date.isoformat()]
         with self.store.read() as conn:
-            return [dict(r) for r in conn.execute(f"""SELECT c.* FROM ({select}) c WHERE NOT EXISTS(
-                SELECT 1 FROM maintenance_items i WHERE i.run_id=? AND i.phase=? AND i.item_key=c.item_key)
-                ORDER BY c.id,c.item_key LIMIT 128""", [*params, run["id"], phase])]
+            return [dict(r) for r in conn.execute(f"SELECT c.* FROM ({select}) c ORDER BY c.cursor_id LIMIT 128", params)]
 
-    def _journal(self, conn, run, phase, candidate, outcome, reason, details):
-        conn.execute("""INSERT OR IGNORE INTO maintenance_items
-            (run_id,phase,item_key,memory_id,object_id,outcome,reason,details_json,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?)""", (run["id"], phase, candidate["item_key"],
-            candidate["id"] if phase in ("decay", "expiry", "dependency") else None,
-            candidate["id"], outcome, reason, dumps(details), self.clock().isoformat()))
+    def _progress(self, conn, run, candidate):
+        row = conn.execute("SELECT state,phase,cursor_id,progress_json FROM maintenance_runs WHERE id=?", (run["id"],)).fetchone()
+        if row["state"] != "running" or row["phase"] != run["phase"] or row["cursor_id"] >= candidate["cursor_id"]:
+            return None
+        return json.loads(row["progress_json"])
+
+    def _record(self, conn, run, phase, candidate, progress, outcome, reason, details):
+        checks = progress.setdefault("checks", {})
+        checks[phase] = checks.get(phase, 0) + 1
+        if outcome == "skipped":
+            reasons = progress.setdefault("skipped", {})
+            reasons[reason] = reasons.get(reason, 0) + 1
+        # Bookkeeping (counter advancement/cursor) is not a user-visible memory
+        # change. No per-object row for checked, pinned, referenced or conflicts.
+        if outcome not in ("checked", "skipped") or details.get("transition"):
+            conn.execute("""INSERT INTO maintenance_items
+                (run_id,phase,item_key,memory_id,object_id,outcome,reason,details_json,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?)""", (run["id"], phase, candidate["item_key"],
+                candidate["id"] if phase in ("decay", "expiry", "dependency") else None,
+                candidate["id"], outcome, reason, dumps(details), self.clock().isoformat()))
+        conn.execute("UPDATE maintenance_runs SET cursor_id=?,progress_json=? WHERE id=?",
+                     (candidate["cursor_id"], dumps(progress), run["id"]))
 
     def _process_item(self, run, phase, candidate):
         try:
             with self.store.write() as conn:
-                if conn.execute("SELECT 1 FROM maintenance_items WHERE run_id=? AND phase=? AND item_key=?",
-                                (run["id"], phase, candidate["item_key"])).fetchone():
+                progress = self._progress(conn, run, candidate)
+                if progress is None:
                     return
                 outcome, reason, details = self._apply(conn, run, phase, candidate)
-                self._journal(conn, run, phase, candidate, outcome, reason, details)
+                self._record(conn, run, phase, candidate, progress, outcome, reason, details)
         except Exception as exc:
-            # Transaction rolled back; only a safe category is persisted, never
-            # arbitrary exception text (which might contain private model output).
+            # Mutation and cursor both rolled back. Record only a safe failure
+            # category and advance atomically, never private exception text.
             with self.store.write() as conn:
-                self._journal(conn, run, phase, candidate, "failed", type(exc).__name__, {})
+                progress = self._progress(conn, run, candidate)
+                if progress is not None:
+                    self._record(conn, run, phase, candidate, progress, "failed", type(exc).__name__, {})
 
     def _apply(self, conn, run, phase, candidate):
         config = json.loads(run["settings_json"])
@@ -175,21 +194,32 @@ class Maintenance:
         executed_at = self.clock()
         mid = candidate["id"]
         if phase in ("decay", "expiry", "dependency"):
-            memory = conn.execute("SELECT * FROM memories WHERE id=?", (mid,)).fetchone()
+            memory = conn.execute("""SELECT id,lifecycle,revision,pinned,importance,retention,decay_visits,forgotten_at
+                FROM memories WHERE id=?""", (mid,)).fetchone()
             if memory is None or memory["lifecycle"] == "deleted":
                 return "skipped", "deleted", {}
             if memory["revision"] != candidate["revision"]:
                 return "skipped", "revision_conflict", {}
+            if memory["pinned"]:
+                return "skipped", "pinned", {}
         if phase == "decay":
+            if memory["lifecycle"] == "forgotten":
+                if memory["retention"] >= config["restore_threshold"]:
+                    # A changed H still takes effect; never decay or advance the
+                    # three-visit counter while this item starts out forgotten.
+                    adjust_retention(self.store, mid, current=executed_at, settings=config, _conn=conn)
+                    return "restored", None, {"before": memory["retention"], "after": memory["retention"]}
+                return "skipped", "forgotten", {}
             amount = 0
-            if not memory["pinned"]:
-                if memory["importance"] < 40:
+            if memory["importance"] < 40:
+                amount = config["decay_amount"]
+            elif memory["importance"] < 70:
+                visits = (memory["decay_visits"]+1) % 3
+                conn.execute("UPDATE memories SET decay_visits=? WHERE id=?", (visits, mid))
+                if visits == 0:
                     amount = config["decay_amount"]
-                elif memory["importance"] < 70:
-                    visits = (memory["decay_visits"]+1) % 3
-                    conn.execute("UPDATE memories SET decay_visits=? WHERE id=?", (visits, mid))
-                    if visits == 0:
-                        amount = config["decay_amount"]
+            if amount == 0 and memory["retention"] >= config["forget_threshold"]:
+                return "checked", None, {}
             result = adjust_retention(self.store, mid, -amount, current=executed_at, settings=config, _conn=conn)
             details = {"before": memory["retention"], "after": result["retention"]}
             if result["lifecycle"] != memory["lifecycle"]:
@@ -215,10 +245,10 @@ class Maintenance:
             details = {"source_memory_id": parent, "before": memory["retention"], "after": result["retention"]}
             if result["lifecycle"] != memory["lifecycle"]:
                 details["transition"] = result["lifecycle"]
-            return "dependencies_weakened", None, details
+            return ("dependencies_weakened" if result["retention"] < memory["retention"] else "checked"), None, details
         if phase == "messages":
             message = conn.execute("SELECT learning_state,received_at FROM messages WHERE id=?", (mid,)).fetchone()
-            if not message or message["learning_state"] not in ("learned", "abandoned") or current-datetime.fromisoformat(message["received_at"]) <= timedelta(days=config["message_retention_days"]):
+            if not message or message["learning_state"] not in ("learned", "abandoned", "refused") or current-datetime.fromisoformat(message["received_at"]) <= timedelta(days=config["message_retention_days"]):
                 return "skipped", "no_longer_eligible", {}
             references = message_references(conn, mid)
             if references:
@@ -233,17 +263,19 @@ class Maintenance:
         yesterday = current.astimezone(ZoneInfo(run["timezone"])).date()-timedelta(days=1)
         if not batch["finished_at"] or datetime.fromisoformat(batch["finished_at"]).astimezone(ZoneInfo(run["timezone"])).date() != yesterday:
             return "skipped", "batch_date_changed", {}
+        if missing_batch_targets(conn, mid):
+            return "skipped", "target_messages_cleared", {}
         reset_batch(self.store, mid, _conn=conn)
         conn.execute("INSERT INTO maintenance_batch_retries VALUES(?,?,?)", (mid, run["id"], self.clock().isoformat()))
         return "batches_retried", None, {}
 
     @staticmethod
-    def _summary(items):
+    def _summary(items, progress):
         result = {name: {"count": 0, "memory_ids": [], "object_ids": []} for name in (
             "decayed", "checked", "forgotten", "restored", "deleted", "dependencies_weakened",
             "messages_deleted", "batches_retried", "skipped", "failed")}
         for item in items:
-            names = [item["outcome"]]
+            names = [] if item["outcome"] in ("checked", "skipped") else [item["outcome"]]
             transition = item["details"].get("transition")
             if transition:
                 names.append("forgotten" if transition == "forgotten" else "restored")
@@ -256,6 +288,10 @@ class Maintenance:
         for group in result.values():
             group["memory_ids"] = sorted(set(group["memory_ids"]))
             group["object_ids"] = sorted(set(group["object_ids"]))
+        by_phase = {phase: progress.get("checks", {}).get(phase, 0) for phase in PHASES}
+        result["checked"].update(count=sum(by_phase.values()), by_phase=by_phase)
+        reasons = progress.get("skipped", {})
+        result["skipped"].update(count=sum(reasons.values()), reasons=reasons)
         return result
 
     def report(self, run_id):
@@ -266,13 +302,14 @@ class Maintenance:
             report = dict(row)
             report["settings"] = json.loads(report.pop("settings_json"))
             report.pop("summary_json")
+            progress = json.loads(report.pop("progress_json"))
             items = []
             for item in conn.execute("SELECT * FROM maintenance_items WHERE run_id=? ORDER BY rowid", (run_id,)):
                 item = dict(item)
                 item["details"] = json.loads(item.pop("details_json"))
                 items.append(item)
             report["items"] = items
-            report["summary"] = self._summary(items)
+            report["summary"] = self._summary(items, progress)
             return report
 
     def _finish(self, run_id):

@@ -1,3 +1,29 @@
+-- Cleanup must not let a cleared message ID identify a later message in frozen batches.
+-- Defer FK checks until the original rows have been restored, within this migration transaction.
+PRAGMA defer_foreign_keys=ON;
+CREATE TEMP TABLE lifecycle_messages_copy AS SELECT * FROM messages;
+DROP TABLE messages;
+CREATE TABLE messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id TEXT NOT NULL REFERENCES entries(id),
+    kind TEXT NOT NULL CHECK(kind IN ('message','self_output','action_result','event')),
+    sender_subject_id TEXT NOT NULL REFERENCES subjects(id),
+    scene_identity TEXT,
+    content TEXT NOT NULL,
+    quote_author_subject_id TEXT REFERENCES subjects(id),
+    quote_content TEXT,
+    occurred_at TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    dedupe_key TEXT NOT NULL,
+    learning_state TEXT NOT NULL DEFAULT 'pending',
+    batch_id INTEGER,
+    UNIQUE(entry_id, dedupe_key)
+);
+INSERT INTO messages SELECT * FROM lifecycle_messages_copy;
+DROP TABLE lifecycle_messages_copy;
+CREATE INDEX messages_queue ON messages(entry_id,learning_state,id);
+CREATE INDEX messages_recent ON messages(entry_id,id DESC);
+
 -- Lifecycle work is durable, deterministic, and independent of model calls.
 INSERT OR IGNORE INTO runtime_settings(key,value_json) VALUES('lifecycle',
 '{"forget_threshold":20,"restore_threshold":35,"feedback_increment":8,"confirmation_increment":5,"decay_amount":1,"auto_delete_enabled":true,"auto_delete_days":180,"upcoming_delete_days":14,"message_retention_days":30,"maintenance_time":"03:00","abandoned_retry_enabled":true,"dependency_penalty":10}');
@@ -18,6 +44,8 @@ CREATE TABLE maintenance_runs (
     schedule_key TEXT UNIQUE,
     state TEXT NOT NULL DEFAULT 'running' CHECK(state IN ('running','completed')),
     phase INTEGER NOT NULL DEFAULT 0,
+    cursor_id INTEGER NOT NULL DEFAULT 0,
+    progress_json TEXT NOT NULL DEFAULT '{}',
     settings_json TEXT NOT NULL,
     timezone TEXT NOT NULL,
     memory_through INTEGER NOT NULL,
