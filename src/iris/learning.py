@@ -9,12 +9,14 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files
+from itertools import groupby
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
 
 from .db import Store, dumps, now
+from .memory_ops import confirm_retention
 from .models import Gateway, ModelError
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
@@ -43,6 +45,16 @@ def _normalize(text: str) -> str:
 def _similar(a: str, b: str) -> bool:
     left, right = _normalize(a), _normalize(b)
     return bool(left and right and (left == right or difflib.SequenceMatcher(None, left, right).ratio() >= 0.88))
+
+
+def _same_claim_sequences(a: str, b: str) -> bool:
+    """R13 number/negation guard, also recognizing non-decimal numeric text."""
+    left, right = _normalize(a), _normalize(b)
+    def numbers(text: str) -> list[str]:
+        # Unicode numeric characters include written weekday/count numerals.
+        return ["".join(chars) for numeric, chars in groupby(text, str.isnumeric) if numeric]
+    return (numbers(left) == numbers(right) and
+            re.findall(r"不|没|无|未|否", left) == re.findall(r"不|没|无|未|否", right))
 
 
 GOAL_TIME = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|(?:上|本|这|下)周[一二三四五六日天]|"
@@ -555,10 +567,9 @@ class LearningEngine:
             def confirm_once(memory_id: int) -> None:
                 if memory_id in confirmed_once:
                     return
-                conn.execute("UPDATE memories SET retention=MIN(100,retention+5),last_confirmed_at=? WHERE id=?",
-                             (now(), memory_id))
-                confirmed_once.add(memory_id)
-                confirmed.append(memory_id)
+                if confirm_retention(self.store, memory_id, _conn=conn) is not None:
+                    confirmed_once.add(memory_id)
+                    confirmed.append(memory_id)
 
             row = conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()
             if not row or row[0] != "running":
@@ -573,7 +584,8 @@ class LearningEngine:
             for item in accepted["updates"]:
                 original = refs[item["ref"]]
                 current = conn.execute("SELECT * FROM memories WHERE id=?", (original["id"],)).fetchone()
-                if not current or current["revision"] != original["revision"] or current["lifecycle"] != "active":
+                if (not current or current["revision"] != original["revision"] or current["lifecycle"] == "deleted"
+                        or (item["action"] != "确认" and current["lifecycle"] != "active")):
                     dropped.append({"section": "updates", "item": item, "reason": "memory revision changed"})
                     continue
                 if item["action"] == "确认":
@@ -612,14 +624,17 @@ class LearningEngine:
                 about_ids = {self._resolve_subject(conn, name, snapshot) for name in item["about"]}
                 # Composite index narrows by the same speaker/claim before fetching prose or vectors.
                 scope = " AND id IN (SELECT memory_id FROM memory_subjects WHERE subject_id=?)" if about_ids else " AND NOT EXISTS (SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=memories.id)"
-                parameters = [speaker_id, item["kind"], item["stance"], item["event_time"]]
+                parameters = [speaker_id, item["stance"], item["event_time"]]
                 if about_ids:
                     parameters.append(sorted(about_ids)[0])
-                existing = conn.execute("""SELECT * FROM memories WHERE speaker_subject_id=? AND kind=?
-                    AND stance=? AND event_time IS ? AND lifecycle='active'""" + scope, parameters).fetchall()
+                existing = conn.execute("""SELECT * FROM memories WHERE speaker_subject_id=?
+                    AND stance=? AND event_time IS ? AND world='real' AND lifecycle IN ('active','forgotten')"""
+                    + scope + " ORDER BY id", parameters).fetchall()
                 existing_about = {m["id"]: {r[0] for r in conn.execute(
                     "SELECT subject_id FROM memory_subjects WHERE memory_id=?", (m["id"],))} for m in existing}
                 def same_meaning(memory: Any) -> bool:
+                    if not _same_claim_sequences(memory["content"], item["content"]):
+                        return False
                     if _similar(memory["content"], item["content"]):
                         return True
                     if item.get("_embedding") is None or memory["embedding"] is None:
@@ -633,7 +648,7 @@ class LearningEngine:
                     denominator = float(np.linalg.norm(prior) * np.linalg.norm(current_vector))
                     return bool(denominator and float(np.dot(prior, current_vector) / denominator) >= dedupe_threshold)
                 duplicate = next((m for m in existing if m["speaker_subject_id"] == speaker_id and
-                                  m["kind"] == item["kind"] and m["stance"] == item["stance"] and
+                                  m["stance"] == item["stance"] and
                                   m["event_time"] == item["event_time"] and
                                   existing_about.get(m["id"], set()) == about_ids and same_meaning(m)), None)
                 if duplicate:
