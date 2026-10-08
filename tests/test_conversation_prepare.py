@@ -131,3 +131,82 @@ def test_recall_corpus_kind_and_cross_entry_source_are_real(store):
     memory = next(m for m in response['memories'] if m['id'] == ids['D08'])
     assert memory['sources'][0]['entry_id'] == entries['U21']
     assert all(m['entry_id'] == entries['U03'] for m in response['recent_messages'])
+
+
+def conversation(store, messages):
+    _, entries = seed_corpus(store, {'memories': [], 'queries': [{
+        'id': 'focus', 'text': None, 'participants': None, 'relevant': {},
+        'recent_messages': messages}]})
+    return entries['focus']
+
+
+@pytest.mark.parametrize('strategy', ['session_6', 'speaker_6', 'adaptive_6'])
+@pytest.mark.parametrize('age,include', [(300, True), (301, False), (-1, False)])
+def test_topic_time_boundary_uses_message_time_and_excludes_outputs(store, strategy, age, include):
+    from datetime import datetime, timedelta, timezone
+    latest = datetime(2026, 10, 8, 12, tzinfo=timezone.utc)
+    entry = conversation(store, [
+        {'id': 'a', 'speaker': '客人', 'content': '前文对象', 'occurred_at': (latest-timedelta(seconds=age)).isoformat()},
+        {'id': 'b', 'speaker': 'Iris', 'kind': 'self_output', 'content': '不应检索的回复', 'occurred_at': latest.isoformat()},
+        {'id': 'c', 'speaker': '客人', 'content': '那件呢？', 'occurred_at': latest.isoformat()}])
+    retrieval = Retrieval(store, conversation_query=strategy)
+    query, _, anchor = retrieval._prepare_context(entry, None)
+    assert query == ('前文对象\n那件呢？' if include else '那件呢？')
+    assert anchor == '那件呢？'
+
+
+def test_invalid_time_keeps_latest_without_crossing_unknown_boundary(store):
+    entry = conversation(store, [
+        {'id': 'a', 'speaker': '访客', 'content': '更早上文'},
+        {'id': 'b', 'speaker': '访客', 'content': '边界'},
+        {'id': 'c', 'speaker': '访客', 'content': '继续呢？'}])
+    with store.write() as conn:
+        conn.execute("UPDATE messages SET occurred_at='unknown' WHERE content='边界'")
+    assert Retrieval(store, conversation_query='session_6').prepare_query(entry)[0] == '继续呢？'
+
+
+@pytest.mark.parametrize('strategy', ['session_6', 'speaker_6', 'adaptive_6'])
+def test_interruption_keeps_earlier_question_without_changing_latest_anchor(store, strategy):
+    entry = conversation(store, [
+        {'id': 'a', 'speaker': '访客', 'content': '齐峦的玻璃水壶应该用什么清洗？'},
+        {'id': 'b', 'speaker': 'Iris', 'kind': 'self_output', 'content': '不记得了'},
+        {'id': 'c', 'speaker': '插话者', 'content': '屏幕太暗了'},
+        {'id': 'd', 'speaker': '插话者', 'content': '调亮一点'},
+        {'id': 'e', 'speaker': '访客', 'content': '你记得吗？'}])
+    query, _, anchor = Retrieval(store, conversation_query=strategy)._prepare_context(entry, None)
+    assert '齐峦的玻璃水壶应该用什么清洗？' in query
+    assert anchor == '你记得吗？'
+    assert '不记得了' not in query
+    if strategy == 'speaker_6':
+        assert '屏幕太暗了' not in query and '调亮一点' in query
+
+
+@pytest.mark.parametrize('latest,context', [
+    ('清理铜版画的印刷滚筒需要什么溶剂，最后如何擦干存放？', False),
+    ('她清理铜版画的印刷滚筒需要什么溶剂，最后如何擦干存放？', True),
+    ('那台设备清理铜版画的印刷滚筒需要什么溶剂，最后如何擦干存放？', True),
+    ('再想想？我跟你说过的。', True)])
+def test_adaptive_query_preserves_references_and_reminders_but_focuses_new_question(store, latest, context):
+    entry = conversation(store, [
+        {'id': 'a', 'speaker': '访客', 'content': '较早介绍的对象'},
+        {'id': 'b', 'speaker': '访客', 'content': '附带的一句'},
+        {'id': 'c', 'speaker': '访客', 'content': latest}])
+    query, _, anchor = Retrieval(store, conversation_query='adaptive_6')._prepare_context(entry, None)
+    assert ('较早介绍的对象' in query) is context
+    assert query.endswith(latest) and anchor == latest
+
+
+def test_topic_history_is_bounded(store):
+    messages = [{'id': str(i), 'speaker': '访客', 'content': f'第{i}句上文'} for i in range(22)]
+    entry = conversation(store, messages)
+    retrieval = Retrieval(store, conversation_query='session_6')
+    assert retrieval.prepare_query(entry)[0].splitlines() == [m['content'] for m in messages[-6:]]
+
+
+@pytest.mark.parametrize('strategy', ['session_6', 'speaker_6', 'adaptive_6'])
+def test_new_compositions_leave_explicit_empty_and_nonempty_text_unchanged(store, strategy):
+    _, entry = scenario(store)
+    retrieval = Retrieval(store, conversation_query=strategy)
+    for text in ('', '宿主自己写的查询'):
+        query, _, anchor = retrieval._prepare_context(entry, text)
+        assert query == text and anchor is None

@@ -157,7 +157,7 @@ round2/
 
 ## 召回评测
 
-默认运行五份公开语料，共 169 条固定记忆、168 条查询；每份语料在独立数据库中入库。直接使用固定记忆，不经过学习，不调用生成模型，走正式 Retrieval.prepare／search、去冗余和召回记录路径。
+默认运行六份公开语料，共 195 条固定记忆、188 条查询；每份语料在独立数据库中入库。直接使用固定记忆，不经过学习，不调用生成模型，走正式 Retrieval.prepare／search、去冗余和召回记录路径。
 
 | 语料 | 来源 | 固定记忆 | 查询 | 无答案 | 原 split |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -166,10 +166,13 @@ round2/
 | recall_conversation_v1.json | `15cdd48` 在第二轮检索改动前单独冻结、手写 | 33 | 24 | 6 | 24 dev |
 | recall_short_terms_v1.json | `830efb6` 在第四轮检索改动前单独冻结、手写 | 16 | 16 | 4 | 16 dev |
 | recall_conversation_v2.json | `115b530` 在实现前单独冻结、手写 | 30 | 24 | 6 | 24 dev |
+| recall_conversation_v3.json | `0ba3452` 在第二轮查询实现前单独冻结、手写 | 26 | 20 | 4 | 20 dev |
 
 质量语料没有模板或脚本生成。v2 覆盖口语、改述、别名、相近名字、未知属性、参与者和近期消息去冗余；对话集覆盖私聊、群聊、直播，全部显式 `text: null`、`participants: null`，由近期消息推断当前问题和参与者。详见冻结时的 [recall_v2_notes.md](recall_v2_notes.md) 与 [recall_conversation_v1_notes.md](recall_conversation_v1_notes.md)。短词集覆盖带／不带人物筛选的两字关键词、只在涉及人或正文出现的两字名字、不在场的人及同类型无答案查询，来源和逐条分组见 [recall_short_terms_v1_notes.md](recall_short_terms_v1_notes.md)。notes 保存当时的计划，当前选参方法以下文为准；不改语料或 notes 来适应新结果。
 
 GLM 阶段全部公开样本按 dev 使用，命令和报告仍尊重冻结文件的 split，历史 holdout 仅作回归分组，不代表未见验收。PR #5 原选参只使用 v1 38 条、v2 44 条 dev 和对话集 24 条，共 106 条；原 v2 的 22 条历史 holdout 已分析，不参与选参。新设备第一阶段运行全部 128 条复现，未重新选参。第四轮按规划者要求加入短词集后，在全部 122 条 dev 上按原规则重新标定，并在全部 144 条上做最终对照；原 v2 的 22 条历史 holdout 仍不参与选参。规划者的隐藏集在仓库外，执行者不得寻找或读取。
+
+PR #18 第二轮新增的 [对话 v3](recall_conversation_v3_notes.md) 覆盖话题切换、插话、远处省略和空泛催促。三个预定候选只在对话 v1/v2/v3 的 68 条 dev 上比较；结果和逐查询返回见 [第二轮报告](reports/conversation-prepare-20261008.md#第二轮)。三种候选都未通过 v2 relevant 精确率守则，默认仍保留第一轮 latest_2；内部 conversation_query 候选参数用于复现比较，不代表已选定的新默认。
 
 标准输入是 UTF-8 JSON：
 

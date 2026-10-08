@@ -77,7 +77,7 @@ uv run iris eval e2e-score --materials <材料目录> --judgments <第一轮目�
 
 ## 召回与验证
 
-默认召回评测读取 recall_v1、recall_v2、recall_conversation_v1、recall_short_terms_v1、recall_conversation_v2 五份公开语料，共 169 条固定记忆、168 条查询，各自隔离入库。长对话集 v2 在 `115b530` 冻结：30 条记忆、24 条 dev 查询（6 条无答案），每条 6—20 条近期消息，kind 缺省 message，可显式区分角色输出、行动结果和事件。v1 在 `a8af9b1` 冻结，v2 在 `95549fc` 冻结，对话集在 `15cdd48` 冻结，短词集在 `830efb6` 冻结；来源与格式见 `evals/README.md`，语料及 notes 保持原样。禁止用脚本或模板生成质量语料。GLM 阶段全部公开样本按 dev 使用；文件中的原 split 仅作历史分组，不代表未见验收。隐藏验收集由规划者维护，执行者不得寻找或读取。
+默认召回评测读取 recall_v1、recall_v2、recall_conversation_v1、recall_short_terms_v1、recall_conversation_v2、recall_conversation_v3 六份公开语料，共 195 条固定记忆、188 条查询，各自隔离入库。长对话集 v2 在 `115b530` 冻结：30 条记忆、24 条 dev 查询（6 条无答案），每条 6—20 条近期消息；v3 在 `0ba3452` 冻结：26 条记忆、20 条 dev 查询（4 条无答案），每条 6—9 条近期消息，覆盖话题切换、插话、远处省略和空泛催促。kind 缺省 message，可显式区分角色输出、行动结果和事件。v1 在 `a8af9b1` 冻结，v2 在 `95549fc` 冻结，对话集在 `15cdd48` 冻结，短词集在 `830efb6` 冻结；来源与格式见 `evals/README.md`，语料及 notes 保持原样。禁止用脚本或模板生成质量语料。GLM 阶段全部公开样本按 dev 使用；文件中的原 split 仅作历史分组，不代表未见验收。隐藏验收集由规划者维护，执行者不得寻找或读取。
 
 `iris eval recall --corpus <JSON 或 JSONL> --out <目录>` 支持外部集。`--calibrate` 只允许 `--split dev`，报告完整网格，不修改在用数据库。选参先比较 `Q=(Recall@8+nDCG@8)/2`，与全网格最佳相差不足 0.01 视为持平，再比较 relevant 标注精确率、较低无关误返率，随后比较 Q，完全相同保留网格顺序；不逐项链式平分。PR #5 原选参使用冻结 split 的 106 条 dev，排除 v2 已分析的 22 条历史 holdout。新设备第一阶段已复现；PR #5 第四轮加入 16 条新 dev，第五轮继续用全部 122 条 dev 重新标定，原 v2 的 22 条历史 holdout 仍不参与选择。
 

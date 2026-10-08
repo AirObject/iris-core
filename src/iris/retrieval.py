@@ -14,13 +14,16 @@ from typing import Any
 from .db import Store, dumps, now
 from .models import Gateway, ModelError
 from .queue import estimate_tokens
-from .search_text import match_query, terms
+from .search_text import match_query, terms, words
 from .query_analysis import analyze
 
 RRF_K = 60
 CANDIDATES = 200
-CONVERSATION_QUERIES = ('latest_1', 'latest_2', 'latest_3', 'window_5')
+CONVERSATION_QUERIES = ('latest_1', 'latest_2', 'latest_3', 'window_5',
+                        'session_6', 'speaker_6', 'adaptive_6')
 CONVERSATION_QUERY = 'latest_2'
+# Grammatical references only; no domain vocabulary or answer-attribute list.
+CONTEXT_REFERENCE = re.compile(r'(?:[他她它]们?|[这那](?:个|些|里|边|儿|[位家段件种次份条张台杯本只座辆部间双场])?)')
 DEFAULTS = json.loads(files("iris").joinpath("retrieval_defaults.json").read_text(encoding="utf-8"))
 MEMORY_COLUMNS = """m.id,m.content,m.kind,m.speaker_subject_id,m.stance,m.belief,m.importance,m.retention,
     m.event_time,m.lifecycle,m.revision,m.entry_id,m.world,m.created_at,m.updated_at,s.name AS speaker_name"""
@@ -479,12 +482,55 @@ class Retrieval:
                 latest = conn.execute(f"SELECT content FROM messages WHERE entry_id=? AND {other} ORDER BY id DESC LIMIT 1",
                                       (entry_id,)).fetchone()
                 anchor_text = latest[0] if latest else ''
-            else:
+            elif self.conversation_query.startswith('latest_'):
                 count = int(self.conversation_query.rsplit('_', 1)[1])
                 selected = conn.execute(f"SELECT content FROM messages WHERE entry_id=? AND {other} ORDER BY id DESC LIMIT ?",
                                         (entry_id, count)).fetchall()
                 anchor_text = selected[0]['content'] if selected else ''
+            else:
+                recent = conn.execute(f"""SELECT content,sender_subject_id,occurred_at FROM messages
+                    WHERE entry_id=? AND {other} ORDER BY id DESC LIMIT 20""", (entry_id,)).fetchall()
+                anchor_text = recent[0]['content'] if recent else ''
+                selected = self._conversation_suffix(conn, recent, entry['kind'])
             return "\n".join(r['content'] for r in reversed(selected)), entry['kind'], anchor_text
+
+    def _conversation_suffix(self, conn, recent, entry_kind):
+        """Bound context by elapsed message time; never infer a topic from names."""
+        if not recent:
+            return []
+
+        def timestamp(row):
+            stamp = datetime.fromisoformat(row['occurred_at'])
+            return stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp
+
+        selected = [recent[0]]
+        try:
+            latest = previous = timestamp(recent[0])
+            for row in recent[1:]:
+                stamp = timestamp(row)
+                if stamp > previous or (latest - stamp).total_seconds() > 300:
+                    break
+                selected.append(row)
+                previous = stamp
+        except (TypeError, ValueError):
+            # Keep the valid suffix, including the latest message even if its
+            # own timestamp is invalid. Do not cross an unknown time boundary.
+            pass
+        if len(selected) <= 2:
+            return selected
+        if self.conversation_query == 'speaker_6':
+            speaker = recent[0]['sender_subject_id']
+            own = [row for row in selected if row['sender_subject_id'] == speaker]
+            if len(own) > 1:
+                selected = [row for i, row in enumerate(selected)
+                            if row['sender_subject_id'] == speaker or i == 1]
+        elif self.conversation_query == 'adaptive_6':
+            text = recent[0]['content']
+            analysis = analyze(conn, text, entry_kind=entry_kind)
+            reference = any(CONTEXT_REFERENCE.fullmatch(word) for word in words(text))
+            if len(analysis.coverage_tokens) >= 6 and not reference:
+                return selected[:1]
+        return selected[:6]
 
     def prepare_query(self, entry_id: str, text: str | None = None) -> tuple[str, str]:
         """The same query derivation is used by prepare and evaluation prefetch."""
