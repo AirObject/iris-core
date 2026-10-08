@@ -26,6 +26,7 @@ PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(enc
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
 STANCES = {"亲历", "转述", "推断", "观点"}
 RETRY_DELAYS = (60, 300, 900)
+PARTICIPANT_NUMBER = re.compile(r"(?<![A-Za-z0-9_])P[0-9]+(?![A-Za-z0-9_])")
 
 
 def _score(value: Any, default: int) -> int:
@@ -184,7 +185,33 @@ class LearningEngine:
         return material, number_to_id, refs
 
     @staticmethod
+    def _subject_reference(name: str, snapshot: dict[str, Any], *, literal: bool = False) -> str:
+        """Keep verified labels as identity refs, but expand refs in durable names."""
+        numbers = PARTICIPANT_NUMBER.findall(name)
+        if not numbers:
+            return name
+        participants = snapshot["participant_refs"]
+        if any(ref not in participants for ref in numbers):
+            raise ValueError("unknown participant number")
+        names = {ref: next(s["name"] for s in snapshot["subjects"] if s["id"] == participants[ref])
+                 for ref in numbers}
+        stripped = name.strip()
+        if stripped in participants:
+            return names[stripped] if literal else stripped
+        label = re.fullmatch(r"(P[0-9]+)(?:\s*（(.+)）|\s*\((.+)\)|\s+(.+))", stripped)
+        if label:
+            ref = label[1]
+            value = next(part for part in label.groups()[1:] if part is not None).strip()
+            aliases = {a["alias"] for a in snapshot["aliases"] if a["subject_id"] == participants[ref]}
+            if value not in {names[ref], *aliases}:
+                raise ValueError("participant name does not match participant number")
+            # An alias field stores literal text; other fields resolve this ref to an ID.
+            return value if literal else ref
+        return PARTICIPANT_NUMBER.sub(lambda match: names[match[0]], name)
+
+    @staticmethod
     def _known_subject(name: str, snapshot: dict[str, Any]) -> str | None:
+        name = LearningEngine._subject_reference(name, snapshot)
         if name in ("我", snapshot["role_name"]):
             return "self"
         if name in snapshot["participant_refs"]:
@@ -263,12 +290,26 @@ class LearningEngine:
                 raise ValueError("unknown evidence number")
             return list(dict.fromkeys(result))
 
+        def normalize_name(value: Any, section: str, index: int, field: str) -> Any:
+            def normalize(name: str) -> str:
+                result = self._subject_reference(name, snapshot, literal=field == "alias")
+                # New mothers also resolve a parent on insertion. Reject an ambiguous
+                # expanded parent here, while the item can still be dropped safely.
+                if result != name and result.endswith("的妈妈") and not self._known_subject(result, snapshot):
+                    self._known_subject(result[:-3], snapshot)
+                return result
+            after = [normalize(name) for name in value] if field == "about" else normalize(value)
+            if after != value:
+                snapshot["normalizations"].append({"section": section, "index": index, "field": field,
+                    "before": value, "after": after, "reason": "temporary participant reference normalized"})
+            return after
+
         # Resolve declared aliases before memories, including aliases used in this output.
         people = output.get("people", [])
         if not isinstance(people, list):
             dropped.append({"section": "people", "item": people, "reason": "not a list"})
             people = []
-        for item in people:
+        for index, item in enumerate(people):
             try:
                 if not isinstance(item, dict):
                     raise ValueError("not an object")
@@ -277,7 +318,7 @@ class LearningEngine:
                 for key in ["name", *relations]:
                     if not isinstance(item.get(key), str) or not item[key].strip():
                         raise ValueError(f"people {key} must be a nonempty string")
-                    item[key] = item[key].strip()
+                    item[key] = normalize_name(item[key], "people", index, key).strip()
                 if len(relations) != 1:
                     raise ValueError("people needs exactly one relation")
                 ev = evidence(item)
@@ -321,11 +362,12 @@ class LearningEngine:
                     raise ValueError("empty or overlong content")
                 ev = evidence(item)
                 stance = str(item.get("stance") or "")
-                speaker = str(item.get("speaker") or "").strip()
+                speaker = normalize_name(str(item.get("speaker") or ""), "memories", index, "speaker").strip()
                 speaker_id = self._known_subject(speaker, snapshot)
                 about = item.get("about") or []
                 if not isinstance(about, list) or any(not isinstance(name, str) for name in about):
                     raise ValueError("about must be a list of names")
+                about = normalize_name(about, "memories", index, "about")
                 about = ["我" if name.strip() == snapshot["role_name"] else name.strip() for name in about if name.strip()][:10]
                 about_ids = {self._known_subject(name, snapshot) for name in about}
                 if stance == "计划":
@@ -433,6 +475,7 @@ class LearningEngine:
         return accepted, dropped
 
     def _resolve_subject(self, conn: Any, name: str, snapshot: dict[str, Any]) -> str:
+        name = self._subject_reference(name, snapshot)
         known = self._known_subject(name, snapshot)
         if known:
             return known

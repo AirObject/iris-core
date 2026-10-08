@@ -132,7 +132,7 @@ round2/
   0000.json
 ```
 
-每份案例材料是 `{format_version: 1, evaluation: "learning", case_id, corpus_sha256, source_sha256, scoring_version, input}`。`input` 与旧 `_judge` 发给模型的用户输入逐字段相同：`messages`、`must`、`forbidden`、`links`、`goals`、`actual_memories`、`actual_links`、`actual_goals`、`actual_subjects`、`actual_aliases`、`target_segments`。导出只选取学习数据，移除原 `judge`、`judges`、原分歧／票数及对话模型判分调用，避免泄漏旧判分；保留完整学习输出和来源用于复核。
+每份案例材料是 `{format_version: 1, evaluation: "learning", case_id, corpus_sha256, source_sha256, scoring_version, input}`。`input` 与 `_judge` 发给模型的用户输入逐字段相同：`messages`、`must`、`forbidden`、`links`、`goals`、`actual_memories`、`actual_links`、`actual_goals`、`actual_subjects`、`actual_aliases`、`target_segments`，以及新材料中的 `role`。`role: {"name": 角色名, "self_subject_id": "self"}` 的名字取自运行时设置 `role_name`，说明正文中的角色名对应名为“我”的 self 主体；旧检查点／材料缺少此字段时仍可导出和计分，不补造角色信息。导出只选取学习数据，移除原 `judge`、`judges`、原分歧／票数及对话模型判分调用，避免泄漏旧判分；保留完整学习输出和来源用于复核。
 
 `corpus_sha256` 延续现有定义：对本次筛选后的案例列表做 UTF-8、`ensure_ascii=False`、`sort_keys=True` 的 JSON 序列化后计算 SHA-256，不是原 JSONL 文件的字节摘要。`source_sha256` 是学习时记录的源码指纹。清单的 `materials_sha256` 覆盖元数据以及各案例、学习记录、评分说明的文件摘要；计分会复核内容和输入一致性。不要修改导出的材料或指纹。
 
