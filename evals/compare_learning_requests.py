@@ -15,7 +15,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-CORPORA = ('learning_v1.jsonl', 'learning_v2.jsonl', 'learning_v3.jsonl')
+CORPORA = ('learning_v1.jsonl', 'learning_v2.jsonl', 'learning_v3.jsonl', 'learning_v4.jsonl')
 STAMP = '2026-10-06T00:00:00+00:00'
 
 
@@ -23,11 +23,15 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def worker(source: Path, target: Path):
+def worker(source: Path, target: Path, corpora_root: Path):
+    if not (source / 'src/iris/evaluation.py').is_file():
+        raise ValueError(f'invalid source checkout: {source}')
     sys.path.insert(0, str(source / 'src'))
     import numpy as np
     from iris import evaluation, retrieval
     from iris.models import ModelConfig
+    if not Path(evaluation.__file__).resolve().is_relative_to((source / 'src').resolve()):
+        raise ValueError(f'import did not use source checkout: {source}')
 
     class FrozenDateTime(datetime):
         @classmethod
@@ -95,7 +99,7 @@ def worker(source: Path, target: Path):
     evaluation.Gateway = DeterministicGateway
     configs = {'chat': ModelConfig('offline', '', 'deterministic-public-target-v1'),
                'embedding': ModelConfig('offline', '', 'doubao-embedding-vision')}
-    cases = [json.loads(line) for name in CORPORA for line in (source/'evals'/name).read_text(encoding="utf-8").splitlines() if line.strip()]
+    cases = [json.loads(line) for name in CORPORA for line in (corpora_root/'evals'/name).read_text(encoding="utf-8").splitlines() if line.strip()]
     counts = []
     for case in cases:
         current_case = case['id']
@@ -116,17 +120,19 @@ def main():
     parser.add_argument('--candidate', type=Path)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--worker', type=Path)
+    parser.add_argument('--corpora-root', type=Path, help='Shared public corpora checkout (default: candidate)')
     args = parser.parse_args()
     if args.worker:
-        worker(args.worker.resolve(), args.out)
+        worker(args.worker.resolve(), args.out, (args.corpora_root or args.worker).resolve())
         return
     baseline, candidate, out = args.baseline.resolve(), args.candidate.resolve(), args.out.resolve()
     assert not any(out.is_relative_to(p) for p in (baseline, candidate)), 'write full requests outside repositories'
+    corpora_root = (args.corpora_root or candidate).resolve()
     out.mkdir(parents=True, exist_ok=False)
     reports = []
-    for label, source in (('main', baseline), ('pr5', candidate)):
+    for label, source in (('main', baseline), ('candidate', candidate)):
         target = out / (label + '-requests.json')
-        subprocess.run([sys.executable, str(Path(__file__).resolve()), '--worker', str(source), '--out', str(target)], check=True)
+        subprocess.run([sys.executable, str(Path(__file__).resolve()), '--worker', str(source), '--corpora-root', str(corpora_root), '--out', str(target)], check=True)
         reports.append(json.loads(target.read_text(encoding="utf-8")))
     old, new = reports
     assert old['cases_sha256'] == new['cases_sha256']
@@ -137,22 +143,23 @@ def main():
         a, b = before.get(key), after.get(key)
         if a is None or b is None or any(a[f] != b[f] for f in ('messages', 'purpose', 'max_tokens')):
             differences.append({'case': key[0], 'batch': key[1]})
-    result = {'cases': len(old['cases']), 'batches_main': len(before), 'batches_pr5': len(after),
+    result = {'cases': len(old['cases']), 'batches_main': len(before), 'batches_candidate': len(after),
               'nonempty_main': sum(r['related_nonempty'] for r in before.values()),
-              'nonempty_pr5': sum(r['related_nonempty'] for r in after.values()),
+              'nonempty_candidate': sum(r['related_nonempty'] for r in after.values()),
               'memories_main': sum(c['memories'] for c in old['cases']),
-              'memories_pr5': sum(c['memories'] for c in new['cases']),
+              'memories_candidate': sum(c['memories'] for c in new['cases']),
               'different_batches': len(differences), 'differences': differences,
               'cases_sha256': old['cases_sha256'],
+              'corpora': list(CORPORA),
               'source_sha256_main': old['source_sha256'],
-              'source_sha256_pr5': new['source_sha256'],
+              'source_sha256_candidate': new['source_sha256'],
               'request_sha256_main': digest([r['messages'] for r in old['requests']]),
-              'request_sha256_pr5': digest([r['messages'] for r in new['requests']]),
+              'request_sha256_candidate': digest([r['messages'] for r in new['requests']]),
               'script_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'normalization': ['Generated now() timestamps and retrieval clock fixed at '+STAMP,
                                 'Trace identity is public case ID plus ordinal batch number.',
                                 'No normalization of system/user message content, participant or memory refs, order, whitespace, or corpus timestamps.'],
-              'case_counts_main': old['cases'], 'case_counts_pr5': new['cases']}
+              'case_counts_main': old['cases'], 'case_counts_candidate': new['cases']}
     (out/'summary.json').write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
     print(json.dumps({k:v for k,v in result.items() if not k.startswith('case_counts')}, ensure_ascii=False, indent=2))
     if differences:

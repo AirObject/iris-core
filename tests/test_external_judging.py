@@ -91,6 +91,8 @@ def test_export_legacy_checkpoint_removes_all_previous_scores(learned, tmp_path,
     row = run["rows"][0]
     if not has_role:
         row["actual"].pop("role")
+    row.pop("corpus_group")
+    row["actual"].pop("memory_duplicates")
     row.update(judge={"bias": "old-score"}, judges=[{"bias": "old-score"}],
                judge_decisions=1, judge_inconsistencies=[{"bias": "old-score"}])
     row["actual"]["calls"].append({"purpose": "learning_judge", "completion_tokens": 900,
@@ -139,6 +141,8 @@ def test_external_scores_equal_legacy_judge_combine_and_metrics(learned, tmp_pat
     row.update(judge=combined, judge_inconsistencies=differences, judge_decisions=decisions)
     assert report["metrics"]["all"] == ev._metrics([row])
     assert report["details"][0]["judge"] == combined
+    assert report["cases"][0]["memory_duplicates"] == row["actual"]["memory_duplicates"]
+    assert report["corpus_metrics"]["input"] == report["metrics"]["all"]
     assert report["details"][0]["judges"] == judgments
     assert report["judge_inconsistencies"] == differences
     assert report["judge_mode"] == "external" and report["judge_model"] == "executor-test"

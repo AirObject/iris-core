@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from importlib.resources import files
+from itertools import combinations
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +22,13 @@ from .learning import LearningEngine, PROMPT_VERSION, _same_goal
 from .memory_ops import setup_role
 from .models import LEARNING_TOTAL_TIMEOUT, JUDGE_TOTAL_TIMEOUT, Gateway, ModelConfig, ModelError
 from .queue import add_message, form_batch, get_batch
+from .retrieval import Retrieval
+from .vector_index import VectorIndex
 
 
 SCORING_VERSION = "scoring_v3"
 JUDGE_MAX_TOKENS = 16000
+PUBLIC_LEARNING_CORPORA = ("learning_v1", "learning_v2", "learning_v3", "learning_v4")
 SCORING = files("iris").joinpath("prompts", SCORING_VERSION + ".md").read_text(encoding="utf-8")
 
 
@@ -75,7 +79,66 @@ def _case_data(store: Store) -> dict[str, Any]:
             person["aliases"] = [a["alias"] for a in aliases if a["subject_id"] == person["id"]]
     return {"role": {"name": str(store.setting("role_name", "Iris")), "self_subject_id": "self"},
             "memories": memories, "links": links, "goals": goals, "attempts": attempts,
-            "calls": calls, "batches": batches, "identities": identities, "aliases": aliases}
+            "calls": calls, "batches": batches, "identities": identities, "aliases": aliases,
+            "memory_duplicates": _memory_duplicate_stats(store)}
+
+
+def _memory_duplicate_stats(store: Store) -> dict[str, Any]:
+    """Read-only final-state R13 diagnostic; never alters the scoring payload.
+
+    Each evaluation starts in an isolated database with only setup memories, so
+    active non-setup rows are the case's newly written effective memories. Build
+    local indexes from the same snapshot: no model calls or store index hooks.
+    """
+    retrieval = Retrieval(store)
+    with store.read() as conn:
+        memories = [dict(row) for row in conn.execute("""SELECT id,content,speaker_subject_id,stance,
+            world,event_time,revision,lifecycle,embedding,embedding_model FROM memories
+            WHERE lifecycle='active' AND stance!='设定' ORDER BY id""")]
+        for memory in memories:
+            memory["about"] = [dict(row) for row in conn.execute("""SELECT s.id,s.name FROM memory_subjects ms
+                JOIN subjects s ON s.id=ms.subject_id WHERE ms.memory_id=? ORDER BY s.id""", (memory["id"],))]
+    indexes: dict[str, VectorIndex] = {}
+    for memory in memories:
+        model = memory["embedding_model"]
+        if model and memory["embedding"]:
+            if model not in indexes:
+                indexes[model] = VectorIndex(model, retrieval.settings["dtype"])
+            indexes[model].upsert(memory)
+    pairs = []
+    for left, right in combinations(memories, 2):
+        retrieval.index = (indexes.get(left["embedding_model"])
+                           if left["embedding_model"] == right["embedding_model"] else None)
+        if retrieval._duplicate(left, right):
+            pairs.append([left["id"], right["id"]])
+    involved = {mid for pair in pairs for mid in pair}
+    fields = ("id", "content", "speaker_subject_id", "stance", "about", "world", "event_time", "revision")
+    return {"eligible_memories": len(memories),
+            "vector_memories": sum(index.contains(m["id"]) for m in memories
+                                   if (index := indexes.get(m["embedding_model"])) is not None),
+            "pairs": pairs, "memory_ids": sorted(involved),
+            "memories": [{key: m[key] for key in fields} for m in memories if m["id"] in involved]}
+
+
+def _confirmation_stats(actual: dict[str, Any]) -> dict[str, Any]:
+    batches = []
+    for batch in actual.get("batches", []):
+        if batch.get("state") != "succeeded" or not batch.get("result_json"):
+            continue
+        confirmed = json.loads(batch["result_json"]).get("confirmed", [])
+        if confirmed:
+            batches.append({"batch_id": batch["id"], "memory_ids": confirmed})
+    return {"count": sum(len(batch["memory_ids"]) for batch in batches), "batches": batches}
+
+
+def _corpus_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    # Preserve the source filename in rows, rather than guessing by case ID.
+    groups = dict.fromkeys(row["corpus_group"] for row in rows if "corpus_group" in row)
+    result = {group: _metrics([row for row in rows if row.get("corpus_group") == group]) for group in groups}
+    dev = [row for row in rows if row.get("corpus_group") in ("learning_v1", "learning_v3", "learning_v4")]
+    if dev:
+        result["learning_v1+v3+v4"] = _metrics(dev)
+    return result
 
 
 def _normal_name(value: Any) -> bool:
@@ -255,6 +318,8 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     calls = [call for row in rows for call in row["actual"]["calls"]]
     batches = [batch for row in rows for batch in row["actual"]["batches"]]
     new_count = len(memories)
+    duplicate_stats = [row["actual"]["memory_duplicates"] for row in rows if "memory_duplicates" in row["actual"]]
+    duplicates_complete = len(duplicate_stats) == len(rows)
     fact_covered = [value for row in rows for value in row["judge"]["fact_covered"]]
     link_covered = [value for row in rows for value in row["judge"]["link_covered"]]
     goal_covered = [value for row in rows for value in row["judge"]["goal_covered"]]
@@ -315,6 +380,10 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "required_aliases": len(alias_covered), "new_aliases": len(actual_alias_correct),
         "goal_recall": sum(goal_covered) / len(goal_covered) if goal_covered else None,
         "goal_duplicates": sum(item["normal"] for item in duplicates),
+        "duplicate_stats_cases": len(duplicate_stats),
+        "near_duplicate_pairs": sum(len(item["pairs"]) for item in duplicate_stats) if duplicates_complete else None,
+        "near_duplicate_memories": sum(len(item["memory_ids"]) for item in duplicate_stats) if duplicates_complete else None,
+        "reconfirmations": sum(_confirmation_stats(row["actual"])["count"] for row in rows),
         "question_duplicates": sum(item["question"] for item in duplicates),
         "judge_inconsistencies": judge_changes,
         "judge_inconsistency_rate": judge_changes / judge_decisions if judge_decisions else None,
@@ -367,6 +436,9 @@ def _report_markdown(report: dict[str, Any]) -> str:
              ("实际别名数", "new_aliases", "—"), ("必需别名数", "required_aliases", "—"),
              ("目标覆盖率", "goal_recall", "—"),
              ("目标重复数", "goal_duplicates", "—"), ("询问重复数", "question_duplicates", "—"),
+             ("近似重复对数", "near_duplicate_pairs", "仅报告"),
+             ("涉及重复的记忆数", "near_duplicate_memories", "仅报告"),
+             ("再次确认次数", "reconfirmations", "仅报告"),
              ("判分不一致率", "judge_inconsistency_rate", "—"),
              ("批次耗时 P50 ms", "batch_p50_ms", "—"), ("批次耗时 P95 ms", "batch_p95_ms", "—"),
              ("学习生成调用 P95 ms", "learning_call_p95_ms", "—"),
@@ -396,6 +468,40 @@ def _report_markdown(report: dict[str, Any]) -> str:
             else:
                 values.append(_fmt(metric.get(key)))
         lines.append(f"| {label} | {' | '.join(values)} | {threshold} |")
+    if report.get("corpus_metrics"):
+        lines.extend(["", "## 语料分组", "", "公开样本均作 dev；learning_v2 的历史 split 仅用于回归。合计按分子、分母汇总，不平均各段百分比。", "",
+                      "| 分组 | 段数 | 精确率 | 事实召回率 | 误记率 | 证据正确率 | 归属正确率 | 联系精确率 / 召回率 | 别名精确率 / 召回率 | 目标召回率 | 近似重复对数 | 再次确认 |",
+                      "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: |"])
+        for group, metric in report["corpus_metrics"].items():
+            values = [_fmt(metric[key]) for key in ("cases", "precision", "fact_recall", "false_memory_rate",
+                                                     "evidence_accuracy", "attribution_accuracy")]
+            values.extend(f"{_fmt(metric[a])} / {_fmt(metric[b])}" for a, b in
+                          (("link_precision", "link_recall"), ("alias_precision", "alias_recall")))
+            values.extend(_fmt(metric[key]) for key in ("goal_recall", "near_duplicate_pairs", "reconfirmations"))
+            lines.append(f"| {group} | {' | '.join(values)} |")
+    lines.extend(["", "## 近似重复与再次确认（仅报告）", "",
+                  "各段结束时有效且非设定的新记忆两两比较，直接使用 Retrieval._duplicate（R13）："
+                  "speaker、stance、world、event_time、about 相同；数字和否定词序列相同；"
+                  "规范正文相似度 ≥0.88 或同模型向量余弦 ≥0.96。缺向量时仅比较正文。不同段的 ID 独立计数。",
+                  "此统计不改变 scoring_v3 或质量指标，也不作门槛；结构不一致的语义重复可能漏检。"
+                  "再次确认累计成功批次 result_json.confirmed 的条数，同一记忆跨批可多次计数，包含显式确认和写入去重。"
+                  "旧检查点未收集近似重复数据时标为未知。", "",
+                  "| 案例 | 近似重复对数 | 涉及记忆 ID | 再次确认次数 |",
+                  "| --- | ---: | --- | ---: |"])
+    for case in report.get("cases", []):
+        stats = case.get("memory_duplicates")
+        pairs = str(len(stats["pairs"])) if stats is not None else "未知"
+        ids = ", ".join(map(str, stats["memory_ids"])) if stats is not None else "未知"
+        lines.append(f"| {case['id']} | {pairs} | {ids or '—'} | {case.get('confirmations', {}).get('count', 0)} |")
+    for case in report.get("cases", []):
+        stats = case.get("memory_duplicates")
+        if stats and stats["pairs"]:
+            lines.append("")
+            lines.append(f"{case['id']} 配对：" + "；".join(f"#{a} / #{b}" for a, b in stats["pairs"]) + "。")
+            lines.append("")
+            for memory in stats["memories"]:
+                lines.append(f"- #{memory['id']}：{memory['content']}")
+            lines.append("")
     all_metrics = report["metrics"].get("all")
     holdout = report["metrics"].get("holdout")
     if all_metrics and holdout:
@@ -523,9 +629,12 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
         raise ValueError("judge_runs must be 1 or 2")
     if split not in ("dev", "holdout", "all"):
         raise ValueError("invalid split")
-    paths = [corpus.resolve()] if corpus is not None else [root / "evals" / name for name in
-                                                         ("learning_v1.jsonl", "learning_v2.jsonl", "learning_v3.jsonl")]
-    cases = [json.loads(line) for path in paths for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    paths = [corpus.resolve()] if corpus is not None else [root / "evals" / (name + ".jsonl")
+                                                         for name in PUBLIC_LEARNING_CORPORA]
+    inputs = [(json.loads(line), path.stem) for path in paths
+              for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    cases = [case for case, _ in inputs]
+    groups = {case["id"]: group for case, group in inputs}
     if len({c["id"] for c in cases}) != len(cases):
         raise ValueError("duplicate evaluation case IDs")
     if split != "all":
@@ -562,6 +671,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
             checkpoint = checkpoints / f"{index:04}.json"
             if checkpoint.exists():
                 ordered[index] = json.loads(checkpoint.read_text(encoding="utf-8"))
+                ordered[index]["corpus_group"] = groups[case["id"]]
                 resumed += 1
             else:
                 pending[pool.submit(_run_case, configs, case, judge_runs, judge_mode)] = index
@@ -573,6 +683,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
                 failures.append({"case": cases[index]["id"], "error": str(error)})
                 save_checkpoint(checkpoints / "failures.json", failures)
                 continue
+            row["corpus_group"] = groups[cases[index]["id"]]
             ordered[index] = row
             save_checkpoint(checkpoints / f"{index:04}.json", row)
             actual = row["actual"]
@@ -641,7 +752,7 @@ def _write_learning_report(rows: list[dict[str, Any]], root: Path, reports: Path
               "created_at": datetime.now(timezone.utc).isoformat(), "judge_runs": judge_runs,
               "judge_mode": judge_mode, "judge_model": judge_model,
               "materials_sha256": materials_sha256, "judgment_rounds": list(judgment_rounds),
-              "metrics": metrics, "previous": previous,
+              "metrics": metrics, "corpus_metrics": _corpus_metrics(rows), "previous": previous,
               "judge_inconsistencies": [item for row in rows for item in row["judge_inconsistencies"]],
               "parse_failures": parse_failures,
               "generation_calls": [{"case": row["case"]["id"], **{key: call.get(key) for key in
@@ -655,6 +766,9 @@ def _write_learning_report(rows: list[dict[str, Any]], root: Path, reports: Path
                               "memories": row["actual"]["memories"], "judge": row["judge"],
                               "links": row["actual"]["links"], "subjects": row["actual"]["identities"]} for row in sampled],
               "cases": [{"id": row["case"]["id"], "split": row["case"]["split"],
+                         "corpus_group": row.get("corpus_group"),
+                         "memory_duplicates": row["actual"].get("memory_duplicates"),
+                         "confirmations": _confirmation_stats(row["actual"]),
                          "messages": len(row["case"]["messages"]), "batches": len(row["actual"]["batches"]),
                          "new_memories": len(row["actual"]["memories"]),
                          "required_facts": len(row["case"]["must"]),
@@ -717,11 +831,13 @@ def _learning_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     cleaned = []
     for row in rows:
         actual = {key: row["actual"][key] for key in _ACTUAL_FIELDS}
-        if "role" in row["actual"]:
-            actual["role"] = row["actual"]["role"]
+        for key in ("role", "memory_duplicates"):
+            if key in row["actual"]:
+                actual[key] = row["actual"][key]
         actual["calls"] = [call for call in actual["calls"]
                            if call["purpose"] not in ("learning_judge", "learning_judge_repair")]
-        cleaned.append({"case": row["case"], "actual": actual})
+        cleaned.append({"case": row["case"], "actual": actual,
+                        **({"corpus_group": row["corpus_group"]} if "corpus_group" in row else {})})
     return cleaned
 
 
