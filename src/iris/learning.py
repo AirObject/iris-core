@@ -97,6 +97,29 @@ def _memory_ref(value: Any) -> str | None:
     return None
 
 
+def _strip_memory_annotations(text: str) -> str:
+    """Remove material annotations while allowing parentheses inside speaker names."""
+    starts: list[int] = []
+    spans: list[tuple[int, int]] = []
+    for index, char in enumerate(text):
+        if char == "（":
+            starts.append(index)
+        elif char == "）" and starts:
+            start = starts.pop()
+            if re.fullmatch(r"说话人 [^\r\n]+；相信 (?:100|[1-9]?[0-9])", text[start + 1:index]):
+                # An outer annotation can contain a parenthesized speaker name.
+                while spans and spans[-1][0] >= start:
+                    spans.pop()
+                spans.append((start, index + 1))
+    parts = []
+    previous = 0
+    for start, end in spans:
+        parts.append(text[previous:start])
+        previous = end
+    parts.append(text[previous:])
+    return "".join(parts)
+
+
 class LearningEngine:
     def __init__(self, store: Store, gateway: Gateway, *, clock=None):
         self.store = store
@@ -127,6 +150,7 @@ class LearningEngine:
 
     def _material(self, batch: Batch, snapshot: dict[str, Any], related: list[dict[str, Any]]) -> tuple[str, dict[int, int], dict[str, dict[str, Any]]]:
         messages = snapshot["messages"]
+        role_timezone = ZoneInfo(str(self.store.setting("timezone", "Asia/Shanghai")))
         names: dict[str, str] = {}
         for message_id in batch.history_ids + batch.target_ids + batch.future_ids:
             m = messages[message_id]
@@ -165,7 +189,7 @@ class LearningEngine:
                 number += 1
                 number_to_id[number] = message_id
                 m = messages[message_id]
-                dt = datetime.fromisoformat(m["occurred_at"])
+                dt = datetime.fromisoformat(m["occurred_at"]).astimezone(role_timezone)
                 label_type = {"message": "他人消息", "self_output": "我实际发言", "action_result": "我行动结果", "event": "场景事件"}[m["kind"]]
                 quote = f"；引用作者 {subject_label(m['quote_author_subject_id'], m['quote_author_name'])}：{m['quote_content'] or ''}" if m["quote_author_name"] else ""
                 scene = f"（{m['scene_identity']}）" if m["scene_identity"] else ""
@@ -202,7 +226,7 @@ class LearningEngine:
 
     @staticmethod
     def _normalize_output(output: dict[str, Any], refs: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        """Repair only unambiguous shapes; leave raw model output unchanged for audit."""
+        """Repair deterministic output artifacts; leave raw model output unchanged for audit."""
         output = copy.deepcopy(output)
         notes = []
         for section in ("memories", "updates", "people"):
@@ -215,6 +239,12 @@ class LearningEngine:
                 def note(field: str, before: Any, after: Any, reason: str) -> None:
                     notes.append({"section": section, "index": index, "field": field,
                                   "before": before, "after": after, "reason": reason})
+                if section in ("memories", "updates") and isinstance(item.get("content"), str):
+                    before = item["content"]
+                    after = _strip_memory_annotations(before)
+                    if before != after:
+                        item["content"] = after
+                        note("content", before, after, "copied memory annotation removed")
                 if section == "people":
                     for field in ("name", "alias", "same_as", "roleplay"):
                         value = item.get(field)
