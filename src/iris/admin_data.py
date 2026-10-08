@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from .retrieval import Retrieval
 from .search_text import segmented
@@ -142,3 +144,134 @@ def trial_snapshot(store, entry_id, *, before=None):
                     ORDER BY m.updated_at DESC,m.id DESC LIMIT 12""", (entry_id, entry_id)),
                 "persona": dict(persona) if persona else {"version": None, "content": "", "generated_at": None},
                 "state": {}, "goals": Retrieval._goals(conn, entry_id, 10)}
+
+
+BATCH_COLUMNS = """b.id,b.entry_id,b.state,b.attempt_count,b.next_retry_at,b.last_error,
+    b.prompt_version,b.created_at,b.finished_at,b.result_json"""
+CALL_COLUMNS = """id,purpose,model,duration_ms,result_category,error_summary,status_code,
+    created_at,finish_reason,reasoning_effort,timed_out"""
+
+
+def batch_summary(row):
+    item = dict(row)
+    result = json.loads(item.pop("result_json"))
+    item["result"] = {key: result.get(key, []) for key in ("created", "updated", "confirmed")}
+    # reset_batch retains the previous terminal timestamp; it isn't the end of
+    # this new run. Attempts and the gap still retain the historical timestamps.
+    if item["state"] in ("waiting", "running"):
+        item["finished_at"] = None
+    item["can_relearn"] = item["state"] in ("abandoned", "refused")
+    return item
+
+
+def learning_entries(store):
+    with store.read() as conn:
+        items = [dict(r) for r in conn.execute("""SELECT e.*,
+            (SELECT COUNT(*) FROM messages m WHERE m.entry_id=e.id
+                AND m.learning_state IN ('pending','batched')) AS pending_count
+            FROM entries e ORDER BY e.name,e.id""")]
+        for entry in items:
+            latest = conn.execute(f"SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=? ORDER BY b.id DESC LIMIT 1", (entry["id"],)).fetchone()
+            current = conn.execute(f"""SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=?
+                AND b.state IN ('waiting','running') ORDER BY b.id LIMIT 1""", (entry["id"],)).fetchone()
+            entry["latest_batch"] = batch_summary(latest) if latest else None
+            entry["current_batch"] = batch_summary(current) if current else None
+        return {"items": items}
+
+
+def learning_filter(store, *, entry_id, time_from, time_to, entry_column, start_column, end_column):
+    clauses, args, bounds = [], [], {}
+    zone = ZoneInfo(str(store.setting("timezone", "Asia/Shanghai")))
+    if entry_id:
+        clauses.append(f"{entry_column}=?")
+        args.append(entry_id)
+    for value, column, operator in ((time_from, end_column, ">="), (time_to, start_column, "<=")):
+        if not value:
+            continue
+        stamp = datetime.fromisoformat(value)
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=zone)
+        if operator == "<=" and len(value) == 10:
+            try:
+                stamp += timedelta(days=1)
+            except OverflowError as error:
+                raise ValueError("结束日期超出支持范围") from error
+            operator = "<"
+        bounds[operator] = stamp
+        clauses.append(f"julianday({column}){operator}julianday(?)")
+        args.append(stamp.isoformat())
+    since, until = bounds.get(">="), bounds.get("<=", bounds.get("<"))
+    if since and until and (since > until or ("<" in bounds and since == until)):
+        raise ValueError("开始时间不能晚于结束时间")
+    return " AND ".join(clauses) or "1", args
+
+
+def learning_batches(store, *, entry_id=None, time_from=None, time_to=None, limit=30, offset=0):
+    where, args = learning_filter(store, entry_id=entry_id, time_from=time_from, time_to=time_to,
+                                  entry_column="b.entry_id", start_column="b.created_at", end_column="b.created_at")
+    with store.read() as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM batches b WHERE {where}", args).fetchone()[0]
+        items = [batch_summary(r) for r in conn.execute(f"""SELECT {BATCH_COLUMNS},e.name AS entry_name,
+            EXISTS(SELECT 1 FROM memory_gaps g WHERE g.batch_id=b.id) AS has_gap
+            FROM batches b JOIN entries e ON e.id=b.entry_id WHERE {where}
+            ORDER BY b.id DESC LIMIT ? OFFSET ?""", [*args, limit, offset])]
+        for item in items:
+            item["relearning"] = bool(item.pop("has_gap") and item["state"] in ("waiting", "running"))
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+def batch_detail(store, batch_id):
+    with store.read() as conn:
+        row = conn.execute("SELECT * FROM batches WHERE id=?", (batch_id,)).fetchone()
+        if row is None:
+            raise KeyError(batch_id)
+        detail = batch_summary(row)
+        detail["result"] = json.loads(row["result_json"])
+        detail["entry"] = dict(conn.execute("SELECT id,name,platform,kind,pace FROM entries WHERE id=?", (row["entry_id"],)).fetchone())
+        detail["segments"] = {}
+        for segment, column in (("history", "history_ids"), ("target", "target_ids"), ("future", "future_ids")):
+            ids = json.loads(detail.pop(column))
+            rows = conn.execute(f"""SELECT m.*,s.name AS sender_name,q.name AS quote_author_name FROM messages m
+                JOIN subjects s ON s.id=m.sender_subject_id LEFT JOIN subjects q ON q.id=m.quote_author_subject_id
+                WHERE m.id IN ({','.join('?' for _ in ids)})""", ids).fetchall() if ids else []
+            by_id = {r["id"]: dict(r) for r in rows}
+            detail["segments"][segment] = [by_id.get(i, {"id": i, "missing": True}) for i in ids]
+        attempts = [dict(r) for r in conn.execute("SELECT * FROM batch_attempts WHERE batch_id=? ORDER BY number", (batch_id,))]
+        # The gateway stores only message.content in raw/repair_output. Project a
+        # whitelist of call diagnostics, never provider envelopes or reasoning.
+        calls = [dict(r) for r in conn.execute(f"""SELECT {CALL_COLUMNS} FROM model_calls
+            WHERE batch_id=? AND purpose IN ('learning','learning_repair') ORDER BY id""", (batch_id,))]
+        for attempt in attempts:
+            attempt["calls"] = []
+        unassigned = []
+        for call in calls:
+            stamp = datetime.fromisoformat(call["created_at"])
+            matches = [a for a in attempts if datetime.fromisoformat(a["started_at"]) <= stamp <= datetime.fromisoformat(a["finished_at"])]
+            if len(matches) == 1:
+                matches[0]["calls"].append(call)
+            else:
+                unassigned.append(call)
+        detail["attempts"], detail["unassigned_calls"] = attempts, unassigned
+        detail["memories"] = []
+        for change in ("created", "updated", "confirmed"):
+            for mid in detail["result"].get(change, []):
+                memory = conn.execute("SELECT id,content,lifecycle,revision FROM memories WHERE id=?", (mid,)).fetchone()
+                detail["memories"].append({**(dict(memory) if memory else {"id": mid, "missing": True}), "change": change})
+        gap = conn.execute("SELECT batch_id,entry_id,started_at,ended_at,reason,created_at FROM memory_gaps WHERE batch_id=?", (batch_id,)).fetchone()
+        detail["gap"] = dict(gap) if gap else None
+        detail["relearning"] = bool(gap and row["state"] in ("waiting", "running"))
+    return detail
+
+
+def memory_gaps(store, *, entry_id=None, time_from=None, time_to=None, limit=30, offset=0):
+    where, args = learning_filter(store, entry_id=entry_id, time_from=time_from, time_to=time_to,
+                                  entry_column="g.entry_id", start_column="g.started_at", end_column="g.ended_at")
+    with store.read() as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM memory_gaps g WHERE {where}", args).fetchone()[0]
+        items = [dict(r) for r in conn.execute(f"""SELECT g.batch_id,g.entry_id,g.started_at,g.ended_at,g.reason,g.created_at,
+            e.name AS entry_name,b.state AS batch_state
+            FROM memory_gaps g JOIN entries e ON e.id=g.entry_id JOIN batches b ON b.id=g.batch_id
+            WHERE {where} ORDER BY julianday(g.started_at) DESC,g.batch_id DESC LIMIT ? OFFSET ?""", [*args, limit, offset])]
+        for item in items:
+            item["relearning"] = item["batch_state"] in ("waiting", "running")
+    return {"items": items, "total": total, "limit": limit, "offset": offset}

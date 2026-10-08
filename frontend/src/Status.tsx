@@ -173,25 +173,22 @@ export default function Status({ data }: { data: StatusData | null }) {
             <p className="quiet">近 24 小时没有学习调用。</p>
           ) : (
             <div className="call-list">
-              {data.learning_calls_24h
-                .slice(-12)
-                .reverse()
-                .map((c, i) => (
-                  <div className="call" key={i}>
-                    <span>
-                      批次 #{c.batch_id} · {purposes[c.purpose] || c.purpose}
-                    </span>
-                    <strong>{seconds(c.duration_ms)}</strong>
-                    {c.timed_out ? (
-                      <Badge tone="danger">超时</Badge>
-                    ) : c.error_summary ? (
-                      <Badge tone="danger">失败</Badge>
-                    ) : (
-                      <Badge tone="green">调用完成</Badge>
-                    )}
-                    {c.error_summary && <small>{c.error_summary}</small>}
-                  </div>
-                ))}
+              {data.learning_calls_24h.slice(0, 12).map((c, i) => (
+                <div className="call" key={i}>
+                  <span>
+                    批次 #{c.batch_id} · {purposes[c.purpose] || c.purpose}
+                  </span>
+                  <strong>{seconds(c.duration_ms)}</strong>
+                  {c.timed_out ? (
+                    <Badge tone="danger">超时</Badge>
+                  ) : c.error_summary ? (
+                    <Badge tone="danger">失败</Badge>
+                  ) : (
+                    <Badge tone="green">调用完成</Badge>
+                  )}
+                  {c.error_summary && <small>{c.error_summary}</small>}
+                </div>
+              ))}
             </div>
           )}
           <p className="fine-print">

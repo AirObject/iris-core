@@ -47,7 +47,8 @@ def service_status(store, scheduler, health, *, clock=utc_now):
             result_category,status_code,finish_reason,prompt_tokens,completion_tokens,reasoning_tokens,
             reasoning_effort,reasoning_present,reasoning_chars FROM model_calls
             WHERE purpose IN ('learning','learning_repair') AND julianday(created_at)>=julianday(?)
-            AND julianday(created_at)<=julianday(?)""", ((current-timedelta(hours=24)).isoformat(), current.isoformat())).fetchall()
+            AND julianday(created_at)<=julianday(?) ORDER BY created_at DESC,id DESC""",
+            ((current-timedelta(hours=24)).isoformat(), current.isoformat())).fetchall()
         durations = [r["duration_ms"] for r in learning]
         result = {"service": "ready", "models": latest_models(conn), "backlog": entries, "entries": entries,
                   "batches": batches, "memory_gap_count": conn.execute("SELECT COUNT(*) FROM memory_gaps").fetchone()[0],

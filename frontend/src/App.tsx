@@ -6,11 +6,13 @@ import SettingsPage from "./Settings";
 import Trial from "./Trial";
 import { MemoryList, MemoryDetail } from "./Memory";
 import StatusPage from "./Status";
+import LearningPage from "./Learning";
 import type { Status } from "./types";
 
 const routes = [
   { id: "trial", name: "试用对话", icon: "chat" },
   { id: "memories", name: "记忆", icon: "memory" },
+  { id: "learning", name: "入口与学习", icon: "learning" },
   { id: "status", name: "运行状态", icon: "status" },
   { id: "settings", name: "设置", icon: "settings" },
 ];
@@ -27,6 +29,10 @@ function Icon({ name }: { name: string }) {
     >
       {name === "chat" ? (
         <path d="M20 11.5a8 8 0 0 1-8 8H5l-3 2 1.5-5A8 8 0 1 1 20 11.5ZM7 10h8M7 14h5" />
+      ) : name === "learning" ? (
+        <>
+          <path d="M4 4h16v5H4zM4 14h7v6H4zM16 14h4v6h-4M8 9v5M18 9v5" />
+        </>
       ) : name === "memory" ? (
         <>
           <rect x="5" y="3" width="14" height="18" rx="3" />
@@ -128,6 +134,8 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
             <SettingsPage />
           ) : route === "memories" ? (
             <MemoryList version={version} openMemory={openMemory} />
+          ) : route === "learning" ? (
+            <LearningPage openMemory={openMemory} />
           ) : route === "status" ? (
             <StatusPage data={status.data} />
           ) : (
