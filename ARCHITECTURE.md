@@ -149,7 +149,7 @@ memory_ops 的人工正文编辑与删除都核对预期修订号，并在同一
 
 迁移 008 添加 maintenance_runs（阶段游标与固定大小的汇总计数）／maintenance_items（仅实际变更与失败）、memory_dependency_losses（每对来源的一次性扣减）、maintenance_batch_retries（每批一次）、batch_message_refs（冻结 JSON 段的引用索引），扩展 admin_operations 的对象字段，并在 memories 保存中等重要度的衰减余数和 purged_at。升级回填批次引用、当前失效依据及人工修订操作标识；在事务内延迟外键检查并原样重建 messages 为 AUTOINCREMENT，防止已清理消息的 ID 被复用。原始记忆与检索排序保持原样。
 
-`adjust_retention(store, id, delta=0, *, value=None, floor=None, expected_revision=None, current=None, settings=None, _conn=None)` 接受原子增量、绝对值或下限；有 _conn 时加入调用者的短事务，否则自行开启 Store.write。缺失／已删除／修订不符返回 None；成功返回最新行。截断、双阈值与 forgotten_at 同事务，不加修订号，不写日常修订。`confirm_retention(..., _conn=conn)` 读取 confirmation_increment 并更新 last_confirmed_at；学习线应在 confirm_once 中调用，继续用 confirmed_once 保证每批一次，本线不修改 learning.py。反馈、管理员强度、维护衰减及 M11 已共用此接口。
+`adjust_retention(store, id, delta=0, *, value=None, floor=None, expected_revision=None, current=None, settings=None, _conn=None)` 接受原子增量、绝对值或下限；有 _conn 时加入调用者的短事务，否则自行开启 Store.write。缺失／已删除／修订不符返回 None；成功返回最新行。截断、双阈值与 forgotten_at 同事务，不加修订号，不写日常修订。`confirm_retention(..., _conn=conn)` 读取 confirmation_increment 并更新 last_confirmed_at；学习线应在 confirm_once 中调用，继续用 confirmed_once 保证每批一次，确认逻辑由学习线接入。反馈、管理员强度、维护衰减及 M11 已共用此接口。
 
 Scheduler 的独立单工作线程执行 Maintenance，不占学习、模型探测或向量补算线程。模型暂停不阻止维护。按实例时区判断每日时点；错过多个时点只接受最近一次，启动补跑要求超过 24 小时无完成运行且所有入口安静 10 分钟。未完成运行持久续跑。请求时固定设置、时区与对象上界；每次读至多 128 个候选，逐项短事务重读最新状态，校验正文／判断修订号，变更、阶段游标和检查计数原子提交；依赖阶段按持久事件 rowid 前进，覆盖新产生的低 ID 级联对象。只为实际变更和失败写 maintenance_items，衰减计数推进、checked、skipped 不逐项留日志；报告汇总各阶段检查数及跳过原因。失败项目回滚后只记错误类别；修订冲突跳过，下次运行重选。中断保留未完成阶段，停止服务时在项目之间退出。
 

@@ -45,6 +45,7 @@ def test_trial_reply_dedupe_key_does_not_protect_original_or_reply(store):
 @pytest.mark.parametrize("state", ["abandoned", "refused"])
 def test_cleared_target_has_placeholder_and_relearn_409_keeps_gap(client, store, state):
     batch = terminal_batch(store, state)
+    attempt_count = get_batch(store, batch.id).attempt_count
     before = gap(store)
     with store.write() as conn:
         conn.execute("UPDATE messages SET received_at=?", ((Clock()()-timedelta(days=31)).isoformat(),))
@@ -58,6 +59,8 @@ def test_cleared_target_has_placeholder_and_relearn_409_keeps_gap(client, store,
     assert not detail["can_relearn"] and "已清理" in detail["relearn_blocked_reason"]
     response = client.post(f"/admin/api/batches/{batch.id}/relearn", json={})
     assert response.status_code == 409 and "已清理" in response.json()["error"]["message"]
+    assert response.json()["error"]["code"] == "batch_targets_cleared"
+    assert get_batch(store, batch.id).attempt_count == attempt_count
     assert gap(store) == before
     with store.read() as conn:
         assert conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()[0] == state
@@ -209,6 +212,48 @@ def test_learning_with_cleared_context_and_intact_target(store):
         conn.execute("DELETE FROM messages WHERE id=?", (history,))
     LearningEngine(store, FakeGateway()).run_batch(second.id)
     assert get_batch(store, second.id).state == "succeeded"
+
+
+
+@pytest.mark.parametrize("segment,label,cleared_index", [
+    ("history", "历史段（仅供理解）", 1),
+    ("future", "后续段（仅供理解）", 3),
+])
+def test_material_shortens_only_cleared_context(store, segment, label, cleared_index):
+    contents = ["保留的历史", "将被清理的历史", "完整的目标", "将被清理的后续", "保留的后续"]
+    ids = [msg(store, i+1, text, sender=f"参与人{i+1}") for i, text in enumerate(contents[:2])]
+    first = form_batch(store, "A", "v6")
+    engine = LearningEngine(store, FakeGateway())
+    engine.run_batch(first.id)
+    ids += [msg(store, i+1, contents[i], sender=f"参与人{i+1}") for i in range(2, 5)]
+    batch = form_batch(store, "A", "v6", target_count=1, future_count=2, history_count=2)
+    before, _, _ = engine._material(batch, engine._snapshot(batch), [])
+    with store.write() as conn:
+        conn.execute("DELETE FROM messages WHERE id=?", (ids[cleared_index],))
+    snapshot = engine._snapshot(batch)
+    material, numbers, _ = engine._material(batch, snapshot, [])
+    def section(text):
+        return text.split(f"—— {label} ——\n", 1)[1].split("\n—— ", 1)[0]
+    assert len(section(before).splitlines()) == 2
+    assert len(section(material).splitlines()) == 1
+    assert contents[cleared_index] not in material and contents[2] in material
+    assert f"参与人{cleared_index+1}" not in material
+    assert list(numbers) == [1, 2, 3, 4]
+    assert list(numbers.values()) == ids[:cleared_index] + ids[cleared_index+1:]
+    assert get_batch(store, batch.id) == batch  # Frozen ranges are not rewritten.
+    assert len(getattr(batch, f"{segment}_ids")) == 2
+
+
+def test_material_does_not_silently_skip_a_missing_target(store):
+    missing = msg(store, 1, "缺失的目标")
+    msg(store, 2, "仍在的目标")
+    batch = form_batch(store, "A", "v6")
+    with store.write() as conn:
+        conn.execute("DELETE FROM messages WHERE id=?", (missing,))
+    engine = LearningEngine(store, FakeGateway())
+    with pytest.raises(KeyError) as exc:
+        engine._material(batch, engine._snapshot(batch), [])
+    assert exc.value.args == (missing,)
 
 
 def test_cursor_and_unlogged_visit_roll_back_together(store, monkeypatch):
