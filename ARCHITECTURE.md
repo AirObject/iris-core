@@ -139,3 +139,5 @@ memory_ops 的人工正文编辑与删除都核对预期修订号，并在同一
 详情按冻结的 history_ids／target_ids／future_ids 读取消息原文、类型、发送者和引用，不重新组织学习材料。batch_attempts 保存的 raw_output／repair_output 是 Gateway 提取的 message.content，页面作为文本折叠显示；model_calls 仅使用白名单诊断字段，不返回推理正文或推理统计字段。通过同批次、起止时间区间匹配已完成尝试；没有唯一匹配的调用单列（包括在途／崩溃前记录），不虚构关联或使用当前配置补齐历史档位。规整和丢弃项读取 result_json，形成／更新／确认的记忆显示当前版本并链接修订历史。
 
 重新学习复用 reset_batch，新增可传入已有写事务的内部参数，让状态变更与 batch_relearn 操作记录原子提交。只有放弃或内容拒绝可改为 waiting，本轮 attempt_count 清零，原始批次范围和历史尝试不动；Scheduler 既有每入口在途任务控制维持串行，无需改调度器。旧 finished_at 是上一次终止时间，当前 waiting／running 的只读投影不把它当作新一轮结束时间。修复原实现提前删除缺口的行为：重新排队后保留，失败按唯一 batch_id 更新，只有学习成功事务删除，符合设计 7.6、17.7。recover_inflight 在第 4 次尝试中断时同样使用 INSERT OR REPLACE，字段和 attempts_exhausted 原因不变；管理投影不暴露会变化的 memory_gaps.id，页面的键与链接均用 batch_id。页面不能把已接收、批次结束、零记忆成功或放弃／拒绝混为一谈。
+
+试用页的角色回复开关按入口存于浏览器 localStorage，新入口和读取失败时初始关闭，不写入服务端设置。存储不可用或读写失败时不保存选择，当前页面仍可开启，刷新或重新挂载后回到关闭。

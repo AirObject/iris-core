@@ -400,7 +400,7 @@ test("role replies persist per entry across switching and remounting", async () 
 });
 
 test.each(["read", "write", "unavailable"])(
-  "storage %s failure keeps replies off and messages usable",
+  "storage %s failure leaves replies usable and defaults off on remount",
   async (failure) => {
     if (failure === "unavailable")
       vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
@@ -413,13 +413,9 @@ test.each(["read", "write", "unavailable"])(
       ).mockImplementation(() => {
         throw new Error("disabled");
       });
-    render(<App />);
+    const first = render(<App />);
     const toggle = await screen.findByRole("checkbox", { name: "角色回复" });
     expect(toggle).not.toBeChecked();
-    if (failure !== "read") {
-      await userEvent.click(toggle);
-      expect(toggle).not.toBeChecked();
-    }
     await userEvent.type(
       screen.getByLabelText("消息内容"),
       "存储异常时仍可发送",
@@ -428,5 +424,27 @@ test.each(["read", "write", "unavailable"])(
     expect(await screen.findByText("存储异常时仍可发送")).toBeVisible();
     expect(requests.some((r) => r.url.endsWith("/reply"))).toBe(false);
     expect(requests.some((r) => r.url.endsWith("/prepare"))).toBe(true);
+
+    await userEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    await userEvent.type(
+      screen.getByLabelText("消息内容"),
+      "存储异常时仍可请求角色回复",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+    expect(await screen.findByText("角色回复失败，原消息已保存")).toBeVisible();
+    expect(screen.getByText("存储异常时仍可请求角色回复")).toBeVisible();
+    expect(requests.filter((r) => r.url.endsWith("/reply"))).toHaveLength(1);
+    expect(requests.filter((r) => r.url.endsWith("/prepare"))).toHaveLength(1);
+
+    first.unmount();
+    render(<App />);
+    expect(
+      await screen.findByRole("checkbox", { name: "角色回复" }),
+    ).not.toBeChecked();
   },
 );

@@ -156,11 +156,11 @@ function Conversation({
     }
   });
   function changeReplies(enabled: boolean) {
+    setReplies(enabled);
     try {
       window.localStorage.setItem(repliesKey, String(enabled));
-      setReplies(enabled);
     } catch {
-      setReplies(false);
+      // The current page can still use the choice when storage is unavailable.
     }
   }
   const [busy, setBusy] = useState(false);

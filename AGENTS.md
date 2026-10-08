@@ -135,4 +135,4 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 `POST /admin/api/batches/{id}/relearn` 使用既有管理员会话与 CSRF，JSON 体为 `{}`。只接收 abandoned／refused；在一个写事务中调用 reset_batch 并写 admin_operations 的 batch_relearn，重复或并发请求只有一次成功，其余 409。保留原三段与 batch_attempts，attempt_count 归零，历史尝试编号继续增长；缺口必须保留到 learning.py 现有成功事务清除。再次失败沿用 batch_id 唯一缺口的更新；recover_inflight 同样用 INSERT OR REPLACE，管理接口及页面用 batch_id 标识缺口，不用替换时会改变的行号。页面在 waiting／running 仍有缺口时显示“重新学习中”；waiting 的普通失败走既有自动重试，不重置额度。读页面不会触发重新学习。学习逻辑和提示词由学习会话维护。
 
-运行状态的 learning_calls_24h 按 created_at、id 倒序返回，页面取前 12 条；统计仍使用全部 24 小时记录。角色回复开关按入口存于浏览器 localStorage，新入口与存储失败时默认关闭；不把它变成服务端设置。
+运行状态的 learning_calls_24h 按 created_at、id 倒序返回，页面取前 12 条；统计仍使用全部 24 小时记录。角色回复开关按入口存于浏览器 localStorage，新入口默认关闭；存储不可用或读写失败时不保存选择，当前页面仍可开启，刷新或重新挂载后回到关闭；不把它变成服务端设置。
