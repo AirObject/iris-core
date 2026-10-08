@@ -7,7 +7,7 @@
 | 范围 | 表 |
 | --- | --- |
 | 入口与批次 | `entries`、`messages`、`batches`、`batch_attempts`、`memory_gaps` |
-| 主体 | `subjects`、`subject_aliases`、`platform_identities`、`subject_links` |
+| 主体 | `subjects`、`subject_aliases`、`platform_identities`、`subject_links`、`subject_alias_blocks` |
 | 记忆 | `memories`、`memory_subjects`、`memory_tags`、`sources`、`memory_revisions` |
 | 自我与目标 | `persona_versions`、`goals`、`goal_sources`、`runtime_settings` |
 | 模型 | `model_calls` |
@@ -16,6 +16,22 @@
 `messages` 保留原文、类型、场景身份、引用作者、发生与接收时间、入口内去重键及学习状态。场景事件使用固定 `scene` 主体；`self_output` 和 `action_result` 使用 `self` 主体。迁移 002 将已有 event 消息改到场景主体，并为目标补上入口范围。被引用作者按账号匹配；仅有显示名时，只在当前入口唯一匹配参与者，否则新建不绑定账号的提及主体。`batches` 冻结历史、目标、后续三段的消息 ID；每次尝试留原始输出、修正输出及错误。`sources` 直接指原始消息，或指向来源记忆和当时修订号。记忆正文和判断变化写 `memory_revisions` 并增加修订号；确认和使用反馈只原子增加保留强度。
 
 迁移 003 为 `model_calls` 增加 `finish_reason` 和可空的 `batch_id`，原有 `completion_tokens` 包含服务商报告的输出总用量，推理 token 单列。为 `subject_aliases` 增加 `source_message_id`；旧别名没有来源时保留 NULL，不伪造证据。本人声明的 `{name, alias, evidence}` 直接写到该主体的别名，要求目标段有本人消息或本人被引用的证据，拒绝与当前显示名相同的别名；别名文字必须出现于目标段的本人正文或本人被引用的原话，不能借另一个作者的文字。此条件不能代替对“本人声明”的语义判断。不创建别名主体，也不合并已有账号。`same_as` 仍是带相信程度的可能身份联系；`roleplay` 仍连接参与者与虚构角色。
+
+## 人物身份与人工确认（M2）
+
+`people.py` 提供管理投影、身份操作和选取后的标注。迁移 010 为 subjects 增加不可反向改写的 `merged_into`、`merged_at` 与人物修订号；`canonical_subject(conn, id)` 在调用者的快照／写事务内沿显式合并链返回最终 ID，未知 ID 拒绝，不按显示名猜人。别名、联系及身份变更推进人物修订号；记忆的新写入不推进人物修订号，合并在获得写锁后读取全部最新关系。
+
+确认接口核对联系及两个人物的修订号，在单一短写事务中迁移账号、别名、memory_subjects、speaker 和从属人物，再提交占位及 IDs-only 操作记录。整个操作可回滚，不触碰 memories 的正文、修订号、分数、时间或向量。历史 messages 的作者 ID 保留；queue 的账号入口和合并主体的引用作者解析使用最终 ID，prepare 的自动参与者同样解析最终 ID。无合并时的引用作者规则保持原样。
+
+same_as 仍保留原 `(subject_a, subject_b, kind)` 唯一键供学习 UPSERT 使用，同时增加无向主体对唯一索引与规范方向触发器。升级折叠旧的反向重复行，否认优先。denied 行不能被删除或改回 possible，也不能由学习插入同向／反向的新联系；BEFORE INSERT 直接忽略这类再次提出的联系，不使整个学习批次失败。折叠旧联系以 `folded_into` 指向保留项；确认并合并的联系设置 `resolved_at`。这些历史记录不参与待确认列表或召回标注，原证据仍由现有 maintenance 的 subject_links 引用检查保护。
+
+subject_aliases 增加不复用的整数 ID，保持原 subject_id／alias 唯一键；重复别名折叠行也保留证据，并通过 `folded_into` 排除活动读取。手动删除将字面别名放入 `subject_alias_blocks`，后续学习插入被数据库忽略；管理员显式重新添加解除阻止。删除时同时清除该别名的折叠档案。合并迁移删除决定，默认保留管理员的删除；B 的显示名是确认合并所明确授权的例外。
+
+已合并主体不能成为新记忆的说话人／涉及人、新账号、新别名、新活动联系或新从属主体的 parent，迁移触发器对这些写入作最后保护。保护不代替学习的事务内解析：当前学习仍缓存旧 ID，需要 v7 合入后在 `_snapshot`／`_resolve_subject`／`_apply` 接入 canonical_subject，在证据校验后、去重查询前解析 speaker、about、alias owner、联系端点和 parent；这一接入本阶段尚未修改，测试以明确原因标为 xfail。
+
+`annotate_memories` 仅在 search 选取后和 prepare 判断、逐项复核后调用；不在 `_hydrate`、`_select` 或 learning_context 中添加字段。标注只读取所选记忆涉及者／说话人的活动联系，扮演返回 actor／character／worlds／fictional，可能身份返回两个主体及 belief。只有管理详情读取联系证据正文；宿主标注不包含跨入口原始消息。判断期间发生合并或否认时，返回使用最新关系，但保留原判断、顺序和 reason，沿用原逐条修订复核。
+
+FTS 存的是记忆正文与标签，不存人物显示名。关系合并更新 about／speaker 关系索引与主体别名，不向正文或 tags 追加名字，也不重算向量；点名候选与正文点名校验使用当前有效主体／别名，按 A 或保留的 B 名字均可找到迁移的记忆。
 
 ## 学习路径
 
@@ -74,7 +90,7 @@ trigram 下不足三个字符的实词另查现有 jieba 索引，包括长短�
 
 回复准备先选相关记忆，剩余名额用当前参与者的有效记忆按重要度补位。人物要点排除 self／scene，参与者按最近 20 条消息的最后发言先后轮流选取；宿主指定时按传入顺序。合计最多三条要点，相关项标记 `reason=relevant`，补位项标记 `reason=person_highlight`，重合时 relevant 优先。两类都受点名范围限制；search 不补人物要点。
 
-递归追溯来源，全部来源已在本次返回的近期消息里、宿主已有 ID 和高度重复的记忆不占名额。去重核对主体、说话人、立场、世界、时间，数字或否定不同不合并。最终最多八条，含 reason 的序列化内容不超过 1500 估算 token；超预算整条跳过，不截断正文。来源只返回元数据，不读取其他入口消息正文。
+递归追溯来源，全部来源已在本次返回的近期消息里、宿主已有 ID 和高度重复的记忆不占名额。去重核对主体、说话人、立场、世界、时间，数字或否定不同不合并。最终最多八条，追加人物关系标注前、含 reason 的序列化内容不超过 1500 估算 token；超预算整条跳过，不截断正文。来源只返回元数据，不读取其他入口消息正文。
 
 prepare 返回当前 persona 版本／时间、本入口近期消息及未学习标记、空 state、至多十个未结束目标、本入口缺口和模型失败提示。search 支持正文、主体、类型、立场、事件时间及 include_forgotten；两者均写 `recalls` 和 `recall_items`，记录请求、返回 ID 与当时修订号，返回不增加保留强度。
 

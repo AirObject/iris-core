@@ -247,11 +247,13 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     def learn(entry_id: str):
         return app.state.scheduler.request_learning(entry_id)
 
-    @app.post("/api/v1/entries/{entry_id}/prepare", summary="准备回复材料，不生成回复正文")
+    @app.post("/api/v1/entries/{entry_id}/prepare", summary="准备回复材料，不生成回复正文",
+              description="memories[].subject_annotations 附带 possible_same_as（联系双方、belief）与 roleplay（actor、character、worlds、fictional）。标注在选取和判断之后追加，不包含联系证据原文。")
     def prepare(entry_id: str, payload: Prepare):
         return add_health_hints(Retrieval(app.state.store, app.state.gateway).prepare(entry_id, **payload.model_dump()), app.state.health)
 
-    @app.post("/api/v1/memories/search", summary="筛选并查询记忆；深度读取不恢复遗忘记忆")
+    @app.post("/api/v1/memories/search", summary="筛选并查询记忆；深度读取不恢复遗忘记忆",
+              description="memories[].subject_annotations 同 prepare：标明可能是同一人和虚构扮演关系；不改变选取顺序，不返回否认的联系。")
     def search(payload: Search):
         return add_health_hints(Retrieval(app.state.store, app.state.gateway).search(**payload.model_dump()), app.state.health)
 

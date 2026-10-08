@@ -32,7 +32,9 @@ def test_prepare_token_budget_includes_serialized_list_overhead(store):
     r = Retrieval(store, clock=lambda: datetime(2026, 9, 29, tzinfo=timezone.utc))
     reply = r.prepare("A", text="天文摄影", participants=[])
     from iris.db import dumps
-    budget = estimate_tokens(dumps(reply["memories"])) - 1
+    # People annotations are appended after the unchanged selection budget.
+    selected = [{k: v for k, v in m.items() if k != "subject_annotations"} for m in reply["memories"]]
+    budget = estimate_tokens(dumps(selected)) - 1
     bounded = r.prepare("A", text="天文摄影", participants=[], token_budget=budget)
     assert bounded["memories"] == []
 
@@ -110,7 +112,7 @@ def test_current_person_relation_does_not_merge_same_name_accounts(store):
     entry(store)
     with store.write() as conn:
         for sid in ("a","b"):
-            conn.execute("INSERT INTO subjects VALUES(?,'person','米粒',NULL,?)",(sid,datetime.now(timezone.utc).isoformat()))
+            conn.execute("INSERT INTO subjects(id,kind,name,parent_id,created_at) VALUES(?,'person','米粒',NULL,?)",(sid,datetime.now(timezone.utc).isoformat()))
     a=put(store,"米粒是陶艺老师",about=["a"],speaker="a")
     b=put(store,"米粒是建筑学生",about=["b"],speaker="b")
     r=Retrieval(store)

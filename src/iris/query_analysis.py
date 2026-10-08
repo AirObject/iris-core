@@ -11,7 +11,7 @@ from .search_text import query_terms, query_coverage_terms, words
 class SubjectNames:
     def __init__(self, conn, role_addresses=()):
         self.labels: dict[str, set[str]] = {}
-        self.names = {r['id']: r['name'] for r in conn.execute("SELECT id,name FROM subjects WHERE id!='scene'")}
+        self.names = {r['id']: r['name'] for r in conn.execute("SELECT id,name FROM subjects WHERE id!='scene' AND merged_into IS NULL")}
         for sid, name in self.names.items():
             if sid != 'self':
                 self.add(name, sid)
@@ -20,7 +20,7 @@ class SubjectNames:
             self.add(json.loads(role[0]), 'self')
         for address in role_addresses:
             self.add(address, 'self')
-        for row in conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE subject_id!='scene'"):
+        for row in conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE subject_id!='scene' AND folded_into IS NULL"):
             self.add(row['alias'], row['subject_id'])
         # Longest known label wins, including in memory prose. Do not turn
         # 江澄妈妈 into 江澄, or Ann into a mention in 'annual'.

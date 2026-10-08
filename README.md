@@ -234,6 +234,44 @@ print(httpx.get("http://127.0.0.1:8080/api/v1/status").json())
 
 深度查询显式设置 include_forgotten，结果的 lifecycle 标明 active／forgotten；读取不改变状态。反馈有效期为 24 小时，同次召回同条记忆只强化一次（默认 +8，上限 100），按双阈值决定恢复，不改变相信程度或修订号；已删除对象不能反馈。错误码：400 参数／反馈无效、404 不存在／已删除、413 消息过大、503 暂不可用；409 保留用于修订冲突，当前宿主接口不修改记忆正文。
 
+## M2 人物与身份联系（后端）
+
+人物管理接口沿用管理员会话、CSRF、JSON Content-Type 和本机 Host 校验；页面由界面线随后接入。
+
+| 接口 | 输入与行为 |
+| --- | --- |
+| `GET /admin/api/people` | `text` 搜索名字／有效别名；`pending_only=true` 只列有待确认联系的人；`include_merged=true` 包含占位。支持 `limit`、`offset`，返回 `pending_links`、别名、记忆数与主体 `revision`。默认不列 self／scene。 |
+| `GET /admin/api/people/{id}` | 平台身份、别名、记忆数及按生命周期分组、`memories_url`、same_as 联系的相信程度和证据消息、扮演关系。合并占位带 `merged_into`、`canonical_id`。 |
+| `POST /admin/api/people/links/{id}/deny` | `{ "expected_revision": 1 }`，使用联系修订号；保留该联系为 denied，后续学习不能恢复或反向重建。 |
+| `POST /admin/api/people/links/{id}/confirm` | `{ "target_id": "A", "expected_revision": 1, "expected_source_revision": 2, "expected_target_revision": 2 }`；A 必须为联系一方，另一方 B 合并到 A。确认直接合并，没有暂存的确认态。 |
+| `POST /admin/api/people/{id}/aliases` | `{ "alias": "阿林", "expected_revision": 2 }`，使用主体修订号；返回稳定别名 ID。 |
+| `DELETE /admin/api/people/{id}/aliases/{alias_id}` | `{ "expected_revision": 3 }`；移除别名及折叠证据，并阻止学习自动加回这个别名。管理员显式添加可以恢复。 |
+
+成功操作与变更在同一写事务保存到 `/admin/api/operations`。修订过期、重复确认或操作已合并主体返回 409；对象不存在为 404，输入错误为 400。合并拒绝 self／scene、扮演者与其角色、从属人物与其祖先之间的合并。
+
+B 的账号、有效别名、记忆涉及人和说话人转到 A，B 的名字成为 A 的别名（与 A 同名时不重复添加）；从属于 B 的人物改从属于 A。记忆正文、修订号、相信程度、保留强度和向量不变，也不因身份合并去重现存记忆。B 和历史消息作者保留用于追溯，新消息的 B 账号解析到 A。合并记录保存平台账号键、记忆／别名／联系／从属主体 ID，以及折叠目标 ID，不保存记忆或消息正文。
+
+同一对主体的联系折叠时，否认优先；状态相同时保留目标方已有联系的相信程度，不取最大分。扮演保持方向，折叠时保留每个原场景。折叠的旧联系和重复别名保留为证据档案，仍保护证据消息；人物页读取有效联系时汇总这些证据。手动删掉的别名在合并后仍不会自动回来；确认身份本身明确授权把 B 的显示名添加为 A 的别名。
+
+prepare 和 search 为每条最终返回的记忆追加 `subject_annotations`，涉及者按 `about` 和 `speaker_subject_id` 判断：
+
+```json
+{
+  "possible_same_as": [
+    {"link_id": 1, "belief": 70, "subjects": [{"id": "A", "name": "小林"}, {"id": "B", "name": "林同学"}]}
+  ],
+  "roleplay": [
+    {"link_id": 2, "actor": {"id": "A", "name": "小林"}, "character": {"id": "C", "name": "船长"}, "worlds": ["海岛游戏"], "belief": 90, "fictional": true}
+  ]
+}
+```
+
+场景未知时 `worlds` 中保留 null，不假称现实。被否认的联系不出现在标注中；标注不返回证据原文，也不将扮演者与角色的经历相互归属。标注在名额、记忆 token 预算及召回判断完成后追加，因此不占用原来的记忆选取预算，不改变顺序、reason、选取名额或判断请求。宿主应将这些附加元数据计入自身的完整上下文预算。学习选材不增加这些字段。
+
+记忆管理列表支持可选布尔 `pinned`：省略为全部，`true` 为已置顶，`false` 为未置顶；分页与 total 使用相同筛选。现有前端的置顶筛选仍是禁用占位，由界面线接入。
+
+当前人物分支仍等待学习线 v7 合入后的解析接入：新学习快照需排除占位，提交前需重查最终主体并在去重前映射引用。相关 7 个测试暂为严格 xfail；在它们转正及完成两项对照前，不将人物分支作为完整可发布实现。
+
 ## M2 生命周期与每日维护（后端）
 
 保留强度限制在 0—100：有效记忆低于 F（默认 20）进入遗忘并记下时间；遗忘记忆达到 H（默认 35）恢复并清除遗忘时间；两阈值之间保持原状。管理员手动遗忘把强度降至至多 F−1 并取消置顶，恢复把强度提至至少 H，不重新置顶。置顶不自动恢复，也不受维护的自动变化：不衰减、不受依据失效扣减、不自动删除。重要度改变增加修订号；置顶、状态与保留强度调整不增加修订号，但所有人工操作仍核对 expected_revision 并留操作记录。
