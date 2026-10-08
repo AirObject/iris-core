@@ -19,6 +19,8 @@ const memory = {
   retention: 54,
   revision: 1,
   lifecycle: "active",
+  pinned: 0,
+  forgotten_at: null,
   about: [{ id: "user", name: "我（用户）" }],
   tags: [],
   updated_at: "2026-10-07T01:00:00Z",
@@ -113,6 +115,10 @@ beforeEach(() => {
         };
       else if (url === "/admin/api/status")
         data = { ...status, learning_calls_24h: learningCalls };
+      else if (url.startsWith("/admin/api/maintenance?"))
+        data = { items: [], total: 0, limit: 1, offset: 0 };
+      else if (url.startsWith("/admin/api/operations?"))
+        data = { items: [], total: 0, limit: 30, offset: 0 };
       else if (url === "/admin/api/trial")
         data = {
           entries: freshCatalog ? [] : trialEntries,
@@ -271,6 +277,30 @@ test("delete requires explicit confirmation and shows revoked object", async () 
   expect(requests.find((r) => r.method === "DELETE")?.body).toEqual({
     expected_revision: 1,
   });
+});
+
+test("记忆详情跳转操作记录时携带对象筛选", async () => {
+  location.hash = "#/memories";
+  render(<App />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: /下周三去上海出差/ }),
+  );
+  await userEvent.click(
+    await screen.findByRole("link", { name: "查看此记忆的操作记录" }),
+  );
+  expect(
+    await screen.findByRole("heading", { name: "操作记录" }),
+  ).toBeVisible();
+  expect(screen.getByLabelText("对象类型")).toHaveValue("memory");
+  expect(screen.getByLabelText("对象标识")).toHaveValue("1");
+  await waitFor(() =>
+    expect(
+      requests.some((r) =>
+        r.url.includes("operations?object_type=memory&object_id=1"),
+      ),
+    ).toBe(true),
+  );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 test("memory filters go to management list, not host recall API", async () => {

@@ -1823,3 +1823,164 @@ tr:last-child td {
   overflow-wrap: anywhere;
   text-align: left;
 }
+
+/* Lifecycle controls share the existing panels and compact forms. */
+.lifecycle-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.lifecycle-help {
+  font-size: 12px;
+  color: #646878;
+  line-height: 1.8;
+  margin: 12px 0;
+}
+.lifecycle-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.lifecycle-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 22px;
+}
+.lifecycle-stack .check-label,
+.settings-panel .check-label {
+  flex-direction: row;
+  align-items: center;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 16px 0;
+}
+.purge-confirm {
+  background: #fff3f0;
+  border: 2px solid #a83e4b;
+  border-radius: 10px;
+  padding: 18px;
+  color: #883440;
+}
+.purge-confirm p {
+  margin-top: 12px;
+}
+.purge-confirm .actions {
+  align-items: stretch;
+}
+.purge-confirm button {
+  white-space: normal;
+}
+.detail-badges,
+.memory-card-top {
+  flex-wrap: wrap;
+}
+.operation-link {
+  display: inline-block;
+  font-size: 13px;
+  margin: 16px 0;
+}
+.operation-card p {
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.record-json {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 400px;
+  overflow: auto;
+  background: #f7f8fb;
+  padding: 14px;
+  border-radius: 8px;
+  line-height: 1.7;
+}
+.upcoming-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.upcoming-card .secondary {
+  align-self: flex-start;
+  margin-top: auto;
+}
+.maintenance-panel {
+  margin-bottom: 24px;
+}
+.maintenance-subheading {
+  margin-bottom: 12px;
+}
+.maintenance-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+.maintenance-counts > div {
+  padding: 12px;
+  background: #f8f7fc;
+  border-radius: 8px;
+}
+.maintenance-counts dt {
+  font-size: 12px;
+  color: #646878;
+}
+.maintenance-counts dd {
+  margin: 8px 0 0;
+  font-size: 19px;
+}
+.maintenance-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.maintenance-history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+@media (min-width: 761px) and (max-width: 1250px) {
+  .app-header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 16px 24px;
+  }
+  .app-header nav {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+  .brand {
+    flex: 1;
+  }
+}
+@media (max-width: 760px) {
+  .lifecycle-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 14px;
+  }
+  .pagination {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .detail-badges .muted {
+    margin-left: 0;
+  }
+}
+@media (max-width: 420px) {
+  .lifecycle-settings-grid,
+  .operation-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .operation-filters label:last-child {
+    grid-column: auto;
+  }
+}

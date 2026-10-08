@@ -8,6 +8,7 @@ import {
   time,
 } from "./ui";
 import { useData } from "./api";
+import { MaintenancePanel } from "./Maintenance";
 import type { Entry, Status as StatusData } from "./types";
 
 const purposes: Record<string, string> = {
@@ -19,7 +20,13 @@ const purposes: Record<string, string> = {
   retrieval_query: "召回查询",
   health_probe: "健康探测",
 };
-export default function Status({ data }: { data: StatusData | null }) {
+export default function Status({
+  data,
+  openMemory,
+}: {
+  data: StatusData | null;
+  openMemory: (id: number) => void;
+}) {
   const catalog = useData<{ entries: Entry[] }>("/catalog");
   if (!data) return <Empty title="正在读取运行状态" />;
   const latency = data.learning_latency_24h;
@@ -67,6 +74,7 @@ export default function Status({ data }: { data: StatusData | null }) {
           </small>
         </section>
       </div>
+      <MaintenancePanel openMemory={openMemory} />
       <div className="status-grid">
         <section className="panel">
           <div className="panel-heading">

@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import App from "./App";
+import { lifecycleFixture } from "./lifecycle-fixtures";
 let configured = false,
   authenticated = false,
   admin = false;
@@ -25,6 +26,7 @@ beforeEach(() => {
     model_source: "local",
     learning_concurrency: 2,
     daily_token_limit: null,
+    lifecycle: { ...lifecycleFixture },
     presets: [
       {
         id: "ark-glm",
@@ -134,7 +136,7 @@ test.each(["high", "medium"])(
     expect(
       await screen.findByRole("heading", { name: "设置" }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("对话模型 API key")).toHaveValue("");
+    expect(await screen.findByLabelText("对话模型 API key")).toHaveValue("");
     expect(screen.getByLabelText("对话模型推理档位")).toHaveValue("low");
     expect(
       screen.getByText(`火山方舟 GLM 预设使用 ${effort}。`),
@@ -166,4 +168,15 @@ test("外部模型配置只读", async () => {
   expect(
     screen.queryByRole("button", { name: "保存对话模型" }),
   ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "保存生命周期设置" }),
+  ).toBeEnabled();
+  await userEvent.click(
+    screen.getByRole("button", { name: "保存生命周期设置" }),
+  );
+  const saved = calls.find((c) => c.path.endsWith("/settings/lifecycle"));
+  expect(saved?.init?.method).toBe("PATCH");
+  expect((saved?.init?.headers as Record<string, string>)["X-Iris-CSRF"]).toBe(
+    "csrf-test",
+  );
 });

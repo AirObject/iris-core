@@ -1,6 +1,20 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError, api, json, useData, errorText } from "./api";
-import { Badge, Dialog, Empty, Notice, lifecycleLabel, time } from "./ui";
+import {
+  Badge,
+  Dialog,
+  Empty,
+  Notice,
+  Pagination,
+  lifecycleLabel,
+  time,
+  fullTime,
+} from "./ui";
+import {
+  MemoryControls,
+  PurgeSummary,
+  UpcomingDeletion,
+} from "./MemoryLifecycle";
 import type {
   Entry,
   Memory,
@@ -8,9 +22,52 @@ import type {
   Person,
   Revision,
   Source,
+  PurgeResult,
 } from "./types";
 
 const kinds = ["事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"];
+export function MemoryPage({
+  openMemory,
+  version,
+  onChange,
+}: {
+  openMemory: (id: number) => void;
+  version: number;
+  onChange: () => void;
+}) {
+  const [tab, setTab] = useState("all");
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">留下的经历，有迹可循</p>
+          <h1>记忆</h1>
+          <p>查看内容、追溯来源，管理记忆的保留与遗忘。</p>
+        </div>
+      </div>
+      <div className="learning-tabs" aria-label="记忆视图">
+        <button aria-pressed={tab === "all"} onClick={() => setTab("all")}>
+          记忆列表
+        </button>
+        <button
+          aria-pressed={tab === "upcoming"}
+          onClick={() => setTab("upcoming")}
+        >
+          即将删除
+        </button>
+      </div>
+      {tab === "all" ? (
+        <MemoryList openMemory={openMemory} version={version} />
+      ) : (
+        <UpcomingDeletion
+          openMemory={openMemory}
+          version={version}
+          onChange={onChange}
+        />
+      )}
+    </>
+  );
+}
 export function MemoryList({
   openMemory,
   version,
@@ -31,14 +88,28 @@ export function MemoryList({
   });
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
+  const [filterError, setFilterError] = useState("");
   const list = useData<{ items: Memory[]; total: number }>(
     `/memories?${query}&limit=30&offset=${offset}`,
   );
   useEffect(() => {
     list.refresh();
   }, [version, list.refresh]);
+  useEffect(() => {
+    if (list.data && offset && offset >= list.data.total)
+      setOffset(Math.max(0, Math.ceil(list.data.total / 30) * 30 - 30));
+  }, [list.data, offset]);
   function search(e: FormEvent) {
     e.preventDefault();
+    if (
+      filters.time_from &&
+      filters.time_to &&
+      filters.time_from > filters.time_to
+    ) {
+      setFilterError("开始日期不能晚于结束日期");
+      return;
+    }
+    setFilterError("");
     setOffset(0);
     setQuery(
       new URLSearchParams(
@@ -51,14 +122,6 @@ export function MemoryList({
     setFilters({ ...filters, [key]: value });
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">留下的经历，有迹可循</p>
-          <h1>记忆</h1>
-          <p>查看内容、追溯来源，或修正一处记录。</p>
-        </div>
-        <Badge>{list.data?.total ?? "—"} 条记忆</Badge>
-      </div>
       <section className="panel">
         <form className="memory-filters" onSubmit={search}>
           <div className="search-row">
@@ -127,10 +190,21 @@ export function MemoryList({
                 onChange={(e) => field("lifecycle", e.target.value)}
               >
                 <option value="active">有效</option>
-                <option value="forgotten">已遗忘（只读）</option>
+                <option value="forgotten">已遗忘</option>
                 <option value="deleted">已删除（历史）</option>
                 <option value="all">全部状态</option>
               </select>
+            </label>
+            <label>
+              置顶筛选
+              <select
+                disabled
+                aria-label="置顶筛选"
+                aria-describedby="pin-filter-help"
+              >
+                <option>全部</option>
+              </select>
+              <small id="pin-filter-help">置顶筛选暂不可用</small>
             </label>
             <label>
               开始日期
@@ -165,6 +239,7 @@ export function MemoryList({
           </p>
         </form>
       </section>
+      {filterError && <Notice error>{filterError}</Notice>}
       {(list.error || catalog.error) && (
         <Notice error>{list.error || catalog.error}</Notice>
       )}
@@ -186,6 +261,9 @@ export function MemoryList({
           >
             <div className="memory-card-top">
               <Badge tone="purple">{m.kind}</Badge>
+              <Badge tone={m.pinned ? "purple" : ""}>
+                {m.pinned ? "已置顶" : "未置顶"}
+              </Badge>
               <span className="muted">
                 #{m.id} · {lifecycleLabel(m.lifecycle)}
               </span>
@@ -196,7 +274,7 @@ export function MemoryList({
             </div>
             <div className="memory-card-bottom">
               <span>
-                相信 {m.belief} · 保留 {m.retention}
+                相信 {m.belief} · 保留强度 {m.retention}
               </span>
               <time>{time(m.updated_at)}</time>
               <span aria-hidden>↗</span>
@@ -204,24 +282,12 @@ export function MemoryList({
           </button>
         ))}
       </div>
-      {list.data && list.data.total > 30 && (
-        <div className="pagination">
-          <button
-            className="secondary"
-            disabled={offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - 30))}
-          >
-            上一页
-          </button>
-          <span>第 {Math.floor(offset / 30) + 1} 页</span>
-          <button
-            className="secondary"
-            disabled={offset + 30 >= list.data.total}
-            onClick={() => setOffset(offset + 30)}
-          >
-            下一页
-          </button>
-        </div>
+      {list.data && (
+        <Pagination
+          total={list.data.total}
+          offset={offset}
+          change={setOffset}
+        />
       )}
     </>
   );
@@ -246,18 +312,26 @@ export function MemoryDetail({
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
-  const detail = saved || query.data;
+  const [purgeResult, setPurgeResult] = useState<PurgeResult | null>(null);
+  const [controlsVersion, setControlsVersion] = useState(0);
+  const detail = purgeResult ? null : saved || query.data;
+  const navigateMemory = (memoryId: number) => {
+    if (!busy) openMemory(memoryId);
+  };
   function failed(e: unknown) {
     if (e instanceof ApiError && e.code === "revision_conflict") {
       setConflict(true);
       setError(
-        "其他操作已更新了这条记忆。你的草稿已保留；请载入最新修订后再编辑。",
+        "其他操作已更新了这条记忆。草稿暂时保留；请刷新并载入最新修订，再核对后操作。载入会替换当前草稿。",
       );
+    } else if (e instanceof ApiError && e.status === 404) {
+      setConflict(true);
+      setError("这条记忆已删除或已彻底清除，请刷新或返回列表查看。");
     } else setError(errorText(e));
   }
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (!detail) return;
+    if (!detail || busy || conflict) return;
     setBusy(true);
     setError("");
     try {
@@ -277,7 +351,7 @@ export function MemoryDetail({
     }
   }
   async function remove() {
-    if (!detail) return;
+    if (!detail || busy || conflict) return;
     setBusy(true);
     setError("");
     try {
@@ -288,6 +362,7 @@ export function MemoryDetail({
         ),
       );
       setDeleting(false);
+      setControlsVersion((v) => v + 1);
       setEditing(false);
       onChange();
     } catch (e) {
@@ -302,6 +377,7 @@ export function MemoryDetail({
       const latest = await api<Detail>(`/memories/${id}`);
       setSaved(latest);
       setDraft(latest.content);
+      setControlsVersion((v) => v + 1);
       setConflict(false);
       setError("");
       setDeleting(false);
@@ -312,14 +388,17 @@ export function MemoryDetail({
     }
   }
   return (
-    <Dialog title={`记忆 #${id}`} onClose={onClose}>
+    <Dialog title={`记忆 #${id}`} onClose={onClose} closeDisabled={busy}>
       {(error || query.error) && <Notice error>{error || query.error}</Notice>}
       {conflict && (
         <button className="secondary" disabled={busy} onClick={reload}>
           载入最新修订
         </button>
       )}
-      {!detail && !query.error && <p className="quiet">正在读取详情…</p>}
+      {purgeResult && <PurgeSummary result={purgeResult} />}
+      {!detail && !purgeResult && !query.error && (
+        <p className="quiet">正在读取详情…</p>
+      )}
       {detail && (
         <div className="memory-detail">
           <div className="detail-badges">
@@ -328,6 +407,9 @@ export function MemoryDetail({
             <Badge tone={detail.lifecycle === "deleted" ? "danger" : ""}>
               {lifecycleLabel(detail.lifecycle)}
             </Badge>
+            <Badge tone={detail.pinned ? "purple" : ""}>
+              {detail.pinned ? "已置顶" : "未置顶"}
+            </Badge>
             <span className="muted">修订 {detail.revision}</span>
           </div>
           {detail.lifecycle === "deleted" && (
@@ -335,7 +417,7 @@ export function MemoryDetail({
               此标识已撤销，不再参与召回；来源和修订历史仍然保留。
             </Notice>
           )}
-          {editing && detail.lifecycle === "active" ? (
+          {editing && detail.lifecycle !== "deleted" ? (
             <form onSubmit={save}>
               <label>
                 记忆正文
@@ -381,7 +463,36 @@ export function MemoryDetail({
               <span>保留强度</span>
             </div>
           </div>
+          <MemoryControls
+            key={`${detail.id}:${detail.revision}:${controlsVersion}`}
+            detail={detail}
+            busy={busy}
+            blocked={conflict || editing || deleting}
+            setBusy={setBusy}
+            failed={failed}
+            saved={(latest) => {
+              setSaved(latest);
+              setError("");
+              onChange();
+            }}
+            purged={(result) => {
+              setPurgeResult(result);
+              setSaved(null);
+              setError("");
+              onChange();
+            }}
+            recreated={(newId) => {
+              onChange();
+              openMemory(newId);
+            }}
+          />
           <dl className="metadata">
+            {detail.lifecycle === "forgotten" && (
+              <div>
+                <dt>遗忘时间</dt>
+                <dd>{fullTime(detail.forgotten_at)}</dd>
+              </div>
+            )}
             <div>
               <dt>说话人</dt>
               <dd>{detail.speaker.name}</dd>
@@ -421,7 +532,7 @@ export function MemoryDetail({
             <h3>来源与前后文</h3>
             {detail.sources.length ? (
               detail.sources.map((s) => (
-                <SourceView key={s.id} source={s} openMemory={openMemory} />
+                <SourceView key={s.id} source={s} openMemory={navigateMemory} />
               ))
             ) : (
               <p className="quiet">没有保存的来源消息。</p>
@@ -434,7 +545,8 @@ export function MemoryDetail({
                 <button
                   key={m.id}
                   className="memory-preview"
-                  onClick={() => openMemory(m.id)}
+                  disabled={busy}
+                  onClick={() => navigateMemory(m.id)}
                 >
                   <span>
                     #{m.id} · {m.content}
@@ -461,21 +573,17 @@ export function MemoryDetail({
               <p className="quiet">还没有修订记录。</p>
             )}
           </details>
-          <details className="history">
-            <summary>
-              人工操作记录 <Badge>{detail.operations.length}</Badge>
-            </summary>
-            {detail.operations.map((o) => (
-              <p key={o.id} className="operation">
-                {time(o.created_at)} · 管理员 ·{" "}
-                {o.action === "delete" ? "删除记忆" : "编辑正文"}
-              </p>
-            ))}
-            {!detail.operations.length && (
-              <p className="quiet">暂无人工操作。</p>
-            )}
-          </details>
-          {detail.lifecycle === "active" && (
+          <a
+            className="operation-link"
+            href={`#/operations?object_type=memory&object_id=${id}`}
+            onClick={(e) => {
+              if (busy) e.preventDefault();
+              else onClose();
+            }}
+          >
+            查看此记忆的操作记录
+          </a>
+          {detail.lifecycle !== "deleted" && (
             <div className="detail-footer">
               {deleting ? (
                 <div className="delete-confirm">
@@ -485,7 +593,7 @@ export function MemoryDetail({
                   <div className="actions">
                     <button
                       className="danger-button"
-                      disabled={busy}
+                      disabled={busy || conflict}
                       onClick={remove}
                     >
                       确认删除
@@ -503,7 +611,7 @@ export function MemoryDetail({
                 <div className="actions">
                   <button
                     className="secondary"
-                    disabled={busy || editing}
+                    disabled={busy || conflict || editing}
                     onClick={() => {
                       setEditing(true);
                       setDraft(detail.content);
@@ -514,6 +622,7 @@ export function MemoryDetail({
                   </button>
                   <button
                     className="text-button danger-text"
+                    disabled={busy || conflict || editing}
                     onClick={() => setDeleting(true)}
                   >
                     删除记忆
@@ -588,11 +697,23 @@ function RevisionView({ revision: r }: { revision: Revision }) {
   return (
     <article className="revision">
       <small>
-        {time(r.created_at)} · {r.actor === "admin" ? "管理员" : "学习"} · 修订{" "}
-        {r.revision_before} → {r.revision_after}
+        {time(r.created_at)} ·{" "}
+        {(
+          { admin: "管理员", learning: "学习", maintenance: "维护" } as Record<
+            string,
+            string
+          >
+        )[r.actor] || r.actor}{" "}
+        · 修订 {r.revision_before} → {r.revision_after}
       </small>
       <p>
         <span className="muted">修改前</span> {String(r.before.content || "")}
+      </p>
+      <p className="muted">
+        相信程度 {String(r.before.belief ?? "—")} →{" "}
+        {String(r.after.belief ?? "—")} · 重要度{" "}
+        {String(r.before.importance ?? "—")} →{" "}
+        {String(r.after.importance ?? "—")}
       </p>
       <p>
         <span className="muted">修改后</span>{" "}
