@@ -35,7 +35,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       error.code || "request_failed",
       error.message ||
         (error.fields
-          ? `请检查输入：${error.fields.map((f: { field: string; message: string }) => f.field.split(".").pop()).join("、")}`
+          ? `请检查输入：${error.fields.map((f: { field: string; message: string }) => `${f.field.split(".").pop()}：${f.message}`).join("；")}`
           : "请求失败，请重试"),
       response.status,
     );
@@ -54,13 +54,18 @@ export const errorText = (error: unknown) =>
 export function useData<T>(path: string | null, interval = 0) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(path !== null);
   const [version, setVersion] = useState(0);
-  const refresh = useCallback(() => setVersion((v) => v + 1), []);
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setVersion((v) => v + 1);
+  }, []);
   useEffect(() => {
     setData(null);
     setError("");
   }, [path]);
   useEffect(() => {
+    setLoading(path !== null);
     if (path === null) return;
     const controller = new AbortController();
     let active = true;
@@ -74,6 +79,8 @@ export function useData<T>(path: string | null, interval = 0) {
         }
       } catch (e) {
         if (active && !controller.signal.aborted) setError(errorText(e));
+      } finally {
+        if (active) setLoading(false);
       }
       if (active && interval) timer = setTimeout(load, interval);
     };
@@ -84,5 +91,5 @@ export function useData<T>(path: string | null, interval = 0) {
       clearTimeout(timer);
     };
   }, [path, interval, version]);
-  return { data, error, refresh };
+  return { data, error, refresh, loading };
 }

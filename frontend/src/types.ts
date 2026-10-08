@@ -41,6 +41,8 @@ export type Memory = {
   importance: number;
   retention: number;
   lifecycle: string;
+  pinned: number;
+  forgotten_at: string | null;
   revision: number;
   about: Person[];
   tags: string[];
@@ -83,6 +85,78 @@ export type MemoryDetail = Memory & {
   }[];
   recall_count: number;
   used_count: number;
+};
+export type Page<T> = {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+export type PurgeResult = {
+  memory_id: number;
+  deleted_message_ids: number[];
+  retained_messages: { message_id: number; reasons: string[] }[];
+};
+export type LifecycleConfig = {
+  forget_threshold: number;
+  restore_threshold: number;
+  feedback_increment: number;
+  confirmation_increment: number;
+  decay_amount: number;
+  dependency_penalty: number;
+  auto_delete_enabled: boolean;
+  auto_delete_days: number;
+  upcoming_delete_days: number;
+  message_retention_days: number;
+  maintenance_time: string;
+  abandoned_retry_enabled: boolean;
+};
+export type Operation = {
+  id: number;
+  actor: string;
+  action: string;
+  object_type: string | null;
+  object_id: string | null;
+  created_at: string;
+  details: Record<string, unknown>;
+};
+export type MaintenanceSummary = Record<
+  string,
+  {
+    count: number;
+    memory_ids?: number[];
+    object_ids?: number[];
+    by_phase?: Record<string, number>;
+    reasons?: Record<string, number>;
+  }
+>;
+export type MaintenanceRun = {
+  id: number;
+  trigger: string;
+  state: string;
+  phase: number;
+  created_at: string;
+  finished_at: string | null;
+  summary: MaintenanceSummary;
+};
+export type MaintenanceItem = {
+  phase: string;
+  item_key: string;
+  memory_id: number | null;
+  object_id: number;
+  outcome: string;
+  reason: string | null;
+  details: {
+    before?: number;
+    after?: number;
+    transition?: string;
+    source_memory_id?: number;
+  };
+  created_at: string;
+};
+export type MaintenanceReport = MaintenanceRun & {
+  timezone: string;
+  items: MaintenanceItem[];
 };
 export type TrialCatalog = {
   entries: Entry[];

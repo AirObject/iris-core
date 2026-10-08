@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, json, errorText, useData } from "./api";
 import { Notice, healthLabel } from "./ui";
+import { LifecycleSettings } from "./LifecycleSettings";
+import { operationNames, actorNames } from "./Operations";
+import type { LifecycleConfig } from "./types";
 
 export type Role = {
   name: string;
@@ -30,6 +33,7 @@ export type Settings = {
   model_source: "local" | "external";
   daily_token_limit: number | null;
   learning_concurrency: number;
+  lifecycle: LifecycleConfig;
   presets: Preset[];
   health: Record<string, { state: string }>;
   operations: {
@@ -393,16 +397,6 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
       setBusy(false);
     }
   };
-  const names: Record<string, string> = {
-    setup_password: "设置管理员密码",
-    setup_completed: "完成首次设置",
-    models_saved: "更新模型配置",
-    role_saved: "更新角色设置",
-    limits_saved: "更新用量与并发",
-    model_retry: "请求模型重试",
-    login: "管理员登录",
-    logout: "退出登录",
-  };
   return (
     <div className="settings-grid">
       {error && <Notice error>{error}</Notice>}
@@ -512,18 +506,25 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
       </section>
       <section className="panel settings-panel">
         <h2>最近操作</h2>
+        <a className="text-button" href="#/operations">
+          查看全部操作记录
+        </a>
         <ul className="operations">
           {settings.operations.map((o) => (
             <li key={o.id}>
-              <span>{names[o.action] || o.action}</span>
+              <span>{operationNames[o.action] || o.action}</span>
               <small>
                 {new Date(o.created_at).toLocaleString("zh-CN")} ·{" "}
-                {o.actor === "local_import" ? "本机导入" : "管理员"}
+                {actorNames[o.actor] || o.actor}
               </small>
             </li>
           ))}
         </ul>
       </section>
+      <LifecycleSettings
+        value={settings.lifecycle}
+        timezone={settings.role.timezone}
+      />
     </div>
   );
 }

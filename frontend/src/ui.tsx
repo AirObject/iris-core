@@ -12,6 +12,43 @@ export const time = (value?: string | null) =>
     : "暂无记录";
 export const seconds = (value?: number | null) =>
   value == null ? "—" : `${(value / 1000).toFixed(1)} 秒`;
+export const fullTime = (value?: string | null) =>
+  value ? new Date(value).toLocaleString("zh-CN") : "暂无记录";
+
+export function Pagination({
+  total,
+  offset,
+  limit = 30,
+  change,
+}: {
+  total: number;
+  offset: number;
+  limit?: number;
+  change: (offset: number) => void;
+}) {
+  if (total <= limit && offset === 0) return null;
+  return (
+    <div className="pagination">
+      <button
+        className="secondary"
+        disabled={offset === 0}
+        onClick={() => change(Math.max(0, offset - limit))}
+      >
+        上一页
+      </button>
+      <span>
+        第 {Math.floor(offset / limit) + 1} 页 · 共 {total} 条
+      </span>
+      <button
+        className="secondary"
+        disabled={offset + limit >= total}
+        onClick={() => change(offset + limit)}
+      >
+        下一页
+      </button>
+    </div>
+  );
+}
 export const lifecycleLabel = (value: string) =>
   ({ active: "有效", forgotten: "已遗忘", deleted: "已删除" })[value] || value;
 export const healthLabel = (value: string) =>
@@ -92,14 +129,16 @@ export function Dialog({
   title,
   onClose,
   children,
+  closeDisabled = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  closeDisabled?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
   const close = useRef(onClose);
-  close.current = onClose;
+  close.current = closeDisabled ? () => {} : onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const first = ref.current?.querySelector<HTMLElement>(
@@ -151,6 +190,7 @@ export function Dialog({
           <button
             className="icon-button"
             aria-label="关闭详情"
+            disabled={closeDisabled}
             onClick={onClose}
           >
             ×
