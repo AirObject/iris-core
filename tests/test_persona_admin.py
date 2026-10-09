@@ -396,3 +396,76 @@ def test_persona_shutdown_waits_for_accepted_task_before_closing_store(store):
         closer.join(3)
     assert closed.is_set()
     assert current_persona(store)['id'] == 2
+
+
+def test_persona_settings_partial_updates_are_audited_without_republishing(client, store):
+    from iris.persona import DEFAULT_GOAL, DEFAULT_RULES
+    defaults = {'goal': DEFAULT_GOAL, 'rules': DEFAULT_RULES, 'publish_mode': 'small_medium_auto'}
+    assert client.get('/admin/api/settings').json()['persona'] == defaults
+    before = current(client)
+    response = client.patch('/admin/api/settings/persona', json={'goal': '  保持简洁的自我描述。  '})
+    assert response.status_code == 200
+    assert response.json()['persona'] == {**defaults, 'goal': '保持简洁的自我描述。'}
+    response = client.patch('/admin/api/settings/persona', json={'publish_mode': 'all_manual'})
+    assert response.status_code == 200
+    assert response.json()['persona'] == {**defaults, 'goal': '保持简洁的自我描述。', 'publish_mode': 'all_manual'}
+    assert current(client) == before and not gateway(client).calls
+    with store.read() as conn:
+        rows = conn.execute("SELECT actor,object_type,object_id,details_json FROM admin_operations WHERE action='persona_settings_saved' ORDER BY id").fetchall()
+    assert [json.loads(r['details_json']) for r in rows] == [{'fields': ['goal']}, {'fields': ['publish_mode']}]
+    assert all((r['actor'], r['object_type'], r['object_id']) == ('admin', 'settings', 'persona') for r in rows)
+
+
+@pytest.mark.parametrize('body', [{}, {'goal': ''}, {'goal': '  '}, {'goal': 'x'*4001},
+    {'rules': '\n\t'}, {'rules': 'x'*16001}, {'rules': None}, {'goal': True},
+    {'publish_mode': 'automatic'}, {'publish_mode': None}, {'unexpected': True}])
+def test_persona_settings_reject_invalid_changes_without_writes(client, store, body):
+    before = client.get('/admin/api/settings').json()['persona']
+    changes = store._writer.total_changes
+    assert client.patch('/admin/api/settings/persona', json=body).status_code == 400
+    assert client.get('/admin/api/settings').json()['persona'] == before
+    assert store._writer.total_changes == changes
+
+
+@pytest.mark.parametrize('session', [True, False])
+def test_persona_settings_require_session_and_csrf(client, session):
+    if session:
+        del client.headers['X-Iris-CSRF']
+    else:
+        client.cookies.clear()
+    assert client.patch('/admin/api/settings/persona', json={'goal': '保持稳定。'}).status_code == (403 if session else 401)
+
+
+def test_persona_settings_only_affect_future_candidates_and_keep_pending_checks(client):
+    gateway(client).degree = 'large'
+    vid = finished(client, start(client))['version_id']
+    detail_url = f'/admin/api/persona/versions/{vid}'
+    old = client.get(detail_url).json()
+    response = client.patch('/admin/api/settings/persona', json={'publish_mode': 'all_auto', 'rules': '新的监管要求。'})
+    assert response.status_code == 200
+    assert client.get(detail_url).json() == old
+    assert current(client)['current']['id'] == 1 and current(client)['pending']['id'] == vid
+    confirmed = client.post(detail_url + '/confirm', json={'expected_version': 1})
+    assert confirmed.status_code == 200
+    assert confirmed.json()['settings'] == old['settings']
+    assert finished(client, start(client))['state'] == 'current'
+    assert gateway(client).calls[-1][1]['rules'] == '新的监管要求。'
+
+
+def test_persona_settings_do_not_change_an_inflight_generation(client):
+    entered, release = threading.Event(), threading.Event()
+    gateway(client).callback = lambda: (entered.set(), release.wait(10))
+    old = client.get('/admin/api/settings').json()['persona']
+    try:
+        url = start(client)
+        assert entered.wait(1)
+        response = client.patch('/admin/api/settings/persona', json={'publish_mode': 'all_manual', 'rules': '以后逐句审核。'})
+        assert response.status_code == 200
+    finally:
+        release.set()
+    result = finished(client, url)
+    assert result['state'] == 'current'
+    detail = client.get(f"/admin/api/persona/versions/{result['version_id']}").json()
+    assert all(detail['settings'][key] == value for key, value in old.items())
+    assert gateway(client).calls[-1][1]['rules'] == old['rules']
+    assert finished(client, start(client))['state'] == 'pending'

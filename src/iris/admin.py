@@ -124,7 +124,6 @@ class Page(Input):
     offset: int = Field(default=0, ge=0, le=1000000)
 
 
-
 PersonaId = Annotated[int, PathParameter(gt=0, le=9223372036854775807)]
 
 

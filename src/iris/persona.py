@@ -533,13 +533,17 @@ def reject_candidate(store, version_id, *, expected_version, reason='administrat
         return _get(conn, version_id)
 
 
-def _settings(conn):
+def persona_settings(conn):
+    """The editable persona settings, read from a single snapshot."""
     mode = _setting(conn, 'persona_publish_mode', PUBLISH_MODES[0])
     if mode not in PUBLISH_MODES:
         raise ValueError('invalid persona publication mode')
     return {'goal':_setting(conn,'persona_goal',DEFAULT_GOAL), 'rules':_setting(conn,'persona_rules',DEFAULT_RULES),
-            'publish_mode':mode, 'timezone':_setting(conn,'timezone','Asia/Shanghai')}
+            'publish_mode':mode}
 
+
+def _settings(conn):
+    return {**persona_settings(conn), 'timezone':_setting(conn,'timezone','Asia/Shanghai')}
 
 
 def _reserve_attempt(conn, expected_version, source, stamp, *, actor='persona'):

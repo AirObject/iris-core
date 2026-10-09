@@ -10,7 +10,7 @@
 | 主体 | `subjects`、`subject_aliases`、`platform_identities`、`subject_links`、`subject_alias_blocks` |
 | 记忆 | `memories`、`memory_subjects`、`memory_tags`、`sources`、`memory_revisions` |
 | 当前状态 | `current_state`、`state_reports` |
-| 自我与目标 | `persona_versions`、`goals`、`goal_sources`、`goal_people`、`goal_memories`、`goal_duplicates`、`goal_dedup_jobs`、`goal_reminder_plans`、`notifications`、`runtime_settings` |
+| 自我与目标 | `persona_versions`、`persona_attempts`、`goals`、`goal_sources`、`goal_people`、`goal_memories`、`goal_duplicates`、`goal_dedup_jobs`、`goal_reminder_plans`、`notifications`、`runtime_settings` |
 | 模型 | `model_calls` |
 | 召回 | `memory_fts_jieba`、`memory_fts_trigram`、`vector_dirty`、`recalls`、`recall_items` |
 
@@ -93,7 +93,7 @@ trigram 下不足三个字符的实词另查现有 jieba 索引，包括长短�
 
 递归追溯来源，全部来源已在本次返回的近期消息里、宿主已有 ID 和高度重复的记忆不占名额。去重核对主体、说话人、立场、世界、时间，数字或否定不同不合并。最终最多八条，追加人物关系标注前、含 reason 的序列化内容不超过 1500 估算 token；超预算整条跳过，不截断正文。来源只返回元数据，不读取其他入口消息正文。
 
-prepare 返回当前 persona 版本／时间、本入口近期消息及未学习标记、宿主当前 state、至多十个跨入口共享的未结束目标、本入口缺口和模型失败提示。search 支持正文、主体、类型、立场、事件时间及 include_forgotten；两者均写 `recalls` 和 `recall_items`，记录请求、返回 ID 与当时修订号，返回不增加保留强度。
+prepare 返回当前 persona 版本／正文／生成时间／待更新标记及失效依据数量、本入口近期消息及未学习标记、宿主当前 state、至多十个跨入口共享的未结束目标、本入口缺口和模型失败提示。search 支持正文、主体、类型、立场、事件时间及 include_forgotten；两者均写 `recalls` 和 `recall_items`，记录请求、返回 ID 与当时修订号，返回不增加保留强度。
 
 `recall_judge.py` 固定 PR #25 的提示词（`prompts/recall_judge_v1.md`），仅判断 prepare 选出的至多八条 relevant。支持分 ≥50 保留；原人物要点不判断，被删的相关项不转为要点也不补位。JSON 必须精确包含 scores，ID、顺序、数量及 0—100 整数严格匹配；拒绝重复键、额外字段、代码围栏、不完整输出，不做修正调用。模型调用后，在与召回记录写入相同的事务中检查原候选修订、active 状态和宿主已知上下文；只逐条剔除修订、生命周期、宿主已知记忆或最终近期消息 R11 冗余检查不再有效的项，保留其他候选的原判断，状态仍为 applied，失效 ID 单列 stale_memory_ids。查询与锚点已固定，判断期间新消息或别名变化不废弃整次结果；配置在调用中关闭仍生效。复核与记录之间没有竞态。判断别名表仅查询前 8 个相关候选的说话人／涉及者、参与者、近期消息发送者及查询点名主体的别名；使用既有最长标签／词边界匹配，保留同名主体。响应及 `recalls.request_json.judgment` 保存状态、原因、耗时、过滤／失效 ID；`recall_items` 只写最终返回，沿用反馈资格。
 
@@ -192,6 +192,36 @@ Scheduler 的独立单工作线程执行 Maintenance，不占学习、模型探�
 
 管理员修订触发器只在 admin_operations 记历史标识；每次批次从 running 得到结果的事务自动记录状态和数量（服务、离线、重启恢复共用），不存 result_json 或错误正文。其他人工操作、宿主立即学习和反馈，以及维护完成摘要明确写入。GET /admin/api/operations 以只读快照按时间、动作、操作者和对象筛选；维护报告独立保存每项结果和 ID。设置校验部分更新的合并结果及 H>F，现有会话、CSRF、Host 边界不变。
 
+
+## M3 persona
+
+`persona.py` 管理依据选取、检查、发布与版本；`persona_evaluation.py` 提供隔离时间线、可注入时钟及外部判分材料。迁移 013 扩充 `persona_versions`，增加 `persona_attempts`，并只把仍等于旧截短默认值的监管要求升级为设计全文。初始设定通过 `memory_ops.setup_role` 创建原模板正文与设定依据，不调用模型，不改变学习材料中的 persona 文本。
+
+`persona_versions` 保存正文、逐句依据、检查结果、变化程度、状态、来源、生成／发布时间、基准版本、回滚来源、生成材料与自我记忆快照。逐句 `basis` 是 `{memory_id, revision}` 数组，`origin` 区分记忆、管理员和模板来源；`dates/date_count` 是来源追溯结果。材料保留来源摘录及追溯指纹，使检查、确认与历史展示可核对当时依据。管理详情额外投影 `admin_written`、该修订正文与当前记忆，不把当前修订冒充历史证据。版本列表不加载完整材料。
+
+```mermaid
+flowchart LR
+    A[有效自我认知记忆] --> B[确定性选材与依据快照]
+    B --> C[persona_generate]
+    C --> D[确定性检查与 persona_check]
+    D --> E{检查与发布设置}
+    E -->|失败| F[拒绝，保留当前版]
+    E -->|需要确认| G[待确认，保留当前版]
+    E -->|自动发布| H[新当前版，旧版转历史]
+    G -->|管理员确认及版本核对| H
+```
+
+选材要求涉及 self 且说话人 self 或立场为设定，排除遗忘／删除；排序与 6000 token 材料预算确定。每条附日期、入口类型、立场和最早一条／最近三条来源摘录（各最多 300 token），递归来源按消息及日期去重。上一版不充当事实来源。生成先检查句子依据、800 字上限与残留编号，300 字下限只警告；模型检查覆盖每句的支持、虚构、监管违规、单日依据场景限定，并判小／中／大。管理员手写句被删改时确定性覆盖为大。直接编辑只做确定性检查，原样句保留原出处，新增或改写句标为管理员。回滚从已发布版本复制正文与句子到新版本，保留旧检查与材料，并重新记生成时间；旧依据失效仍可见。
+
+`admin.py` 的路由 lifespan 在服务 Store／Gateway 建立后创建 `PersonaJobs`，退出时在线程中等待执行器关闭，然后才关闭底层资源。任务先在短写事务核对当前版本、排除已有 queued／running 任务、记录请求和冻结设置，再提交单线程执行器。HTTP 请求不等待模型。`persona_attempts` 持久保存状态、材料、输出及结果；读取接口只投影安全的任务元数据，生成输出就绪后显示 checking。服务启动把未完成任务记为 interrupted 失败，不自动重试。数据层同步生成也走同一任务准入，避免与管理请求并行生成。
+
+模型使用对话端点，分别记录 `persona_generate`、`persona_check` 的用量、耗时、结束原因和推理档位，沿用 chat 暂停、自动恢复与每日 token 上限；暂停／超限记 skipped。每个用途调用遵守既有生成超时，全部网络调用在数据库事务之外。发布事务重新核对当前版本 ID、记忆修订／生命周期和来源指纹；确认候选同样复核。冲突返回／记录 conflict，不覆盖管理员刚发布的版本。新的候选取代已有待确认候选；管理员编辑／回滚也清理待确认状态。操作记录与版本或任务状态变更在同一事务提交。
+
+`settings_api.py` 只允许管理员通过 `PATCH /admin/api/settings/persona` 修改生成目标、监管要求和发布方式，保存时记录字段名；`GET /admin/api/settings` 返回 persona 设置。任务接受时冻结设置，因此之后的设置修改不影响在途任务、既有当前版和待确认版；确认按该候选保存的检查结果处理。此接口不唤起学习或重新生成。
+
+`persona_context` 在回复准备已有的只读快照中读取当前版正文、生成时间、句子及材料，逐项核对被引用记忆，返回 `version/content/generated_at/needs_update/stale_basis_count`。不读取可能很大的全部自我记忆快照，不调用模型，不改其他分区；失效计数按记忆 ID 去重。管理当前页在同一快照增加失效依据列表。`persona_due` 独立判断至少五条新增／变化，或自生成时刻起经过至少 168 小时且有变化；手动编辑和回滚重新起算，确认不改起点。定期更新调用由梦境整理线接入。
+
+管理接口、分页、状态枚举与请求字段见 README 的 M3 persona 小节。所有读取使用已有管理员会话，写入还需 CSRF 与同源检查；版本 CAS 冲突返回 409。当前实现不提供前端页面，也不让页面轮询触发模型。外部评测冻结输入指纹，保留拒绝候选并单列；双判逐句取不利结论，正式质量指标沿用 persona_v1 与 persona_scoring_v1 约定。
 
 ## M3 当前状态（GO 第一步）
 
