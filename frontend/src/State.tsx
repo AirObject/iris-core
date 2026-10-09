@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useData } from "./api";
-import { Badge, Empty, Notice, Pagination } from "./ui";
+import Goals from "./Goals";
+import Notifications from "./Notifications";
+import { Badge, Empty, Notice, Pagination, RoleTime as StateTime } from "./ui";
 import type {
   ActiveState,
   CurrentState,
@@ -24,20 +26,6 @@ const fields = {
   start_time_basis: "开始时间依据",
 };
 
-function StateTime({ value }: { value: string | null }) {
-  // State projections already use the role's timezone. Keep that offset rather
-  // than silently converting these independent field timestamps to browser time.
-  return value ? (
-    <time dateTime={value}>
-      {value
-        .replace("T", " ")
-        .replace(/\.\d+(?=[+-]|Z$)/, "")
-        .replace(/([+-]\d{2}:\d{2}|Z)$/, " $1")}
-    </time>
-  ) : (
-    <>暂无记录</>
-  );
-}
 function duration(value: number) {
   const seconds = Math.max(0, Math.floor(value));
   return (
@@ -267,7 +255,7 @@ function ReportCard({ report }: { report: StateReport }) {
   );
 }
 
-export default function StatePage() {
+function CurrentStatePage() {
   const current = useData<CurrentState>("/state", 2000);
   const [offset, setOffset] = useState(0);
   const reports = useData<Page<StateReport>>(
@@ -276,15 +264,6 @@ export default function StatePage() {
   );
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">此刻在做什么</p>
-          <h1>状态与目标</h1>
-          <p>
-            当前状态完全由宿主报告，管理员不能编辑。所有入口共享，以最后一次报告为准。
-          </p>
-        </div>
-      </div>
       <div className="state-page">
         <section
           className="panel state-panel"
@@ -362,6 +341,70 @@ export default function StatePage() {
           )}
         </section>
       </div>
+    </>
+  );
+}
+
+export default function StatePage({
+  initialQuery = "",
+  openMemory = () => {},
+}: {
+  initialQuery?: string;
+  openMemory?: (id: number) => void;
+}) {
+  const query = new URLSearchParams(initialQuery);
+  const parsedId = Number(query.get("id"));
+  const [goalId, setGoalId] = useState<number | null>(
+    Number.isSafeInteger(parsedId) && parsedId > 0 ? parsedId : null,
+  );
+  const initialTab = query.get("tab");
+  const [tab, setTab] = useState(
+    initialTab === "goals" || initialTab === "notifications"
+      ? initialTab
+      : "state",
+  );
+  function openGoal(id: number) {
+    setGoalId(id);
+    setTab("goals");
+  }
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">此刻与接下来的事</p>
+          <h1>状态与目标</h1>
+          <p>
+            当前状态完全由宿主报告，管理员不能编辑。状态与目标由所有入口共享。
+          </p>
+        </div>
+      </div>
+      <nav className="learning-tabs" aria-label="状态与目标分区">
+        <button aria-pressed={tab === "state"} onClick={() => setTab("state")}>
+          当前状态
+        </button>
+        <button
+          aria-pressed={tab === "goals"}
+          onClick={() => {
+            setGoalId(null);
+            setTab("goals");
+          }}
+        >
+          目标与询问
+        </button>
+        <button
+          aria-pressed={tab === "notifications"}
+          onClick={() => setTab("notifications")}
+        >
+          提醒
+        </button>
+      </nav>
+      {tab === "state" ? (
+        <CurrentStatePage />
+      ) : tab === "goals" ? (
+        <Goals key={goalId} initialId={goalId} openMemory={openMemory} />
+      ) : (
+        <Notifications openGoal={openGoal} />
+      )}
     </>
   );
 }
