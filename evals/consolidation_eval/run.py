@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'src'))
-from iris.consolidation import METHODS, snapshot
+from iris.consolidation import METHODS, RESOLUTIONS, snapshot
 from iris.db import Store, dumps
 from iris.evaluation import _json_sha256, _read_json, _write_json
 from iris.maintenance import Maintenance
@@ -32,7 +32,8 @@ SCORING=(ROOT/'src/iris/prompts'/f'{SCORING_VERSION}.md').read_text(encoding='ut
 def source_hash():
     paths=sorted([*ROOT.joinpath('src/iris').rglob('*.py'),*ROOT.joinpath('src/iris').rglob('*.sql'),
                   *ROOT.joinpath('src/iris').rglob('*.md'),*ROOT.joinpath('src/iris').rglob('*.json'),
-                  *Path(__file__).parent.glob('*.py'),*Path(__file__).parent.glob('*.json')])
+                  *Path(__file__).parent.glob('*.py'),*Path(__file__).parent.glob('*.json'),
+                  Path(__file__).parent/'write_audit.md'])
     return hashlib.sha256(b''.join(str(p.relative_to(ROOT)).encode()+p.read_bytes() for p in paths)).hexdigest()
 
 
@@ -118,12 +119,14 @@ def capture(store,key_map,members):
         return {'key_map':key_map.copy(),'memories':[export_memory(snapshot(conn,mid),key_map,members) for mid in key_map.values()]}
 
 
-def case_run(case,dbpath,gateway_factory,method):
+def case_run(case,dbpath,gateway_factory,method,resolution='original_v1'):
+    if resolution not in RESOLUTIONS or (resolution!='original_v1' and method!='broad'):
+        raise ValueError('resolution comparison fixes the selected merge method to broad')
     started=time.monotonic()
     store=Store(dbpath)
     gateway=None
     try:
-        store.set_setting('consolidation',{'enabled':True,'method':method,'max_calls':50})
+        store.set_setting('consolidation',{'enabled':True,'method':method,'max_calls':50,'resolution':resolution})
         key_map,source_map=seed(store,case)
         members={v:[k] for k,v in key_map.items()}
         retention=[]
@@ -188,8 +191,9 @@ def case_run(case,dbpath,gateway_factory,method):
                 continue
             d=item['details']
             if not d.get('before_memories'):
-                actions.append({'action_id':'failed-'+item['item_key'],'kind':item['outcome'],'keys':[],
-                    'status':'failed','before_memories':[],'after_memories':[],'report':item['reason'] or ''})
+                actions.append({'action_id':'failed-'+item['item_key'],'kind':item['outcome'],
+                    'keys':[reverse[item['memory_id']]] if item['memory_id'] in reverse else [],
+                    'status':'failed','before_memories':[],'after_memories':[],'report':(item['reason'] or '')+': '+d.get('rejection','')})
                 continue
             old=[export_memory(m,key_map,members) for m in d['before_memories']]
             if item['outcome']=='merged':
@@ -223,8 +227,12 @@ def case_run(case,dbpath,gateway_factory,method):
             m.update(annotations=[],is_placeholder=False,merged_into=None)
         payload={'role':{'name':'Iris','self_subject_id':'self'},'case':enriched,'before':before,'actual_merges':merges,
             'actual_actions':actions,'after':after,'retention_changes':retention}
-        valid=not skipped and not any(c['result']!='success' for c in calls) and not report['summary']['failed']['count'] and not report['consolidation']['skip_reason']
-        return {'input':payload,'calls':calls,'report':report,'valid':valid,'elapsed_seconds':time.monotonic()-started}
+        failures=[i for i in report['items'] if i['outcome']=='failed']
+        safety_rejections=sum(i['reason']=='unsafe_write' for i in failures)
+        valid=not skipped and not any(c['result']!='success' for c in calls) and not any(
+            i['reason']!='unsafe_write' for i in failures) and not report['consolidation']['skip_reason']
+        return {'input':payload,'calls':calls,'report':report,'valid':valid,'safety_rejections':safety_rejections,
+                'elapsed_seconds':time.monotonic()-started}
     finally:
         if gateway and callable(getattr(gateway,'close',None)):
             gateway.close()
@@ -245,9 +253,14 @@ def export(rows,out,metadata):
             'scoring_version':SCORING_VERSION,'input':row['input']}
         filename=f'cases/{i:04}.json'
         manifest['cases'].append({'case_id':document['case_id'],'file':filename,'sha256':_write_json(out/filename,document),'judgment_file':f'{i:04}.json'})
+    audit=(Path(__file__).parent/'write_audit.md').read_text(encoding='utf-8')
+    (out/'write-audit.md').write_text(audit,encoding='utf-8')
+    manifest['write_audit_sha256']=hashlib.sha256(audit.encode()).hexdigest()
     manifest['materials_sha256']=_json_sha256(manifest)
     _write_json(out/'manifest.json',manifest)
     _write_json(out/'round-template.json',{'materials_sha256':manifest['materials_sha256']})
+    _write_json(out/'write-audit-template.json',{'materials_sha256':manifest['materials_sha256'],
+        'cases':[{'case_id':e['case_id'],'has_damage':None,'reason':''} for e in manifest['cases']]})
     return manifest
 
 
@@ -256,8 +269,11 @@ def main():
     parser.add_argument('--corpus',type=Path,default=ROOT/'evals/consolidation_v1.json')
     parser.add_argument('--out',type=Path,required=True)
     parser.add_argument('--method',choices=METHODS,required=True)
+    parser.add_argument('--resolution',choices=RESOLUTIONS,default='original_v1')
     parser.add_argument('--case',action='append',default=[])
     args=parser.parse_args()
+    if args.resolution!='original_v1' and args.method!='broad':
+        parser.error('resolution comparison requires --method broad')
     cases=load_corpus(args.corpus)
     if args.case:
         cases=[c for c in cases if c['id'] in args.case]
@@ -276,7 +292,7 @@ def main():
     rows=[]
     source=source_hash()
     for case in cases:
-        row=case_run(case,out/(case['id']+'.db'),factory,args.method)
+        row=case_run(case,out/(case['id']+'.db'),factory,args.method,args.resolution)
         rows.append(row)
         _write_json(out/(case['id']+'.json'),row)
         print(json.dumps({'case':case['id'],'valid':row['valid'],'calls':len(row['calls']),
@@ -284,7 +300,7 @@ def main():
     if source_hash()!=source:
         raise ValueError('source changed during model evaluation')
     metadata={'corpus':{'sha256':_json_sha256(cases),'file_sha256':hashlib.sha256(args.corpus.read_bytes()).hexdigest(),'cases':len(cases)},
-        'source_sha256':source,'scoring_version':SCORING_VERSION,'method':args.method,'chat_model':chat.model,
+        'source_sha256':source,'scoring_version':SCORING_VERSION,'method':args.method,'resolution':args.resolution,'chat_model':chat.model,
         'chat_reasoning_effort':chat.reasoning_effort,'endpoint_sha256':hashlib.sha256(chat.base_url.encode()).hexdigest(),
         'calls':sum(len(r['calls']) for r in rows),'elapsed_seconds':sum(r['elapsed_seconds'] for r in rows),'valid':all(r['valid'] for r in rows)}
     export(rows,out/'materials',metadata)

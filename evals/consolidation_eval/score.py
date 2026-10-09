@@ -242,9 +242,37 @@ def score_case(p,j):
         'protection':protection,'belief_cap':belief_checks,'source_inheritance':source_checks,'judgments':j}
 
 
-def score(materials,judgments,out,judge_model):
+
+def audit_writes(manifest, paths):
+    require(1<=len(paths)<=2, 'one or two independent write audit rounds required')
+    rounds=[]
+    ids=[entry['case_id'] for entry in manifest['cases']]
+    for path in paths:
+        document=_read_json(path)
+        exact(document,('materials_sha256','cases'))
+        require(document['materials_sha256']==manifest['materials_sha256'],'write audit material mismatch')
+        require(isinstance(document['cases'],list) and len(document['cases'])==len(ids),'write audit cases mismatch')
+        for item,case_id in zip(document['cases'],ids,strict=True):
+            exact(item,('case_id','has_damage','reason'))
+            require(item['case_id']==case_id,'write audit case order mismatch')
+            boolean(item['has_damage'])
+            require(isinstance(item['reason'],str) and bool(item['reason'].strip()),'write audit reason required')
+        rounds.append(document['cases'])
+    details=[]
+    for index,case_id in enumerate(ids):
+        values=[r[index] for r in rounds]
+        details.append({'case_id':case_id,'has_damage':any(v['has_damage'] for v in values),
+            'disagreement':len({v['has_damage'] for v in values})>1,'judgments':values})
+    return {'write_audit_rounds':len(rounds),'write_damage':ratio(sum(d['has_damage'] for d in details),len(details)),
+            'write_audit_details':details}
+
+def score(materials,judgments,out,judge_model,write_audits=()):
     require(1<=len(judgments)<=2 and judge_model.strip(),'one or two rounds and judge model required')
     manifest,rows=load_materials(materials)
+    if write_audits:
+        require(len(write_audits)==len(judgments),'write audit and scoring round counts must match')
+        require('write_audit_sha256' in manifest,'materials lack frozen write audit instructions')
+        _verified_material_file(materials,'write-audit.md',manifest['write_audit_sha256'])
     rounds=[]
     for directory in judgments:
         round_manifest=_read_json(directory/'manifest.json')
@@ -261,8 +289,12 @@ def score(materials,judgments,out,judge_model):
             j=combine(j,rounds[1][i],row['input']['case']['id'],disagreements)
         results.append(score_case(row['input'],j))
     report={'format_version':1,'evaluation':'consolidation','method':manifest['run']['method'],
+        'resolution':manifest['run'].get('resolution','original_v1'),'corpus_sha256':manifest['run']['corpus']['sha256'],
         'materials_sha256':manifest['materials_sha256'],'source_sha256':manifest['run']['source_sha256'],
         'judge_model':judge_model,'judge_rounds':len(rounds),'valid':all(r['valid'] for r in rows), 'cases':results,'disagreements':disagreements}
+    report['safety_rejections']=sum(r.get('safety_rejections',0) for r in rows)
+    if write_audits:
+        report.update(audit_writes(manifest,write_audits))
     for field in ('mismerge','recognition','contradictions','dependencies'):
         report[field]=ratio(sum(r[field]['numerator'] for r in results),sum(r[field]['denominator'] for r in results))
     report['conflict_dependency_consistency']=ratio(report['contradictions']['numerator']+report['dependencies']['numerator'],
@@ -290,9 +322,10 @@ def main():
     parser.add_argument('--materials',type=Path,required=True)
     parser.add_argument('--judgments',type=Path,action='append',required=True)
     parser.add_argument('--judge-model',required=True)
+    parser.add_argument('--write-audit',type=Path,action='append',default=[])
     parser.add_argument('--out',type=Path,required=True)
     args=parser.parse_args()
-    report=score(args.materials,args.judgments,args.out,args.judge_model)
+    report=score(args.materials,args.judgments,args.out,args.judge_model,args.write_audit)
     print(json.dumps({k:v for k,v in report.items() if k not in ('cases','disagreements')},ensure_ascii=False,indent=2))
 
 

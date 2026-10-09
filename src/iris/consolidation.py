@@ -11,16 +11,133 @@ from difflib import SequenceMatcher
 from importlib.resources import files
 
 from .db import dumps
+from .learning import LearningEngine, PARTICIPANT_NUMBER, _same_claim_sequences
 from .memory_ops import lifecycle_settings, operation
 from .model_health import utc_now
 from .models import Gateway, ModelError
-from .search_text import match_query, terms
+from .search_text import match_query, terms, words
 
 # Candidate order and parameters are frozen before the first real-model probe.
 METHODS = {'balanced': 0.40, 'strict': 0.65, 'broad': 0.20}
-DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad'}
-PROMPT_VERSION = 'consolidation_v1'
+RESOLUTIONS = ('original_v1', 'rewrite_v2', 'conservative_v2')
+DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': 'conservative_v2'}
+PROMPT_VERSION = 'consolidation_write_guard_v2'
 MAX_ANCESTORS = 64
+
+
+class UnsafeWrite(ValueError):
+    """A semantic safety rejection is final for these inputs, never a JSON retry."""
+
+
+# The learning helpers are read-only imports. Learning does not itself expose a
+# gender guard: consolidation refuses all gendered pronouns in rewritten bodies.
+GENDERED = re.compile(r"\b(?:he|him|his|she|her|hers)\b", re.I)
+
+
+def gendered_pronoun(text):
+    return bool(GENDERED.search(text)) or any(
+        word in {"他", "她", "他们", "她们", "他俩", "她俩", "他的", "她的"} for word in words(text))
+
+REFERENCE = re.compile(r"(记忆|来源消息|消息|证据)\s*(?:id\s*)?[:：=#]?\s*(\d+)", re.I)
+NUMBERED = re.compile(r"(?<![A-Za-z0-9_])(?:[PMS]\d+|#\d+)|\[\d+\]", re.I)
+IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
+HISTORICAL = re.compile(r"过去|曾经|曾[在有任去做喜爱教住买订]|当时|去年|前年|原定|原计划|此前|之前|那时")
+SOURCE_ERROR = re.compile(r"笔误|写错|记错|说错|误写|更正|从未|从来.{0,8}(?:不|没)")
+
+
+def visible_sources(payload, evidence):
+    return [s for m in payload['memories'] for s in material(m)['sources'] if s['id'] in evidence]
+
+
+def text_identifiers(text, payload, evidence, *, body=False):
+    """References may occur in annotations, but only with their actual namespace."""
+    sources = visible_sources(payload, evidence)
+    subject_ids = {m['speaker'] for m in payload['memories']} | {sid for m in payload['memories'] for sid in m['about']}
+    subject_ids |= {sid for s in sources for sid in (s['sender'], s['quote_author']) if sid}
+    # Consolidation has no batch P labels. Reuse learning's reference parser to
+    # reject rather than silently persisting or inventing a participant mapping.
+    try:
+        LearningEngine._subject_reference(text, {'participant_refs': {}, 'subjects': [], 'aliases': []})
+    except ValueError:
+        raise UnsafeWrite('participant_reference') from None
+    if PARTICIPANT_NUMBER.search(text):
+        raise UnsafeWrite('participant_reference')
+    if body and (NUMBERED.search(text) or REFERENCE.search(text)):
+        raise UnsafeWrite('numbered_reference')
+    if not body:
+        for label, number in REFERENCE.findall(text):
+            allowed = {m['id'] for m in payload['memories']} if label == '记忆' else {s['id'] for s in sources}
+            if int(number) not in allowed:
+                raise UnsafeWrite('invalid_evidence' if label != '记忆' else 'invalid_memory_reference')
+        for prefix, number in re.findall(r"(?<![A-Za-z0-9_])([MS])(\d+)", text):
+            allowed = {m['id'] for m in payload['memories']} if prefix == 'M' else {s['id'] for s in sources}
+            if int(number) not in allowed:
+                raise UnsafeWrite('invalid_memory_reference' if prefix == 'M' else 'invalid_evidence')
+    grounding = ' '.join([m['content'] or '' for m in payload['memories'] if m['lifecycle'] != 'deleted'] +
+                         [s['text'] + ' ' + (s['quote_content'] or '') for s in sources])
+    known = set(IDENTIFIER.findall(grounding)) | subject_ids
+    # Disallow invented subject IDs (including typos), not just unknown P labels.
+    references = set(re.findall(r"[MS]\d+", text)) if not body else set()
+    if set(IDENTIFIER.findall(text)) - known - references - {'id', 'ID'}:
+        raise UnsafeWrite('unsupported_identifier')
+
+
+def same_write_sequences(left, right):
+    # Keep learning's established Chinese boundary and additionally preserve
+    # decimal separators and English negation (normalization removes punctuation).
+    numbers = lambda text: re.findall(r'\d+(?:\.\d+)?', text)
+    negative = lambda text: re.findall(r'\b(?:not|never|no|without)\b', text.casefold())
+    return (_same_claim_sequences(left, right) and numbers(left) == numbers(right)
+            and negative(left) == negative(right))
+
+
+def validate_write(memory, update, payload, evidence, resolution):
+    allowed_subjects = {m['speaker'] for m in payload['memories']} | {sid for m in payload['memories'] for sid in m['about']}
+    allowed_subjects |= {sid for s in visible_sources(payload,evidence) for sid in (s['sender'],s['quote_author']) if sid}
+    refs = update.get('subject_ids', [])
+    if not isinstance(refs, list) or any(not isinstance(sid, str) or sid not in allowed_subjects for sid in refs):
+        raise UnsafeWrite('invalid_subject')
+    annotation = update.get('annotation')
+    if annotation:
+        text_identifiers(annotation, payload, evidence)
+        if gendered_pronoun(annotation):
+            raise UnsafeWrite('gendered_pronoun')
+    content = update.get('content')
+    # Protected content is never applied, so an ignored model suggestion does not
+    # prevent an independently valid dispute annotation from being stored.
+    if content is None or protected(memory) or content == memory['content']:
+        return
+    if resolution == 'conservative_v2':
+        raise UnsafeWrite('conservative_body_write')
+    if gendered_pronoun(content):
+        raise UnsafeWrite('gendered_pronoun')
+    text_identifiers(content, payload, evidence, body=True)
+    referenced=set(refs) | (set(IDENTIFIER.findall(content)) & allowed_subjects)
+    if referenced - {memory['speaker'],*memory['about']}:
+        raise UnsafeWrite('subject_attribution')
+    # Preserve the original claim's number/negation sequence AND match a visible,
+    # cited source. A correction needing different quantities stays an annotation.
+    sources = visible_sources(payload, evidence)
+    source_texts = [text for s in sources for text in (s['text'], s['quote_content']) if text]
+    if not same_write_sequences(content, memory['content']) or not any(
+            same_write_sequences(content, text) for text in source_texts):
+        raise UnsafeWrite('claim_sequences')
+
+
+def conservative_belief(memory, update, payload, evidence):
+    """A later state is not evidence that an earlier experience never happened."""
+    belief = min(update['belief'], memory['belief'])
+    if update.get('assessment') == 'superseded' or HISTORICAL.search(memory['content']):
+        return memory['belief']
+    if payload.get('target_id'):
+        losses = payload['losses']
+        if update.get('assessment') == 'unsupported' and any(l['state'] == 'deleted' for l in losses):
+            return belief
+    explicit_error = update.get('assessment') == 'source_error' and any(
+        SOURCE_ERROR.search(s['text']) or SOURCE_ERROR.search(s['quote_content'] or '')
+        for s in visible_sources(payload, evidence)
+        if memory['speaker'] in (s['sender'], s['quote_author']) or memory['stance'] == '推断')
+    return belief if explicit_error else memory['belief']
 
 
 def digest(value):
@@ -172,7 +289,7 @@ def dependency_material(conn, target):
 def work_fingerprint(kind,payload,method):
     return digest({'version':PROMPT_VERSION,'method':method,'kind':kind,
                    'memories':[semantic(m) for m in payload['memories']],
-                   'losses':payload.get('losses',[])})
+                   'losses':payload.get('losses',[]), 'resolution':payload.get('resolution','original_v1')})
 
 
 class _CallHealth:
@@ -222,7 +339,9 @@ class Consolidation:
     def call(self,work,payload):
         purpose='consolidation_dependency' if work['kind']=='dependency' else ('consolidation_merge' if payload['merge_allowed'] else 'consolidation_conflict')
         name='dependency' if work['kind']=='dependency' else 'pair'
-        prompt=files('iris').joinpath(f'prompts/consolidation_{name}_v1.md').read_text(encoding='utf-8')
+        resolution=payload.get('resolution','original_v1')
+        suffix='v1' if resolution=='original_v1' else resolution
+        prompt=files('iris').joinpath(f'prompts/consolidation_{name}_{suffix}.md').read_text(encoding='utf-8')
         public={**payload,'memories':[material(m) for m in payload['memories']]}
         messages=[{'role':'system','content':prompt},{'role':'user','content':dumps(public)}]
         def unique(pairs):
@@ -265,6 +384,8 @@ class Consolidation:
                 result=json.loads(reply.content,object_pairs_hook=unique)
                 self.validate(result,work,payload)
                 return result
+            except UnsafeWrite:
+                raise
             except (ValueError,TypeError,KeyError) as error:
                 if repair:
                     raise ValueError('invalid_output') from None
@@ -290,29 +411,35 @@ class Consolidation:
         ids=set(payload.get('pair_ids',[payload.get('target_id')]))
         evidence={s['id'] for m in payload['memories'] for s in material(m)['sources']}
         if not isinstance(value['evidence'],list) or any(type(i) is not int or i not in evidence for i in value['evidence']):
-            raise ValueError('invalid_evidence')
+            raise UnsafeWrite('invalid_evidence')
         if value['decision'] in ('merge','conflict') and not value['evidence']:
-            raise ValueError('missing_evidence')
+            raise UnsafeWrite('missing_evidence')
+        if value['decision'] not in ('keep','separate','uncertain'):
+            text_identifiers(value['reason'],payload,value['evidence'])
+            if gendered_pronoun(value['reason']):
+                raise UnsafeWrite('gendered_pronoun')
         if not isinstance(value['updates'],list):
             raise ValueError('invalid_updates')
         seen=set()
         for update in value['updates']:
-            if not isinstance(update,dict) or set(update)-{'id','content','belief','annotation'} or type(update.get('id')) is not int or update['id'] not in ids or update['id'] in seen:
-                raise ValueError('invalid_update')
+            if not isinstance(update,dict) or set(update)-{'id','content','belief','annotation','subject_ids','assessment'} or type(update.get('id')) is not int or update['id'] not in ids or update['id'] in seen:
+                raise UnsafeWrite('invalid_update')
             seen.add(update['id'])
+            if 'assessment' in update and update['assessment'] not in ('superseded','disputed','unsupported','source_error'):
+                raise UnsafeWrite('invalid_assessment')
             if work['kind']=='dependency' and update['id']!=payload['target_id']:
-                raise ValueError('non_target_update')
+                raise UnsafeWrite('non_target_update')
             if 'belief' in update and (type(update['belief']) is not int or not 0<=update['belief']<=100):
-                raise ValueError('invalid_belief')
+                raise UnsafeWrite('invalid_belief')
             for key in ('content','annotation'):
                 if key in update and (not isinstance(update[key],str) or not 0<len(update[key].strip())<=1000):
-                    raise ValueError('invalid_text')
+                    raise UnsafeWrite('invalid_text')
         if value['decision']=='merge' and (type(value.get('keep_id')) is not int or value['keep_id'] not in ids or value['updates']):
-            raise ValueError('invalid_merge')
+            raise UnsafeWrite('invalid_merge')
         if value['decision'] in ('keep','separate','uncertain') and value['updates']:
-            raise ValueError('unexpected_updates')
+            raise UnsafeWrite('unexpected_updates')
         if value['decision']=='weaken' and any('content' in u for u in value['updates']):
-            raise ValueError('weakening_cannot_rewrite')
+            raise UnsafeWrite('weakening_cannot_rewrite')
 
     def plan(self,run,settings):
         candidates=[]
@@ -334,7 +461,7 @@ class Consolidation:
                     dep=dependency_material(conn,m)
                     if dep:
                         candidates.append(('dependency',dep))
-                fp=digest([settings['method'],semantic(m)])
+                fp=digest([PROMPT_VERSION,settings['method'],settings['resolution'],semantic(m)])
                 old=conn.execute('SELECT fingerprint FROM consolidation_scanned WHERE memory_id=?',(m['id'],)).fetchone()
                 if old and old[0]==fp:
                     continue
@@ -383,6 +510,7 @@ class Consolidation:
                         'merge_exclusion':exclusion or ('similarity' if not eligible else None),'preferred_keep_id':preferred}))
                 scanned.append((m['id'],fp))
         for kind,payload in candidates:
+            payload['resolution']=settings['resolution']
             with self.store.write() as conn:
                 fp=work_fingerprint(kind,payload,settings['method'])
                 if conn.execute('SELECT 1 FROM consolidation_receipts WHERE fingerprint=?',(fp,)).fetchone():
@@ -395,7 +523,8 @@ class Consolidation:
             # A bounded run snapshot; the durable pending queue remains ordered.
             conn.execute('''INSERT OR IGNORE INTO consolidation_run_work(run_id,work_id)
                 SELECT ?,id FROM consolidation_work WHERE state IN ('pending','decided')
-                ORDER BY importance DESC,julianday(changed_at) DESC,id LIMIT 256''',(run['id'],))
+                AND COALESCE(json_extract(payload_json,'$.resolution'),'original_v1')=?
+                ORDER BY importance DESC,julianday(changed_at) DESC,id LIMIT 256''',(run['id'],settings['resolution']))
             conn.execute('UPDATE consolidation_runs SET planned=1 WHERE run_id=?',(run['id'],))
 
     def _stale(self,conn,payload):
@@ -435,13 +564,16 @@ class Consolidation:
         self.run_id=run['id']
         with self.store.write() as conn:
             config={**DEFAULTS,**self.store.setting('consolidation',{})}
-            if config['method'] not in METHODS or type(config['max_calls']) is not int or not 0<=config['max_calls']<=50:
+            if config['resolution'] not in RESOLUTIONS or config['method'] not in METHODS or type(config['max_calls']) is not int or not 0<=config['max_calls']<=50:
                 raise ValueError('invalid consolidation settings')
             conn.execute('INSERT OR IGNORE INTO consolidation_runs(run_id,settings_json) VALUES(?,?)',(self.run_id,dumps(config)))
             state=dict(conn.execute('SELECT * FROM consolidation_runs WHERE run_id=?',(self.run_id,)).fetchone())
         if state['finished']:
             return True
-        config=json.loads(state['settings_json'])
+        config={**DEFAULTS,**json.loads(state['settings_json'])}
+        # Runs created by v1 retain their original policy when resumed.
+        if 'resolution' not in json.loads(state['settings_json']):
+            config['resolution']='original_v1'
         if not config['enabled'] or not self.gateway or not callable(getattr(self.gateway,'chat',None)):
             self.halt('disabled' if not config['enabled'] else 'unconfigured')
             return True
@@ -472,6 +604,11 @@ class Consolidation:
                     self.record(conn,work,'skipped' if reason in ('call_budget','usage_limit','paused','temporary_unavailable') or exc.paused else 'failed',reason,done=False)
                 budget_reason=reason
                 break
+            except UnsafeWrite as exc:
+                with self.store.write() as conn:
+                    self.record(conn,work,'failed','unsafe_write',{'rejection':str(exc)})
+                    conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work['fingerprint'],))
+                continue
             except (ValueError,TypeError,KeyError) as exc:
                 with self.store.write() as conn:
                     self.record(conn,work,'failed','invalid_output',done=False)
@@ -489,7 +626,7 @@ class Consolidation:
         for work in all_work:
             p=json.loads(work['payload_json'])
             r=json.loads(work['result_json']) if work['result_json'] else {}
-            if work['kind']=='pair' and (work['state']=='pending' or r.get('decision')=='conflict'):
+            if work['kind']=='pair' and (work['state']=='pending' or work['outcome']=='failed' or r.get('decision')=='conflict'):
                 blocked.add(frozenset(p['pair_ids']))
         all_work.sort(key=lambda w:(json.loads(w['result_json'] or '{}').get('decision')=='merge',w['id']))
         for work in all_work:
@@ -567,9 +704,20 @@ class Consolidation:
         else:
             updates={u['id']:u for u in result['updates']}
             targets=[payload['target_id']] if work['kind']=='dependency' else payload['pair_ids']
+            applied=0
+            rejected=[]
             for mid in targets:
                 m=next(m for m in before if m['id']==mid)
-                u=updates.get(mid,{})
+                u={**updates.get(mid,{})}
+                u.setdefault('annotation',result['reason'])
+                try:
+                    validate_write(m,u,payload,result['evidence'],payload.get('resolution','original_v1'))
+                except UnsafeWrite as exc:
+                    rejected.append({'memory_id':mid,'rejection':str(exc)})
+                    conn.execute('''INSERT OR IGNORE INTO maintenance_items(run_id,phase,item_key,memory_id,object_id,outcome,reason,details_json,created_at)
+                        VALUES(?,'consolidation',?,?,?,'failed','unsafe_write',?,?)''',
+                        (self.run_id,f'{work["id"]}:reject:{mid}',mid,mid,dumps({'rejection':str(exc),'memory_id':mid}),self.clock().isoformat()))
+                    continue
                 changes={k:u[k] for k in ('content','belief') if k in u and u[k]!=m[k]}
                 if work['kind']=='dependency':
                     only_forgotten=all(l['state']=='forgotten' and not l['corrected'] for l in payload['losses'])
@@ -579,6 +727,12 @@ class Consolidation:
                         changes.pop('content',None)
                     if 'belief' in changes:
                         changes['belief']=min(changes['belief'],m['belief'])
+                if 'belief' in changes and payload.get('resolution')=='conservative_v2':
+                    changes['belief']=conservative_belief(m,u,payload,result['evidence'])
+                # Even the rewrite candidate cannot devalue a stated historical fact
+                # merely because a later state supersedes it.
+                if 'belief' in changes and (u.get('assessment')=='superseded' or HISTORICAL.search(m['content'])):
+                    changes.pop('belief')
                 if protected(m):
                     changes={}
                 annotation=u.get('annotation',result['reason'])
@@ -588,6 +742,10 @@ class Consolidation:
                     # Annotation is a judgment change and invalidates in-flight feedback.
                     changes={'belief':m['belief']}
                 self._revision(conn,m,changes,result['reason'])
+                applied+=1
+            details['rejected_updates']=rejected
+            if not applied:
+                return 'checked',{}
             outcome='dependencies_reviewed' if work['kind']=='dependency' else 'conflicts'
         details['after_memories']=[snapshot(conn,m['id']) for m in before]
         operation(conn,'consolidation_'+('merge' if decision=='merge' else 'dependency' if work['kind']=='dependency' else 'conflict'),

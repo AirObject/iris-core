@@ -333,7 +333,7 @@ class Maintenance:
                     FROM consolidation_calls WHERE run_id=?""", (run_id,)).fetchone()
                 report['summary']['model_calls'] = dict(calls)
                 report['consolidation'] = {'settings': json.loads(model['settings_json']),
-                    'deferred': sum(r['outcome'] is None or r['outcome'] in ('failed','skipped') for r in rows),
+                    'deferred': sum((r['outcome'] is None or r['outcome'] in ('failed','skipped')) and r['reason']!='unsafe_write' for r in rows),
                     'skip_reason': model['skip_reason']}
             return report
 

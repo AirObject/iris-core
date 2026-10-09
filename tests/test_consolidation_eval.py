@@ -109,3 +109,104 @@ def test_selection_uses_worst_run_ties_and_requires_final_double_judging():
     reports[0]['judge_rounds']=1
     with pytest.raises(ValueError,match='double'):
         selection.choose(reports)
+
+
+def test_safety_rejection_is_quality_result_not_invalid_model_run(tmp_path):
+    case=runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')[0]
+    def answer(p):
+        return {'decision':'conflict','reason':'摘要范围有争议','evidence':[p['memories'][0]['sources'][0]['id']],
+                'updates':[{'id':p['pair_ids'][0],'content':'她喜欢口琴','annotation':'待核对'}]}
+    row=runner.case_run(case,tmp_path/'reject.db',lambda store,clock:Model(store,answer),'broad','rewrite_v2')
+    assert row['valid'] and row['safety_rejections'] == 1
+    assert any(a['status']=='failed' for a in row['input']['actual_actions'])
+    assert len(row['calls']) == 1
+
+
+def test_resolution_cannot_change_selected_merge_method(tmp_path):
+    case=runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')[0]
+    with pytest.raises(ValueError,match='broad'):
+        runner.case_run(case,tmp_path/'wrong.db',lambda store,clock:Model(store),'strict','conservative_v2')
+
+
+def test_write_audit_requires_bound_exact_cases_and_real_booleans(tmp_path):
+    manifest={'materials_sha256':'same','cases':[{'case_id':'CS001'}]}
+    a={'materials_sha256':'same','cases':[{'case_id':'CS001','has_damage':False,'reason':'未写回错误'}]}
+    b=copy.deepcopy(a);b['cases'][0].update(has_damage=True,reason='标注丢失限定')
+    paths=[]
+    for index,document in enumerate((a,b)):
+        path=tmp_path/f'{index}.json';runner._write_json(path,document);paths.append(path)
+    result=scorer.audit_writes(manifest,paths)
+    assert result['write_damage']['numerator']==1 and result['write_audit_rounds']==2
+    assert result['write_audit_details'][0]['disagreement']
+    b['cases'][0]['has_damage']=0
+    runner._write_json(paths[1],b)
+    with pytest.raises(ValueError,match='boolean'):
+        scorer.audit_writes(manifest,paths)
+    b['cases'][0]['has_damage']=False;b['materials_sha256']='different'
+    runner._write_json(paths[1],b)
+    with pytest.raises(ValueError,match='material'):
+        scorer.audit_writes(manifest,paths)
+
+
+def test_resolution_selection_worst_run_fallback_and_damage_gate():
+    spec=importlib.util.spec_from_file_location('resolution_selection',DIR/'resolution_selection.py')
+    selection=importlib.util.module_from_spec(spec);spec.loader.exec_module(selection)
+    reports=[]
+    for candidate in selection.ORDER:
+        for i in range(2):
+            reports.append({'resolution':candidate,'method':'broad','corpus_sha256':selection.CORPUS_SHA256,
+                'valid':True,'judge_rounds':2,'write_audit_rounds':2,'materials_sha256':f'{candidate}-{i}',
+                'cases':[{'case_id':f'CS{n:03}'} for n in range(1,41)],'mismerge':{'rate':0.},
+                'protection':{'rate':1.},'conflict_dependency_consistency':{'rate':.75 if candidate=='rewrite_v2' else .7},
+                'write_damage':{'numerator':0}})
+    assert selection.choose(reports)['selected']=='conservative_v2'
+    reports[0]['conflict_dependency_consistency']['rate']=.95
+    assert selection.choose(reports)['selected']=='conservative_v2'  # Worse repetition still .75.
+    reports[1]['conflict_dependency_consistency']['rate']=.9
+    assert selection.choose(reports)['selected']=='rewrite_v2'
+    reports[0]['write_damage']['numerator']=1
+    assert selection.choose(reports)['selected'] is None
+    reports[0]['write_damage']['numerator']=0
+    reports[0]['mismerge']['rate']=.01
+    assert selection.choose(reports)['selected']=='conservative_v2'
+    reports[2]['protection']['rate']=.5
+    assert selection.choose(reports)['selected'] is None
+    reports[0]['write_audit_rounds']=1
+    with pytest.raises(ValueError,match='double'):
+        selection.choose(reports)
+
+
+def test_score_exports_safety_audit_without_changing_frozen_judgment_schema(tmp_path):
+    case=runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')[0]
+    row=runner.case_run(case,tmp_path/'score.db',lambda store,clock:Model(store),'broad','conservative_v2')
+    metadata={'source_sha256':runner.source_hash(),'scoring_version':runner.SCORING_VERSION,'method':'broad',
+        'resolution':'conservative_v2','corpus':{'sha256':runner._json_sha256([case])}}
+    materials=tmp_path/'materials'
+    manifest=runner.export([row],materials,metadata)
+    rounds=[];audits=[]
+    for index in range(2):
+        directory=tmp_path/f'judge-{index}';directory.mkdir();rounds.append(directory)
+        runner._write_json(directory/'manifest.json',{'materials_sha256':manifest['materials_sha256']})
+        runner._write_json(directory/'0000.json',{'format_version':1,'case_id':case['id'],
+            'merge_results':[],'contradiction_results':[],'dependency_results':[],'protection_results':[]})
+        path=tmp_path/f'audit-{index}.json';audits.append(path)
+        runner._write_json(path,{'materials_sha256':manifest['materials_sha256'],
+            'cases':[{'case_id':case['id'],'has_damage':False,'reason':'没有模型写回'}]})
+    report=scorer.score(materials,rounds,tmp_path/'score','gpt-6-astra max',audits)
+    assert report['resolution']=='conservative_v2' and report['write_damage']['numerator']==0
+    assert report['judge_rounds']==report['write_audit_rounds']==2
+    assert report['safety_rejections']==0
+
+
+def test_resolution_freeze_binds_runtime_prompts_and_preserves_merge_instructions():
+    import hashlib
+    from iris.consolidation import DEFAULTS
+    frozen=runner._read_json(DIR/'resolution_candidates_v2.json')
+    assert frozen['frozen_order']==['rewrite_v2','conservative_v2'] and frozen['merge_method']=='broad'
+    for name,expected in frozen['files'].items():
+        assert hashlib.sha256((runner.ROOT/name).read_bytes()).hexdigest()==expected, name
+    original=(runner.ROOT/'src/iris/prompts/consolidation_pair_v1.md').read_text(encoding='utf-8')
+    common=original[:original.index('如果存在冲突')]
+    for candidate in frozen['frozen_order']:
+        assert (runner.ROOT/f'src/iris/prompts/consolidation_pair_{candidate}.md').read_text(encoding='utf-8').startswith(common)
+    assert DEFAULTS['resolution']=='conservative_v2'

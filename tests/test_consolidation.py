@@ -274,7 +274,7 @@ def test_old_recall_cannot_feedback_absorbed_id(store):
         retrieval.feedback(recall['recall_id'],[a])
 
 
-def test_repair_explains_visible_message_ids_without_changing_semantics(store):
+def test_format_repair_keeps_visible_message_ids_without_semantic_rewrite(store):
     pair(store)
     class InvalidReference(Model):
         def chat(self,messages,purpose,max_tokens=16000,**kwargs):
@@ -282,9 +282,9 @@ def test_repair_explains_visible_message_ids_without_changing_semantics(store):
             if not self.requests:
                 payload=json.loads(messages[-1]['content'])
                 self.correct=merge_answer(payload)
-                value={**self.correct,'evidence':[99999]}
+                value={**self.correct,'extra_field':'invalid'}
             else:
-                assert 'invalid_evidence' in messages[-1]['content']
+                assert 'invalid_fields' in messages[-1]['content']
                 assert '可见来源消息 id：[1,2]' in messages[-1]['content']
                 assert '不要把记忆 id 当作消息 id' in messages[-1]['content']
                 value=self.correct
@@ -309,6 +309,7 @@ def test_source_text_and_quote_share_one_excerpt_budget(store):
 
 
 def test_correction_invalidates_committed_vector_and_updates_fts(store):
+    store.set_setting('consolidation',{'resolution':'rewrite_v2'})
     sid=msg(store,1,'旧安排为口琴课，后来改为竹笛课')
     a=put(store,'我每周教口琴课',evidence=[sid],vector=[1.,0.],importance=80)
     b=put(store,'我不再教口琴课，改教竹笛课',evidence=[sid],importance=80)

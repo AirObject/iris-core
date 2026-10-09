@@ -1,0 +1,47 @@
+{
+  "version": 2,
+  "status": "draft_pending_freeze_commit",
+  "prior_method_freeze": "3d31c95b3fa4ba9b64f43bcb9b396e63916a5e7a",
+  "reviewed_head": "2e1c7a347af4f735a04de396e96de28611f3890f",
+  "merge_method": "broad",
+  "corpus_file_sha256": "4600ec32fa27d37cc2b44084dabab1b003dcc70c24205c5e268dbdd80247ac75",
+  "scoring_sha256": "2d5ba208b0779ae130a66ccb2c726986e20a8a3f02616d0c5901b5646ef7bbe7",
+  "frozen_order": [
+    "rewrite_v2",
+    "conservative_v2"
+  ],
+  "retained_baseline": "original_v1 remains selectable; its original prompts and historical results are unchanged; not rerun as a new candidate",
+  "candidates": [
+    {
+      "resolution": "rewrite_v2",
+      "body_policy": "Minimal correction only; preserve original qualifiers/times/numbers/negation and pass deterministic source checks."
+    },
+    {
+      "resolution": "conservative_v2",
+      "body_policy": "Never rewrite; annotations and guarded belief only. Superseded history keeps belief. Provisional default pending probe."
+    }
+  ],
+  "common_guards": [
+    "read-only reuse of learning participant references and claim sequences",
+    "gendered pronouns, residual references, unknown/misattributed subject IDs, invisible evidence IDs rejected",
+    "body must preserve original number/negation sequence and match a cited visible source; decimal/English-negation checks also apply",
+    "unsafe item dropped, reported, receipted; no semantic rewrite retry",
+    "revision/source CAS, pinned/manual protection, only-forgotten belief preservation, no additional retention penalty"
+  ],
+  "selection": "Two full independent executions per new candidate on consolidation_v1; broad merge discovery/exclusions and merge instruction paragraph fixed. Independent fresh gpt-6-astra max double judging per execution, adverse disagreements. Highest worst-run combined conflict+dependency consistency; exact tie uses frozen order. All candidates require zero mismerges (zero merges is not a pass) and all protection checks. If both worst rates <0.80, choose conservative only with no write damage; otherwise unresolved damage requires planner review. Transport/timeouts/pause invalidate a run; deterministic safety rejections remain quality outcomes.",
+  "files": {
+    "src/iris/consolidation.py": "9be50f077588eb84f80bf19a1dabbba2401f8c2eb9675e52d1f4f2cbc51dfd51",
+    "src/iris/maintenance.py": "b51903b8e93e328f66f85ff87e7d9c530235dedecefd1f5d28ea37c1495054b5",
+    "src/iris/migrations/013_consolidation.sql": "49ce01b577b136daa9c9237d80cb6ebda38005d55e26e7e8800440055fe8ddd8",
+    "evals/consolidation_eval/run.py": "0c65b6f641b8da9587b0bfe9ba7039aae4864a66cfddd7f047857ca5bb04a20a",
+    "evals/consolidation_eval/score.py": "aeab41ebfaad992b10bec7d980df85e9fba109bd5762e6f550bb3dac606f1af1",
+    "evals/consolidation_eval/resolution_selection.py": "da15257d7d277f0e8fdd44013def351b65e1ffaea2e5719564270a36cbd14c35",
+    "evals/consolidation_eval/write_audit.md": "fb53f64bf028c2674da6d382f282088054fad41b427a3ae30c7e0d26d9211c86",
+    "src/iris/prompts/consolidation_pair_v1.md": "aa8e912ba4ebd1a3c1f8a22591668b08b712857d8f8a03d0f36acdfb78f9a903",
+    "src/iris/prompts/consolidation_pair_rewrite_v2.md": "53824c384c2ca3143388695be160f7bc027842b613d21382bb2208d32e356927",
+    "src/iris/prompts/consolidation_pair_conservative_v2.md": "da1257239d2bf71c27c7e6a32dc7b85eb74f489b639124b245288af6c53bfbe0",
+    "src/iris/prompts/consolidation_dependency_v1.md": "78d3b77a48f0ee2d3f3780b103d20ccf2663b1837957955acaa7051ce7f18526",
+    "src/iris/prompts/consolidation_dependency_rewrite_v2.md": "02dd7a63df95a016b27d920c33697b99bd9389cea5b88d716737f000f953d4da",
+    "src/iris/prompts/consolidation_dependency_conservative_v2.md": "07c5fd0e711a1e007f2133442bdf7760959b42c816ffbbdfee31a2bd8e1187ac"
+  }
+}
