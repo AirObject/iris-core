@@ -20,14 +20,14 @@ M3（自我与未来）的范围、门槛口径和保守默认见 DECISIONS.md 2
 
 | 阶段 | 工作线 | 内容 | 主要文件 | 前置 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 一 | 评测集·目标与整理（GD） | 手写目标去重 dev 集 goal_dedup_v1；手写整理 dev 集 consolidation_v1（记忆合并、矛盾、依赖复核）及其评分说明。两份各自单独冻结 | evals/goal_dedup_v1*、evals/consolidation_v1*、prompts/consolidation_scoring_v1.md | — | 待开始 |
-| 一 | 评测集·persona（PS） | 手写 persona 时间线 dev 集 persona_v1 和逐句评分说明 persona_scoring_v1，单独冻结 | evals/persona_v1*、prompts/persona_scoring_v1.md | — | 待开始 |
-| 一 | 状态与目标（GO） | 第一步：当前状态（14、S06—S09），宿主 state 接口、报告历史，回复准备和查询的状态分区。第二步：目标与询问的状态管理、注入及去重结果、跨入口共享、提醒与拉取接口、回复准备的目标分区、学习产生的目标改由目标模块写入、管理接口（S10—S16）；去重方法在 goal_dedup_v1 上先探测再按规则选 | 新 state.py、goals.py、迁移、api.py、retrieval.py（只改状态和目标分区）、scheduler.py（提醒）、learning.py（只改目标写入）、admin.py、admin_data.py、settings_api.py、evals/goal_dedup_probe/、README.md、ARCHITECTURE.md | 去重方法的选择等 goal_dedup_v1 冻结 | 待开始 |
-| 一 | persona 核心（PE） | 依据选取、生成与逐句依据、确定性检查与模型检查、变化程度、发布／待确认／拒绝、版本与差异、回滚、手动编辑发布、重新生成、“待更新”的计算、更新条件；persona 评测命令与外部判分材料（S01—S05、S17—S19） | 新 persona.py、persona_evaluation.py、prompts/persona_generate_v1.md、prompts/persona_check_v1.md、cli.py、迁移、memory_ops.py（只改初始 persona） | 提示词迭代等 persona_v1 冻结 | 待开始 |
-| 一 | 规划者 | M3 隐藏目标去重集、隐藏 persona 集、隐藏整理集 | 仓库外 | dev 格式确定 | 待开始 |
-| 二 | persona 接入（PE） | 管理接口；persona 设置（发布方式、生成目标与监管要求）；回复准备的 persona 分区标注“待更新”；文档 | admin.py、admin_data.py、settings_api.py、retrieval.py（只改 persona 分区）、README.md、ARCHITECTURE.md | GO 第二步、PE 核心合并 | — |
-| 二 | 模型整理（CO） | 合并（D05）、矛盾（D06）、依赖复核（16.4，M11 的模型部分）、目标复核、persona 定期更新步骤、调用预算、整理报告；记忆合并方法在 consolidation_v1 上先探测再按规则选；整理评测命令 | 新 consolidation.py、maintenance.py、memory_ops.py、goals.py（只为目标复核）、迁移、prompts/consolidation_*.md、cli.py | PE 核心、GO 第二步合并；consolidation_v1 冻结 | — |
-| 三 | 界面（UX） | persona 与自我页（18.5、18.10 图示）；当前状态与目标页（18.7，含提醒）；整理报告；相关设置；试用页右侧的 persona、状态、目标和提醒 | frontend/、src/iris/web/ | 对应后端合并 | — |
+| 一 | 评测集·目标与整理（GD） | 手写目标去重 dev 集 goal_dedup_v1；手写整理 dev 集 consolidation_v1（记忆合并、矛盾、依赖复核）及其评分说明。两份各自单独冻结 | evals/goal_dedup_v1*、evals/consolidation_v1*、prompts/consolidation_scoring_v1.md | — | 完成：goal_dedup_v1（PR #38，`f919d65` 冻结，67 例：合并 28／不合并 29／不确定 10）；consolidation_v1 与评分说明（PR #41，`7c8c555` 冻结，40 例：应合并 12 对、不应合并 47 对、矛盾 10、依赖 8）。冻结前均经规划者子代理独立审核并修改 |
+| 一 | 评测集·persona（PS） | 手写 persona 时间线 dev 集 persona_v1 和逐句评分说明 persona_scoring_v1，单独冻结 | evals/persona_v1*、prompts/persona_scoring_v1.md | — | 完成：PR #40，`1f724f7` 冻结（5 条时间线、30 个检查点、预期 23 次变化） |
+| 一 | 状态与目标（GO） | 第一步：当前状态（14、S06—S09），宿主 state 接口、报告历史，回复准备和查询的状态分区。第二步：目标与询问的状态管理、注入及去重结果、跨入口共享、提醒与拉取接口、回复准备的目标分区、学习产生的目标改由目标模块写入、管理接口（S10—S16）；去重方法在 goal_dedup_v1 上先探测再按规则选 | 新 state.py、goals.py、迁移、api.py、retrieval.py（只改状态和目标分区）、scheduler.py（提醒）、learning.py（只改目标写入）、admin.py、admin_data.py、settings_api.py、evals/goal_dedup_probe/、README.md、ARCHITECTURE.md | 去重方法的选择等 goal_dedup_v1 冻结 | 第一步完成（PR #39）；第二步完成（PR #43：确定性去重、跨入口共享、提醒与拉取、管理员创建只标可能重复）；第三步去重判断与探测进行中 |
+| 一 | persona 核心（PE） | 依据选取、生成与逐句依据、确定性检查与模型检查、变化程度、发布／待确认／拒绝、版本与差异、回滚、手动编辑发布、重新生成、“待更新”的计算、更新条件；persona 评测命令与外部判分材料（S01—S05、S17—S19） | 新 persona.py、persona_evaluation.py、prompts/persona_generate_v1.md、prompts/persona_check_v1.md、cli.py、迁移、memory_ops.py（只改初始 persona） | 提示词迭代等 persona_v1 冻结 | 完成（PR #42）：公开 persona_v1 双判 21 次变化全部有依据（19 发布、2 待确认），七类违规 0，拒绝候选 2/23；默认监管要求改为设计 13.3 全文 |
+| 一 | 规划者 | M3 隐藏目标去重集、隐藏 persona 集、隐藏整理集 | 仓库外 | dev 格式确定 | 完成：隐藏目标去重集 50 例、隐藏整理集 36 例、隐藏 persona 集 5 条时间线（预期 25 次变化），均经独立审核修改后冻结 |
+| 二 | persona 接入（PE） | 管理接口；persona 设置（发布方式、生成目标与监管要求）；回复准备的 persona 分区标注“待更新”；文档 | admin.py、admin_data.py、settings_api.py、retrieval.py（只改 persona 分区）、README.md、ARCHITECTURE.md | GO 第二步、PE 核心合并 | 进行中 |
+| 二 | 模型整理（CO） | 合并（D05）、矛盾（D06）、依赖复核（16.4，M11 的模型部分）、目标复核、persona 定期更新步骤、调用预算、整理报告；记忆合并方法在 consolidation_v1 上先探测再按规则选；整理评测命令 | 新 consolidation.py、maintenance.py、memory_ops.py、goals.py（只为目标复核）、迁移、prompts/consolidation_*.md、cli.py | PE 核心、GO 第二步合并；consolidation_v1 冻结 | 进行中（提前开始；persona 接入与目标复核留到后续步骤） |
+| 三 | 界面（UX） | persona 与自我页（18.5、18.10 图示）；当前状态与目标页（18.7，含提醒）；整理报告；相关设置；试用页右侧的 persona、状态、目标和提醒 | frontend/、src/iris/web/ | 对应后端合并 | 当前状态界面完成（PR #44），目标与提醒界面完成（PR #45）；persona 页面等 persona 接入 |
 | 四 | 门槛 | 公开 persona、目标去重、整理评测；回归（学习请求、召回返回、端到端、R10） | 未参与该轮修改的会话 | 以上全部合并 | — |
 | 四 | 门槛 | 隐藏 persona、目标去重、整理集 | 规划者 | 同上 | — |
 | 四 | 预演与演示 | 设计 22 的 M3 演示、S01—S19、D01—D06；页面部分、隐藏集 persona 变化的过目和演示由用户完成 | 执行者＋用户 | 门槛结果 | — |

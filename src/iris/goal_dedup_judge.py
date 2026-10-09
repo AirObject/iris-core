@@ -17,10 +17,10 @@ from .models import ModelError
 from .state import local_time, role_zone
 
 PROMPT=files('iris').joinpath('prompts/goal_dedup_judge_v1.md').read_text(encoding='utf-8')
-# Draft wiring only: disabled until valid probes select the product method.
+# Selected by the frozen public dev comparison: batch judgment (candidate C).
 # Explicit method overrides are internal to the probe, never an admin option.
-PROVISIONAL_METHOD='C'
-DEFAULTS={'enabled':False,'budget_seconds':10.0,'concurrency':1,'queue_limit':8}
+DEFAULT_METHOD='C'
+DEFAULTS={'enabled':True,'budget_seconds':5.0,'concurrency':1,'queue_limit':8}
 MAX_SECONDS=60.0  # Measurement override; the administrator API is capped at 10 s.
 MAX_CANDIDATES=8
 
@@ -35,7 +35,7 @@ def connection_settings(conn):
 
 
 def method(options):
-    return options.get('method',PROVISIONAL_METHOD) if options['enabled'] else 'A'
+    return options.get('method',DEFAULT_METHOD) if options['enabled'] else 'A'
 
 
 def validate_budget(value):

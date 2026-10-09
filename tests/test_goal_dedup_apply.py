@@ -30,6 +30,22 @@ def setup(store):
     return Goals(store,gateway=judge,clock=clock),judge
 
 
+
+def test_selected_default_checks_identical_text_before_merging_and_allows_opt_out(store):
+    judge=Judge(store,verdict='different')
+    goals=Goals(store,gateway=judge)
+    old=goals.create(content='整理操作手册')
+    new=goals.create(content='整理操作手册')
+    assert new['dedup']['status']=='created'
+    assert new['goal']['id']!=old['goal']['id']
+    assert len(judge.calls)==1
+    store.set_setting('goal_dedup_judge',{'enabled':False})
+    fallback=goals.create(content='整理操作手册')
+    assert fallback['dedup']['status']=='merged'
+    assert fallback['goal']['id']==old['goal']['id']
+    assert len(judge.calls)==1
+
+
 def test_save_then_judge_and_merge_with_revision_checks(store,setup):
     goals,judge=setup
     old=goals.create(content='整理操作手册')

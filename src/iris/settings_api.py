@@ -17,7 +17,7 @@ from .models import JUDGMENT_KINDS, MODEL_KINDS, Gateway, ModelConfig, ModelErro
 from .recall_judge import settings as judge_settings
 from .state import state_settings
 from .goals import goal_settings
-from .goal_dedup_judge import settings as goal_judge_settings
+from .goal_dedup_judge import DEFAULTS as GOAL_JUDGE_DEFAULTS, settings as goal_judge_settings
 
 CONNECTION_TIMEOUT = 10
 PRESETS = [
@@ -95,8 +95,8 @@ class RecallJudge(Input):
 
 
 class GoalDedupJudge(RecallJudge):
-    enabled: bool = Field(default=False, strict=True)
-    budget_seconds: float = Field(default=10, gt=0, le=10, strict=True)
+    enabled: bool = Field(default=GOAL_JUDGE_DEFAULTS['enabled'], strict=True)
+    budget_seconds: float = Field(default=GOAL_JUDGE_DEFAULTS['budget_seconds'], gt=0, le=10, strict=True)
 
 
 class StateSettings(Input):

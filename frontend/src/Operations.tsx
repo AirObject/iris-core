@@ -4,6 +4,11 @@ import { Empty, Notice, Pagination, fullTime } from "./ui";
 import type { Operation, Page } from "./types";
 
 export const operationNames: Record<string, string> = {
+  goal_create: "创建目标",
+  goal_update: "更新目标",
+  goal_merge: "合并重复目标",
+  goal_duplicate_dismiss: "驳回目标重复",
+  settings_goals: "更新目标与提醒设置",
   memory_adjust: "调整记忆",
   memory_forget: "手动遗忘",
   memory_restore: "恢复记忆",
@@ -43,6 +48,7 @@ export const operationNames: Record<string, string> = {
   logout: "退出登录",
 };
 export const actorNames: Record<string, string> = {
+  learning: "学习",
   admin: "管理员",
   host: "宿主",
   system: "系统",
@@ -50,6 +56,7 @@ export const actorNames: Record<string, string> = {
   local_import: "本机导入",
 };
 const objectNames: Record<string, string> = {
+  goal: "目标",
   memory: "记忆",
   batch: "批次",
   entry: "入口",

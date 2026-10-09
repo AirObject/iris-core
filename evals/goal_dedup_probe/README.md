@@ -1,6 +1,6 @@
 # 目标去重探测
 
-候选和提示词冻结提交：`9cacbd02d38f0200dd757316c7b8c8c101dde113`。A／B／C 及选择规则见 [METHODS.md](METHODS.md)，该文件与判断提示词在首次模型调用前提交，此后未修改。方法尚未选择，产品接线默认关闭；C 仅为显式启用后的临时接线，不是质量结论。
+候选和提示词冻结提交：`9cacbd02d38f0200dd757316c7b8c8c101dde113`。A／B／C 及选择规则见 [METHODS.md](METHODS.md)，该文件与判断提示词在首次模型调用前提交，此后未修改。独占窗口内 A／B／C 双轮已完成，按冻结规则选中 C，产品默认开启。5 秒预算下的双轮验证尚未完成；全部数字和作废原因见 [RESULTS.md](RESULTS.md)。
 
 每例固定时钟、独立数据库，按真实 host／internal／admin 路径创建并复核。只将产品材料送给模型；expected 和 category 只在执行结束后的独立评分中读取。保存实际合并记录、候选指向、请求及正文输出、耗时和 token；不保存模型推理原文、请求头或配置。所有完整结果必须放仓库外，输出目录须不存在。
 
@@ -22,4 +22,4 @@ score_case／report 输出误合并率、应合并识别率、separate／uncerta
 
 在冻结后修复了响应外围 Markdown 分隔符处理、角色时区投影和原始正文输出留存；没有改变提示词、候选规则、标签或评分公式。旧的无效运行保存在 `iris-eval-artifacts/m3-goal-dedup-20261009/`，作废原因见仓库外 run-validity.json，后续不参与选型。
 
-本轮离线验证和预计窗口见 [READINESS.md](READINESS.md)。
+前一回合离线就绪检查见 [READINESS.md](READINESS.md)（历史记录，包含当时的草稿默认值和迁移编号）；当前结果与验证见 [RESULTS.md](RESULTS.md)。

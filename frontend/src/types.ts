@@ -123,10 +123,78 @@ export type StateReport = {
 export type Goal = {
   id: number;
   content: string;
-  state: string;
+  kind: "normal" | "question";
+  origin: "internal" | "host" | "admin";
+  state: "open" | "completed" | "abandoned";
   deadline: string | null;
-  overdue?: boolean;
-  due_soon?: boolean;
+  deadline_unresolved: boolean;
+  reminder_minutes: number | null;
+  effective_reminder_minutes: number | null;
+  people: string[];
+  entry_id: string | null;
+  host_key: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  closed_by: string | null;
+  merged_into: number | null;
+  overdue: boolean;
+  due_soon: boolean;
+  possible_duplicate: boolean;
+  possible_duplicate_ids: number[];
+};
+export type GoalConfig = {
+  default_reminder_minutes: number;
+  overdue_reminders: boolean;
+};
+export type GoalCatalog = {
+  people: (Person & { kind?: string })[];
+  entries: Pick<Entry, "id" | "name" | "kind">[];
+};
+export type GoalReceipt = {
+  goal: Goal;
+  submitted_id: number;
+  dedup: {
+    status: "created" | "merged" | "possible_duplicate" | "pending";
+    target_id: number | null;
+  };
+};
+export type GoalNotification = {
+  id: number;
+  kind: string;
+  goal_id: number;
+  reminder_kind: "soon" | "due" | "overdue" | "immediate";
+  content: string;
+  deadline_at: string | null;
+  scheduled_at: string;
+  published_at: string;
+  status: "pending" | "taken" | "cancelled";
+  taken_at: string | null;
+  cancelled_at: string | null;
+};
+export type GoalDetail = Goal & {
+  sources: Pick<
+    Message,
+    "id" | "entry_id" | "sender_subject_id" | "kind" | "content" | "occurred_at"
+  >[];
+  promise_memories: {
+    id: number;
+    content: string;
+    revision: number;
+    current_revision: number;
+    lifecycle: string;
+  }[];
+  merged_goals: Goal[];
+  notifications: GoalNotification[];
+  reminder_plans: {
+    id: number;
+    goal_id: number;
+    reminder_kind: GoalNotification["reminder_kind"];
+    scheduled_at: string;
+    created_at: string;
+    status: string;
+  }[];
 };
 export type Memory = {
   id: number;
