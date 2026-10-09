@@ -202,7 +202,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--corpus',type=Path,default=ROOT/'evals/goal_dedup_v1.json')
     parser.add_argument('--out',type=Path,required=True)
-    parser.add_argument('--method',choices=('A','B','C'),required=True)
+    parser.add_argument('--method',choices=('A','B','C','C2'),required=True)
     parser.add_argument('--budget-seconds',type=float,default=60)
     parser.add_argument('--fake',choices=('same','different','uncertain','timeout','invalid'),
                         help='offline transport self-check; no configuration read or network calls; excluded from selection')
