@@ -651,7 +651,7 @@ export function MemoryDetail({
     </Dialog>
   );
 }
-function SourceView({
+export function SourceView({
   source: s,
   openMemory,
 }: {

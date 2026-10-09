@@ -43,6 +43,7 @@ beforeEach(() => {
     lifecycle: { ...lifecycleFixture },
     recall_judge: { enabled: true, concurrency: 1, queue_limit: 8 },
     state: { stale_after_minutes: 30 },
+    goals: { default_reminder_minutes: 60, overdue_reminders: true },
     presets: [],
     operations: [],
     health: {},
@@ -66,6 +67,25 @@ beforeEach(() => {
               id: 1,
               actor: "admin",
               action: "state_settings_saved",
+              created_at: "2026-10-09T10:00:00+08:00",
+            },
+          ],
+        };
+      }
+      if (url === "/admin/api/settings/goals" && init?.method === "PATCH") {
+        if (fail)
+          return new Response(
+            JSON.stringify({ error: { message: "保存失败，请重试" } }),
+            { status: 503 },
+          );
+        settings = {
+          ...settings,
+          goals: body,
+          operations: [
+            {
+              id: 2,
+              actor: "admin",
+              action: "settings_goals",
               created_at: "2026-10-09T10:00:00+08:00",
             },
           ],
@@ -159,4 +179,74 @@ test("设置轮询更新已保存值，不覆盖正在编辑的草稿", async ()
     await vi.advanceTimersByTimeAsync(2000);
   });
   expect(input).toHaveValue(90);
+});
+
+test("目标默认提前量支持零，过期提醒开关使用 CSRF 保存并显示操作记录", async () => {
+  render(<SettingsPage />);
+  const minutes = await screen.findByLabelText("默认提醒提前量（分钟）");
+  expect(minutes).toHaveValue(60);
+  expect(screen.getByLabelText("启用过期提醒")).toBeChecked();
+  await userEvent.clear(minutes);
+  await userEvent.type(minutes, "0");
+  await userEvent.click(screen.getByLabelText("启用过期提醒"));
+  await userEvent.click(
+    screen.getByRole("button", { name: "保存目标与提醒设置" }),
+  );
+  expect(await screen.findByText("更新目标与提醒设置")).toBeVisible();
+  const req = requests.find((r) => r.url.endsWith("/settings/goals"))!;
+  expect(req.body).toEqual({
+    default_reminder_minutes: 0,
+    overdue_reminders: false,
+  });
+  expect(req.init?.headers).toMatchObject({
+    "X-Iris-CSRF": "state-test-csrf",
+    "Content-Type": "application/json; charset=utf-8",
+  });
+  expect(screen.getByText(/不会自动放弃目标/)).toBeVisible();
+});
+
+test.each(["", "-1", "1.5", "525601"])(
+  "默认提前量 %s 非法时不保存",
+  async (value) => {
+    render(<SettingsPage />);
+    const input = await screen.findByLabelText("默认提醒提前量（分钟）");
+    await userEvent.clear(input);
+    if (value) await userEvent.type(input, value);
+    await userEvent.click(
+      screen.getByRole("button", { name: "保存目标与提醒设置" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "0—525600 的整数",
+    );
+    expect(requests.some((r) => r.init?.method === "PATCH")).toBe(false);
+  },
+);
+
+test("目标设置轮询保留草稿，保存失败后可以重试", async () => {
+  vi.useFakeTimers();
+  render(<SettingsPage />);
+  await act(async () => {});
+  const input = screen.getByLabelText("默认提醒提前量（分钟）");
+  settings.goals = { default_reminder_minutes: 30, overdue_reminders: false };
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(input).toHaveValue(30);
+  expect(screen.getByLabelText("启用过期提醒")).not.toBeChecked();
+  fireEvent.change(input, { target: { value: "90" } });
+  settings.goals = { default_reminder_minutes: 120, overdue_reminders: true };
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(input).toHaveValue(90);
+  expect(screen.getByLabelText("启用过期提醒")).not.toBeChecked();
+  fail = true;
+  fireEvent.click(screen.getByRole("button", { name: "保存目标与提醒设置" }));
+  await act(async () => {});
+  expect(screen.getByRole("alert")).toHaveTextContent("保存失败");
+  expect(input).toHaveValue(90);
+  fail = false;
+  fireEvent.click(screen.getByRole("button", { name: "保存目标与提醒设置" }));
+  await act(async () => {});
+  expect(screen.getByText("已保存")).toBeVisible();
 });

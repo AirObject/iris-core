@@ -203,3 +203,18 @@ export function Dialog({
     </div>
   );
 }
+
+export function RoleTime({ value }: { value: string | null }) {
+  // State projections already use the role's timezone. Keep that offset rather
+  // than silently converting these independent field timestamps to browser time.
+  return value ? (
+    <time dateTime={value}>
+      {value
+        .replace("T", " ")
+        .replace(/\.\d+(?=[+-]|Z$)/, "")
+        .replace(/([+-]\d{2}:\d{2}|Z)$/, " $1")}
+    </time>
+  ) : (
+    <>暂无记录</>
+  );
+}
