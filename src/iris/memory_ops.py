@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .db import Store, dumps, now
 
 
-def setup_role(store: Store, name: str, background: str = "", timezone_name: str = "Asia/Shanghai", *, _conn=None) -> str:
+def setup_role(store: Store, name: str, background: str = "", timezone_name: str = "Asia/Shanghai", *, _conn=None, current=None) -> str:
     try:
         ZoneInfo(timezone_name)
     except ZoneInfoNotFoundError as exc:
@@ -26,17 +26,20 @@ def setup_role(store: Store, name: str, background: str = "", timezone_name: str
                            ("persona_goal", "维持稳定的发言风格，并充分认识自我"),
                            ("persona_rules", "只根据自我记忆提炼，不虚构经历；外部设定不写成亲历；别人评价不自动成为自我认知")):
             conn.execute("INSERT INTO runtime_settings(key,value_json) VALUES(?,?)", (key, dumps(value)))
-        conn.execute("INSERT INTO persona_versions(content,created_at,is_current) VALUES(?,?,1)", (persona, now()))
+        memory_ids = []
         for sentence in sentences:
-            stamp = now()
+            stamp = current.isoformat() if current is not None else now()
             result = conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,
                 retention,world,created_at,updated_at,first_confirmed_at,last_confirmed_at)
                 VALUES(?,'自我','self','设定',80,65,56,'real',?,?,?,?)""",
                 (sentence, stamp, stamp, stamp, stamp))
             memory_id = int(result.lastrowid)
+            memory_ids.append(memory_id)
             conn.execute("INSERT INTO memory_subjects(memory_id,subject_id) VALUES(?,'self')", (memory_id,))
             conn.execute("INSERT INTO sources(memory_id,kind,note,created_at) VALUES(?,'initial_setting',?,?)",
                          (memory_id, "first setup", stamp))
+        from .persona import record_initial
+        record_initial(conn, persona, memory_ids, name, background, current.isoformat() if current is not None else now())
     return persona
 
 
@@ -157,7 +160,7 @@ def update_role(store, name, background, timezone_name, *, _conn=None):
         if previous.get('role_name') == name and previous.get('background') == background:
             conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('timezone',?)", (dumps(timezone_name),))
             return
-        conn.execute("UPDATE persona_versions SET is_current=0 WHERE is_current=1")
+        conn.execute("UPDATE persona_versions SET is_current=0,status='history' WHERE is_current=1")
         # Only initial-setting objects are replaced. Learned memories remain intact.
         if previous.get('background') != background:
             rows = conn.execute("SELECT * FROM memories WHERE lifecycle!='deleted' AND id IN (SELECT memory_id FROM sources WHERE kind='initial_setting')").fetchall()
@@ -174,7 +177,10 @@ def update_role(store, name, background, timezone_name, *, _conn=None):
             setup_role(store, name, '', timezone_name, _conn=conn)
             sentences = [part.strip() for part in re.split(r"[\n。！？]+", background) if part.strip()]
             persona = f"我是{name}。" + ("初始设定："+"；".join(sentences)+"。" if sentences else "尚无预设经历，会在相处中逐渐认识自己。")
-            conn.execute('UPDATE persona_versions SET content=? WHERE is_current=1', (persona,))
+            from .persona import record_initial
+            memory_ids = [r[0] for r in conn.execute("SELECT DISTINCT m.id FROM memories m JOIN sources s ON s.memory_id=m.id WHERE s.kind='initial_setting' AND m.lifecycle!='deleted' ORDER BY m.id")]
+            version_id = conn.execute('SELECT id FROM persona_versions WHERE is_current=1').fetchone()[0]
+            record_initial(conn, persona, memory_ids, name, background, now(), version_id=version_id)
             conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('background',?)", (dumps(background),))
         else:
             setup_role(store, name, background, timezone_name, _conn=conn)
