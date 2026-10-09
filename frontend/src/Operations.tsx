@@ -4,6 +4,22 @@ import { Empty, Notice, Pagination, fullTime } from "./ui";
 import type { Operation, Page } from "./types";
 
 export const operationNames: Record<string, string> = {
+  persona_settings_saved: "更新 persona 设置",
+  persona_edit: "编辑发布 persona",
+  persona_confirm: "确认 persona 候选",
+  persona_reject: "拒绝 persona 候选",
+  persona_rollback: "回滚 persona",
+  persona_current: "发布 persona",
+  persona_pending: "persona 候选待确认",
+  persona_rejected: "persona 候选被拒绝",
+  persona_generation_requested: "请求生成 persona",
+  persona_generation_current: "persona 生成并发布",
+  persona_generation_pending: "persona 生成后待确认",
+  persona_generation_rejected: "persona 生成检查未通过",
+  persona_generation_skipped: "跳过 persona 生成",
+  persona_generation_conflict: "persona 生成遇到版本或依据冲突",
+  persona_generation_failed: "persona 生成失败",
+  persona_generation_interrupted: "persona 生成中断",
   goal_create: "创建目标",
   goal_update: "更新目标",
   goal_merge: "合并重复目标",
@@ -48,6 +64,7 @@ export const operationNames: Record<string, string> = {
   logout: "退出登录",
 };
 export const actorNames: Record<string, string> = {
+  persona: "persona 更新",
   learning: "学习",
   admin: "管理员",
   host: "宿主",
@@ -56,6 +73,8 @@ export const actorNames: Record<string, string> = {
   local_import: "本机导入",
 };
 const objectNames: Record<string, string> = {
+  persona: "persona 版本",
+  persona_attempt: "persona 生成任务",
   goal: "目标",
   memory: "记忆",
   batch: "批次",

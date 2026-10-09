@@ -1,3 +1,4 @@
+import { personaSettingsFixture } from "./persona-fixtures";
 import {
   act,
   cleanup,
@@ -44,6 +45,7 @@ beforeEach(() => {
     recall_judge: { enabled: true, concurrency: 1, queue_limit: 8 },
     state: { stale_after_minutes: 30 },
     goals: { default_reminder_minutes: 60, overdue_reminders: true },
+    persona: personaSettingsFixture,
     presets: [],
     operations: [],
     health: {},
@@ -87,6 +89,25 @@ beforeEach(() => {
               actor: "admin",
               action: "settings_goals",
               created_at: "2026-10-09T10:00:00+08:00",
+            },
+          ],
+        };
+      }
+      if (url === "/admin/api/settings/persona" && init?.method === "PATCH") {
+        if (fail)
+          return new Response(
+            JSON.stringify({ error: { message: "保存失败，请重试" } }),
+            { status: 503 },
+          );
+        settings = {
+          ...settings,
+          persona: body,
+          operations: [
+            {
+              id: 3,
+              actor: "admin",
+              action: "persona_settings_saved",
+              created_at: "2026-10-10T10:00:00+08:00",
             },
           ],
         };
@@ -248,5 +269,29 @@ test("目标设置轮询保留草稿，保存失败后可以重试", async () =>
   fail = false;
   fireEvent.click(screen.getByRole("button", { name: "保存目标与提醒设置" }));
   await act(async () => {});
+  expect(screen.getByText("已保存")).toBeVisible();
+});
+
+test("persona 设置沿用管理员会话和 CSRF，保存后显示中文操作记录", async () => {
+  render(<SettingsPage />);
+  await userEvent.selectOptions(
+    await screen.findByLabelText("persona 发布方式"),
+    "all_manual",
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "保存 persona 设置" }),
+  );
+  expect(await screen.findByText("更新 persona 设置")).toBeVisible();
+  const request = requests.find((r) => r.url.endsWith("/settings/persona"))!;
+  expect(request.init?.method).toBe("PATCH");
+  expect(request.init?.credentials).toBe("same-origin");
+  expect(request.init?.headers).toMatchObject({
+    "X-Iris-CSRF": "state-test-csrf",
+    "Content-Type": "application/json; charset=utf-8",
+  });
+  expect(request.body).toEqual({
+    ...personaSettingsFixture,
+    publish_mode: "all_manual",
+  });
   expect(screen.getByText("已保存")).toBeVisible();
 });

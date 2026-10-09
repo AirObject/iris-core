@@ -1,3 +1,4 @@
+import { personaSettingsFixture } from "./persona-fixtures";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -34,6 +35,7 @@ beforeEach(() => {
     recall_judge: { enabled: true, concurrency: 1, queue_limit: 8 },
     state: { stale_after_minutes: 30 },
     goals: { default_reminder_minutes: 60, overdue_reminders: true },
+    persona: personaSettingsFixture,
     presets: [],
     operations: [],
     health: { recall_judge: { state: "normal" } },

@@ -10,6 +10,7 @@ import StatusPage from "./Status";
 import LearningPage from "./Learning";
 import People from "./People";
 import StatePage from "./State";
+import PersonaPage from "./Persona";
 import type { Page, PersonSummary, Status } from "./types";
 
 const routes = [
@@ -17,6 +18,7 @@ const routes = [
   { id: "memories", name: "记忆", icon: "memory" },
   { id: "people", name: "人物", icon: "people" },
   { id: "learning", name: "入口与学习", icon: "learning" },
+  { id: "persona", name: "persona 与自我", icon: "people" },
   { id: "state", name: "状态与目标", icon: "state" },
   { id: "status", name: "运行状态", icon: "status" },
   { id: "operations", name: "操作记录", icon: "memory" },
@@ -195,6 +197,12 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
             <LearningPage openMemory={openMemory} />
           ) : routePath === "state" ? (
             <StatePage
+              key={route}
+              initialQuery={route.split("?")[1]}
+              openMemory={openMemory}
+            />
+          ) : routePath === "persona" ? (
+            <PersonaPage
               key={route}
               initialQuery={route.split("?")[1]}
               openMemory={openMemory}

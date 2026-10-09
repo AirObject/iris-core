@@ -14,7 +14,10 @@ export class ApiError extends Error {
     super(message);
   }
 }
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiResponse<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<{ data: T; status: number; headers: Headers }> {
   const response = await fetch(`/admin/api${path}`, {
     ...init,
     credentials: "same-origin",
@@ -40,7 +43,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       response.status,
     );
   }
-  return body;
+  return { data: body, status: response.status, headers: response.headers };
+}
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await apiResponse<T>(path, init)).data;
 }
 export const json = (method: string, body?: unknown): RequestInit => ({
   method,

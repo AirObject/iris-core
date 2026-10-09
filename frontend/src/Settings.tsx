@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api, json, errorText, useData } from "./api";
 import { Notice, healthLabel } from "./ui";
+import { PersonaSettingsEditor } from "./PersonaSettings";
+import type { PersonaSettings } from "./persona-types";
 import { LifecycleSettings } from "./LifecycleSettings";
 import { operationNames, actorNames } from "./Operations";
 import type {
@@ -50,6 +52,7 @@ export type Settings = {
   recall_judge: RecallJudgeConfig;
   state: StateConfig;
   goals: GoalConfig;
+  persona: PersonaSettings;
   presets: Preset[];
   health: Record<string, { state: string }>;
   operations: {
@@ -483,8 +486,10 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
           setModels((v) => ({ ...v, [kind]: latest.models[kind] }));
       }
       setSaved("已保存");
+      return latest;
     } catch (e) {
       setError(errorText(e));
+      return null;
     } finally {
       setBusy(false);
     }
@@ -721,6 +726,13 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
           </button>
         </form>
       </section>
+      <PersonaSettingsEditor
+        value={settings.persona}
+        busy={busy}
+        save={async (value) =>
+          (await save("/settings/persona", "PATCH", value))?.persona || null
+        }
+      />
       <section className="panel settings-panel">
         <h2>最近操作</h2>
         <a className="text-button" href="#/operations">

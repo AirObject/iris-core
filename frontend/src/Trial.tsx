@@ -1,3 +1,4 @@
+import { PersonaSummary } from "./PersonaSummary";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, json, useData, errorText } from "./api";
 import { Badge, Empty, Notice, time, batchLabel, messageState } from "./ui";
@@ -617,20 +618,7 @@ function Conversation({
         </section>
         <section className="panel context-panel">
           <h2>角色上下文</h2>
-          <details open>
-            <summary>
-              Persona{" "}
-              <span className="muted">
-                {data?.persona.version
-                  ? `v${data.persona.version}`
-                  : "暂无版本"}
-              </span>
-            </summary>
-            <p>
-              {data?.persona.content ||
-                "尚未创建 persona。可先使用现有命令行设置角色。"}
-            </p>
-          </details>
+          <PersonaSummary />
           <details open>
             <summary>当前状态</summary>
             <StateSummary />
