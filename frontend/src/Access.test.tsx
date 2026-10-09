@@ -28,6 +28,7 @@ beforeEach(() => {
       recall_judge: { ...blank, inherited: true },
     },
     recall_judge: { enabled: true, concurrency: 1, queue_limit: 8 },
+    state: { stale_after_minutes: 30 },
     model_source: "local",
     learning_concurrency: 2,
     daily_token_limit: null,

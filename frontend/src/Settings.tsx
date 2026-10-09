@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, json, errorText, useData } from "./api";
 import { Notice, healthLabel } from "./ui";
 import { LifecycleSettings } from "./LifecycleSettings";
 import { operationNames, actorNames } from "./Operations";
-import type { LifecycleConfig, RecallJudgeConfig } from "./types";
+import type { LifecycleConfig, RecallJudgeConfig, StateConfig } from "./types";
 
 type ModelKind = "chat" | "embedding" | "recall_judge";
 export const modelNames: Record<string, string> = {
@@ -43,6 +43,7 @@ export type Settings = {
   learning_concurrency: number;
   lifecycle: LifecycleConfig;
   recall_judge: RecallJudgeConfig;
+  state: StateConfig;
   presets: Preset[];
   health: Record<string, { state: string }>;
   operations: {
@@ -430,13 +431,26 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
     [error, setError] = useState(""),
     [saved, setSaved] = useState(""),
     [busy, setBusy] = useState(false);
+  const [staleMinutes, setStaleMinutes] = useState(
+    String(settings.state.stale_after_minutes),
+  );
+  const stateDirty = useRef(false);
+  useEffect(() => {
+    if (!stateDirty.current)
+      setStaleMinutes(String(settings.state.stale_after_minutes));
+  }, [settings.state.stale_after_minutes]);
   const save = async (path: string, method: string, value: unknown) => {
+    if (busy) return;
     setBusy(true);
     setError("");
     setSaved("");
     try {
       const latest = await api<Settings>(path, json(method, value));
       setSettings(latest);
+      if (path === "/settings/state") {
+        stateDirty.current = false;
+        setStaleMinutes(String(latest.state.stale_after_minutes));
+      }
       for (const kind of ["chat", "embedding", "recall_judge"] as const) {
         if (path === `/settings/models/${kind}`)
           setModels((v) => ({ ...v, [kind]: latest.models[kind] }));
@@ -555,6 +569,59 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
           </p>
           <button className="primary" disabled={busy}>
             保存用量与并发
+          </button>
+        </form>
+      </section>
+      <section className="panel settings-panel">
+        <h2>当前状态</h2>
+        <p className="lifecycle-help">
+          宿主报告的活动与情绪供当前回复使用。超过设定分钟数未更新时，只标注“可能过时”，不会自动结束活动。
+        </p>
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (busy) return;
+            const minutes = Number(staleMinutes);
+            if (
+              !staleMinutes.trim() ||
+              !Number.isInteger(minutes) ||
+              minutes < 1 ||
+              minutes > 525600
+            ) {
+              setSaved("");
+              setError("可能过时的分钟数须为 1—525600 的整数");
+              return;
+            }
+            void save("/settings/state", "PATCH", {
+              stale_after_minutes: minutes,
+            });
+          }}
+        >
+          <label>
+            可能过时的分钟数
+            <input
+              aria-label="可能过时的分钟数"
+              type="number"
+              required
+              min={1}
+              max={525600}
+              step={1}
+              disabled={busy}
+              value={staleMinutes}
+              onChange={(e) => {
+                stateDirty.current = true;
+                setStaleMinutes(e.target.value);
+                setSaved("");
+              }}
+            />
+            <small>1—525600 的整数，默认 30 分钟；严格超过此时长才标记。</small>
+          </label>
+          <p className="lifecycle-help">
+            保存后立即影响后续状态读取。<a href="#/state">查看当前状态</a>
+          </p>
+          <button className="primary" disabled={busy}>
+            保存当前状态设置
           </button>
         </form>
       </section>

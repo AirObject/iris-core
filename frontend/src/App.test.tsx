@@ -153,6 +153,8 @@ beforeEach(() => {
             queue_limit: 8,
           },
         };
+      else if (url.startsWith("/admin/api/state/reports?"))
+        data = { items: [], total: 0, offset: 0, limit: 30 };
       else if (url.startsWith("/admin/api/people?"))
         data = { items: [], total: pendingPeople, offset: 0, limit: 30 };
       else if (url.startsWith("/admin/api/maintenance?"))
@@ -281,6 +283,25 @@ test.each(["true", "false", ""])(
     });
   },
 );
+test("主导航进入只含状态的页面，沿用已登录管理员会话", async () => {
+  render(<App />);
+  await userEvent.click(
+    await screen.findByRole("link", { name: "状态与目标" }),
+  );
+  expect(
+    await screen.findByRole("heading", { level: 1, name: "状态与目标" }),
+  ).toBeVisible();
+  expect(screen.getByRole("link", { name: "状态与目标" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(await screen.findByText("暂无宿主报告的当前活动")).toBeVisible();
+  expect(await screen.findByText("暂无报告历史")).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { name: /目标列表|提醒|Persona/ }),
+  ).not.toBeInTheDocument();
+  expect(requests.every((r) => r.method === "GET")).toBe(true);
+});
 test("试用与导航提示待确认人物，点击进入已筛选的人物页", async () => {
   pendingPeople = 2;
   render(<App />);
