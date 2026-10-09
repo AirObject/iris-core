@@ -3,7 +3,12 @@ import { api, json, errorText, useData } from "./api";
 import { Notice, healthLabel } from "./ui";
 import { LifecycleSettings } from "./LifecycleSettings";
 import { operationNames, actorNames } from "./Operations";
-import type { LifecycleConfig, RecallJudgeConfig, StateConfig } from "./types";
+import type {
+  LifecycleConfig,
+  RecallJudgeConfig,
+  StateConfig,
+  GoalConfig,
+} from "./types";
 
 type ModelKind = "chat" | "embedding" | "recall_judge";
 export const modelNames: Record<string, string> = {
@@ -44,6 +49,7 @@ export type Settings = {
   lifecycle: LifecycleConfig;
   recall_judge: RecallJudgeConfig;
   state: StateConfig;
+  goals: GoalConfig;
   presets: Preset[];
   health: Record<string, { state: string }>;
   operations: {
@@ -439,6 +445,22 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
     if (!stateDirty.current)
       setStaleMinutes(String(settings.state.stale_after_minutes));
   }, [settings.state.stale_after_minutes]);
+  const [reminderMinutes, setReminderMinutes] = useState(
+    String(settings.goals.default_reminder_minutes),
+  );
+  const [overdueReminders, setOverdueReminders] = useState(
+    settings.goals.overdue_reminders,
+  );
+  const goalsDirty = useRef(false);
+  useEffect(() => {
+    if (!goalsDirty.current) {
+      setReminderMinutes(String(settings.goals.default_reminder_minutes));
+      setOverdueReminders(settings.goals.overdue_reminders);
+    }
+  }, [
+    settings.goals.default_reminder_minutes,
+    settings.goals.overdue_reminders,
+  ]);
   const save = async (path: string, method: string, value: unknown) => {
     if (busy) return;
     setBusy(true);
@@ -450,6 +472,11 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
       if (path === "/settings/state") {
         stateDirty.current = false;
         setStaleMinutes(String(latest.state.stale_after_minutes));
+      }
+      if (path === "/settings/goals") {
+        goalsDirty.current = false;
+        setReminderMinutes(String(latest.goals.default_reminder_minutes));
+        setOverdueReminders(latest.goals.overdue_reminders);
       }
       for (const kind of ["chat", "embedding", "recall_judge"] as const) {
         if (path === `/settings/models/${kind}`)
@@ -622,6 +649,75 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
           </p>
           <button className="primary" disabled={busy}>
             保存当前状态设置
+          </button>
+        </form>
+      </section>
+      <section className="panel settings-panel">
+        <h2>目标与提醒</h2>
+        <p>
+          未单独填写提前量的普通目标使用默认值。询问不安排提醒，过期不会自动放弃目标。
+        </p>
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (busy) return;
+            const minutes = Number(reminderMinutes);
+            if (
+              !reminderMinutes.trim() ||
+              !Number.isInteger(minutes) ||
+              minutes < 0 ||
+              minutes > 525600
+            ) {
+              setSaved("");
+              setError("默认提醒提前量须为 0—525600 的整数");
+              return;
+            }
+            void save("/settings/goals", "PATCH", {
+              default_reminder_minutes: minutes,
+              overdue_reminders: overdueReminders,
+            });
+          }}
+        >
+          <label>
+            默认提醒提前量（分钟）
+            <input
+              aria-label="默认提醒提前量（分钟）"
+              type="number"
+              min={0}
+              max={525600}
+              step={1}
+              required
+              disabled={busy}
+              value={reminderMinutes}
+              onChange={(e) => {
+                goalsDirty.current = true;
+                setReminderMinutes(e.target.value);
+                setSaved("");
+              }}
+            />
+            <small>0—525600 的整数，默认 60 分钟；0 表示到期时提醒。</small>
+          </label>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              disabled={busy}
+              checked={overdueReminders}
+              onChange={(e) => {
+                goalsDirty.current = true;
+                setOverdueReminders(e.target.checked);
+                setSaved("");
+              }}
+            />
+            启用过期提醒
+          </label>
+          <p className="lifecycle-help">
+            过期提醒每日最多一次。
+            <a href="#/state?tab=notifications">查看提醒</a>
+            ；“已取走”只表示宿主拿到了。
+          </p>
+          <button className="primary" disabled={busy}>
+            保存目标与提醒设置
           </button>
         </form>
       </section>

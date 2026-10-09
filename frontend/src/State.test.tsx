@@ -76,6 +76,8 @@ beforeEach(() => {
           offset,
           limit: 30,
         };
+      } else if (url.startsWith("/admin/api/notifications?")) {
+        data = { items: [], total: 0 };
       } else if (url === "/admin/api/trial") {
         data = {
           entries: [entry],
