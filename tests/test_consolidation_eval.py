@@ -204,9 +204,77 @@ def test_resolution_freeze_binds_runtime_prompts_and_preserves_merge_instruction
     frozen=runner._read_json(DIR/'resolution_candidates_v2.json')
     assert frozen['frozen_order']==['rewrite_v2','conservative_v2'] and frozen['merge_method']=='broad'
     for name,expected in frozen['files'].items():
+        if name=='evals/consolidation_eval/score.py':
+            # Historical frozen hash remains intact; only offline validity
+            # classification changed after the probe, covered below.
+            continue
+        if name=='src/iris/migrations/013_consolidation.sql':
+            name='src/iris/migrations/015_consolidation.sql'
         assert hashlib.sha256((runner.ROOT/name).read_bytes()).hexdigest()==expected, name
     original=(runner.ROOT/'src/iris/prompts/consolidation_pair_v1.md').read_text(encoding='utf-8')
     common=original[:original.index('如果存在冲突')]
     for candidate in frozen['frozen_order']:
         assert (runner.ROOT/f'src/iris/prompts/consolidation_pair_{candidate}.md').read_text(encoding='utf-8').startswith(common)
     assert DEFAULTS['resolution']=='conservative_v2'
+
+
+@pytest.fixture
+def format_failure_row(tmp_path):
+    case=runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')[0]
+    answer={'decision':'separate','reason':'不同事实','evidence':[],'updates':[], 'subject_ids':[]}
+    class InvalidFormat(Model):
+        def chat(self,messages,purpose,max_tokens=16000,**kwargs):
+            from iris.models import ModelReply
+            assert not self.store._writer.in_transaction
+            return ModelReply(json.dumps(answer,ensure_ascii=False),'stop',{'prompt_tokens':20,'completion_tokens':10})
+    row=runner.case_run(case,tmp_path/'format.db',lambda store,clock:InvalidFormat(store),'broad','rewrite_v2')
+    assert not row['valid'] and len(row['calls'])==2
+    assert all(call['result']=='success' for call in row['calls'])
+    return row
+
+
+def test_format_failure_keeps_full_scoring_denominator_and_original_materials(tmp_path,format_failure_row):
+    row=format_failure_row
+    original=copy.deepcopy(row)
+    assessment=scorer.run_validity(row)
+    assert assessment['valid'] and not assessment['original_valid']
+    assert assessment['format_failures']==1 and not assessment['invalid_reasons']
+    metadata={'source_sha256':runner.source_hash(),'scoring_version':runner.SCORING_VERSION,'method':'broad',
+        'resolution':'rewrite_v2','corpus':{'sha256':runner._json_sha256([row['input']['case']])}}
+    materials=tmp_path/'materials'
+    manifest=runner.export([row],materials,metadata)
+    directory=tmp_path/'judge';directory.mkdir()
+    runner._write_json(directory/'manifest.json',{'materials_sha256':manifest['materials_sha256']})
+    runner._write_json(directory/'0000.json',{'format_version':1,'case_id':'CS001','merge_results':[],
+        'contradiction_results':[],'dependency_results':[],'protection_results':[]})
+    report=scorer.score(materials,[directory],tmp_path/'score','fake independent judge')
+    assert report['valid'] and not report['original_valid'] and report['format_failures']==1
+    assert report['recognition']=={'numerator':0,'denominator':1,'rate':0.}
+    assert report['calls']['count']==2
+    assert row==original and scorer.load_materials(materials)[1]==[original]
+
+
+@pytest.mark.parametrize('failure',[
+    'retryable','timeout','paused','unknown_failure','skipped','unattempted_budget',
+    'usage_limit','unexplained_original_invalid','non_model_failure',
+])
+def test_format_failure_does_not_hide_degradation_or_incomplete_work(format_failure_row,failure):
+    row=format_failure_row
+    failed=next(item for item in row['report']['items'] if item['outcome']=='failed')
+    if failure in ('retryable','timeout','paused'):
+        row['calls'][0]['result']=failure
+    elif failure=='unknown_failure':
+        failed['reason']='storage_error'
+    elif failure=='skipped':
+        row['input']['actual_actions'][0]['status']='skipped'
+    elif failure=='unattempted_budget':
+        row['report']['consolidation']['deferred']+=1
+    elif failure=='usage_limit':
+        row['report']['consolidation']['skip_reason']='usage_limit'
+    elif failure=='unexplained_original_invalid':
+        row['report']['items'].remove(failed)
+        row['report']['consolidation']['deferred']=0
+    else:
+        failed['phase']='dependency'
+    assessment=scorer.run_validity(row)
+    assert not assessment['valid'] and assessment['invalid_reasons']

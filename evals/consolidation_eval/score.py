@@ -168,6 +168,39 @@ def ratio(n,d):
     return {'numerator':n,'denominator':d,'rate':n/d if d else None}
 
 
+
+def run_validity(row):
+    """Keep completed output failures in quality scoring, without retry filtering.
+
+    Frozen runners marked invalid_output as an invalid execution. Reclassify only
+    that explained case; retain raw flags and all cases/calls in the final report.
+    Transport failures, skipped work and unexplained deferrals remain invalid.
+    """
+    phase=row['report']['consolidation']
+    failures=[item for item in row['report']['items'] if item['outcome']=='failed']
+    quality=lambda item: item['phase']=='consolidation' and item['reason'] in ('unsafe_write','invalid_output')
+    formats=[item for item in failures if quality(item) and item['reason']=='invalid_output']
+    reasons=[]
+    if any(call['result']!='success' for call in row['calls']):
+        reasons.append('model_call_failed')
+    if formats and not row['calls']:
+        reasons.append('output_failure_without_call')
+    if phase['skip_reason']:
+        reasons.append('model_phase_skipped')
+    if any(action['status']=='skipped' for action in row['input']['actual_actions']):
+        reasons.append('work_skipped')
+    if any(not quality(item) for item in failures):
+        reasons.append('non_output_failure')
+    # A failed JSON decision is still pending for a later maintenance run. It was
+    # attempted here; other pending work means this evaluation did not complete.
+    if phase['deferred']>len(formats):
+        reasons.append('unattempted_work')
+    if not row['valid'] and not formats:
+        reasons.append('unexplained_original_invalid')
+    return {'case_id':row['input']['case']['id'],'original_valid':row['valid'],
+        'valid':not reasons,'format_failures':len(formats),'invalid_reasons':reasons}
+
+
 def score_case(p,j):
     keys=list(p['before']['key_map'])
     keymap=p['before']['key_map']
@@ -288,10 +321,13 @@ def score(materials,judgments,out,judge_model,write_audits=()):
         if len(rounds)==2:
             j=combine(j,rounds[1][i],row['input']['case']['id'],disagreements)
         results.append(score_case(row['input'],j))
+    validity=[run_validity(row) for row in rows]
     report={'format_version':1,'evaluation':'consolidation','method':manifest['run']['method'],
         'resolution':manifest['run'].get('resolution','original_v1'),'corpus_sha256':manifest['run']['corpus']['sha256'],
         'materials_sha256':manifest['materials_sha256'],'source_sha256':manifest['run']['source_sha256'],
-        'judge_model':judge_model,'judge_rounds':len(rounds),'valid':all(r['valid'] for r in rows), 'cases':results,'disagreements':disagreements}
+        'judge_model':judge_model,'judge_rounds':len(rounds),'valid':all(r['valid'] for r in validity),
+        'original_valid':all(r['valid'] for r in rows),'run_validity':validity,
+        'format_failures':sum(r['format_failures'] for r in validity),'cases':results,'disagreements':disagreements}
     report['safety_rejections']=sum(r.get('safety_rejections',0) for r in rows)
     if write_audits:
         report.update(audit_writes(manifest,write_audits))

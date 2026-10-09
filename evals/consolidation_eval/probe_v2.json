@@ -1,0 +1,345 @@
+{
+  "evaluation": "consolidation",
+  "corpus": "consolidation_v1",
+  "merge_method": "broad",
+  "candidate_freeze_commit": "5ddaea43ac86d58a3eb16e3321d242d3c11ec68f",
+  "merge_freeze_commit": "3d31c95b3fa4ba9b64f43bcb9b396e63916a5e7a",
+  "source_sha256": "ae582aa2efc10e36d735ec305bad14813fd0a66090bdc7595768bf849aaaf871",
+  "corpus_sha256": "6544ae854836a18305fb62c7d5b8965047aba7ea81e062ec2dd63a02f3f9db23",
+  "model": "glm-5.3-flash",
+  "reasoning_effort": "high",
+  "judge_model": "gpt-6-astra max",
+  "fresh_independent_judges": 8,
+  "judge_rounds_per_run": 2,
+  "cases_per_run": 40,
+  "degraded_runs": 0,
+  "selection": {
+    "selected": null,
+    "reason": "all below 0.80; conservative fallback only with no write damage and merge/protection gates",
+    "candidates": [
+      {
+        "resolution": "rewrite_v2",
+        "worst_consistency": 0.1111111111111111,
+        "merge_and_protection_pass": true,
+        "write_damage": 0
+      },
+      {
+        "resolution": "conservative_v2",
+        "worst_consistency": 0.2222222222222222,
+        "merge_and_protection_pass": false,
+        "write_damage": 1
+      }
+    ]
+  },
+  "runtime_default": {
+    "value": "conservative_v2",
+    "changed": false,
+    "status": "provisional_not_accepted"
+  },
+  "runs": [
+    {
+      "name": "rewrite_v2-1",
+      "valid": true,
+      "original_valid": false,
+      "materials_sha256": "9fe1f00a125032c9e6406de52008e6a4515f3cf08f736124188bc0164a039285",
+      "mismerge": {
+        "numerator": 0,
+        "denominator": 8,
+        "rate": 0.0
+      },
+      "recognition": {
+        "numerator": 8,
+        "denominator": 12,
+        "rate": 0.6666666666666666
+      },
+      "contradictions": {
+        "numerator": 1,
+        "denominator": 10,
+        "rate": 0.1
+      },
+      "dependencies": {
+        "numerator": 1,
+        "denominator": 8,
+        "rate": 0.125
+      },
+      "conflict_dependency_consistency": {
+        "numerator": 2,
+        "denominator": 18,
+        "rate": 0.1111111111111111
+      },
+      "protection": {
+        "numerator": 4,
+        "denominator": 4,
+        "rate": 1.0
+      },
+      "belief_cap": {
+        "numerator": 8,
+        "denominator": 8,
+        "rate": 1.0
+      },
+      "source_inheritance": {
+        "numerator": 8,
+        "denominator": 8,
+        "rate": 1.0
+      },
+      "write_damage": {
+        "numerator": 0,
+        "denominator": 40,
+        "rate": 0.0
+      },
+      "safety_rejections": 20,
+      "format_failures": 1,
+      "calls": {
+        "count": 52,
+        "prompt_tokens": 79884,
+        "completion_tokens": 24208,
+        "unknown_usage": 0,
+        "p50_ms": 8871.0,
+        "p95_ms": 29885.949999999943
+      },
+      "elapsed_seconds": 557.6245836252347,
+      "case_p95_seconds": 40.348467742028866,
+      "judgment_disagreements": 2,
+      "write_audit_disagreements": 0,
+      "reclassified_cases": [
+        "CS001"
+      ],
+      "rejection_reasons": {
+        "unsupported_identifier": 20
+      }
+    },
+    {
+      "name": "rewrite_v2-2",
+      "valid": true,
+      "original_valid": true,
+      "materials_sha256": "cd17ebb7862c2e7ba0c412de61a6c6fff6ad3f96aa012c954dd3ca82cda62c73",
+      "mismerge": {
+        "numerator": 0,
+        "denominator": 6,
+        "rate": 0.0
+      },
+      "recognition": {
+        "numerator": 6,
+        "denominator": 12,
+        "rate": 0.5
+      },
+      "contradictions": {
+        "numerator": 2,
+        "denominator": 10,
+        "rate": 0.2
+      },
+      "dependencies": {
+        "numerator": 2,
+        "denominator": 8,
+        "rate": 0.25
+      },
+      "conflict_dependency_consistency": {
+        "numerator": 4,
+        "denominator": 18,
+        "rate": 0.2222222222222222
+      },
+      "protection": {
+        "numerator": 4,
+        "denominator": 4,
+        "rate": 1.0
+      },
+      "belief_cap": {
+        "numerator": 6,
+        "denominator": 6,
+        "rate": 1.0
+      },
+      "source_inheritance": {
+        "numerator": 6,
+        "denominator": 6,
+        "rate": 1.0
+      },
+      "write_damage": {
+        "numerator": 0,
+        "denominator": 40,
+        "rate": 0.0
+      },
+      "safety_rejections": 20,
+      "format_failures": 0,
+      "calls": {
+        "count": 48,
+        "prompt_tokens": 73221,
+        "completion_tokens": 18155,
+        "unknown_usage": 0,
+        "p50_ms": 6861.5,
+        "p95_ms": 20576.449999999997
+      },
+      "elapsed_seconds": 414.31156920734793,
+      "case_p95_seconds": 29.12757115593995,
+      "judgment_disagreements": 14,
+      "write_audit_disagreements": 0,
+      "reclassified_cases": [],
+      "rejection_reasons": {
+        "unsupported_identifier": 16,
+        "gendered_pronoun": 2,
+        "claim_sequences": 2
+      }
+    },
+    {
+      "name": "conservative_v2-1",
+      "valid": true,
+      "original_valid": false,
+      "materials_sha256": "07660bf2b6cb1f673808627fb652a95de9c44e0ba8ae336a1749f0a1b37ac2e3",
+      "mismerge": {
+        "numerator": 0,
+        "denominator": 2,
+        "rate": 0.0
+      },
+      "recognition": {
+        "numerator": 2,
+        "denominator": 12,
+        "rate": 0.16666666666666666
+      },
+      "contradictions": {
+        "numerator": 2,
+        "denominator": 10,
+        "rate": 0.2
+      },
+      "dependencies": {
+        "numerator": 2,
+        "denominator": 8,
+        "rate": 0.25
+      },
+      "conflict_dependency_consistency": {
+        "numerator": 4,
+        "denominator": 18,
+        "rate": 0.2222222222222222
+      },
+      "protection": {
+        "numerator": 4,
+        "denominator": 4,
+        "rate": 1.0
+      },
+      "belief_cap": {
+        "numerator": 2,
+        "denominator": 2,
+        "rate": 1.0
+      },
+      "source_inheritance": {
+        "numerator": 2,
+        "denominator": 2,
+        "rate": 1.0
+      },
+      "write_damage": {
+        "numerator": 0,
+        "denominator": 40,
+        "rate": 0.0
+      },
+      "safety_rejections": 23,
+      "format_failures": 3,
+      "calls": {
+        "count": 50,
+        "prompt_tokens": 74309,
+        "completion_tokens": 18268,
+        "unknown_usage": 0,
+        "p50_ms": 6902.5,
+        "p95_ms": 17629.249999999993
+      },
+      "elapsed_seconds": 421.91516112699173,
+      "case_p95_seconds": 28.28573920617345,
+      "judgment_disagreements": 1,
+      "write_audit_disagreements": 0,
+      "reclassified_cases": [
+        "CS037",
+        "CS039",
+        "CS040"
+      ],
+      "rejection_reasons": {
+        "unsupported_identifier": 23
+      }
+    },
+    {
+      "name": "conservative_v2-2",
+      "valid": true,
+      "original_valid": false,
+      "materials_sha256": "501af00ba5c6cb2d3bd29c63ae4666066ec1a1c154d8e74e49c3d4c8ce5dad64",
+      "mismerge": {
+        "numerator": 1,
+        "denominator": 5,
+        "rate": 0.2
+      },
+      "recognition": {
+        "numerator": 4,
+        "denominator": 12,
+        "rate": 0.3333333333333333
+      },
+      "contradictions": {
+        "numerator": 3,
+        "denominator": 10,
+        "rate": 0.3
+      },
+      "dependencies": {
+        "numerator": 1,
+        "denominator": 8,
+        "rate": 0.125
+      },
+      "conflict_dependency_consistency": {
+        "numerator": 4,
+        "denominator": 18,
+        "rate": 0.2222222222222222
+      },
+      "protection": {
+        "numerator": 4,
+        "denominator": 4,
+        "rate": 1.0
+      },
+      "belief_cap": {
+        "numerator": 5,
+        "denominator": 5,
+        "rate": 1.0
+      },
+      "source_inheritance": {
+        "numerator": 5,
+        "denominator": 5,
+        "rate": 1.0
+      },
+      "write_damage": {
+        "numerator": 1,
+        "denominator": 40,
+        "rate": 0.025
+      },
+      "safety_rejections": 21,
+      "format_failures": 1,
+      "calls": {
+        "count": 47,
+        "prompt_tokens": 68903,
+        "completion_tokens": 16481,
+        "unknown_usage": 0,
+        "p50_ms": 6668.0,
+        "p95_ms": 19967.8
+      },
+      "elapsed_seconds": 391.1760023708921,
+      "case_p95_seconds": 25.39699497701362,
+      "judgment_disagreements": 1,
+      "write_audit_disagreements": 0,
+      "reclassified_cases": [
+        "CS039"
+      ],
+      "rejection_reasons": {
+        "unsupported_identifier": 21
+      }
+    }
+  ],
+  "verification": {
+    "python313": {
+      "passed": 1334,
+      "seconds": 162.98
+    },
+    "python312_isolated": {
+      "passed": 1334,
+      "seconds": 167.53
+    },
+    "build": "sdist and wheel passed; exact prompts and 015 migration verified",
+    "learning_requests": {
+      "baseline": "5ddaea4",
+      "cases": 116,
+      "batches": 272,
+      "differences": 0
+    }
+  },
+  "artifacts": "/Users/cassia/Local/Code/iris-eval-artifacts/co01-probe-v2-20261010"
+}
