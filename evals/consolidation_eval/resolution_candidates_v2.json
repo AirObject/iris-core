@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "status": "draft_pending_freeze_commit",
+  "status": "frozen_before_new_probe",
   "prior_method_freeze": "3d31c95b3fa4ba9b64f43bcb9b396e63916a5e7a",
   "reviewed_head": "2e1c7a347af4f735a04de396e96de28611f3890f",
   "merge_method": "broad",
@@ -43,5 +43,6 @@
     "src/iris/prompts/consolidation_dependency_v1.md": "78d3b77a48f0ee2d3f3780b103d20ccf2663b1837957955acaa7051ce7f18526",
     "src/iris/prompts/consolidation_dependency_rewrite_v2.md": "02dd7a63df95a016b27d920c33697b99bd9389cea5b88d716737f000f953d4da",
     "src/iris/prompts/consolidation_dependency_conservative_v2.md": "07c5fd0e711a1e007f2133442bdf7760959b42c816ffbbdfee31a2bd8e1187ac"
-  }
+  },
+  "implementation_commit": "e2fe218bd541f5c535935744f4e411980e712f56"
 }
