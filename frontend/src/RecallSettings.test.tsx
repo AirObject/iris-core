@@ -32,6 +32,7 @@ beforeEach(() => {
     daily_token_limit: null,
     lifecycle: lifecycleFixture,
     recall_judge: { enabled: true, concurrency: 1, queue_limit: 8 },
+    state: { stale_after_minutes: 30 },
     presets: [],
     operations: [],
     health: { recall_judge: { state: "normal" } },

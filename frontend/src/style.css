@@ -2205,3 +2205,162 @@ tr:last-child td {
     min-width: 0;
   }
 }
+
+/* Host-reported state: independent field timestamps and readable report diffs. */
+.state-page {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.state-panel {
+  padding: 24px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.state-help {
+  font-size: 12px;
+  color: #646878;
+  line-height: 1.8;
+  margin: 12px 0 20px;
+}
+.state-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px 32px;
+  margin: 24px 0;
+}
+.state-fields dt,
+.state-report-source dt,
+.state-summary-fields dt {
+  color: #646878;
+  font-size: 12px;
+}
+.state-fields dd,
+.state-report-source dd,
+.state-summary-fields dd {
+  margin: 6px 0 0;
+  line-height: 1.7;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+.state-fields .state-activity {
+  font-size: 20px;
+  font-weight: 600;
+}
+.state-fields .state-field-time {
+  color: #646878;
+  font-size: 12px;
+}
+.state-detail-fields > div {
+  padding: 14px;
+  background: #f7f8fb;
+  border-radius: 8px;
+  min-width: 0;
+}
+.state-stale {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  line-height: 1.8;
+  padding: 12px;
+  background: #fff6e6;
+  border-radius: 8px;
+}
+.badge.warning {
+  background: #fff0cc;
+  color: #805a16;
+}
+.state-report {
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.8;
+}
+.state-report-time {
+  color: #646878;
+  margin-top: 8px;
+}
+.state-report-source {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 12px 0;
+}
+.state-changes {
+  margin-bottom: 0;
+}
+.state-changes > div {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) repeat(2, minmax(0, 2fr));
+  gap: 12px;
+  padding: 12px;
+  background: #f7f8fb;
+  margin-top: 8px;
+  border-radius: 8px;
+}
+.state-changes dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  white-space: pre-wrap;
+}
+.state-summary {
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  padding-bottom: 8px;
+}
+.state-summary-activity {
+  font-weight: 600;
+  white-space: pre-wrap;
+}
+.state-summary-fields {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+.state-summary > .text-button {
+  display: inline-block;
+  margin-top: 8px;
+}
+@media (min-width: 761px) {
+  .app-header {
+    height: auto;
+    flex-wrap: wrap;
+    padding-top: 16px;
+    padding-bottom: 16px;
+    gap: 16px;
+  }
+  .app-header nav {
+    order: 3;
+    width: 100%;
+    height: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .brand {
+    flex: 1;
+  }
+}
+@media (max-width: 760px) {
+  .state-panel {
+    padding: 18px;
+  }
+  .state-fields,
+  .state-report-source {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .state-changes > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .state-changes dd {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 12px;
+  }
+}
