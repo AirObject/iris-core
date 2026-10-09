@@ -20,7 +20,9 @@ from .search_text import match_query, terms, words
 # Candidate order and parameters are frozen before the first real-model probe.
 METHODS = {'balanced': 0.40, 'strict': 0.65, 'broad': 0.20}
 RESOLUTIONS = ('report_only_v1',)
-DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': 'report_only_v1'}
+DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': 'report_only_v1',
+            'merge_enabled': True, 'conflict_enabled': True, 'dependency_enabled': True,
+            'persona_enabled': True, 'goal_review_enabled': True}
 PROMPT_VERSION = 'consolidation_report_only_v1'
 MAX_ANCESTORS = 64
 
@@ -32,6 +34,26 @@ class UnsafeWrite(ValueError):
 # The learning helpers are read-only imports. Learning does not itself expose a
 # gender guard: consolidation refuses gendered pronouns in retained merge bodies.
 GENDERED = re.compile(r"\b(?:he|him|his|she|her|hers)\b", re.I)
+
+
+def consolidation_settings(conn):
+    """One snapshot for new runs; evaluation-only method knobs remain internal."""
+    row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='consolidation'").fetchone()
+    value = {**DEFAULTS, **(json.loads(row[0]) if row else {}), 'resolution': 'report_only_v1'}
+    if (value['method'] not in METHODS or type(value['max_calls']) is not int
+            or not 0 <= value['max_calls'] <= 50
+            or any(type(value[k]) is not bool for k in DEFAULTS if k.endswith('enabled'))):
+        raise ValueError('invalid consolidation settings')
+    return value
+
+
+def run_settings(conn, run_id):
+    row = conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?', (run_id,)).fetchone()
+    return {**DEFAULTS, **json.loads(row[0]), 'resolution': 'report_only_v1'}
+
+
+def pair_policy(settings):
+    return {key: settings[key] for key in ('merge_enabled', 'conflict_enabled')}
 
 
 def gendered_pronoun(text):
@@ -315,9 +337,15 @@ def dependency_material(conn, target):
 
 
 def work_fingerprint(kind,payload,method):
-    return digest({'version':PROMPT_VERSION,'method':method,'kind':kind,
-                   'memories':[semantic(m) for m in payload['memories']],
-                   'losses':payload.get('losses',[]), 'resolution':payload.get('resolution','original_v1')})
+    value = {'version':PROMPT_VERSION,'method':method,'kind':kind,
+             'memories':[semantic(m) for m in payload['memories']],
+             'losses':payload.get('losses',[]), 'resolution':payload.get('resolution','original_v1')}
+    # Preserve already-completed default work across this upgrade. Only a
+    # changed pair policy needs its own receipt; dependency work is independent.
+    policy = payload.get('policy', pair_policy(DEFAULTS))
+    if kind == 'pair' and policy != pair_policy(DEFAULTS):
+        value['policy'] = policy
+    return digest(value)
 
 
 class _CallHealth:
@@ -353,7 +381,9 @@ class Consolidation:
         with self.store.write() as conn:
             settings=json.loads(conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?',(self.run_id,)).fetchone()[0])
             count=conn.execute('SELECT COUNT(*) FROM consolidation_calls WHERE run_id=?',(self.run_id,)).fetchone()[0]
-            if count>=settings['max_calls']:
+            # A generation retry/repair must still leave one call for the checker.
+            required = 2 if purpose.startswith('persona_generate') else 1
+            if count+required>settings['max_calls']:
                 raise ModelError('budget','call budget',reason='call_budget')
             return conn.execute('INSERT INTO consolidation_calls(run_id,work_id,purpose,created_at) VALUES(?,?,?,?)',
                 (self.run_id,work['id'],purpose,self.clock().isoformat())).lastrowid
@@ -374,7 +404,7 @@ class Consolidation:
         else:
             name='pair_v1'  # Complete original broad prompt frozen in 3d31c95.
         prompt=files('iris').joinpath(f'prompts/consolidation_{name}.md').read_text(encoding='utf-8')
-        public={k:v for k,v in payload.items() if k!='resolution'}
+        public={k:v for k,v in payload.items() if k not in ('resolution','policy')}
         public['memories']=[material(m) for m in payload['memories']]
         messages=[{'role':'system','content':prompt},{'role':'user','content':dumps(public)}]
         def unique(pairs):
@@ -498,11 +528,16 @@ class Consolidation:
             for row in rows:
                 m=get(row[0])
                 # Dependencies are selected independently of text similarity.
-                if m['derived_from']:
+                if settings['dependency_enabled'] and m['derived_from']:
                     dep=dependency_material(conn,m)
                     if dep:
                         candidates.append(('dependency',dep))
-                fp=digest([PROMPT_VERSION,settings['method'],settings['resolution'],semantic(m)])
+                scan_key=[PROMPT_VERSION,settings['method'],settings['resolution'],semantic(m)]
+                if pair_policy(settings) != pair_policy(DEFAULTS):
+                    scan_key.append(pair_policy(settings))
+                fp=digest(scan_key)
+                if not settings['merge_enabled'] and not settings['conflict_enabled']:
+                    continue
                 old=conn.execute('SELECT fingerprint FROM consolidation_scanned WHERE memory_id=?',(m['id'],)).fetchone()
                 if old and old[0]==fp:
                     continue
@@ -541,17 +576,21 @@ class Consolidation:
                         continue
                     a,b=sorted((m,n),key=lambda x:x['id'])
                     exclusion=merge_exclusion(a,b)
-                    eligible=not exclusion and sim>=METHODS[settings['method']]
+                    eligible=settings['merge_enabled'] and not exclusion and sim>=METHODS[settings['method']]
+                    if not settings['conflict_enabled'] and not eligible:
+                        continue
                     # Below the method threshold, still inspect genuinely incompatible
                     # facts; compatible low-similarity pairs wait for other evidence.
-                    if not eligible and not exclusion:
+                    if settings['merge_enabled'] and not eligible and not exclusion:
                         continue
                     preferred=sorted((a,b),key=lambda x:(-len(x['content']),x['created_at'],x['id']))[0]['id']
                     candidates.append(('pair',{'pair_ids':[a['id'],b['id']],'memories':[a,b,*[get(i) for i in sorted(ma | na) if i not in pair]],'merge_allowed':eligible,
-                        'merge_exclusion':exclusion or ('similarity' if not eligible else None),'preferred_keep_id':preferred}))
+                        'merge_exclusion':exclusion or ('disabled' if not settings['merge_enabled'] else 'similarity' if not eligible else None),'preferred_keep_id':preferred}))
                 scanned.append((m['id'],fp))
         for kind,payload in candidates:
             payload['resolution']=settings['resolution']
+            if kind=='pair':
+                payload['policy']=pair_policy(settings)
             with self.store.write() as conn:
                 fp=work_fingerprint(kind,payload,settings['method'])
                 if conn.execute('SELECT 1 FROM consolidation_receipts WHERE fingerprint=?',(fp,)).fetchone():
@@ -565,7 +604,13 @@ class Consolidation:
             conn.execute('''INSERT OR IGNORE INTO consolidation_run_work(run_id,work_id)
                 SELECT ?,id FROM consolidation_work WHERE state IN ('pending','classified','decided')
                 AND COALESCE(json_extract(payload_json,'$.resolution'),'original_v1')=?
-                ORDER BY importance DESC,julianday(changed_at) DESC,id LIMIT 256''',(run['id'],settings['resolution']))
+                AND ((kind='dependency' AND ?)
+                     OR (kind='pair' AND (? OR ?)
+                         AND COALESCE(json_extract(payload_json,'$.policy.merge_enabled'),1)=?
+                         AND COALESCE(json_extract(payload_json,'$.policy.conflict_enabled'),1)=?))
+                ORDER BY importance DESC,julianday(changed_at) DESC,id LIMIT 256''',
+                (run['id'],settings['resolution'],settings['dependency_enabled'],settings['merge_enabled'],
+                 settings['conflict_enabled'],settings['merge_enabled'],settings['conflict_enabled']))
             conn.execute('UPDATE consolidation_runs SET planned=1 WHERE run_id=?',(run['id'],))
 
     def _stale(self,conn,payload):
@@ -598,10 +643,9 @@ class Consolidation:
     def run(self,run,*,stop=None):
         self.run_id=run['id']
         with self.store.write() as conn:
-            config={**DEFAULTS,**self.store.setting('consolidation',{}),'resolution':'report_only_v1'}
-            if config['resolution'] not in RESOLUTIONS or config['method'] not in METHODS or type(config['max_calls']) is not int or not 0<=config['max_calls']<=50:
-                raise ValueError('invalid consolidation settings')
-            conn.execute('INSERT OR IGNORE INTO consolidation_runs(run_id,settings_json) VALUES(?,?)',(self.run_id,dumps(config)))
+            if not conn.execute('SELECT 1 FROM consolidation_runs WHERE run_id=?',(self.run_id,)).fetchone():
+                conn.execute('INSERT INTO consolidation_runs(run_id,settings_json) VALUES(?,?)',
+                             (self.run_id,dumps(consolidation_settings(conn))))
             state=dict(conn.execute('SELECT * FROM consolidation_runs WHERE run_id=?',(self.run_id,)).fetchone())
         if state['finished']:
             return True
@@ -609,6 +653,9 @@ class Consolidation:
         config['resolution']='report_only_v1'  # Old policies cannot re-enable writes.
         if not config['enabled'] or not self.gateway or not callable(getattr(self.gateway,'chat',None)):
             self.halt('disabled' if not config['enabled'] else 'unconfigured')
+            return True
+        if not any(config[key] for key in ('merge_enabled','conflict_enabled','dependency_enabled')):
+            self.halt('model_items_disabled')
             return True
         if not state['planned']:
             self.plan(run,config)
@@ -640,7 +687,7 @@ class Consolidation:
                                          (dumps(classification),work['id']))
                         if stop and stop():
                             return False
-                if work['kind']=='pair' and classification['decision']=='conflict':
+                if work['kind']=='pair' and classification['decision']=='conflict' and config['conflict_enabled']:
                     result=self.call(work,payload,report_only=True)
                 else:
                     result=classification
@@ -694,7 +741,10 @@ class Consolidation:
                     continue
                 try:
                     conn.execute('SAVEPOINT consolidation_item')
-                    outcome,details=self.apply(conn,work,payload,result)
+                    if work['kind']=='pair' and result['decision']=='conflict' and not config['conflict_enabled']:
+                        outcome,details='checked',{}
+                    else:
+                        outcome,details=self.apply(conn,work,payload,result)
                     self.record(conn,work,outcome,details=details)
                     conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work['fingerprint'],))
                     after={**payload,'memories':[snapshot(conn,m['id']) for m in payload['memories']]}
@@ -782,3 +832,130 @@ class Consolidation:
                   'memory',before[0]['id'],{'run_id':self.run_id,'work_id':work['id'],'memory_ids':[m['id'] for m in before]},
                   actor='consolidation',stamp=self.clock().isoformat())
         return outcome,details
+
+
+class _PersonaGateway:
+    """Reuse persona's engine; account for every HTTP retry without double admission.
+
+    Persona's preflight uses the real health gate. The inner Gateway's per-HTTP
+    gate alone reserves budget, so its retries and persona JSON repairs count.
+    """
+    def __init__(self, owner, *, stop=None):
+        self.owner, self.stop = owner, stop
+        self.gateway = owner.gateway
+        self.health = getattr(self.gateway, 'health', None)
+        self.monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        if isinstance(self.gateway, Gateway):
+            if self.health is None:
+                from .model_health import ModelHealth
+                self.health = ModelHealth(owner.store, self.gateway._raw_configs, clock=owner.clock)
+            inner = object.__new__(_CallGateway)
+            inner.__dict__ = self.gateway.__dict__.copy()
+            inner._co = owner
+            inner.health = _CallHealth(owner, self.health, {'id': None})
+            self.gateway = inner
+
+    def chat(self, messages, purpose, max_tokens=16000, **kwargs):
+        if self.stop and self.stop():
+            raise ModelError('paused', 'maintenance stopped', paused=True, reason='interrupted')
+        if isinstance(self.gateway, Gateway):
+            return self.gateway.chat(messages, purpose, max_tokens, **kwargs)
+        gate = _CallHealth(self.owner, self.health, {'id': None})
+        gate.check('chat', purpose)
+        started = self.monotonic()
+        try:
+            reply = self.gateway.chat(messages, purpose, max_tokens, **kwargs)
+        except ModelError as error:
+            self.owner.finish_call(gate.call_id, error.category, round((self.monotonic()-started)*1000), {},
+                                   error=error.reason or error.category)
+            raise
+        self.owner.finish_call(gate.call_id, 'success', round((self.monotonic()-started)*1000), reply.usage,
+                               reply.finish_reason, raw=reply.content)
+        return reply
+
+
+def _persona_result(store, run_id, status, reason, details, clock):
+    """Outcome and report item commit together; recovering a completed attempt is read-only."""
+    with store.write() as conn:
+        row = conn.execute('SELECT * FROM maintenance_persona WHERE run_id=?', (run_id,)).fetchone()
+        if row['status'] != 'running':
+            return
+        conn.execute('UPDATE maintenance_persona SET status=?,reason=?,details_json=? WHERE run_id=?',
+                     (status, reason, dumps(details), run_id))
+        if status in ('published', 'pending', 'rejected', 'failed', 'conflict'):
+            outcome = 'persona_'+status if status in ('published','pending') else 'failed'
+            conn.execute('''INSERT INTO maintenance_items(run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+                VALUES(?,'persona','update',?,?,?,?,?)''',
+                (run_id, row['attempt_id'] or run_id, outcome, reason, dumps({**details,'status':status}), clock().isoformat()))
+
+
+def update_persona_for_run(store, gateway, run, *, clock=utc_now, stop=None):
+    """A durable link to persona's existing reservation/engine, never a second publisher."""
+    from .persona import (PersonaEngine, PersonaBusy, PersonaConflict, persona_due,
+                          _reserve_attempt, get_version)
+    run_id = run['id']
+    with store.read() as conn:
+        row = conn.execute('SELECT * FROM maintenance_persona WHERE run_id=?', (run_id,)).fetchone()
+        settings = run_settings(conn, run_id)
+    if row and row['status'] != 'running':
+        return
+    if row is None:
+        due = persona_due(store, clock=clock)
+        reason, status = None, 'skipped'
+        if not settings['enabled'] or not settings['persona_enabled']:
+            reason = 'disabled'
+        elif not due['due']:
+            status, reason = 'not_due', due['reason']
+        elif not gateway or not callable(getattr(gateway, 'chat', None)):
+            reason = 'unconfigured'
+        with store.write() as conn:
+            count = conn.execute('SELECT COUNT(*) FROM consolidation_calls WHERE run_id=?', (run_id,)).fetchone()[0]
+            if reason is None and count+2 > settings['max_calls']:
+                reason = 'call_budget'
+            attempt = None
+            if reason is None:
+                previous = conn.execute('SELECT id FROM persona_versions WHERE is_current=1').fetchone()
+                try:
+                    # The link and persona's own reservation are atomic. This is
+                    # the same entry point used by PersonaJobs, with periodic due
+                    # checking retained in _run. No model work in this transaction.
+                    attempt = _reserve_attempt(conn, previous[0], 'periodic', clock().isoformat())
+                except (PersonaBusy, PersonaConflict) as error:
+                    reason = 'persona_busy' if isinstance(error, PersonaBusy) else 'current_version_changed'
+            conn.execute('INSERT INTO maintenance_persona(run_id,attempt_id,status,reason,due_json) VALUES(?,?,?,?,?)',
+                         (run_id, attempt, status if reason is not None else 'running', reason, dumps(due)))
+        if reason is not None:
+            return
+    owner = Consolidation(store, gateway, clock=clock)
+    owner.run_id = run_id
+    engine = PersonaEngine(store, _PersonaGateway(owner, stop=stop), clock=clock)
+    with store.read() as conn:
+        attempt = dict(conn.execute('''SELECT a.* FROM persona_attempts a JOIN maintenance_persona p
+            ON p.attempt_id=a.id WHERE p.run_id=?''', (run_id,)).fetchone())
+    if attempt['state'] == 'queued':
+        try:
+            engine._run(attempt['base_version_id'], 'periodic', only_if_due=True, attempt_id=attempt['id'])
+        except PersonaConflict:
+            pass  # The existing engine has persisted the safe terminal reason.
+        except Exception:
+            # Never expose provider exceptions; engine normally already recorded it.
+            with store.read() as conn:
+                saved = conn.execute('SELECT state FROM persona_attempts WHERE id=?', (attempt['id'],)).fetchone()
+            if saved['state'] in ('queued','running'):
+                engine._finish_attempt(attempt['id'], 'failed', 'unexpected_error', {})
+    elif attempt['state'] == 'running':
+        # A process stopped between generation and its complete check. Never
+        # regenerate in this run or publish a partial candidate on restart.
+        engine._finish_attempt(attempt['id'], 'failed', 'interrupted', json.loads(attempt['outputs_json']))
+    with store.read() as conn:
+        attempt = dict(conn.execute('SELECT * FROM persona_attempts WHERE id=?', (attempt['id'],)).fetchone())
+    status = {'current':'published'}.get(attempt['state'], attempt['state'])
+    reason = attempt['reason']
+    details = {'attempt_id':attempt['id'], 'base_version_id':attempt['base_version_id'],
+               'version_id':attempt['version_id']}
+    if attempt['version_id']:
+        version = get_version(store, attempt['version_id'])
+        details.update(content=version['content'], change_degree=version['change_degree'], checks=version['checks'])
+    if status == 'rejected':
+        reason = 'checks_rejected'
+    _persona_result(store, run_id, status, reason, details, clock)

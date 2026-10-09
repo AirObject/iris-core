@@ -11,7 +11,7 @@ from .memory_ops import adjust_retention, delete_memory, lifecycle_settings, mes
 from .model_health import utc_now
 from .queue import reset_batch
 
-PHASES = ("decay", "expiry", "dependency", "messages", "retry", "consolidation")
+PHASES = ("decay", "expiry", "dependency", "messages", "retry", "consolidation", "persona", "goals")
 
 
 class Maintenance:
@@ -71,13 +71,16 @@ class Maintenance:
                 rid = row[0]
             else:
                 config = lifecycle_settings(conn)
+                from .consolidation import consolidation_settings
+                model_config = consolidation_settings(conn)
                 zone_row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='timezone'").fetchone()
                 bounds = [conn.execute(f"SELECT COALESCE(MAX(id),0) FROM {table}").fetchone()[0]
                           for table in ("memories", "messages", "batches")]
                 rid = conn.execute("""INSERT INTO maintenance_runs(trigger,schedule_key,settings_json,timezone,
-                    memory_through,message_through,batch_through,created_at) VALUES(?,?,?,?,?,?,?,?)""",
+                    memory_through,message_through,batch_through,created_at,goal_through) VALUES(?,?,?,?,?,?,?,?,?)""",
                     (trigger, schedule_key, dumps(config), json.loads(zone_row[0]) if zone_row else "Asia/Shanghai",
-                     *bounds, self.clock().isoformat())).lastrowid
+                     *bounds, self.clock().isoformat(), conn.execute("SELECT COALESCE(MAX(id),0) FROM goals").fetchone()[0])).lastrowid
+                conn.execute('INSERT INTO consolidation_runs(run_id,settings_json) VALUES(?,?)', (rid,dumps(model_config)))
             if actor:
                 operation(conn, "maintenance_requested", "maintenance", rid, actor=actor, stamp=self.clock().isoformat())
         if trigger in ("manual", "scheduled", "catchup"):
@@ -100,10 +103,15 @@ class Maintenance:
                     self._finish(run_id)
                     return
                 phase = PHASES[run["phase"]]
-                if phase == "consolidation":
-                    from .consolidation import Consolidation
-                    if not Consolidation(self.store, self.gateway, clock=self.clock).run(run, stop=stop):
-                        return
+                if phase in ("consolidation", "persona"):
+                    from .consolidation import Consolidation, update_persona_for_run
+                    if phase == "consolidation":
+                        if not Consolidation(self.store, self.gateway, clock=self.clock).run(run, stop=stop):
+                            return
+                    else:
+                        update_persona_for_run(self.store, self.gateway, run, clock=self.clock, stop=stop)
+                        if stop and stop():
+                            return
                     with self.store.write() as conn:
                         conn.execute("UPDATE maintenance_runs SET phase=phase+1,cursor_id=0 WHERE id=? AND phase=?", (run_id, run["phase"]))
                     continue
@@ -120,6 +128,15 @@ class Maintenance:
     def _candidates(self, run, phase):
         config = json.loads(run["settings_json"])
         current = datetime.fromisoformat(run["created_at"])
+        if phase == "goals":
+            from .consolidation import run_settings
+            with self.store.read() as conn:
+                settings = run_settings(conn, run['id'])
+                if not settings['enabled'] or not settings['goal_review_enabled']:
+                    return []
+                return [dict(r) for r in conn.execute("""SELECT id,id AS cursor_id,revision,CAST(id AS TEXT) AS item_key
+                    FROM goals WHERE id>? AND id<=? AND state='open' AND merged_into IS NULL ORDER BY id LIMIT 100""",
+                    (run['cursor_id'],run['goal_through']))]
         if phase in ("decay", "expiry"):
             where = "m.id>? AND m.id<=? AND m.lifecycle!='deleted'"
             params = [run["cursor_id"], run["memory_through"]]
@@ -200,6 +217,16 @@ class Maintenance:
         # transition starts its retention period at the actual execution time.
         executed_at = self.clock()
         mid = candidate["id"]
+        if phase == "goals":
+            from .goals import review_goal_basis, GoalConflict
+            try:
+                # Include the review's changes, report and cursor in this one
+                # small transaction. The standalone paging helper cannot commit
+                # our cursor/report atomically, so use its single-item API.
+                result = review_goal_basis(conn, executed_at, goal_id=mid, expected_revision=candidate['revision'])
+            except (GoalConflict, KeyError):
+                return 'skipped', 'revision_conflict', {}
+            return ('goals_reviewed' if result['changed_goal_ids'] else 'checked'), None, result
         if phase in ("decay", "expiry", "dependency"):
             memory = conn.execute("""SELECT id,lifecycle,revision,pinned,importance,retention,decay_visits,forgotten_at
                 FROM memories WHERE id=?""", (mid,)).fetchone()
@@ -295,7 +322,7 @@ class Maintenance:
         for group in result.values():
             group["memory_ids"] = sorted(set(group["memory_ids"]))
             group["object_ids"] = sorted(set(group["object_ids"]))
-        by_phase = {phase: progress.get("checks", {}).get(phase, 0) for phase in PHASES if phase != "consolidation"}
+        by_phase = {phase: progress.get("checks", {}).get(phase, 0) for phase in PHASES if phase not in ("consolidation", "persona")}
         result["checked"].update(count=sum(by_phase.values()), by_phase=by_phase)
         reasons = progress.get("skipped", {})
         result["skipped"].update(count=sum(reasons.values()), reasons=reasons)
@@ -339,12 +366,28 @@ class Maintenance:
                 report["summary"]["skipped"]["count"] = sum(reasons.values())
                 calls = conn.execute("""SELECT COUNT(*) AS count,COALESCE(SUM(prompt_tokens),0) AS prompt_tokens,
                     COALESCE(SUM(completion_tokens),0) AS completion_tokens,COALESCE(SUM(duration_ms),0) AS duration_ms,
-                    SUM(prompt_tokens IS NULL OR completion_tokens IS NULL) AS unknown_usage_calls
+                    COALESCE(SUM(prompt_tokens IS NULL OR completion_tokens IS NULL),0) AS unknown_usage_calls
                     FROM consolidation_calls WHERE run_id=?""", (run_id,)).fetchone()
                 report['summary']['model_calls'] = dict(calls)
                 report['consolidation'] = {'settings': json.loads(model['settings_json']),
                     'deferred': sum((r['outcome'] is None or r['outcome'] in ('failed','skipped')) and r['reason']!='unsafe_write' for r in rows),
                     'skip_reason': model['skip_reason']}
+            persona = conn.execute('SELECT * FROM maintenance_persona WHERE run_id=?', (run_id,)).fetchone()
+            if persona:
+                report['persona'] = {**json.loads(persona['details_json']), 'status':persona['status'],
+                                     'reason':persona['reason'], 'attempt_id':persona['attempt_id'],
+                                     'due':json.loads(persona['due_json'])}
+                if persona['status'] == 'skipped':
+                    group = report['summary']['skipped']
+                    group['reasons'][persona['reason']] = group['reasons'].get(persona['reason'], 0)+1
+                    group['count'] += 1
+            if model:
+                from .consolidation import run_settings
+                settings = run_settings(conn, run_id)
+                report['goal_review'] = {'enabled':settings['enabled'] and settings['goal_review_enabled'],
+                    'checked':progress.get('checks',{}).get('goals',0)}
+                if not report['goal_review']['enabled']:
+                    report['goal_review']['skip_reason'] = 'disabled'
             return report
 
     def _finish(self, run_id):
