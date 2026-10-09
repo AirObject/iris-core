@@ -394,6 +394,53 @@ prepare 与 `search(include_goals=true)` 返回最多 10 个未结束目标／�
 
 完整材料、脚本、日志及逐案例差异保存在仓库外 `iris-eval-artifacts/m3-goals-20261009/` 和 `iris-eval-artifacts/m3-goals-review-20261009/`；模型去重与方法选择留待下一步。
 
+### 来源前后文、修订快照与依据复核（GO 第五步）
+
+管理详情的每个 `sources` 项保留原来的消息字段，增加 `message`、`context`、`missing`、`notice`。前后文沿用记忆详情：同一入口按消息入库 ID 取前两条、来源本条、后两条，不跨入口拼接；包含发言人名和原始消息类型，不回灌为新经历、不增加召回或使用次数。来源消息不可用时保留 `message_id`，返回 `message=null`、`context=[]`、`missing=true` 和“来源消息已清理或不可用”；当前清理逻辑仍保护被目标引用的消息。
+
+| 管理接口 | 内容 |
+| --- | --- |
+| `GET /admin/api/goals/{id}/sources` | 来源消息及各自前后文，`limit`／`offset` 分页；详情也提供同样的前后文 |
+| `GET /admin/api/goals/{id}/revisions` | 按快照 ID 倒序分页，返回 `revision_before/revision_after/action/before/after/actor/reason/created_at` |
+| `DELETE /admin/api/goals/{id}/basis-annotations/{annotation_id}` | 清除该目标的一条活动标注；JSON 须带 `expected_revision`，可带 `reason`；沿用管理员会话、CSRF、Host／Origin 校验和操作记录 |
+
+分页沿用 `limit=1—100`（默认 30）、`offset≥0`，未知字段、非法字段返回 400，目标／标注不存在返回 404，修订不匹配或标注已被后续复核替代返回 409。对已合并目标的写入仍返回 `goal_merged`，需明确选择保留目标。管理编辑、合并、驳回和清除标注可提供 1—500 字符的非空白 `reason`；省略时记录对应操作的固定原因，不允许只提交原因而不修改目标。
+
+迁移 018 新增 `goal_revisions`、`goal_basis_annotations`。创建记录初始值；正文、期限、提前量、状态、合并／重定向、可能重复及其驳回、依据标注的变化都在同一事务保存前后值、操作者、时间与原因。快照只存发生变化的领域字段；关系按 ID／状态记录，原始消息、记忆正文、未变的目标正文、宿主回执和模型任务信息不重复复制。修改操作记录引用快照 ID，不重复写正文。无实质变化和失败／冲突不产生快照；合并也记录被合并项、被改写的旧占位和受影响的重复关系，相关修订号随之更新。新目标的历史状态为 `complete`；迁移前已有目标返回 `history_status=pre_migration_no_snapshot`、`missing_through_revision` 和“迁移前无快照”，不伪造旧历史，之后的修改正常记入。详情的 `revision_history` 同样给出这项提示。
+
+目标列表、详情、prepare 和 `search(include_goals=true)` 新增 `basis_needs_review` 及 `basis_annotations`，不改排序或记忆返回。每条标注指出 `memory_id`、当时的 `basis_revision`、观察到的修订／生命周期／彻底清除／合并去向、`changes`、时间和“依据可能不成立”说明。变化代码为 `revision_changed/forgotten/deleted/purged/missing`；不推断承诺是否取消或目标是否完成。
+
+确定性复核只检查未结束、未合并的内部目标（含询问），也检查吸收了内部目标的保留项，避免跨来源合并后丢失内部依据。比较 `goal_memories` 的原始依据修订与当前记忆，不读取记忆修订历史、不调用模型、不改记忆，不完成／放弃目标、不改正文／期限／提前量／提醒。过期仍按当前时间计算，不写成新状态。
+
+记忆仅从遗忘恢复、且仍为原依据修订时，标注自动结束；修订不同则保留“修订已变化”，不会把恢复当成重新确认承诺。当前观察变化时旧标注变为 `superseded`，已恢复或依据关联移除时为 `resolved`。管理员清除记为 `cleared`：同一依据修订和同一观察状态不重复提醒，新的修订、生命周期或清除状态变化再复核；不改写原依据修订。合并复制依据、标注和清除记录，原记录保留追溯；相同依据事件已有目标记录优先。
+
+给每日维护的接口均在 `iris.goals`，本步提供函数，由整理线接入调度：
+
+```python
+# 已持有写事务：检查单个目标，修订不符抛 GoalConflict。
+review_goal_basis(conn, current, goal_id=goal_id, expected_revision=revision)
+# 也支持省略 goal_id，在调用者现有事务内复核全部符合条件的目标。
+
+# 推荐每日维护使用：一次有界扫描，逐目标一个短事务。
+page = review_goal_basis_items(store, current, after_id=0, limit=100)
+# 用 page["next_after_id"] 续扫，直到 page["has_more"] 为 False。
+```
+
+`current` 为带时区的 `datetime`，可注入固定时钟。返回 `checked`、`changed_goal_ids`、`annotation_ids`、`ended_annotation_ids`（含恢复结束或被新观察替代的旧标注）；逐项版本另返回 `conflicts/next_after_id/has_more`，`limit` 为 1—1000。逐项版本写入前核对扫描时的目标修订，冲突跳过、留下一次从 ID 0 开始的完整复核；记忆的修订和状态只在该项写事务内读取，不从事务外的旧观察写回。可中断续扫，重复运行无重复快照或标注。本步不修改或调用每日维护、模型整理及其调度入口。
+
+本步基线为 main `5a52b57d7c84b306518968cdc8f0335c9ebe3a8c`；35 项新增确定性／接口测试。学习逐批对照覆盖 v1—v5 的 116 段、272 批（156 批带已有记忆），与 main 逐字一致，请求 SHA-256 均为 `9988666d3634cdde81ded0d1a540cf92cbda5d30b65bf8ae5a85301274861092`。召回在两个独立进程中给七份公开语料同样的固定 2048 维 float32 假向量，关闭召回判断，混合召回／纯全文降级共 228×2=456 次查询的记忆 ID、顺序和 reason 差异为 0；候选库额外含依据标注、快照、目标、询问、状态和待取提醒。这是返回回归检查，不是真实模型质量重评。
+
+Python 3.13 与隔离的 3.12 按顺序运行，各通过 1635 个测试；`uv build` 成功。R10 沿用未修改的 `benchmark_retrieval.py --default-config`，main 与本分支串行运行相同的合成数据库：每库额外有 1000 个未结束目标、1000 条活动依据标注和 20 条待取提醒。每组预热 5 次、测量 60 次，使用固定假判断；四组 prepare 及 HTTP P95 均低于 500 ms。数值为本次运行结果，不把小幅计时波动解释为加速。
+
+| 记忆数／查询 | main prepare P95 | 本分支 prepare P95 | main HTTP P95 | 本分支 HTTP P95 |
+| --- | ---: | ---: | ---: | ---: |
+| 5000／不点名 | 28.8 ms | 33.0 ms | 27.1 ms | 27.1 ms |
+| 5000／点名 | 32.7 ms | 25.3 ms | 27.1 ms | 41.0 ms |
+| 50000／不点名 | 130.3 ms | 123.3 ms | 145.7 ms | 146.8 ms |
+| 50000／点名 | 129.0 ms | 125.1 ms | 140.6 ms | 129.2 ms |
+
+完整材料、离线脚本、首次失败和最终日志保存在仓库外 `/Users/cassia/Local/Code/iris-eval-artifacts/m3-goal-review-20261010/`，不读取模型配置，不调用真实模型，不访问隐藏集。
+
 ## M3 目标去重判断（GO 第三、四步）
 
 目标去重默认开启 C2：沿用 C 的整批候选判断，另为数字／否定差异的相近配对标记可能重复。C2 在 `82a053c26022771b0d34983b01e70bd4c7452491` 单独冻结；公开 goal_dedup_v1 两轮均为 0/13 误合并、28/28 应合并识别，相比 C 的 0/14、14/28 提高识别且未增加误合并，按 GO 第四步规则采用。不应合并中标可能重复由 6/39 增至 22/39，增加了人工复核量；没有放宽合并。两轮各调用 38 次，均无降级。详见 [C2 冻结规则](evals/goal_dedup_probe/C2_METHOD.md) 和 [C2 探测报告](evals/goal_dedup_probe/C2_RESULTS.md)。A／B／C 及原提示词在 `9cacbd02d38f0200dd757316c7b8c8c101dde113` 冻结，原方法选择与 C 的 5 秒预算验证保留在 [GO 第三步报告](evals/goal_dedup_probe/RESULTS.md)。

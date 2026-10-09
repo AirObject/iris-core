@@ -221,13 +221,24 @@ class GoalPatch(Input):
 
     @model_validator(mode="after")
     def changes(self):
-        fields = self.model_fields_set - {"expected_revision"}
+        fields = self.model_fields_set - {"expected_revision", "reason"}
         if not fields or "state" in fields and self.state is None:
             raise ValueError("至少提供一个修改字段；状态不能为空")
         return self
 
 
-class AdminGoalPatch(GoalPatch):
+class GoalReason(Input):
+    reason: str | None = Field(default=None, min_length=1, max_length=500)
+
+    @field_validator('reason')
+    @classmethod
+    def nonblank_reason(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError('原因不能为空白')
+        return value.strip() if value is not None else None
+
+
+class AdminGoalPatch(GoalPatch, GoalReason):
     expected_revision: int = Field(gt=0, strict=True)
     content: str = Field(default=None, min_length=1, max_length=4000)
 
@@ -258,9 +269,13 @@ class AdminGoalQuery(GoalQuery):
         return goal_time(value)
 
 
-class GoalDuplicate(Input):
+class GoalDuplicate(GoalReason):
     expected_revision: int = Field(gt=0, strict=True)
     other_revision: int = Field(gt=0, strict=True)
+
+
+class GoalBasisClear(GoalReason):
+    expected_revision: int = Field(gt=0, strict=True)
 
 
 class NotificationQuery(Page):
@@ -663,6 +678,18 @@ def install_admin(app):
     @router.get("/goals/{goal_id}")
     def goal(goal_id: GoalId):
         return admin_data.goal(app.state.store, goal_id, current=app.state.goals.clock())
+
+    @router.get("/goals/{goal_id}/sources")
+    def goal_sources(goal_id: GoalId, query: Annotated[Page, Query()]):
+        return admin_data.goal_sources(app.state.store,goal_id,**query.model_dump())
+
+    @router.get("/goals/{goal_id}/revisions")
+    def goal_revisions(goal_id: GoalId, query: Annotated[Page, Query()]):
+        return admin_data.goal_revisions(app.state.store,goal_id,**query.model_dump())
+
+    @router.delete("/goals/{goal_id}/basis-annotations/{annotation_id}")
+    def clear_goal_basis(goal_id: GoalId, annotation_id: GoalId, payload: GoalBasisClear):
+        return app.state.goals.clear_basis_annotation(goal_id,annotation_id,**payload.model_dump(),actor='admin')
 
     @router.patch("/goals/{goal_id}")
     def edit_goal(goal_id: GoalId, payload: AdminGoalPatch):

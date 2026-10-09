@@ -396,9 +396,42 @@ def goals(store, **filters):
         return goal_list(conn, **filters)
 
 
+def _goal_source_context(conn, message_id):
+    message = conn.execute("""SELECT m.*,s.name AS sender_name,e.name AS entry_name FROM messages m
+        JOIN subjects s ON s.id=m.sender_subject_id JOIN entries e ON e.id=m.entry_id WHERE m.id=?""",(message_id,)).fetchone()
+    result = {'id':message_id,'message_id':message_id,'message':dict(message) if message else None,
+              'missing':message is None,'notice':'来源消息已清理或不可用' if message is None else None,'context':[]}
+    if message:
+        before = messages(conn,message['entry_id'],before=message_id,limit=2)
+        after = [dict(r) for r in conn.execute("""SELECT m.*,s.name AS sender_name FROM messages m
+            JOIN subjects s ON s.id=m.sender_subject_id WHERE m.entry_id=? AND m.id>? ORDER BY m.id LIMIT 2""",
+            (message['entry_id'],message_id))]
+        result['context'] = [*before,dict(message),*after]
+    return result
+
+
+def goal_sources(store, goal_id, *, limit=30, offset=0):
+    with store.read() as conn:
+        if not conn.execute('SELECT 1 FROM goals WHERE id=?',(goal_id,)).fetchone():
+            raise KeyError(goal_id)
+        total = conn.execute('SELECT COUNT(*) FROM goal_sources WHERE goal_id=?',(goal_id,)).fetchone()[0]
+        ids = [r[0] for r in conn.execute('SELECT message_id FROM goal_sources WHERE goal_id=? ORDER BY message_id LIMIT ? OFFSET ?',
+                                        (goal_id,limit,offset))]
+        return {'items':[_goal_source_context(conn,mid) for mid in ids],'total':total,'limit':limit,'offset':offset}
+
+
+def goal_revisions(store, goal_id, **page):
+    from .goals import goal_revisions as project_revisions
+    with store.read() as conn:
+        return project_revisions(conn,goal_id,**page)
+
+
 def goal(store, goal_id, *, current=None):
     with store.read() as conn:
-        return goal_detail(conn, goal_id, current=current)
+        detail = goal_detail(conn, goal_id, current=current)
+        for source in detail['sources']:
+            source.update(_goal_source_context(conn,source['id']))
+        return detail
 
 
 def notifications(store, **filters):
