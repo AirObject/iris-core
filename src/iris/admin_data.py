@@ -402,3 +402,122 @@ def goal(store, goal_id, *, current=None):
 def notifications(store, **filters):
     with store.read() as conn:
         return notification_list(conn, **filters)
+
+
+PERSONA_COLUMNS = """id,content,is_current,status,source,change_degree,created_at AS generated_at,
+    published_at,base_version_id,rollback_of"""
+PERSONA_ATTEMPT_COLUMNS = """id,source,base_version_id,state,reason,version_id,created_at,finished_at,
+    CASE WHEN state='queued' THEN 'queued'
+         WHEN state!='running' THEN 'finished'
+         WHEN json_type(outputs_json,'$.persona_generate') IS NOT NULL THEN 'checking'
+         ELSE 'generating' END AS stage"""
+
+
+def _persona_summary(row):
+    item = dict(row)
+    item['is_current'] = bool(item['is_current'])
+    return item
+
+
+def _persona_memory(conn, memory_id):
+    row = conn.execute('''SELECT id,content,revision,lifecycle,speaker_subject_id,stance FROM memories
+        WHERE id=? AND purged_at IS NULL''', (memory_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _persona_detail(conn, version_id):
+    row = conn.execute(f'''SELECT {PERSONA_COLUMNS},sentences_json,checks_json,material_json
+        FROM persona_versions WHERE id=?''', (version_id,)).fetchone()
+    if row is None:
+        raise KeyError(version_id)
+    result = _persona_summary(row)
+    result['sentences'] = json.loads(result.pop('sentences_json'))
+    result['checks'] = json.loads(result.pop('checks_json'))
+    material = json.loads(result.pop('material_json'))
+    result['settings'] = material.get('settings')
+    evidence = {m['memory_id']: m for m in material.get('evidence', {}).get('memories', [])}
+    for sentence in result['sentences']:
+        sentence['admin_written'] = sentence['origin'] == 'admin'
+        for basis in sentence['basis']:
+            mid, revision = basis['memory_id'], basis['revision']
+            memory = _persona_memory(conn, mid)
+            basis['memory'] = memory
+            cited = evidence.get(mid)
+            content = cited['content'] if cited and cited['revision'] == revision else None
+            if content is None and memory is not None:
+                if memory['revision'] == revision:
+                    content = memory['content']
+                else:
+                    history = conn.execute('''SELECT before_json,after_json,revision_before FROM memory_revisions
+                        WHERE memory_id=? AND (revision_before=? OR revision_after=?) ORDER BY id LIMIT 1''',
+                        (mid, revision, revision)).fetchone()
+                    if history:
+                        content = json.loads(history['before_json' if history['revision_before'] == revision else 'after_json']).get('content')
+            basis['content_at_revision'] = content
+    checks = result['checks']
+    reasons = [*checks.get('deterministic', {}).get('errors', []), *checks.get('model_errors', [])]
+    if checks.get('administrator_rejection'):
+        reasons.append(checks['administrator_rejection'])
+    result['rejection_reasons'] = list(dict.fromkeys(reasons))
+    return result
+
+
+def persona_version(store, version_id):
+    with store.read() as conn:
+        return _persona_detail(conn, version_id)
+
+
+def persona_versions(store, *, status=None, source=None, limit=30, offset=0):
+    clauses, args = [], []
+    for key, value in (('status', status), ('source', source)):
+        if value is not None:
+            clauses.append(f'{key}=?')
+            args.append(value)
+    where = ' AND '.join(clauses) or '1'
+    with store.read() as conn:
+        total = conn.execute(f'SELECT COUNT(*) FROM persona_versions WHERE {where}', args).fetchone()[0]
+        items = [_persona_summary(r) for r in conn.execute(f'''SELECT {PERSONA_COLUMNS} FROM persona_versions
+            WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?''', [*args, limit, offset])]
+    return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
+
+
+def persona_snapshot(store):
+    from .persona import persona_context
+    with store.read() as conn:
+        context = persona_context(conn, include_basis=True)
+        current = conn.execute(f'SELECT {PERSONA_COLUMNS} FROM persona_versions WHERE is_current=1').fetchone()
+        pending = conn.execute(f"SELECT {PERSONA_COLUMNS} FROM persona_versions WHERE status='pending'").fetchone()
+        latest = conn.execute(f'SELECT {PERSONA_ATTEMPT_COLUMNS} FROM persona_attempts ORDER BY id DESC LIMIT 1').fetchone()
+        for basis in context['stale_basis']:
+            basis['memory'] = _persona_memory(conn, basis['memory_id'])
+        return {'current': _persona_summary(current) if current else None,
+                'pending': _persona_summary(pending) if pending else None,
+                'needs_update': context['needs_update'], 'stale_basis_count': context['stale_basis_count'],
+                'stale_basis': context['stale_basis'], 'latest_attempt': dict(latest) if latest else None}
+
+
+def persona_attempt(store, attempt_id):
+    with store.read() as conn:
+        row = conn.execute(f'SELECT {PERSONA_ATTEMPT_COLUMNS} FROM persona_attempts WHERE id=?', (attempt_id,)).fetchone()
+        if row is None:
+            raise KeyError(attempt_id)
+        return dict(row)
+
+
+def persona_attempts(store, *, limit=30, offset=0):
+    with store.read() as conn:
+        total = conn.execute('SELECT COUNT(*) FROM persona_attempts').fetchone()[0]
+        items = [dict(r) for r in conn.execute(f'''SELECT {PERSONA_ATTEMPT_COLUMNS} FROM persona_attempts
+            ORDER BY id DESC LIMIT ? OFFSET ?''', (limit, offset))]
+    return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
+
+
+def persona_self_memories(store, *, limit=30, offset=0):
+    where = """m.lifecycle='active' AND m.purged_at IS NULL
+        AND (m.speaker_subject_id='self' OR m.stance='设定')
+        AND EXISTS(SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=m.id AND ms.subject_id='self')"""
+    with store.read() as conn:
+        total = conn.execute(f'SELECT COUNT(*) FROM memories m WHERE {where}').fetchone()[0]
+        items = memory_rows(conn, f'''SELECT {MEMORY_COLUMNS} FROM memories m WHERE {where}
+            ORDER BY m.pinned DESC,m.importance DESC,m.retention DESC,m.id LIMIT ? OFFSET ?''', (limit, offset))
+    return {'items': items, 'total': total, 'limit': limit, 'offset': offset}

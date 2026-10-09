@@ -417,11 +417,14 @@ def test_rollback_with_stale_basis_becomes_due_after_seven_days(store,clock):
     assert persona_due(store,clock=clock)['due']
 
 
-def test_pending_candidate_rechecks_settings(store,clock):
+def test_pending_candidate_keeps_its_original_settings(store,clock):
     pending,_ = generate(store,clock,degree='large')
+    original = pending['version']['material']['settings']
     store.set_setting('persona_rules','只保留新的自我证据。')
-    with pytest.raises(PersonaConflict):
-        confirm_candidate(store,pending['version']['id'],expected_version=1,clock=clock)
+    confirmed = confirm_candidate(store,pending['version']['id'],expected_version=1,clock=clock)
+    assert confirmed['status'] == 'current'
+    assert confirmed['material']['settings'] == original
+    assert confirmed['created_at'] == pending['version']['created_at']
 
 
 @pytest.mark.parametrize('content', ['\n我喜欢简洁。', '我说过“先听完。”后来我又解释了理由。', 'I prefer concise words. I also listen.'])
