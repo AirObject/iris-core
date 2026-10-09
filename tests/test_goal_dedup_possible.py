@@ -39,7 +39,8 @@ def source(store,sender='lin',entry='A'):
 def test_c2_keeps_c_model_method_and_current_product_default():
     assert dedup.candidate_method({'enabled':True,'method':'C2'})=='C2'
     assert dedup.method({'enabled':True,'method':'C2'})=='C'
-    assert dedup.method(dedup.settings())==dedup.candidate_method(dedup.settings())=='C'
+    assert dedup.method(dedup.settings())=='C'
+    assert dedup.candidate_method(dedup.settings())=='C2'
     assert dedup.candidate_method({'enabled':False,'method':'C2'})=='A'
 
 
@@ -221,3 +222,16 @@ def test_c_and_disabled_a_do_not_enable_experimental_markers(store,setup):
     store.set_setting('goal_dedup_judge',{'enabled':False,'method':'C2'})
     assert goals.create(content='周五21点检查服务器')['dedup']['status']=='created'
     assert judge.calls==[]
+
+
+def test_selected_default_marks_sequence_conflicts_without_needing_a_gateway(store):
+    # No probe override: an ordinary installation uses the selected C2 policy.
+    assert store.setting('goal_dedup_judge',None) is None
+    goals=Goals(store)
+    old=goals.create(content='周五20点检查服务器')
+    new=goals.create(content='周五晚上检查服务器',host_key='default-c2')
+    assert new['dedup']['status']=='possible_duplicate'
+    assert new['goal']['possible_duplicate_ids']==[old['submitted_id']]
+    assert goals.get(new['submitted_id'])['dedup_review'] is None
+    assert goals.create(content='ignored retry',host_key='default-c2')==new
+    assert goals.pending_reviews()==[]

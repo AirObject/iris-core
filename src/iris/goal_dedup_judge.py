@@ -18,9 +18,9 @@ from .people import canonical_subject
 from .state import local_time, role_zone
 
 PROMPT=files('iris').joinpath('prompts/goal_dedup_judge_v1.md').read_text(encoding='utf-8')
-# Selected by the frozen public dev comparison: batch judgment (candidate C).
+# Selected by GO-04: C batch judgment plus deterministic possible hints (C2).
 # Explicit method overrides are internal to the probe, never an admin option.
-DEFAULT_METHOD='C'
+DEFAULT_METHOD='C2'
 DEFAULTS={'enabled':True,'budget_seconds':5.0,'concurrency':1,'queue_limit':8}
 MAX_SECONDS=60.0  # Measurement override; the administrator API is capped at 10 s.
 MAX_CANDIDATES=8
@@ -36,7 +36,7 @@ def connection_settings(conn):
 
 
 def candidate_method(options):
-    """Frozen candidate policy; C2 is probe-only until its comparison completes."""
+    """Frozen candidate policy; explicit overrides remain internal to the probe."""
     return options.get('method',DEFAULT_METHOD) if options['enabled'] else 'A'
 
 
