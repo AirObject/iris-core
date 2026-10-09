@@ -12,6 +12,7 @@ from itertools import islice, zip_longest
 from typing import Any
 
 from .state import current_state
+from .persona import persona_context
 from .goals import goal_partition
 from .db import Store, dumps, now
 from .claim_sequences import normalize_claim, same_claim_sequences
@@ -557,12 +558,12 @@ class Retrieval:
             memories = self._select(candidates, limit=min(memory_limit, 8), token_budget=min(token_budget, 1500),
                                     recent_ids=[m["id"] for m in recent], known_ids=known_memory_ids)
             aliases = self._judge_aliases(conn, memories, participant_ids, recent, text, entry_kind)
-            persona = conn.execute("SELECT id AS version,content,created_at AS generated_at FROM persona_versions WHERE is_current=1 ORDER BY id DESC LIMIT 1").fetchone()
+            persona = persona_context(conn)
             gaps = [dict(r) for r in conn.execute("SELECT started_at,ended_at,reason FROM memory_gaps WHERE entry_id=? ORDER BY id", (entry_id,))]
             if gaps:
                 hints.append({"code": "memory_gaps", "message": "本入口有尚未记住的消息区间。", "gaps": gaps})
             hints.extend(self._model_hints(conn))
-            result = {"persona": dict(persona) if persona else {"version": None, "content": "", "generated_at": None},
+            result = {"persona": persona,
                       "memories": memories, "recent_messages": recent,
                       "goals": self._goals(conn, entry_id, min(goal_limit, 10), participants=participant_ids,
                                            current=self.clock()), "hints": hints}

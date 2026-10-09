@@ -10,6 +10,8 @@ import json
 import re
 import unicodedata
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from importlib.resources import files
@@ -37,6 +39,10 @@ def utc_now():
 
 class PersonaConflict(ValueError):
     """The current version/candidate or its evidence has changed."""
+
+
+class PersonaBusy(ValueError):
+    """One generation is already reserved or the service is closing."""
 
 
 def _setting(conn, key, default=None):
@@ -144,8 +150,8 @@ def _self_snapshot(conn):
             WHERE a.subject_id='self' AND (m.speaker_subject_id='self' OR m.stance='设定') ORDER BY m.id''')}
 
 
-def _select(conn, token_limit=BASIS_TOKENS):
-    zone = ZoneInfo(_setting(conn, 'timezone', 'Asia/Shanghai'))
+def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None):
+    zone = ZoneInfo(timezone_name or _setting(conn, 'timezone', 'Asia/Shanghai'))
     selected = []
     rows = conn.execute('''SELECT m.*,e.kind AS entry_kind FROM memories m
         JOIN memory_subjects a ON a.memory_id=m.id LEFT JOIN entries e ON e.id=m.entry_id
@@ -234,9 +240,9 @@ def _expect(conn, expected_version):
     return _decode(conn, row)
 
 
-def _operation(conn, action, vid, stamp):
+def _operation(conn, action, vid, stamp, *, actor='persona', object_type='persona'):
     conn.execute('''INSERT INTO admin_operations(actor,action,object_type,object_id,details_json,created_at)
-        VALUES('persona',?,'persona',?,'{}',?)''', (action, str(vid), stamp))
+        VALUES(?,?,?,?,'{}',?)''', (actor, action, object_type, str(vid), stamp))
 
 
 def _insert(conn, *, content, sentences, checks, degree, status, source, stamp,
@@ -250,7 +256,8 @@ def _insert(conn, *, content, sentences, checks, degree, status, source, stamp,
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''', (content,stamp,int(status=='current'),status,source,dumps(sentences),
         dumps(checks),degree,base,rollback_of,stamp if status=='current' else None,dumps(material or {}),
         dumps(snapshot if snapshot is not None else _self_snapshot(conn)))).lastrowid
-    _operation(conn, 'persona_' + status, vid, stamp)
+    action = {'admin_edit': 'persona_edit', 'rollback': 'persona_rollback'}.get(source, 'persona_' + status)
+    _operation(conn, action, vid, stamp, actor='admin' if source in ('admin_edit', 'rollback') else 'persona')
     return _get(conn, vid)
 
 
@@ -370,7 +377,7 @@ def _stale(conn, version, *, check_sources=False):
         traced = material.get(mid, {})
         tracked = traced.get('trace_refs', []) or [{'memory_id': mid, 'revision': revision, 'lifecycle':'active'}]
         for ref in tracked:
-            row = conn.execute('SELECT * FROM memories WHERE id=?', (ref['memory_id'],)).fetchone()
+            row = conn.execute('SELECT id,revision,lifecycle,speaker_subject_id,stance FROM memories WHERE id=?', (ref['memory_id'],)).fetchone()
             reason = None
             if row is None or row['lifecycle'] == 'deleted':
                 reason = 'deleted'
@@ -397,6 +404,21 @@ def pending_update(store):
         version = _decode(conn, conn.execute('SELECT * FROM persona_versions WHERE is_current=1').fetchone())
         basis = _stale(conn, version) if version else []
         return {'version_id': version['id'] if version else None, 'pending': bool(basis), 'basis': basis}
+
+
+
+def persona_context(conn, *, include_basis=False):
+    """One read snapshot; do not load the potentially large self-memory snapshot."""
+    row = conn.execute('''SELECT id,content,created_at,sentences_json,material_json FROM persona_versions
+        WHERE is_current=1''').fetchone()
+    basis = _stale(conn, {'sentences': json.loads(row['sentences_json']),
+                         'material': json.loads(row['material_json'])}) if row else []
+    result = {'version': row['id'] if row else None, 'content': row['content'] if row else '',
+              'generated_at': row['created_at'] if row else None,
+              'needs_update': bool(basis), 'stale_basis_count': len(basis)}
+    if include_basis:
+        result['stale_basis'] = basis
+    return result
 
 
 def _due(conn, version, current):
@@ -490,12 +512,12 @@ def confirm_candidate(store, version_id, *, expected_version, clock=utc_now):
             raise PersonaConflict('pending candidate changed')
         if not candidate['checks'].get('passed') or _stale(conn, candidate, check_sources=True):
             raise PersonaConflict('candidate evidence changed; regenerate it')
-        if candidate['material'].get('settings') != _settings(conn):
-            raise PersonaConflict('persona settings changed; regenerate it')
+        # The candidate was checked against its frozen settings. Later settings
+        # edits apply to future candidates, including when confirmation is delayed.
         stamp = _stamp(clock)
         conn.execute("UPDATE persona_versions SET is_current=0,status='history' WHERE is_current=1")
         conn.execute("UPDATE persona_versions SET is_current=1,status='current',published_at=? WHERE id=?", (stamp,version_id))
-        _operation(conn, 'persona_confirm', version_id, stamp)
+        _operation(conn, 'persona_confirm', version_id, stamp, actor='admin')
         return _get(conn, version_id)
 
 
@@ -507,16 +529,73 @@ def reject_candidate(store, version_id, *, expected_version, reason='administrat
             raise PersonaConflict('pending candidate changed')
         checks = {**candidate['checks'], 'administrator_rejection': reason}
         conn.execute("UPDATE persona_versions SET status='rejected',checks_json=? WHERE id=?", (dumps(checks),version_id))
-        _operation(conn, 'persona_reject', version_id, _stamp(clock))
+        _operation(conn, 'persona_reject', version_id, _stamp(clock), actor='admin')
         return _get(conn, version_id)
 
 
-def _settings(conn):
+def persona_settings(conn):
+    """The editable persona settings, read from a single snapshot."""
     mode = _setting(conn, 'persona_publish_mode', PUBLISH_MODES[0])
     if mode not in PUBLISH_MODES:
         raise ValueError('invalid persona publication mode')
     return {'goal':_setting(conn,'persona_goal',DEFAULT_GOAL), 'rules':_setting(conn,'persona_rules',DEFAULT_RULES),
-            'publish_mode':mode, 'timezone':_setting(conn,'timezone','Asia/Shanghai')}
+            'publish_mode':mode}
+
+
+def _settings(conn):
+    return {**persona_settings(conn), 'timezone':_setting(conn,'timezone','Asia/Shanghai')}
+
+
+def _reserve_attempt(conn, expected_version, source, stamp, *, actor='persona'):
+    _expect(conn, expected_version)
+    if conn.execute("SELECT 1 FROM persona_attempts WHERE state IN ('queued','running') LIMIT 1").fetchone():
+        raise PersonaBusy('persona generation already in progress')
+    attempt = conn.execute('''INSERT INTO persona_attempts(source,base_version_id,state,material_json,created_at)
+        VALUES(?,?,'queued',?,?)''', (source, expected_version, dumps({'settings': _settings(conn)}), stamp)).lastrowid
+    _operation(conn, 'persona_generation_requested', attempt, stamp, actor=actor, object_type='persona_attempt')
+    return attempt
+
+
+class PersonaJobs:
+    """One service-owned worker; accepted attempts and terminal outcomes persist."""
+    def __init__(self, store, gateway, *, clock=utc_now):
+        self.store, self.engine = store, PersonaEngine(store, gateway, clock=clock)
+        self._lock, self._closing = Lock(), False
+        # Service startup holds the existing exclusive StoreLease. A crashed
+        # attempt is reported as interrupted, never silently regenerated.
+        with store.write() as conn:
+            rows = conn.execute("SELECT id FROM persona_attempts WHERE state IN ('queued','running')").fetchall()
+            for row in rows:
+                conn.execute("UPDATE persona_attempts SET state='failed',reason='interrupted',finished_at=? WHERE id=?",
+                             (_stamp(clock), row['id']))
+                _operation(conn, 'persona_generation_interrupted', row['id'], _stamp(clock), object_type='persona_attempt')
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='iris-persona')
+
+    def submit(self, *, expected_version):
+        with self._lock:
+            if self._closing:
+                raise PersonaBusy('persona generation is stopping')
+            with self.store.write() as conn:
+                attempt = _reserve_attempt(conn, expected_version, 'regenerate', _stamp(self.engine.clock), actor='admin')
+            try:
+                self._executor.submit(self._work, expected_version, attempt)
+            except Exception:
+                self.engine._finish_attempt(attempt, 'failed', 'worker_unavailable', {})
+                raise PersonaBusy('persona worker unavailable') from None
+        return attempt
+
+    def _work(self, expected_version, attempt):
+        try:
+            self.engine._run(expected_version, 'regenerate', only_if_due=False, attempt_id=attempt)
+        except Exception:
+            # Engine persists a safe terminal reason; never expose/log arbitrary
+            # provider exceptions or silently retry a possibly completed request.
+            pass
+
+    def close(self):
+        with self._lock:
+            self._closing = True
+        self._executor.shutdown(wait=True)
 
 
 class PersonaEngine:
@@ -573,29 +652,36 @@ class PersonaEngine:
         with self.store.write() as conn:
             conn.execute('''UPDATE persona_attempts SET state=?,reason=?,outputs_json=?,version_id=?,finished_at=?
                 WHERE id=?''', (state,reason,dumps(outputs),version_id,_stamp(self.clock),attempt))
+            _operation(conn, 'persona_generation_' + state, attempt, _stamp(self.clock), object_type='persona_attempt')
 
-    def _run(self, expected_version, source, *, only_if_due):
-        with self.store.read() as conn:
-            previous = _expect(conn, expected_version)
-            due = _due(conn, previous, self.clock())
-            settings = _settings(conn)
-            material = {'evidence':_select(conn), 'settings':settings, 'as_of':_stamp(self.clock),
-                        'role_name':_setting(conn, 'role_name', 'Iris'),
-                        'previous':previous['content'], 'previous_sentences':previous['sentences'],
-                        'admin_sentences':{k:v['text'] for k,v in _admin_sentences(previous).items()}}
-            snapshot = _self_snapshot(conn)
-        with self.store.write() as conn:
-            _expect(conn, expected_version)
-            attempt = conn.execute('''INSERT INTO persona_attempts(source,base_version_id,state,material_json,created_at)
-                VALUES(?,?,'running',?,?)''', (source,expected_version,dumps(material),_stamp(self.clock))).lastrowid
-        outputs = {}
-        reason = 'not_due' if only_if_due and not due['due'] else None
-        if not material['evidence']['memories'] and not material['admin_sentences']:
-            reason = reason or 'no_self_evidence'
-        if reason:
-            self._finish_attempt(attempt, 'skipped', reason, outputs)
-            return {'status':'skipped','reason':reason,'attempt_id':attempt,'version':None,'due':due}
+    def _run(self, expected_version, source, *, only_if_due, attempt_id=None):
+        if attempt_id is None:
+            with self.store.write() as conn:
+                attempt_id = _reserve_attempt(conn, expected_version, source, _stamp(self.clock))
+        attempt, outputs = attempt_id, {}
         try:
+            with self.store.read() as conn:
+                previous = _expect(conn, expected_version)
+                reserved = conn.execute('SELECT * FROM persona_attempts WHERE id=?', (attempt,)).fetchone()
+                if (reserved is None or reserved['state'] != 'queued' or reserved['source'] != source
+                        or reserved['base_version_id'] != expected_version):
+                    raise PersonaConflict('generation reservation changed')
+                due = _due(conn, previous, self.clock())
+                settings = json.loads(reserved['material_json'])['settings']
+                material = {'evidence':_select(conn, timezone_name=settings['timezone']), 'settings':settings, 'as_of':_stamp(self.clock),
+                            'role_name':_setting(conn, 'role_name', 'Iris'),
+                            'previous':previous['content'], 'previous_sentences':previous['sentences'],
+                            'admin_sentences':{k:v['text'] for k,v in _admin_sentences(previous).items()}}
+                snapshot = _self_snapshot(conn)
+            with self.store.write() as conn:
+                _expect(conn, expected_version)
+                conn.execute("UPDATE persona_attempts SET state='running',material_json=? WHERE id=?", (dumps(material),attempt))
+            reason = 'not_due' if only_if_due and not due['due'] else None
+            if not material['evidence']['memories'] and not material['admin_sentences']:
+                reason = reason or 'no_self_evidence'
+            if reason:
+                self._finish_attempt(attempt, 'skipped', reason, outputs)
+                return {'status':'skipped','reason':reason,'attempt_id':attempt,'version':None,'due':due}
             payload = {**settings, 'evidence':material['evidence'], 'role_name':material['role_name'],
                        'as_of':material['as_of'],
                        'previous':material['previous'], 'admin_sentences':material['admin_sentences']}
@@ -603,6 +689,9 @@ class PersonaEngine:
             content, sentences, deterministic = _deterministic(generated, material, previous)
             model, degree, model_errors = None, 'large', []
             if deterministic['passed']:
+                # Also supplies the persisted "checking" progress projection.
+                with self.store.write() as conn:
+                    conn.execute('UPDATE persona_attempts SET outputs_json=? WHERE id=?', (dumps(outputs),attempt))
                 model = self._call('persona_check', {**payload,'candidate':sentences}, outputs)
                 degree, model_errors = _model_check(model, sentences)
             manual_removed = _admin_removed(previous, sentences)
@@ -618,9 +707,8 @@ class PersonaEngine:
                 _expect(conn, expected_version)
                 candidate = {'sentences':sentences, 'material':material}
                 stale = _stale(conn, candidate, check_sources=True)
-                if stale or settings != _settings(conn):
-                    state, version = 'conflict', None
-                    reason = 'evidence_changed' if stale else 'settings_changed'
+                if stale:
+                    state, version, reason = 'conflict', None, 'evidence_changed'
                 else:
                     state, reason = status, None
                     version = _insert(conn, content=content, sentences=sentences, checks=checks, degree=degree,
@@ -628,6 +716,7 @@ class PersonaEngine:
                         material=material, snapshot=snapshot)
                 conn.execute('''UPDATE persona_attempts SET state=?,reason=?,outputs_json=?,version_id=?,finished_at=? WHERE id=?''',
                     (state,reason,dumps(outputs),version['id'] if version else None,_stamp(self.clock),attempt))
+                _operation(conn, 'persona_generation_' + state, attempt, _stamp(self.clock), object_type='persona_attempt')
             return {'status':state,'reason':reason,'attempt_id':attempt,'version':version,'due':due}
         except PersonaConflict:
             self._finish_attempt(attempt, 'conflict', 'current_version_changed', outputs)
@@ -637,3 +726,6 @@ class PersonaEngine:
             reason = error.reason or error.category
             self._finish_attempt(attempt, state, reason, outputs)
             return {'status':state,'reason':reason,'attempt_id':attempt,'version':None,'due':due}
+        except Exception:
+            self._finish_attempt(attempt, 'failed', 'unexpected_error', outputs)
+            raise
