@@ -429,3 +429,77 @@ def test_unrepresentable_date_filter_is_field_error(store,clock):
         with pytest.raises(GoalError) as caught:
             goal_list(conn,deadline_from='0001-01-01',current=clock())
     assert caught.value.field=='deadline_from'
+
+
+@pytest.mark.parametrize('origin,expected', [('admin', 'possible_duplicate'), ('host', 'merged'), ('internal', 'merged')])
+@pytest.mark.parametrize('kind', ['normal', 'question'])
+def test_creation_origin_controls_automatic_merge(goals, origin, expected, kind):
+    original = goals.create(content='确认展览开放时间', kind=kind, origin='admin')['goal']
+    receipt = goals.create(content=original['content'], kind=kind, origin=origin)
+    assert receipt['dedup'] == {'status': expected, 'target_id': original['id']}
+    if origin == 'admin':
+        assert receipt['goal']['id'] == receipt['submitted_id'] != original['id']
+        assert goals.get(original['id'])['merged_into'] is None
+        assert goals.get(receipt['submitted_id'])['merged_into'] is None
+        assert receipt['goal']['possible_duplicate_ids'] == [original['id']]
+    else:
+        assert receipt['goal']['id'] == original['id']
+        assert goals.get(receipt['submitted_id'])['merged_into'] == original['id']
+
+
+def test_partition_selects_only_requested_rows_before_people_projection(goals, store, clock, monkeypatch):
+    import iris.goals as module
+    with store.write() as conn:
+        conn.executemany("INSERT INTO goals(content,kind,state,created_at,updated_at) VALUES(?,'normal','open',?,?)",
+                         [(f'合成性能目标 {i}', clock().isoformat(), clock().isoformat()) for i in range(1000)])
+    people_batches, projections = [], []
+    original_people, original_project = module._people, module._project
+    def people(conn, ids):
+        people_batches.append(list(ids))
+        return original_people(conn, ids)
+    def project(conn, row, **kwargs):
+        projections.append(row['id'])
+        return original_project(conn, row, **kwargs)
+    monkeypatch.setattr(module, '_people', people)
+    monkeypatch.setattr(module, '_project', project)
+    with store.read() as conn:
+        rows = module.goal_partition(conn, current=clock(), limit=10)
+    assert len(rows) == 10
+    assert people_batches == [[r['id'] for r in rows]]
+    assert projections == [r['id'] for r in rows]
+
+
+def test_partition_ranking_resolves_merged_people_and_legacy_deadlines(goals, store, clock):
+    from iris.goals import goal_partition
+    store.set_setting('timezone', 'America/New_York')
+    stamp = clock().isoformat()
+    with store.write() as conn:
+        conn.executemany("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)",
+                         [('old', '旧称', stamp), ('middle', '中间称', stamp), ('person', '新称', stamp)])
+        conn.execute("UPDATE subjects SET merged_into='middle' WHERE id='old'")
+        conn.execute("UPDATE subjects SET merged_into='person' WHERE id='middle'")
+        conn.execute("INSERT INTO goals(content,kind,created_at,updated_at) VALUES('普通目标','normal',?,?)", (stamp,stamp))
+        involved = conn.execute("INSERT INTO goals(content,kind,created_at,updated_at) VALUES('涉及旧主体','normal',?,?)", (stamp,stamp)).lastrowid
+        conn.execute("INSERT INTO goal_people VALUES(?,'old')", (involved,))
+        legacy = conn.execute("INSERT INTO goals(content,kind,deadline,created_at,updated_at) VALUES('旧日期期限','normal','2026-10-08',?,?)", (stamp,stamp)).lastrowid
+        conn.execute("INSERT INTO goals(content,kind,deadline,created_at,updated_at) VALUES('未知期限','normal','某天',?,?)", (stamp,stamp))
+    clock.advance(hours=4)
+    with store.read() as conn:
+        rows = goal_partition(conn, participants=['person', 'missing'], current=clock())
+    assert [r['id'] for r in rows[:2]] == [legacy, involved]
+    assert rows[0]['overdue'] and rows[1]['people'] == ['person']
+    assert rows[-1]['deadline_unresolved']
+
+
+@pytest.mark.parametrize('microseconds', [-1, 0, 1])
+def test_partition_urgency_preserves_exact_lead_boundary(goals, store, clock, microseconds):
+    from iris.goals import goal_partition
+    with store.write() as conn:
+        conn.execute("INSERT INTO entries(id,name,platform,kind) VALUES('A','A','test','group')")
+    local = create(goals, '本入口无期限', entry_id='A')
+    boundary = create(goals, '恰好临近的目标', deadline=due(clock, hours=1, microseconds=1))
+    clock.advance(microseconds=1 + microseconds)
+    with store.read() as conn:
+        rows = goal_partition(conn, entry_id='A', current=clock())
+    assert rows[0]['id'] == (boundary['id'] if microseconds >= 0 else local['id'])
+    assert next(r for r in rows if r['id'] == boundary['id'])['due_soon'] == (microseconds >= 0)

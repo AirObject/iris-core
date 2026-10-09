@@ -310,3 +310,23 @@ def test_question_patch_reports_the_invalid_reminder_field(client):
     response = client.patch(f"/api/v1/goals/{goal['id']}", json={'reminder_minutes': 15})
     assert response.status_code == 400
     assert response.json()['error']['fields'][0]['field'] == 'body.reminder_minutes'
+
+
+@pytest.mark.parametrize('resolution', ['merge', 'dismiss'])
+def test_admin_exact_duplicate_waits_for_explicit_resolution(client, resolution):
+    original = create(client, content='确认画展开放时间')['goal']
+    login_admin(client)
+    response = client.post('/admin/api/goals', json={'content': original['content']})
+    assert response.status_code == 201
+    receipt = response.json()
+    assert receipt['dedup'] == {'status': 'possible_duplicate', 'target_id': original['id']}
+    assert receipt['goal']['origin'] == 'admin'
+    assert receipt['goal']['id'] != original['id']
+    assert client.get('/api/v1/goals').json()['total'] == 2
+    first = client.get(f"/admin/api/goals/{original['id']}").json()
+    second = receipt['goal']
+    result = client.post(f"/admin/api/goals/{first['id']}/duplicates/{second['id']}/{resolution}",
+                         json={'expected_revision': first['revision'], 'other_revision': second['revision']})
+    assert result.status_code == 200
+    assert client.get('/api/v1/goals').json()['total'] == (1 if resolution == 'merge' else 2)
+    assert client.get('/admin/api/goals?possible_duplicate=true').json()['total'] == 0

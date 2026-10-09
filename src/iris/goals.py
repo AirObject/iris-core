@@ -236,19 +236,45 @@ def goal_list(conn, *, state=None, kind=None, overdue=None, due_soon=None, entry
 
 
 def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=None):
+    limit = max(0, min(limit, 10))
+    if not limit:
+        return []
     current, zone, settings = _current(current), role_zone(conn), goal_settings(conn)
     participants = {canonical_subject(conn,p) for p in participants if p not in ('self','scene')
                     and conn.execute('SELECT 1 FROM subjects WHERE id=?',(p,)).fetchone()}
-    rows = _rows(conn,"state='open' AND merged_into IS NULL")
-    def priority(row):
-        deadline = row['deadline_at'] or _deadline(row['deadline'],zone,strict=False)
-        due = datetime.fromisoformat(deadline) if deadline else None
-        lead = row['reminder_minutes'] if row['reminder_minutes'] is not None else settings['default_reminder_minutes']
-        urgent = bool(due and current >= _soon(due,lead))
-        return (not urgent, not (entry_id is not None and row['entry_id']==entry_id),
-                not bool(participants.intersection(row['people'])), deadline or '9999', row['created_at'], row['id'])
-    rows.sort(key=priority)
-    return [_project(conn,row,current=current,zone=zone,settings=settings) for row in rows[:max(0,min(limit,10))]]
+    # Existing databases may be read before the scheduler normalizes legacy dates.
+    # New goals use deadline_at directly, without a Python callback per row.
+    conn.create_function('iris_goal_deadline', 1, lambda value: _deadline(value,zone,strict=False), deterministic=True)
+    since_epoch = current - datetime(1970,1,1,tzinfo=timezone.utc)
+    rows = [dict(r) for r in conn.execute("""WITH RECURSIVE participant_tree(id) AS (
+            SELECT value FROM json_each(:participants)
+            UNION SELECT s.id FROM subjects s JOIN participant_tree p ON s.merged_into=p.id
+        ), dated AS (
+            SELECT g.*, COALESCE(deadline_at,
+                CASE WHEN deadline IS NOT NULL THEN iris_goal_deadline(deadline) END) AS sort_deadline
+            FROM goals g WHERE state='open' AND merged_into IS NULL
+        ), timed AS (
+            SELECT dated.*, unixepoch(substr(sort_deadline,1,19))
+                - COALESCE(reminder_minutes,:default_lead)*60 AS soon_seconds FROM dated
+        ) SELECT * FROM timed ORDER BY
+            CASE WHEN soon_seconds<:now_seconds OR (soon_seconds=:now_seconds AND
+                CASE WHEN substr(sort_deadline,20,1)='.' THEN substr(sort_deadline,21,6)
+                     ELSE '000000' END <= :now_fraction) THEN 0 ELSE 1 END,
+            CASE WHEN entry_id=:entry_id THEN 0 ELSE 1 END,
+            CASE WHEN EXISTS(SELECT 1 FROM goal_people gp WHERE gp.goal_id=timed.id
+                AND gp.subject_id IN (SELECT id FROM participant_tree)) THEN 0 ELSE 1 END,
+            COALESCE(sort_deadline,'9999'), created_at, id LIMIT :limit""", {
+                'participants':dumps(sorted(participants)), 'entry_id':entry_id, 'limit':limit,
+                'default_lead':settings['default_reminder_minutes'],
+                'now_seconds':since_epoch.days*86400+since_epoch.seconds,
+                'now_fraction':f'{current.microsecond:06d}',
+            })]
+    # Integer seconds plus the original fraction preserve exact microsecond
+    # boundaries, which SQLite's floating date arithmetic would round.
+    people = _people(conn, [row['id'] for row in rows])
+    for row in rows:
+        row['people'] = people[row['id']]
+    return [_project(conn,row,current=current,zone=zone,settings=settings) for row in rows]
 
 
 def _notification(row, zone):
@@ -456,6 +482,9 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
     for candidate in candidates:
         candidate['deadline'] = _deadline(candidate['deadline'],role_zone(conn),strict=False) or candidate['deadline']
     decision = decide_dedup(candidates,proposed)
+    if origin=='admin' and decision['status']=='merged':
+        # An administrator's new item stays separate until explicitly resolved.
+        decision = {**decision, 'status':'possible_duplicate'}
     target = gid
     if decision['status']=='merged':
         observed = next(r for r in candidates if r['id']==decision['target_id'])
