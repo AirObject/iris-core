@@ -23,3 +23,13 @@ score_case／report 输出误合并率、应合并识别率、separate／uncerta
 在冻结后修复了响应外围 Markdown 分隔符处理、角色时区投影和原始正文输出留存；没有改变提示词、候选规则、标签或评分公式。旧的无效运行保存在 `iris-eval-artifacts/m3-goal-dedup-20261009/`，作废原因见仓库外 run-validity.json，后续不参与选型。
 
 前一回合离线就绪检查见 [READINESS.md](READINESS.md)（历史记录，包含当时的草稿默认值和迁移编号）；当前结果与验证见 [RESULTS.md](RESULTS.md)。
+
+## GO 第四步 C2（等待真实模型窗口）
+
+候选规则在 [C2_METHOD.md](C2_METHOD.md) 单独冻结；离线验证与窗口估计见 [C2_READINESS.md](C2_READINESS.md)，当前默认仍是 C。只读 #47 的两轮 C 结果，未来获准后运行 C2 两轮（每例 60 秒测量预算）。完整报告写到仓库外，不覆盖旧运行。
+
+```sh
+uv run python evals/goal_dedup_probe/run.py --method C2 --fake different --out /absolute/external/c2-fake
+```
+
+`--fake` 必须显式提供；省略会调用真实模型，本回合不执行。假模型仅检验路径，不用于采用判断。比较时将 `compare_possible.py --baseline <C第一轮报告> --baseline <C第二轮报告> --candidate <C2第一轮报告> --candidate <C2第二轮报告> --out <仓库外新JSON>` 的路径替换为实际有效报告；工具拒绝模拟、降级、不完整、不同语料／提示词／模型／预算的结果，按 C2 专用规则比较较差一轮，并同时列出不应合并中可能重复比例。

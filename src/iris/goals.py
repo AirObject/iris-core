@@ -391,9 +391,10 @@ def _bump(conn, goal_id, current):
 
 def _possible(conn,a,b,current):
     a,b = sorted((a,b))
-    conn.execute("INSERT OR IGNORE INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible',?)",(a,b,current.isoformat()))
-    _bump(conn,a,current)
-    _bump(conn,b,current)
+    inserted = conn.execute("INSERT OR IGNORE INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible',?)",(a,b,current.isoformat())).rowcount
+    if inserted:
+        _bump(conn,a,current)
+        _bump(conn,b,current)
 
 
 def _cancel_review(conn, goal_id, current, decision):
@@ -463,6 +464,13 @@ def _merge(conn,a,b,current,*,actor,semantic=False):
     return tid
 
 
+def _sequence_conflicts(conn,candidates,proposed,options,*,dismissed=()):
+    if dedup_judge.candidate_method(options)!='C2':
+        return []
+    speakers=dedup_judge.source_speakers(conn,[proposed,*candidates])
+    return dedup_judge.select_sequence_conflicts(candidates,proposed,source_speakers=speakers,dismissed=dismissed)
+
+
 def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=None, people=(), entry_id=None,
             host_key=None, origin='host', actor='host', current=None, evidence=(), learning=False):
     current = _current(current)
@@ -503,13 +511,15 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
     for candidate in candidates:
         candidate['deadline'] = _deadline(candidate['deadline'],role_zone(conn),strict=False) or candidate['deadline']
     options = dedup_judge.connection_settings(conn)
+    conflicts = _sequence_conflicts(conn,candidates,proposed,options)
     if dedup_judge.method(options) == 'A':
         decision = decide_dedup(candidates,proposed)
     else:
         # Even equal short bodies can refer to different events in their sources.
         # Inside learning's transaction only stage deterministic candidates.
         pending = dedup_judge.select_candidates(candidates,proposed)
-        decision = {'status':'pending' if pending else 'created','target_id':None}
+        decision = ({'status':'pending','target_id':None} if pending else
+                    dedup_judge.decision_from_verdicts({},origin=origin,possible_ids=[r['id'] for r in conflicts]))
     if origin=='admin' and decision['status']=='merged':
         # An administrator's new item stays separate until explicitly resolved.
         decision = {**decision, 'status':'possible_duplicate'}
@@ -525,8 +535,11 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         target = _merge(conn,latest,proposed,current,actor=actor)
         decision['target_id'] = target
     else:
+        for row in conflicts:
+            _possible(conn,gid,row['id'],current)
         if decision['status']=='possible_duplicate':
-            _possible(conn,gid,decision['target_id'],current)
+            for target_id in decision.get('target_ids',[decision['target_id']]):
+                _possible(conn,gid,target_id,current)
         _schedule(conn,proposed,current)
     if decision['status']=='pending':
         # Give the first host/admin request its full inline budget before the
@@ -534,7 +547,7 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         available = current if origin=='internal' else current+timedelta(seconds=options['budget_seconds']+1)
         conn.execute('''INSERT INTO goal_dedup_jobs(goal_id,state,method,input_revision,available_at,
             result_json,created_at,updated_at) VALUES(?,'pending',?,?,?,?,?,?)''',
-            (gid,dedup_judge.method(options),proposed['revision'],available.isoformat(),dumps(decision),stamp,stamp))
+            (gid,dedup_judge.candidate_method(options),_row(conn,gid)['revision'],available.isoformat(),dumps(decision),stamp,stamp))
     operation(conn,'goal_create','goal',gid,{'origin':origin,'dedup':decision},actor=actor,stamp=stamp)
     receipt = {'goal':_project(conn,_row(conn,target),current=current),'submitted_id':gid,'dedup':decision}
     if host_key is not None:
@@ -636,7 +649,7 @@ class Goals:
             until = current+timedelta(seconds=dedup_judge.validate_budget(options['budget_seconds'])+5)
             conn.execute("""UPDATE goal_dedup_jobs SET state='running',method=?,input_revision=?,attempts=attempts+1,
                 lease_until=?,lease_token=?,candidate_revisions_json='{}',updated_at=? WHERE goal_id=?""",
-                (dedup_judge.method(options),proposed['revision'],until.isoformat(),token,current.isoformat(),goal_id))
+                (dedup_judge.candidate_method(options),proposed['revision'],until.isoformat(),token,current.isoformat(),goal_id))
             return (token,options,job['attempts']+1),None
 
     def review(self,goal_id,*,actor='scheduler'):
@@ -659,9 +672,12 @@ class Goals:
             selected = dedup_judge.select_candidates(candidates,proposed,dismissed=dismissed,limit=dedup_judge.MAX_CANDIDATES+1)
             overflow = len(selected)>dedup_judge.MAX_CANDIDATES
             selected = selected[:dedup_judge.MAX_CANDIDATES]
-            incoming = dedup_judge.material(conn,proposed)
-            materials = [dedup_judge.material(conn,row) for row in selected]
-        revisions = {str(row['id']):row['revision'] for row in selected}
+            conflicts = _sequence_conflicts(conn,candidates,proposed,options,dismissed=dismissed)
+            observed = [proposed,*selected,*conflicts]
+            snapshots = [dedup_judge.material(conn,row) for row in observed]
+            incoming,materials = snapshots[0],snapshots[1:1+len(selected)]
+            source_snapshot = dedup_judge.source_speakers(conn,observed) if conflicts else {}
+        revisions = {str(row['id']):row['revision'] for row in [*selected,*conflicts]}
         with self.store.write() as conn:
             retained = conn.execute("""UPDATE goal_dedup_jobs SET input_revision=?,candidate_revisions_json=?
                 WHERE goal_id=? AND state='running' AND lease_token=?""",
@@ -674,7 +690,8 @@ class Goals:
                 raise ModelError('retryable','goal judgment total timeout',reason='timeout')
             verdicts = dedup_judge.judge(self.gateway,incoming,materials,method=dedup_judge.method(options),
                          budget_seconds=remaining) if selected else {}
-            decision = dedup_judge.decision_from_verdicts(verdicts,origin=proposed['origin'],overflow=overflow)
+            decision = dedup_judge.decision_from_verdicts(verdicts,origin=proposed['origin'],overflow=overflow,
+                         possible_ids=[row['id'] for row in conflicts])
         except ModelError as exc:
             decision = {'status':'pending','target_id':None,'reason':exc.reason or exc.category}
         with self.store.write() as conn:
@@ -683,23 +700,24 @@ class Goals:
             if job['state']!='running' or job['lease_token']!=token:
                 return self._receipt(conn,goal_id,self._decision(conn,goal_id))
             active_options = dedup_judge.connection_settings(conn)
-            observed = [proposed,*selected]
             latest = {row['id']:_row(conn,row['id']) for row in observed}
             stale = any(latest[row['id']]['revision']!=row['revision'] or latest[row['id']]['state']!='open'
                         or latest[row['id']]['merged_into'] is not None for row in observed)
             # Subject aliases and source excerpts are not covered by goal revisions.
             if not stale:
-                for row,snapshot in zip(observed,[incoming,*materials]):
+                for row,snapshot in zip(observed,snapshots):
                     check = latest[row['id']]
                     check['deadline'] = _deadline(check['deadline'],role_zone(conn),strict=False) or check['deadline']
                     if dedup_judge.material(conn,check)!=snapshot:
                         stale = True
                         break
+            if conflicts and not stale:
+                stale = dedup_judge.source_speakers(conn,observed)!=source_snapshot
             if stale:
                 decision = {'status':'pending','target_id':None,'reason':'stale'}
             elif datetime.fromisoformat(job['lease_until'])<=current:
                 decision = {'status':'pending','target_id':None,'reason':'lease_expired'}
-            elif not active_options['enabled'] or dedup_judge.method(active_options)!=dedup_judge.method(options):
+            elif not active_options['enabled'] or dedup_judge.candidate_method(active_options)!=dedup_judge.candidate_method(options):
                 decision = {'status':'pending','target_id':None,'reason':'configuration_changed'}
             elif decision['status']=='merged':
                 target = next(row for row in selected if row['id']==decision['target_id'])
@@ -715,7 +733,7 @@ class Goals:
                 lease_until=NULL,updated_at=? WHERE goal_id=?""",
                 ('pending' if pending else 'done',dumps(decision),available.isoformat(),current.isoformat(),goal_id))
             operation(conn,'goal_dedup_judged','goal',goal_id,{'dedup':decision,
-                'method':dedup_judge.method(options),'revision':proposed['revision'],
+                'method':dedup_judge.candidate_method(options),'revision':proposed['revision'],
                 'candidate_revisions':revisions},actor=actor,stamp=current.isoformat())
             if actor=='scheduler' and not pending:
                 target = _canonical_id(conn,goal_id)
