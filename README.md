@@ -289,6 +289,48 @@ PUT 的活动经去除首尾空白后，按区分大小写的完整字符串判�
 
 每次有效 PUT／PATCH／DELETE 与当前值在同一事务保存报告，包括没有值变化的心跳。历史返回 `id/host/entry_id/reported_at/method/action/reported/changes`；`action` 为 start、replace、update、heartbeat 或 end，`reported` 保存本次明确报告的字段（来源单列），`changes` 保存实际值变化的 before／after，细节按键列出。并发宿主按提交序号先后写入，最新报告的同一字段覆盖旧值；矛盾的旧报告仍保留在历史中，不形成确认事实。结束后历史仍可查询，读取历史不调用模型或增加召回次数。
 
+## M3 目标、询问与提醒（后端）
+
+目标属于角色，所有入口共享，入口只记录产生位置；它是待办意图，不是当前活动、记忆或 persona。学习仍可同时保存承诺记忆与内部目标，目标本身不加入学习材料，也不会因聊天中的含糊说法自动完成。询问为 `kind=question`，没有截止时间或提醒，由宿主决定何时问。
+
+| 方法与路径 | 内容 |
+| --- | --- |
+| `GET /api/v1/goals` | `state`、`kind`、`overdue`、`due_soon` 筛选，`limit`（1—100，默认 30）、`offset` 分页 |
+| `POST /api/v1/goals` | `content` 必填；可选 `kind`（normal／question）、`deadline`、`reminder_minutes`、`people`（主体 ID 数组）、`entry_id`、`host_key`；返回 201 和 `{goal, submitted_id, dedup}` |
+| `PATCH /api/v1/goals/{id}` | `state=completed/abandoned`、`deadline`、`reminder_minutes`；可带 `expected_revision`，不匹配返回 409 |
+| `GET /api/v1/notifications` | `after`（默认 0）、`limit` 拉取；返回 `{items,next_cursor,has_more}` |
+
+宿主和管理接口的目标写请求最多 32KB UTF-8，正文 1—4000 字符，涉及的人最多 100 个，入口／宿主键最多 200 字符；未知字段和非法值返回 400 并标明字段。截止时间接受带时区的 ISO 时间或 `YYYY-MM-DD`；日期解释为角色时区当天 23:59:59，返回按角色时区转换的 ISO 时间。提前量为 0—525600 分钟，`null` 使用默认值 60。`people` 排除我和场景，同名但不同主体不会合并；已确认的人物合并按当前主体解析。
+
+目标返回 `id/content/kind/origin/state/deadline/reminder_minutes/effective_reminder_minutes/people/entry_id/host_key/revision`，以及创建／更新时间、`closed_at/closed_by`、`merged_into`、`overdue/due_soon` 和 `possible_duplicate/possible_duplicate_ids`。`due_soon` 表示已到临近时刻，过期时也为 true。学习旧输出中无法解析的期限保留原文，并标记 `deadline_unresolved=true`，不臆测时间或生成提醒；宿主和管理员可修改成有效期限。
+
+注入先保存原始目标，再跨入口在同 kind 的未结束目标中去重。`decide_dedup(candidates, proposed)` 返回 `{status,target_id}`：`created`、`merged`、`possible_duplicate` 或保留给后续判断降级的 `pending`。本步不调用模型：仅正文压缩连续空白、忽略大小写和句末标点后完全一致，且涉及人集合相同、期限兼容时自动合并。内部标点和英文词界保留，复用 M2 的中文／阿拉伯数字与否定序列规则；一个期限为空兼容，两个明确期限不同不兼容。其他规范化文本相似度至少 0.88 的兼容项只标记可能重复。这不是目标去重模型质量门槛的结论。
+
+合并保留较早目标，原目标及其依据保留可追溯，占位的 `merged_into` 指向保留项；来源消息、同证据角色记忆与未取提醒归入保留项。明确截止时间补入空值；两个明确提前量不同则采用较早提醒（较大分钟数），原值仍在被合并项中。合并后的同阶段待取提醒只留一条，其余保留为取消记录。相同 `host_key` 的重试返回首次创建的完整回执快照，即使后来目标已修改；读取最新状态用列表。修改已合并 ID 返回 409 `goal_merged` 和 `canonical_id`，需要明确选择保留项再提交。
+
+有期限的普通目标在临近、到期时发布提醒；创建／修改时已经错过提醒时刻则立即发布一条，未来的到期提醒仍保留。服务恢复时同一目标错过的阶段只发布一条即时提醒，不逐条补发。提前量为 0 时，临近和到期同刻，合为一条。过期后的周期提醒按角色时区每天最多一次，内容请宿主选择放弃或修改期限；停机多日只生成当前一天的一条。系统不自动失败、放弃或顺延。
+
+通知的 `id` 是实际发布时分配的单调游标，未来计划不提前占用游标。每条有 `kind=goal_reminder`、`reminder_kind=soon/due/overdue/immediate`、`goal_id`、`content`、发布时的期限 `deadline_at`、计划／发布时间、`status=pending/taken/cancelled` 及取走／取消时间。取走仅表示宿主读到；相同游标可重放已取记录，方便恢复丢失的 HTTP 响应，宿主按通知 ID 去重。取走不等于送达，也不完成目标。修改期限／提前量或完成／放弃会更新未来计划、取消未取记录；已取记录保留。默认提前量变动重排使用默认值的未来目标，保留已过期的待取提醒。
+
+prepare 与 `search(include_goals=true)` 返回最多 10 个未结束目标／询问：临近和过期优先，其次本入口、涉及当前参与者，再按期限与创建时间。此分区不改变记忆选取。管理员接口沿用会话、CSRF 和操作记录：`GET/POST /admin/api/goals`，`GET/PATCH /admin/api/goals/{id}`；管理修改须带 `expected_revision`，可编辑正文。列表另支持 `entry_id/possible_duplicate/deadline_from/deadline_to`，日期筛选包含整天。详情含 `sources`、`promise_memories`（同证据角色记忆及当时修订，并非新增语义承诺分类）、`merged_goals`、提醒计划和通知历史。
+
+可能重复关系通过 `POST /admin/api/goals/{id}/duplicates/{other_id}/merge` 或 `/dismiss` 处理，正文须含两方 `expected_revision/other_revision`；合并仍守住类型、人物、期限、数字与否定边界。`GET /admin/api/notifications` 按 `status/goal_id` 分页，只读不取走。`PATCH /admin/api/settings/goals` 设置 `default_reminder_minutes` 和 `overdue_reminders`（默认 true），写入操作记录。页面接入留到后续界面阶段。
+
+旧状态映射：`done/completed` → completed，`cancelled/canceled/abandoned` → abandoned，其余（包括 in_progress、pending、failed 和未知值）→ open；过期／失败不推导放弃。未知旧来源映射 internal。无法确定的历史完成时间和操作者保留 null。
+
+本步验证（2026-10-09，基线 `be3a98a`；后续 main 仅修改评测说明）：Python 3.13／3.12 各 1244 项通过，`uv build` 通过。未修改的 `compare_learning_requests.py` worker 由仓库外脚本补入公开 v5，116 案例、272 批，system/user 字符串、顺序、purpose 与 max_tokens 均逐字一致；候选库另有当前状态、宿主目标和询问，仍无请求差异。原脚本不输出目标，另对 14 个公开目标案例手写并冻结固定输出、在全部 116 案例重放（102 案例无目标输出）：两边请求和输出仍一致，未合并目标 14→14、依据 19→19；物理行 14→19，差异仅 L009 1→2、M211 1→2、M218 1→3、N312 1→2，均为重申承诺保存后指向较早目标的占位，正文／kind／截止时刻和全部来源保留。该重放只测写入，不是模型质量评测。
+
+召回用七份公开语料独立入库，固定各自时钟和相同真实向量缓存，`judge=false`，分别比较默认混合检索与全文降级的有序 `(memory_id, reason)`：228 查询 × 2 路径共 456 组，零差异。R10 沿用 `benchmark_retrieval.py --default-config`，每库含当前状态、persona、1000 个未结束目标和 10 条待取提醒，每组 60 次测量，假召回判断按既有脚本排除网络耗时：
+
+| 记忆数／查询 | prepare P95（ms） | HTTP prepare P95（ms） |
+| --- | ---: | ---: |
+| 5 千／不点名 | 24.4 | 37.8 |
+| 5 千／点名 | 36.5 | 35.2 |
+| 5 万／不点名 | 319.7 | 336.5 |
+| 5 万／点名 | 413.9 | 407.6 |
+
+四组均 ≤500ms。完整材料、脚本、日志及逐案例差异留在仓库外 `iris-eval-artifacts/m3-goals-20261009/`，未读取隐藏集；目标模型去重与方法选择在下一步实现。
+
 ## M2 人物与身份联系（后端）
 
 人物管理接口沿用管理员会话、CSRF、JSON Content-Type 和本机 Host 校验；人物页提供列表、详情、否认、确认合并和别名管理，有待确认联系时导航和试用页会提示。

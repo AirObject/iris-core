@@ -1,14 +1,14 @@
 """Validated local UI API. No host route here generates a reply."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from importlib.resources import files
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path as PathParameter, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from . import admin_data, trial, people
 from .auth import audit, error
@@ -120,6 +120,118 @@ class Recreate(Revision):
 class Page(Input):
     limit: int = Field(default=30, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=1000000)
+
+
+GoalId = Annotated[int, PathParameter(gt=0, le=9223372036854775807)]
+
+def goal_time(value):
+    if value is None:
+        return value
+    try:
+        if len(value) == 10:
+            date.fromisoformat(value)
+        elif datetime.fromisoformat(value).tzinfo is None:
+            raise ValueError()
+    except ValueError:
+        raise ValueError("截止时间须为日期或带时区的 ISO 时间") from None
+    return value
+
+
+class NewGoal(Input):
+    content: str = Field(min_length=1, max_length=4000)
+    kind: Literal["normal", "question"] = "normal"
+    deadline: str | None = Field(default=None, max_length=100)
+    reminder_minutes: int | None = Field(default=None, ge=0, le=525600, strict=True)
+    people: list[Annotated[str, StringConstraints(min_length=1, max_length=200)]] = Field(default_factory=list, max_length=100)
+    entry_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("content", "entry_id")
+    @classmethod
+    def nonblank(cls, value):
+        if value is not None:
+            value = value.strip()
+            if not value:
+                raise ValueError("内容或入口不能为空白")
+        return value
+
+    @field_validator("deadline")
+    @classmethod
+    def valid_deadline(cls, value):
+        return goal_time(value)
+
+    @field_validator("people")
+    @classmethod
+    def unique_people(cls, value):
+        values = [item.strip() for item in value]
+        if any(not item for item in values) or len(set(values)) != len(values):
+            raise ValueError("涉及的人须为不重复的非空主体 ID")
+        return values
+
+    @model_validator(mode="after")
+    def question_without_schedule(self):
+        if self.kind == "question" and (self.deadline is not None or self.reminder_minutes is not None):
+            raise ValueError("询问没有截止时间和提醒提前量")
+        return self
+
+
+class GoalPatch(Input):
+    expected_revision: int | None = Field(default=None, gt=0, strict=True)
+    state: Literal["completed", "abandoned"] | None = None
+    deadline: str | None = Field(default=None, max_length=100)
+    reminder_minutes: int | None = Field(default=None, ge=0, le=525600, strict=True)
+
+    @field_validator("deadline")
+    @classmethod
+    def valid_deadline(cls, value):
+        return goal_time(value)
+
+    @model_validator(mode="after")
+    def changes(self):
+        fields = self.model_fields_set - {"expected_revision"}
+        if not fields or "state" in fields and self.state is None:
+            raise ValueError("至少提供一个修改字段；状态不能为空")
+        return self
+
+
+class AdminGoalPatch(GoalPatch):
+    expected_revision: int = Field(gt=0, strict=True)
+    content: str = Field(default=None, min_length=1, max_length=4000)
+
+    @field_validator("content")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("目标正文不能为空白")
+        return value.strip()
+
+
+class GoalQuery(Page):
+    state: Literal["open", "completed", "abandoned"] | None = None
+    kind: Literal["normal", "question"] | None = None
+    overdue: bool | None = None
+    due_soon: bool | None = None
+
+
+class AdminGoalQuery(GoalQuery):
+    entry_id: str | None = Field(default=None, min_length=1, max_length=200)
+    possible_duplicate: bool | None = None
+    deadline_from: str | None = Field(default=None, max_length=100)
+    deadline_to: str | None = Field(default=None, max_length=100)
+
+    @field_validator("deadline_from", "deadline_to")
+    @classmethod
+    def valid_deadline(cls, value):
+        return goal_time(value)
+
+
+class GoalDuplicate(Input):
+    expected_revision: int = Field(gt=0, strict=True)
+    other_revision: int = Field(gt=0, strict=True)
+
+
+class NotificationQuery(Page):
+    status: Literal["pending", "taken", "cancelled"] | None = None
+    goal_id: int | None = Field(default=None, gt=0, le=9223372036854775807)
 
 
 class PeopleQuery(Page):
@@ -417,6 +529,40 @@ def install_admin(app):
     @router.get("/memory-gaps")
     def gaps(query: Annotated[LearningQuery, Query()]):
         return admin_data.memory_gaps(app.state.store, **query.model_dump())
+
+    @router.get("/goals")
+    def goals(query: Annotated[AdminGoalQuery, Query()]):
+        return admin_data.goals(app.state.store, current=app.state.goals.clock(), **query.model_dump())
+
+    @router.post("/goals", status_code=201)
+    def create_goal(payload: NewGoal):
+        result = app.state.goals.create(**payload.model_dump(), origin="admin", actor="admin")
+        app.state.scheduler.wake()
+        return result
+
+    @router.get("/goals/{goal_id}")
+    def goal(goal_id: GoalId):
+        return admin_data.goal(app.state.store, goal_id, current=app.state.goals.clock())
+
+    @router.patch("/goals/{goal_id}")
+    def edit_goal(goal_id: GoalId, payload: AdminGoalPatch):
+        result = app.state.goals.update(goal_id, **payload.model_dump(exclude_unset=True), actor="admin")
+        app.state.scheduler.wake()
+        return result
+
+    @router.post("/goals/{goal_id}/duplicates/{other_id}/merge")
+    def merge_goal(goal_id: GoalId, other_id: GoalId, payload: GoalDuplicate):
+        result = app.state.goals.merge(goal_id, other_id, **payload.model_dump(), actor="admin")
+        app.state.scheduler.wake()
+        return result
+
+    @router.post("/goals/{goal_id}/duplicates/{other_id}/dismiss")
+    def dismiss_goal_duplicate(goal_id: GoalId, other_id: GoalId, payload: GoalDuplicate):
+        return app.state.goals.dismiss_duplicate(goal_id, other_id, **payload.model_dump(), actor="admin")
+
+    @router.get("/notifications")
+    def notifications(query: Annotated[NotificationQuery, Query()]):
+        return admin_data.notifications(app.state.store, **query.model_dump())
 
     @router.get("/state")
     def current_state():

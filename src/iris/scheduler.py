@@ -9,6 +9,7 @@ from datetime import datetime
 import numpy as np
 
 from .db import Store
+from .goals import Goals
 from .learning import LearningEngine, PROMPT_VERSION
 from .model_health import utc_now
 from .maintenance import Maintenance
@@ -24,6 +25,7 @@ class Scheduler:
     def __init__(self, store: Store, gateway, *, clock=utc_now, interval=0.5,
                  max_concurrent=None, config_loader=None):
         self.store, self.gateway, self.clock = store, gateway, clock
+        self.goals = Goals(store, clock=self.clock)
         self.health = getattr(gateway, "health", None)
         self.interval, self.config_loader = interval, config_loader
         self._loaded_configs = dict(gateway.configs)
@@ -163,6 +165,7 @@ class Scheduler:
                     self._loaded_configs = dict(configs)
                 except (OSError, ValueError):
                     log.warning("model configuration could not be reloaded")
+            self.goals.generate_notifications()
             if self.health:
                 for kind in self.health.due_probes():
                     if kind not in self._probes:
