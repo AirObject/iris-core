@@ -1,4 +1,4 @@
-"""Restartable deterministic lifecycle maintenance; no model or network calls."""
+"""Restartable daily maintenance with a separate, optional model phase."""
 from __future__ import annotations
 
 import json
@@ -11,12 +11,12 @@ from .memory_ops import adjust_retention, delete_memory, lifecycle_settings, mes
 from .model_health import utc_now
 from .queue import reset_batch
 
-PHASES = ("decay", "expiry", "dependency", "messages", "retry")
+PHASES = ("decay", "expiry", "dependency", "messages", "retry", "consolidation")
 
 
 class Maintenance:
-    def __init__(self, store, *, clock=utc_now):
-        self.store, self.clock = store, clock
+    def __init__(self, store, *, gateway=None, clock=utc_now):
+        self.store, self.clock, self.gateway = store, clock, gateway
         self.started_at = self._last_poll = clock()
         with store.read() as conn:
             completed = conn.execute("""SELECT finished_at FROM maintenance_runs WHERE state='completed'
@@ -100,6 +100,13 @@ class Maintenance:
                     self._finish(run_id)
                     return
                 phase = PHASES[run["phase"]]
+                if phase == "consolidation":
+                    from .consolidation import Consolidation
+                    if not Consolidation(self.store, self.gateway, clock=self.clock).run(run, stop=stop):
+                        return
+                    with self.store.write() as conn:
+                        conn.execute("UPDATE maintenance_runs SET phase=phase+1,cursor_id=0 WHERE id=? AND phase=?", (run_id, run["phase"]))
+                    continue
                 candidates = self._candidates(run, phase)
                 if not candidates:
                     with self.store.write() as conn:
@@ -288,7 +295,7 @@ class Maintenance:
         for group in result.values():
             group["memory_ids"] = sorted(set(group["memory_ids"]))
             group["object_ids"] = sorted(set(group["object_ids"]))
-        by_phase = {phase: progress.get("checks", {}).get(phase, 0) for phase in PHASES}
+        by_phase = {phase: progress.get("checks", {}).get(phase, 0) for phase in PHASES if phase != "consolidation"}
         result["checked"].update(count=sum(by_phase.values()), by_phase=by_phase)
         reasons = progress.get("skipped", {})
         result["skipped"].update(count=sum(reasons.values()), reasons=reasons)
@@ -310,6 +317,24 @@ class Maintenance:
                 items.append(item)
             report["items"] = items
             report["summary"] = self._summary(items, progress)
+            model = conn.execute("SELECT * FROM consolidation_runs WHERE run_id=?", (run_id,)).fetchone()
+            if model:
+                rows = conn.execute("SELECT outcome,reason FROM consolidation_run_work WHERE run_id=?", (run_id,)).fetchall()
+                reasons = report["summary"]["skipped"]["reasons"]
+                for result in rows:
+                    if result['outcome'] == 'skipped':
+                        reasons[result['reason']] = reasons.get(result['reason'], 0) + 1
+                if model['skip_reason']:
+                    reasons[model['skip_reason']] = max(1, reasons.get(model['skip_reason'], 0))
+                report["summary"]["skipped"]["count"] = sum(reasons.values())
+                calls = conn.execute("""SELECT COUNT(*) AS count,COALESCE(SUM(prompt_tokens),0) AS prompt_tokens,
+                    COALESCE(SUM(completion_tokens),0) AS completion_tokens,COALESCE(SUM(duration_ms),0) AS duration_ms,
+                    SUM(prompt_tokens IS NULL OR completion_tokens IS NULL) AS unknown_usage_calls
+                    FROM consolidation_calls WHERE run_id=?""", (run_id,)).fetchone()
+                report['summary']['model_calls'] = dict(calls)
+                report['consolidation'] = {'settings': json.loads(model['settings_json']),
+                    'deferred': sum(r['outcome'] is None or r['outcome'] in ('failed','skipped') for r in rows),
+                    'skip_reason': model['skip_reason']}
             return report
 
     def _finish(self, run_id):

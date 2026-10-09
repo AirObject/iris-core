@@ -35,7 +35,7 @@ class Scheduler:
         self._maintenance = ThreadPoolExecutor(max_workers=3, thread_name_prefix="iris-maintenance")
         self._active, self._probes = {}, {}
         self._vectors = None
-        self.lifecycle = Maintenance(store, clock=clock)
+        self.lifecycle = Maintenance(store, gateway=gateway, clock=clock)
         self._lifecycle_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="iris-lifecycle")
         self._lifecycle_job = None
         self._stop, self._wake = threading.Event(), threading.Event()
