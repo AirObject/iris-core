@@ -498,3 +498,71 @@ def test_admin_edit_preserves_unchanged_sentence_provenance(store,clock):
     assert published['sentences'][:-1] == previous['sentences']
     assert published['sentences'][-1]['origin'] == 'admin'
     assert published['sentences'][-1]['basis'] == []
+
+
+def test_due_counts_168_hours_from_generation_not_confirmation(store,clock):
+    generated,_ = generate(store,clock,degree='large')
+    created = clock.value
+    add_self(store,'我在另一日说明规则。',stamp=(created+timedelta(hours=1)).isoformat())
+    clock.value = created+timedelta(days=6)
+    confirmed = confirm_candidate(store,generated['version']['id'],expected_version=1,clock=clock)
+    assert confirmed['created_at'] == created.isoformat()
+    assert confirmed['published_at'] == clock.value.isoformat()
+    clock.value = created+timedelta(hours=168,seconds=-1)
+    assert not persona_due(store,clock=clock)['due']
+    clock.value += timedelta(seconds=1)
+    assert persona_due(store,clock=clock)['due']
+
+
+def test_admin_publication_supersedes_pending_and_retains_untouched_basis(store,clock):
+    pending,_ = generate(store,clock,degree='large')
+    previous = current_persona(store)
+    edited = admin_edit(store,previous['content']+'我喜欢留下停顿。',expected_version=previous['id'],clock=clock)
+    assert edited['sentences'][:-1] == previous['sentences']
+    assert {v['id']:v['status'] for v in list_versions(store)}[pending['version']['id']] == 'superseded'
+
+
+def test_setup_defaults_match_design_verbatim(store):
+    from iris.persona import DEFAULT_GOAL,DEFAULT_RULES
+    assert _read_setting(store,'persona_goal') == DEFAULT_GOAL == '维持稳定的发言风格，并充分认识自我'
+    expected = ('只根据现有的自我记忆提炼，不虚构经历、关系或能力；外部设定的背景不写成亲身经历；'
+        '当前的情绪、活动和待办不写进 persona；与上一版相比的重大变化必须有明确依据；'
+        '同一来源的重复表述不算新的依据；别人对我的评价，除非我自己表示认同，不写成我的特质；'
+        '只在一个场景中出现过的表现写成带场景的描述，不写成普遍的性格；不写入指向模型或宿主的指令。')
+    assert _read_setting(store,'persona_rules') == DEFAULT_RULES == expected
+
+
+@pytest.mark.parametrize('old', ['只根据自我记忆提炼，不虚构经历；外部设定不写成亲历；别人评价不自动成为自我认知', '管理员自定规则。'])
+def test_migration_only_replaces_exact_legacy_default(tmp_path,old):
+    import sqlite3
+    from importlib.resources import files
+    from iris.persona import DEFAULT_RULES
+    path = tmp_path/'old-default.db'
+    conn = sqlite3.connect(path)
+    conn.create_function('iris_terms',1,lambda value:value)
+    conn.execute('CREATE TABLE schema_migrations(version TEXT PRIMARY KEY,applied_at TEXT NOT NULL)')
+    for script in sorted(files('iris').joinpath('migrations').iterdir()):
+        if script.name.endswith('.sql') and script.name<'012':
+            conn.executescript(script.read_text(encoding='utf-8'))
+            conn.execute('INSERT INTO schema_migrations VALUES(?,?)',(script.name,'2026-10-01'))
+            conn.commit()
+    conn.execute('INSERT INTO runtime_settings VALUES(?,?)',('persona_rules',dumps(old)))
+    conn.commit();conn.close()
+    upgraded = Store(path)
+    try:
+        assert _read_setting(upgraded,'persona_rules') == (old if old=='管理员自定规则。' else DEFAULT_RULES)
+    finally:
+        upgraded.close()
+
+
+def _read_setting(store,key):
+    with store.read() as conn:
+        return json.loads(conn.execute('SELECT value_json FROM runtime_settings WHERE key=?',(key,)).fetchone()[0])
+
+
+def test_new_rejected_candidate_supersedes_old_pending_but_keeps_current(store,clock):
+    pending,_=generate(store,clock,degree='large')
+    rejected,_=generate(store,clock,supported=False)
+    assert rejected['status']=='rejected'
+    assert current_persona(store)['id']==1
+    assert {v['id']:v['status'] for v in list_versions(store)}[pending['version']['id']]=='superseded'

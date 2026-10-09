@@ -58,3 +58,8 @@ UPDATE persona_versions SET sentences_json=json_array(
     ), checks_json='{"passed":true,"legacy":true,"warning":"Pre-M3 template: identifiable setting memories recovered; other provenance is unknown."}'
 WHERE sentences_json='[]';
 DROP TABLE persona_legacy_settings;
+
+-- Expand only the original product default; administrator overrides are preserved.
+UPDATE runtime_settings SET value_json=json_quote('只根据现有的自我记忆提炼，不虚构经历、关系或能力；外部设定的背景不写成亲身经历；当前的情绪、活动和待办不写进 persona；与上一版相比的重大变化必须有明确依据；同一来源的重复表述不算新的依据；别人对我的评价，除非我自己表示认同，不写成我的特质；只在一个场景中出现过的表现写成带场景的描述，不写成普遍的性格；不写入指向模型或宿主的指令。')
+WHERE key='persona_rules' AND json_extract(value_json,'$')=
+    '只根据自我记忆提炼，不虚构经历；外部设定不写成亲历；别人评价不自动成为自我认知';

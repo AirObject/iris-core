@@ -28,7 +28,7 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, _trace, _stale, _settings)
+                      confirm_candidate, reject_candidate, DEGREES, _trace, _stale, _settings, split_sentences)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
@@ -94,10 +94,11 @@ def _normalize_frozen(document):
                     raise ValueError('needs_update must be boolean')
                 if expected.get('publication') not in ('published','pending_confirmation','unchanged'):
                     raise ValueError('invalid publication expectation')
-                if _instant(checkpoint['at']) < _instant(at):
+                checkpoint_at = checkpoint.get('at',datetime.fromisoformat(day['date']+'T23:00:00').replace(tzinfo=zone).isoformat())
+                if _instant(checkpoint_at) < _instant(at):
                     raise ValueError('checkpoint precedes operations')
                 level = {'小':'small','中':'medium','大':'large'}.get(expected['level'],expected['level'])
-                events.append({'op':'checkpoint','id':checkpoint.get('id',day['date']),'at':checkpoint['at'],
+                events.append({'op':'checkpoint','id':checkpoint.get('id',day['date']),'at':checkpoint_at,
                     'action':checkpoint['run'], 'expect':expected, 'expected_change':level,
                     'must_reflect':expected['must_reflect'],'must_not':expected['must_not'],
                     'scenarios':checkpoint.get('scenarios',[])})
@@ -150,8 +151,15 @@ def load_corpus(path):
                     if op == 'edit':
                         _validate_memory(event, partial=True)
                 elif op == 'persona_edit':
-                    if not isinstance(event['content'],str) or not event['content'].strip():
-                        raise ValueError('persona_edit content required')
+                    if ('content' in event)==('append' in event):
+                        raise ValueError('persona_edit requires exactly one of content/append')
+                    if 'content' in event:
+                        if not isinstance(event['content'],str) or not event['content'].strip():
+                            raise ValueError('persona_edit content required')
+                    else:
+                        _texts(event['append'],'persona_edit.append')
+                        if not event['append'] or any(len(split_sentences(text))!=1 for text in event['append']):
+                            raise ValueError('persona_edit.append must contain individual sentences')
                 elif op in ('persona_confirm','persona_reject'):
                     pass
                 elif op == 'checkpoint':
@@ -314,11 +322,16 @@ def _observation(store, case_id, checkpoint, previous, candidate):
             scenarios.add('S19')
         settings = _settings(conn)
         subjects = [dict(r) for r in conn.execute('SELECT id,name,kind FROM subjects ORDER BY id')]
+        first = conn.execute("SELECT * FROM persona_versions WHERE source='initial_setting' ORDER BY id LIMIT 1").fetchone()
+        role_name = json.loads(conn.execute("SELECT value_json FROM runtime_settings WHERE key='role_name'").fetchone()[0])
+        role_settings = {'basis_kind':'role_settings','role_name':role_name,'source':'administrator_setup',
+            'first_template':first['content'] if first else None, 'initialized_at':first['created_at'] if first else None,
+            'first_template_sentences':json.loads(first['sentences_json']) if first else []}
     return {'timeline_id':case_id, 'checkpoint_id':checkpoint['id'], 'at':checkpoint['at'],
             'operation':checkpoint['op'], 'previous':previous, 'candidate':candidate,
             'must_reflect':checkpoint.get('must_reflect',[]), 'must_not':checkpoint.get('must_not',[]),
             'expected_change':checkpoint.get('expected_change'), 'scenarios':sorted(scenarios),
-            'timezone':str(zone),'settings':settings,'subjects':subjects,'memory_state':memory_state}
+            'timezone':str(zone),'settings':settings,'subjects':subjects,'memory_state':memory_state,'role_settings':role_settings}
 
 
 def _run_timeline(configs,case,directory,gateway_factory):
@@ -361,13 +374,16 @@ def _run_timeline(configs,case,directory,gateway_factory):
                     with store.read() as conn:
                         pending = conn.execute("SELECT id FROM persona_versions WHERE status='pending'").fetchone()
                     if pending is None:
-                        raise ValueError('timeline has no pending persona to confirm/reject')
+                        control_operations.append({'event':event,'status':'noop','reason':'no_pending_candidate',
+                                                   'current_version_id':previous['id'],'version':None})
+                        continue
                     action = confirm_candidate if event['op']=='persona_confirm' else reject_candidate
                     version = action(store,pending[0],expected_version=previous['id'],clock=clock)
-                    control_operations.append({'event':event,'version':version})
+                    control_operations.append({'event':event,'status':'applied','version':version})
                     continue
                 if event['op']=='persona_edit':
-                    candidate = admin_edit(store,event['content'],expected_version=previous['id'],clock=clock)
+                    content = event['content'] if 'content' in event else previous['content']+''.join(event['append'])
+                    candidate = admin_edit(store,content,expected_version=previous['id'],clock=clock)
                     observations.append(_observation(store,case['id'],{**event,'id':f'admin:{ordinal}'},previous,candidate))
                 else:
                     result = (engine.update if event.get('action','update')=='update' else engine.regenerate)(expected_version=previous['id'])
@@ -400,7 +416,7 @@ def _payload(observation):
             'at':observation['at'], 'previous':observation['previous'], 'candidate':candidate,
             'evidence':observation.get('evidence',candidate['material'].get('evidence',{'memories':[]})),
             'settings':observation['settings'], 'timezone':observation['timezone'],
-            'subjects':observation['subjects'],'memory_state':observation['memory_state'],
+            'subjects':observation['subjects'],'memory_state':observation['memory_state'],'role_settings':observation['role_settings'],
             'must_reflect':observation['must_reflect'], 'must_not':observation['must_not'],
             'expected_change':observation['expected_change'], 'scenarios':observation['scenarios']}
 
@@ -422,6 +438,11 @@ def _call_metrics(calls):
             'prompt_tokens':sum(c['prompt_tokens'] or 0 for c in calls),
             'completion_tokens':sum(c['completion_tokens'] or 0 for c in calls),
             'reasoning_tokens':sum(c['reasoning_tokens'] or 0 for c in calls),
+            'reasoning_usage_missing_calls':sum(c['reasoning_tokens'] is None for c in calls),
+            'timings_by_purpose':{purpose:{'count':sum(c['purpose']==purpose for c in calls),
+                'p50_ms':_percentile([c['duration_ms'] for c in calls if c['purpose']==purpose],50),
+                'p95_ms':_percentile([c['duration_ms'] for c in calls if c['purpose']==purpose],95)}
+                for purpose in dict.fromkeys(c['purpose'] for c in calls)},
             'usage_missing_calls':sum(c['prompt_tokens'] is None or c['completion_tokens'] is None for c in calls),
             'timed_out_calls':sum(bool(c.get('timed_out')) for c in calls),
             'by_purpose':dict(Counter(c['purpose'] for c in calls))}
@@ -437,6 +458,8 @@ def _metrics(rows, judgments=None):
     result = {'checkpoint_outcomes':dict(Counter(item['status'] for item in outcomes)),
               'skip_reasons':dict(Counter(item['reason'] for item in outcomes if item['status']=='skipped')),
               'changes':len(changes), 'changes_by_source':dict(Counter(observations[i]['candidate']['source'] for i in changes)),
+              'change_degree_distribution':dict(Counter(observations[i]['candidate']['change_degree'] for i in changes)),
+              'candidate_degree_distribution':dict(Counter(o['candidate']['change_degree'] for o in observations)),
               'generated_candidates':len(observations), 'check_rejected_candidates':len(rejected),
               'check_rejected_ratio':len(rejected)/len(observations) if observations else None,
               'initial_versions':sum(o['operation']=='initial' for o in all_versions),
@@ -471,7 +494,7 @@ def _metrics(rows, judgments=None):
             result['change_degree_comparison'].append({'timeline_id':o['timeline_id'],'checkpoint_id':o['checkpoint_id'],
                 'expected':o['expected_change'],'actual':candidate['change_degree'],
                 'matches':o['expected_change']==candidate['change_degree']})
-        if 'S19' in o['scenarios']:
+        if 'S19' in o['scenarios'] or any(s['origin']=='admin' for s in o['previous']['sentences']):
             mode = candidate['material'].get('settings',{}).get('publish_mode','small_medium_auto')
             removed = candidate['checks'].get('admin_content_removed_or_changed',False)
             passed = (not removed or (candidate['change_degree']=='large' and
@@ -491,8 +514,7 @@ def _metrics(rows, judgments=None):
                 total += len(vote['must_reflect'])
                 forbidden += sum(vote['must_not'])
             for scenario,violation in (('S17','保留失效依据'),('S18','单一日期泛化')):
-                if scenario in o['scenarios']:
-                    result['scenarios'][scenario].append({'timeline_id':o['timeline_id'],'checkpoint_id':o['checkpoint_id'],
+                result['scenarios'][scenario].append({'timeline_id':o['timeline_id'],'checkpoint_id':o['checkpoint_id'],
                         'status':o['candidate']['status'],
                         'passed':all(violation not in sentence['violations'] for sentence in vote['sentence_results'])})
         result.update(violations=dict(violations),rejected_candidate_violations=dict(rejected_violations),
@@ -551,6 +573,8 @@ def _report(report,directory):
         lines.append(f'| {key} | {metrics[key]} |')
     lines += ['', 'Call metrics: '+dumps(metrics['calls']), '', 'Violation distribution: '+dumps(metrics['violations']),
               '', 'Rejected candidate violations: '+dumps(metrics['rejected_candidate_violations']),
+              '', 'Change degree distribution: '+dumps(metrics['change_degree_distribution']),
+              '', 'Candidate degree distribution: '+dumps(metrics['candidate_degree_distribution']),
               '', 'Change degree comparison: '+dumps(metrics['change_degree_comparison']),
               '', 'S17 / S18 / S19: '+dumps(metrics['scenarios']),
               '', f"Disagreements: {len(report.get('disagreements',[]))}. Full details are in the adjacent JSON."]

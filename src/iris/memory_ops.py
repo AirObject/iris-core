@@ -11,6 +11,7 @@ from .db import Store, dumps, now
 
 
 def setup_role(store: Store, name: str, background: str = "", timezone_name: str = "Asia/Shanghai", *, _conn=None, current=None) -> str:
+    from .persona import DEFAULT_GOAL, DEFAULT_RULES
     try:
         ZoneInfo(timezone_name)
     except ZoneInfoNotFoundError as exc:
@@ -23,8 +24,8 @@ def setup_role(store: Store, name: str, background: str = "", timezone_name: str
         if existing:
             raise ValueError("role already initialized")
         for key, value in (("role_name", name), ("background", background), ("timezone", timezone_name),
-                           ("persona_goal", "维持稳定的发言风格，并充分认识自我"),
-                           ("persona_rules", "只根据自我记忆提炼，不虚构经历；外部设定不写成亲历；别人评价不自动成为自我认知")):
+                           ("persona_goal", DEFAULT_GOAL),
+                           ("persona_rules", DEFAULT_RULES)):
             conn.execute("INSERT INTO runtime_settings(key,value_json) VALUES(?,?)", (key, dumps(value)))
         memory_ids = []
         for sentence in sentences:

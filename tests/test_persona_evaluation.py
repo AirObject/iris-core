@@ -323,3 +323,70 @@ def test_double_judgment_recomputes_basis_and_keeps_frozen_violation_order():
     assert combined['has_basis'] is False and combined['level_reasonable'] is False
     assert combined['must_reflect'] == [False] and combined['must_not'] == [True]
     assert differences
+
+
+@pytest.mark.parametrize('operation',['persona_confirm','persona_reject'])
+def test_pending_control_without_candidate_is_recorded_noop(tmp_path,operation):
+    case = copy.deepcopy(TIMELINE)
+    case['events'] = [{'op':operation,'at':'2026-10-02T12:00:00+00:00'}]
+    corpus = tmp_path/'noop.jsonl';corpus.write_text(dumps(case),encoding='utf-8')
+    _,report = run_persona_eval({},tmp_path,corpus=corpus,out=tmp_path/'out',judge_mode='external',
+        gateway_factory=FakeGateway,runner_identity='noop')
+    item = report['rows'][0]['control_operations'][0]
+    assert item['status']=='noop' and item['reason']=='no_pending_candidate'
+    assert item['current_version_id']==1
+    assert report['metrics']['changes']==0
+
+
+def test_append_persona_and_default_checkpoint_clock(tmp_path):
+    case = copy.deepcopy(FROZEN_FORMAT)
+    timeline=case['timelines'][0]
+    timeline['days'] = timeline['days'][:1]
+    day=timeline['days'][0]
+    day['ops'] = [{'op':'persona_edit','append':['我喜欢短句。','我会留停顿。']}]
+    day['checkpoint'].pop('at')
+    day['checkpoint']['run']='update'
+    corpus=tmp_path/'append.json';corpus.write_text(dumps(case),encoding='utf-8')
+    _,report=run_persona_eval({},tmp_path,corpus=corpus,out=tmp_path/'out',judge_mode='external',
+        gateway_factory=FakeGateway,runner_identity='append')
+    row=report['rows'][0]
+    edited=row['observations'][1]['candidate']
+    assert edited['content']==row['observations'][0]['candidate']['content']+'我喜欢短句。我会留停顿。'
+    assert edited['created_at']=='2026-10-02T22:00:00+08:00'
+    assert edited['sentences'][-1]['origin']=='admin'
+    assert row['checkpoints'][0]['checkpoint']['at']=='2026-10-02T23:00:00+08:00'
+    assert report['metrics']['changes']==0 and report['metrics']['admin_publications']==1
+
+
+@pytest.mark.parametrize('edit',[{'append':['一句。'],'content':'全文。'},{'append':'一句。'},{'append':[]},{'append':['两句。一句。']}])
+def test_persona_edit_append_validation(tmp_path,edit):
+    from iris.persona_evaluation import load_corpus
+    case=copy.deepcopy(TIMELINE);case['events']=[{'op':'persona_edit','at':case['start_at'],**edit}]
+    path=tmp_path/'bad.jsonl';path.write_text(dumps(case),encoding='utf-8')
+    with pytest.raises(ValueError):load_corpus(path)
+
+
+def test_export_role_settings_and_initial_template_are_explicit(material):
+    directory,_,_,_=material
+    data=json.loads((directory/'cases/0000.json').read_text())['input']
+    setting=data['role_settings']
+    assert setting['role_name']=='Iris'
+    assert setting['first_template']=='我是Iris。初始设定：我来自云城。'
+    assert setting['basis_kind']=='role_settings'
+    assert setting['first_template_sentences'][0]['initial_settings']['role_name']=='Iris'
+
+
+def test_report_distributions_exclude_direct_admin_publication(material):
+    _,report,_,_=material
+    assert report['metrics']['change_degree_distribution']=={'small':1,'large':1}
+    assert report['metrics']['candidate_degree_distribution']=={'small':1,'large':1}
+    assert report['metrics']['admin_publications']==1
+
+
+def test_call_metrics_report_missing_reasoning_usage_separately():
+    from iris.persona_evaluation import _call_metrics
+    calls=[dict(duration_ms=t,purpose='persona_generate',prompt_tokens=10,completion_tokens=20,reasoning_tokens=r)
+           for t,r in ((10,None),(30,5))]
+    metric=_call_metrics(calls)
+    assert metric['reasoning_usage_missing_calls']==1
+    assert metric['timings_by_purpose']['persona_generate']=={'count':2,'p50_ms':20.0,'p95_ms':29.0}

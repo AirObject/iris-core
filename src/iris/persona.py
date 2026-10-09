@@ -241,7 +241,7 @@ def _operation(conn, action, vid, stamp):
 
 def _insert(conn, *, content, sentences, checks, degree, status, source, stamp,
             base=None, rollback_of=None, material=None, snapshot=None):
-    if status in ('current', 'pending'):
+    if status in ('current', 'pending') or source in ('periodic', 'regenerate'):
         conn.execute("UPDATE persona_versions SET status='superseded' WHERE status='pending'")
     if status == 'current':
         conn.execute("UPDATE persona_versions SET is_current=0,status='history' WHERE is_current=1")
@@ -404,7 +404,7 @@ def _due(conn, version, current):
         return {'due': False, 'reason': 'not_initialized', 'changed_memory_ids': []}
     previous, latest = version['self_snapshot'], _self_snapshot(conn)
     if previous is None:  # Upgrade of a pre-M3 initial template; no invented snapshot.
-        since = version['published_at'] or version['created_at']
+        since = version['created_at']
         changed = [r[0] for r in conn.execute('''SELECT m.id FROM memories m JOIN memory_subjects a ON a.memory_id=m.id
             WHERE a.subject_id='self' AND (m.speaker_subject_id='self' OR m.stance='设定')
             AND (julianday(m.updated_at)>julianday(?) OR m.lifecycle!='active'
@@ -421,7 +421,7 @@ def _due(conn, version, current):
     stale_self = {ref['memory_id'] for sentence in version['sentences'] for ref in sentence['basis']
                   if stale_ids & (traced.get(ref['memory_id'], set()) | {ref['memory_id']})}
     changed = sorted(set(changed) | stale_self)
-    elapsed = current - datetime.fromisoformat(version['published_at'] or version['created_at'])
+    elapsed = current.astimezone(timezone.utc) - datetime.fromisoformat(version['created_at']).astimezone(timezone.utc)
     due = len(changed) >= 5 or (bool(changed) and elapsed >= timedelta(days=7))
     return {'due': due, 'reason': 'five_changes' if len(changed) >= 5 else 'seven_days' if due else 'not_due',
             'changed_memory_ids': changed, 'changed_count': len(changed), 'elapsed_days': elapsed.total_seconds()/86400}
