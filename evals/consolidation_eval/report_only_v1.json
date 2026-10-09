@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "implementation_commit": "94db8fce28d21808660e2780905b915f601efcac",
+  "merge_freeze_commit": "3d31c95b3fa4ba9b64f43bcb9b396e63916a5e7a",
+  "configuration": {
+    "method": "broad",
+    "resolution": "report_only_v1",
+    "max_calls": 50
+  },
+  "selection": "Planner selected the original broad merge method; no further method selection. Conflict and dependency are report/annotation only.",
+  "pair_prompt": "Complete frozen consolidation_pair_v1.md; conflict decisions receive a separate report-only call, with durable classification checkpoint.",
+  "disabled_resolution_options": [
+    "original_v1",
+    "rewrite_v2",
+    "conservative_v2"
+  ],
+  "validation_plan": {
+    "corpus": "consolidation_v1",
+    "full_runs": 2,
+    "independent_judges_per_run": 2,
+    "judge_model": "gpt-6-astra max",
+    "estimated_chat_calls": [
+      110,
+      130
+    ],
+    "estimated_model_minutes": [
+      15,
+      25
+    ],
+    "estimated_total_minutes_with_judging": [
+      30,
+      50
+    ]
+  },
+  "files": {
+    "src/iris/consolidation.py": "ffd7a41f679a816d7e8bb83ee8f0c90fae827d0c91ead338998cef2b55087a11",
+    "src/iris/maintenance.py": "b51903b8e93e328f66f85ff87e7d9c530235dedecefd1f5d28ea37c1495054b5",
+    "src/iris/admin.py": "165e47a271ab2d36576c40d7c1c286a537b286fc106eb7b08bc5de997b8462d8",
+    "src/iris/admin_data.py": "eb84dc16f285cde30e00ef4241c91813e1eba6bd45b9f77fe781673d31fcd081",
+    "src/iris/people.py": "96b5043a4fa7ba27e5a8c9f5e9b3ace9bba565d5d234fe9448fdd38e14274400",
+    "src/iris/migrations/015_consolidation.sql": "49ce01b577b136daa9c9237d80cb6ebda38005d55e26e7e8800440055fe8ddd8",
+    "src/iris/migrations/016_consolidation_annotations.sql": "4f17f452249c40cf4422ccd42b308a3a7c2ae102a977a5cc2690bf32c152e03d",
+    "src/iris/prompts/consolidation_pair_v1.md": "aa8e912ba4ebd1a3c1f8a22591668b08b712857d8f8a03d0f36acdfb78f9a903",
+    "src/iris/prompts/consolidation_conflict_report_only_v1.md": "21eaa3f7c20439b6c247afbbb122ab7e5e861da82a7b3a58a966096399dcc7c9",
+    "src/iris/prompts/consolidation_dependency_report_only_v1.md": "6777dd1202946d5e384287f971d127e60f6c4d68992b3f28436d51e74d852281",
+    "evals/consolidation_eval/run.py": "fe8c83616a5763ea5fd88dc7014fd476b813124bb1e3bd28f2c0386f0dd91114",
+    "evals/consolidation_eval/score.py": "abb442125ad282f8c94b16463d142940f2e0e11e63ad9e229e0ea75927dc8e00",
+    "evals/consolidation_eval/report_only_scoring.md": "0f0b97c0d93a4ec220764634d66e98c314e2de695ac808f363ad87b9e272967d",
+    "evals/consolidation_eval/write_audit.md": "fb53f64bf028c2674da6d382f282088054fad41b427a3ae30c7e0d26d9211c86",
+    "evals/consolidation_v1.json": "4600ec32fa27d37cc2b44084dabab1b003dcc70c24205c5e268dbdd80247ac75",
+    "src/iris/prompts/consolidation_scoring_v1.md": "2d5ba208b0779ae130a66ccb2c726986e20a8a3f02616d0c5901b5646ef7bbe7"
+  }
+}
