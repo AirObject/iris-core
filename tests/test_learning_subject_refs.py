@@ -40,7 +40,7 @@ def assert_audit(store, formed, result, original, field, before, after):
 
 
 @pytest.mark.parametrize("field", ["about", "speaker", "name", "same_as", "roleplay"])
-@pytest.mark.parametrize("template", ["P1 {}", "P1（{}）", "P1({})"])
+@pytest.mark.parametrize("template", ["P1{}", "P1 {}", "P1（{}）", "P1({})"])
 @pytest.mark.parametrize("name", ["宋棠", "小棠"])
 def test_participant_labels_resolve_display_name_and_known_alias(store, field, template, name):
     msg(store, 1, "大家叫我小棠，也有人叫我棠棠", sender="宋棠")
@@ -72,7 +72,7 @@ def test_participant_labels_resolve_display_name_and_known_alias(store, field, t
     assert_audit(store, formed, result, original, field, before, after)
 
 
-@pytest.mark.parametrize("template", ["P1 {}", "P1（{}）", "P1({})"])
+@pytest.mark.parametrize("template", ["P1{}", "P1 {}", "P1（{}）", "P1({})"])
 def test_same_name_accounts_keep_number_identity_and_evidence_boundary(store, template):
     common = dict(entry_id="A", entry_name="A", platform="test", entry_kind="group", kind="message",
                   occurred_at="2026-09-28T09:00:00+08:00", sender="宋棠")
@@ -93,7 +93,7 @@ def test_same_name_accounts_keep_number_identity_and_evidence_boundary(store, te
 
 
 @pytest.mark.parametrize("field", ["about", "speaker", "name", "alias", "same_as", "roleplay"])
-@pytest.mark.parametrize("label", ["P1 闻舟", "P1（闻舟）", "P1(闻舟)", "P9 宋棠", "P9的妈妈", "P1和P9的朋友"])
+@pytest.mark.parametrize("label", ["P1闻舟", "P1 闻舟", "P1（闻舟）", "P1(闻舟)", "P9宋棠", "P9 宋棠", "P9的妈妈", "P1和P9的朋友"])
 def test_conflicting_or_unknown_number_is_dropped_without_guessing(store, field, label):
     msg(store, 1, f"我提到了{label}", sender="宋棠")
     msg(store, 2, "在这里", sender="闻舟")
@@ -150,6 +150,8 @@ def test_embedded_speaker_name_still_requires_that_subjects_evidence(store):
 
 
 @pytest.mark.parametrize(("label", "expected", "reason"), [
+    ("P1小棠", "小棠", None),
+    ("P1宋棠", "宋棠", "alias duplicates subject name"),
     ("P1（小棠）", "小棠", None),
     ("P1 宋棠", "宋棠", "alias duplicates subject name"),
     ("P1的妈妈", "宋棠的妈妈", None),
@@ -202,3 +204,32 @@ def test_ambiguous_relative_parent_is_dropped_before_subject_creation(store):
     assert [item["reason"] for item in result["dropped"]] == ["subject is ambiguous; use participant number"]
     with store.read() as conn:
         assert conn.execute("SELECT COUNT(*) FROM subjects WHERE id NOT IN ('self','scene')").fetchone()[0] == 2
+
+
+@pytest.mark.parametrize("name", ["杏仁", "Mira", "Mira Lane"])
+@pytest.mark.parametrize("template", ["P1{}", "P1 {}", "P1（{}）", "P1({})"])
+def test_compact_participant_label_never_creates_a_second_subject(store, name, template):
+    msg(store, 1, "我一直喜欢安静的地方", sender=name)
+    owner = participant_id(store)
+    label = template.format(name)
+    _, result = batch(store, FakeGateway({"memories": [
+        memory(f"{name}一直喜欢安静的地方", [1], label, [label])]}), count=1)
+    assert len(result["created"]) == 1 and not result["dropped"]
+    with store.read() as conn:
+        assert [tuple(row) for row in conn.execute(
+            "SELECT id,name FROM subjects WHERE id NOT IN ('self','scene')")] == [(owner, name)]
+        assert conn.execute("SELECT speaker_subject_id FROM memories").fetchone()[0] == owner
+        assert {row[0] for row in conn.execute("SELECT subject_id FROM memory_subjects")} == {owner}
+
+
+def test_compact_feedback_about_preserves_each_participant(store):
+    for i, name in enumerate(["松球", "青豆", "棉线"], 1):
+        msg(store, i, "你今天讲解术语的速度太快了", sender=name)
+    _, result = batch(store, FakeGateway({"memories": [memory(
+        "松球、青豆、棉线都反馈我这次讲解术语的速度太快", [1, 2, 3], "我",
+        ["我", "P1松球", "P2青豆", "P3棉线"], "推断")]}))
+    assert len(result["created"]) == 1 and not result["dropped"]
+    with store.read() as conn:
+        assert {row[0] for row in conn.execute("SELECT subject_id FROM memory_subjects")} == {
+            "self", participant_id(store, 1), participant_id(store, 2), participant_id(store, 3)}
+        assert conn.execute("SELECT COUNT(*) FROM subjects WHERE id NOT IN ('self','scene')").fetchone()[0] == 3

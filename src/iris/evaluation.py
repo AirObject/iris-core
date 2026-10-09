@@ -28,7 +28,7 @@ from .vector_index import VectorIndex
 
 SCORING_VERSION = "scoring_v3"
 JUDGE_MAX_TOKENS = 16000
-PUBLIC_LEARNING_CORPORA = ("learning_v1", "learning_v2", "learning_v3", "learning_v4")
+PUBLIC_LEARNING_CORPORA = ("learning_v1", "learning_v2", "learning_v3", "learning_v4", "learning_v5")
 SCORING = files("iris").joinpath("prompts", SCORING_VERSION + ".md").read_text(encoding="utf-8")
 
 
@@ -138,6 +138,10 @@ def _corpus_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     dev = [row for row in rows if row.get("corpus_group") in ("learning_v1", "learning_v3", "learning_v4")]
     if dev:
         result["learning_v1+v3+v4"] = _metrics(dev)
+    if "learning_v5" in groups:
+        extended_dev = [row for row in rows if row.get("corpus_group") in
+                        ("learning_v1", "learning_v3", "learning_v4", "learning_v5")]
+        result["learning_v1+v3+v4+v5"] = _metrics(extended_dev)
     return result
 
 

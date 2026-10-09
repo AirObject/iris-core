@@ -102,13 +102,17 @@ def test_confirmation_counts_are_per_successful_batch_not_unique_memories_or_att
 
 
 def test_public_groups_are_micro_averaged_and_survive_export_without_leaking_into_judge():
-    rows = [minimal_row(str(n), f"learning_v{n}") for n in range(1, 5)]
+    rows = [minimal_row(str(n), f"learning_v{n}") for n in range(1, 6)]
     for n, row in enumerate(rows, 1):
         row["judge"]["fact_covered"] = [True] + [False] * (n-1)
     grouped = ev._corpus_metrics(rows)
-    assert list(grouped) == ["learning_v1", "learning_v2", "learning_v3", "learning_v4", "learning_v1+v3+v4"]
+    assert list(grouped) == ["learning_v1", "learning_v2", "learning_v3", "learning_v4", "learning_v5",
+                             "learning_v1+v3+v4", "learning_v1+v3+v4+v5"]
     assert grouped["learning_v1+v3+v4"]["cases"] == 3
     assert grouped["learning_v1+v3+v4"]["fact_recall"] == 3 / 8
+    assert grouped["learning_v5"]["fact_recall"] == 1 / 5
+    assert grouped["learning_v1+v3+v4+v5"]["cases"] == 4
+    assert grouped["learning_v1+v3+v4+v5"]["fact_recall"] == 4 / 13
     exported = ev._learning_rows(rows)
     assert [r["corpus_group"] for r in exported] == [r["corpus_group"] for r in rows]
     assert exported[0]["actual"]["memory_duplicates"] == rows[0]["actual"]["memory_duplicates"]
@@ -116,7 +120,7 @@ def test_public_groups_are_micro_averaged_and_survive_export_without_leaking_int
     assert "judge" not in exported[0]
 
 
-def test_default_corpus_load_includes_v4_and_reports_groups(tmp_path, monkeypatch):
+def test_default_corpus_load_includes_v5_and_reports_groups(tmp_path, monkeypatch):
     import shutil
     repository = Path(__file__).resolve().parents[1]
     root = tmp_path / "repo"
@@ -136,15 +140,17 @@ def test_default_corpus_load_includes_v4_and_reports_groups(tmp_path, monkeypatc
     monkeypatch.setattr(ev, "_run_case", fake_run)
     config = {"chat": ModelConfig("offline", "", "offline"), "embedding": ModelConfig("", "", "")}
     path, report = ev.run_learning_eval(config, root, out=tmp_path / "reports", judge_runs=1)
-    assert len(seen) == 104
-    assert report["corpus"]["messages"] == 1750
+    assert len(seen) == 116
+    assert report["corpus"]["messages"] == 2011
     assert report["corpus_metrics"]["learning_v4"]["cases"] == 18
     assert report["corpus_metrics"]["learning_v1+v3+v4"]["cases"] == 64
-    assert report["cases"][-1]["corpus_group"] == "learning_v4"
+    assert report["corpus_metrics"]["learning_v5"]["cases"] == 12
+    assert report["corpus_metrics"]["learning_v1+v3+v4+v5"]["cases"] == 76
+    assert report["cases"][-1]["corpus_group"] == "learning_v5"
     assert report["cases"][-1]["memory_duplicates"]["pairs"] == [[1, 2], [1, 3], [2, 3]]
     assert report["cases"][-1]["confirmations"]["count"] == 0
     prose = path.read_text(encoding="utf-8")
-    assert "learning_v1+v3+v4" in prose and "近似重复对数" in prose and "再次确认" in prose
+    assert "learning_v1+v3+v4+v5" in prose and "近似重复对数" in prose and "再次确认" in prose
 
 
 def test_learning_v4_frozen_bytes_and_batch_boundaries(monkeypatch):
