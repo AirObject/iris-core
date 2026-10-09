@@ -11,6 +11,7 @@ from importlib.resources import files
 from itertools import islice, zip_longest
 from typing import Any
 
+from .state import current_state
 from .db import Store, dumps, now
 from .claim_sequences import normalize_claim, same_claim_sequences
 from .models import Gateway, ModelError
@@ -437,7 +438,7 @@ class Retrieval:
             if include_goals:
                 result["goals"] = self._goals(conn, None, 10)
             if include_state:
-                result["state"] = {}
+                result["state"] = current_state(conn, current=self.clock())
         result["recall_id"] = self._record(None, request, memories)
         return result
 
@@ -574,7 +575,7 @@ class Retrieval:
                 hints.append({"code": "memory_gaps", "message": "本入口有尚未记住的消息区间。", "gaps": gaps})
             hints.extend(self._model_hints(conn))
             result = {"persona": dict(persona) if persona else {"version": None, "content": "", "generated_at": None},
-                      "memories": memories, "recent_messages": recent, "state": {},
+                      "memories": memories, "recent_messages": recent,
                       "goals": self._goals(conn, entry_id, min(goal_limit, 10)), "hints": hints}
         diagnostic = apply_judgment(self.gateway, self.store, memories, {
             'role_name': self.store.setting('role_name', 'Iris'), 'query_hint': request['text'],
@@ -607,6 +608,7 @@ class Retrieval:
                 diagnostic.update(status='disabled', reason='configuration_disabled', removed_memory_ids=[])
                 final = [{**old, **self._public(current[old['id']])} for old in memories if old['id'] not in stale]
             annotate_memories(conn, final)
+            result["state"] = current_state(conn, current=self.clock())
             result.update(memories=final, recent_messages=recent, judgment=diagnostic)
             result['hints'].append({'code': 'recall_judgment', **diagnostic,
                 'message': {'applied': '召回判断已完成。', 'disabled': '召回判断已关闭。',

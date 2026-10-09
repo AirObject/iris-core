@@ -418,6 +418,14 @@ def install_admin(app):
     def gaps(query: Annotated[LearningQuery, Query()]):
         return admin_data.memory_gaps(app.state.store, **query.model_dump())
 
+    @router.get("/state")
+    def current_state():
+        return app.state.current_state.get()
+
+    @router.get("/state/reports")
+    def state_reports(query: Annotated[Page, Query()]):
+        return admin_data.state_reports(app.state.store, **query.model_dump())
+
     @router.get("/status")
     def status():
         result = service_status(app.state.store, app.state.scheduler, app.state.health)

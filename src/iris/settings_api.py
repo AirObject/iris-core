@@ -15,6 +15,7 @@ from .db import dumps
 from .memory_ops import update_role, lifecycle_settings, operation
 from .models import MODEL_KINDS, Gateway, ModelConfig, ModelError
 from .recall_judge import settings as judge_settings
+from .state import state_settings
 
 CONNECTION_TIMEOUT = 10
 PRESETS = [
@@ -91,6 +92,10 @@ class RecallJudge(Input):
     queue_limit: int = Field(default=8, ge=0, le=64, strict=True)
 
 
+class StateSettings(Input):
+    stale_after_minutes: int = Field(default=30, ge=1, le=525600, strict=True)
+
+
 class Limits(Input):
     daily_token_limit: int | None = Field(default=None, ge=1, strict=True)
     learning_concurrency: int = Field(default=2, ge=1, le=32, strict=True)
@@ -118,6 +123,7 @@ def install_settings(app):
         store = app.state.store
         with store.read() as conn:
             lifecycle = lifecycle_settings(conn)
+            state = state_settings(conn)
             operations = [dict(r) for r in conn.execute('SELECT id,actor,action,created_at FROM admin_operations ORDER BY id DESC LIMIT 30')]
         return {'role': {'name': store.setting('role_name', 'Iris'), 'background': store.setting('background', ''),
                          'timezone': store.setting('timezone', None)},
@@ -125,7 +131,7 @@ def install_settings(app):
                 'model_source': 'external' if app.state.runtime_config.external_loader else 'local',
                 'daily_token_limit': store.setting('daily_token_limit'),
                 'learning_concurrency': store.setting('learning_concurrency', 2),
-                'lifecycle': lifecycle, 'recall_judge': judge_settings(store),
+                'lifecycle': lifecycle, 'recall_judge': judge_settings(store), 'state': state,
                 'health': app.state.health.snapshot(), 'presets': PRESETS, 'operations': operations}
 
     def sync_models():
@@ -186,6 +192,15 @@ def install_settings(app):
             values = {**(json.loads(row[0]) if row else {}), **payload.model_dump(exclude_unset=True)}
             conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('recall_judge',?)", (dumps(values),))
             audit(conn, 'recall_judge_saved', payload.model_dump(exclude_unset=True))
+        return snapshot()
+
+    @router.patch('/settings/state')
+    def save_state_settings(payload: StateSettings):
+        with app.state.store.write() as conn:
+            changes = payload.model_dump(exclude_unset=True)
+            values = {**state_settings(conn), **changes}
+            conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('state',?)", (dumps(values),))
+            operation(conn, 'state_settings_saved', 'settings', 'state', changes)
         return snapshot()
 
     @router.patch('/settings/limits')

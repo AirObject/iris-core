@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .retrieval import Retrieval
+from .state import report_history
 from .people import list_people, person_detail, canonical_subject
 from .memory_ops import lifecycle_settings, missing_batch_targets
 from .model_health import utc_now
@@ -380,3 +381,8 @@ def maintenance_runs(store, *, limit=30, offset=0):
         for item in items:
             item["summary"] = json.loads(item.pop("summary_json"))
         return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+def state_reports(store, *, limit=30, offset=0):
+    with store.read() as conn:
+        return report_history(conn, limit=limit, offset=offset)

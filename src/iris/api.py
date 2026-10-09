@@ -29,6 +29,7 @@ from .auth import Sessions, install_auth
 from .configuration import RuntimeConfig
 from .settings_api import install_settings
 from .memory_ops import operation
+from .state import CurrentState, PutReport, PatchReport, SourceReport, StateError, MAX_REPORT_BYTES
 
 
 def loopback_host(host: str) -> str:
@@ -151,6 +152,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             scheduler = Scheduler(active_store, active_gateway, config_loader=runtime.load, max_concurrent=learning_concurrency)
             resources.callback(scheduler.stop)
             app.state.store = active_store
+            app.state.current_state = CurrentState(active_store)
             app.state.runtime_config = runtime
             app.state.sessions = Sessions(active_store)
             app.state.gateway = active_gateway
@@ -184,6 +186,19 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
                                 status_code=503, headers={"Retry-After": "1"})
         return await call_next(request)
 
+    @app.middleware("http")
+    async def state_body_limit(request, call_next):
+        if request.url.path == "/api/v1/state" and request.method in ("PUT", "PATCH", "DELETE"):
+            body = bytearray()
+            async for chunk in request.stream():
+                if len(body) + len(chunk) > MAX_REPORT_BYTES:
+                    return JSONResponse({"error": {"code": "invalid_request", "fields": [
+                        {"field": "body", "message": "状态报告超过 32KB UTF-8 上限"}]}}, status_code=400)
+                body.extend(chunk)
+            # BaseHTTPMiddleware replays this cached body to FastAPI validation.
+            request._body = bytes(body)
+        return await call_next(request)
+
     install_auth(app)
     install_settings(app)
 
@@ -206,6 +221,12 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         rejected_host_write(request, 400)
         return JSONResponse({"error": {"code": "invalid_request", "fields": [
             {"field": ".".join(map(str, e["loc"])), "message": e["msg"]} for e in error.errors()]}}, status_code=400)
+
+    @app.exception_handler(StateError)
+    async def invalid_state(request, error):
+        field = error.field if error.field == "body" else "body." + error.field
+        return JSONResponse({"error": {"code": "invalid_request", "fields": [
+            {"field": field, "message": str(error)}]}}, status_code=400)
 
     @app.exception_handler(ValueError)
     async def invalid_content(request, error):
@@ -260,6 +281,22 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     @app.post("/api/v1/feedback", summary="反馈实际使用的记忆，24 小时内同条只强化一次")
     def feedback(payload: Feedback):
         return app.state.retrieval.feedback(payload.recall_id, payload.memory_ids)
+
+    @app.get("/api/v1/state", summary="读取宿主报告的当前状态")
+    def get_state():
+        return app.state.current_state.get()
+
+    @app.put("/api/v1/state", summary="开始或替换活动；相同活动保留开始时间")
+    def put_state(payload: PutReport):
+        return app.state.current_state.put(**payload.model_dump(exclude_unset=True))
+
+    @app.patch("/api/v1/state", summary="更新细节、情绪或心跳")
+    def patch_state(payload: PatchReport):
+        return app.state.current_state.patch(**payload.model_dump(exclude_unset=True))
+
+    @app.delete("/api/v1/state", summary="结束活动，保留宿主报告历史")
+    def delete_state(payload: SourceReport = Body(default=SourceReport())):
+        return app.state.current_state.delete(**payload.model_dump(exclude_unset=True))
 
     @app.get("/api/v1/status", summary="服务状态、最近模型调用和入口积压")
     def status():

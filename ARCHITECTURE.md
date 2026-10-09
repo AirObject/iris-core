@@ -9,6 +9,7 @@
 | 入口与批次 | `entries`、`messages`、`batches`、`batch_attempts`、`memory_gaps` |
 | 主体 | `subjects`、`subject_aliases`、`platform_identities`、`subject_links`、`subject_alias_blocks` |
 | 记忆 | `memories`、`memory_subjects`、`memory_tags`、`sources`、`memory_revisions` |
+| 当前状态 | `current_state`、`state_reports` |
 | 自我与目标 | `persona_versions`、`goals`、`goal_sources`、`runtime_settings` |
 | 模型 | `model_calls` |
 | 召回 | `memory_fts_jieba`、`memory_fts_trigram`、`vector_dirty`、`recalls`、`recall_items` |
@@ -152,7 +153,7 @@ ModelHealth 使用 runtime_settings 分别保存 chat、embedding 和 recall_jud
 
 memory_ops 的人工正文编辑与删除都核对预期修订号，并在同一个写事务保存 memory_revisions。详情的人工操作记录直接投影这张表中的 actor=admin 行（动作、时间、对象、前后修订），迁移 008 另在 admin_operations 保存修订标识，统一查询但不复制正文。删除留下永久 tombstone，更新既有 FTS 和向量索引，不删除共享来源或派生对象。在途学习不能覆盖新修订；后续新批次按最近实际正文修订保护人工编辑（设计 12.5），具体学习写入规则见上文。来源失效的确定性扣减见下文，模型重新整理留到 M3。
 
-页面以 batches 作为学习结果依据，单独显示接收、等待、运行、重试、成功无记忆、成功有变化、放弃／拒绝；详情分列被召回／被使用／相信程度。运行页直接复用 service_status 的健康、用量、学习延迟、超时和错误摘要，未引入另一套统计口径。当前状态为空、persona 与目标只读，费用暂无定价不估算。
+页面以 batches 作为学习结果依据，单独显示接收、等待、运行、重试、成功无记忆、成功有变化、放弃／拒绝；详情分列被召回／被使用／相信程度。运行页直接复用 service_status 的健康、用量、学习延迟、超时和错误摘要，未引入另一套统计口径。该阶段的当前状态为空、persona 与目标只读，费用暂无定价不估算；M3 的状态后端见下文。
 
 ## M1 界面第二步：设置与管理员边界
 
@@ -190,3 +191,14 @@ Scheduler 的独立单工作线程执行 Maintenance，不占学习、模型探�
 彻底清除删除正文／历史／自身关系，留下不含正文与向量的 deleted 占位，purged_at 使管理投影返回不存在，同时继续占用原 ID、承接入站依据引用。清除不擦除 batch_attempts 的原始输出或 model_calls 已有内容。按旧内容新建沿用现存来源和关系，正文／判断取所选历史修订，新 ID 与初始强度独立。选择细节及管理接口见 README 的 M2 小节。
 
 管理员修订触发器只在 admin_operations 记历史标识；每次批次从 running 得到结果的事务自动记录状态和数量（服务、离线、重启恢复共用），不存 result_json 或错误正文。其他人工操作、宿主立即学习和反馈，以及维护完成摘要明确写入。GET /admin/api/operations 以只读快照按时间、动作、操作者和对象筛选；维护报告独立保存每项结果和 ID。设置校验部分更新的合并结果及 H>F，现有会话、CSRF、Host 边界不变。
+
+
+## M3 当前状态（GO 第一步）
+
+`state.py` 独立保存宿主报告，不引用学习、记忆、persona、目标或模型网关。迁移 011 新增只容纳 id=1 的 `current_state` 和追加式 `state_reports`，不改变既有认知表。状态为空时无当前行，协议返回 `{}`。每次报告在 Store 单写锁内取时间、读取旧值、校验合并后的细节上限、更新／删除当前值并追加历史，事务失败全部回滚。报告 ID 定义多宿主的提交顺序；来源只保存为可空标签，不创建入口、不强加外键，后续入口变化不会擦除来源。
+
+活动去首尾空白后精确比较。相同活动保留开始时间；不同活动重建细节与情绪。PUT 显式 started_at 可校正同一活动的开始时间，必须带时区且不晚于报告时刻。省略时新活动使用首次报告时刻，旧活动保持已有依据。PATCH 不能换活动或开始时间，无当前活动时拒绝。细节采用有界 JSON 键值映射，每项独立保存报告时间，null 删除键；情绪 null 清空并保留清空时间。整体更新时间与各字段时间分别计算；历史同时保留明确报告值与实际 before／after 差异，心跳也追加记录，不调用语义合并。
+
+内部时间统一保存为 UTC，投影按 runtime_settings.timezone 转换；持续时长及新鲜度按 UTC 瞬时值计算，避免夏令时回拨扭曲时长。CurrentState 接受可注入 clock；prepare／search 使用 Retrieval 已有的 clock。runtime_settings.state.stale_after_minutes 默认 30，严格超过才标“可能过时”，只读计算不写状态。GET 状态与历史通过只读快照获取；prepare 在召回判断之后已有的最终短事务中投影状态，search 在选取后的快照中按 include_state 投影，不参与查询构造、embedding、排序、预算或学习材料。
+
+宿主四个 state 路由沿用 Host 白名单；其写请求在 JSON 校验前限制为 32KB UTF-8，字段约束及 extra=forbid 返回既有 400 字段错误结构。管理接口仅 GET 当前值和分页历史；settings_api 的状态阈值 PATCH 沿用管理员会话、CSRF 等边界，在同一短事务写 state_settings_saved 操作记录。没有管理员状态写接口，没有自动过时清理、学习反向写入或每日维护步骤。测试以禁止任何状态表写入的触发器运行真实学习写入路径及全部每日维护阶段，覆盖 S09；状态不会因“战斗已结束”的学习记忆而变化。前端及试用轮询面板由后续 UX 接入，本步只接通实际回复准备材料。
