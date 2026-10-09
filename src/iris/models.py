@@ -26,7 +26,8 @@ LEARNING_TOTAL_TIMEOUT = 180
 EMBEDDING_TOTAL_TIMEOUT = 30
 JUDGE_TOTAL_TIMEOUT = 240
 RECALL_JUDGE_TOTAL_TIMEOUT = 10
-MODEL_KINDS = ("chat", "embedding", "recall_judge")
+JUDGMENT_KINDS = ("recall_judge", "goal_dedup_judge")
+MODEL_KINDS = ("chat", "embedding", *JUDGMENT_KINDS)
 
 
 @dataclass(frozen=True)
@@ -46,10 +47,11 @@ class ModelConfig:
 
 def effective_configs(configs):
     result = dict(configs)
-    if result.get('recall_judge') is None and result.get('chat'):
-        result['recall_judge'] = replace(result['chat'], dimensions=None, reasoning_effort='high')
-    elif result.get('recall_judge') and result['recall_judge'].reasoning_effort is None:
-        result['recall_judge'] = replace(result['recall_judge'], reasoning_effort='high')
+    for kind in JUDGMENT_KINDS:
+        if result.get(kind) is None and result.get('chat'):
+            result[kind] = replace(result['chat'], dimensions=None, reasoning_effort='high')
+        elif result.get(kind) and result[kind].reasoning_effort is None:
+            result[kind] = replace(result[kind], reasoning_effort='high')
     return result
 
 
@@ -80,7 +82,7 @@ def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
     data = tomllib.loads(chosen.read_text(encoding="utf-8"))
     result = {}
     for name in MODEL_KINDS:
-        if name == "recall_judge" and name not in data:
+        if name in JUDGMENT_KINDS and name not in data:
             continue
         group = data.get(name, {})
         api_key = str(group.get("api_key", ""))
@@ -94,7 +96,7 @@ def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
             api_key,
             str(group.get("model", "")),
             group.get("dimensions"),
-            group.get("reasoning_effort", "high" if name == "recall_judge" else None) if name != "embedding" else None,
+            group.get("reasoning_effort", "high" if name in JUDGMENT_KINDS else None) if name != "embedding" else None,
         )
     return result
 
@@ -259,10 +261,13 @@ class Gateway:
         from .recall_judge import Admission
         self._judge_admission = Admission()
         self._judge_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-recall-judge")
+        self._goal_judge_admission = Admission()
+        self._goal_judge_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-goal-judge")
 
     def close(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
         self._judge_pool.shutdown(wait=False, cancel_futures=True)
+        self._goal_judge_pool.shutdown(wait=False, cancel_futures=True)
         if self._own_client:
             self.client.close()
 
@@ -314,6 +319,9 @@ class Gateway:
 
     @staticmethod
     def timeout_for(kind, purpose):
+        if kind == "goal_dedup_judge":
+            from .goal_dedup_judge import MAX_SECONDS
+            return MAX_SECONDS
         if kind == "recall_judge":
             return RECALL_JUDGE_TOTAL_TIMEOUT
         if kind == "embedding":
@@ -326,15 +334,22 @@ class Gateway:
 
     def _call(self, kind: str, purpose: str, payload: dict[str, Any], *, batch_id: int | None = None,
               deadline: float | None = None, probe: bool = False, validator=None, _lease=None) -> dict[str, Any]:
-        if kind == 'recall_judge' and _lease is None:
-            from .recall_judge import settings
+        if kind in JUDGMENT_KINDS and _lease is None:
+            if kind == 'recall_judge':
+                from .recall_judge import settings
+                admission = self._judge_admission
+            else:
+                from .goal_dedup_judge import settings
+                admission = self._goal_judge_admission
             started = self.monotonic()
-            deadline = min(deadline, started + RECALL_JUDGE_TOTAL_TIMEOUT) if deadline is not None else started + RECALL_JUDGE_TOTAL_TIMEOUT
+            ceiling = started + self.timeout_for(kind, purpose)
+            options = settings(self.store)
+            default_deadline = started + options.get('budget_seconds', RECALL_JUDGE_TOTAL_TIMEOUT)
+            deadline = min(deadline, ceiling) if deadline is not None else min(default_deadline, ceiling)
             if self.health:
                 self.health.check(kind, purpose, probe=probe)
-            options = settings(self.store)
             try:
-                lease = self._judge_admission.acquire(deadline, options['concurrency'], options['queue_limit'], self.monotonic)
+                lease = admission.acquire(deadline, options['concurrency'], options['queue_limit'], self.monotonic)
             except ModelError as exc:
                 exc.queue_ms = (self.monotonic() - started) * 1000
                 raise
@@ -351,7 +366,7 @@ class Gateway:
                 if not lease.deferred:
                     lease.release()
         deadline = deadline if deadline is not None else self.monotonic() + self.timeout_for(kind, purpose)
-        attempts = 1 if probe or purpose == "retrieval_query" or kind == "recall_judge" else 3
+        attempts = 1 if probe or purpose == "retrieval_query" or kind in JUDGMENT_KINDS else 3
         for attempt in range(attempts):
             token = self.health.check(kind, purpose, probe=probe) if self.health else None
             config = self.configs.get(kind)
@@ -378,7 +393,8 @@ class Gateway:
             if reasoning_effort is not None:
                 request_payload["reasoning_effort"] = reasoning_effort
             try:
-                pool = self._judge_pool if kind == "recall_judge" else self._pool
+                pool = (self._judge_pool if kind == "recall_judge" else
+                        self._goal_judge_pool if kind == "goal_dedup_judge" else self._pool)
                 request = pool.submit(self.client.post, url, headers=headers,
                                             json=request_payload, timeout=timeout)
                 response = request.result(timeout=remaining)
@@ -438,7 +454,7 @@ class Gateway:
                 category = "retryable"
                 summary = "total timeout" if isinstance(exc, FutureTimeout) else type(exc).__name__
             except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
-                category, summary = ("invalid_output" if kind == "recall_judge" else "configuration"), f"invalid provider response: {type(exc).__name__}"
+                category, summary = ("invalid_output" if kind in JUDGMENT_KINDS else "configuration"), f"invalid provider response: {type(exc).__name__}"
             duration = round((self.monotonic() - started) * 1000)
             # Even an HTTP client that returns just after the deadline cannot commit a late result.
             if category == "success" and self.monotonic() > deadline:
@@ -455,7 +471,7 @@ class Gateway:
                     error = ModelError("paused", "model configuration changed during request", paused=True, reason='configuration_changed')
                     error.network_ms = duration
                     raise error
-                if kind == 'recall_judge':
+                if kind in JUDGMENT_KINDS:
                     data['_iris_network_ms'] = duration
                 return data
             if category != "retryable" or paused or attempt == attempts - 1:
@@ -479,6 +495,16 @@ class Gateway:
         raw = data['choices'][0]['message']['content']
         return {'scores': validate_scores(raw, ids), 'queue_ms': data['_iris_queue_ms'],
                 'network_ms': data['_iris_network_ms'], 'usage': data.get('usage') or {}}
+
+    def goal_dedup_judge(self, messages, ids, *, budget_seconds=10):
+        from .goal_dedup_judge import validate_budget, validate_decisions
+        budget = validate_budget(budget_seconds)
+        data = self._call('goal_dedup_judge', 'goal_dedup_judge', {'messages': messages, 'temperature': 0,
+                          'response_format': {'type': 'json_object'}, 'max_tokens': 4096},
+                          deadline=self.monotonic() + budget, validator=lambda raw: validate_decisions(raw, ids))
+        return {'decisions': validate_decisions(data['choices'][0]['message']['content'], ids),
+                'queue_ms': data['_iris_queue_ms'], 'network_ms': data['_iris_network_ms'],
+                'usage': data.get('usage') or {}}
 
     def chat(self, messages: list[dict[str, str]], purpose: str, max_tokens: int = 3500, *, batch_id: int | None = None,
              _deadline: float | None = None) -> ModelReply:

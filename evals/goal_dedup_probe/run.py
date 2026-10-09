@@ -10,13 +10,16 @@ import hashlib
 import json
 import sys
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+
+import httpx
 
 from iris.db import Store
 from iris.goals import Goals, _deadline, write_learning_goal
 from iris.model_health import ModelHealth
-from iris.models import Gateway, ModelError, load_test_models
+from iris.models import Gateway, ModelConfig, ModelError, load_test_models
 from iris.query_analysis import SubjectNames
 from iris.state import role_zone
 
@@ -87,6 +90,23 @@ class RecordingGateway(Gateway):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.records=[]
+        self.raw_contents=[]
+        self.client.event_hooks['response'].append(self._capture_content)
+
+    def _capture_content(self,response):
+        # Keep invalid model JSON as well. Never retain headers, provider error
+        # prose, or reasoning fields; only successful HTTP completion content.
+        if response.status_code!=200:
+            return
+        response.read()
+        try:
+            data=response.json()
+            choice=data['choices'][0]
+            content=choice['message'].get('content')
+            if isinstance(content,str):
+                self.raw_contents.append({'content':content,'finish_reason':choice.get('finish_reason')})
+        except (ValueError,KeyError,IndexError,TypeError,AttributeError):
+            pass
 
     def _call(self,kind,purpose,payload,**kwargs):
         # Admission calls _call recursively: capture only the outer invocation.
@@ -106,11 +126,26 @@ class RecordingGateway(Gateway):
             raise
 
 
-def run_case(case,corpus,out,method,configs,budget):
+def fake_transport(verdict):
+    """Offline plumbing check; ignores labels and cannot access the network."""
+    def respond(request):
+        if verdict=='timeout':
+            raise httpx.ReadTimeout('simulated goal timeout',request=request)
+        material=json.loads(json.loads(request.content)['messages'][-1]['content'])
+        content=json.dumps({'decisions':[{'id':row['id'],'verdict':verdict} for row in material['candidates']]})
+        if verdict=='invalid':
+            content='invalid unit response'
+        return httpx.Response(200,json={'choices':[{'message':{'content':content},'finish_reason':'stop'}],
+                                      'usage':{'prompt_tokens':1,'completion_tokens':1}})
+    return httpx.MockTransport(respond)
+
+
+def run_case(case,corpus,out,method,configs,budget,*,fake=None):
     directory=out/case['id']
     directory.mkdir()
     store=Store(directory/'iris.db')
     gateway=None
+    client=None
     current=utc(case['now'])
     try:
         keys,evidence=seed_case(store,case,corpus)
@@ -118,7 +153,8 @@ def run_case(case,corpus,out,method,configs,budget):
                                              'budget_seconds':budget,'concurrency':1,'queue_limit':8})
         if method!='A':
             health=ModelHealth(store,configs,clock=lambda:current)
-            gateway=RecordingGateway(configs,store,health=health,clock=lambda:current)
+            client=httpx.Client(transport=fake_transport(fake)) if fake else None
+            gateway=RecordingGateway(configs,store,health=health,clock=lambda:current,client=client)
             goals=Goals(store,gateway=gateway,clock=lambda:current)
         else:
             goals=Goals(store,clock=lambda:current)
@@ -152,10 +188,13 @@ def run_case(case,corpus,out,method,configs,budget):
               'reasoning_tokens':sum(c['reasoning_tokens'] or 0 for c in calls)}
         save(directory/'result.json',{'receipt':result,'goals':snapshot,'operations':operations,'calls':calls})
         save(directory/'requests.json',gateway.records if gateway else [])
+        save(directory/'model-contents.json',gateway.raw_contents if gateway else [])
         return score_case(case,item)
     finally:
         if gateway:
             gateway.close()
+        if client:
+            client.close()
         store.close()
 
 
@@ -165,6 +204,8 @@ def main():
     parser.add_argument('--out',type=Path,required=True)
     parser.add_argument('--method',choices=('A','B','C'),required=True)
     parser.add_argument('--budget-seconds',type=float,default=60)
+    parser.add_argument('--fake',choices=('same','different','uncertain','timeout','invalid'),
+                        help='offline transport self-check; no configuration read or network calls; excluded from selection')
     args=parser.parse_args()
     out=args.out.resolve()
     if out.is_relative_to(ROOT):
@@ -176,15 +217,24 @@ def main():
     corpus=json.loads(corpus_bytes)
     if corpus.get('format_version')!=1:
         parser.error('unsupported corpus format')
-    configs=load_test_models() if args.method!='A' else None
-    metadata={'method':args.method,'budget_seconds':args.budget_seconds,'corpus_sha256':hashlib.sha256(corpus_bytes).hexdigest(),
+    configs=None
+    if args.method!='A':
+        configs=({'chat':ModelConfig('https://goal-probe.invalid/v1','','fake-goal-dedup')}
+                 if args.fake else load_test_models())
+    if configs:
+        configs['goal_dedup_judge']=replace(configs['chat'],dimensions=None,reasoning_effort='high')
+    metadata={'method':args.method,'simulation':bool(args.fake),'fake_verdict':args.fake,'budget_seconds':args.budget_seconds,'corpus_sha256':hashlib.sha256(corpus_bytes).hexdigest(),
               'prompt_sha256':hashlib.sha256((ROOT/'src/iris/prompts/goal_dedup_judge_v1.md').read_bytes()).hexdigest(),
+              'runner_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              'scoring_sha256':hashlib.sha256(Path(__file__).with_name('scoring.py').read_bytes()).hexdigest(),
+              'source_sha256':hashlib.sha256(b''.join(path.relative_to(ROOT).as_posix().encode()+path.read_bytes()
+                    for path in sorted((ROOT/'src/iris').rglob('*.py')))).hexdigest(),
               'expected_cases':len(corpus['cases']),'timezone':corpus['timezone'],
               'model':configs['chat'].model if configs else None,'reasoning_effort':'high' if configs else None}
     save(out/'metadata.json',metadata)
     rows=[]
     for case in corpus['cases']:
-        row=run_case(case,corpus,out,args.method,configs,args.budget_seconds)
+        row=run_case(case,corpus,out,args.method,configs,args.budget_seconds,fake=args.fake)
         rows.append(row)
         print(json.dumps({'case':case['id'],'method':args.method,'duration_ms':round(row['duration_ms'],1),
                           'degraded':row['degraded']},ensure_ascii=False),flush=True)

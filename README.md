@@ -304,13 +304,13 @@ PUT 的活动经去除首尾空白后，按区分大小写的完整字符串判�
 
 目标返回 `id/content/kind/origin/state/deadline/reminder_minutes/effective_reminder_minutes/people/entry_id/host_key/revision`，以及创建／更新时间、`closed_at/closed_by`、`merged_into`、`overdue/due_soon` 和 `possible_duplicate/possible_duplicate_ids`。`due_soon` 表示已到临近时刻，过期时也为 true。学习旧输出中无法解析的期限保留原文，并标记 `deadline_unresolved=true`，不臆测时间或生成提醒；宿主和管理员可修改成有效期限。
 
-注入先保存原始目标，再跨入口在同 kind 的未结束目标中去重。`decide_dedup(candidates, proposed)` 返回 `{status,target_id}`：`created`、`merged`、`possible_duplicate` 或保留给后续判断降级的 `pending`。本步不调用模型：仅正文压缩连续空白、忽略大小写和句末标点后完全一致，且涉及人集合相同、期限兼容时自动合并。内部标点和英文词界保留，复用 M2 的中文／阿拉伯数字与否定序列规则；一个期限为空兼容，两个明确期限不同不兼容。其他规范化文本相似度至少 0.88 的兼容项只标记可能重复。管理员新建（`origin=admin`）也执行同一判断，但 `merged` 结果降为 `possible_duplicate`，保留两条目标，等待管理员明确合并或驳回；宿主和学习产生的新目标仍按上述规则自动合并。这不是目标去重模型质量门槛的结论。
+注入先保存原始目标，再跨入口在同 kind 的未结束目标中去重。`decide_dedup(candidates, proposed)` 返回 `{status,target_id}`：`created`、`merged`、`possible_duplicate` 或模型判断待复核的 `pending`。关闭目标去重判断时沿用确定性规则：仅正文压缩连续空白、忽略大小写和句末标点后完全一致，且涉及人集合相同、期限兼容时自动合并。内部标点和英文词界保留，复用 M2 的中文／阿拉伯数字与否定序列规则；一个期限为空兼容，两个明确期限不同不兼容。其他规范化文本相似度至少 0.88 的兼容项只标记可能重复。管理员新建（`origin=admin`）也执行同一判断，但 `merged` 结果降为 `possible_duplicate`，保留两条目标，等待管理员明确合并或驳回；宿主和学习产生的新目标仍按上述规则自动合并。这不是目标去重模型质量门槛的结论。
 
 合并保留较早目标，原目标及其依据保留可追溯，占位的 `merged_into` 指向保留项；来源消息、同证据角色记忆与未取提醒归入保留项。明确截止时间补入空值；两个明确提前量不同则采用较早提醒（较大分钟数），原值仍在被合并项中。合并后的同阶段待取提醒只留一条，其余保留为取消记录。相同 `host_key` 的重试返回首次创建的完整回执快照，即使后来目标已修改；读取最新状态用列表。修改已合并 ID 返回 409 `goal_merged` 和 `canonical_id`，需要明确选择保留项再提交。
 
 有期限的普通目标在临近、到期时发布提醒；创建／修改时已经错过提醒时刻则立即发布一条，未来的到期提醒仍保留。服务恢复时同一目标错过的阶段只发布一条即时提醒，不逐条补发。提前量为 0 时，临近和到期同刻，合为一条。过期后的周期提醒按角色时区每天最多一次，内容请宿主选择放弃或修改期限；停机多日只生成当前一天的一条。系统不自动失败、放弃或顺延。
 
-通知的 `id` 是实际发布时分配的单调游标，未来计划不提前占用游标。每条有 `kind=goal_reminder`、`reminder_kind=soon/due/overdue/immediate`、`goal_id`、`content`、发布时的期限 `deadline_at`、计划／发布时间、`status=pending/taken/cancelled` 及取走／取消时间。取走仅表示宿主读到；相同游标可重放已取记录，方便恢复丢失的 HTTP 响应，宿主按通知 ID 去重。取走不等于送达，也不完成目标。修改期限／提前量或完成／放弃会更新未来计划、取消未取记录；已取记录保留。默认提前量变动重排使用默认值的未来目标，保留已过期的待取提醒。
+通知的 `id` 是实际发布时分配的单调游标，未来计划不提前占用游标。目标提醒每条有 `kind=goal_reminder`、`reminder_kind=soon/due/overdue/immediate`、`goal_id`、`content`、发布时的期限 `deadline_at`、计划／发布时间、`status=pending/taken/cancelled` 及取走／取消时间。取走仅表示宿主读到；相同游标可重放已取记录，方便恢复丢失的 HTTP 响应，宿主按通知 ID 去重。取走不等于送达，也不完成目标。修改期限／提前量或完成／放弃会更新未来计划、取消未取的目标提醒；已取记录和去重结果通知保留。默认提前量变动重排使用默认值的未来目标，保留已过期的待取提醒。
 
 prepare 与 `search(include_goals=true)` 返回最多 10 个未结束目标／询问：临近和过期优先，其次本入口、涉及当前参与者，再按期限与创建时间。此分区不改变记忆选取。管理员接口沿用会话、CSRF 和操作记录：`GET/POST /admin/api/goals`，`GET/PATCH /admin/api/goals/{id}`；管理修改须带 `expected_revision`，可编辑正文。列表另支持 `entry_id/possible_duplicate/deadline_from/deadline_to`，日期筛选包含整天。详情含 `sources`、`promise_memories`（同证据角色记忆及当时修订，并非新增语义承诺分类）、`merged_goals`、提醒计划和通知历史。
 
@@ -354,6 +354,20 @@ prepare 与 `search(include_goals=true)` 返回最多 10 个未结束目标／�
 | 5 万／点名 | 154.4 | 156.8 |
 
 完整材料、脚本、日志及逐案例差异保存在仓库外 `iris-eval-artifacts/m3-goals-20261009/` 和 `iris-eval-artifacts/m3-goals-review-20261009/`；模型去重与方法选择留待下一步。
+
+## M3 目标去重判断（GO 第三步，待探测）
+
+本草稿已接通模型用途与持久复核，尚未选择产品方法。目标去重判断默认关闭；显式启用时暂用 C 验证接线，不表示 C 已胜出。候选 A（确定性基线）、B（逐候选判断）、C（整批候选判断）及提示词在 `9cacbd02d38f0200dd757316c7b8c8c101dde113` 冻结，详见 [方法约定](evals/goal_dedup_probe/METHODS.md)。此前作废的运行保留在仓库外，不参与选择；收到独占窗口指令后，全部候选会各完整运行两次。
+
+B／C 只判断同 kind、未结束且未合并的候选。明确的人物集合、期限、数字或否定序列冲突先排除；人物信息缺失按未知处理。正文相似度至少 0.25 或有共同涉及人即召回，最多 8 个；模型材料只有正文及时间、涉及人、期限、入口类型和来源摘录。即使正文完全相同也判断来源是否指同一事件。只有唯一 `same` 且其余没有 `same/uncertain` 才自动合并；有歧义或候选超限则保留并标可能重复。管理员创建始终不自动合并。只有一方缺少涉及人时，确认合并保留已知人物；明确不同的人物仍拒绝合并。
+
+宿主 POST 先提交目标，再在请求内判断。超时、排队满、限流、暂停或在途修订变化返回 `dedup.status=pending`，由调度器补做。学习仍只在原事务内执行确定性候选检索和入队，提交后才判断，不改学习材料／校验／提示词。宿主键重试保留首次响应，后台结果不改写回执。补做结束写操作记录，并发布 `kind=goal_dedup_result` 通知；宿主仍按通知发布游标拉取，查看最新目标列表中的合并与可能重复状态。
+
+迁移 013 新增 `goal_dedup_jobs`，保存任务状态、两边修订号、尝试次数、下次执行时间及可过期租约。调度器只查询到期任务，不重新去重历史目标；失效租约可在重启后恢复。模型调用在事务外，写回核对租约、本目标和全部候选修订，并再次核对人物／来源投影；失效结果不落地。完成或放弃取消未完成复核。管理目标详情增加只读 `dedup_review`，含状态、方法、输入修订、尝试次数、结果、下次执行和更新时间，不暴露租约凭据。
+
+`goal_dedup_judge` 用途默认继承对话端点及 high 档位，健康状态、并发和有界排队独立于学习及召回判断。前两次 429 按 Retry-After 或 2／4 秒退避，第三次连续可重试错误暂停并探测；每日 token 上限同样阻止判断。`PATCH /admin/api/settings/goal-dedup-judge` 沿用会话、CSRF 和操作记录，设置 `enabled`、`budget_seconds`（大于 0 且至多 10 秒）、`concurrency`（1—8）和 `queue_limit`（0—64）。草稿预算 10 秒、并发 1、排队 8；最终默认预算待有效探测 P95 决定。独立模型端点的保存／测试／重试沿用 `/admin/api/settings/models/goal_dedup_judge` 系列接口。
+
+探测脚本支持仓库外 `--corpus` 和 `--out`；`--fake` 使用本地传输，不读取模型配置、不发送网络请求，结果明确标为模拟并被选型函数拒绝。使用方法与本轮验证汇总见 [探测说明](evals/goal_dedup_probe/README.md)。
 
 ## M2 人物与身份联系（后端）
 

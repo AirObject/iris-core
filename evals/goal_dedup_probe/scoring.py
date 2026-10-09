@@ -75,6 +75,8 @@ def select_method(reports, order=('A','B','C')):
     summaries = {}
     for method in order:
         runs = reports[method]
+        if any(run.get('simulation') for run in runs):
+            raise ValueError('simulation reports cannot select a product method')
         if len(runs) < 2 or any(not run['valid'] for run in runs):
             raise ValueError('each candidate needs at least two complete valid runs')
         rates = [run['wrong_merge_rate']['rate'] for run in runs]

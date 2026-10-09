@@ -91,3 +91,41 @@ def test_runner_seeds_history_and_calls_real_creation_path(tmp_path,origin):
     assert result['recognized'] and result['model_calls']==0
     assert len(result['merges'])==(0 if origin=='admin' else 1)
     assert result['possible_targets']==(['g1'] if origin=='admin' else [])
+
+
+def test_simulated_reports_cannot_participate_in_selection():
+    run=scoring.report([sample({'decision':'merge','target':'g1'},merges=['g1'])])
+    reports={method:[{**run,'simulation':True}]*2 for method in ('A','B','C')}
+    with pytest.raises(ValueError,match='simulation'):
+        scoring.select_method(reports)
+
+
+def test_fake_cli_never_loads_model_configuration_and_marks_output(tmp_path,monkeypatch):
+    import json
+    import sys
+    from tempfile import TemporaryDirectory
+    spec=spec_from_file_location('goal_probe_fake_cli',PATH.with_name('run.py'))
+    runner=module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    monkeypatch.setattr(runner,'load_test_models',lambda:pytest.fail('fake self-check must not read model configuration'))
+    historical={'key':'g1','content':'整理手册','kind':'normal','origin':'host','state':'open',
+                'entry_id':'old','entry_kind':'group','deadline':None,'people':[],
+                'created_at':'2026-10-01T00:00:00+08:00','sources':[]}
+    corpus={'format_version':1,'timezone':'Asia/Shanghai','role_name':'Iris','cases':[
+        {'id':'unit','category':'unit','now':'2026-10-02T00:01:00+08:00','subjects':[],
+         'existing':[historical],'incoming':{'content':'整理手册','kind':'normal','origin':'host',
+          'entry_id':'new','entry_kind':'private','sources':[]},'expected':{'decision':'merge','target':'g1'}}]}
+    source=tmp_path/'unit.json'
+    source.write_text(json.dumps(corpus),encoding='utf-8')
+    with TemporaryDirectory(prefix='iris-goal-probe-unit-') as directory:
+        out=Path(directory)/'run'
+        monkeypatch.setattr(sys,'argv',['probe','--corpus',str(source),'--out',str(out),'--method','C','--fake','uncertain'])
+        assert runner.main()==0
+        result=json.loads((out/'report.json').read_text())
+        assert result['simulation'] and result['complete'] and result['valid']
+        assert result['model']=='fake-goal-dedup' and result['model_calls']==1
+        requests=json.loads((out/'unit/requests.json').read_text())
+        assert len(requests)==1 and requests[0]['purpose']=='goal_dedup_judge'
+        materials=json.loads(requests[0]['messages'][-1]['content'])
+        assert set(materials)=={'incoming','candidates'}
+        assert 'expected' not in str(materials)
