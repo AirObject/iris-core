@@ -237,10 +237,26 @@ class LearningEngine:
     @staticmethod
     def _subject_reference(name: str, snapshot: dict[str, Any], *, literal: bool = False) -> str:
         """Keep verified labels as identity refs, but expand refs in durable names."""
+        participants = snapshot["participant_refs"]
+        stripped = name.strip()
+        # Models also emit a ref immediately followed by a display name/alias.
+        # Match only a complete known label; ordinary embedded refs (relatives)
+        # and unrelated ASCII names such as P1X keep their existing behavior.
+        compact = re.fullmatch(r"(P[0-9]+)(.+)", stripped) if stripped not in participants else None
+        if compact and compact[2] in ({s["name"] for s in snapshot["subjects"]} |
+                                      {a["alias"] for a in snapshot["aliases"]}):
+            ref, value = compact.groups()
+            if ref not in participants:
+                raise ValueError("unknown participant number")
+            subject_id = participants[ref]
+            display = next(s["name"] for s in snapshot["subjects"] if s["id"] == subject_id)
+            aliases = {a["alias"] for a in snapshot["aliases"] if a["subject_id"] == subject_id}
+            if value not in {display, *aliases}:
+                raise ValueError("participant name does not match participant number")
+            return value if literal else ref
         numbers = PARTICIPANT_NUMBER.findall(name)
         if not numbers:
             return name
-        participants = snapshot["participant_refs"]
         if any(ref not in participants for ref in numbers):
             raise ValueError("unknown participant number")
         names = {ref: next(s["name"] for s in snapshot["subjects"] if s["id"] == participants[ref])
