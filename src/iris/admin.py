@@ -1,6 +1,8 @@
 """Validated local UI API. No host route here generates a reply."""
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from importlib.resources import files
 from typing import Annotated, Literal
@@ -10,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
-from . import admin_data, trial, people
+from . import admin_data, trial, people, persona
 from .auth import audit, error
 from .queue import reset_batch, update_entry_settings, pace_parameters, filter_parameters, FILTER_DEFAULTS, PACE
 from .memory_ops import edit_memory, delete_memory, manage_memory, purge_memory, recreate_memory, operation, missing_batch_targets
@@ -120,6 +122,38 @@ class Recreate(Revision):
 class Page(Input):
     limit: int = Field(default=30, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=1000000)
+
+
+PersonaId = Annotated[int, PathParameter(gt=0, le=9223372036854775807)]
+
+
+class PersonaRevision(Input):
+    expected_version: int = Field(gt=0, le=9223372036854775807, strict=True)
+
+
+class PersonaEdit(PersonaRevision):
+    content: str = Field(min_length=1, max_length=800)
+
+
+class PersonaReject(PersonaRevision):
+    reason: str = Field(default='administrator rejected', min_length=1, max_length=1000)
+
+    @field_validator('reason')
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError('拒绝原因不能为空白')
+        return value.strip()
+
+
+class PersonaVersions(Page):
+    status: Literal['current', 'pending', 'rejected', 'superseded', 'history'] | None = None
+    source: Literal['initial_setting', 'periodic', 'regenerate', 'admin_edit', 'rollback'] | None = None
+
+
+class PersonaDiff(Input):
+    before_version: int = Field(gt=0, le=9223372036854775807)
+    after_version: int = Field(gt=0, le=9223372036854775807)
 
 
 GoalId = Annotated[int, PathParameter(gt=0, le=9223372036854775807)]
@@ -316,7 +350,17 @@ class OperationQuery(Page):
 
 
 def install_admin(app):
-    router = APIRouter(prefix="/admin/api", tags=["本机管理界面"])
+    @asynccontextmanager
+    async def lifespan(app):
+        jobs = persona.PersonaJobs(app.state.store, app.state.gateway)
+        app.state.persona_jobs = jobs
+        try:
+            yield
+        finally:
+            # Included router lifespans close before create_app's gateway/store.
+            await asyncio.to_thread(jobs.close)
+
+    router = APIRouter(prefix="/admin/api", tags=["本机管理界面"], lifespan=lifespan)
 
     def record(action, object_type, object_id, details=None):
         with app.state.store.write() as conn:
@@ -530,6 +574,66 @@ def install_admin(app):
     def gaps(query: Annotated[LearningQuery, Query()]):
         return admin_data.memory_gaps(app.state.store, **query.model_dump())
 
+    @router.get('/persona')
+    def current_persona():
+        return admin_data.persona_snapshot(app.state.store)
+
+    @router.get('/persona/versions')
+    def persona_versions(query: Annotated[PersonaVersions, Query()]):
+        return admin_data.persona_versions(app.state.store, **query.model_dump())
+
+    @router.get('/persona/versions/{version_id}')
+    def persona_version(version_id: PersonaId):
+        return admin_data.persona_version(app.state.store, version_id)
+
+    @router.get('/persona/diff')
+    def persona_diff(query: Annotated[PersonaDiff, Query()]):
+        # Missing IDs have the same 404 contract as version details.
+        admin_data.persona_version(app.state.store, query.before_version)
+        admin_data.persona_version(app.state.store, query.after_version)
+        return persona.version_diff(app.state.store, query.before_version, query.after_version)
+
+    @router.get('/persona/self-memories')
+    def persona_self_memories(query: Annotated[Page, Query()]):
+        return admin_data.persona_self_memories(app.state.store, **query.model_dump())
+
+    @router.get('/persona/attempts')
+    def persona_attempts(query: Annotated[Page, Query()]):
+        return admin_data.persona_attempts(app.state.store, **query.model_dump())
+
+    @router.get('/persona/attempts/{attempt_id}')
+    def persona_attempt(attempt_id: PersonaId):
+        return admin_data.persona_attempt(app.state.store, attempt_id)
+
+    @router.put('/persona')
+    def edit_persona(payload: PersonaEdit):
+        version = persona.admin_edit(app.state.store, **payload.model_dump())
+        return admin_data.persona_version(app.state.store, version['id'])
+
+    @router.post('/persona/versions/{version_id}/confirm')
+    def confirm_persona(version_id: PersonaId, payload: PersonaRevision):
+        admin_data.persona_version(app.state.store, version_id)
+        version = persona.confirm_candidate(app.state.store, version_id, **payload.model_dump())
+        return admin_data.persona_version(app.state.store, version['id'])
+
+    @router.post('/persona/versions/{version_id}/reject')
+    def reject_persona(version_id: PersonaId, payload: PersonaReject):
+        admin_data.persona_version(app.state.store, version_id)
+        version = persona.reject_candidate(app.state.store, version_id, **payload.model_dump())
+        return admin_data.persona_version(app.state.store, version['id'])
+
+    @router.post('/persona/versions/{version_id}/rollback')
+    def rollback_persona(version_id: PersonaId, payload: PersonaRevision):
+        admin_data.persona_version(app.state.store, version_id)
+        version = persona.rollback(app.state.store, version_id, **payload.model_dump())
+        return admin_data.persona_version(app.state.store, version['id'])
+
+    @router.post('/persona/regenerate', status_code=202)
+    def regenerate_persona(payload: PersonaRevision):
+        attempt_id = app.state.persona_jobs.submit(**payload.model_dump())
+        return JSONResponse({'accepted': True, 'attempt': admin_data.persona_attempt(app.state.store, attempt_id)},
+                            status_code=202, headers={'Location': f'/admin/api/persona/attempts/{attempt_id}'})
+
     @router.get("/goals")
     def goals(query: Annotated[AdminGoalQuery, Query()]):
         return admin_data.goals(app.state.store, current=app.state.goals.clock(), **query.model_dump())
@@ -577,6 +681,14 @@ def install_admin(app):
         result = service_status(app.state.store, app.state.scheduler, app.state.health)
         admin_data.add_entry_waits(app.state.store, result["entries"])
         return result
+
+    @app.exception_handler(persona.PersonaConflict)
+    async def persona_conflict(request, exc):
+        return error('persona_conflict', '当前 persona、候选或依据已变化，请刷新后重试', 409)
+
+    @app.exception_handler(persona.PersonaBusy)
+    async def persona_busy(request, exc):
+        return error('persona_generation_in_progress', '已有 persona 生成任务或服务正在停止，请查询任务状态', 409)
 
     @app.exception_handler(trial.TrialBusy)
     async def busy(request, error):

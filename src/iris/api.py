@@ -172,7 +172,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             resources.callback(scheduler.stop)
             app.state.store = active_store
             app.state.current_state = CurrentState(active_store)
-            app.state.goals = Goals(active_store)
+            app.state.goals = Goals(active_store, gateway=active_gateway)
             app.state.runtime_config = runtime
             app.state.sessions = Sessions(active_store)
             app.state.gateway = active_gateway

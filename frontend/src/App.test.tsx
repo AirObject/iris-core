@@ -1,3 +1,9 @@
+import {
+  personaSnapshotFixture,
+  personaCurrentFixture,
+  personaPendingFixture,
+  personaDiffFixture,
+} from "./persona-fixtures";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
@@ -145,6 +151,13 @@ beforeEach(() => {
           timeouts_seconds: { learning: 180, recall_judge: 10 },
           learning_calls_24h: learningCalls,
         };
+      else if (url === "/admin/api/persona") data = personaSnapshotFixture;
+      else if (url === "/admin/api/persona/versions/7")
+        data = personaCurrentFixture;
+      else if (url === "/admin/api/persona/versions/9")
+        data = personaPendingFixture;
+      else if (url.startsWith("/admin/api/persona/diff?"))
+        data = personaDiffFixture;
       else if (url === "/admin/api/settings")
         data = {
           recall_judge: {
@@ -708,3 +721,26 @@ test.each(["read", "write", "unavailable"])(
     ).not.toBeChecked();
   },
 );
+
+test("从试用右侧进入 persona 页，保留管理员会话且浏览不触发召回", async () => {
+  render(<App />);
+  const link = await screen.findByRole("link", { name: "查看 persona 与自我" });
+  expect(await screen.findByText(personaCurrentFixture.content)).toBeVisible();
+  await userEvent.click(link);
+  expect(
+    await screen.findByRole("heading", { name: "persona 与自我" }),
+  ).toBeVisible();
+  expect(
+    await screen.findByRole("heading", { name: "当前 persona · v7" }),
+  ).toBeVisible();
+  expect(
+    within(screen.getByRole("navigation", { name: "主导航" })).getByRole(
+      "link",
+      { name: "persona 与自我" },
+    ),
+  ).toHaveAttribute("aria-current", "page");
+  expect(requests.every((r) => r.method === "GET")).toBe(true);
+  expect(requests.some((r) => /prepare|search|api\/v1/.test(r.url))).toBe(
+    false,
+  );
+});

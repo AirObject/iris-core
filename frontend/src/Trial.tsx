@@ -1,9 +1,11 @@
+import { PersonaSummary } from "./PersonaSummary";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, json, useData, errorText } from "./api";
 import { Badge, Empty, Notice, time, batchLabel, messageState } from "./ui";
 import { EntryQueueWait, paceLabel } from "./EntrySettings";
 import { JudgmentSummary, SubjectAnnotations } from "./RecallJudgment";
 import { StateSummary } from "./State";
+import TrialGoals from "./TrialGoals";
 import type {
   Entry,
   TrialCatalog,
@@ -532,6 +534,7 @@ function Conversation({
           <p className="fine-print">学习成功也可能没有值得记住的内容。</p>
           <EntryQueueWait value={state?.queue_wait} />
         </section>
+        <TrialGoals goals={data?.goals} error={snapshot.error} />
         <section className="panel">
           <div className="panel-heading">
             <h2>新形成与更新</h2>
@@ -615,43 +618,10 @@ function Conversation({
         </section>
         <section className="panel context-panel">
           <h2>角色上下文</h2>
-          <details open>
-            <summary>
-              Persona{" "}
-              <span className="muted">
-                {data?.persona.version
-                  ? `v${data.persona.version}`
-                  : "暂无版本"}
-              </span>
-            </summary>
-            <p>
-              {data?.persona.content ||
-                "尚未创建 persona。可先使用现有命令行设置角色。"}
-            </p>
-          </details>
+          <PersonaSummary />
           <details open>
             <summary>当前状态</summary>
             <StateSummary />
-          </details>
-          <details>
-            <summary>
-              未结束目标{" "}
-              <span className="muted">{data?.goals.length || 0}</span>
-            </summary>
-            {data?.goals.length ? (
-              data.goals.map((g) => (
-                <div className="goal" key={g.id}>
-                  <p>{g.content}</p>
-                  <small>
-                    {g.overdue ? "已过期 · " : g.due_soon ? "即将到期 · " : ""}
-                    {g.deadline ? time(g.deadline) : "未设截止时间"} ·{" "}
-                    {g.state === "in_progress" ? "进行中" : "待处理"}
-                  </small>
-                </div>
-              ))
-            ) : (
-              <p className="quiet">暂无目标。</p>
-            )}
           </details>
         </section>
       </aside>

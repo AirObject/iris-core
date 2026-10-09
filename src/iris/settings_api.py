@@ -13,10 +13,12 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 from .auth import audit, error, local
 from .db import dumps
 from .memory_ops import update_role, lifecycle_settings, operation
-from .models import MODEL_KINDS, Gateway, ModelConfig, ModelError
+from .models import JUDGMENT_KINDS, MODEL_KINDS, Gateway, ModelConfig, ModelError
 from .recall_judge import settings as judge_settings
+from .persona import DEFAULT_GOAL, DEFAULT_RULES, persona_settings
 from .state import state_settings
 from .goals import goal_settings
+from .goal_dedup_judge import DEFAULTS as GOAL_JUDGE_DEFAULTS, settings as goal_judge_settings
 
 CONNECTION_TIMEOUT = 10
 PRESETS = [
@@ -80,7 +82,7 @@ class Model(Input):
             return None
         key = self.api_key.get_secret_value() if self.api_key is not None else (saved.api_key if saved else '')
         effort = self.reasoning_effort
-        if kind == 'recall_judge' and effort is None:
+        if kind in JUDGMENT_KINDS and effort is None:
             effort = 'high'
         return ModelConfig(self.base_url.rstrip('/'), key, self.model.strip(),
                            self.dimensions if kind == 'embedding' else None,
@@ -91,6 +93,30 @@ class RecallJudge(Input):
     enabled: bool = Field(default=True, strict=True)
     concurrency: int = Field(default=1, ge=1, le=8, strict=True)
     queue_limit: int = Field(default=8, ge=0, le=64, strict=True)
+
+
+class GoalDedupJudge(RecallJudge):
+    enabled: bool = Field(default=GOAL_JUDGE_DEFAULTS['enabled'], strict=True)
+    budget_seconds: float = Field(default=GOAL_JUDGE_DEFAULTS['budget_seconds'], gt=0, le=10, strict=True)
+
+
+class PersonaSettings(Input):
+    goal: str = Field(default=DEFAULT_GOAL, min_length=1, max_length=4000, strict=True)
+    rules: str = Field(default=DEFAULT_RULES, min_length=1, max_length=16000, strict=True)
+    publish_mode: Literal['small_medium_auto', 'all_auto', 'all_manual'] = 'small_medium_auto'
+
+    @field_validator('goal', 'rules')
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError('persona settings cannot be blank')
+        return value.strip()
+
+    @model_validator(mode='after')
+    def has_changes(self):
+        if not self.model_fields_set:
+            raise ValueError('at least one persona setting is required')
+        return self
 
 
 class StateSettings(Input):
@@ -129,6 +155,7 @@ def install_settings(app):
         store = app.state.store
         with store.read() as conn:
             lifecycle = lifecycle_settings(conn)
+            persona = persona_settings(conn)
             state = state_settings(conn)
             goals = goal_settings(conn)
             operations = [dict(r) for r in conn.execute('SELECT id,actor,action,created_at FROM admin_operations ORDER BY id DESC LIMIT 30')]
@@ -138,7 +165,8 @@ def install_settings(app):
                 'model_source': 'external' if app.state.runtime_config.external_loader else 'local',
                 'daily_token_limit': store.setting('daily_token_limit'),
                 'learning_concurrency': store.setting('learning_concurrency', 2),
-                'lifecycle': lifecycle, 'recall_judge': judge_settings(store), 'state': state, 'goals': goals,
+                'persona': persona, 'lifecycle': lifecycle, 'recall_judge': judge_settings(store), 'state': state, 'goals': goals,
+                'goal_dedup_judge': goal_judge_settings(store),
                 'health': app.state.health.snapshot(), 'presets': PRESETS, 'operations': operations}
 
     def sync_models():
@@ -183,7 +211,7 @@ def install_settings(app):
         return snapshot()
 
     @router.put('/settings/models/{kind}')
-    def model(kind: Literal['chat', 'embedding', 'recall_judge'], payload: Model):
+    def model(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge'], payload: Model):
         runtime = app.state.runtime_config
         if runtime.external_loader:
             return error('external_config', '模型配置来自外部文件，只读', 409)
@@ -199,6 +227,26 @@ def install_settings(app):
             values = {**(json.loads(row[0]) if row else {}), **payload.model_dump(exclude_unset=True)}
             conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('recall_judge',?)", (dumps(values),))
             audit(conn, 'recall_judge_saved', payload.model_dump(exclude_unset=True))
+        return snapshot()
+
+    @router.patch('/settings/goal-dedup-judge')
+    def save_goal_judge(payload: GoalDedupJudge):
+        with app.state.store.write() as conn:
+            row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='goal_dedup_judge'").fetchone()
+            changes = payload.model_dump(exclude_unset=True)
+            values = {**(json.loads(row[0]) if row else {}), **changes}
+            conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('goal_dedup_judge',?)", (dumps(values),))
+            audit(conn, 'goal_dedup_judge_saved', changes)
+        app.state.scheduler.wake()
+        return snapshot()
+
+    @router.patch('/settings/persona')
+    def save_persona_settings(payload: PersonaSettings):
+        changes = payload.model_dump(exclude_unset=True)
+        with app.state.store.write() as conn:
+            for key, value in changes.items():
+                conn.execute('INSERT OR REPLACE INTO runtime_settings VALUES(?,?)', ('persona_' + key, dumps(value)))
+            operation(conn, 'persona_settings_saved', 'settings', 'persona', {'fields': sorted(changes)})
         return snapshot()
 
     @router.patch('/settings/state')
@@ -227,14 +275,14 @@ def install_settings(app):
         return snapshot()
 
     @router.post('/settings/models/{kind}/retry')
-    def retry(kind: Literal['chat', 'embedding', 'recall_judge']):
+    def retry(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge']):
         app.state.gateway.retry_now(kind)
         with app.state.store.write() as conn:
             audit(conn, 'model_retry', {'purpose': kind})
         return snapshot()
 
     @router.post('/settings/models/{kind}/test')
-    def connection(kind: Literal['chat', 'embedding', 'recall_judge'], payload: dict):
+    def connection(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge'], payload: dict):
         runtime = app.state.runtime_config
         current = app.state.gateway.configs.get(kind)
         if payload and runtime.external_loader:

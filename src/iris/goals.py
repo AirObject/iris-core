@@ -1,20 +1,27 @@
 """Shared character goals, conservative deduplication and pull notifications.
 
 Decision and persistence are separate. Learning joins its existing transaction;
-no model calls belong in this module's write paths. Future model decisions must
-be made outside transactions and applied against both observed revisions.
+model calls run after commit. Model decisions are applied in a second short
+transaction against both observed revisions.
 """
 from __future__ import annotations
 
 import difflib
 import json
 import re
+import threading
+import time as timer
+import weakref
+from uuid import uuid4
+from contextlib import nullcontext
 from datetime import datetime, time, timedelta, timezone
 
 from .claim_sequences import normalize_claim, same_claim_sequences
 from .db import dumps
 from .memory_ops import operation
 from .model_health import utc_now
+from .models import ModelError
+from . import goal_dedup_judge as dedup_judge
 from .people import canonical_subject
 from .query_analysis import SubjectNames
 from .state import local_time, role_zone
@@ -311,6 +318,13 @@ def goal_detail(conn, goal_id, *, current=None):
         WHERE gm.goal_id=? ORDER BY m.id''',(goal_id,))]
     result['merged_goals'] = [_project(conn,r,current=_current(current),zone=zone) for r in _rows(conn,'merged_into=?',(goal_id,))]
     result['notifications'] = [_notification(r,zone) for r in conn.execute('SELECT * FROM notifications WHERE goal_id=? ORDER BY id',(goal_id,))]
+    review = conn.execute('SELECT * FROM goal_dedup_jobs WHERE goal_id=?',(goal_id,)).fetchone()
+    result['dedup_review'] = None
+    if review:
+        result['dedup_review'] = {key:review[key] for key in ('state','method','input_revision','attempts')}
+        result['dedup_review'].update(result=json.loads(review['result_json']),
+            next_attempt_at=local_time(review['available_at'],zone) if review['state']=='pending' else None,
+            updated_at=local_time(review['updated_at'],zone))
     result['reminder_plans'] = [dict(r) for r in conn.execute('SELECT * FROM goal_reminder_plans WHERE goal_id=? ORDER BY id',(goal_id,))]
     for plan in result['reminder_plans']:
         for key in ('scheduled_at','created_at'):
@@ -321,7 +335,7 @@ def goal_detail(conn, goal_id, *, current=None):
 def _cancel(conn, goal_id, current, *, notifications=True):
     conn.execute("UPDATE goal_reminder_plans SET status='cancelled' WHERE goal_id=? AND status='scheduled'",(goal_id,))
     if notifications:
-        conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE goal_id=? AND status='pending'",(current.isoformat(),goal_id))
+        conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE goal_id=? AND kind='goal_reminder' AND status='pending'",(current.isoformat(),goal_id))
 
 
 def _publish(conn, row, kind, scheduled, current):
@@ -382,9 +396,15 @@ def _possible(conn,a,b,current):
     _bump(conn,b,current)
 
 
-def _merge(conn,a,b,current,*,actor):
+def _cancel_review(conn, goal_id, current, decision):
+    conn.execute("""UPDATE goal_dedup_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL,
+        result_json=?,updated_at=? WHERE goal_id=? AND state IN ('pending','running')""",
+        (dumps(decision),current.isoformat(),goal_id))
+
+
+def _merge(conn,a,b,current,*,actor,semantic=False):
     # All callers must have checked both observed revisions before arriving here.
-    if a['state']!='open' or b['state']!='open' or not _compatible(a,b):
+    if a['state']!='open' or b['state']!='open' or not (dedup_judge.compatible(a,b) if semantic else _compatible(a,b)):
         raise GoalError('goal_id','只能合并未结束且类型、人物、截止时间、数字和否定兼容的目标')
     target,source = sorted((a,b),key=lambda r:(r['created_at'],r['id']))
     tid,sid = target['id'],source['id']
@@ -397,6 +417,7 @@ def _merge(conn,a,b,current,*,actor):
     for table, columns in (('goal_sources','message_id'),('goal_people','subject_id'),('goal_memories','memory_id,memory_revision')):
         conn.execute(f'INSERT OR IGNORE INTO {table}(goal_id,{columns}) SELECT ?,{columns} FROM {table} WHERE goal_id=?',(tid,sid))
     conn.execute('UPDATE goals SET merged_into=? WHERE id=?',(tid,sid))
+    _cancel_review(conn,sid,current,{'status':'merged','target_id':tid})
     # Flatten existing redirects; a published receipt itself stays immutable.
     conn.execute('UPDATE goals SET merged_into=? WHERE merged_into=?',(tid,sid))
     conn.execute("UPDATE notifications SET goal_id=? WHERE goal_id=? AND status='pending'",(tid,sid))
@@ -409,7 +430,7 @@ def _merge(conn,a,b,current,*,actor):
     row = _row(conn,tid)
     # Keep one unclaimed notification per stage when both targets already emitted it.
     seen = set()
-    for note in conn.execute("SELECT id,reminder_kind,scheduled_at FROM notifications WHERE goal_id=? AND status='pending' ORDER BY id",(tid,)).fetchall():
+    for note in conn.execute("SELECT id,reminder_kind,scheduled_at FROM notifications WHERE goal_id=? AND kind='goal_reminder' AND status='pending' ORDER BY id",(tid,)).fetchall():
         kind = note['reminder_kind']
         when = datetime.fromisoformat(note['scheduled_at'])
         due = datetime.fromisoformat(row['deadline_at']) if row['deadline_at'] else None
@@ -481,7 +502,14 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
     # Dates in older databases may not yet have been normalized by the scheduler.
     for candidate in candidates:
         candidate['deadline'] = _deadline(candidate['deadline'],role_zone(conn),strict=False) or candidate['deadline']
-    decision = decide_dedup(candidates,proposed)
+    options = dedup_judge.connection_settings(conn)
+    if dedup_judge.method(options) == 'A':
+        decision = decide_dedup(candidates,proposed)
+    else:
+        # Even equal short bodies can refer to different events in their sources.
+        # Inside learning's transaction only stage deterministic candidates.
+        pending = dedup_judge.select_candidates(candidates,proposed)
+        decision = {'status':'pending' if pending else 'created','target_id':None}
     if origin=='admin' and decision['status']=='merged':
         # An administrator's new item stays separate until explicitly resolved.
         decision = {**decision, 'status':'possible_duplicate'}
@@ -500,6 +528,13 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         if decision['status']=='possible_duplicate':
             _possible(conn,gid,decision['target_id'],current)
         _schedule(conn,proposed,current)
+    if decision['status']=='pending':
+        # Give the first host/admin request its full inline budget before the
+        # scheduler may claim the job. An interrupted request is still durable.
+        available = current if origin=='internal' else current+timedelta(seconds=options['budget_seconds']+1)
+        conn.execute('''INSERT INTO goal_dedup_jobs(goal_id,state,method,input_revision,available_at,
+            result_json,created_at,updated_at) VALUES(?,'pending',?,?,?,?,?,?)''',
+            (gid,dedup_judge.method(options),proposed['revision'],available.isoformat(),dumps(decision),stamp,stamp))
     operation(conn,'goal_create','goal',gid,{'origin':origin,'dedup':decision},actor=actor,stamp=stamp)
     receipt = {'goal':_project(conn,_row(conn,target),current=current),'submitted_id':gid,'dedup':decision}
     if host_key is not None:
@@ -517,13 +552,182 @@ def write_learning_goal(conn, *, content, kind, deadline, entry_id, evidence, cu
 
 
 class Goals:
-    def __init__(self,store,*,clock=utc_now):
-        self.store,self.clock = store,clock
+    _key_guard = threading.Lock()
+    _key_locks = weakref.WeakKeyDictionary()
+
+    def __init__(self,store,*,clock=utc_now,gateway=None):
+        self.store,self.clock,self.gateway = store,clock,gateway
         self._first_generation = True
+        with self._key_guard:
+            self._host_locks = self._key_locks.setdefault(store,weakref.WeakValueDictionary())
 
     def create(self,**fields):
+        key = fields.get('host_key')
+        with self._key_guard:
+            lock = self._host_locks.get(key) if key is not None else None
+            if key is not None and lock is None:
+                lock = threading.RLock()
+                self._host_locks[key] = lock
+        # Serialize only identical host keys through the first response. No DB
+        # lock spans the network; different keys use purpose-local admission.
+        with lock if lock is not None else nullcontext():
+            with self.store.write() as conn:
+                if key is not None:
+                    old = conn.execute('SELECT receipt_json FROM goals WHERE host_key=?',(key,)).fetchone()
+                    if old and old[0]:
+                        return json.loads(old[0])
+                result = _create(conn,current=self.clock(),**fields)
+            if result['dedup']['status']=='pending' and fields.get('origin','host')!='internal':
+                result = self.review(result['submitted_id'],actor=fields.get('actor','host'))
+                if key is not None:
+                    with self.store.write() as conn:
+                        conn.execute('UPDATE goals SET receipt_json=? WHERE id=?',(dumps(result),result['submitted_id']))
+            return result
+
+    @staticmethod
+    def _decision(conn,goal_id):
+        job = conn.execute('SELECT result_json FROM goal_dedup_jobs WHERE goal_id=?',(goal_id,)).fetchone()
+        if job:
+            return json.loads(job[0])
+        row = conn.execute("""SELECT details_json FROM admin_operations WHERE object_type='goal'
+            AND object_id=? AND action IN ('goal_create','goal_dedup_judged') ORDER BY id DESC LIMIT 1""",
+            (str(goal_id),)).fetchone()
+        return json.loads(row[0])['dedup'] if row else {'status':'created','target_id':None}
+
+    def _receipt(self,conn,goal_id,decision):
+        target = _canonical_id(conn,goal_id)
+        return {'goal':_project(conn,_row(conn,target),current=_current(self.clock())),
+                'submitted_id':goal_id,'dedup':decision}
+
+    def pending_reviews(self, *, limit=8):
+        """Indexed due work, including expired leases after a process restart."""
+        stamp = _current(self.clock()).isoformat()
+        with self.store.read() as conn:
+            rows = conn.execute("""SELECT j.goal_id FROM (
+                SELECT goal_id,available_at AS due_at FROM goal_dedup_jobs
+                    WHERE state='pending' AND available_at<=?
+                UNION ALL
+                SELECT goal_id,lease_until AS due_at FROM goal_dedup_jobs
+                    WHERE state='running' AND lease_until<=?
+                ) j JOIN goals g ON g.id=j.goal_id
+                WHERE g.state='open' AND g.merged_into IS NULL
+                ORDER BY j.due_at,j.goal_id LIMIT ?""",(stamp,stamp,max(0,min(limit,8))))
+            return [row[0] for row in rows]
+
+    def _claim_review(self, goal_id):
         with self.store.write() as conn:
-            return _create(conn,current=self.clock(),**fields)
+            current = _current(self.clock())
+            options = dedup_judge.connection_settings(conn)
+            proposed = _row(conn,goal_id)
+            before = self._decision(conn,goal_id)
+            if proposed['merged_into'] is not None:
+                return None,self._receipt(conn,goal_id,{'status':'merged','target_id':_canonical_id(conn,goal_id)})
+            if proposed['state']!='open':
+                _cancel_review(conn,goal_id,current,{'status':'created','target_id':None,'reason':'goal_closed'})
+                return None,self._receipt(conn,goal_id,self._decision(conn,goal_id))
+            job = conn.execute('SELECT * FROM goal_dedup_jobs WHERE goal_id=?',(goal_id,)).fetchone()
+            if not job or job['state'] in ('done','cancelled') or before['status']!='pending':
+                return None,self._receipt(conn,goal_id,before)
+            if not options['enabled'] or dedup_judge.method(options) not in ('B','C'):
+                return None,self._receipt(conn,goal_id,{**before,'reason':'disabled'})
+            if job['state']=='running' and job['lease_until'] and datetime.fromisoformat(job['lease_until'])>current:
+                return None,self._receipt(conn,goal_id,{**before,'reason':'in_progress'})
+            token = uuid4().hex
+            until = current+timedelta(seconds=dedup_judge.validate_budget(options['budget_seconds'])+5)
+            conn.execute("""UPDATE goal_dedup_jobs SET state='running',method=?,input_revision=?,attempts=attempts+1,
+                lease_until=?,lease_token=?,candidate_revisions_json='{}',updated_at=? WHERE goal_id=?""",
+                (dedup_judge.method(options),proposed['revision'],until.isoformat(),token,current.isoformat(),goal_id))
+            return (token,options,job['attempts']+1),None
+
+    def review(self,goal_id,*,actor='scheduler'):
+        started = timer.monotonic()
+        claimed,receipt = self._claim_review(goal_id)
+        if claimed is None:
+            return receipt
+        token,options,attempt = claimed
+        # Snapshot every candidate used by the model: changing a distractor may
+        # remove the ambiguity that prevented a merge, or introduce a new one.
+        with self.store.read() as conn:
+            proposed = _row(conn,goal_id)
+            candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=?",(proposed['kind'],goal_id))
+            zone = role_zone(conn)
+            for row in [proposed,*candidates]:
+                row['deadline'] = _deadline(row['deadline'],zone,strict=False) or row['deadline']
+                row['deadline_at'] = row['deadline_at'] or _deadline(row['deadline'],zone,strict=False)
+            dismissed = {r[0] for r in conn.execute("""SELECT CASE WHEN goal_a=? THEN goal_b ELSE goal_a END
+                FROM goal_duplicates WHERE status='dismissed' AND (goal_a=? OR goal_b=?)""",(goal_id,goal_id,goal_id))}
+            selected = dedup_judge.select_candidates(candidates,proposed,dismissed=dismissed,limit=dedup_judge.MAX_CANDIDATES+1)
+            overflow = len(selected)>dedup_judge.MAX_CANDIDATES
+            selected = selected[:dedup_judge.MAX_CANDIDATES]
+            incoming = dedup_judge.material(conn,proposed)
+            materials = [dedup_judge.material(conn,row) for row in selected]
+        revisions = {str(row['id']):row['revision'] for row in selected}
+        with self.store.write() as conn:
+            retained = conn.execute("""UPDATE goal_dedup_jobs SET input_revision=?,candidate_revisions_json=?
+                WHERE goal_id=? AND state='running' AND lease_token=?""",
+                (proposed['revision'],dumps(revisions),goal_id,token)).rowcount
+            if not retained:
+                return self._receipt(conn,goal_id,self._decision(conn,goal_id))
+        try:
+            remaining = options['budget_seconds']-(timer.monotonic()-started)
+            if remaining<=0:
+                raise ModelError('retryable','goal judgment total timeout',reason='timeout')
+            verdicts = dedup_judge.judge(self.gateway,incoming,materials,method=dedup_judge.method(options),
+                         budget_seconds=remaining) if selected else {}
+            decision = dedup_judge.decision_from_verdicts(verdicts,origin=proposed['origin'],overflow=overflow)
+        except ModelError as exc:
+            decision = {'status':'pending','target_id':None,'reason':exc.reason or exc.category}
+        with self.store.write() as conn:
+            current = _current(self.clock())
+            job = conn.execute('SELECT * FROM goal_dedup_jobs WHERE goal_id=?',(goal_id,)).fetchone()
+            if job['state']!='running' or job['lease_token']!=token:
+                return self._receipt(conn,goal_id,self._decision(conn,goal_id))
+            active_options = dedup_judge.connection_settings(conn)
+            observed = [proposed,*selected]
+            latest = {row['id']:_row(conn,row['id']) for row in observed}
+            stale = any(latest[row['id']]['revision']!=row['revision'] or latest[row['id']]['state']!='open'
+                        or latest[row['id']]['merged_into'] is not None for row in observed)
+            # Subject aliases and source excerpts are not covered by goal revisions.
+            if not stale:
+                for row,snapshot in zip(observed,[incoming,*materials]):
+                    check = latest[row['id']]
+                    check['deadline'] = _deadline(check['deadline'],role_zone(conn),strict=False) or check['deadline']
+                    if dedup_judge.material(conn,check)!=snapshot:
+                        stale = True
+                        break
+            if stale:
+                decision = {'status':'pending','target_id':None,'reason':'stale'}
+            elif datetime.fromisoformat(job['lease_until'])<=current:
+                decision = {'status':'pending','target_id':None,'reason':'lease_expired'}
+            elif not active_options['enabled'] or dedup_judge.method(active_options)!=dedup_judge.method(options):
+                decision = {'status':'pending','target_id':None,'reason':'configuration_changed'}
+            elif decision['status']=='merged':
+                target = next(row for row in selected if row['id']==decision['target_id'])
+                decision['target_id'] = _merge(conn,target,proposed,current,actor=actor,semantic=True)
+            elif decision['status']=='possible_duplicate':
+                for target_id in decision['target_ids']:
+                    _possible(conn,goal_id,target_id,current)
+            pending = decision['status']=='pending'
+            # Purpose health supplies the 429 Retry-After/pause/daily-limit gate;
+            # this local backoff also prevents busy retries of stale/invalid data.
+            available = current+timedelta(seconds=min(300,2**min(attempt,9))) if pending else current
+            conn.execute("""UPDATE goal_dedup_jobs SET state=?,result_json=?,available_at=?,lease_token=NULL,
+                lease_until=NULL,updated_at=? WHERE goal_id=?""",
+                ('pending' if pending else 'done',dumps(decision),available.isoformat(),current.isoformat(),goal_id))
+            operation(conn,'goal_dedup_judged','goal',goal_id,{'dedup':decision,
+                'method':dedup_judge.method(options),'revision':proposed['revision'],
+                'candidate_revisions':revisions},actor=actor,stamp=current.isoformat())
+            if actor=='scheduler' and not pending:
+                target = _canonical_id(conn,goal_id)
+                labels={'merged':'目标已合并','possible_duplicate':'目标可能重复，请复核','created':'目标复核完成，保留独立目标'}
+                conn.execute("""INSERT INTO notifications(kind,goal_id,scheduled_at,published_at,content)
+                    VALUES('goal_dedup_result',?,?,?,?)""",(target,current.isoformat(),current.isoformat(),
+                    labels[decision['status']]+'：'+str(goal_id)+((' → '+str(target)) if target!=goal_id else '')))
+            return self._receipt(conn,goal_id,decision)
+
+    def get_receipt(self,goal_id,decision):
+        with self.store.read() as conn:
+            return self._receipt(conn,goal_id,decision)
 
     def get(self,goal_id):
         with self.store.read() as conn:
@@ -557,12 +761,14 @@ class Goals:
             if changed:
                 conn.execute('UPDATE goals SET '+','.join(k+'=?' for k in changed)+' WHERE id=?',(*changed.values(),goal_id))
                 _bump(conn,goal_id,current)
+                if 'state' in changed:
+                    _cancel_review(conn,goal_id,current,{'status':'created','target_id':None,'reason':'goal_closed'})
                 if {'deadline','reminder_minutes','state'}.intersection(changed):
                     _cancel(conn,goal_id,current)
                     _schedule(conn,_row(conn,goal_id),current)
                 elif 'content' in changed:
                     # Text edits make existing unclaimed reminder text obsolete.
-                    for note in conn.execute("SELECT * FROM notifications WHERE goal_id=? AND status='pending'",(goal_id,)).fetchall():
+                    for note in conn.execute("SELECT * FROM notifications WHERE goal_id=? AND kind='goal_reminder' AND status='pending'",(goal_id,)).fetchall():
                         prefix=note['content'].split('：',1)[0]
                         conn.execute('UPDATE notifications SET content=? WHERE id=?',(prefix+'：'+changed['content'],note['id']))
                 operation(conn,'goal_update','goal',goal_id,{'fields':sorted(changed),'revision_before':row['revision']},actor=actor,stamp=current.isoformat())
@@ -576,7 +782,7 @@ class Goals:
             _check(b,other_revision)
             if other_id not in _duplicate_ids(conn,goal_id):
                 raise GoalError('other_id','两个目标没有待处理的可能重复标记')
-            target = _merge(conn,a,b,current,actor=actor)
+            target = _merge(conn,a,b,current,actor=actor,semantic=True)
             return _project(conn,_row(conn,target),current=current)
 
     def dismiss_duplicate(self,goal_id,other_id,*,expected_revision,other_revision,actor='admin'):

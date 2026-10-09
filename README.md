@@ -234,6 +234,45 @@ print(httpx.get("http://127.0.0.1:8080/api/v1/status").json())
 
 深度查询显式设置 include_forgotten，结果的 lifecycle 标明 active／forgotten；读取不改变状态。反馈有效期为 24 小时，同次召回同条记忆只强化一次（默认 +8，上限 100），按双阈值决定恢复，不改变相信程度或修订号；已删除对象不能反馈。错误码：400 参数／反馈无效、404 不存在／已删除、413 消息过大、503 暂不可用；409 保留用于修订冲突，当前宿主接口不修改记忆正文。
 
+## M3 persona（后端）
+
+自我认知记忆保存具体经历与观点，persona 从中提炼相对稳定的自我描述。当前活动、情绪和待办分别留在状态与目标分区。首次设置仍立即生成原有模板正文，不调用模型；角色名和模板有设定依据。后续生成使用有效、涉及“我”、且说话人是“我”或立场为“设定”的记忆，按置顶、重要度和保留强度排序，材料最多 6000 估算 token。别人对我的评价本身不会入选。
+
+候选逐句记录正文、来源、依据记忆 ID 与修订号，以及依据追溯到的不同日期数。先检查非空、依据有效、没有遗留编号和全文不超过 800 字，再由模型逐句检查依据支持、虚构、监管要求和单一日期的场景限定。少于 300 字只提示，不靠扩写凑字。上一版仅帮助保持措辞稳定，不是新的事实依据；失效依据支持的句子不能因此保留。删改管理员手写句会确定性地把变化程度提升为“大”。管理员直接编辑只做确定性检查，改动或新增的句子标为手写，原样保留的句子沿用原依据。
+
+默认检查通过且变化小或中就发布；变化大留待确认。检查不通过保留当前版并记录原因。新的候选取代旧待确认候选，管理员编辑和回滚也会取代它。版本状态为 `current`（当前）、`pending`（待确认）、`rejected`（被拒绝）、`superseded`（被取代）、`history`（历史）；来源为 `initial_setting`、`periodic`、`regenerate`、`admin_edit`、`rollback`。回滚只接受曾发布的版本，新建一个正文与逐句依据相同的当前版本，历史保持线性；若旧依据已失效，新版本仍显示待更新。
+
+当前版本的任一依据记忆被修改、遗忘或删除，会只读计算出“待更新”，并列出失效依据，不在回复准备时重写 persona。数据层 `persona_due` 从当前版本的生成时间起算：至少五条自我记忆新增或变化，或经过至少 168 小时且有任何变化，才满足定期更新条件。确认候选不重置生成时间；管理员编辑与回滚从新版本创建时刻起算。梦境整理的定期调用由整理线接入。
+
+以下管理接口均需管理员会话，写请求还需 JSON 和会话绑定的 `X-Iris-CSRF`，沿用 Host、Origin／Sec-Fetch-Site 检查。版本 ID 是全局递增整数；写请求中的 `expected_version` 必须是当前版本 ID，不能传候选 ID。版本冲突或候选依据已变化返回 409，刷新后由管理员决定下一步；不存在返回 404，参数或正文检查失败返回 400。
+
+| 方法与路径 | 请求／结果 |
+| --- | --- |
+| `GET /admin/api/persona` | `current`、`pending` 摘要，`needs_update`、`stale_basis_count`、`stale_basis`，以及 `latest_attempt`；没有对象时为 null |
+| `GET /admin/api/persona/versions` | 可按 `status`、`source` 筛选；列表含正文、变化程度 `small/medium/large`、`generated_at`、`published_at`、基准版本与回滚来源 |
+| `GET /admin/api/persona/versions/{id}` | 另含 `sentences`、`checks`、`settings`、`rejection_reasons`；每句有 `text`、`origin`、`admin_written`、`basis`、`dates/date_count`；依据含记录的修订、该修订正文 `content_at_revision` 和当前记忆 `memory` |
+| `GET /admin/api/persona/diff` | 必填 `before_version`、`after_version`；逐句 `insert/delete/replace/basis_changed` 差异，位置从 1 开始 |
+| `GET /admin/api/persona/self-memories` | 有效自我记忆，按置顶、重要度、保留强度排序；便于与逐句依据对照 |
+| `PUT /admin/api/persona` | `{expected_version, content}`；直接编辑并发布，返回版本详情，不调用模型 |
+| `POST /admin/api/persona/versions/{id}/confirm` | `{expected_version}`；确认待确认候选，返回版本详情 |
+| `POST /admin/api/persona/versions/{id}/reject` | `{expected_version, reason?}`；拒绝待确认候选，原因最多 1000 字 |
+| `POST /admin/api/persona/versions/{id}/rollback` | `{expected_version}`；按旧版本新建并发布，返回新版本详情 |
+| `POST /admin/api/persona/regenerate` | `{expected_version}`；立即返回 202 `{accepted: true, attempt: {...}}`，`Location` 指向任务查询地址 |
+| `GET /admin/api/persona/attempts`、`/attempts/{id}` | 任务列表／详情；不返回原始模型输出 |
+| `PATCH /admin/api/settings/persona` | 局部修改 `goal`、`rules`、`publish_mode`，返回完整设置快照；`GET /admin/api/settings` 的 `persona` 字段读取当前设置 |
+
+版本、自我记忆和任务列表均返回 `{items, total, limit, offset}`；`limit` 默认 30、范围 1—100，`offset` 默认 0、最大 1000000。手写标记不是模型支持结论；版本详情的 `checks.deterministic`、`checks.model` 和 `rejection_reasons` 应分开展示。失效依据按记忆 ID 去重，包含记录的修订、当前修订和 `modified/forgotten/deleted/no_longer_self_memory` 原因；彻底清除或不存在的记忆投影为 null。
+
+重新生成使用独立的单线程后台执行器。接受请求时持久化任务、基准版本与设置快照；同一时刻已有 `queued/running` 任务就返回 409 `persona_generation_in_progress`，不排第二个任务。页面按 `Location` 轮询：`state` 从 `queued` 到 `running`，`stage` 区分 `queued/generating/checking/finished`；终态是 `current/pending/rejected/skipped/conflict/failed`。终态可能没有 `version_id`，须展示 `reason`（如 `daily_token_limit`、`no_self_evidence`、`evidence_changed`、`interrupted`），不要把 202 当成发布成功。生成期间其他编辑仍可进行，发布前重新核对版本及依据，冲突不覆盖新版本。正常关闭等待已接受任务；进程异常中断后标记失败，不自动重跑。
+
+生成目标默认“维持稳定的发言风格，并充分认识自我”，监管要求沿用设计 13.3 全文。`goal` 最多 4000 字、`rules` 最多 16000 字，去首尾空白后不可为空，至少提交一个字段。发布方式 `small_medium_auto` 为“小或中自动发布”（默认），`all_auto` 为“全部自动”，`all_manual` 为“全部人工确认”；任何方式均不能跳过候选检查。保存设置记录操作者和改动字段名，不记录目标／规则全文。新设置仅影响之后接受的生成任务，不重新检查或自动发布已有候选；学习和整理不能改这些设置。
+
+宿主 `prepare` 的 persona 分区如下，版本未初始化时为 `version: null`、空正文、`generated_at: null`、`needs_update: false`、计数 0。其他分区保持独立。
+
+```json
+{"persona": {"version": 3, "content": "……", "generated_at": "2026-10-10T08:00:00+00:00", "needs_update": true, "stale_basis_count": 1}}
+```
+
 ## M3 当前状态
 
 当前状态是一份由宿主报告的主要活动，所有入口共享。它供当下回复使用，不进入学习材料、不逐条写成记忆、不更新 persona，也不自动建立目标。值得长期记住的结果仍由宿主另发消息、场景事件或行动结果，经原学习流程处理。逐帧画面、技能冷却等控制信息留在宿主中。管理界面的“状态与目标”页显示当前状态与分页报告历史，“可能过时”的分钟数在设置页修改；管理员不能编辑状态。
@@ -304,13 +343,13 @@ PUT 的活动经去除首尾空白后，按区分大小写的完整字符串判�
 
 目标返回 `id/content/kind/origin/state/deadline/reminder_minutes/effective_reminder_minutes/people/entry_id/host_key/revision`，以及创建／更新时间、`closed_at/closed_by`、`merged_into`、`overdue/due_soon` 和 `possible_duplicate/possible_duplicate_ids`。`due_soon` 表示已到临近时刻，过期时也为 true。学习旧输出中无法解析的期限保留原文，并标记 `deadline_unresolved=true`，不臆测时间或生成提醒；宿主和管理员可修改成有效期限。
 
-注入先保存原始目标，再跨入口在同 kind 的未结束目标中去重。`decide_dedup(candidates, proposed)` 返回 `{status,target_id}`：`created`、`merged`、`possible_duplicate` 或保留给后续判断降级的 `pending`。本步不调用模型：仅正文压缩连续空白、忽略大小写和句末标点后完全一致，且涉及人集合相同、期限兼容时自动合并。内部标点和英文词界保留，复用 M2 的中文／阿拉伯数字与否定序列规则；一个期限为空兼容，两个明确期限不同不兼容。其他规范化文本相似度至少 0.88 的兼容项只标记可能重复。管理员新建（`origin=admin`）也执行同一判断，但 `merged` 结果降为 `possible_duplicate`，保留两条目标，等待管理员明确合并或驳回；宿主和学习产生的新目标仍按上述规则自动合并。这不是目标去重模型质量门槛的结论。
+注入先保存原始目标，再跨入口在同 kind 的未结束目标中去重。`decide_dedup(candidates, proposed)` 返回 `{status,target_id}`：`created`、`merged`、`possible_duplicate` 或模型判断待复核的 `pending`。关闭目标去重判断时沿用确定性规则：仅正文压缩连续空白、忽略大小写和句末标点后完全一致，且涉及人集合相同、期限兼容时自动合并。内部标点和英文词界保留，复用 M2 的中文／阿拉伯数字与否定序列规则；一个期限为空兼容，两个明确期限不同不兼容。其他规范化文本相似度至少 0.88 的兼容项只标记可能重复。管理员新建（`origin=admin`）也执行同一判断，但 `merged` 结果降为 `possible_duplicate`，保留两条目标，等待管理员明确合并或驳回；宿主和学习产生的新目标仍按上述规则自动合并。这不是目标去重模型质量门槛的结论。
 
 合并保留较早目标，原目标及其依据保留可追溯，占位的 `merged_into` 指向保留项；来源消息、同证据角色记忆与未取提醒归入保留项。明确截止时间补入空值；两个明确提前量不同则采用较早提醒（较大分钟数），原值仍在被合并项中。合并后的同阶段待取提醒只留一条，其余保留为取消记录。相同 `host_key` 的重试返回首次创建的完整回执快照，即使后来目标已修改；读取最新状态用列表。修改已合并 ID 返回 409 `goal_merged` 和 `canonical_id`，需要明确选择保留项再提交。
 
 有期限的普通目标在临近、到期时发布提醒；创建／修改时已经错过提醒时刻则立即发布一条，未来的到期提醒仍保留。服务恢复时同一目标错过的阶段只发布一条即时提醒，不逐条补发。提前量为 0 时，临近和到期同刻，合为一条。过期后的周期提醒按角色时区每天最多一次，内容请宿主选择放弃或修改期限；停机多日只生成当前一天的一条。系统不自动失败、放弃或顺延。
 
-通知的 `id` 是实际发布时分配的单调游标，未来计划不提前占用游标。每条有 `kind=goal_reminder`、`reminder_kind=soon/due/overdue/immediate`、`goal_id`、`content`、发布时的期限 `deadline_at`、计划／发布时间、`status=pending/taken/cancelled` 及取走／取消时间。取走仅表示宿主读到；相同游标可重放已取记录，方便恢复丢失的 HTTP 响应，宿主按通知 ID 去重。取走不等于送达，也不完成目标。修改期限／提前量或完成／放弃会更新未来计划、取消未取记录；已取记录保留。默认提前量变动重排使用默认值的未来目标，保留已过期的待取提醒。
+通知的 `id` 是实际发布时分配的单调游标，未来计划不提前占用游标。目标提醒每条有 `kind=goal_reminder`、`reminder_kind=soon/due/overdue/immediate`、`goal_id`、`content`、发布时的期限 `deadline_at`、计划／发布时间、`status=pending/taken/cancelled` 及取走／取消时间。取走仅表示宿主读到；相同游标可重放已取记录，方便恢复丢失的 HTTP 响应，宿主按通知 ID 去重。取走不等于送达，也不完成目标。修改期限／提前量或完成／放弃会更新未来计划、取消未取的目标提醒；已取记录和去重结果通知保留。默认提前量变动重排使用默认值的未来目标，保留已过期的待取提醒。
 
 prepare 与 `search(include_goals=true)` 返回最多 10 个未结束目标／询问：临近和过期优先，其次本入口、涉及当前参与者，再按期限与创建时间。此分区不改变记忆选取。管理员接口沿用会话、CSRF 和操作记录：`GET/POST /admin/api/goals`，`GET/PATCH /admin/api/goals/{id}`；管理修改须带 `expected_revision`，可编辑正文。列表另支持 `entry_id/possible_duplicate/deadline_from/deadline_to`，日期筛选包含整天。详情含 `sources`、`promise_memories`（同证据角色记忆及当时修订，并非新增语义承诺分类）、`merged_goals`、提醒计划和通知历史。
 
@@ -354,6 +393,20 @@ prepare 与 `search(include_goals=true)` 返回最多 10 个未结束目标／�
 | 5 万／点名 | 154.4 | 156.8 |
 
 完整材料、脚本、日志及逐案例差异保存在仓库外 `iris-eval-artifacts/m3-goals-20261009/` 和 `iris-eval-artifacts/m3-goals-review-20261009/`；模型去重与方法选择留待下一步。
+
+## M3 目标去重判断（GO 第三步）
+
+目标去重默认开启 C（整批候选判断）。A／B／C 及提示词在 `9cacbd02d38f0200dd757316c7b8c8c101dde113` 冻结；独占窗口内每种方法各完整运行两次，B／C 均为 0/14 误合并、14/28 应合并识别，C 每轮调用 38 次，少于 B 的 66 次，按冻结规则选中 C。C 的识别率仍只有 50%，主要受保守数字／否定序列排除限制。详见 [方法约定](evals/goal_dedup_probe/METHODS.md) 和 [探测报告](evals/goal_dedup_probe/RESULTS.md)。5 秒产品预算下也完成连续双轮有效运行；此前无效运行全部保留并单列，不参与选型。
+
+B／C 只判断同 kind、未结束且未合并的候选。明确的人物集合、期限、数字或否定序列冲突先排除；人物信息缺失按未知处理。正文相似度至少 0.25 或有共同涉及人即召回，最多 8 个；模型材料只有正文及时间、涉及人、期限、入口类型和来源摘录。即使正文完全相同也判断来源是否指同一事件。只有唯一 `same` 且其余没有 `same/uncertain` 才自动合并；有歧义或候选超限则保留并标可能重复。管理员创建始终不自动合并。只有一方缺少涉及人时，确认合并保留已知人物；明确不同的人物仍拒绝合并。
+
+宿主 POST 先提交目标，再在请求内判断。超时、排队满、限流、暂停或在途修订变化返回 `dedup.status=pending`，由调度器补做。学习仍只在原事务内执行确定性候选检索和入队，提交后才判断，不改学习材料／校验／提示词。宿主键重试保留首次响应，后台结果不改写回执。补做结束写操作记录，并发布 `kind=goal_dedup_result` 通知；宿主仍按通知发布游标拉取，查看最新目标列表中的合并与可能重复状态。
+
+迁移 014 新增 `goal_dedup_jobs`，保存任务状态、两边修订号、尝试次数、下次执行时间及可过期租约。调度器只查询到期任务，不重新去重历史目标；失效租约可在重启后恢复。模型调用在事务外，写回核对租约、本目标和全部候选修订，并再次核对人物／来源投影；失效结果不落地。完成或放弃取消未完成复核。管理目标详情增加只读 `dedup_review`，含状态、方法、输入修订、尝试次数、结果、下次执行和更新时间，不暴露租约凭据。
+
+`goal_dedup_judge` 用途默认继承对话端点及 high 档位，健康状态、并发和有界排队独立于学习及召回判断。前两次 429 按 Retry-After 或 2／4 秒退避，第三次连续可重试错误暂停并探测；每日 token 上限同样阻止判断。`PATCH /admin/api/settings/goal-dedup-judge` 沿用会话、CSRF 和操作记录，设置 `enabled`、`budget_seconds`（大于 0 且至多 10 秒）、`concurrency`（1—8）和 `queue_limit`（0—64）。默认预算按有效探测较高 P95 加 20% 向上取整为 5 秒，并发 1、排队 8；已保存的显式设置保留。有效双轮的宿主同步 P50/P95 分别为 1.05/3.44 秒、1.19/2.83 秒，均无降级；此前 12 次作废尝试提示尾部超时和格式错误仍会发生。包括作废尝试的宿主降级为 10/459，详情见探测报告；不把有效双轮的零降级解读为不会超时。显式关闭 enabled 使用 A；模型不可用时保留待复核，不自动切换到 A 合并。独立模型端点的保存／测试／重试沿用 `/admin/api/settings/models/goal_dedup_judge` 系列接口。
+
+探测脚本支持仓库外 `--corpus` 和 `--out`；`--fake` 使用本地传输，不读取模型配置、不发送网络请求，结果明确标为模拟并被选型函数拒绝。使用方法与本轮验证汇总见 [探测说明](evals/goal_dedup_probe/README.md)。
 
 ## M2 人物与身份联系（后端）
 
@@ -448,6 +501,8 @@ uv run iris eval learning --judge-mode external --out <运行目录>
 uv run iris eval e2e --judge-mode external --out <运行目录>
 uv run iris eval e2e --judge-mode external --script E001 --script E011 --out <流程检查目录>
 uv run iris eval e2e-score --materials <材料目录> --judgments <第一轮目录> --judgments <第二轮目录> --judge-model <执行者模型名称> --out <报告目录>
+uv run iris eval persona --corpus evals/persona_v1.json --judge-mode external --out <运行目录>
+uv run iris eval persona-score --materials <材料目录> --judgments <第一轮目录> --judgments <第二轮目录> --judge-model <执行者模型名称> --out <报告目录>
 uv run iris eval recall
 uv run iris eval recall --split dev --calibrate
 # 如需重新比较 1024／2048 维，再加 --compare-embeddings

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .db import Store
-from .models import MODEL_KINDS, effective_configs
+from .models import JUDGMENT_KINDS, MODEL_KINDS, effective_configs
 
 
 def utc_now():
@@ -51,7 +51,7 @@ class ModelHealth:
                 "last_error": None if configured else "模型尚未配置",
                 "consecutive_errors": 0, "next_probe_at": None, "probe_delay_seconds": 60,
                 "fingerprint": fingerprint(config)}
-        if kind == 'recall_judge':
+        if kind in JUDGMENT_KINDS:
             state.update(retry_at=None, consecutive_rate_limits=0)
         return state
 
@@ -88,7 +88,7 @@ class ModelHealth:
             if state['state'] == 'rate_limited' and not self._cooling(state):
                 state.update(state='normal', retry_at=None)
         budget = self.budget()
-        for kind in ('chat', 'recall_judge'):
+        for kind in ('chat', *JUDGMENT_KINDS):
             if budget['exhausted'] and result[kind]['state'] == 'normal':
                 result[kind].update(state='usage_limit', last_error='达到每日 token 上限', next_probe_at=budget['reset_at'])
         return result
@@ -107,7 +107,7 @@ class ModelHealth:
             if not probe and not self._available(state):
                 raise ModelError("paused", state["last_error"] or state["state"], paused=True, reason=state["state"])
             token = state["fingerprint"]
-        if ((not probe and purpose in ("learning", "learning_repair")) or kind == "recall_judge") and self.budget()["exhausted"]:
+        if ((not probe and purpose in ("learning", "learning_repair")) or kind in JUDGMENT_KINDS) and self.budget()["exhausted"]:
             raise ModelError("paused", "达到每日 token 上限", paused=True, reason="usage_limit")
         return token
 
@@ -120,7 +120,7 @@ class ModelHealth:
             previous = state["state"]
             if previous in ("invalid_key", "configuration_error"):
                 return True  # Only replacing configuration may clear these states.
-            cooldown_until = datetime.fromisoformat(state['retry_at']) if kind == 'recall_judge' and self._cooling(state) else None
+            cooldown_until = datetime.fromisoformat(state['retry_at']) if kind in JUDGMENT_KINDS and self._cooling(state) else None
             if category == "success":
                 # Only a probe may close an open circuit; an older in-flight call may finish later.
                 if probe or self._available(state):
@@ -128,19 +128,19 @@ class ModelHealth:
             elif category == "retryable":
                 state["consecutive_errors"] += 1
                 state["last_error"] = summary
-                if kind == 'recall_judge':
+                if kind in JUDGMENT_KINDS:
                     state['consecutive_rate_limits'] = state.get('consecutive_rate_limits', 0) + 1 if rate_limited else 0
                 if (probe or state["consecutive_errors"] >= 3
-                        or (kind == 'recall_judge' and previous in ('temporarily_unavailable', 'account_problem'))):
+                        or (kind in JUDGMENT_KINDS and previous in ('temporarily_unavailable', 'account_problem'))):
                     state["state"] = "account_problem" if previous == "account_problem" else "temporarily_unavailable"
-                    if kind == 'recall_judge':
+                    if kind in JUDGMENT_KINDS:
                         state['retry_at'] = None
                     if probe:
                         state["probe_delay_seconds"] = min(600, state["probe_delay_seconds"] * 2)
                     delay = max(state["probe_delay_seconds"], retry_after or 0)
                     resume_at = self.clock() + timedelta(seconds=delay)
                     state["next_probe_at"] = max(resume_at, cooldown_until or resume_at).isoformat()
-                elif kind == 'recall_judge' and rate_limited:
+                elif kind in JUDGMENT_KINDS and rate_limited:
                     # First two consecutive limits: Retry-After exactly, or 2/4 s.
                     # New prepares fail before admission; expiry needs no probe.
                     delay = retry_after if retry_after is not None else 2 ** state['consecutive_rate_limits']
@@ -150,7 +150,7 @@ class ModelHealth:
                 elif previous == 'rate_limited' and not self._cooling(state):
                     state.update(state='normal', retry_at=None)
             elif category in ("authentication", "configuration", "account"):
-                if kind == 'recall_judge':
+                if kind in JUDGMENT_KINDS:
                     state.update(retry_at=None, consecutive_rate_limits=0)
                 state.update(state={"authentication": "invalid_key", "configuration": "configuration_error",
                                     "account": "account_problem"}[category], last_error=summary, consecutive_errors=0)
@@ -160,7 +160,7 @@ class ModelHealth:
             else:
                 # A content refusal demonstrates availability; it is not a circuit failure.
                 state["consecutive_errors"] = 0
-                if kind == 'recall_judge':
+                if kind in JUDGMENT_KINDS:
                     state['consecutive_rate_limits'] = 0
                     if self._available(state):
                         state.update(state='normal', retry_at=None)
@@ -174,10 +174,13 @@ class ModelHealth:
             return not self._available(self._states[kind])
 
     def due_probes(self):
-        judge_available = (self.store.setting('recall_judge', {}).get('enabled', True) and not self.budget()['exhausted'])
+        exhausted = self.budget()['exhausted']
+        from .goal_dedup_judge import settings as goal_judge_settings
+        judge_available = {'recall_judge':self.store.setting('recall_judge', {}).get('enabled',True) and not exhausted,
+                           'goal_dedup_judge':goal_judge_settings(self.store)['enabled'] and not exhausted}
         with self._lock:
             return [kind for kind, state in self._states.items()
-                    if (kind != "recall_judge" or judge_available)
+                    if (kind not in JUDGMENT_KINDS or judge_available[kind])
                     and state["state"] in ("temporarily_unavailable", "account_problem")
                     and state["next_probe_at"] and datetime.fromisoformat(state["next_probe_at"]) <= self.clock()]
 

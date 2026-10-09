@@ -10,11 +10,12 @@ import numpy as np
 
 from .db import Store
 from .goals import Goals
+from . import goal_dedup_judge
 from .learning import LearningEngine, PROMPT_VERSION
 from .model_health import utc_now
 from .maintenance import Maintenance
 from .memory_ops import operation
-from .models import ModelError
+from .models import MODEL_KINDS, ModelError
 from .queue import FOCUS, form_batch, get_batch, should_learn
 
 
@@ -25,7 +26,7 @@ class Scheduler:
     def __init__(self, store: Store, gateway, *, clock=utc_now, interval=0.5,
                  max_concurrent=None, config_loader=None):
         self.store, self.gateway, self.clock = store, gateway, clock
-        self.goals = Goals(store, clock=self.clock)
+        self.goals = Goals(store, clock=self.clock, gateway=gateway)
         self.health = getattr(gateway, "health", None)
         self.interval, self.config_loader = interval, config_loader
         self._loaded_configs = dict(gateway.configs)
@@ -34,6 +35,8 @@ class Scheduler:
         self._pool = ThreadPoolExecutor(max_workers=32, thread_name_prefix="iris-learning")
         self._maintenance = ThreadPoolExecutor(max_workers=3, thread_name_prefix="iris-maintenance")
         self._active, self._probes = {}, {}
+        self._goal_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-goal-review")
+        self._goal_reviews = {}
         self._vectors = None
         self.lifecycle = Maintenance(store, gateway=gateway, clock=clock)
         self._lifecycle_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="iris-lifecycle")
@@ -85,6 +88,7 @@ class Scheduler:
         self._pool.shutdown(wait=True, cancel_futures=True)
         self._maintenance.shutdown(wait=True, cancel_futures=True)
         self._lifecycle_pool.shutdown(wait=True, cancel_futures=True)
+        self._goal_pool.shutdown(wait=True, cancel_futures=True)
         log.info("scheduler stopped")
 
     def request_learning(self, entry_id, *, actor="host"):
@@ -149,6 +153,23 @@ class Scheduler:
                     log.error("background task failed category=%s", type(error).__name__)
                 del futures[key]
 
+    def _schedule_goal_reviews(self):
+        self._reap(self._goal_reviews)
+        options = goal_dedup_judge.settings(self.store)
+        if (not options['enabled'] or goal_dedup_judge.method(options) not in ('B','C')
+                or not hasattr(self.gateway,'goal_dedup_judge')):
+            return
+        if self.health and self.health.snapshot()['goal_dedup_judge']['state']!='normal':
+            return
+        capacity = options['concurrency']-len(self._goal_reviews)
+        if capacity>0:
+            for gid in self.goals.pending_reviews(limit=8):
+                if gid not in self._goal_reviews:
+                    self._goal_reviews[gid] = self._goal_pool.submit(self.goals.review,gid)
+                    capacity -= 1
+                    if capacity<=0:
+                        break
+
     def tick(self):
         with self._tick_lock:
             if self._stop.is_set():
@@ -159,13 +180,14 @@ class Scheduler:
             if self.config_loader:
                 try:
                     configs = self.config_loader()
-                    for kind in ("chat", "embedding", "recall_judge"):
+                    for kind in MODEL_KINDS:
                         if configs.get(kind) != self._loaded_configs.get(kind):
                             self.gateway.replace_config(kind, configs.get(kind))
                     self._loaded_configs = dict(configs)
                 except (OSError, ValueError):
                     log.warning("model configuration could not be reloaded")
             self.goals.generate_notifications()
+            self._schedule_goal_reviews()
             if self.health:
                 for kind in self.health.due_probes():
                     if kind not in self._probes:

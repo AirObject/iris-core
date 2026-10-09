@@ -1,3 +1,4 @@
+import { personaSnapshotFixture } from "./persona-fixtures";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -63,6 +64,8 @@ beforeEach(() => {
       if (url === "/admin/api/state") {
         if (failState) throw new TypeError("offline");
         data = current;
+      } else if (url === "/admin/api/persona") {
+        data = personaSnapshotFixture;
       } else if (url.startsWith("/admin/api/state/reports?")) {
         if (failHistory) throw new TypeError("offline");
         const offset = Number(
@@ -76,6 +79,8 @@ beforeEach(() => {
           offset,
           limit: 30,
         };
+      } else if (url.startsWith("/admin/api/notifications?")) {
+        data = { items: [], total: 0 };
       } else if (url === "/admin/api/trial") {
         data = {
           entries: [entry],

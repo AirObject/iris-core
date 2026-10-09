@@ -24,6 +24,7 @@ def clock():
 
 @pytest.fixture
 def goals(store, clock):
+    store.set_setting('goal_dedup_judge', {'enabled': False})
     return Goals(store, clock=clock)
 
 
