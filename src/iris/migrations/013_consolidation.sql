@@ -4,7 +4,7 @@ CREATE TRIGGER consolidation_no_resurrection BEFORE UPDATE OF lifecycle,merged_i
 WHEN old.merged_into IS NOT NULL AND (new.lifecycle!='deleted' OR new.merged_into IS NOT old.merged_into)
 BEGIN SELECT RAISE(ABORT,'merged memory is a permanent placeholder'); END;
 INSERT OR IGNORE INTO runtime_settings(key,value_json) VALUES('consolidation',
-'{"enabled":true,"max_calls":50,"method":"balanced"}');
+'{"enabled":true,"max_calls":50,"method":"broad"}');
 CREATE TABLE consolidation_runs (
  run_id INTEGER PRIMARY KEY REFERENCES maintenance_runs(id), settings_json TEXT NOT NULL,
  planned INTEGER NOT NULL DEFAULT 0, finished INTEGER NOT NULL DEFAULT 0, skip_reason TEXT

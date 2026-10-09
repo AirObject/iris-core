@@ -6,6 +6,7 @@ import json
 import re
 import time
 from datetime import datetime
+from decimal import Decimal
 from difflib import SequenceMatcher
 from importlib.resources import files
 
@@ -17,7 +18,7 @@ from .search_text import match_query, terms
 
 # Candidate order and parameters are frozen before the first real-model probe.
 METHODS = {'balanced': 0.40, 'strict': 0.65, 'broad': 0.20}
-DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'balanced'}
+DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad'}
 PROMPT_VERSION = 'consolidation_v1'
 MAX_ANCESTORS = 64
 
@@ -83,8 +84,8 @@ def numeric(text):
         unit, value = m[2], number(m[1])
         if unit in ('点','时'):
             prefix = text[max(0,m.start()-3):m.start()]
-            if any(p in prefix for p in ('下午','晚上')) and int(value) < 12:
-                value = str(int(value)+12)
+            if any(p in prefix for p in ('下午','晚上')) and Decimal(value) < 12:
+                value = str(Decimal(value)+12)
             unit = 'hour'
         if unit in ('楼','层'):
             unit = 'floor'
@@ -119,9 +120,17 @@ def similarity(a,b):
     return max(dice,SequenceMatcher(None,a,b,autojunk=False).ratio())
 
 
-def excerpt(text):
-    # At most 300 UTF-8 bytes: conservative upper bound of 300 byte-level tokens.
-    return text.encode('utf-8')[:300].decode('utf-8',errors='ignore')
+def excerpt(text, limit=300):
+    # UTF-8 bytes conservatively bound byte-level token counts.
+    return text.encode('utf-8')[:limit].decode('utf-8',errors='ignore')
+
+
+def source_excerpt(source):
+    # A quoted message shares the same 300-byte allowance with its body.
+    quote = excerpt(source['quote_content'] or '', 150)
+    body = excerpt(source['text'], 300-len(quote.encode('utf-8')))
+    quote = excerpt(source['quote_content'] or '', 300-len(body.encode('utf-8')))
+    return {**source, 'text': body, 'quote_content': quote}
 
 
 def material(m):
@@ -129,7 +138,7 @@ def material(m):
     result['protected'] = protected(m)
     sources = m['sources']
     selected = sources if len(sources)<=4 else [sources[0],*sources[-3:]]
-    result['sources'] = [{**s,'text':excerpt(s['text']), 'quote_content':excerpt(s['quote_content'] or '')} for s in selected]
+    result['sources'] = [source_excerpt(s) for s in selected]
     if m['lifecycle']=='deleted':
         result['content'],result['sources'] = None,[]
     return result

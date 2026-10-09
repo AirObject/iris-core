@@ -24,6 +24,7 @@ from iris.memory_ops import delete_memory, edit_memory, manage_memory
 from iris.models import Gateway, load_test_models
 from iris.model_health import ModelHealth
 
+SOURCE_FIELDS=('key','entry_id','entry_kind','sender','kind','at','text')
 SCORING_VERSION='consolidation_scoring_v1'
 SCORING=(ROOT/'src/iris/prompts'/f'{SCORING_VERSION}.md').read_text(encoding='utf-8')
 
@@ -65,6 +66,7 @@ def seed(store,case):
             conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)",(s['id'],s['name'],case['now']))
             conn.executemany('INSERT INTO subject_aliases(subject_id,alias) VALUES(?,?)',[(s['id'],a) for a in s.get('aliases',[])])
         def source(s):
+            s={key:s[key] for key in SOURCE_FIELDS}
             if s['key'] in source_map:
                 if source_map[s['key']][1]!=s:
                     raise ValueError('inconsistent source key')

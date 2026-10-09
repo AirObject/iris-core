@@ -294,3 +294,38 @@ def test_repair_explains_visible_message_ids_without_changing_semantics(store):
     _,_,report=run(store,model)
     assert len(model.requests)==2 and report['summary']['merged']['count']==1
     assert report['summary']['model_calls']['count']==2
+
+
+def test_source_text_and_quote_share_one_excerpt_budget(store):
+    from iris.consolidation import material
+    sid=msg(store,1,'叙述'*120)
+    mid=put(store,'有引用的材料',evidence=[sid])
+    with store.write() as conn:
+        conn.execute("UPDATE messages SET quote_content=?,quote_author_subject_id='self' WHERE id=?",('原话'*120,sid))
+    with store.read() as conn:
+        source=material(snapshot(conn,mid))['sources'][0]
+    assert len(source['text'].encode())+len(source['quote_content'].encode())<=300
+    assert source['text'] and source['quote_content']
+
+
+def test_correction_invalidates_committed_vector_and_updates_fts(store):
+    sid=msg(store,1,'旧安排为口琴课，后来改为竹笛课')
+    a=put(store,'我每周教口琴课',evidence=[sid],vector=[1.,0.],importance=80)
+    b=put(store,'我不再教口琴课，改教竹笛课',evidence=[sid],importance=80)
+    index=store.vector_index('fake-vector')
+    assert index.contains(a)
+    def answer(p):
+        return {'decision':'conflict','reason':'按原话保留旧安排的历史范围','evidence':[sid],
+                'updates':[{'id':a,'content':'我过去每周教口琴课，现在改教竹笛课','annotation':'旧安排已被替代'}]}
+    run(store,Model(store,answer))
+    with store.read() as conn:
+        row=conn.execute('SELECT content,embedding,embedding_model FROM memories WHERE id=?',(a,)).fetchone()
+        assert row['content']=='我过去每周教口琴课，现在改教竹笛课'
+        assert row['embedding'] is None and row['embedding_model'] is None
+        assert conn.execute("SELECT 1 FROM memory_fts_jieba WHERE rowid=? AND memory_fts_jieba MATCH '竹笛'",(a,)).fetchone()
+    assert not index.contains(a)
+
+
+def test_decimal_clock_quantity_does_not_interrupt_candidate_planning():
+    from iris.consolidation import numeric
+    assert numeric('下午1.5点到达')==numeric('13.5点到达')

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-from run import ROOT, SCORING, SCORING_VERSION
+from run import ROOT, SCORING, SCORING_VERSION, SOURCE_FIELDS
 from iris.evaluation import _json_sha256, _read_json, _write_json, _verified_material_file
 
 
@@ -35,6 +35,7 @@ def validate_payload(p):
     sources={}
     for m in [*case['memories'],*case.get('events',[])]:
         for s in m.get('sources',[]):
+            s={key:s[key] for key in SOURCE_FIELDS}
             if s['key'] in sources:
                 require(sources[s['key']]==s,'source identity changed')
             sources[s['key']]=s

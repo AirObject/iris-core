@@ -77,3 +77,35 @@ def test_double_judging_AND_lists_and_disagreements():
     result=scorer.combine(a,b,disagreements=disagreements)
     assert result=={'must_keep':[False,True],'source_grounded':False}
     assert len(disagreements)==2
+
+
+def test_unknown_optional_fields_do_not_break_external_materials(tmp_path):
+    case=copy.deepcopy(runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')[0])
+    case['future_option']={'ignored':True}
+    case['memories'][0]['future_memory_option']='unused'
+    case['memories'][0]['sources'][0]['future_source_option']='unused'
+    row=runner.case_run(case,tmp_path/'external.db',lambda store,clock:Model(store),'balanced')
+    scorer.validate_payload(row['input'])
+    assert row['input']['case']['expected']==case['expected']
+
+
+def test_selection_uses_worst_run_ties_and_requires_final_double_judging():
+    spec=importlib.util.spec_from_file_location('co_selection',DIR/'selection.py')
+    selection=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(selection)
+    reports=[]
+    for method,rate,calls in [('balanced',1.0,50),('strict',0.5,10),('broad',0.98,45)]:
+        for _ in range(2):
+            reports.append({'method':method,'valid':True,'judge_rounds':2,'feasible':True,
+                'cases':[{'case_id':f'CS{i:03}'} for i in range(1,41)],
+                'mismerge':{'rate':0.0},'recognition':{'rate':rate},'calls':{'count':calls},'case_p95_seconds':10.})
+    assert selection.choose(reports)['selected']=='broad'
+    reports[2]['mismerge']['rate']=None
+    reports[2]['feasible']=False
+    assert selection.choose(reports)['candidates'][1]['worst_mismerge'] is None
+    reports[-1]['feasible']=False
+    reports[-1]['mismerge']['rate']=0.1
+    assert selection.choose(reports)['selected']=='balanced'
+    reports[0]['judge_rounds']=1
+    with pytest.raises(ValueError,match='double'):
+        selection.choose(reports)

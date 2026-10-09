@@ -8,6 +8,8 @@ from iris.evaluation import _read_json, _write_json
 
 
 def choose(reports):
+    if any(r.get('judge_rounds')!=2 for r in reports):
+        raise ValueError('final selection requires independent double judging')
     values=[]
     for method in METHODS:
         runs=[r for r in reports if r['method']==method]
@@ -15,7 +17,8 @@ def choose(reports):
             raise ValueError('each frozen candidate needs two valid complete runs')
         if len({r['cases'][i]['case_id'] for r in runs for i in range(len(r['cases']))})!=len(runs[0]['cases']) or any(len(r['cases'])!=40 for r in runs):
             raise ValueError('selection requires all 40 consolidation_v1 cases')
-        error=max(r['mismerge']['rate'] if r['mismerge']['rate'] is not None else 1.0 for r in runs)
+        rates=[r['mismerge']['rate'] for r in runs]
+        error=max(rates) if all(rate is not None for rate in rates) else None
         recognition=min(r['recognition']['rate'] for r in runs)
         values.append({'method':method,'feasible':all(r['feasible'] for r in runs),'worst_mismerge':error,
             'worst_recognition':recognition,'calls':max(r['calls']['count'] for r in runs),
@@ -27,7 +30,7 @@ def choose(reports):
         selected=min(tied,key=lambda v:(v['calls'],v['p95_seconds'],list(METHODS).index(v['method'])))
         reason='feasible; recognition within <0.03; calls, case P95, frozen order'
     else:
-        selected=min(values,key=lambda v:(v['worst_mismerge'],list(METHODS).index(v['method'])))
+        selected=min(values,key=lambda v:(v['worst_mismerge'] if v['worst_mismerge'] is not None else float('inf'),list(METHODS).index(v['method'])))
         reason='no feasible candidate; lowest worst mismerge; requires planner review'
     return {'selected':selected['method'],'reason':reason,'candidates':values}
 
