@@ -245,6 +245,8 @@ def test_duplicate_new_memories_in_one_batch_do_not_self_confirm(store):
 
 
 def test_goals_and_questions_merge_exact_duplicates_across_entries(store):
+    # The deterministic fallback is still available when model judgment is off.
+    store.set_setting('goal_dedup_judge', {'enabled': False})
     msg(store, 1, "周五问问小林面试结果")
     first = {"goals": [{"content": "周五问小林面试结果", "evidence": [1]}],
              "questions": ["小林喜欢猫吗？"]}

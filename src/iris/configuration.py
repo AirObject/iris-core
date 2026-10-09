@@ -15,7 +15,7 @@ from time import monotonic
 
 from .auth import audit
 from .db import dumps
-from .models import MODEL_KINDS, ModelConfig, effective_configs
+from .models import JUDGMENT_KINDS, MODEL_KINDS, ModelConfig, effective_configs
 from .process_lock import LeaseBusyError, StoreLease
 
 KINDS = MODEL_KINDS
@@ -167,7 +167,7 @@ class RuntimeConfig:
     def public(self):
         raw = self.load()
         configs = effective_configs(raw)
-        return {kind: {'inherited': kind == 'recall_judge' and not raw.get(kind),
+        return {kind: {'inherited': kind in JUDGMENT_KINDS and not raw.get(kind),
                        'enabled': bool(configs.get(kind) and configs[kind].base_url and configs[kind].model),
                        'base_url': configs[kind].base_url if configs.get(kind) else '',
                        'model': configs[kind].model if configs.get(kind) else '',

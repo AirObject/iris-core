@@ -10,7 +10,7 @@
 | 主体 | `subjects`、`subject_aliases`、`platform_identities`、`subject_links`、`subject_alias_blocks` |
 | 记忆 | `memories`、`memory_subjects`、`memory_tags`、`sources`、`memory_revisions` |
 | 当前状态 | `current_state`、`state_reports` |
-| 自我与目标 | `persona_versions`、`goals`、`goal_sources`、`goal_people`、`goal_memories`、`goal_duplicates`、`goal_reminder_plans`、`notifications`、`runtime_settings` |
+| 自我与目标 | `persona_versions`、`goals`、`goal_sources`、`goal_people`、`goal_memories`、`goal_duplicates`、`goal_dedup_jobs`、`goal_reminder_plans`、`notifications`、`runtime_settings` |
 | 模型 | `model_calls` |
 | 召回 | `memory_fts_jieba`、`memory_fts_trigram`、`vector_dirty`、`recalls`、`recall_items` |
 
@@ -207,12 +207,24 @@ Scheduler 的独立单工作线程执行 Maintenance，不占学习、模型探�
 
 `goals.py` 持有角色共享目标的写入、去重、投影和提醒逻辑。迁移 012 沿用 goals 主键／goal_sources，增加提前量、宿主唯一键、修订、完成或放弃的时间／操作者、规范化期限及调度初始化标记。状态只接受 open／completed／abandoned；done 归 completed，cancelled/canceled 归 abandoned，其他旧值归 open，不猜测历史关闭时间。goal_people 关联主体，goal_memories 保存同证据角色记忆及依据修订，goal_duplicates 保存可能重复、驳回与合并结果。已合并目标保留原始字段和证据，规范查询排除占位；人物身份合并通过 canonical_subject 动态解析。
 
-`decide_dedup(candidates, proposed)` 是无数据库／模型调用的独立决策步骤，输出 created／merged(target)／possible_duplicate(target)／pending。确定性合并要求同 kind、同涉及人集合、兼容期限、相同数字／否定序列，正文只允许连续空白、大小写及句末标点规范化差异。相似度只产生复核标记。管理员新建目标在判断之后将 merged 降为 possible_duplicate，保留新目标及待处理关系；只有显式管理合并才合并这条新记录，宿主／学习创建的自动合并不变。调用方保存候选修订，在写回前重查；下一步的模型判断必须在事务外执行，再核对新目标与候选的修订，本步没有模型用途或调用。宿主键的首次完整回执随目标同事务保存，重试返回原快照。
+`decide_dedup(candidates, proposed)` 是无数据库／模型调用的独立决策步骤，输出 created／merged(target)／possible_duplicate(target)／pending。确定性合并要求同 kind、同涉及人集合、兼容期限、相同数字／否定序列，正文只允许连续空白、大小写及句末标点规范化差异。相似度只产生复核标记。管理员新建目标在判断之后将 merged 降为 possible_duplicate，保留新目标及待处理关系；只有显式管理合并才合并这条新记录，宿主／学习创建的自动合并不变。确定性路径在同一事务复核候选修订；第三步的模型路径见下节。宿主键回执先随目标落盘，首个同步判断完成后固定首次响应，重试返回原快照；后台补做不改写它。
 
 学习仅把原写入循环改为 write_learning_goal(conn, ...)，在原事务内关联消息、同证据 self 记忆与当前修订，推断证据作者及正文中已知名字／别名涉及人。内部路径保留既有学习校验边界，宿主字段上限不反向导致学习整批失败；无法解析的模型期限保留但不安排提醒。学习材料、校验、提示词及记忆写入保持原样。合并将证据复制到保留目标并保留原关联供追溯，迁移未取通知；目标合并不写记忆或 persona。
 
 未来提醒保存在 goal_reminder_plans，不带外部游标；只有发布时才 INSERT notifications，AUTOINCREMENT id 定义单调发布顺序。每条通知保存发布时的期限，合并时只有双方同一期限、同一阶段的已取或待取通知能抑制重复提醒。提醒生成加入现有 Scheduler.tick，在学习健康／并发提前返回之前执行；读快照发现没有待发计划时不进入写事务。Goals 的时钟可注入，创建、更新、去重与相应计划修改在单个短事务内完成。到点发布、计划状态推进及下一日过期计划同事务完成，崩溃回滚不会重复发布。错过多个阶段压成一个即时提醒，不追发停机期间每一天；过期按角色日历限每天一次。提前量为零时同刻两阶段合并。
 
-通知取走、修改目标及取消提醒都使用同一 Store 单写连接串行化。拉取按发布序号返回，标记本页为 taken，相同游标仍可重放；cancelled 不再返回。完成／放弃取消 scheduled 计划和 pending 通知，taken 记录保留。设置默认提前量只重排未来且使用默认值的目标；过期提醒开关取消／恢复未来的日提醒。管理员只读列表不标取走，所有写入走现有管理鉴权和操作记录，不增加前端、推送或自动执行。
+通知取走、修改目标及取消提醒都使用同一 Store 单写连接串行化。拉取按发布序号返回，标记本页为 taken，相同游标仍可重放；cancelled 不再返回。完成／放弃取消 scheduled 计划和 pending 的目标提醒，taken 记录及去重结果通知保留。设置默认提前量只重排未来且使用默认值的目标；过期提醒开关取消／恢复未来的日提醒。管理员只读列表不标取走，所有写入走现有管理鉴权和操作记录，不增加前端、推送或自动执行。
 
 回复目标投影独立于记忆召回：共享 open 且未合并的目标在 SQL 中按临近／过期、入口、参与者、期限、创建时间排序并 LIMIT 10，Python 只读取入选目标的涉及人并投影。期限优先使用已规范化的 deadline_at；旧库尚未初始化的期限才调用只读兼容转换。临近比较采用整数秒加原微秒部分，避免 SQLite 浮点日期的边界舍入；参与者通过递归 CTE 反查主体合并链，沿用已有索引。search 使用相同投影。通知不进入该查询或学习材料。相关实现与验证汇总见 README「M3 目标、询问与提醒」。
+
+## M3 目标去重判断（GO 第三步）
+
+`goal_dedup_judge.py` 将候选检索、材料投影、严格响应校验和决策拆为独立函数；冻结候选 B／C 共用确定性边界，分别逐一／整批调用专用用途。未知人物信息兼容但已知不同人物不兼容，数字／否定序列仍复用 M2，不做额外归一化。歧义、超出 8 个候选或管理员创建阻止自动合并。提示词及候选约定冻结提交为 `9cacbd02d38f0200dd757316c7b8c8c101dde113`；公开 dev 双轮按冻结规则选中 C，默认开启；未覆盖的产品预算为 5 秒（探测 P95 加 20% 向上取整），产品预算双轮已有效完成，作废尝试及尾部超时单列报告。显式关闭设置使用原 A 路径，运行时降级保持待复核。
+
+迁移 014 添加用途专属 `goal_dedup_jobs`，与目标、来源、学习批次同事务入队；不追溯入队历史目标。pending／running／done／cancelled 区分等待、持租约执行、复核结束及显式取消。持久保存输入修订、候选修订映射、尝试次数、available_at、lease_until 和随机 lease_token。宿主／管理员创建给同步请求留出一个预算窗口，随后调度器可接管；学习创建立即可在提交后调度。只读到期索引查询支持等待任务和到期租约，进程退出不会丢任务。
+
+`Goals.review` 先在短事务领取租约，再在只读快照取材料；网络期间没有目标写事务。写回在同一短事务验证租约、全部观察到的目标修订与状态、配置开关和人物／来源投影。旧租约或陈旧判断不合并，不在失败时退回确定性自动合并。待复核结果按 2 秒起、上限 300 秒退避，并受用途健康状态、Retry-After 和每日用量限制。管理员明确完成／放弃或合并占位会取消相关在途租约。成功补做的操作记录只含 ID、修订和结果；通知沿用发布时单调序号，kind=goal_dedup_result，目标期限修改不会把它当普通提醒取消或重写。
+
+api.py 仅将服务的 Gateway 传入 Goals。Scheduler 使用独立的最多 8 线程执行器，只提交配置并发数允许的到期任务；该步骤先于学习暂停／并发上限的提前返回。Gateway 为 goal_dedup_judge 使用独立 Admission 和网络执行器，配置继承、健康状态、短退避／暂停与探测的规则沿用 recall_judge；两者不共享用途状态或并发槽。预算包含材料准备、排队及全部候选请求，模型调用无内部重试，迟到响应不采用。产品设置预算上限 10 秒；离线探测显式使用最高 60 秒的测量预算，选型与产品预算验证分开记录，5 秒的作废尝试不纳入有效轮次，详见 evals/goal_dedup_probe/RESULTS.md。
+
+管理详情通过现有 goal_detail 投影读取脱敏的 dedup_review；无需新增路由或前端改动。学习代码、回复目标分区、记忆选取、召回提示词与 persona 均未修改。探测使用固定业务时钟和逐案例隔离数据库，记录真实创建／合并路径；评分独立于模型材料。假模型模式只验证管线和调用数量，不作质量分数或方法选择。
