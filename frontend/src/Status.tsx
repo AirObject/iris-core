@@ -22,18 +22,33 @@ const purposes: Record<string, string> = {
   retrieval_query: "召回查询",
   health_probe: "健康探测",
   recall_judge: "召回判断",
+  goal_dedup_judge: "目标去重判断",
+  consolidation_merge: "整理合并判断",
+  consolidation_merge_repair: "整理合并 JSON 修正",
+  consolidation_conflict: "整理矛盾建议",
+  consolidation_conflict_repair: "整理矛盾 JSON 修正",
+  consolidation_dependency: "整理依赖复核",
+  consolidation_dependency_repair: "整理依赖 JSON 修正",
+  persona_generate: "persona 生成",
+  persona_check: "persona 检查",
   connection_check: "连接测试",
 };
 export default function Status({
   data,
   openMemory,
+  initialQuery = "",
 }: {
   data: StatusData | null;
   openMemory: (id: number) => void;
+  initialQuery?: string;
 }) {
   const catalog = useData<{ entries: Entry[] }>("/catalog");
-  const settings = useData<Pick<Settings, "recall_judge">>("/settings", 5000);
+  const settings = useData<Pick<Settings, "recall_judge" | "goal_dedup_judge">>(
+    "/settings",
+    5000,
+  );
   if (!data) return <Empty title="正在读取运行状态" />;
+  const requestedRun = Number(new URLSearchParams(initialQuery).get("run"));
   const latency = data.learning_latency_24h;
   const errors = data.models.filter((m) => m.result_category !== "success");
   const names = new Map(catalog.data?.entries.map((e) => [e.id, e.name]));
@@ -79,7 +94,14 @@ export default function Status({
           </small>
         </section>
       </div>
-      <MaintenancePanel openMemory={openMemory} />
+      <MaintenancePanel
+        openMemory={openMemory}
+        initialRun={
+          Number.isSafeInteger(requestedRun) && requestedRun > 0
+            ? requestedRun
+            : undefined
+        }
+      />
       <div className="status-grid">
         <section className="panel">
           <div className="panel-heading">
@@ -99,7 +121,9 @@ export default function Status({
                   ? "用于学习与角色回复"
                   : kind === "recall_judge"
                     ? "判断相关候选能否回答当前请求"
-                    : "用于记忆向量与语义检索"}
+                    : kind === "goal_dedup_judge"
+                      ? "跨入口判断目标是否为同一件事"
+                      : "用于记忆向量与语义检索"}
               </p>
               {kind === "recall_judge" && (
                 <>
@@ -123,6 +147,33 @@ export default function Status({
                   )}
                   {h.retry_at && <p>退避截止：{time(h.retry_at)}</p>}
                   <a href="#/settings">管理召回判断设置</a>
+                </>
+              )}
+              {kind === "goal_dedup_judge" && (
+                <>
+                  {settings.error && (
+                    <p className="muted">
+                      判断设置暂时无法读取。
+                      <button onClick={settings.refresh}>重新读取</button>
+                    </p>
+                  )}
+                  {settings.data?.goal_dedup_judge && (
+                    <p>
+                      判断预算 {settings.data.goal_dedup_judge.budget_seconds}{" "}
+                      秒（含排队） · 并发{" "}
+                      {settings.data.goal_dedup_judge.concurrency} · 排队上限{" "}
+                      {settings.data.goal_dedup_judge.queue_limit}
+                    </p>
+                  )}
+                  {settings.data?.goal_dedup_judge?.enabled === false ? (
+                    <p>目标去重判断已关闭，使用确定性规则。</p>
+                  ) : (
+                    <p>
+                      模型暂停、退避或判断失败时先保留目标，等待复核。管理员创建的目标不会自动合并。
+                    </p>
+                  )}
+                  {h.retry_at && <p>退避截止：{time(h.retry_at)}</p>}
+                  <a href="#/settings">管理目标去重判断设置</a>
                 </>
               )}
               {h.last_error && (

@@ -26,6 +26,7 @@ import {
 
 export function PersonaHistory({
   initialVersion,
+  initialComparison,
   currentID,
   catalog,
   openMemory,
@@ -33,6 +34,7 @@ export function PersonaHistory({
   locked,
 }: {
   initialVersion?: number;
+  initialComparison?: { before: number; after: number };
   currentID?: number;
   catalog: PersonaCatalog | null;
   openMemory: (id: number) => void;
@@ -47,13 +49,17 @@ export function PersonaHistory({
     `/persona/versions?${query}limit=30&offset=${offset}`,
     5000,
   );
-  const [before, setBefore] = useState(""),
-    [after, setAfter] = useState(currentID?.toString() || ""),
+  const [before, setBefore] = useState(
+      initialComparison?.before.toString() || "",
+    ),
+    [after, setAfter] = useState(
+      initialComparison?.after.toString() || currentID?.toString() || "",
+    ),
     [error, setError] = useState("");
   const [comparison, setComparison] = useState<{
       before: number;
       after: number;
-    } | null>(null),
+    } | null>(initialComparison || null),
     [compareKey, setCompareKey] = useState(0);
   return (
     <>

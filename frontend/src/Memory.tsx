@@ -1,3 +1,4 @@
+import { MemorySuggestions } from "./MemorySuggestions";
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError, api, json, useData, errorText } from "./api";
 import {
@@ -427,7 +428,21 @@ export function MemoryDetail({
             </Badge>
             <span className="muted">修订 {detail.revision}</span>
           </div>
-          {detail.lifecycle === "deleted" && (
+          {detail.merged_into != null && (
+            <Notice>
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={() => navigateMemory(detail.merged_into!)}
+              >
+                已合并到 #{detail.merged_into}
+              </button>
+              <p>
+                全部来源已归入保留记忆；此处是原记忆占位，不能恢复为有效记忆。
+              </p>
+            </Notice>
+          )}
+          {detail.lifecycle === "deleted" && detail.merged_into == null && (
             <Notice>
               此标识已撤销，不再参与召回；来源和修订历史仍然保留。
             </Notice>
@@ -543,6 +558,21 @@ export function MemoryDetail({
               ))}
             </div>
           )}
+          <MemorySuggestions
+            key={`suggestions-${detail.id}:${detail.revision}:${controlsVersion}`}
+            detail={detail}
+            busy={busy}
+            blocked={conflict || editing || deleting}
+            setBusy={setBusy}
+            saved={(latest) => {
+              setSaved(latest);
+              setError("");
+              onChange();
+            }}
+            failed={failed}
+            openMemory={navigateMemory}
+            close={onClose}
+          />
           <section className="detail-section">
             <h3>来源与前后文</h3>
             {detail.sources.length ? (

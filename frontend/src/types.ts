@@ -1,3 +1,8 @@
+import type {
+  ConsolidationDetails,
+  ConsolidationProjection,
+  MemorySuggestion,
+} from "./consolidation-types";
 export type Person = { id: string; name: string; is_default?: boolean };
 export type Alias = {
   id: number;
@@ -120,6 +125,35 @@ export type StateReport = {
     details?: Record<string, StateChange>;
   };
 };
+export type GoalBasisAnnotation = {
+  id: number;
+  memory_id: number;
+  basis_revision: number;
+  observed_revision: number | null;
+  observed_lifecycle: string | null;
+  observed_purged: boolean;
+  observed_merged_into: number | null;
+  changes: string[];
+  text: string;
+  created_at: string;
+};
+export type GoalSource = {
+  id: number;
+  message_id: number;
+  message: Message | null;
+  context: Message[];
+  missing: boolean;
+  notice: string | null;
+};
+export type GoalHistoryStatus = {
+  history_status: "complete" | "pre_migration_no_snapshot";
+  missing_through_revision: number | null;
+  notice: string | null;
+};
+export type GoalRevision = Omit<Revision, "revision_before"> & {
+  revision_before: number | null;
+  action: string;
+};
 export type Goal = {
   id: number;
   content: string;
@@ -143,6 +177,8 @@ export type Goal = {
   due_soon: boolean;
   possible_duplicate: boolean;
   possible_duplicate_ids: number[];
+  basis_needs_review?: boolean;
+  basis_annotations?: GoalBasisAnnotation[];
 };
 export type GoalConfig = {
   default_reminder_minutes: number;
@@ -174,6 +210,16 @@ export type GoalNotification = {
   cancelled_at: string | null;
 };
 export type GoalDetail = Goal & {
+  revision_history?: GoalHistoryStatus;
+  dedup_review?: {
+    state: "pending" | "running" | "done" | "cancelled";
+    method: string;
+    input_revision: number;
+    attempts: number;
+    result: { status?: string; target_id?: number | null; reason?: string };
+    next_attempt_at: string | null;
+    updated_at: string;
+  } | null;
   sources: Pick<
     Message,
     "id" | "entry_id" | "sender_subject_id" | "kind" | "content" | "occurred_at"
@@ -197,6 +243,7 @@ export type GoalDetail = Goal & {
   }[];
 };
 export type Memory = {
+  merged_into?: number | null;
   id: number;
   content: string;
   kind: string;
@@ -237,6 +284,7 @@ export type Revision = {
   created_at: string;
 };
 export type MemoryDetail = Memory & {
+  consolidation_annotations?: MemorySuggestion[];
   speaker: Person;
   sources: Source[];
   derived_memories: (Memory & { needs_review?: boolean })[];
@@ -288,6 +336,10 @@ export type MaintenanceSummary = Record<
   string,
   {
     count: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    duration_ms?: number;
+    unknown_usage_calls?: number;
     memory_ids?: number[];
     object_ids?: number[];
     by_phase?: Record<string, number>;
@@ -310,7 +362,7 @@ export type MaintenanceItem = {
   object_id: number;
   outcome: string;
   reason: string | null;
-  details: {
+  details: ConsolidationDetails & {
     before?: number;
     after?: number;
     transition?: string;
@@ -318,10 +370,11 @@ export type MaintenanceItem = {
   };
   created_at: string;
 };
-export type MaintenanceReport = MaintenanceRun & {
-  timezone: string;
-  items: MaintenanceItem[];
-};
+export type MaintenanceReport = MaintenanceRun &
+  ConsolidationProjection & {
+    timezone: string;
+    items: MaintenanceItem[];
+  };
 export type TrialCatalog = {
   entries: Entry[];
   speakers: Person[];
@@ -428,7 +481,11 @@ export type Status = {
     timed_out: boolean;
     error_summary?: string;
   }[];
-  timeouts_seconds: { learning: number; recall_judge?: number };
+  timeouts_seconds: {
+    learning: number;
+    recall_judge?: number;
+    goal_dedup_judge?: number;
+  };
   memory_gap_count: number;
   missing_vectors: number;
 };

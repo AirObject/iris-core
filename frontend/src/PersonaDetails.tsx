@@ -193,7 +193,11 @@ function Verdict({ value, index }: { value: unknown; index: number }) {
     </li>
   );
 }
-export function PersonaChecks({ version }: { version: PersonaVersion }) {
+export function PersonaChecks({
+  version,
+}: {
+  version: Pick<PersonaVersion, "checks">;
+}) {
   const { checks } = version;
   const model = record(checks.model);
   return (

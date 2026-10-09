@@ -384,6 +384,16 @@ export default function PersonaPage({
         )}
         {tab === "history" && (
           <PersonaHistory
+            initialComparison={(() => {
+              const before = Number(initial.get("before")),
+                after = Number(initial.get("after"));
+              return Number.isSafeInteger(before) &&
+                before > 0 &&
+                Number.isSafeInteger(after) &&
+                after > 0
+                ? { before, after }
+                : undefined;
+            })()}
             initialVersion={
               Number.isSafeInteger(initialVersion) && initialVersion > 0
                 ? initialVersion

@@ -830,3 +830,21 @@ test("本页接受的任务也以快照终态结束等待，不能被旧 202 回
   ).toHaveLength(count);
   expect(requests.filter((r) => r.url.endsWith("/regenerate"))).toHaveLength(1);
 });
+
+test("整理报告链接自动打开指定两个 persona 版本的差异", async () => {
+  mount({ initialQuery: "tab=history&version=8&before=3&after=8" });
+  expect(
+    await screen.findByRole("region", { name: "版本差异 v3 到 v8" }),
+  ).toBeVisible();
+  await waitFor(() =>
+    expect(
+      requests.some(
+        (r) =>
+          r.url === "/admin/api/persona/diff?before_version=3&after_version=8",
+      ),
+    ).toBe(true),
+  );
+  expect(screen.getByLabelText("对比前版本 ID")).toHaveValue(3);
+  expect(screen.getByLabelText("对比后版本 ID")).toHaveValue(8);
+  expect(requests.every((r) => !r.init?.method)).toBe(true);
+});

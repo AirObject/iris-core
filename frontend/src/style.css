@@ -2814,3 +2814,57 @@ tr:last-child td {
     flex: 1;
   }
 }
+
+/* Consolidation audit and changed-field snapshots stay readable on narrow screens. */
+.report-text,
+.consolidation-excerpt blockquote,
+.revision-values p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.consolidation-excerpts,
+.suggestion-summary,
+.goal-operations {
+  margin-block: 12px;
+}
+.consolidation-excerpt {
+  margin-block: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--line);
+}
+.source-quote {
+  padding-left: 12px;
+  color: var(--muted);
+}
+.suggestion-actions {
+  margin-block: 14px;
+}
+.revision-values {
+  margin: 12px 0;
+}
+.revision-values > div {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.6fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  padding-block: 12px;
+  border-top: 1px solid var(--line);
+}
+.revision-values dt {
+  font-weight: 600;
+}
+.revision-values dd {
+  margin: 0;
+  min-width: 0;
+}
+.revision-values dd p {
+  margin: 5px 0 0;
+}
+@media (max-width: 640px) {
+  .revision-values > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .maintenance-item {
+    overflow-wrap: anywhere;
+  }
+}

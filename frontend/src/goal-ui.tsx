@@ -43,6 +43,7 @@ export function GoalBadges({ goal }: { goal: Goal }) {
         <Badge tone="purple">临近截止</Badge>
       ) : null}
       {goal.possible_duplicate && <Badge tone="warning">可能重复</Badge>}
+      {goal.basis_needs_review && <Badge tone="warning">依据可能不成立</Badge>}
       {goal.merged_into && <Badge>已合并</Badge>}
     </div>
   );
