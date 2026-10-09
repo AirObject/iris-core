@@ -272,3 +272,25 @@ def test_old_recall_cannot_feedback_absorbed_id(store):
     run(store,Model(store,merge_answer))
     with pytest.raises(KeyError):
         retrieval.feedback(recall['recall_id'],[a])
+
+
+def test_repair_explains_visible_message_ids_without_changing_semantics(store):
+    pair(store)
+    class InvalidReference(Model):
+        def chat(self,messages,purpose,max_tokens=16000,**kwargs):
+            assert not store._writer.in_transaction
+            if not self.requests:
+                payload=json.loads(messages[-1]['content'])
+                self.correct=merge_answer(payload)
+                value={**self.correct,'evidence':[99999]}
+            else:
+                assert 'invalid_evidence' in messages[-1]['content']
+                assert '可见来源消息 id：[1,2]' in messages[-1]['content']
+                assert '不要把记忆 id 当作消息 id' in messages[-1]['content']
+                value=self.correct
+            self.requests.append(messages)
+            return ModelReply(json.dumps(value,ensure_ascii=False),'stop',{'prompt_tokens':10,'completion_tokens':10})
+    model=InvalidReference(store)
+    _,_,report=run(store,model)
+    assert len(model.requests)==2 and report['summary']['merged']['count']==1
+    assert report['summary']['model_calls']['count']==2

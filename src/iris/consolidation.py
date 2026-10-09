@@ -256,11 +256,18 @@ class Consolidation:
                 result=json.loads(reply.content,object_pairs_hook=unique)
                 self.validate(result,work,payload)
                 return result
-            except (ValueError,TypeError,KeyError):
+            except (ValueError,TypeError,KeyError) as error:
                 if repair:
                     raise ValueError('invalid_output') from None
+                # Explain the mechanical rejection, not a preferred semantic answer.
+                visible=sorted({s['id'] for m in payload['memories'] for s in material(m)['sources']})
+                category=str(error) if type(error) is ValueError and str(error) in {
+                    'invalid_fields','invalid_decision','invalid_evidence','missing_evidence','invalid_updates',
+                    'invalid_update','non_target_update','invalid_belief','invalid_text','invalid_merge',
+                    'unexpected_updates','weakening_cannot_rewrite','duplicate_key','incomplete_output'} else 'invalid_json'
+                repair_note=f'校验失败类型：{category}。evidence 只能引用可见来源消息 id：{dumps(visible)}；不要把记忆 id 当作消息 id。依照原始指令和材料完整修正一次，只输出 JSON。'
                 messages += [{'role':'assistant','content':reply.content},
-                    {'role':'user','content':'输出未通过严格 JSON、字段、引用或处理边界校验。依照原始指令和材料完整修正一次，只输出 JSON。'}]
+                    {'role':'user','content':repair_note}]
         raise AssertionError('unreachable')
 
     @staticmethod
