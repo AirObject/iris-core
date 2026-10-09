@@ -1,0 +1,580 @@
+{
+  "format_version": 1,
+  "name": "goal_dedup_v1",
+  "timezone": "Asia/Shanghai",
+  "role_name": "Iris",
+  "cases": [
+    {
+      "id": "GD001", "split": "dev", "category": "换说法与缩写", "now": "2026-11-03T10:00:00+08:00",
+      "subjects": [{"id": "yuhe", "name": "余禾", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给余禾整理面试常见题", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-yuhe", "entry_kind": "private", "deadline": null, "people": ["yuhe"], "created_at": "2026-11-01T08:10:00+08:00", "sources": []},
+        {"key": "g2", "content": "周五晚问余禾面试怎么样", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "job-chat", "entry_kind": "group", "deadline": "2026-11-06T20:00:00+08:00", "people": ["yuhe"], "created_at": "2026-11-02T21:10:00+08:00", "sources": [{"entry_id": "job-chat", "sender": "self", "kind": "self_output", "at": "2026-11-02T21:09:00+08:00", "text": "那我周五晚上八点问问你，面试顺不顺利。"}]},
+        {"key": "g3", "content": "帮余禾看面试复盘", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-yuhe", "entry_kind": "private", "deadline": null, "people": ["yuhe"], "created_at": "2026-11-02T22:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "周五20点跟余禾聊下面试结果", "kind": "normal", "origin": "host", "entry_id": "dm-yuhe", "entry_kind": "private", "deadline": "2026-11-06T20:00:00+08:00", "people": ["yuhe"], "sources": []},
+      "expected": {"decision": "merge", "target": "g2"}, "reason": "询问结果和问面试怎么样是同一次关心；准备题目、读复盘是另两个动作。"
+    },
+    {
+      "id": "GD002", "split": "dev", "category": "换说法与缩写", "now": "2026-11-03T10:10:00+08:00",
+      "subjects": [{"id": "tangmi", "name": "唐弥", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "替唐弥过一遍分享会PPT的错字", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "slides-room", "entry_kind": "group", "deadline": null, "people": ["tangmi"], "created_at": "2026-11-02T18:01:00+08:00", "sources": [{"entry_id": "slides-room", "sender": "self", "kind": "self_output", "at": "2026-11-02T18:00:00+08:00", "text": "唐弥，这份分享会幻灯片的错别字我帮你扫一遍。"}]},
+        {"key": "g2", "content": "替唐弥把分享会PPT导成PDF", "kind": "normal", "origin": "host", "state": "open", "entry_id": "slides-room", "entry_kind": "group", "deadline": null, "people": ["tangmi"], "created_at": "2026-11-02T18:02:00+08:00", "sources": []},
+        {"key": "g3", "content": "替唐弥校对招聘海报的错字", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-tangmi", "entry_kind": "private", "deadline": null, "people": ["tangmi"], "created_at": "2026-11-02T19:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "帮唐弥校对分享会幻灯片里的错别字", "kind": "normal", "origin": "host", "entry_id": "dm-tangmi", "entry_kind": "private", "deadline": null, "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "PPT在来源中明确指这份幻灯片；文件与校对范围相同，省略people不造成主体未知。"
+    },
+    {
+      "id": "GD003", "split": "dev", "category": "换说法与缩写", "now": "2026-11-03T11:00:00+08:00",
+      "subjects": [{"id": "luye", "name": "陆野", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给陆野的短片加字幕", "kind": "normal", "origin": "host", "state": "open", "entry_id": "film-club", "entry_kind": "group", "deadline": null, "people": ["luye"], "created_at": "2026-11-01T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给陆野列短片配乐候选", "kind": "normal", "origin": "host", "state": "open", "entry_id": "film-club", "entry_kind": "group", "deadline": null, "people": ["luye"], "created_at": "2026-11-01T09:10:00+08:00", "sources": []},
+        {"key": "g3", "content": "把陆野短片片尾的背景音乐调轻", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "film-club", "entry_kind": "group", "deadline": null, "people": ["luye"], "created_at": "2026-11-02T22:01:00+08:00", "sources": [{"entry_id": "film-club", "sender": "self", "kind": "self_output", "at": "2026-11-02T22:00:00+08:00", "text": "片尾音乐盖住你说话了，我回头把这段BGM音量降一点。"}]}
+      ],
+      "incoming": {"content": "调低陆野短片片尾BGM的音量", "kind": "normal", "origin": "host", "entry_id": "dm-luye", "entry_kind": "private", "deadline": null, "people": ["luye"], "sources": []},
+      "expected": {"decision": "merge", "target": "g3"}, "reason": "BGM与背景音乐同义，且都只调整片尾音量，不涉及选曲或字幕。"
+    },
+    {
+      "id": "GD004", "split": "dev", "category": "换说法与缩写", "now": "2026-11-03T12:00:00+08:00",
+      "subjects": [{"id": "anyi", "name": "安苡", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "整理安苡旧相机的购买凭证", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-anyi", "entry_kind": "private", "deadline": null, "people": ["anyi"], "created_at": "2026-11-01T11:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "帮安苡找旧相机的说明书电子版", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "photo-chat", "entry_kind": "group", "deadline": null, "people": ["anyi"], "created_at": "2026-11-02T13:10:00+08:00", "sources": [{"entry_id": "photo-chat", "sender": "self", "kind": "self_output", "at": "2026-11-02T13:09:00+08:00", "text": "你这台旧相机的纸质手册没了呀，我帮你找找电子说明书。"}]},
+        {"key": "g3", "content": "替安苡查旧相机的维修点", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-anyi", "entry_kind": "private", "deadline": null, "people": ["anyi"], "created_at": "2026-11-02T14:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "给安苡找那台旧相机的电子手册", "kind": "normal", "origin": "host", "entry_id": "dm-anyi", "entry_kind": "private", "deadline": null, "people": ["anyi"], "sources": []},
+      "expected": {"decision": "merge", "target": "g2"}, "reason": "电子手册就是说明书，材料中只有这一台旧相机；另两项用途不同。"
+    },
+    {
+      "id": "GD005", "split": "dev", "category": "换说法与缩写", "now": "2026-11-04T09:00:00+08:00",
+      "subjects": [{"id": "wenqiu", "name": "闻秋", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "问闻秋借投影仪", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-wenqiu", "entry_kind": "private", "deadline": null, "people": ["wenqiu"], "created_at": "2026-11-02T08:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给闻秋发读书会散场照片", "kind": "normal", "origin": "host", "state": "open", "entry_id": "book-night", "entry_kind": "group", "deadline": null, "people": ["wenqiu"], "created_at": "2026-11-03T20:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "提醒闻秋把读书会借的投影仪还回去", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "book-night", "entry_kind": "group", "deadline": null, "people": ["wenqiu"], "created_at": "2026-11-03T21:11:00+08:00", "sources": [{"entry_id": "book-night", "sender": "self", "kind": "self_output", "at": "2026-11-03T21:10:00+08:00", "text": "散场忙起来容易忘，闻秋，我之后提醒你归还这台投影仪。"}]}
+      ],
+      "incoming": {"content": "记着催闻秋归还读书会的投影仪", "kind": "normal", "origin": "admin", "entry_id": "book-night", "entry_kind": "group", "deadline": null, "people": ["wenqiu"], "sources": []},
+      "expected": {"decision": "merge", "target": "g3"}, "reason": "催归还和提醒还回去是同一提醒；不是角色自己借设备。"
+    },
+    {
+      "id": "GD006", "split": "dev", "category": "换说法与缩写", "now": "2026-11-04T10:00:00+08:00",
+      "subjects": [{"id": "zhousen", "name": "周森", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "把周森游记里的公里数核对一下", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "walk-log", "entry_kind": "group", "deadline": null, "people": ["zhousen"], "created_at": "2026-11-03T19:01:00+08:00", "sources": [{"entry_id": "walk-log", "sender": "self", "kind": "self_output", "at": "2026-11-03T19:00:00+08:00", "text": "周森，游记里各段路程我帮你对一遍，免得公里数抄错。"}]},
+        {"key": "g2", "content": "把周森游记里的车费核对一下", "kind": "normal", "origin": "host", "state": "open", "entry_id": "walk-log", "entry_kind": "group", "deadline": null, "people": ["zhousen"], "created_at": "2026-11-03T19:02:00+08:00", "sources": []},
+        {"key": "g3", "content": "给周森的游记配路线图", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-zhousen", "entry_kind": "private", "deadline": null, "people": ["zhousen"], "created_at": "2026-11-03T20:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "检查周森游记中每段的里程有没有写错", "kind": "normal", "origin": "host", "entry_id": "dm-zhousen", "entry_kind": "private", "deadline": null, "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "公里数和里程指同一组数字；车费虽也是核对数字，检查对象不同。"
+    },
+    {
+      "id": "GD007", "split": "dev", "category": "换说法与缩写", "now": "2026-11-04T11:00:00+08:00",
+      "subjects": [{"id": "fuyin", "name": "付音", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "替付音整理活动报名名单", "kind": "normal", "origin": "host", "state": "open", "entry_id": "craft-club", "entry_kind": "group", "deadline": null, "people": ["fuyin"], "created_at": "2026-11-01T10:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "替付音把活动常见问题整理成FAQ", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "craft-club", "entry_kind": "group", "deadline": null, "people": ["fuyin"], "created_at": "2026-11-03T12:01:00+08:00", "sources": [{"entry_id": "craft-club", "sender": "self", "kind": "self_output", "at": "2026-11-03T12:00:00+08:00", "text": "大家老问的这些活动问题，我给付音整理成一页问答吧。"}]},
+        {"key": "g3", "content": "替付音翻译活动报名页", "kind": "normal", "origin": "host", "state": "open", "entry_id": "craft-club", "entry_kind": "group", "deadline": null, "people": ["fuyin"], "created_at": "2026-11-03T13:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "做一页付音那场活动的常见问答", "kind": "normal", "origin": "host", "entry_id": "dm-fuyin", "entry_kind": "private", "deadline": null, "people": ["fuyin"], "sources": []},
+      "expected": {"decision": "merge", "target": "g2"}, "reason": "FAQ与常见问答相同，材料明确同一场活动。"
+    },
+    {
+      "id": "GD008", "split": "dev", "category": "换说法与缩写", "now": "2026-11-04T12:00:00+08:00",
+      "subjects": [{"id": "qiman", "name": "祁蔓", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "把祁蔓的播客录音存一份备份", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "audio-desk", "entry_kind": "group", "deadline": null, "people": ["qiman"], "created_at": "2026-11-03T17:31:00+08:00", "sources": [{"entry_id": "audio-desk", "sender": "self", "kind": "self_output", "at": "2026-11-03T17:30:00+08:00", "text": "祁蔓，今天这期的原始录音我再存一份，免得只有你手里那份。"}]},
+        {"key": "g2", "content": "给祁蔓的播客录音降噪", "kind": "normal", "origin": "host", "state": "open", "entry_id": "audio-desk", "entry_kind": "group", "deadline": null, "people": ["qiman"], "created_at": "2026-11-03T18:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "把祁蔓的播客文稿存一份备份", "kind": "normal", "origin": "host", "state": "open", "entry_id": "audio-desk", "entry_kind": "group", "deadline": null, "people": ["qiman"], "created_at": "2026-11-03T18:30:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "备份祁蔓11月3日那期播客的原始音频", "kind": "normal", "origin": "host", "entry_id": "dm-qiman", "entry_kind": "private", "deadline": null, "people": ["qiman"], "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "来源的今天是11月3日，原始音频与录音为同一文件，不是文稿。"
+    },
+    {
+      "id": "GD009", "split": "dev", "category": "人物与近名", "now": "2026-11-04T13:00:00+08:00",
+      "subjects": [{"id": "lin", "name": "小林", "aliases": ["林同学"]}, {"id": "lin_mom", "name": "小林的妈妈", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给小林的妈妈找陶艺入门视频", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-lin", "entry_kind": "private", "deadline": null, "people": ["lin_mom"], "created_at": "2026-11-02T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给小林找摄影入门视频", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-lin", "entry_kind": "private", "deadline": null, "people": ["lin"], "created_at": "2026-11-02T10:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "给小林找陶艺入门视频", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "pottery-room", "entry_kind": "group", "deadline": null, "people": ["lin"], "created_at": "2026-11-03T21:01:00+08:00", "sources": [{"entry_id": "pottery-room", "sender": "self", "kind": "self_output", "at": "2026-11-03T21:00:00+08:00", "text": "小林，你想自己试拉坯呀，我找些陶艺入门视频给你。"}]}
+      ],
+      "incoming": {"content": "帮林同学找新手陶艺视频", "kind": "normal", "origin": "host", "entry_id": "dm-lin", "entry_kind": "private", "deadline": null, "sources": []},
+      "expected": {"decision": "merge", "target": "g3"}, "reason": "林同学是已给定的本人别名，不能误选妈妈的同主题目标。"
+    },
+    {
+      "id": "GD010", "split": "dev", "category": "人物与近名", "now": "2026-11-04T14:00:00+08:00",
+      "subjects": [{"id": "lin", "name": "小林", "aliases": []}, {"id": "lin_mom", "name": "小林的妈妈", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "周末问小林学游泳适不适应", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "swim-chat", "entry_kind": "group", "deadline": null, "people": ["lin"], "created_at": "2026-11-03T09:01:00+08:00", "sources": [{"entry_id": "swim-chat", "sender": "self", "kind": "self_output", "at": "2026-11-03T09:00:00+08:00", "text": "小林，周末我再问问你，初学游泳适应得怎么样。"}]},
+        {"key": "g2", "content": "给小林的妈妈查泳池开放时间", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-lin", "entry_kind": "private", "deadline": null, "people": ["lin_mom"], "created_at": "2026-11-03T10:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "周末问小林的妈妈合唱排练累不累", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-lin", "entry_kind": "private", "deadline": null, "people": ["lin_mom"], "created_at": "2026-11-03T11:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "周末问问小林的妈妈学游泳适不适应", "kind": "normal", "origin": "host", "entry_id": "dm-lin", "entry_kind": "private", "deadline": null, "sources": []},
+      "expected": {"decision": "separate"}, "reason": "实际关心对象是妈妈，不是消息入口的联系人小林；妈妈的另两项目标也不同。"
+    },
+    {
+      "id": "GD011", "split": "dev", "category": "人物与近名", "now": "2026-11-04T15:00:00+08:00",
+      "subjects": [{"id": "lin_a", "name": "小林", "aliases": []}, {"id": "lin_b", "name": "林同学", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "帮小林找周末的素描课", "kind": "normal", "origin": "host", "state": "open", "entry_id": "art-club", "entry_kind": "group", "deadline": null, "people": ["lin_a"], "created_at": "2026-11-02T10:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "帮林同学找周末的吉他课", "kind": "normal", "origin": "host", "state": "open", "entry_id": "art-club", "entry_kind": "group", "deadline": null, "people": ["lin_b"], "created_at": "2026-11-02T11:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "替林同学取消周末的素描课预约", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-lin-b", "entry_kind": "private", "deadline": null, "people": ["lin_b"], "created_at": "2026-11-03T19:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "帮林同学找周末的素描课", "kind": "normal", "origin": "internal", "entry_id": "dm-lin-b", "entry_kind": "private", "deadline": null, "people": ["lin_b"], "sources": [{"entry_id": "dm-lin-b", "sender": "self", "kind": "self_output", "at": "2026-11-04T14:59:00+08:00", "text": "原来那家取消了，我再帮你找周末能上的素描课。"}]},
+      "expected": {"decision": "separate"}, "reason": "本例小林与林同学是不同主体，没有别名联系；找新课也不是取消旧预约。"
+    },
+    {
+      "id": "GD012", "split": "dev", "category": "人物与近名", "now": "2026-11-04T16:00:00+08:00",
+      "subjects": [{"id": "mint_a", "name": "薄荷", "aliases": []}, {"id": "mint_b", "name": "薄荷", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给薄荷整理读书笔记", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-mint-a", "entry_kind": "private", "deadline": null, "people": ["mint_a"], "created_at": "2026-11-03T11:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给薄荷整理养花记录", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-mint-b", "entry_kind": "private", "deadline": null, "people": ["mint_b"], "created_at": "2026-11-03T12:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "请薄荷推荐一本书", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-mint-b", "entry_kind": "private", "deadline": null, "people": ["mint_b"], "created_at": "2026-11-03T13:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "给薄荷整理读书笔记", "kind": "normal", "origin": "host", "entry_id": "dm-mint-b", "entry_kind": "private", "deadline": null, "people": ["mint_b"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "两位同名账号已由people区分，不能把mint_b的任务合到mint_a。"
+    },
+    {
+      "id": "GD013", "split": "dev", "category": "人物与近名", "now": "2026-11-04T17:00:00+08:00",
+      "subjects": [{"id": "ning", "name": "宁澈", "aliases": ["阿澈"]}, {"id": "ning_sis", "name": "宁澈的姐姐", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给宁澈的姐姐挑一本观鸟手册", "kind": "normal", "origin": "host", "state": "open", "entry_id": "bird-chat", "entry_kind": "group", "deadline": null, "people": ["ning_sis"], "created_at": "2026-11-01T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给宁澈挑一本观鸟手册", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "bird-chat", "entry_kind": "group", "deadline": null, "people": ["ning"], "created_at": "2026-11-03T08:01:00+08:00", "sources": [{"entry_id": "bird-chat", "sender": "self", "kind": "self_output", "at": "2026-11-03T08:00:00+08:00", "text": "阿澈想认鸟的话，我给你挑一本适合入门的观鸟手册。"}]},
+        {"key": "g3", "content": "给宁澈挑一个观鸟望远镜", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-ning", "entry_kind": "private", "deadline": null, "people": ["ning"], "created_at": "2026-11-03T10:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "帮阿澈选本新手观鸟书", "kind": "normal", "origin": "host", "entry_id": "dm-ning", "entry_kind": "private", "deadline": null, "sources": []},
+      "expected": {"decision": "merge", "target": "g2"}, "reason": "别名能确定收书的人是宁澈；people缺省不等于无涉及人。"
+    },
+    {
+      "id": "GD014", "split": "dev", "category": "人物与近名", "now": "2026-11-04T18:00:00+08:00",
+      "subjects": [{"id": "tao", "name": "陶可", "aliases": []}, {"id": "sun", "name": "孙麦", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "把陶可写的活动流程发给孙麦", "kind": "normal", "origin": "host", "state": "open", "entry_id": "fair-team", "entry_kind": "group", "deadline": null, "people": ["tao", "sun"], "created_at": "2026-11-03T10:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "把孙麦写的活动预算发给陶可", "kind": "normal", "origin": "host", "state": "open", "entry_id": "fair-team", "entry_kind": "group", "deadline": null, "people": ["tao", "sun"], "created_at": "2026-11-03T11:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "问陶可活动流程要不要改", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-tao", "entry_kind": "private", "deadline": null, "people": ["tao"], "created_at": "2026-11-03T12:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "把孙麦写的活动流程发给陶可", "kind": "normal", "origin": "host", "entry_id": "fair-team", "entry_kind": "group", "deadline": null, "people": ["tao", "sun"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "涉及人集合相同，但作者、收件人方向与g1相反，g2又是预算。"
+    },
+    {
+      "id": "GD015", "split": "dev", "category": "人物与近名", "now": "2026-11-04T19:00:00+08:00",
+      "subjects": [{"id": "he", "name": "何洛", "aliases": []}, {"id": "he_dad", "name": "何洛的爸爸", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "提醒何洛教爸爸导出照片", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "dm-he", "entry_kind": "private", "deadline": null, "people": ["he", "he_dad"], "created_at": "2026-11-03T16:01:00+08:00", "sources": [{"entry_id": "dm-he", "sender": "self", "kind": "self_output", "at": "2026-11-03T16:00:00+08:00", "text": "你说爸爸不会导照片，我回头提醒你教他。"}]},
+        {"key": "g2", "content": "提醒何洛向爸爸学修收音机", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-he", "entry_kind": "private", "deadline": null, "people": ["he", "he_dad"], "created_at": "2026-11-03T17:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "帮何洛整理爸爸的照片", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-he", "entry_kind": "private", "deadline": null, "people": ["he", "he_dad"], "created_at": "2026-11-03T18:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "提醒何洛让爸爸教自己导出照片", "kind": "normal", "origin": "host", "entry_id": "dm-he", "entry_kind": "private", "deadline": null, "people": ["he", "he_dad"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "教与被教的方向倒转，不因人名和技能都相同就合并。"
+    },
+    {
+      "id": "GD016", "split": "dev", "category": "人物与近名", "now": "2026-11-04T20:00:00+08:00",
+      "subjects": [{"id": "zhou_a", "name": "小周", "aliases": []}, {"id": "zhou_b", "name": "小周", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "问小周新键盘用着怎么样", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-zhou-a", "entry_kind": "private", "deadline": null, "people": ["zhou_a"], "created_at": "2026-11-03T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "问小周新键盘用着怎么样", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-zhou-b", "entry_kind": "private", "deadline": null, "people": ["zhou_b"], "created_at": "2026-11-03T10:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "替小周找键盘收纳包", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-zhou-b", "entry_kind": "private", "deadline": null, "people": ["zhou_b"], "created_at": "2026-11-03T11:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "问小周新键盘用着怎么样", "kind": "normal", "origin": "host", "entry_id": "desk-chat", "entry_kind": "group", "deadline": null, "sources": []},
+      "expected": {"decision": "uncertain"}, "reason": "群聊注入没有people或来源，同名两人各有相同目标，无法确定合并对象。"
+    },
+    {
+      "id": "GD017", "split": "dev", "category": "时间与截止", "now": "2026-11-05T09:00:00+08:00",
+      "subjects": [{"id": "zhu", "name": "朱苇", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "周五晚给朱苇发读书会提纲", "kind": "normal", "origin": "host", "state": "open", "entry_id": "book-team", "entry_kind": "group", "deadline": "2026-11-06T20:00:00+08:00", "people": ["zhu"], "created_at": "2026-11-02T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "周六晚给朱苇发读书会提纲", "kind": "normal", "origin": "host", "state": "open", "entry_id": "book-team", "entry_kind": "group", "deadline": "2026-11-07T20:00:00+08:00", "people": ["zhu"], "created_at": "2026-11-02T10:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "周五晚给朱苇发读书会录音", "kind": "normal", "origin": "host", "state": "open", "entry_id": "book-team", "entry_kind": "group", "deadline": "2026-11-06T20:00:00+08:00", "people": ["zhu"], "created_at": "2026-11-03T11:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "11月6日晚上八点把读书会提纲发朱苇", "kind": "normal", "origin": "internal", "entry_id": "dm-zhu", "entry_kind": "private", "deadline": "2026-11-06T20:00:00+08:00", "people": ["zhu"], "sources": [{"entry_id": "dm-zhu", "sender": "self", "kind": "self_output", "at": "2026-11-05T08:59:00+08:00", "text": "好，明晚八点我把读书会提纲发给你。"}]},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "本例明晚、周五与11月6日是同一天，截止时刻也一致。"
+    },
+    {
+      "id": "GD018", "split": "dev", "category": "时间与截止", "now": "2026-11-05T10:00:00+08:00",
+      "subjects": [{"id": "mei", "name": "梅辛", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "周五上午陪梅辛练一次答辩", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-mei", "entry_kind": "private", "deadline": null, "people": ["mei"], "created_at": "2026-11-03T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "周六晚上陪梅辛练一次答辩", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-mei", "entry_kind": "private", "deadline": null, "people": ["mei"], "created_at": "2026-11-03T10:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "周五晚上帮梅辛看答辩海报", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-mei", "entry_kind": "private", "deadline": null, "people": ["mei"], "created_at": "2026-11-04T11:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "周五晚上陪梅辛练一次答辩", "kind": "normal", "origin": "host", "entry_id": "study-room", "entry_kind": "group", "deadline": null, "people": ["mei"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "没有结构化截止时间也要比较正文时间；周五晚不是周五上午或周六晚。"
+    },
+    {
+      "id": "GD019", "split": "dev", "category": "时间与截止", "now": "2026-11-05T11:00:00+08:00",
+      "subjects": [{"id": "qiu", "name": "邱叶", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给邱叶交场地清单", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "venue-team", "entry_kind": "group", "deadline": "2026-11-08T18:00:00+08:00", "people": ["qiu"], "created_at": "2026-11-04T20:01:00+08:00", "sources": [{"entry_id": "venue-team", "sender": "self", "kind": "self_output", "at": "2026-11-04T20:00:00+08:00", "text": "邱叶，场地清单我周日傍晚六点前交你。"}]},
+        {"key": "g2", "content": "给邱叶交设备清单", "kind": "normal", "origin": "host", "state": "open", "entry_id": "venue-team", "entry_kind": "group", "deadline": "2026-11-06T18:00:00+08:00", "people": ["qiu"], "created_at": "2026-11-04T21:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "问邱叶场地清单是否收到", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-qiu", "entry_kind": "private", "deadline": "2026-11-09T09:00:00+08:00", "people": ["qiu"], "created_at": "2026-11-04T22:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "给邱叶交场地清单", "kind": "normal", "origin": "host", "entry_id": "dm-qiu", "entry_kind": "private", "deadline": "2026-11-06T18:00:00+08:00", "people": ["qiu"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "宿主期限比g1早两天，不能合并时沿用旧期限或擅自把旧目标改期。"
+    },
+    {
+      "id": "GD020", "split": "dev", "category": "时间与截止", "now": "2026-11-05T12:00:00+08:00",
+      "subjects": [{"id": "song", "name": "宋葵", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "帮宋葵给报名表补照片", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-song", "entry_kind": "private", "deadline": null, "people": ["song"], "created_at": "2026-11-03T10:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "帮宋葵检查报名表里的联系方式", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "dm-song", "entry_kind": "private", "deadline": null, "people": ["song"], "created_at": "2026-11-04T10:01:00+08:00", "sources": [{"entry_id": "dm-song", "sender": "self", "kind": "self_output", "at": "2026-11-04T10:00:00+08:00", "text": "我帮你核对报名表的联系方式，具体几点交你还没定吧。"}]},
+        {"key": "g3", "content": "替宋葵提交报名表", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-song", "entry_kind": "private", "deadline": "2026-11-07T12:00:00+08:00", "people": ["song"], "created_at": "2026-11-04T11:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "核对宋葵报名表的联系方式", "kind": "normal", "origin": "host", "entry_id": "signup-room", "entry_kind": "group", "deadline": "2026-11-06T17:00:00+08:00", "people": ["song"], "sources": []},
+      "expected": {"decision": "merge", "target": "g2"}, "reason": "旧目标未定期限，宿主补上11月6日17点兼容；合并结果必须保留这个期限。"
+    },
+    {
+      "id": "GD021", "split": "dev", "category": "时间与截止", "now": "2026-11-05T13:00:00+08:00",
+      "subjects": [{"id": "bai", "name": "白榆", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给白榆整理展览交通路线", "kind": "normal", "origin": "host", "state": "open", "entry_id": "gallery-chat", "entry_kind": "group", "deadline": "2026-11-07T09:00:00+08:00", "people": ["bai"], "created_at": "2026-11-03T18:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给白榆整理展览购票方式", "kind": "normal", "origin": "host", "state": "open", "entry_id": "gallery-chat", "entry_kind": "group", "deadline": null, "people": ["bai"], "created_at": "2026-11-03T19:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "给白榆整理展览作品目录", "kind": "normal", "origin": "host", "state": "open", "entry_id": "gallery-chat", "entry_kind": "group", "deadline": "2026-11-07T09:00:00+08:00", "people": ["bai"], "created_at": "2026-11-04T08:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "帮白榆查好去展览怎么坐车", "kind": "normal", "origin": "internal", "entry_id": "dm-bai", "entry_kind": "private", "deadline": null, "people": ["bai"], "sources": [{"entry_id": "dm-bai", "sender": "self", "kind": "self_output", "at": "2026-11-05T12:59:00+08:00", "text": "周末那个展，我给你把坐车路线理好。"}]},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "新目标省略截止时间并非取消期限，仍须保留宿主已有的11月7日9点。"
+    },
+    {
+      "id": "GD022", "split": "dev", "category": "时间与截止", "now": "2026-11-05T14:00:00+08:00",
+      "subjects": [{"id": "wang", "name": "王苔", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "把王苔的配色样张发回来", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-wang", "entry_kind": "private", "deadline": "2026-11-06T12:00:00+08:00", "people": ["wang"], "created_at": "2026-11-03T10:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "把王苔的排版样张发回来", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-wang", "entry_kind": "private", "deadline": "2026-11-06T20:00:00+08:00", "people": ["wang"], "created_at": "2026-11-03T11:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "替王苔打印配色样张", "kind": "normal", "origin": "host", "state": "open", "entry_id": "print-room", "entry_kind": "group", "deadline": "2026-11-06T20:00:00+08:00", "people": ["wang"], "created_at": "2026-11-04T11:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "把王苔的配色样张发回来", "kind": "normal", "origin": "internal", "entry_id": "print-room", "entry_kind": "group", "deadline": "2026-11-06T20:00:00+08:00", "people": ["wang"], "sources": [{"entry_id": "print-room", "sender": "self", "kind": "self_output", "at": "2026-11-05T13:59:00+08:00", "text": "我明晚八点前把配色样张发回来给王苔。"}]},
+      "expected": {"decision": "separate"}, "reason": "内部承诺也不能覆盖宿主原有的中午期限，两边均非空且不相同。"
+    },
+    {
+      "id": "GD023", "split": "dev", "category": "时间与截止", "now": "2026-11-05T15:00:00+08:00",
+      "subjects": [{"id": "chen", "name": "陈栎", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "帮陈栎记周六下午那场球的比分", "kind": "normal", "origin": "host", "state": "open", "entry_id": "ball-chat", "entry_kind": "group", "deadline": null, "people": ["chen"], "created_at": "2026-11-03T13:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "帮陈栎剪周六晚那场球的集锦", "kind": "normal", "origin": "host", "state": "open", "entry_id": "ball-chat", "entry_kind": "group", "deadline": null, "people": ["chen"], "created_at": "2026-11-03T14:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "提醒陈栎看周日下午那场球", "kind": "normal", "origin": "host", "state": "open", "entry_id": "ball-chat", "entry_kind": "group", "deadline": null, "people": ["chen"], "created_at": "2026-11-03T15:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "帮陈栎记周六晚那场球的比分", "kind": "normal", "origin": "host", "entry_id": "dm-chen", "entry_kind": "private", "deadline": null, "people": ["chen"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "比赛发生时间不同即是不同事件，不是只比较两个空deadline。"
+    },
+    {
+      "id": "GD024", "split": "dev", "category": "时间与截止", "now": "2026-11-05T16:00:00+08:00",
+      "subjects": [{"id": "su", "name": "苏朔", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给苏朔整理10月的记账分类", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-su", "entry_kind": "private", "deadline": null, "people": ["su"], "created_at": "2026-11-01T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给苏朔整理11月的读书清单", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-su", "entry_kind": "private", "deadline": null, "people": ["su"], "created_at": "2026-11-01T10:00:00+08:00", "sources": []},
+        {"key": "g3", "content": "给苏朔解释记账分类的方法", "kind": "normal", "origin": "host", "state": "open", "entry_id": "budget-chat", "entry_kind": "group", "deadline": null, "people": ["su"], "created_at": "2026-11-02T10:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "给苏朔整理11月的记账分类", "kind": "normal", "origin": "host", "entry_id": "dm-su", "entry_kind": "private", "deadline": null, "people": ["su"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "月度任务的月份是处理对象的一部分；10月尚未结束的任务不吸收11月任务。"
+    },
+    {
+      "id": "GD025", "split": "dev", "category": "时间与截止", "now": "2026-11-08T10:00:00+08:00",
+      "subjects": [{"id": "jiang", "name": "江栗", "aliases": []}],
+      "existing": [{"key": "g1", "content": "给江栗发11月7日工作坊的签到表", "kind": "normal", "origin": "host", "state": "open", "entry_id": "workshop", "entry_kind": "group", "deadline": "2026-11-07T18:00:00+08:00", "people": ["jiang"], "created_at": "2026-11-06T09:00:00+08:00", "sources": []}],
+      "incoming": {"content": "把昨天工作坊的签到表发江栗", "kind": "normal", "origin": "host", "entry_id": "dm-jiang", "entry_kind": "private", "deadline": null, "people": ["jiang"], "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "旧目标虽已过期但仍open，昨天明确是11月7日；保留原期限，不自动完成或顺延。"
+    },
+    {
+      "id": "GD026", "split": "dev", "category": "时间与截止", "now": "2026-11-08T11:00:00+08:00",
+      "subjects": [{"id": "linmo", "name": "林陌", "aliases": []}],
+      "existing": [{"key": "g1", "content": "提醒林陌11月15日去试琴", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-linmo", "entry_kind": "private", "deadline": "2026-11-15T09:00:00+08:00", "people": ["linmo"], "created_at": "2026-11-06T10:00:00+08:00", "sources": []}],
+      "incoming": {"content": "下次试琴前提醒林陌", "kind": "normal", "origin": "host", "entry_id": "music-chat", "entry_kind": "group", "deadline": null, "people": ["linmo"], "sources": []},
+      "expected": {"decision": "uncertain"}, "reason": "下次试琴没有日期或预约指向，可能是15日，也可能另约；空deadline兼容不证明事件相同。"
+    },
+    {
+      "id": "GD027", "split": "dev", "category": "跨入口与来源", "now": "2026-11-06T09:00:00+08:00",
+      "subjects": [{"id": "du", "name": "杜青", "aliases": []}],
+      "existing": [{"key": "g1", "content": "帮杜青把纸桥实验记录排成表", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "science-club", "entry_kind": "group", "deadline": null, "people": ["du"], "created_at": "2026-11-05T20:01:00+08:00", "sources": [{"entry_id": "science-club", "sender": "self", "kind": "self_output", "at": "2026-11-05T20:00:00+08:00", "text": "杜青，今晚纸桥实验这些记录我帮你排成表格，回头私聊发你。"}]}],
+      "incoming": {"content": "整理杜青11月5日纸桥实验的数据表", "kind": "normal", "origin": "host", "entry_id": "dm-du", "entry_kind": "private", "deadline": null, "people": ["du"], "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "来源明确群聊承诺、私聊交付，同一次实验与同一份表格。"
+    },
+    {
+      "id": "GD028", "split": "dev", "category": "跨入口与来源", "now": "2026-11-06T10:00:00+08:00",
+      "subjects": [{"id": "shao", "name": "邵笙", "aliases": []}],
+      "existing": [{"key": "g1", "content": "替邵笙列《小岛夜航》的章节目录", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-shao", "entry_kind": "private", "deadline": "2026-11-08T12:00:00+08:00", "people": ["shao"], "created_at": "2026-11-05T09:00:00+08:00", "sources": []}],
+      "incoming": {"content": "帮邵笙整理《小岛夜航》目录", "kind": "normal", "origin": "internal", "entry_id": "reading-live", "entry_kind": "live", "deadline": null, "people": ["shao"], "sources": [{"entry_id": "reading-live", "sender": "shao", "kind": "message", "at": "2026-11-06T09:57:00+08:00", "text": "就是私聊托你列的《小岛夜航》章节目录，没换书。"}, {"entry_id": "reading-live", "sender": "self", "kind": "self_output", "at": "2026-11-06T09:58:00+08:00", "text": "记着呢，那份目录我会整理好给你。"}]},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "后来内部承诺明确指向宿主已注入的同一工作；直播入口不制造新任务，原期限保留。"
+    },
+    {
+      "id": "GD029", "split": "dev", "category": "跨入口与来源", "now": "2026-11-06T11:00:00+08:00",
+      "subjects": [{"id": "yao", "name": "姚苓", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给姚苓画折纸说明里的第三步示意图", "kind": "normal", "origin": "admin", "state": "open", "entry_id": "paper-club", "entry_kind": "group", "deadline": null, "people": ["yao"], "created_at": "2026-11-04T18:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给姚苓讲折纸说明里的第三步", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-yao", "entry_kind": "private", "deadline": null, "people": ["yao"], "created_at": "2026-11-05T18:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "补画姚苓那份折纸说明第3步的图", "kind": "normal", "origin": "host", "entry_id": "dm-yao", "entry_kind": "private", "deadline": null, "people": ["yao"], "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "人工建的目标也参与去重；补图与口头讲解不同，第三步与第3步没有数值差异。"
+    },
+    {
+      "id": "GD030", "split": "dev", "category": "跨入口与来源", "now": "2026-11-06T12:00:00+08:00",
+      "subjects": [{"id": "mu", "name": "穆眠", "aliases": ["木棉"]}],
+      "existing": [{"key": "g1", "content": "给穆眠汇总试播时的音量反馈", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "sound-live", "entry_kind": "live", "deadline": null, "people": ["mu"], "created_at": "2026-11-05T22:01:00+08:00", "sources": [{"entry_id": "sound-live", "sender": "self", "kind": "self_output", "at": "2026-11-05T22:00:00+08:00", "text": "木棉，这次试播大家说声音忽大忽小，我把这些反馈汇总给你。"}]}],
+      "incoming": {"content": "整理给木棉的11月5日试播音量反馈", "kind": "normal", "origin": "host", "entry_id": "audio-team", "entry_kind": "group", "deadline": null, "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "日期、试播内容和别名均能对齐，跨直播和群聊仍是同一目标。"
+    },
+    {
+      "id": "GD031", "split": "dev", "category": "跨入口与来源", "now": "2026-11-06T13:00:00+08:00",
+      "subjects": [{"id": "feng", "name": "冯屿", "aliases": []}],
+      "existing": [{"key": "g1", "content": "帮冯屿标出《灯塔》剧本里自己的台词", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "drama-room", "entry_kind": "group", "deadline": null, "people": ["feng"], "created_at": "2026-11-05T19:01:00+08:00", "sources": [{"entry_id": "drama-room", "sender": "self", "kind": "self_output", "at": "2026-11-05T19:00:00+08:00", "text": "冯屿，《灯塔》里属于你的台词，我帮你在本子上标出来。"}]}],
+      "incoming": {"content": "把冯屿在《灯塔》里的台词标出来", "kind": "normal", "origin": "internal", "entry_id": "dm-feng", "entry_kind": "private", "deadline": null, "people": ["feng"], "sources": [{"entry_id": "dm-feng", "sender": "self", "kind": "self_output", "at": "2026-11-06T12:59:00+08:00", "text": "昨天群里说的标台词还算数，我会把你那部分都标好。"}]},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "两次学习来源是重申同一个承诺，不是两个独立台词任务。"
+    },
+    {
+      "id": "GD032", "split": "dev", "category": "跨入口与来源", "now": "2026-11-06T14:00:00+08:00",
+      "subjects": [{"id": "xin", "name": "辛岚", "aliases": []}],
+      "existing": [{"key": "g1", "content": "帮辛岚检查露营清单有没有漏帐篷配件", "kind": "normal", "origin": "host", "state": "open", "entry_id": "camp-team", "entry_kind": "group", "deadline": null, "people": ["xin"], "created_at": "2026-11-05T16:00:00+08:00", "sources": []}],
+      "incoming": {"content": "核对辛岚露营清单上的帐篷配件", "kind": "normal", "origin": "host", "entry_id": "dm-xin", "entry_kind": "private", "deadline": null, "people": ["xin"], "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "两个宿主入口注入相同对象、相同核对范围，没有另一趟露营的指向。"
+    },
+    {
+      "id": "GD033", "split": "dev", "category": "场景边界", "now": "2026-11-06T15:00:00+08:00",
+      "subjects": [{"id": "ayao", "name": "阿遥", "aliases": []}],
+      "existing": [{"key": "g1", "content": "今晚帮阿遥看一下店", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "island-game", "entry_kind": "group", "deadline": null, "people": ["ayao"], "created_at": "2026-11-06T09:01:00+08:00", "sources": [{"entry_id": "island-game", "sender": "ayao", "kind": "message", "at": "2026-11-06T09:00:00+08:00", "text": "我游戏里的小店今晚要接订单，帮我看会儿？"}, {"entry_id": "island-game", "sender": "self", "kind": "self_output", "at": "2026-11-06T09:00:30+08:00", "text": "行，今晚我帮你看一下游戏里的店。"}]}],
+      "incoming": {"content": "今晚帮阿遥看一下店", "kind": "normal", "origin": "internal", "entry_id": "stall-live", "entry_kind": "live", "deadline": null, "people": ["ayao"], "sources": [{"entry_id": "stall-live", "sender": "ayao", "kind": "message", "at": "2026-11-06T14:57:00+08:00", "text": "今晚我在直播里逛线下摊位，你替我看看这家实体店的陈列好不好。"}, {"entry_id": "stall-live", "sender": "self", "kind": "self_output", "at": "2026-11-06T14:58:00+08:00", "text": "好，今晚帮你看一下店。"}]},
+      "expected": {"decision": "separate"}, "reason": "相同短句一边指游戏代管，一边指直播中看实体店陈列，动作对象与场景均不同。"
+    },
+    {
+      "id": "GD034", "split": "dev", "category": "场景边界", "now": "2026-11-06T16:00:00+08:00",
+      "subjects": [{"id": "tan", "name": "谭梨", "aliases": []}],
+      "existing": [{"key": "g1", "content": "给谭梨留一个座位", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "game-lobby", "entry_kind": "group", "deadline": null, "people": ["tan"], "created_at": "2026-11-05T20:01:00+08:00", "sources": [{"entry_id": "game-lobby", "sender": "self", "kind": "self_output", "at": "2026-11-05T20:00:00+08:00", "text": "明晚的桌游房间还空一位，给谭梨留着。"}]}],
+      "incoming": {"content": "给谭梨留一个座位", "kind": "normal", "origin": "internal", "entry_id": "stage-live", "entry_kind": "live", "deadline": null, "people": ["tan"], "sources": [{"entry_id": "stage-live", "sender": "self", "kind": "self_output", "at": "2026-11-06T15:59:00+08:00", "text": "今晚直播连麦席我给谭梨留一个，等你来唱歌。"}]},
+      "expected": {"decision": "separate"}, "reason": "桌游玩家位与直播连麦位不是同一资源，不能按同人同句合并。"
+    },
+    {
+      "id": "GD035", "split": "dev", "category": "场景边界", "now": "2026-11-06T17:00:00+08:00",
+      "subjects": [{"id": "yue", "name": "岳澄", "aliases": []}],
+      "existing": [{"key": "g1", "content": "陪岳澄练开场白", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "host-live", "entry_kind": "live", "deadline": null, "people": ["yue"], "created_at": "2026-11-05T19:01:00+08:00", "sources": [{"entry_id": "host-live", "sender": "self", "kind": "self_output", "at": "2026-11-05T19:00:00+08:00", "text": "你的直播首秀开场白，我明天陪你练一练。"}]}],
+      "incoming": {"content": "陪岳澄练开场白", "kind": "normal", "origin": "internal", "entry_id": "dm-yue", "entry_kind": "private", "deadline": null, "people": ["yue"], "sources": [{"entry_id": "dm-yue", "sender": "yue", "kind": "message", "at": "2026-11-06T16:57:00+08:00", "text": "这次是公司答辩的开场，不是直播那份。"}, {"entry_id": "dm-yue", "sender": "self", "kind": "self_output", "at": "2026-11-06T16:58:00+08:00", "text": "好的，这份开场我也陪你练。"}]},
+      "expected": {"decision": "separate"}, "reason": "来源明确有两份开场白；不同场合的练习必须并行保留。"
+    },
+    {
+      "id": "GD036", "split": "dev", "category": "场景边界", "now": "2026-11-06T18:00:00+08:00",
+      "subjects": [{"id": "gu", "name": "顾苗", "aliases": []}],
+      "existing": [{"key": "g1", "content": "提醒顾苗存档", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "quest-room", "entry_kind": "group", "deadline": null, "people": ["gu"], "created_at": "2026-11-05T21:01:00+08:00", "sources": [{"entry_id": "quest-room", "sender": "self", "kind": "self_output", "at": "2026-11-05T21:00:00+08:00", "text": "下回打最终关之前，我提醒你把游戏进度存个档。"}]}],
+      "incoming": {"content": "提醒顾苗存档", "kind": "normal", "origin": "internal", "entry_id": "dm-gu", "entry_kind": "private", "deadline": null, "people": ["gu"], "sources": [{"entry_id": "dm-gu", "sender": "self", "kind": "self_output", "at": "2026-11-06T17:59:00+08:00", "text": "合同扫描完后我提醒你存档，别只放在聊天附件里。"}]},
+      "expected": {"decision": "separate"}, "reason": "游戏进度与合同文件是不同对象，动词相同不足以合并。"
+    },
+    {
+      "id": "GD037", "split": "dev", "category": "场景边界", "now": "2026-11-06T19:00:00+08:00",
+      "subjects": [{"id": "ji", "name": "纪萤", "aliases": []}],
+      "existing": [{"key": "g1", "content": "给纪萤整理今晚直播的提问清单", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "prep-group", "entry_kind": "group", "deadline": "2026-11-06T20:00:00+08:00", "people": ["ji"], "created_at": "2026-11-06T10:01:00+08:00", "sources": [{"entry_id": "prep-group", "sender": "self", "kind": "self_output", "at": "2026-11-06T10:00:00+08:00", "text": "今晚纪萤的直播提问我来汇总，八点开播前给她。"}]}],
+      "incoming": {"content": "把今晚直播要问的问题汇总给纪萤", "kind": "normal", "origin": "host", "entry_id": "ji-live", "entry_kind": "live", "deadline": "2026-11-06T20:00:00+08:00", "people": ["ji"], "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "群聊筹备与直播入口都指向今晚同一场直播，入口类型不同不等于任务场景不同。"
+    },
+    {
+      "id": "GD038", "split": "dev", "category": "场景边界", "now": "2026-11-06T20:00:00+08:00",
+      "subjects": [{"id": "han", "name": "韩檀", "aliases": []}],
+      "existing": [{"key": "g1", "content": "帮韩檀把背包清一清", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "forest-game", "entry_kind": "group", "deadline": null, "people": ["han"], "created_at": "2026-11-05T22:01:00+08:00", "sources": [{"entry_id": "forest-game", "sender": "self", "kind": "self_output", "at": "2026-11-05T22:00:00+08:00", "text": "游戏背包被矿石塞满了，下次上线我帮韩檀整理一下。"}]}],
+      "incoming": {"content": "帮韩檀整理背包", "kind": "normal", "origin": "host", "entry_id": "dm-han", "entry_kind": "private", "deadline": null, "people": ["han"], "sources": []},
+      "expected": {"decision": "uncertain"}, "reason": "私聊的背包可能仍指游戏物品，也可能是现实出行背包，没有来源可消歧。"
+    },
+    {
+      "id": "GD039", "split": "dev", "category": "询问", "now": "2026-11-07T09:00:00+08:00",
+      "subjects": [{"id": "pan", "name": "潘茉", "aliases": []}],
+      "existing": [{"key": "g1", "content": "潘茉读的《河岸手记》是哪一版？", "kind": "question", "origin": "internal", "state": "open", "entry_id": "book-chat", "entry_kind": "group", "deadline": null, "people": ["pan"], "created_at": "2026-11-06T20:01:00+08:00", "sources": [{"entry_id": "book-chat", "sender": "pan", "kind": "message", "at": "2026-11-06T20:00:00+08:00", "text": "我在读《河岸手记》，你们说的那一页我这本怎么没有。"}]}],
+      "incoming": {"content": "想问潘茉手里的《河岸手记》版本", "kind": "question", "origin": "host", "entry_id": "dm-pan", "entry_kind": "private", "deadline": null, "people": ["pan"], "sources": []},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "两条询问都缺同一本书的版本信息，没有新增问题。"
+    },
+    {
+      "id": "GD040", "split": "dev", "category": "询问", "now": "2026-11-07T10:00:00+08:00",
+      "subjects": [{"id": "ke", "name": "柯晓", "aliases": []}],
+      "existing": [{"key": "g1", "content": "柯晓的新工作在哪里？", "kind": "question", "origin": "host", "state": "open", "entry_id": "dm-ke", "entry_kind": "private", "deadline": null, "people": ["ke"], "created_at": "2026-11-06T10:00:00+08:00", "sources": []}],
+      "incoming": {"content": "柯晓的新工作什么时候开始？", "kind": "question", "origin": "host", "entry_id": "friends-chat", "entry_kind": "group", "deadline": null, "people": ["ke"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "同一份工作的位置和入职日期是两个不同的信息缺口。"
+    },
+    {
+      "id": "GD041", "split": "dev", "category": "询问", "now": "2026-11-07T11:00:00+08:00",
+      "subjects": [{"id": "zeng", "name": "曾羽", "aliases": ["小羽"]}],
+      "existing": [
+        {"key": "g1", "content": "曾羽的猫叫什么？", "kind": "question", "origin": "host", "state": "open", "entry_id": "dm-zeng", "entry_kind": "private", "deadline": null, "people": ["zeng"], "created_at": "2026-11-05T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "曾羽说的画室搬到哪条路了？", "kind": "question", "origin": "internal", "state": "open", "entry_id": "paint-chat", "entry_kind": "group", "deadline": null, "people": ["zeng"], "created_at": "2026-11-06T21:01:00+08:00", "sources": [{"entry_id": "paint-chat", "sender": "zeng", "kind": "message", "at": "2026-11-06T21:00:00+08:00", "text": "我的画室搬家了，路名等会儿告诉你。"}]}
+      ],
+      "incoming": {"content": "想问小羽画室的新地址在哪条路", "kind": "question", "origin": "host", "entry_id": "dm-zeng", "entry_kind": "private", "deadline": null, "sources": []},
+      "expected": {"decision": "merge", "target": "g2"}, "reason": "本人别名和同一次搬家可对齐，询问都只求新址路名。"
+    },
+    {
+      "id": "GD042", "split": "dev", "category": "询问", "now": "2026-11-07T12:00:00+08:00",
+      "subjects": [{"id": "fan", "name": "范苇", "aliases": []}, {"id": "fan_bro", "name": "范苇的弟弟", "aliases": []}],
+      "existing": [{"key": "g1", "content": "范苇用的是什么画板？", "kind": "question", "origin": "host", "state": "open", "entry_id": "dm-fan", "entry_kind": "private", "deadline": null, "people": ["fan"], "created_at": "2026-11-06T13:00:00+08:00", "sources": []}],
+      "incoming": {"content": "范苇的弟弟用的是什么画板？", "kind": "question", "origin": "host", "entry_id": "dm-fan", "entry_kind": "private", "deadline": null, "sources": []},
+      "expected": {"decision": "separate"}, "reason": "提问渠道相同，但需要了解的是弟弟的设备。"
+    },
+    {
+      "id": "GD043", "split": "dev", "category": "询问", "now": "2026-11-07T13:00:00+08:00",
+      "subjects": [{"id": "wei", "name": "魏苓", "aliases": []}],
+      "existing": [{"key": "g1", "content": "魏苓提到的收音机是自己修好的吗？", "kind": "question", "origin": "internal", "state": "open", "entry_id": "repair-chat", "entry_kind": "group", "deadline": null, "people": ["wei"], "created_at": "2026-11-06T19:01:00+08:00", "sources": [{"entry_id": "repair-chat", "sender": "wei", "kind": "message", "at": "2026-11-06T19:00:00+08:00", "text": "家里那台老收音机总算又能响了，折腾了好久。"}]}],
+      "incoming": {"content": "想知道老收音机是不是魏苓亲手修的", "kind": "question", "origin": "internal", "entry_id": "dm-wei", "entry_kind": "private", "deadline": null, "people": ["wei"], "sources": [{"entry_id": "dm-wei", "sender": "wei", "kind": "message", "at": "2026-11-07T12:59:00+08:00", "text": "就是昨天群里说的那台收音机，今天还在听呢。"}]},
+      "expected": {"decision": "merge", "target": "g1"}, "reason": "两次来源指同一台机器，未解问题均为是否本人修理。"
+    },
+    {
+      "id": "GD044", "split": "dev", "category": "询问", "now": "2026-11-07T14:00:00+08:00",
+      "subjects": [{"id": "lu", "name": "卢棠", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "卢棠的陶艺课几点开始？", "kind": "question", "origin": "host", "state": "open", "entry_id": "dm-lu", "entry_kind": "private", "deadline": null, "people": ["lu"], "created_at": "2026-11-06T08:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "卢棠的摄影课几点开始？", "kind": "question", "origin": "host", "state": "open", "entry_id": "dm-lu", "entry_kind": "private", "deadline": null, "people": ["lu"], "created_at": "2026-11-06T09:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "卢棠说的那堂课几点开始？", "kind": "question", "origin": "host", "entry_id": "hobby-chat", "entry_kind": "group", "deadline": null, "people": ["lu"], "sources": []},
+      "expected": {"decision": "uncertain"}, "reason": "那堂课没有指向陶艺或摄影，无法确定target，不能任取一个近似询问。"
+    },
+    {
+      "id": "GD045", "split": "dev", "category": "询问与待办", "now": "2026-11-07T15:00:00+08:00",
+      "subjects": [{"id": "jiaming", "name": "嘉明", "aliases": []}],
+      "existing": [{"key": "g1", "content": "问嘉明周末是否有空", "kind": "question", "origin": "host", "state": "open", "entry_id": "dm-jiaming", "entry_kind": "private", "deadline": null, "people": ["jiaming"], "created_at": "2026-11-06T09:00:00+08:00", "sources": []}],
+      "incoming": {"content": "问嘉明周末是否有空", "kind": "normal", "origin": "internal", "entry_id": "party-chat", "entry_kind": "group", "deadline": "2026-11-07T20:00:00+08:00", "people": ["jiaming"], "sources": [{"entry_id": "party-chat", "sender": "self", "kind": "self_output", "at": "2026-11-07T14:59:00+08:00", "text": "今晚八点前我去问嘉明周末有没有空，问完告诉大家。"}]},
+      "expected": {"decision": "separate"}, "reason": "无截止的待询问信息与有执行承诺的普通目标属于不同kind，不能吞掉其中一种。"
+    },
+    {
+      "id": "GD046", "split": "dev", "category": "询问与待办", "now": "2026-11-07T16:00:00+08:00",
+      "subjects": [{"id": "xia", "name": "夏芦", "aliases": []}],
+      "existing": [{"key": "g1", "content": "问夏芦相册要哪种封面", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "album-team", "entry_kind": "group", "deadline": null, "people": ["xia"], "created_at": "2026-11-06T18:01:00+08:00", "sources": [{"entry_id": "album-team", "sender": "self", "kind": "self_output", "at": "2026-11-06T18:00:00+08:00", "text": "封面先别定，我负责去问夏芦想选哪一种。"}]}],
+      "incoming": {"content": "想问夏芦相册封面的选择", "kind": "question", "origin": "host", "entry_id": "dm-xia", "entry_kind": "private", "deadline": null, "people": ["xia"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "即使两边都没有deadline，普通待办与question仍不能合并。"
+    },
+    {
+      "id": "GD047", "split": "dev", "category": "结束状态", "now": "2026-11-08T09:00:00+08:00",
+      "subjects": [{"id": "xu", "name": "许松", "aliases": []}],
+      "existing": [{"key": "g1", "content": "给许松查一次火车时刻", "kind": "normal", "origin": "host", "state": "completed", "entry_id": "dm-xu", "entry_kind": "private", "deadline": null, "people": ["xu"], "created_at": "2026-11-01T09:00:00+08:00", "sources": []}],
+      "incoming": {"content": "给许松查一次火车时刻", "kind": "normal", "origin": "host", "entry_id": "dm-xu", "entry_kind": "private", "deadline": null, "people": ["xu"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "旧任务已完成，同文的新请求仍是新目标，不复活旧目标。"
+    },
+    {
+      "id": "GD048", "split": "dev", "category": "结束状态", "now": "2026-11-08T10:00:00+08:00",
+      "subjects": [{"id": "lan", "name": "蓝榛", "aliases": []}],
+      "existing": [{"key": "g1", "content": "陪蓝榛做晨间单词复习", "kind": "normal", "origin": "internal", "state": "abandoned", "entry_id": "study-chat", "entry_kind": "group", "deadline": null, "people": ["lan"], "created_at": "2026-10-28T20:01:00+08:00", "sources": [{"entry_id": "study-chat", "sender": "self", "kind": "self_output", "at": "2026-10-28T20:00:00+08:00", "text": "从明天开始，我陪蓝榛做早上的单词复习。"}]}],
+      "incoming": {"content": "陪蓝榛做晨间单词复习", "kind": "normal", "origin": "host", "entry_id": "dm-lan", "entry_kind": "private", "deadline": null, "people": ["lan"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "已放弃的计划不吸收重新开始的请求；不能以去重改变结束状态。"
+    },
+    {
+      "id": "GD049", "split": "dev", "category": "结束状态", "now": "2026-11-08T11:00:00+08:00",
+      "subjects": [{"id": "shi", "name": "石茵", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "帮石茵检查简历排版", "kind": "normal", "origin": "host", "state": "completed", "entry_id": "dm-shi", "entry_kind": "private", "deadline": null, "people": ["shi"], "created_at": "2026-10-20T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "帮石茵检查简历排版", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "job-room", "entry_kind": "group", "deadline": null, "people": ["shi"], "created_at": "2026-11-07T20:01:00+08:00", "sources": [{"entry_id": "job-room", "sender": "shi", "kind": "message", "at": "2026-11-07T19:59:00+08:00", "text": "上次简历看完了，这回我又加了项目，麻烦重新看排版。"}, {"entry_id": "job-room", "sender": "self", "kind": "self_output", "at": "2026-11-07T20:00:00+08:00", "text": "行，新加项目这一版我再帮你检查排版。"}]},
+        {"key": "g3", "content": "帮石茵翻译简历", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-shi", "entry_kind": "private", "deadline": null, "people": ["shi"], "created_at": "2026-11-07T21:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "检查石茵昨天加了项目那版简历的排版", "kind": "normal", "origin": "host", "entry_id": "dm-shi", "entry_kind": "private", "deadline": null, "people": ["shi"], "sources": []},
+      "expected": {"decision": "merge", "target": "g2"}, "reason": "应选仍open且指向新版本的g2，不能因为g1更早或正文相同就选它。"
+    },
+    {
+      "id": "GD050", "split": "dev", "category": "结束状态", "now": "2026-11-08T12:00:00+08:00",
+      "subjects": [{"id": "yang", "name": "杨栀", "aliases": []}],
+      "existing": [{"key": "g1", "content": "杨栀现在住在哪片街区？", "kind": "question", "origin": "host", "state": "completed", "entry_id": "dm-yang", "entry_kind": "private", "deadline": null, "people": ["yang"], "created_at": "2026-10-01T09:00:00+08:00", "sources": []}],
+      "incoming": {"content": "杨栀现在住在哪片街区？", "kind": "question", "origin": "internal", "entry_id": "friends-room", "entry_kind": "group", "deadline": null, "people": ["yang"], "sources": [{"entry_id": "friends-room", "sender": "yang", "kind": "message", "at": "2026-11-08T11:59:00+08:00", "text": "我这周又搬家了，已经不在上次告诉你们的街区。"}]},
+      "expected": {"decision": "separate"}, "reason": "旧询问已结束，新搬家产生新的信息缺口，同一句问题也需新建。"
+    },
+    {
+      "id": "GD051", "split": "dev", "category": "数字与否定", "now": "2026-11-08T13:00:00+08:00",
+      "subjects": [{"id": "meng", "name": "孟柔", "aliases": []}],
+      "existing": [{"key": "g1", "content": "替孟柔买两张周日的展览票", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-meng", "entry_kind": "private", "deadline": null, "people": ["meng"], "created_at": "2026-11-06T09:00:00+08:00", "sources": []}],
+      "incoming": {"content": "替孟柔买一张周日的展览票", "kind": "normal", "origin": "host", "entry_id": "ticket-room", "entry_kind": "group", "deadline": null, "people": ["meng"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "一张与两张是明确的数量冲突，去重不能充当修改订单。"
+    },
+    {
+      "id": "GD052", "split": "dev", "category": "数字与否定", "now": "2026-11-08T14:00:00+08:00",
+      "subjects": [{"id": "lian", "name": "连舒", "aliases": []}],
+      "existing": [{"key": "g1", "content": "帮连舒把海报上的优惠写成九折", "kind": "normal", "origin": "host", "state": "open", "entry_id": "poster-chat", "entry_kind": "group", "deadline": null, "people": ["lian"], "created_at": "2026-11-07T10:00:00+08:00", "sources": []}],
+      "incoming": {"content": "帮连舒把海报上的优惠写成八折", "kind": "normal", "origin": "host", "entry_id": "dm-lian", "entry_kind": "private", "deadline": null, "people": ["lian"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "折扣是核心数值；不能把九折和八折当成相同措辞。"
+    },
+    {
+      "id": "GD053", "split": "dev", "category": "数字与否定", "now": "2026-11-08T15:00:00+08:00",
+      "subjects": [{"id": "ren", "name": "任苹", "aliases": []}],
+      "existing": [{"key": "g1", "content": "告诉任苹我不去周日晚的联机局", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "game-team", "entry_kind": "group", "deadline": null, "people": ["ren"], "created_at": "2026-11-07T19:01:00+08:00", "sources": [{"entry_id": "game-team", "sender": "self", "kind": "self_output", "at": "2026-11-07T19:00:00+08:00", "text": "我周日晚不去联机了，之后会跟任苹说一声。"}]}],
+      "incoming": {"content": "告诉任苹我去周日晚的联机局", "kind": "normal", "origin": "host", "entry_id": "dm-ren", "entry_kind": "private", "deadline": null, "people": ["ren"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "传达的内容互相否定，不能借去重替角色改变原计划。"
+    },
+    {
+      "id": "GD054", "split": "dev", "category": "数字与否定", "now": "2026-11-08T16:00:00+08:00",
+      "subjects": [{"id": "cheng", "name": "程榆", "aliases": []}],
+      "existing": [{"key": "g1", "content": "提醒程榆投稿时不要附原始照片", "kind": "normal", "origin": "host", "state": "open", "entry_id": "photo-team", "entry_kind": "group", "deadline": null, "people": ["cheng"], "created_at": "2026-11-07T09:00:00+08:00", "sources": []}],
+      "incoming": {"content": "提醒程榆投稿时附上原始照片", "kind": "normal", "origin": "host", "entry_id": "dm-cheng", "entry_kind": "private", "deadline": null, "people": ["cheng"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "不要附与附上要求相反，材料没有授权更正旧目标。"
+    },
+    {
+      "id": "GD055", "split": "dev", "category": "数字与否定", "now": "2026-11-08T17:00:00+08:00",
+      "subjects": [{"id": "deng", "name": "邓筝", "aliases": []}],
+      "existing": [{"key": "g1", "content": "替邓筝校对手册第2到4页", "kind": "normal", "origin": "host", "state": "open", "entry_id": "manual-room", "entry_kind": "group", "deadline": null, "people": ["deng"], "created_at": "2026-11-07T11:00:00+08:00", "sources": []}],
+      "incoming": {"content": "替邓筝校对手册第4到6页", "kind": "normal", "origin": "host", "entry_id": "dm-deng", "entry_kind": "private", "deadline": null, "people": ["deng"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "范围只部分重叠，不是同一校对任务；不能静默扩大为2到6页。"
+    },
+    {
+      "id": "GD056", "split": "dev", "category": "数字与否定", "now": "2026-11-08T18:00:00+08:00",
+      "subjects": [{"id": "rong", "name": "容遥", "aliases": []}],
+      "existing": [{"key": "g1", "content": "替容遥导出带字幕的访谈视频", "kind": "normal", "origin": "host", "state": "open", "entry_id": "video-team", "entry_kind": "group", "deadline": null, "people": ["rong"], "created_at": "2026-11-07T17:00:00+08:00", "sources": []}],
+      "incoming": {"content": "替容遥导出不带字幕的访谈视频", "kind": "normal", "origin": "host", "entry_id": "dm-rong", "entry_kind": "private", "deadline": null, "people": ["rong"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "两个输出版本的字幕要求相反，可能都要交付，不能只保留一项。"
+    },
+    {
+      "id": "GD057", "split": "dev", "category": "信息不足", "now": "2026-11-09T09:00:00+08:00",
+      "subjects": [{"id": "li", "name": "黎瑛", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "把访谈提纲发给黎瑛", "kind": "normal", "origin": "host", "state": "open", "entry_id": "interview-team", "entry_kind": "group", "deadline": null, "people": ["li"], "created_at": "2026-11-07T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "把访谈授权书发给黎瑛", "kind": "normal", "origin": "host", "state": "open", "entry_id": "interview-team", "entry_kind": "group", "deadline": null, "people": ["li"], "created_at": "2026-11-08T09:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "把那个文件发给黎瑛", "kind": "normal", "origin": "host", "entry_id": "dm-li", "entry_kind": "private", "deadline": null, "people": ["li"], "sources": []},
+      "expected": {"decision": "uncertain"}, "reason": "那个文件缺少指代来源；提纲、授权书甚至另一个文件都可能，不能任选target。"
+    },
+    {
+      "id": "GD058", "split": "dev", "category": "信息不足", "now": "2026-11-09T10:00:00+08:00",
+      "subjects": [{"id": "fu", "name": "傅恬", "aliases": []}, {"id": "lvsu", "name": "吕素", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "问傅恬排练地点", "kind": "normal", "origin": "host", "state": "open", "entry_id": "rehearsal", "entry_kind": "group", "deadline": null, "people": ["fu"], "created_at": "2026-11-08T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "问吕素排练地点", "kind": "normal", "origin": "host", "state": "open", "entry_id": "rehearsal", "entry_kind": "group", "deadline": null, "people": ["lvsu"], "created_at": "2026-11-08T10:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "晚点问他排练地点", "kind": "normal", "origin": "internal", "entry_id": "rehearsal", "entry_kind": "group", "deadline": null, "sources": [{"entry_id": "rehearsal", "sender": "self", "kind": "self_output", "at": "2026-11-09T09:59:00+08:00", "text": "地点先空着吧，我晚点问他。"}]},
+      "expected": {"decision": "uncertain"}, "reason": "摘录未提供他的先行词，也不能从名字推断性别来选人。"
+    },
+    {
+      "id": "GD059", "split": "dev", "category": "信息不足", "now": "2026-11-09T11:00:00+08:00",
+      "subjects": [{"id": "zhao", "name": "赵沐", "aliases": []}],
+      "existing": [{"key": "g1", "content": "给赵沐发活动邀请函", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "event-room", "entry_kind": "group", "deadline": null, "people": ["zhao"], "created_at": "2026-11-08T18:01:00+08:00", "sources": [{"entry_id": "event-room", "sender": "self", "kind": "self_output", "at": "2026-11-08T18:00:00+08:00", "text": "邀请函我会发给赵沐。"}]}],
+      "incoming": {"content": "再给赵沐发一下邀请函", "kind": "normal", "origin": "host", "entry_id": "dm-zhao", "entry_kind": "private", "deadline": null, "people": ["zhao"], "sources": []},
+      "expected": {"decision": "uncertain"}, "reason": "再发可能催同一次尚未执行的任务，也可能指已发送后的补发；open只说明未被显式关闭，不能证明实际未发送。"
+    },
+    {
+      "id": "GD060", "split": "dev", "category": "信息不足", "now": "2026-11-09T12:00:00+08:00",
+      "subjects": [{"id": "luoshan", "name": "洛杉", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "提醒洛杉去东桥门诊复诊", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-luoshan", "entry_kind": "private", "deadline": null, "people": ["luoshan"], "created_at": "2026-11-07T09:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "提醒洛杉去南园门诊复诊", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-luoshan", "entry_kind": "private", "deadline": null, "people": ["luoshan"], "created_at": "2026-11-08T09:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "提醒洛杉别忘了那次复诊", "kind": "normal", "origin": "host", "entry_id": "friends-group", "entry_kind": "group", "deadline": null, "people": ["luoshan"], "sources": []},
+      "expected": {"decision": "uncertain"}, "reason": "有两处复诊安排，却没有地点、时间或来源指向，不能按最近创建的一条猜。"
+    },
+    {
+      "id": "GD061", "split": "dev", "category": "信息不足", "now": "2026-11-09T13:00:00+08:00",
+      "subjects": [{"id": "qin", "name": "秦洛", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给秦洛买一张陶艺展的票", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-qin", "entry_kind": "private", "deadline": null, "people": ["qin"], "created_at": "2026-11-07T10:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给秦洛买两张陶艺展的票", "kind": "normal", "origin": "host", "state": "open", "entry_id": "ticket-group", "entry_kind": "group", "deadline": null, "people": ["qin"], "created_at": "2026-11-08T10:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "替秦洛买陶艺展的票", "kind": "normal", "origin": "host", "entry_id": "dm-qin", "entry_kind": "private", "deadline": null, "people": ["qin"], "sources": []},
+      "expected": {"decision": "uncertain"}, "reason": "新请求未给数量，已有两个数量冲突的目标；同入口不能成为认定其中一个的依据。"
+    },
+    {
+      "id": "GD062", "split": "dev", "category": "信息不足", "now": "2026-11-09T14:00:00+08:00",
+      "subjects": [{"id": "shang", "name": "商翎", "aliases": []}],
+      "existing": [
+        {"key": "g1", "content": "给商翎导出保留花絮的成片", "kind": "normal", "origin": "host", "state": "open", "entry_id": "edit-room", "entry_kind": "group", "deadline": null, "people": ["shang"], "created_at": "2026-11-07T15:00:00+08:00", "sources": []},
+        {"key": "g2", "content": "给商翎导出删掉花絮的成片", "kind": "normal", "origin": "host", "state": "open", "entry_id": "edit-room", "entry_kind": "group", "deadline": null, "people": ["shang"], "created_at": "2026-11-08T15:00:00+08:00", "sources": []}
+      ],
+      "incoming": {"content": "给商翎导出说好的那版成片", "kind": "normal", "origin": "internal", "entry_id": "dm-shang", "entry_kind": "private", "deadline": null, "people": ["shang"], "sources": [{"entry_id": "dm-shang", "sender": "self", "kind": "self_output", "at": "2026-11-09T13:59:00+08:00", "text": "行，我就导出说好的那版给你。"}]},
+      "expected": {"decision": "uncertain"}, "reason": "来源也没交代花絮保留与否，不能用含糊的那版消除两个版本的差别。"
+    },
+    {
+      "id": "GD063", "split": "dev", "category": "动作差异", "now": "2026-11-09T15:00:00+08:00",
+      "subjects": [{"id": "shen", "name": "沈茶", "aliases": []}],
+      "existing": [{"key": "g1", "content": "提醒沈茶寄出换货包裹", "kind": "normal", "origin": "host", "state": "open", "entry_id": "dm-shen", "entry_kind": "private", "deadline": null, "people": ["shen"], "created_at": "2026-11-08T10:00:00+08:00", "sources": []}],
+      "incoming": {"content": "替沈茶寄出换货包裹", "kind": "normal", "origin": "host", "entry_id": "dm-shen", "entry_kind": "private", "deadline": null, "people": ["shen"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "提醒对方执行与角色代办的责任不同，不能互相替代。"
+    },
+    {
+      "id": "GD064", "split": "dev", "category": "动作差异", "now": "2026-11-09T16:00:00+08:00",
+      "subjects": [{"id": "mo", "name": "莫弦", "aliases": []}],
+      "existing": [{"key": "g1", "content": "问莫弦要南瓜面包配方", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "bake-chat", "entry_kind": "group", "deadline": null, "people": ["mo"], "created_at": "2026-11-08T20:01:00+08:00", "sources": [{"entry_id": "bake-chat", "sender": "self", "kind": "self_output", "at": "2026-11-08T20:00:00+08:00", "text": "大家想试南瓜面包，我回头找莫弦要一下配方。"}]}],
+      "incoming": {"content": "把南瓜面包配方发给莫弦", "kind": "normal", "origin": "host", "entry_id": "dm-mo", "entry_kind": "private", "deadline": null, "people": ["mo"], "sources": []},
+      "expected": {"decision": "separate"}, "reason": "向对方索取与向对方发送方向相反，同一配方不使两个动作相同。"
+    }
+  ]
+}
