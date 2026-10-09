@@ -381,7 +381,7 @@ def test_migration_freezes_legacy_initial_basis_before_later_edit(tmp_path,memor
     conn.create_function('iris_terms',1,lambda text:text)
     conn.execute('CREATE TABLE schema_migrations(version TEXT PRIMARY KEY,applied_at TEXT NOT NULL)')
     for script in sorted(files('iris').joinpath('migrations').iterdir()):
-        if script.name.endswith('.sql') and script.name < '012':
+        if script.name.endswith('.sql') and script.name < '013':
             conn.executescript(script.read_text(encoding='utf-8'))
             conn.execute('INSERT INTO schema_migrations VALUES(?,?)',(script.name,'2026-10-01'))
             conn.commit()
@@ -542,7 +542,7 @@ def test_migration_only_replaces_exact_legacy_default(tmp_path,old):
     conn.create_function('iris_terms',1,lambda value:value)
     conn.execute('CREATE TABLE schema_migrations(version TEXT PRIMARY KEY,applied_at TEXT NOT NULL)')
     for script in sorted(files('iris').joinpath('migrations').iterdir()):
-        if script.name.endswith('.sql') and script.name<'012':
+        if script.name.endswith('.sql') and script.name<'013':
             conn.executescript(script.read_text(encoding='utf-8'))
             conn.execute('INSERT INTO schema_migrations VALUES(?,?)',(script.name,'2026-10-01'))
             conn.commit()

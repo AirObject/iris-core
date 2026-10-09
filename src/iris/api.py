@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Body, FastAPI, Request
+from fastapi import Body, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -23,12 +23,13 @@ from .retrieval import Retrieval
 from .scheduler import Scheduler
 from .service_status import service_status, add_health_hints
 from .process_lock import StoreLease
-from .admin import install_admin
+from .admin import install_admin, NewGoal, GoalPatch, GoalQuery, GoalId
 from .trial import TrialReplies
 from .auth import Sessions, install_auth
 from .configuration import RuntimeConfig
 from .settings_api import install_settings
 from .memory_ops import operation
+from .goals import Goals, GoalError, GoalConflict, GoalMerged, goal_list
 from .state import CurrentState, PutReport, PatchReport, SourceReport, StateError, MAX_REPORT_BYTES
 
 
@@ -125,6 +126,24 @@ class Feedback(Input):
     memory_ids: list[Annotated[int, Field(gt=0)]] = Field(max_length=100)
 
 
+class HostGoal(NewGoal):
+    host_key: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("host_key")
+    @classmethod
+    def nonblank_key(cls, value):
+        if value is not None:
+            value = value.strip()
+            if not value:
+                raise ValueError("宿主去重键不能为空白")
+        return value
+
+
+class NotificationPull(Input):
+    after: int = Field(default=0, ge=0, le=9223372036854775807)
+    limit: int = Field(default=30, ge=1, le=100)
+
+
 class RevisionConflict(Exception):
     """Reserved for revision-checked writes; M1 host routes do not edit memory prose."""
 
@@ -153,6 +172,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             resources.callback(scheduler.stop)
             app.state.store = active_store
             app.state.current_state = CurrentState(active_store)
+            app.state.goals = Goals(active_store)
             app.state.runtime_config = runtime
             app.state.sessions = Sessions(active_store)
             app.state.gateway = active_gateway
@@ -187,13 +207,16 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         return await call_next(request)
 
     @app.middleware("http")
-    async def state_body_limit(request, call_next):
-        if request.url.path == "/api/v1/state" and request.method in ("PUT", "PATCH", "DELETE"):
+    async def structured_body_limit(request, call_next):
+        path = request.url.path
+        bounded = path == "/api/v1/state" or path == "/admin/api/settings/goals" or any(
+            path == prefix or path.startswith(prefix + "/") for prefix in ("/api/v1/goals", "/admin/api/goals"))
+        if bounded and request.method in ("POST", "PUT", "PATCH", "DELETE"):
             body = bytearray()
             async for chunk in request.stream():
                 if len(body) + len(chunk) > MAX_REPORT_BYTES:
                     return JSONResponse({"error": {"code": "invalid_request", "fields": [
-                        {"field": "body", "message": "状态报告超过 32KB UTF-8 上限"}]}}, status_code=400)
+                        {"field": "body", "message": "请求正文超过 32KB UTF-8 上限"}]}}, status_code=400)
                 body.extend(chunk)
             # BaseHTTPMiddleware replays this cached body to FastAPI validation.
             request._body = bytes(body)
@@ -227,6 +250,22 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         field = error.field if error.field == "body" else "body." + error.field
         return JSONResponse({"error": {"code": "invalid_request", "fields": [
             {"field": field, "message": str(error)}]}}, status_code=400)
+
+    @app.exception_handler(GoalError)
+    async def invalid_goal(request, error):
+        prefix = "query." if request.method == "GET" else "body."
+        field = error.field if error.field == "body" else prefix + error.field
+        return JSONResponse({"error": {"code": "invalid_request", "fields": [
+            {"field": field, "message": str(error)}]}}, status_code=400)
+
+    @app.exception_handler(GoalConflict)
+    async def goal_conflict(request, error):
+        return JSONResponse({"error": {"code": "revision_conflict", "message": "目标修订号冲突，请刷新后重试"}}, status_code=409)
+
+    @app.exception_handler(GoalMerged)
+    async def goal_merged(request, error):
+        return JSONResponse({"error": {"code": "goal_merged", "message": "目标已合并，请读取并明确修改保留的目标",
+                                        "canonical_id": error.canonical_id}}, status_code=409)
 
     @app.exception_handler(ValueError)
     async def invalid_content(request, error):
@@ -281,6 +320,27 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     @app.post("/api/v1/feedback", summary="反馈实际使用的记忆，24 小时内同条只强化一次")
     def feedback(payload: Feedback):
         return app.state.retrieval.feedback(payload.recall_id, payload.memory_ids)
+
+    @app.get("/api/v1/goals", summary="读取角色共享的目标与询问")
+    def goals(query: Annotated[GoalQuery, Query()]):
+        with app.state.store.read() as conn:
+            return goal_list(conn, current=app.state.goals.clock(), **query.model_dump())
+
+    @app.post("/api/v1/goals", status_code=201, summary="注入目标并返回去重结果")
+    def create_goal(payload: HostGoal):
+        result = app.state.goals.create(**payload.model_dump(), origin="host", actor="host")
+        app.state.scheduler.wake()
+        return result
+
+    @app.patch("/api/v1/goals/{goal_id}", summary="完成、放弃目标，或修改截止时间与提醒提前量")
+    def update_goal(goal_id: GoalId, payload: GoalPatch):
+        result = app.state.goals.update(goal_id, **payload.model_dump(exclude_unset=True), actor="host")
+        app.state.scheduler.wake()
+        return result
+
+    @app.get("/api/v1/notifications", summary="取走已发布提醒；取走不代表送达或目标完成")
+    def notifications(query: Annotated[NotificationPull, Query()]):
+        return app.state.goals.pull(**query.model_dump())
 
     @app.get("/api/v1/state", summary="读取宿主报告的当前状态")
     def get_state():

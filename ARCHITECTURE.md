@@ -10,11 +10,11 @@
 | 主体 | `subjects`、`subject_aliases`、`platform_identities`、`subject_links`、`subject_alias_blocks` |
 | 记忆 | `memories`、`memory_subjects`、`memory_tags`、`sources`、`memory_revisions` |
 | 当前状态 | `current_state`、`state_reports` |
-| 自我与目标 | `persona_versions`、`goals`、`goal_sources`、`runtime_settings` |
+| 自我与目标 | `persona_versions`、`goals`、`goal_sources`、`goal_people`、`goal_memories`、`goal_duplicates`、`goal_reminder_plans`、`notifications`、`runtime_settings` |
 | 模型 | `model_calls` |
 | 召回 | `memory_fts_jieba`、`memory_fts_trigram`、`vector_dirty`、`recalls`、`recall_items` |
 
-`messages` 保留原文、类型、场景身份、引用作者、发生与接收时间、入口内去重键及学习状态。场景事件使用固定 `scene` 主体；`self_output` 和 `action_result` 使用 `self` 主体。迁移 002 将已有 event 消息改到场景主体，并为目标补上入口范围。被引用作者按账号匹配；仅有显示名时，只在当前入口唯一匹配参与者，否则新建不绑定账号的提及主体。`batches` 冻结历史、目标、后续三段的消息 ID；每次尝试留原始输出、修正输出及错误。`sources` 直接指原始消息，或指向来源记忆和当时修订号。记忆正文和判断变化写 `memory_revisions` 并增加修订号；确认和使用反馈只原子增加保留强度。
+`messages` 保留原文、类型、场景身份、引用作者、发生与接收时间、入口内去重键及学习状态。场景事件使用固定 `scene` 主体；`self_output` 和 `action_result` 使用 `self` 主体。迁移 002 将已有 event 消息改到场景主体，并为目标补上产生入口（M3 起只作信息，不限制可见）。被引用作者按账号匹配；仅有显示名时，只在当前入口唯一匹配参与者，否则新建不绑定账号的提及主体。`batches` 冻结历史、目标、后续三段的消息 ID；每次尝试留原始输出、修正输出及错误。`sources` 直接指原始消息，或指向来源记忆和当时修订号。记忆正文和判断变化写 `memory_revisions` 并增加修订号；确认和使用反馈只原子增加保留强度。
 
 迁移 003 为 `model_calls` 增加 `finish_reason` 和可空的 `batch_id`，原有 `completion_tokens` 包含服务商报告的输出总用量，推理 token 单列。为 `subject_aliases` 增加 `source_message_id`；旧别名没有来源时保留 NULL，不伪造证据。本人声明的 `{name, alias, evidence}` 直接写到该主体的别名，要求目标段有本人消息或本人被引用的证据，拒绝与当前显示名相同的别名；别名文字必须出现于目标段的本人正文或本人被引用的原话，不能借另一个作者的文字。此条件不能代替对“本人声明”的语义判断。不创建别名主体，也不合并已有账号。`same_as` 仍是带相信程度的可能身份联系；`roleplay` 仍连接参与者与虚构角色。
 
@@ -93,7 +93,7 @@ trigram 下不足三个字符的实词另查现有 jieba 索引，包括长短�
 
 递归追溯来源，全部来源已在本次返回的近期消息里、宿主已有 ID 和高度重复的记忆不占名额。去重核对主体、说话人、立场、世界、时间，数字或否定不同不合并。最终最多八条，追加人物关系标注前、含 reason 的序列化内容不超过 1500 估算 token；超预算整条跳过，不截断正文。来源只返回元数据，不读取其他入口消息正文。
 
-prepare 返回当前 persona 版本／时间、本入口近期消息及未学习标记、空 state、至多十个未结束目标、本入口缺口和模型失败提示。search 支持正文、主体、类型、立场、事件时间及 include_forgotten；两者均写 `recalls` 和 `recall_items`，记录请求、返回 ID 与当时修订号，返回不增加保留强度。
+prepare 返回当前 persona 版本／时间、本入口近期消息及未学习标记、宿主当前 state、至多十个跨入口共享的未结束目标、本入口缺口和模型失败提示。search 支持正文、主体、类型、立场、事件时间及 include_forgotten；两者均写 `recalls` 和 `recall_items`，记录请求、返回 ID 与当时修订号，返回不增加保留强度。
 
 `recall_judge.py` 固定 PR #25 的提示词（`prompts/recall_judge_v1.md`），仅判断 prepare 选出的至多八条 relevant。支持分 ≥50 保留；原人物要点不判断，被删的相关项不转为要点也不补位。JSON 必须精确包含 scores，ID、顺序、数量及 0—100 整数严格匹配；拒绝重复键、额外字段、代码围栏、不完整输出，不做修正调用。模型调用后，在与召回记录写入相同的事务中检查原候选修订、active 状态和宿主已知上下文；只逐条剔除修订、生命周期、宿主已知记忆或最终近期消息 R11 冗余检查不再有效的项，保留其他候选的原判断，状态仍为 applied，失效 ID 单列 stale_memory_ids。查询与锚点已固定，判断期间新消息或别名变化不废弃整次结果；配置在调用中关闭仍生效。复核与记录之间没有竞态。判断别名表仅查询前 8 个相关候选的说话人／涉及者、参与者、近期消息发送者及查询点名主体的别名；使用既有最长标签／词边界匹配，保留同名主体。响应及 `recalls.request_json.judgment` 保存状态、原因、耗时、过滤／失效 ID；`recall_items` 只写最终返回，沿用反馈资格。
 
@@ -202,3 +202,17 @@ Scheduler 的独立单工作线程执行 Maintenance，不占学习、模型探�
 内部时间统一保存为 UTC，投影按 runtime_settings.timezone 转换；持续时长及新鲜度按 UTC 瞬时值计算，避免夏令时回拨扭曲时长。CurrentState 接受可注入 clock；prepare／search 使用 Retrieval 已有的 clock。runtime_settings.state.stale_after_minutes 默认 30，严格超过才标“可能过时”，只读计算不写状态。GET 状态与历史通过只读快照获取；prepare 在召回判断之后已有的最终短事务中投影状态，search 在选取后的快照中按 include_state 投影，不参与查询构造、embedding、排序、预算或学习材料。
 
 宿主四个 state 路由沿用 Host 白名单；其写请求在 JSON 校验前限制为 32KB UTF-8，字段约束及 extra=forbid 返回既有 400 字段错误结构。管理接口仅 GET 当前值和分页历史；settings_api 的状态阈值 PATCH 沿用管理员会话、CSRF 等边界，在同一短事务写 state_settings_saved 操作记录。没有管理员状态写接口，没有自动过时清理、学习反向写入或每日维护步骤。测试以禁止任何状态表写入的触发器运行真实学习写入路径及全部每日维护阶段，覆盖 S09；状态不会因“战斗已结束”的学习记忆而变化。前端及试用轮询面板由后续 UX 接入，本步只接通实际回复准备材料。
+
+## M3 目标、询问与提醒（GO 第二步）
+
+`goals.py` 持有角色共享目标的写入、去重、投影和提醒逻辑。迁移 012 沿用 goals 主键／goal_sources，增加提前量、宿主唯一键、修订、完成或放弃的时间／操作者、规范化期限及调度初始化标记。状态只接受 open／completed／abandoned；done 归 completed，cancelled/canceled 归 abandoned，其他旧值归 open，不猜测历史关闭时间。goal_people 关联主体，goal_memories 保存同证据角色记忆及依据修订，goal_duplicates 保存可能重复、驳回与合并结果。已合并目标保留原始字段和证据，规范查询排除占位；人物身份合并通过 canonical_subject 动态解析。
+
+`decide_dedup(candidates, proposed)` 是无数据库／模型调用的独立决策步骤，输出 created／merged(target)／possible_duplicate(target)／pending。确定性合并要求同 kind、同涉及人集合、兼容期限、相同数字／否定序列，正文只允许连续空白、大小写及句末标点规范化差异。相似度只产生复核标记。管理员新建目标在判断之后将 merged 降为 possible_duplicate，保留新目标及待处理关系；只有显式管理合并才合并这条新记录，宿主／学习创建的自动合并不变。调用方保存候选修订，在写回前重查；下一步的模型判断必须在事务外执行，再核对新目标与候选的修订，本步没有模型用途或调用。宿主键的首次完整回执随目标同事务保存，重试返回原快照。
+
+学习仅把原写入循环改为 write_learning_goal(conn, ...)，在原事务内关联消息、同证据 self 记忆与当前修订，推断证据作者及正文中已知名字／别名涉及人。内部路径保留既有学习校验边界，宿主字段上限不反向导致学习整批失败；无法解析的模型期限保留但不安排提醒。学习材料、校验、提示词及记忆写入保持原样。合并将证据复制到保留目标并保留原关联供追溯，迁移未取通知；目标合并不写记忆或 persona。
+
+未来提醒保存在 goal_reminder_plans，不带外部游标；只有发布时才 INSERT notifications，AUTOINCREMENT id 定义单调发布顺序。每条通知保存发布时的期限，合并时只有双方同一期限、同一阶段的已取或待取通知能抑制重复提醒。提醒生成加入现有 Scheduler.tick，在学习健康／并发提前返回之前执行；读快照发现没有待发计划时不进入写事务。Goals 的时钟可注入，创建、更新、去重与相应计划修改在单个短事务内完成。到点发布、计划状态推进及下一日过期计划同事务完成，崩溃回滚不会重复发布。错过多个阶段压成一个即时提醒，不追发停机期间每一天；过期按角色日历限每天一次。提前量为零时同刻两阶段合并。
+
+通知取走、修改目标及取消提醒都使用同一 Store 单写连接串行化。拉取按发布序号返回，标记本页为 taken，相同游标仍可重放；cancelled 不再返回。完成／放弃取消 scheduled 计划和 pending 通知，taken 记录保留。设置默认提前量只重排未来且使用默认值的目标；过期提醒开关取消／恢复未来的日提醒。管理员只读列表不标取走，所有写入走现有管理鉴权和操作记录，不增加前端、推送或自动执行。
+
+回复目标投影独立于记忆召回：共享 open 且未合并的目标在 SQL 中按临近／过期、入口、参与者、期限、创建时间排序并 LIMIT 10，Python 只读取入选目标的涉及人并投影。期限优先使用已规范化的 deadline_at；旧库尚未初始化的期限才调用只读兼容转换。临近比较采用整数秒加原微秒部分，避免 SQLite 浮点日期的边界舍入；参与者通过递归 CTE 反查主体合并链，沿用已有索引。search 使用相同投影。通知不进入该查询或学习材料。相关实现与验证汇总见 README「M3 目标、询问与提醒」。
