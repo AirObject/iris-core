@@ -77,12 +77,20 @@ export default function PersonaPage({
     current = data?.current,
     pending = data?.pending;
   const latest = data?.latest_attempt;
+  // A terminal snapshot is newer than the original 202 receipt. Once either
+  // read has reached a terminal state, an older in-flight snapshot cannot undo it.
   const tracked =
-    receipt && (!latest || receipt.attempt.id >= latest.id)
-      ? receipt
-      : latest
-        ? { attempt: latest }
-        : null;
+    latest &&
+    (!receipt ||
+      latest.id > receipt.attempt.id ||
+      (latest.id === receipt.attempt.id &&
+        activeAttempt(receipt.attempt.state) &&
+        !activeAttempt(latest.state)))
+      ? {
+          attempt: latest,
+          path: receipt?.attempt.id === latest.id ? receipt.path : undefined,
+        }
+      : receipt;
   const locked = busy || conflict || !!snapshot.error || snapshot.loading;
   function begin(kind: PersonaActionKind, version: VersionSummary) {
     if (!current || locked) return;

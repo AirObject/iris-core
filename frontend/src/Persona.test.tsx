@@ -792,3 +792,41 @@ test("persona 页签支持方向键和首尾键，键盘可进入历史与自我
   await userEvent.keyboard("{Home}");
   expect(first).toHaveFocus();
 });
+
+test("本页接受的任务也以快照终态结束等待，不能被旧 202 回执覆盖", async () => {
+  snapshot.pending = null;
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (String(url).endsWith("/attempts/21")) throw new TypeError("offline");
+    return original(url, init);
+  });
+  vi.useFakeTimers();
+  mount();
+  await act(async () => {});
+  fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
+  await act(async () => {});
+  expect(screen.getByText("等待生成")).toBeVisible();
+  snapshot.latest_attempt = {
+    ...task,
+    state: "failed",
+    stage: "finished",
+    reason: "interrupted",
+  };
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(screen.getByText("服务中断，任务未完成")).toBeVisible();
+  expect(screen.getByRole("button", { name: "重新生成" })).toBeEnabled();
+  const count = vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => String(url).endsWith("/attempts/21")).length;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(6000);
+  });
+  expect(
+    vi
+      .mocked(fetch)
+      .mock.calls.filter(([url]) => String(url).endsWith("/attempts/21")),
+  ).toHaveLength(count);
+  expect(requests.filter((r) => r.url.endsWith("/regenerate"))).toHaveLength(1);
+});
