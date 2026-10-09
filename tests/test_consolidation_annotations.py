@@ -1,4 +1,4 @@
-"""Report-only policy: fake models, metadata lifecycle and additive projections."""
+"""Report-only policy: fake models, administrator suggestions and host isolation."""
 import json
 
 import pytest
@@ -40,7 +40,10 @@ def test_report_only_preserves_all_memory_values_and_stores_sources(store, prote
     item=next(i for i in report['items'] if i['outcome']=='conflicts')
     assert {x['memory_id'] for x in item['details']['source_excerpts']}=={a,b}
     assert all(x['sources'] for x in item['details']['source_excerpts'])
-    assert item['details']['decision']=='conflict' and item['details']['report']
+    assert item['details']['decision']=='conflict'
+    assert item['details']['model_suggestion'] is True
+    assert item['details']['report'].startswith('模型建议：')
+    assert item['details']['suggestions'][0]['review_status']=='pending'
 
 
 def test_admin_clear_is_authenticated_revision_checked_and_does_not_reappear(store):
@@ -71,7 +74,8 @@ def test_admin_clear_is_authenticated_revision_checked_and_does_not_reappear(sto
         assert conn.execute("SELECT COUNT(*) FROM admin_operations WHERE action='consolidation_annotation_clear'").fetchone()[0]==1
 
 
-def test_annotations_survive_edits_and_retrieval_only_adds_metadata(store, monkeypatch):
+@pytest.mark.parametrize('confirmed', [False, True])
+def test_suggestions_survive_edits_but_never_enter_host_memories(store, monkeypatch, confirmed):
     from datetime import datetime
     from test_lifecycle import Clock
     class Frozen(datetime):
@@ -83,11 +87,14 @@ def test_annotations_survive_edits_and_retrieval_only_adds_metadata(store, monke
     retrieval=Retrieval(store)
     before=retrieval.prepare('A',text='口琴',recent_limit=0,judge=False)['memories']
     run(store,Model(store,conclusion(a,b)))
+    if confirmed:
+        from iris.consolidation import confirm_annotation
+        detail=admin_data.memory_detail(store,a)
+        assert confirm_annotation(store,a,detail['consolidation_annotations'][0]['id'],detail['revision'])
     after=retrieval.prepare('A',text='口琴',recent_limit=0,judge=False)['memories']
-    strip=lambda rows:[{k:v for k,v in m.items() if k!='consolidation_annotations'} for m in rows]
-    assert strip(after)==strip(before)
-    assert next(m for m in after if m['id']==a)['consolidation_annotations']
-    assert retrieval.search(text='口琴')['memories'][0]['consolidation_annotations']
+    assert after==before
+    assert all('consolidation_annotations' not in m for m in after)
+    assert all('consolidation_annotations' not in m for m in retrieval.search(text='口琴')['memories'])
     detail=admin_data.memory_detail(store,a)
     assert edit_memory(store,a,detail['revision'],content='我每周教口琴，后来改了时间')
     annotation=admin_data.memory_detail(store,a)['consolidation_annotations'][0]
@@ -188,6 +195,8 @@ def test_upgrade_discards_pending_v2_decisions_and_preserves_legacy_annotations(
             settings=json.loads(conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?',(rid,)).fetchone()[0])
             assert settings['resolution']=='report_only_v1' and settings['method']=='broad'
             assert snapshot(conn,a)['annotations'][0]['text']=='旧结论'
+            assert snapshot(conn,a)['annotations'][0]['review_status']=='pending'
+            assert snapshot(conn,a)['annotations'][0]['confirmed_at'] is None
             assert snapshot(conn,a)['content']=='我每周教口琴'
     finally:
         upgraded.close()
@@ -210,3 +219,56 @@ def test_broad_uses_complete_frozen_pair_prompt_then_separate_report_prompt(stor
     model=Capture(store,conclusion(a,b))
     run(store,model)
     assert len(model.requests)==2
+
+
+def test_admin_confirmation_is_revision_checked_idempotent_and_metadata_only(store):
+    from iris import admin_data
+    from iris.db import Store
+    a,b=pair(store)
+    model=Model(store,conclusion(a,b))
+    engine,rid,_=run(store,model)
+    old=admin_data.memory_detail(store,a)
+    suggestion=old['consolidation_annotations'][0]
+    assert suggestion['label']=='整理建议（模型建议）'
+    assert suggestion['review_status']=='pending' and suggestion['confirmed_at'] is None
+    assert suggestion['report']['model_suggestion'] is True
+    assert suggestion['report']['reason'].startswith('模型建议：')
+    assert suggestion['report']['source_excerpts']
+    path=f"/admin/api/memories/{a}/annotations/{suggestion['id']}"
+    with TestClient(create_app(store=store,configs={}),base_url='http://127.0.0.1',client=('127.0.0.1',1234)) as client:
+        client.app.state.scheduler.stop()
+        assert client.post(path+'/confirm',json={'expected_revision':old['revision']}).status_code in (401,409)
+        login_admin(client)
+        assert client.post(path+'/confirm',json={'expected_revision':old['revision']},headers={'X-Iris-CSRF':''}).status_code==403
+        assert client.post(path+'/confirm',json={'expected_revision':999}).status_code==409
+        assert client.post(f"/admin/api/memories/{b}/annotations/{suggestion['id']}/confirm",json={'expected_revision':1}).status_code==404
+        response=client.post(path+'/confirm',json={'expected_revision':old['revision']})
+        assert response.status_code==200
+        new=response.json()
+        annotation=new['consolidation_annotations'][0]
+        assert annotation['review_status']=='confirmed' and annotation['review_status_label']=='已确认'
+        assert annotation['confirmed_at'] and annotation['confirmed_by']=='admin'
+        for field in ('content','belief','revision','lifecycle','retention'):
+            assert new[field]==old[field]
+        again=client.post(path+'/confirm',json={'expected_revision':old['revision']}).json()
+        assert again['consolidation_annotations']==new['consolidation_annotations']
+        report=client.get(f'/admin/api/maintenance/{rid}').json()
+        item=next(i for i in report['items'] if i['outcome']=='conflicts')
+        assert item['details']['suggestions'][0]['review_status']=='confirmed'
+        assert item['details']['source_excerpts']
+        reopened=Store(store.path)
+        try:
+            assert admin_data.memory_detail(reopened,a)['consolidation_annotations'][0]['review_status']=='confirmed'
+        finally:
+            reopened.close()
+        assert client.request('DELETE',path,json={'expected_revision':old['revision']}).status_code==200
+        assert client.post(path+'/confirm',json={'expected_revision':old['revision']}).status_code==409
+        assert client.get(f'/admin/api/memories/{a}').json()['consolidation_annotations']==[]
+        item=next(i for i in engine.report(rid)['items'] if i['outcome']=='conflicts')
+        assert item['details']['suggestions'][0]['review_status']=='cleared'
+    with store.read() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM admin_operations WHERE action='consolidation_annotation_confirm'").fetchone()[0]==1
+        assert conn.execute('SELECT COUNT(*) FROM memory_revisions WHERE memory_id=?',(a,)).fetchone()[0]==0
+    count=len(model.requests)
+    run(store,model)
+    assert len(model.requests)==count

@@ -310,10 +310,20 @@ class Maintenance:
             report["settings"] = json.loads(report.pop("settings_json"))
             report.pop("summary_json")
             progress = json.loads(report.pop("progress_json"))
+            from .consolidation import suggestion_review
+            suggestions = {}
+            for annotation in conn.execute("SELECT * FROM consolidation_annotations WHERE run_id=? ORDER BY id", (run_id,)):
+                suggestions.setdefault(str(annotation['work_id']), []).append({
+                    'id': annotation['id'], 'memory_id': annotation['memory_id'],
+                    'kind': annotation['kind'], 'text': annotation['text'], **suggestion_review(annotation)})
             items = []
             for item in conn.execute("SELECT * FROM maintenance_items WHERE run_id=? ORDER BY rowid", (run_id,)):
                 item = dict(item)
                 item["details"] = json.loads(item.pop("details_json"))
+                if item['phase']=='consolidation' and item['outcome'] in ('conflicts','dependencies_reviewed'):
+                    item['details']['model_suggestion'] = True
+                    item['details']['report'] = '模型建议：'+item['details'].get('report','')
+                    item['details']['suggestions'] = suggestions.get(item['item_key'], [])
                 items.append(item)
             report["items"] = items
             report["summary"] = self._summary(items, progress)

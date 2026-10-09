@@ -91,8 +91,17 @@ def validate_merge_body(memory, payload, evidence):
         raise UnsafeWrite('merge_body_rewrite')
 
 
+def suggestion_review(annotation):
+    """Administrator-only review metadata; confirmation never changes a memory."""
+    status='cleared' if annotation['cleared_at'] else 'confirmed' if annotation['confirmed_at'] else 'pending'
+    return {'label':'整理建议（模型建议）','model_suggestion':True,'visibility':'admin_only',
+            'review_status':status,'review_status_label':{'pending':'待确认','confirmed':'已确认','cleared':'已清除'}[status],
+            'confirmed_at':annotation['confirmed_at'],'confirmed_by':annotation['confirmed_by'],
+            'cleared_at':annotation['cleared_at'],'cleared_by':annotation['cleared_by']}
+
+
 def memory_annotations(conn, memory_ids, *, include_reports=False):
-    """One indexed batch read; only active metadata, appended after recall judgment."""
+    """Active suggestions for administrator details and consolidation audit snapshots only."""
     result={mid:[] for mid in memory_ids}
     if not result:
         return result
@@ -108,14 +117,34 @@ def memory_annotations(conn, memory_ids, *, include_reports=False):
               'status_label':'标注后已修改' if changed else '当前标注',
               'report':{'run_id':row['run_id'],'work_id':row['work_id'],
                         'url':f"/admin/api/maintenance/{row['run_id']}"}}
+        item.update(suggestion_review(row))
         if include_reports:
             report=conn.execute("SELECT details_json FROM maintenance_items WHERE run_id=? AND phase='consolidation' AND item_key=?",
                                 (row['run_id'],str(row['work_id']))).fetchone()
             details=json.loads(report[0]) if report else {}
-            item['report'].update(conclusion=details.get('decision'),reason=details.get('report',''),
+            item['report'].update(conclusion=details.get('decision'),
+                                  reason='模型建议：'+details.get('report',''),model_suggestion=True,
                                   source_excerpts=details.get('source_excerpts',[]))
         result[row['memory_id']].append(item)
     return result
+
+
+def confirm_annotation(store, memory_id, annotation_id, expected_revision, *, clock=utc_now):
+    """Accept a suggestion as reviewed metadata; never publish it to host recall."""
+    with store.write() as conn:
+        memory=conn.execute('SELECT revision FROM memories WHERE id=? AND purged_at IS NULL',(memory_id,)).fetchone()
+        annotation=conn.execute('SELECT * FROM consolidation_annotations WHERE id=? AND memory_id=?',
+                                (annotation_id,memory_id)).fetchone()
+        if not memory or not annotation:
+            raise KeyError(annotation_id)
+        if memory[0]!=expected_revision or annotation['cleared_at'] is not None:
+            return False
+        if annotation['confirmed_at'] is None:
+            stamp=clock().isoformat()
+            conn.execute("UPDATE consolidation_annotations SET confirmed_at=?,confirmed_by='admin' WHERE id=?",(stamp,annotation_id))
+            operation(conn,'consolidation_annotation_confirm','memory',memory_id,{'annotation_id':annotation_id,
+                      'run_id':annotation['run_id'],'expected_revision':expected_revision},actor='admin',stamp=stamp)
+        return True
 
 
 def clear_annotation(store, memory_id, annotation_id, expected_revision, *, clock=utc_now):
