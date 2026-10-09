@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     learn.add_argument("entry_id")
     learn.add_argument("--force", action="store_true", help="Run a waiting batch now")
     evaluation = commands.add_parser("eval", help="Run a frozen evaluation")
-    evaluation.add_argument("kind", choices=["learning", "recall", "learning-export", "learning-score", "e2e", "e2e-score"])
+    evaluation.add_argument("kind", choices=["learning", "recall", "learning-export", "learning-score", "e2e", "e2e-score", "persona", "persona-score"])
     evaluation.add_argument("--split", choices=["dev", "holdout", "all"], default="all")
     evaluation.add_argument("--corpus", type=Path, help="UTF-8 JSONL corpus, including files outside the repository")
     evaluation.add_argument("--out", type=Path, help="Report output directory (default: evals/reports)")
@@ -119,22 +119,40 @@ def main(argv: list[str] | None = None) -> int:
         try:
             for option, kinds in (("checkpoints", ("learning-export",)),
                                   ("checkpoint_report", ("learning-export",)),
-                                  ("materials", ("learning-score", "e2e-score")),
-                                  ("judgments", ("learning-score", "e2e-score")),
-                                  ("judge_model", ("learning-score", "e2e-score")),
-                                  ("corpus", ("learning", "recall", "e2e")),
+                                  ("materials", ("learning-score", "e2e-score", "persona-score")),
+                                  ("judgments", ("learning-score", "e2e-score", "persona-score")),
+                                  ("judge_model", ("learning-score", "e2e-score", "persona-score")),
+                                  ("corpus", ("learning", "recall", "e2e", "persona")),
                                   ("judge_runs", ("learning", "e2e")),
                                   ("script_ids", ("e2e",)), ("wait_timeout", ("e2e",))):
                 if getattr(args, option) is not None and args.kind not in kinds:
                     raise ValueError(f"--{option.replace('_', '-')} is only available for {', '.join(kinds)}")
-            if args.kind not in ("learning", "e2e") and args.judge_mode != "model":
-                raise ValueError("--judge-mode is only available for learning/e2e")
+            if args.kind not in ("learning", "e2e", "persona") and args.judge_mode != "model":
+                raise ValueError("--judge-mode is only available for learning/e2e/persona")
             if (args.calibrate or args.compare_embeddings) and args.kind != "recall":
                 raise ValueError("--calibrate/--compare-embeddings are only available for recall")
-            if args.kind in ("learning-export", "learning-score", "e2e-score") and args.split != "all":
+            if args.kind in ("learning-export", "learning-score", "e2e-score", "persona-score", "persona") and args.split != "all":
                 raise ValueError("offline export/scoring uses every case in the supplied run; --split is unavailable")
             if args.judge_mode == "external" and args.judge_runs is not None:
                 raise ValueError("--judge-runs is for model preview; external rounds are supplied to learning-score/e2e-score")
+            if args.kind == "persona-score":
+                from .persona_evaluation import score_persona_judgments
+                if args.materials is None or not args.judgments or not args.judge_model or args.out is None:
+                    raise ValueError("persona-score requires --materials, --judgments, --judge-model and --out")
+                path, _ = score_persona_judgments(args.materials, args.judgments, Path.cwd(),
+                                                 judge_model=args.judge_model, out=args.out)
+                print(f"Report: {path}")
+                return 0
+            if args.kind == "persona":
+                from .persona_evaluation import run_persona_eval, load_corpus, _load_scoring
+                if args.corpus is None or args.out is None:
+                    raise ValueError("persona requires --corpus and --out")
+                load_corpus(args.corpus)
+                _load_scoring()
+                path, _ = run_persona_eval(load_test_models(), Path.cwd(), corpus=args.corpus,
+                                           out=args.out, judge_mode=args.judge_mode)
+                print(f"Persona {'materials' if args.judge_mode == 'external' else 'preview report'}: {path}")
+                return 0
             if args.kind == "learning-export":
                 if args.checkpoints is None or args.out is None:
                     raise ValueError("learning-export requires --checkpoints and --out")
