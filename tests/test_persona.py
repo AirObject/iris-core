@@ -566,3 +566,16 @@ def test_new_rejected_candidate_supersedes_old_pending_but_keeps_current(store,c
     assert rejected['status']=='rejected'
     assert current_persona(store)['id']==1
     assert {v['id']:v['status'] for v in list_versions(store)}[pending['version']['id']]=='superseded'
+
+
+def test_generation_and_check_share_injected_snapshot_time(store, clock):
+    snapshot = clock.value.isoformat()
+
+    def advance_during_call():
+        clock.value += timedelta(minutes=1)
+
+    result, gateway = generate(store, clock, callback=advance_during_call)
+    assert result['status'] == 'current'
+    assert [payload['as_of'] for _, payload in gateway.calls] == [snapshot, snapshot]
+    assert result['version']['material']['as_of'] == snapshot
+    assert result['version']['created_at'] == clock.value.isoformat()

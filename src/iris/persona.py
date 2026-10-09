@@ -579,7 +579,7 @@ class PersonaEngine:
             previous = _expect(conn, expected_version)
             due = _due(conn, previous, self.clock())
             settings = _settings(conn)
-            material = {'evidence':_select(conn), 'settings':settings,
+            material = {'evidence':_select(conn), 'settings':settings, 'as_of':_stamp(self.clock),
                         'role_name':_setting(conn, 'role_name', 'Iris'),
                         'previous':previous['content'], 'previous_sentences':previous['sentences'],
                         'admin_sentences':{k:v['text'] for k,v in _admin_sentences(previous).items()}}
@@ -597,6 +597,7 @@ class PersonaEngine:
             return {'status':'skipped','reason':reason,'attempt_id':attempt,'version':None,'due':due}
         try:
             payload = {**settings, 'evidence':material['evidence'], 'role_name':material['role_name'],
+                       'as_of':material['as_of'],
                        'previous':material['previous'], 'admin_sentences':material['admin_sentences']}
             generated = self._call('persona_generate', payload, outputs)
             content, sentences, deterministic = _deterministic(generated, material, previous)
