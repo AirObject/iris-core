@@ -3,6 +3,7 @@ import { api, json, useData, errorText } from "./api";
 import { Badge, Empty, Notice, time, batchLabel, messageState } from "./ui";
 import { EntryQueueWait, paceLabel } from "./EntrySettings";
 import { JudgmentSummary, SubjectAnnotations } from "./RecallJudgment";
+import { StateSummary } from "./State";
 import type {
   Entry,
   TrialCatalog,
@@ -628,13 +629,9 @@ function Conversation({
                 "尚未创建 persona。可先使用现有命令行设置角色。"}
             </p>
           </details>
-          <details>
+          <details open>
             <summary>当前状态</summary>
-            <p className="quiet">
-              {data?.state && Object.keys(data.state).length
-                ? JSON.stringify(data.state)
-                : "暂无宿主报告的当前状态。"}
-            </p>
+            <StateSummary />
           </details>
           <details>
             <summary>

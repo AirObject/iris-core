@@ -89,6 +89,37 @@ export type Persona = {
   version: number | null;
   generated_at?: string;
 };
+export type StateValue = string | number | boolean;
+export type StateConfig = { stale_after_minutes: number };
+export type ActiveState = StateConfig & {
+  activity: string;
+  activity_updated_at: string;
+  details: Record<string, { value: StateValue; updated_at: string }>;
+  mood: string | null;
+  mood_updated_at: string | null;
+  started_at: string;
+  start_time_basis: "host" | "first_report";
+  duration_seconds: number;
+  updated_at: string;
+  possibly_stale: boolean;
+  host: string | null;
+  entry_id: string | null;
+};
+export type CurrentState = ActiveState | { activity?: never };
+type StateChange = { before: StateValue | null; after: StateValue | null };
+export type StateReport = {
+  id: number;
+  host: string | null;
+  entry_id: string | null;
+  reported_at: string;
+  method: "PUT" | "PATCH" | "DELETE";
+  action: "start" | "replace" | "update" | "heartbeat" | "end";
+  changes: Partial<
+    Record<"activity" | "mood" | "started_at" | "start_time_basis", StateChange>
+  > & {
+    details?: Record<string, StateChange>;
+  };
+};
 export type Goal = {
   id: number;
   content: string;

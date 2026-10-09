@@ -11,6 +11,7 @@ export const operationNames: Record<string, string> = {
   memory_recreate: "按旧内容新建",
   memory_revision: "人工修订记忆",
   lifecycle_saved: "更新生命周期设置",
+  state_settings_saved: "更新当前状态设置",
   maintenance_requested: "请求维护",
   maintenance_completed: "维护完成",
   batch_relearn: "重新学习批次",
