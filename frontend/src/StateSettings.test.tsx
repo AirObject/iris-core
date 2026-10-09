@@ -37,6 +37,7 @@ beforeEach(() => {
       chat: { ...model },
       embedding: { ...model },
       recall_judge: { ...model, inherited: true },
+      goal_dedup_judge: { ...model, inherited: true },
     },
     model_source: "external",
     learning_concurrency: 2,

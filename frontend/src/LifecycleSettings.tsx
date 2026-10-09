@@ -26,9 +26,11 @@ function draftOf(value: LifecycleConfig): Draft {
 export function LifecycleSettings({
   value,
   timezone,
+  managedTime = false,
 }: {
   value: LifecycleConfig;
   timezone: string | null;
+  managedTime?: boolean;
 }) {
   const [draft, setDraft] = useState(() => draftOf(value));
   const dirty = useRef(false);
@@ -64,7 +66,10 @@ export function LifecycleSettings({
       setError("恢复阈值 H 必须大于遗忘阈值 F");
       return;
     }
-    if (!/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(draft.maintenance_time)) {
+    if (
+      !managedTime &&
+      !/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(draft.maintenance_time)
+    ) {
       setError("维护时间须为 HH:MM 格式，范围 00:00—23:59");
       return;
     }
@@ -74,11 +79,17 @@ export function LifecycleSettings({
         numericFields.map(([key]) => [key, Number(draft[key])]),
       ),
     };
+    const { maintenance_time, ...lifecyclePayload } = payload;
     setBusy(true);
     try {
       const result = await api<{ lifecycle: LifecycleConfig }>(
         "/settings/lifecycle",
-        json("PATCH", payload),
+        json(
+          "PATCH",
+          managedTime
+            ? lifecyclePayload
+            : { ...lifecyclePayload, maintenance_time },
+        ),
       );
       setDraft(draftOf(result.lifecycle));
       dirty.current = false;
@@ -96,6 +107,12 @@ export function LifecycleSettings({
         有效记忆低于 F 时遗忘，遗忘记忆达到 H
         时恢复；两阈值之间保持原状态。置顶不自动恢复。
       </p>
+      {managedTime && (
+        <p className="lifecycle-help">
+          每日运行时间 {value.maintenance_time}（{timezone || "角色时区"}
+          ），在梦境整理设置中修改。
+        </p>
+      )}
       <form onSubmit={submit} noValidate>
         <fieldset disabled={busy} className="lifecycle-fieldset">
           <div className="lifecycle-settings-grid">
@@ -117,20 +134,22 @@ export function LifecycleSettings({
                 </small>
               </label>
             ))}
-            <label>
-              维护时间
-              <input
-                aria-label="维护时间"
-                required
-                type="text"
-                inputMode="text"
-                placeholder="03:00"
-                maxLength={5}
-                value={draft.maintenance_time}
-                onChange={(e) => change("maintenance_time", e.target.value)}
-              />
-              <small>HH:MM · 角色时区 {timezone || "未设置"}</small>
-            </label>
+            {!managedTime && (
+              <label>
+                维护时间
+                <input
+                  aria-label="维护时间"
+                  required
+                  type="text"
+                  inputMode="text"
+                  placeholder="03:00"
+                  maxLength={5}
+                  value={draft.maintenance_time}
+                  onChange={(e) => change("maintenance_time", e.target.value)}
+                />
+                <small>HH:MM · 角色时区 {timezone || "未设置"}</small>
+              </label>
+            )}
           </div>
           <label className="check-label">
             <input

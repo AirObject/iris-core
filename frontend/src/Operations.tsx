@@ -4,6 +4,15 @@ import { Empty, Notice, Pagination, fullTime } from "./ui";
 import type { Operation, Page } from "./types";
 
 export const operationNames: Record<string, string> = {
+  consolidation_settings_saved: "更新梦境整理设置",
+  goal_dedup_judge_saved: "更新目标去重判断设置",
+  consolidation_merge: "整理合并记忆",
+  consolidation_conflict: "整理提出矛盾建议",
+  consolidation_dependency: "整理提出依赖复核建议",
+  consolidation_annotation_confirm: "确认整理建议",
+  consolidation_annotation_clear: "清除整理建议",
+  goal_basis_review: "目标依据复核",
+  goal_basis_clear: "清除目标依据标注",
   persona_settings_saved: "更新 persona 设置",
   persona_edit: "编辑发布 persona",
   persona_confirm: "确认 persona 候选",
@@ -20,6 +29,8 @@ export const operationNames: Record<string, string> = {
   persona_generation_conflict: "persona 生成遇到版本或依据冲突",
   persona_generation_failed: "persona 生成失败",
   persona_generation_interrupted: "persona 生成中断",
+  goal_dedup_judged: "目标去重判断结果",
+  goal_dedup_queued: "目标待去重复核",
   goal_create: "创建目标",
   goal_update: "更新目标",
   goal_merge: "合并重复目标",
@@ -65,10 +76,13 @@ export const operationNames: Record<string, string> = {
 };
 export const actorNames: Record<string, string> = {
   persona: "persona 更新",
+  consolidation: "梦境整理",
+  goal_dedup: "目标去重判断",
   learning: "学习",
   admin: "管理员",
   host: "宿主",
   system: "系统",
+  scheduler: "后台调度",
   maintenance: "维护",
   local_import: "本机导入",
 };

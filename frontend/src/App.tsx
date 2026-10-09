@@ -208,7 +208,12 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
               openMemory={openMemory}
             />
           ) : routePath === "status" ? (
-            <StatusPage data={status.data} openMemory={openMemory} />
+            <StatusPage
+              key={route}
+              initialQuery={route.split("?")[1] || ""}
+              data={status.data}
+              openMemory={openMemory}
+            />
           ) : (
             <Trial
               status={status.data}

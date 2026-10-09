@@ -1,3 +1,5 @@
+import { ConsolidationReportSections } from "./ConsolidationReport";
+import { consolidationReason } from "./consolidation-labels";
 import { useEffect, useState } from "react";
 import { api, errorText, json, useData } from "./api";
 import {
@@ -28,6 +30,9 @@ const phaseNames: Record<string, string> = {
   dependency: "依据失效扣减",
   messages: "消息清理",
   retry: "批次重试",
+  consolidation: "模型整理",
+  persona: "persona 更新",
+  goals: "目标依据复核",
 };
 const countNames: Record<string, string> = {
   decayed: "衰减",
@@ -40,6 +45,13 @@ const countNames: Record<string, string> = {
   checked: "检查项目",
   skipped: "跳过",
   failed: "失败",
+  merged: "合并",
+  conflicts: "矛盾建议",
+  dependencies_reviewed: "依赖复核建议",
+  persona_published: "persona 已发布",
+  persona_pending: "persona 待确认",
+  goals_reviewed: "目标依据标注变化",
+  model_calls: "模型调用",
 };
 const reasonNames: Record<string, string> = {
   pinned: "已置顶",
@@ -88,8 +100,10 @@ function RunMetadata({ run }: { run: MaintenanceRun }) {
 
 export function MaintenancePanel({
   openMemory,
+  initialRun,
 }: {
   openMemory: (id: number) => void;
+  initialRun?: number;
 }) {
   const latest = useData<Page<MaintenanceRun>>(
     "/maintenance?limit=1&offset=0",
@@ -101,11 +115,23 @@ export function MaintenancePanel({
     history ? `/maintenance?limit=10&offset=${offset}` : null,
     5000,
   );
-  const [selected, setSelected] = useState<number | null>(null),
+  const [selected, setSelected] = useState<number | null>(initialRun || null),
     [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const run = latest.data?.items[0];
+  useEffect(() => {
+    const openLinkedReport = () => {
+      const hash = location.hash;
+      if (hash.split("?")[0] !== "#/status") return;
+      const id = Number(
+        new URLSearchParams(hash.split("?")[1] || "").get("run"),
+      );
+      if (Number.isSafeInteger(id) && id > 0) setSelected(id);
+    };
+    addEventListener("hashchange", openLinkedReport);
+    return () => removeEventListener("hashchange", openLinkedReport);
+  }, []);
   async function start() {
     if (busy) return;
     setBusy(true);
@@ -128,7 +154,7 @@ export function MaintenancePanel({
   return (
     <section className="panel maintenance-panel">
       <div className="panel-heading">
-        <h2>记忆维护</h2>
+        <h2>梦境整理与记忆维护</h2>
         <button
           className="secondary"
           disabled={busy}
@@ -154,7 +180,8 @@ export function MaintenancePanel({
       {confirm && (
         <div className="delete-confirm">
           <p>
-            手动维护也计一次衰减，并执行遗忘、到期删除、消息清理和批次重试。已有未完成的维护时继续该次运行。
+            手动维护也计一次衰减，并执行遗忘、到期删除、消息清理和批次重试。还会按本次设置调用模型进行整理与
+            persona 更新，并复核目标依据。已有未完成的维护时继续该次运行。
           </p>
           <div className="actions">
             <button
@@ -191,7 +218,7 @@ export function MaintenancePanel({
         </>
       )}
       <p className="fine-print">
-        维护不中断接收和学习。报告只逐项保留实际变化和失败；检查及跳过数量按阶段和原因汇总。
+        维护不中断接收和学习。报告逐项保留实际变化、模型建议和失败；检查及跳过数量按阶段和原因汇总。
       </p>
       <button
         className="text-button"
@@ -230,10 +257,18 @@ export function MaintenancePanel({
       )}
       {selected !== null && (
         <MaintenanceReportDialog
+          key={selected}
           id={selected}
-          close={() => setSelected(null)}
+          close={() => {
+            setSelected(null);
+            if (initialRun) location.hash = "#/status";
+          }}
           openMemory={(id) => {
             setSelected(null);
+            // Consume the report deep link before opening another detail. A
+            // later link back to this report then generates a hashchange.
+            if (location.hash.startsWith("#/status?"))
+              window.history.replaceState(null, "", "#/status");
             openMemory(id);
           }}
         />
@@ -262,7 +297,10 @@ export function MaintenanceReportDialog({
         [
           "变化的记忆",
           data.items.filter(
-            (i) => i.memory_id !== null && i.outcome !== "failed",
+            (i) =>
+              i.memory_id != null &&
+              i.outcome !== "failed" &&
+              i.phase !== "consolidation",
           ),
         ],
         [
@@ -309,11 +347,12 @@ export function MaintenanceReportDialog({
             {Object.entries(data.summary.skipped?.reasons || {}).map(
               ([key, count]) => (
                 <p key={key}>
-                  {reasonNames[key] || key}：{count}
+                  {reasonNames[key] || consolidationReason(key)}：{count}
                 </p>
               ),
             )}
           </details>
+          <ConsolidationReportSections data={data} openMemory={openMemory} />
           {groups.map(([name, items]) => (
             <ReportGroup
               key={`${id}:${name}`}
@@ -346,7 +385,7 @@ function ReportGroup({
       {!items.length && <p className="quiet">暂无记录。</p>}
       {items.slice(offset, offset + 30).map((i) => (
         <article className="maintenance-item" key={`${i.phase}:${i.item_key}`}>
-          {i.memory_id !== null ? (
+          {i.memory_id != null ? (
             <button
               className="text-button"
               onClick={() => openMemory(i.memory_id!)}
@@ -355,14 +394,21 @@ function ReportGroup({
             </button>
           ) : (
             <strong>
-              {i.phase === "messages" ? "消息" : "批次"} #{i.object_id}
+              {i.phase === "messages"
+                ? "消息"
+                : i.phase === "persona"
+                  ? "persona 任务"
+                  : i.phase === "goals"
+                    ? "目标"
+                    : "批次"}{" "}
+              #{i.object_id}
             </strong>
           )}
           <p>
             {phaseNames[i.phase] || i.phase} ·{" "}
             {countNames[i.outcome] || i.outcome}
           </p>
-          {i.details.before !== undefined && (
+          {typeof i.details.before === "number" && (
             <p>
               保留强度：{i.details.before} → {i.details.after}
             </p>
@@ -374,7 +420,9 @@ function ReportGroup({
             <p>失效依据：记忆 #{i.details.source_memory_id}</p>
           )}
           {i.reason && (
-            <p className="danger-text">{reasonNames[i.reason] || i.reason}</p>
+            <p className="danger-text">
+              {reasonNames[i.reason] || consolidationReason(i.reason)}
+            </p>
           )}
           <small>{fullTime(i.created_at)}</small>
         </article>

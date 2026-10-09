@@ -1,3 +1,11 @@
+import {
+  ConsolidationSettings,
+  GoalDedupSettings,
+} from "./ConsolidationSettings";
+import type {
+  ConsolidationConfig,
+  GoalDedupConfig,
+} from "./consolidation-types";
 import { useEffect, useRef, useState } from "react";
 import { api, json, errorText, useData } from "./api";
 import { Notice, healthLabel } from "./ui";
@@ -12,11 +20,12 @@ import type {
   GoalConfig,
 } from "./types";
 
-type ModelKind = "chat" | "embedding" | "recall_judge";
+type ModelKind = "chat" | "embedding" | "recall_judge" | "goal_dedup_judge";
 export const modelNames: Record<string, string> = {
   chat: "对话模型",
   embedding: "Embedding 模型",
   recall_judge: "召回判断模型",
+  goal_dedup_judge: "目标去重判断模型",
 };
 
 export type Role = {
@@ -53,6 +62,8 @@ export type Settings = {
   state: StateConfig;
   goals: GoalConfig;
   persona: PersonaSettings;
+  goal_dedup_judge?: GoalDedupConfig;
+  consolidation?: ConsolidationConfig;
   presets: Preset[];
   health: Record<string, { state: string }>;
   operations: {
@@ -134,9 +145,9 @@ function ModelFields({
     )?.reasoning_effort;
   const [result, setResult] = useState(""),
     [busy, setBusy] = useState(false);
-  const inheriting = kind === "recall_judge" && value.inherited;
-  const unsavedInheritance =
-    inheriting && !settings.models.recall_judge.inherited;
+  const judgment = kind === "recall_judge" || kind === "goal_dedup_judge";
+  const inheriting = judgment && value.inherited;
+  const unsavedInheritance = inheriting && !settings.models[kind].inherited;
   const canTest = inheriting
     ? settings.models.chat.enabled && !unsavedInheritance
     : value.enabled;
@@ -157,7 +168,7 @@ function ModelFields({
   };
   return (
     <div className="model-fields">
-      {kind === "recall_judge" ? (
+      {judgment ? (
         <label className="check-label">
           <input
             type="checkbox"
@@ -168,7 +179,7 @@ function ModelFields({
               change({ ...value, inherited: !e.target.checked, enabled: true });
             }}
           />
-          单独配置召回判断模型
+          单独配置{label}
         </label>
       ) : (
         <label className="check-label">
@@ -271,17 +282,13 @@ function ModelFields({
                 aria-label={`${label}推理档位`}
                 value={value.reasoning_effort || ""}
                 maxLength={50}
-                placeholder={
-                  kind === "recall_judge" ? "留空使用 high" : "可选；留空不发送"
-                }
+                placeholder={judgment ? "留空使用 high" : "可选；留空不发送"}
                 onChange={(e) =>
                   change({ ...value, reasoning_effort: e.target.value || null })
                 }
               />
               {arkEffort && <small>火山方舟 GLM 预设使用 {arkEffort}。</small>}
-              {kind === "recall_judge" && (
-                <small>召回判断档位留空时，后端使用 high。</small>
-              )}
+              {judgment && <small>判断档位留空时，后端使用 high。</small>}
             </label>
           ) : (
             <label>
@@ -481,7 +488,12 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
         setReminderMinutes(String(latest.goals.default_reminder_minutes));
         setOverdueReminders(latest.goals.overdue_reminders);
       }
-      for (const kind of ["chat", "embedding", "recall_judge"] as const) {
+      for (const kind of [
+        "chat",
+        "embedding",
+        "recall_judge",
+        "goal_dedup_judge",
+      ] as const) {
         if (path === `/settings/models/${kind}`)
           setModels((v) => ({ ...v, [kind]: latest.models[kind] }));
       }
@@ -522,47 +534,65 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
           配置来自外部文件，只读；数据库模型配置和 secrets.json 不用于本次服务。
         </Notice>
       )}
-      {(["chat", "embedding", "recall_judge"] as const).map((kind) => (
-        <section key={kind} className="panel settings-panel">
-          <h2>{modelNames[kind]}</h2>
-          <p>
-            当前状态：
-            {healthLabel(settings.health[kind]?.state || "configuration_error")}
-          </p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void save(`/settings/models/${kind}`, "PUT", body(models[kind]));
-            }}
-          >
-            <ModelFields
-              kind={kind}
-              value={models[kind]}
-              change={(v) => setModels({ ...models, [kind]: v })}
-              settings={settings}
-            />
-            {settings.model_source === "local" && (
-              <button className="primary" disabled={busy}>
-                保存{modelNames[kind]}
+      {(["chat", "embedding", "recall_judge", "goal_dedup_judge"] as const)
+        .filter((kind) => settings.models[kind])
+        .map((kind) => (
+          <section key={kind} className="panel settings-panel">
+            <h2>{modelNames[kind]}</h2>
+            <p>
+              当前状态：
+              {healthLabel(
+                settings.health[kind]?.state || "configuration_error",
+              )}
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void save(
+                  `/settings/models/${kind}`,
+                  "PUT",
+                  body(models[kind]),
+                );
+              }}
+            >
+              <ModelFields
+                kind={kind}
+                value={models[kind]}
+                change={(v) => setModels({ ...models, [kind]: v })}
+                settings={settings}
+              />
+              {settings.model_source === "local" && (
+                <button className="primary" disabled={busy}>
+                  保存{modelNames[kind]}
+                </button>
+              )}
+            </form>
+            {["temporarily_unavailable", "account_problem"].includes(
+              settings.health[kind]?.state,
+            ) && (
+              <button
+                onClick={() =>
+                  void save(`/settings/models/${kind}/retry`, "POST", {})
+                }
+              >
+                立即重试
               </button>
             )}
-          </form>
-          {["temporarily_unavailable", "account_problem"].includes(
-            settings.health[kind]?.state,
-          ) && (
-            <button
-              onClick={() =>
-                void save(`/settings/models/${kind}/retry`, "POST", {})
-              }
-            >
-              立即重试
-            </button>
-          )}
-          {kind === "recall_judge" && (
-            <RecallJudgeSettings value={settings.recall_judge} />
-          )}
-        </section>
-      ))}
+            {kind === "goal_dedup_judge" && settings.goal_dedup_judge && (
+              <GoalDedupSettings
+                value={settings.goal_dedup_judge}
+                busy={busy}
+                save={async (value) =>
+                  (await save("/settings/goal-dedup-judge", "PATCH", value))
+                    ?.goal_dedup_judge || null
+                }
+              />
+            )}
+            {kind === "recall_judge" && (
+              <RecallJudgeSettings value={settings.recall_judge} />
+            )}
+          </section>
+        ))}
       <section className="panel settings-panel">
         <h2>用量与学习</h2>
         <form
@@ -726,6 +756,17 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
           </button>
         </form>
       </section>
+      {settings.consolidation && (
+        <ConsolidationSettings
+          value={settings.consolidation}
+          timezone={settings.role.timezone}
+          busy={busy}
+          save={async (value) =>
+            (await save("/settings/consolidation", "PATCH", value))
+              ?.consolidation || null
+          }
+        />
+      )}
       <PersonaSettingsEditor
         value={settings.persona}
         busy={busy}
@@ -751,6 +792,7 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
         </ul>
       </section>
       <LifecycleSettings
+        managedTime={!!settings.consolidation}
         value={settings.lifecycle}
         timezone={settings.role.timezone}
       />

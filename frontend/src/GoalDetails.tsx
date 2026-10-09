@@ -1,3 +1,4 @@
+import { GoalBasisReview, GoalDedupReview } from "./GoalReview";
 import { useState } from "react";
 import { api, ApiError, errorText, json, useData } from "./api";
 import { Dialog, Notice, RoleTime, lifecycleLabel } from "./ui";
@@ -6,11 +7,17 @@ import Notifications from "./Notifications";
 import { GoalSources, GoalOperations } from "./GoalEvidence";
 import { GoalBadges, GoalFacts, reminderKinds } from "./goal-ui";
 import { actorNames } from "./Operations";
-import type { Goal, GoalCatalog, GoalDetail } from "./types";
+import type {
+  Goal,
+  GoalCatalog,
+  GoalDetail,
+  GoalBasisAnnotation,
+} from "./types";
 
 type Action =
   | { kind: "completed" | "abandoned"; goal: Goal }
-  | { kind: "merge"; goal: Goal; other: Goal };
+  | { kind: "merge"; goal: Goal; other: Goal }
+  | { kind: "basis_clear"; goal: Goal; annotation: GoalBasisAnnotation };
 function Duplicate({
   goal,
   otherId,
@@ -260,6 +267,15 @@ export default function GoalDetails({
               </>
             )}
           </section>
+          <GoalBasisReview
+            goal={goal}
+            locked={locked || !!editing || !!action}
+            openMemory={openMemory}
+            clear={(annotation) =>
+              setAction({ kind: "basis_clear", goal, annotation })
+            }
+          />
+          <GoalDedupReview goal={goal} openGoal={openGoal} />
           {!goal.merged_into && goal.possible_duplicate_ids.length > 0 && (
             <section className="panel goals-panel">
               <h2>可能重复</h2>
@@ -363,23 +379,54 @@ export default function GoalDetails({
               ))}
             </details>
           </section>
-          <GoalOperations key={`operations-${goal.revision}`} id={goal.id} />
+          <GoalOperations
+            key={`operations-${goal.revision}`}
+            id={goal.id}
+            catalog={catalog}
+          />
         </>
       )}
       {action && (
         <Dialog
           title={
-            action.kind === "merge"
-              ? "确认合并目标"
-              : action.kind === "completed"
-                ? "完成目标"
-                : "放弃目标"
+            action.kind === "basis_clear"
+              ? "清除目标依据标注"
+              : action.kind === "merge"
+                ? "确认合并目标"
+                : action.kind === "completed"
+                  ? "完成目标"
+                  : "放弃目标"
           }
           closeDisabled={busy}
           onClose={() => setAction(null)}
         >
           {error && <Notice error>{error}</Notice>}
-          {action.kind === "merge" ? (
+          {action.kind === "basis_clear" ? (
+            <div className="goal-confirm">
+              <p>{action.annotation.text}</p>
+              <p>
+                清除只撤下这次观察的标注并保留修订记录，不改变目标正文、状态、截止时间或提醒；依据再次变化时仍可能出现新标注。
+              </p>
+              <div className="actions">
+                <button
+                  className="primary"
+                  disabled={busy || stale}
+                  onClick={() =>
+                    void write(
+                      `/goals/${id}/basis-annotations/${action.annotation.id}`,
+                      { expected_revision: action.goal.revision },
+                      "DELETE",
+                    )
+                  }
+                >
+                  确认清除依据标注
+                </button>
+                <button disabled={busy} onClick={() => setAction(null)}>
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : action.kind === "merge" ? (
             <div className="goal-confirm">
               <p>
                 保留较早的目标 #

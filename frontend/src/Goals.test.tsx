@@ -146,14 +146,24 @@ beforeEach(() => {
           offset: 0,
           limit: 30,
         });
-      if (url === "/admin/api/memories/8")
+      if (url.startsWith("/admin/api/goals/10/revisions?"))
         return response({
-          ...goalDetailFixture.promise_memories[0],
-          sources: [
+          items: [],
+          total: 0,
+          offset: 0,
+          limit: 30,
+          history_status: "complete",
+          missing_through_revision: null,
+          notice: null,
+        });
+      if (url.startsWith("/admin/api/goals/10/sources?"))
+        return response({
+          items: [
             {
-              id: 1,
-              kind: "message",
+              id: 31,
               message_id: 31,
+              missing: false,
+              notice: null,
               message: { ...goalDetailFixture.sources[0], sender_name: "Iris" },
               context: [
                 {
@@ -172,6 +182,9 @@ beforeEach(() => {
               ],
             },
           ],
+          total: 1,
+          offset: 0,
+          limit: 30,
         });
       throw new Error(`Unexpected request ${url}`);
     }),
@@ -332,7 +345,7 @@ test.each(["-1", "1.5", "525601"])(
   },
 );
 
-test("详情显示证据、记忆修订、合并记录和操作字段；按需只读加载前后文", async () => {
+test("详情显示证据、记忆修订、合并记录和操作字段；只读查看来源前后文", async () => {
   detail.merged_goals = [{ ...otherGoal, merged_into: 10 }];
   const openMemory = vi.fn();
   mountDetail({ openMemory });
@@ -340,10 +353,10 @@ test("详情显示证据、记忆修订、合并记录和操作字段；按需�
   expect(screen.getByText("我答应周五联系小林")).toBeVisible();
   expect(screen.getByText(/依据修订 1.*当前修订 2/)).toBeVisible();
   expect(screen.getByText("周五联系一下小林")).toBeVisible();
+  await userEvent.click(screen.getByText("操作记录", { selector: "summary" }));
   expect(await screen.findByText(/修改前修订 3/)).toBeVisible();
-  expect(screen.getByText(/历史正文.*暂不可查看/)).toBeVisible();
+  expect(screen.getByText("暂无修订快照。")).toBeVisible();
   expect(requests.some((r) => r.url.includes("/memories/"))).toBe(false);
-  await userEvent.click(screen.getByRole("button", { name: "载入来源前后文" }));
   await userEvent.click(await screen.findByText("来源消息 · Iris"));
   await userEvent.click(screen.getByText("查看前后文"));
   expect(screen.getByText("请在周五联系小林")).toBeVisible();
@@ -544,11 +557,15 @@ test("未解析的旧期限原文保留，编辑正文不会清除期限或安�
   expect(body).not.toHaveProperty("reminder_minutes");
 });
 
-test("没有承诺记忆时明确仅有来源原文，不构造前后文", async () => {
+test("没有承诺记忆时也能独立查看来源前后文", async () => {
   detail.promise_memories = [];
   mountDetail();
-  expect(await screen.findByText(/现有来源中没有可用的前后文/)).toBeVisible();
-  expect(screen.getByText("好，我周五联系小林。")).toBeVisible();
+  await userEvent.click(await screen.findByText("来源消息 · Iris"));
+  await userEvent.click(screen.getByText("查看前后文"));
+  expect(screen.getByText("请在周五联系小林")).toBeVisible();
+  expect(
+    screen.getByText("好，我周五联系小林。", { selector: "blockquote" }),
+  ).toBeVisible();
   expect(
     screen.queryByRole("button", { name: "载入来源前后文" }),
   ).not.toBeInTheDocument();
