@@ -12,6 +12,7 @@ from itertools import islice, zip_longest
 from typing import Any
 
 from .state import current_state
+from .goals import goal_partition
 from .db import Store, dumps, now
 from .claim_sequences import normalize_claim, same_claim_sequences
 from .models import Gateway, ModelError
@@ -436,7 +437,8 @@ class Retrieval:
             hints.extend(self._model_hints(conn))
             result = {"memories": memories, "hints": hints}
             if include_goals:
-                result["goals"] = self._goals(conn, None, 10)
+                result["goals"] = self._goals(conn, None, 10, participants=_people(conn, request["people"]),
+                                              current=self.clock())
             if include_state:
                 result["state"] = current_state(conn, current=self.clock())
         result["recall_id"] = self._record(None, request, memories)
@@ -452,23 +454,9 @@ class Retrieval:
         return [{"code": "model_service", "message": "部分模型用途最近一次调用失败。", "calls": failed}] if failed else []
 
     @staticmethod
-    def _goals(conn, entry_id: str | None, limit: int) -> list[dict]:
-        query = "SELECT id,content,kind,state,deadline,entry_id FROM goals WHERE state IN ('open','in_progress')"
-        args = []
-        if entry_id is not None:
-            query += " AND (entry_id=? OR entry_id IS NULL)"
-            args.append(entry_id)
-        goals = [dict(r) for r in conn.execute(query + " ORDER BY id LIMIT ?", [*args, limit])]
-        for g in goals:
-            try:
-                due = datetime.fromisoformat(g["deadline"]) if g["deadline"] else None
-                due = due.replace(tzinfo=timezone.utc) if due and due.tzinfo is None else due
-                remaining = (due - datetime.now(timezone.utc)).total_seconds() if due else None
-            except ValueError:
-                remaining = None
-            g["overdue"] = remaining is not None and remaining < 0
-            g["due_soon"] = remaining is not None and 0 <= remaining <= 86400
-        return goals
+    def _goals(conn, entry_id: str | None, limit: int, *, participants=(), current=None) -> list[dict]:
+        return goal_partition(conn, entry_id=entry_id, participants=participants,
+                              limit=limit, current=current)
 
     def _prepare_context(self, entry_id: str, text: str | None) -> tuple[str, str, str | None]:
         """Freeze composition and anchor prose together before the model call."""
@@ -576,7 +564,8 @@ class Retrieval:
             hints.extend(self._model_hints(conn))
             result = {"persona": dict(persona) if persona else {"version": None, "content": "", "generated_at": None},
                       "memories": memories, "recent_messages": recent,
-                      "goals": self._goals(conn, entry_id, min(goal_limit, 10)), "hints": hints}
+                      "goals": self._goals(conn, entry_id, min(goal_limit, 10), participants=participant_ids,
+                                           current=self.clock()), "hints": hints}
         diagnostic = apply_judgment(self.gateway, self.store, memories, {
             'role_name': self.store.setting('role_name', 'Iris'), 'query_hint': request['text'],
             'retrieval_query': text, 'participants': participants or [], 'subject_aliases': aliases,

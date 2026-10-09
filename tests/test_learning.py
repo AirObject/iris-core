@@ -244,22 +244,27 @@ def test_duplicate_new_memories_in_one_batch_do_not_self_confirm(store):
         assert conn.execute("SELECT retention FROM memories").fetchone()[0] == 54
 
 
-def test_goals_and_questions_merge_near_duplicates_only_in_same_entry(store):
+def test_goals_and_questions_merge_exact_duplicates_across_entries(store):
     msg(store, 1, "周五问问小林面试结果")
     first = {"goals": [{"content": "周五问小林面试结果", "evidence": [1]}],
              "questions": ["小林喜欢猫吗？"]}
     batch(store, FakeGateway(first), count=1)
     msg(store, 2, "周五记得问小林面试结果")
-    second = {"goals": [{"content": "周五问小林的面试结果", "evidence": [2]}],
+    second = {"goals": [{"content": "周五问小林面试结果。", "evidence": [2]}],
               "questions": ["小林喜欢猫吗"]}
     batch(store, FakeGateway(second), count=1)
     with store.read() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM goals WHERE entry_id='A'").fetchone()[0] == 2
-        assert conn.execute("SELECT COUNT(*) FROM goal_sources").fetchone()[0] == 4
-    msg(store, 1, "周五问问小林面试结果", entry="B")
+        assert conn.execute("SELECT COUNT(*) FROM goals WHERE entry_id='A' AND merged_into IS NULL").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM goal_sources gs JOIN goals g ON g.id=gs.goal_id WHERE g.merged_into IS NULL").fetchone()[0] == 4
+    from iris.queue import add_message
+    add_message(store, entry_id="B", entry_name="B", platform="test", entry_kind="group",
+                kind="message", sender="小林", account_id="A:小林", content="周五问问小林面试结果",
+                occurred_at="2026-09-28T09:01:00+08:00", dedupe_key="B-1")
     batch(store, FakeGateway(first), count=1, entry="B")
     with store.read() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM goals").fetchone()[0] == 4
+        assert conn.execute("SELECT COUNT(*) FROM goals WHERE merged_into IS NULL").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM goals").fetchone()[0] == 6
+        assert conn.execute("SELECT COUNT(*) FROM goal_sources gs JOIN goals g ON g.id=gs.goal_id WHERE g.merged_into IS NULL").fetchone()[0] == 6
 
 
 def test_near_goal_text_with_different_person_or_day_stays_distinct():

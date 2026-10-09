@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from .retrieval import Retrieval
 from .state import report_history
+from .goals import goal_list, goal_detail, notification_list
 from .people import list_people, person_detail, canonical_subject
 from .memory_ops import lifecycle_settings, missing_batch_targets
 from .model_health import utc_now
@@ -386,3 +387,18 @@ def maintenance_runs(store, *, limit=30, offset=0):
 def state_reports(store, *, limit=30, offset=0):
     with store.read() as conn:
         return report_history(conn, limit=limit, offset=offset)
+
+
+def goals(store, **filters):
+    with store.read() as conn:
+        return goal_list(conn, **filters)
+
+
+def goal(store, goal_id, *, current=None):
+    with store.read() as conn:
+        return goal_detail(conn, goal_id, current=current)
+
+
+def notifications(store, **filters):
+    with store.read() as conn:
+        return notification_list(conn, **filters)

@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 from .db import Store, dumps, now
+from .goals import write_learning_goal
 from .claim_sequences import normalize_claim as _normalize, same_claim_sequences as _same_claim_sequences
 from .people import canonical_subject
 from .memory_ops import confirm_retention
@@ -724,25 +725,10 @@ class LearningEngine:
                     (a, b, kind, _score(item.get("belief"), 60), item.get("world"), item["evidence"][0], now()))
             for section in ("goals", "questions"):
                 for item in accepted[section]:
-                    content = str(item["content"]).strip()
-                    kind = "question" if section == "questions" else "normal"
-                    deadline = item.get("deadline")
-                    people = {subject["name"] for subject in snapshot["subjects"]
-                              if subject["id"] not in ("self", "scene")}
-                    candidates = conn.execute("""SELECT id,content,deadline FROM goals
-                        WHERE entry_id=? AND kind=? AND state='open' ORDER BY id""",
-                        (batch.entry_id, kind)).fetchall()
-                    old = next((row for row in candidates if _same_goal(row["content"], content, people) and
-                                (not row["deadline"] or not deadline or row["deadline"] == deadline)), None)
-                    if old:
-                        goal_id = old["id"]
-                        if not old["deadline"] and deadline:
-                            conn.execute("UPDATE goals SET deadline=? WHERE id=?", (deadline, goal_id))
-                    else:
-                        goal_id = conn.execute("""INSERT INTO goals(content,kind,deadline,created_at,entry_id)
-                            VALUES(?,?,?,?,?)""", (content, kind, deadline, now(), batch.entry_id)).lastrowid
-                    for message_id in item["evidence"]:
-                        conn.execute("INSERT OR IGNORE INTO goal_sources(goal_id,message_id) VALUES(?,?)", (goal_id, message_id))
+                    write_learning_goal(conn, content=str(item["content"]).strip(),
+                                        kind="question" if section == "questions" else "normal",
+                                        deadline=item.get("deadline"), entry_id=batch.entry_id,
+                                        evidence=item["evidence"], current=self.clock())
             conn.executemany("UPDATE messages SET learning_state='learned' WHERE id=?", ((i,) for i in batch.target_ids))
             result = {"created": created, "updated": updated, "confirmed": confirmed, "dropped": dropped,
                       "parse_status": attempt["parse_status"], "normalizations": snapshot["normalizations"]}
