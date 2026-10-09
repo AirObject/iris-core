@@ -17,6 +17,7 @@ from .models import JUDGMENT_KINDS, MODEL_KINDS, Gateway, ModelConfig, ModelErro
 from .recall_judge import settings as judge_settings
 from .persona import DEFAULT_GOAL, DEFAULT_RULES, persona_settings
 from .state import state_settings
+from .consolidation import consolidation_settings
 from .goals import goal_settings
 from .goal_dedup_judge import DEFAULTS as GOAL_JUDGE_DEFAULTS, settings as goal_judge_settings
 
@@ -148,6 +149,16 @@ class Lifecycle(Input):
     dependency_penalty: int = Field(default=10, ge=0, le=100, strict=True)
 
 
+class ConsolidationSettings(Input):
+    max_calls: int = Field(default=50, ge=0, le=50, strict=True)
+    merge_enabled: bool = Field(default=True, strict=True)
+    conflict_enabled: bool = Field(default=True, strict=True)
+    dependency_enabled: bool = Field(default=True, strict=True)
+    persona_enabled: bool = Field(default=True, strict=True)
+    goal_review_enabled: bool = Field(default=True, strict=True)
+    maintenance_time: str = Field(default='03:00', strict=True, pattern=r'^(?:[01][0-9]|2[0-3]):[0-5][0-9]$')
+
+
 def install_settings(app):
     router = APIRouter(prefix='/admin/api')
 
@@ -155,6 +166,9 @@ def install_settings(app):
         store = app.state.store
         with store.read() as conn:
             lifecycle = lifecycle_settings(conn)
+            stored_consolidation = consolidation_settings(conn)
+            consolidation = {key:stored_consolidation[key] for key in ConsolidationSettings.model_fields if key != 'maintenance_time'}
+            consolidation['maintenance_time'] = lifecycle['maintenance_time']
             persona = persona_settings(conn)
             state = state_settings(conn)
             goals = goal_settings(conn)
@@ -165,7 +179,7 @@ def install_settings(app):
                 'model_source': 'external' if app.state.runtime_config.external_loader else 'local',
                 'daily_token_limit': store.setting('daily_token_limit'),
                 'learning_concurrency': store.setting('learning_concurrency', 2),
-                'persona': persona, 'lifecycle': lifecycle, 'recall_judge': judge_settings(store), 'state': state, 'goals': goals,
+                'consolidation': consolidation, 'persona': persona, 'lifecycle': lifecycle, 'recall_judge': judge_settings(store), 'state': state, 'goals': goals,
                 'goal_dedup_judge': goal_judge_settings(store),
                 'health': app.state.health.snapshot(), 'presets': PRESETS, 'operations': operations}
 
@@ -200,6 +214,20 @@ def install_settings(app):
                 raise ValueError('恢复阈值 H 必须大于遗忘阈值 F')
             conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('lifecycle',?)", (dumps(values),))
             operation(conn, 'lifecycle_saved', 'settings', 'lifecycle', payload.model_dump(exclude_unset=True))
+        app.state.scheduler.wake()
+        return snapshot()
+
+    @router.patch('/settings/consolidation')
+    def save_consolidation(payload: ConsolidationSettings):
+        changes = payload.model_dump(exclude_unset=True)
+        with app.state.store.write() as conn:
+            values = consolidation_settings(conn)
+            values.update({key:value for key,value in changes.items() if key != 'maintenance_time'})
+            conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('consolidation',?)", (dumps(values),))
+            if 'maintenance_time' in changes:
+                lifecycle = {**lifecycle_settings(conn), 'maintenance_time':changes['maintenance_time']}
+                conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('lifecycle',?)", (dumps(lifecycle),))
+            operation(conn, 'consolidation_settings_saved', 'settings', 'consolidation', changes)
         app.state.scheduler.wake()
         return snapshot()
 

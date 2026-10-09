@@ -193,6 +193,22 @@ Scheduler 的独立单工作线程执行 Maintenance，不占学习、模型探�
 管理员修订触发器只在 admin_operations 记历史标识；每次批次从 running 得到结果的事务自动记录状态和数量（服务、离线、重启恢复共用），不存 result_json 或错误正文。其他人工操作、宿主立即学习和反馈，以及维护完成摘要明确写入。GET /admin/api/operations 以只读快照按时间、动作、操作者和对象筛选；维护报告独立保存每项结果和 ID。设置校验部分更新的合并结果及 H>F，现有会话、CSRF、Host 边界不变。
 
 
+## M3 梦境整理
+
+`Maintenance` 在原五个确定性阶段后执行 `consolidation → persona → goals`。Scheduler 仍使用独立维护线程，服务传入已有 gateway；无 gateway 时跳过模型阶段。接受请求的短事务同时固定生命周期设置、时区、记忆／消息／批次／目标上界及 `consolidation_runs.settings_json`。续跑不重新读运行设置，设置接口的修改只影响新运行。
+
+`consolidation.py` 保留 broad 候选筛选与判断，合并前检查说话人、立场、涉及人、时间、数字和否定，排除置顶和最近人工正文修订；正文取较完整的现有输入（同长取较早），保留全部来源及修订／操作记录，相信程度至多为输入最大值。被并入行以 `lifecycle=deleted, merged_into=<结果 ID>` 占位并由触发器禁止复活。模型 IO 在事务外；写回重新核对修订及语义快照，同轮矛盾／未决关系阻止涉及它们的合并。
+
+按 DECISIONS 2026-10-10，矛盾与派生依据复核只有报告和标注路径，不写正文／相信程度，不重复 M2 扣减。`consolidation_annotations` 持久记录建议类型、来源、相关记忆／替代目标、写入时修订与报告 ID；同结论唯一键去重，管理员确认／清除是元数据。建议只进入管理详情与报告，即使已确认也不进入宿主 prepare/search；详情按当前修订与标注修订比较显示“标注后已修改”。报告明确标为模型建议并附源消息摘录。
+
+`maintenance_persona`（迁移 019）把 run_id 与 persona_attempts 原子关联。先用 persona_due 判断到期，再在同一短事务预留既有 persona 尝试及关联，复用 PersonaEngine 的带 attempt_id 执行入口，保留 only_if_due、版本 CAS、依据检查和发布策略；不另建发布路径。恢复时终态尝试只补报告，queued 尝试可继续，已 running 但未完整结束的尝试记录 interrupted，不重放生成、不发布部分结果。persona 的监管设置与发布方式沿用该模块在接受尝试时的快照。
+
+迁移 019 保留原 `consolidation_calls` 行，允许 persona 调用的 work_id 为 NULL；`maintenance_persona.attempt_id` 提供尝试关联。每个实际 HTTP 尝试在调用前独立预留一行，共享每次 max_calls（默认／上限 50），记录用量、耗时、结束原因、推理档位，异常中断保留未知用量。persona 外层健康预检不占调用，内层 Gateway 的每次重试才占一次；生成及其修正至少须余两次，给检查留下一个名额。persona 发布仍须完整检查通过，修正／重试耗尽则留待后续整理。所有模型调用仍写原 model_calls，用于共同每日 token 限额与用途健康。
+
+目标阶段每次读取最多 100 个未合并的开放目标及修订；逐目标在自己的短事务调用 `review_goal_basis(conn, current, goal_id=..., expected_revision=...)`，将依据观察、目标历史、报告项和维护游标原子提交。采用目标线的单项事务接口，是为了使报告／游标与目标变化一同回滚；独立的 review_goal_basis_items 仍供其他分页调用者使用。冲突跳过并汇总，下一次从 0 扫描；新目标不越过本次 goal_through 上界。依据恢复／再变化由目标模块结束旧标注，不自动删除或关闭目标，过期标识沿用实时投影。
+
+`PATCH /admin/api/settings/consolidation` 暴露 max_calls 及 merge_enabled、conflict_enabled、dependency_enabled、persona_enabled、goal_review_enabled（全开），时间复用 lifecycle.maintenance_time；更新与审计同事务。模型项目开关进入候选指纹和待办筛选，关闭期间不消耗该类调用，重新打开可发现延期项目；合并和矛盾共用一轮分类，关闭矛盾建议时仍防止矛盾记忆合并。报告通过原维护接口汇总变化、失败、模型建议、persona 结果、目标复核和全部模型用量；无变化／未到期只汇总，记忆建议始终仅管理员可见。
+
 ## M3 persona
 
 `persona.py` 管理依据选取、检查、发布与版本；`persona_evaluation.py` 提供隔离时间线、可注入时钟及外部判分材料。迁移 013 扩充 `persona_versions`，增加 `persona_attempts`，并只把仍等于旧截短默认值的监管要求升级为设计全文。初始设定通过 `memory_ops.setup_role` 创建原模板正文与设定依据，不调用模型，不改变学习材料中的 persona 文本。
