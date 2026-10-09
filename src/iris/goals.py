@@ -194,6 +194,213 @@ def _duplicate_ids(conn, goal_id):
         (goal_id, goal_id, goal_id))]
 
 
+# Only domain values enter snapshots, never receipts, job leases or source text.
+_SNAPSHOT_FIELDS = ('content','kind','origin','state','deadline','reminder_minutes',
+                    'entry_id','closed_at','closed_by','merged_into','people')
+_BASIS_LABELS = {'revision_changed':'修订已变化','forgotten':'已遗忘','deleted':'已删除',
+                 'purged':'已彻底清除','missing':'已不存在'}
+
+
+def _reason(value, default):
+    if value is None:
+        return default
+    if not isinstance(value,str) or not 1<=len(value.strip())<=500:
+        raise GoalError('reason','原因须为 1—500 个非空白字符')
+    return value.strip()
+
+
+def _basis_annotations(conn, goal_id, *, zone=None):
+    zone = zone or role_zone(conn)
+    result = []
+    for row in conn.execute("SELECT * FROM goal_basis_annotations WHERE goal_id=? AND status='active' ORDER BY id",(goal_id,)):
+        item = {key:row[key] for key in ('id','memory_id','basis_revision','observed_revision',
+                'observed_lifecycle','observed_purged','observed_merged_into')}
+        item['observed_purged'] = bool(item['observed_purged'])
+        item['changes'] = json.loads(row['changes_json'])
+        item['text'] = '依据可能不成立：记忆 '+str(row['memory_id'])+' '+ '、'.join(_BASIS_LABELS[c] for c in item['changes'])
+        item['created_at'] = local_time(row['created_at'],zone)
+        result.append(item)
+    return result
+
+
+def _snapshot(conn, goal_id):
+    row = _row(conn,goal_id)
+    values = {key:row[key] for key in _SNAPSHOT_FIELDS}
+    values['source_message_ids'] = [r[0] for r in conn.execute('SELECT message_id FROM goal_sources WHERE goal_id=? ORDER BY message_id',(goal_id,))]
+    values['promise_memories'] = [dict(r) for r in conn.execute('SELECT memory_id,memory_revision FROM goal_memories WHERE goal_id=? ORDER BY memory_id',(goal_id,))]
+    values['merged_goal_ids'] = [r[0] for r in conn.execute('SELECT id FROM goals WHERE merged_into=? ORDER BY id',(goal_id,))]
+    values['duplicates'] = {str(r[0]):r[1] for r in conn.execute('''SELECT CASE WHEN goal_a=? THEN goal_b ELSE goal_a END,status
+        FROM goal_duplicates WHERE goal_a=? OR goal_b=? ORDER BY goal_a,goal_b''',(goal_id,goal_id,goal_id))}
+    # Annotation facts have their own durable rows; avoid duplicating their text.
+    values['basis_annotations'] = {str(r[0]):r[1] for r in conn.execute('SELECT id,status FROM goal_basis_annotations WHERE goal_id=? ORDER BY id',(goal_id,))}
+    return row['revision'],values
+
+
+def _record_snapshot(conn, goal_id, before, *, actor, action, reason, current):
+    revision,after = _snapshot(conn,goal_id)
+    old_revision,old = before if before is not None else (None,{})
+    keys = sorted(k for k in old.keys() | after.keys() if k not in old or old[k]!=after[k])
+    if not keys:
+        return None
+    if old_revision is not None and revision==old_revision:
+        _bump(conn,goal_id,current)
+        revision += 1
+    previous = {k:old[k] for k in keys if k in old}
+    following = {k:after[k] for k in keys}
+    for key in ('duplicates','basis_annotations'):
+        if key in previous and key in following:
+            changed_ids = {k for k in previous[key].keys() | following[key].keys()
+                           if previous[key].get(k)!=following[key].get(k)}
+            previous[key] = {k:v for k,v in previous[key].items() if k in changed_ids}
+            following[key] = {k:v for k,v in following[key].items() if k in changed_ids}
+    return conn.execute('''INSERT INTO goal_revisions(goal_id,revision_before,revision_after,action,
+        before_json,after_json,actor,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?)''',
+        (goal_id,old_revision,revision,action,dumps(previous),dumps(following),actor,reason,current.isoformat())).lastrowid
+
+
+def _history_status(row):
+    missing = row['history_missing_through']
+    return {'history_status':'pre_migration_no_snapshot' if missing is not None else 'complete',
+            'missing_through_revision':missing,'notice':'迁移前无快照' if missing is not None else None}
+
+
+def goal_revisions(conn, goal_id, *, limit=30, offset=0):
+    """Admin-only changed-field snapshots, newest first; source text is not copied."""
+    row,zone = _row(conn,goal_id),role_zone(conn)
+    total = conn.execute('SELECT COUNT(*) FROM goal_revisions WHERE goal_id=?',(goal_id,)).fetchone()[0]
+    items = []
+    for record in conn.execute('SELECT * FROM goal_revisions WHERE goal_id=? ORDER BY id DESC LIMIT ? OFFSET ?',
+                               (goal_id,limit,offset)):
+        item = dict(record)
+        item['before'] = json.loads(item.pop('before_json'))
+        item['after'] = json.loads(item.pop('after_json'))
+        item['created_at'] = local_time(item['created_at'],zone)
+        for values in (item['before'],item['after']):
+            for key in ('deadline','closed_at'):
+                if key in values and values[key] is not None:
+                    # Unparseable legacy deadlines must remain visible as recorded.
+                    parsed = _deadline(values[key],zone,strict=False)
+                    if parsed:
+                        values[key] = local_time(parsed,zone)
+        items.append(item)
+    return {'items':items,'total':total,'limit':limit,'offset':offset,**_history_status(row)}
+
+
+_INTERNAL_BASIS_GOALS = """g.state='open' AND g.merged_into IS NULL AND
+    (g.origin='internal' OR EXISTS(SELECT 1 FROM goals inherited
+        WHERE inherited.merged_into=g.id AND inherited.origin='internal'))"""
+
+
+def _basis_observations(conn, goal_id):
+    rows = conn.execute('''SELECT gm.memory_id,gm.memory_revision,m.id AS present_id,m.revision,
+        m.lifecycle,m.purged_at,m.merged_into FROM goal_memories gm LEFT JOIN memories m ON m.id=gm.memory_id
+        WHERE gm.goal_id=? ORDER BY gm.memory_id''',(goal_id,))
+    for row in rows:
+        changes = []
+        if row['present_id'] is None:
+            changes.append('missing')
+        else:
+            if row['revision']!=row['memory_revision']:
+                changes.append('revision_changed')
+            if row['purged_at'] is not None:
+                changes.append('purged')
+            elif row['lifecycle'] in ('forgotten','deleted'):
+                changes.append(row['lifecycle'])
+        observed = (row['revision'],row['lifecycle'],int(row['purged_at'] is not None),row['merged_into'])
+        yield row['memory_id'],row['memory_revision'],observed,changes
+
+
+def review_goal_basis(conn, current, *, goal_id=None, expected_revision=None):
+    """Review current basis inside the caller's write transaction; no model/history reads.
+
+    Pass goal_id (and optionally expected_revision) for one short atomic item.
+    Omitting goal_id reviews all eligible open goals in this transaction. Daily
+    maintenance should use review_goal_basis_items for bounded independent writes.
+    """
+    if not conn.in_transaction:
+        raise ValueError('goal basis review requires a write transaction')
+    if expected_revision is not None and goal_id is None:
+        raise GoalError('goal_id','指定修订号时须指定目标')
+    current = _current(current)
+    if goal_id is not None:
+        row = _row(conn,goal_id)
+        if expected_revision is not None and row['revision']!=expected_revision:
+            raise GoalConflict()
+    ids = [r[0] for r in conn.execute('SELECT g.id FROM goals g WHERE '+_INTERNAL_BASIS_GOALS+
+        (' AND g.id=?' if goal_id is not None else '')+' ORDER BY g.id', (goal_id,) if goal_id is not None else ())]
+    result = {'checked':0,'changed_goal_ids':[],'annotation_ids':[],'ended_annotation_ids':[]}
+    for gid in ids:
+        result['checked'] += 1
+        before = _snapshot(conn,gid)
+        added,ended,live = [],[],set()
+        for mid,basis_revision,observed,changes in _basis_observations(conn,gid):
+            event_key = dumps(observed)
+            existing = conn.execute('''SELECT * FROM goal_basis_annotations WHERE goal_id=? AND memory_id=?
+                AND basis_revision=? AND event_key=?''',(gid,mid,basis_revision,event_key)).fetchone()
+            if changes and (existing is None or existing['status']!='cleared'):
+                if existing is None:
+                    aid = conn.execute('''INSERT INTO goal_basis_annotations(goal_id,memory_id,basis_revision,event_key,
+                        observed_revision,observed_lifecycle,observed_purged,observed_merged_into,changes_json,status,created_at)
+                        VALUES(?,?,?,?,?,?,?,?,?,'active',?)''',
+                        (gid,mid,basis_revision,event_key,*observed,dumps(changes),current.isoformat())).lastrowid
+                    added.append(aid)
+                else:
+                    aid = existing['id']
+                    if existing['status']!='active':
+                        conn.execute("UPDATE goal_basis_annotations SET status='active',ended_at=NULL,ended_by=NULL,end_reason=NULL WHERE id=?",(aid,))
+                        added.append(aid)
+                live.add(aid)
+            # A changed observation supersedes a warning; a restored unchanged
+            # memory resolves it. A clear receipt only suppresses the exact event.
+            for old in conn.execute("SELECT id FROM goal_basis_annotations WHERE goal_id=? AND memory_id=? AND status='active'",(gid,mid)).fetchall():
+                if old['id'] not in live:
+                    conn.execute('UPDATE goal_basis_annotations SET status=?,ended_at=?,ended_by=?,end_reason=? WHERE id=?',
+                        ('superseded' if changes else 'resolved',current.isoformat(),'maintenance',
+                         'basis_changed_again' if changes else 'basis_restored',old['id']))
+                    ended.append(old['id'])
+        # Removed basis links cannot keep a live warning indefinitely.
+        for old in conn.execute("SELECT id FROM goal_basis_annotations WHERE goal_id=? AND status='active'",(gid,)).fetchall():
+            if old['id'] not in live:
+                conn.execute("UPDATE goal_basis_annotations SET status='resolved',ended_at=?,ended_by='maintenance',end_reason='basis_removed' WHERE id=?",(current.isoformat(),old['id']))
+                ended.append(old['id'])
+        sid = _record_snapshot(conn,gid,before,actor='maintenance',action='basis_review',reason='goal basis reviewed',current=current)
+        if sid is not None:
+            result['changed_goal_ids'].append(gid)
+            operation(conn,'goal_basis_review','goal',gid,{'annotation_ids':added,'ended_annotation_ids':ended,'snapshot_id':sid},actor='maintenance',stamp=current.isoformat())
+        result['annotation_ids'].extend(added)
+        result['ended_annotation_ids'].extend(ended)
+    return result
+
+
+def review_goal_basis_items(store, current, *, after_id=0, limit=100):
+    """One bounded scan, then one Store.write transaction per goal; resumable by ID.
+
+    Recheck the scanned goal revision before each item. Memory revisions and
+    lifecycles are read only inside that same write transaction, never applied
+    from a stale reader. Conflicts are skipped until the next sweep from ID 0.
+    """
+    if type(limit) is not int or not 1<=limit<=1000 or type(after_id) is not int or after_id<0:
+        raise ValueError('limit must be 1..1000 and after_id nonnegative')
+    current = _current(current)
+    with store.read() as conn:
+        rows = conn.execute('SELECT g.id,g.revision FROM goals g WHERE '+_INTERNAL_BASIS_GOALS+
+            ' AND g.id>? ORDER BY g.id LIMIT ?',(after_id,limit+1)).fetchall()
+    result = {'checked':0,'changed_goal_ids':[],'annotation_ids':[],'ended_annotation_ids':[],
+              'conflicts':[],'next_after_id':after_id,'has_more':len(rows)>limit}
+    for row in rows[:limit]:
+        result['next_after_id'] = row['id']
+        try:
+            with store.write() as conn:
+                item = review_goal_basis(conn,current,goal_id=row['id'],expected_revision=row['revision'])
+        except (GoalConflict,KeyError):
+            result['conflicts'].append(row['id'])
+            continue
+        result['checked'] += item['checked']
+        for key in ('changed_goal_ids','annotation_ids','ended_annotation_ids'):
+            result[key].extend(item[key])
+    return result
+
+
 def _project(conn, row, *, current, zone=None, settings=None):
     zone, settings = zone or role_zone(conn), settings or goal_settings(conn)
     result = {k: row[k] for k in ('id','content','kind','origin','state','deadline','reminder_minutes',
@@ -208,6 +415,8 @@ def _project(conn, row, *, current, zone=None, settings=None):
     result['due_soon'] = bool(active and due and current >= _soon(due,lead))
     result['possible_duplicate_ids'] = _duplicate_ids(conn, row['id'])
     result['possible_duplicate'] = bool(result['possible_duplicate_ids'])
+    result['basis_annotations'] = _basis_annotations(conn,row['id'],zone=zone)
+    result['basis_needs_review'] = bool(result['basis_annotations'])
     if deadline:
         result['deadline'] = local_time(deadline, zone)
     for key in ('created_at','updated_at','closed_at'):
@@ -309,13 +518,18 @@ def goal_detail(conn, goal_id, *, current=None):
     result = _project(conn,row,current=_current(current),zone=zone)
     if row['merged_into'] is not None:
         result['merged_into'] = _canonical_id(conn,goal_id)
-    result['sources'] = [dict(r) for r in conn.execute('''SELECT m.id,m.entry_id,m.sender_subject_id,m.kind,m.content,
-        m.occurred_at FROM goal_sources gs JOIN messages m ON m.id=gs.message_id WHERE gs.goal_id=? ORDER BY m.id''',(goal_id,))]
+    result['revision_history'] = _history_status(row)
+    result['sources'] = [dict(r) for r in conn.execute('''SELECT gs.message_id AS id,m.entry_id,m.sender_subject_id,m.kind,m.content,
+        m.occurred_at,m.id IS NULL AS missing FROM goal_sources gs LEFT JOIN messages m ON m.id=gs.message_id
+        WHERE gs.goal_id=? ORDER BY gs.message_id''',(goal_id,))]
     for source in result['sources']:
+        source['missing'] = bool(source['missing'])
         source['occurred_at'] = local_time(source['occurred_at'],zone)
-    result['promise_memories'] = [dict(r) for r in conn.execute('''SELECT m.id,m.content,gm.memory_revision AS revision,
-        m.revision AS current_revision,m.lifecycle FROM goal_memories gm JOIN memories m ON m.id=gm.memory_id
-        WHERE gm.goal_id=? ORDER BY m.id''',(goal_id,))]
+    result['promise_memories'] = [dict(r) for r in conn.execute('''SELECT gm.memory_id AS id,m.content,gm.memory_revision AS revision,
+        m.revision AS current_revision,m.lifecycle,m.id IS NULL AS missing FROM goal_memories gm LEFT JOIN memories m ON m.id=gm.memory_id
+        WHERE gm.goal_id=? ORDER BY gm.memory_id''',(goal_id,))]
+    for memory in result['promise_memories']:
+        memory['missing'] = bool(memory['missing'])
     result['merged_goals'] = [_project(conn,r,current=_current(current),zone=zone) for r in _rows(conn,'merged_into=?',(goal_id,))]
     result['notifications'] = [_notification(r,zone) for r in conn.execute('SELECT * FROM notifications WHERE goal_id=? ORDER BY id',(goal_id,))]
     review = conn.execute('SELECT * FROM goal_dedup_jobs WHERE goal_id=?',(goal_id,)).fetchone()
@@ -389,12 +603,17 @@ def _bump(conn, goal_id, current):
     conn.execute('UPDATE goals SET revision=revision+1,updated_at=? WHERE id=?',(current.isoformat(),goal_id))
 
 
-def _possible(conn,a,b,current):
+def _possible(conn,a,b,current,*,actor='system',record=True):
     a,b = sorted((a,b))
-    inserted = conn.execute("INSERT OR IGNORE INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible',?)",(a,b,current.isoformat())).rowcount
-    if inserted:
-        _bump(conn,a,current)
-        _bump(conn,b,current)
+    if conn.execute('SELECT 1 FROM goal_duplicates WHERE goal_a=? AND goal_b=?',(a,b)).fetchone():
+        return
+    before = {gid:_snapshot(conn,gid) for gid in (a,b)} if record else {}
+    conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible',?)",(a,b,current.isoformat()))
+    for gid,other in ((a,b),(b,a)):
+        _bump(conn,gid,current)
+        if record:
+            sid = _record_snapshot(conn,gid,before[gid],actor=actor,action='possible_duplicate',reason='possible duplicate identified',current=current)
+            operation(conn,'goal_possible_duplicate','goal',gid,{'other_id':other,'snapshot_id':sid},actor=actor,stamp=current.isoformat())
 
 
 def _cancel_review(conn, goal_id, current, decision):
@@ -403,12 +622,15 @@ def _cancel_review(conn, goal_id, current, decision):
         (dumps(decision),current.isoformat(),goal_id))
 
 
-def _merge(conn,a,b,current,*,actor,semantic=False):
+def _merge(conn,a,b,current,*,actor,semantic=False,reason=None):
     # All callers must have checked both observed revisions before arriving here.
     if a['state']!='open' or b['state']!='open' or not (dedup_judge.compatible(a,b) if semantic else _compatible(a,b)):
         raise GoalError('goal_id','只能合并未结束且类型、人物、截止时间、数字和否定兼容的目标')
     target,source = sorted((a,b),key=lambda r:(r['created_at'],r['id']))
     tid,sid = target['id'],source['id']
+    reason = _reason(reason,'goals merged')
+    affected = {tid,sid,*_duplicate_ids(conn,sid),*[r[0] for r in conn.execute('SELECT id FROM goals WHERE merged_into=?',(sid,))]}
+    snapshots = {gid:_snapshot(conn,gid) for gid in affected}
     deadline = target['deadline'] or source['deadline']
     deadline_at = target['deadline_at'] or source['deadline_at']
     # Preserve an explicit lead; with two different leads use the earlier warning.
@@ -417,6 +639,13 @@ def _merge(conn,a,b,current,*,actor,semantic=False):
     conn.execute('UPDATE goals SET deadline=?,deadline_at=?,reminder_minutes=? WHERE id=?',(deadline,deadline_at,lead,tid))
     for table, columns in (('goal_sources','message_id'),('goal_people','subject_id'),('goal_memories','memory_id,memory_revision')):
         conn.execute(f'INSERT OR IGNORE INTO {table}(goal_id,{columns}) SELECT ?,{columns} FROM {table} WHERE goal_id=?',(tid,sid))
+    # Copy warnings and clear receipts; an existing target receipt wins for the
+    # same evidence event. Original goal evidence/history stays traceable.
+    conn.execute('''INSERT OR IGNORE INTO goal_basis_annotations(goal_id,memory_id,basis_revision,event_key,
+        observed_revision,observed_lifecycle,observed_purged,observed_merged_into,changes_json,status,created_at,ended_at,ended_by,end_reason)
+        SELECT ?,memory_id,basis_revision,event_key,observed_revision,observed_lifecycle,observed_purged,
+        observed_merged_into,changes_json,status,created_at,ended_at,ended_by,end_reason
+        FROM goal_basis_annotations WHERE goal_id=?''',(tid,sid))
     conn.execute('UPDATE goals SET merged_into=? WHERE id=?',(tid,sid))
     _cancel_review(conn,sid,current,{'status':'merged','target_id':tid})
     # Flatten existing redirects; a published receipt itself stays immutable.
@@ -426,7 +655,7 @@ def _merge(conn,a,b,current,*,actor,semantic=False):
     _cancel(conn,tid,current,notifications=False)
     for other in _duplicate_ids(conn,sid):
         if other!=tid:
-            _possible(conn,tid,other,current)
+            _possible(conn,tid,other,current,actor=actor,record=False)
     conn.execute("UPDATE goal_duplicates SET status='merged',resolved_at=?,resolved_by=? WHERE (goal_a=? OR goal_b=?) AND status='possible'",(current.isoformat(),actor,sid,sid))
     row = _row(conn,tid)
     # Keep one unclaimed notification per stage when both targets already emitted it.
@@ -460,7 +689,9 @@ def _merge(conn,a,b,current,*,actor,semantic=False):
     _schedule(conn,row,current,immediate=not already_reported)
     _bump(conn,tid,current)
     _bump(conn,sid,current)
-    operation(conn,'goal_merge','goal',tid,{'merged_id':sid},actor=actor,stamp=current.isoformat())
+    snapshot_ids = [_record_snapshot(conn,gid,before,actor=actor,action='merge',reason=reason,current=current)
+                    for gid,before in sorted(snapshots.items())]
+    operation(conn,'goal_merge','goal',tid,{'merged_id':sid,'snapshot_ids':[i for i in snapshot_ids if i is not None]},actor=actor,stamp=current.isoformat())
     return tid
 
 
@@ -505,6 +736,7 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
             SELECT ?,m.id,m.revision FROM memories m JOIN sources s ON s.memory_id=m.id
             WHERE m.speaker_subject_id='self' AND m.lifecycle!='deleted' AND s.kind='message'
             AND s.message_id IN ('''+','.join('?' for _ in evidence)+')',(gid,*evidence))
+    _record_snapshot(conn,gid,None,actor=actor,action='create',reason='goal created',current=current)
     proposed = _row(conn,gid)
     candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=?",(kind,gid))
     # Dates in older databases may not yet have been normalized by the scheduler.
@@ -536,10 +768,10 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         decision['target_id'] = target
     else:
         for row in conflicts:
-            _possible(conn,gid,row['id'],current)
+            _possible(conn,gid,row['id'],current,actor=actor)
         if decision['status']=='possible_duplicate':
             for target_id in decision.get('target_ids',[decision['target_id']]):
-                _possible(conn,gid,target_id,current)
+                _possible(conn,gid,target_id,current,actor=actor)
         _schedule(conn,proposed,current)
     if decision['status']=='pending':
         # Give the first host/admin request its full inline budget before the
@@ -724,7 +956,7 @@ class Goals:
                 decision['target_id'] = _merge(conn,target,proposed,current,actor=actor,semantic=True)
             elif decision['status']=='possible_duplicate':
                 for target_id in decision['target_ids']:
-                    _possible(conn,goal_id,target_id,current)
+                    _possible(conn,goal_id,target_id,current,actor=actor)
             pending = decision['status']=='pending'
             # Purpose health supplies the 429 Retry-After/pause/daily-limit gate;
             # this local backoff also prevents busy retries of stale/invalid data.
@@ -751,7 +983,8 @@ class Goals:
         with self.store.read() as conn:
             return goal_detail(conn,goal_id,current=self.clock())
 
-    def update(self,goal_id,*,expected_revision=None,actor='host',**changes):
+    def update(self,goal_id,*,expected_revision=None,actor='host',reason=None,**changes):
+        reason = _reason(reason,'goal updated')
         if set(changes)-{'state','content','deadline','reminder_minutes'}:
             raise GoalError('body','存在未知字段')
         if not changes:
@@ -777,6 +1010,7 @@ class Goals:
                 changes.update(closed_at=current.isoformat(),closed_by=actor)
             changed = {k:v for k,v in changes.items() if row[k]!=v}
             if changed:
+                before = _snapshot(conn,goal_id)
                 conn.execute('UPDATE goals SET '+','.join(k+'=?' for k in changed)+' WHERE id=?',(*changed.values(),goal_id))
                 _bump(conn,goal_id,current)
                 if 'state' in changed:
@@ -789,10 +1023,12 @@ class Goals:
                     for note in conn.execute("SELECT * FROM notifications WHERE goal_id=? AND kind='goal_reminder' AND status='pending'",(goal_id,)).fetchall():
                         prefix=note['content'].split('：',1)[0]
                         conn.execute('UPDATE notifications SET content=? WHERE id=?',(prefix+'：'+changed['content'],note['id']))
-                operation(conn,'goal_update','goal',goal_id,{'fields':sorted(changed),'revision_before':row['revision']},actor=actor,stamp=current.isoformat())
+                sid = _record_snapshot(conn,goal_id,before,actor=actor,action='update',reason=reason,current=current)
+                operation(conn,'goal_update','goal',goal_id,{'fields':sorted(changed),'revision_before':row['revision'],'snapshot_id':sid},actor=actor,stamp=current.isoformat())
             return _project(conn,_row(conn,goal_id),current=current)
 
-    def merge(self,goal_id,other_id,*,expected_revision,other_revision,actor='admin'):
+    def merge(self,goal_id,other_id,*,expected_revision,other_revision,actor='admin',reason=None):
+        reason = _reason(reason,'goals merged')
         with self.store.write() as conn:
             current = _current(self.clock())
             a,b = _row(conn,goal_id),_row(conn,other_id)
@@ -800,10 +1036,11 @@ class Goals:
             _check(b,other_revision)
             if other_id not in _duplicate_ids(conn,goal_id):
                 raise GoalError('other_id','两个目标没有待处理的可能重复标记')
-            target = _merge(conn,a,b,current,actor=actor,semantic=True)
+            target = _merge(conn,a,b,current,actor=actor,semantic=True,reason=reason)
             return _project(conn,_row(conn,target),current=current)
 
-    def dismiss_duplicate(self,goal_id,other_id,*,expected_revision,other_revision,actor='admin'):
+    def dismiss_duplicate(self,goal_id,other_id,*,expected_revision,other_revision,actor='admin',reason=None):
+        reason = _reason(reason,'possible duplicate dismissed')
         with self.store.write() as conn:
             current = _current(self.clock())
             _check(_row(conn,goal_id),expected_revision)
@@ -811,10 +1048,31 @@ class Goals:
             if other_id not in _duplicate_ids(conn,goal_id):
                 raise GoalError('other_id','两个目标没有待处理的可能重复标记')
             a,b = sorted((goal_id,other_id))
+            before = {gid:_snapshot(conn,gid) for gid in (a,b)}
             conn.execute("UPDATE goal_duplicates SET status='dismissed',resolved_at=?,resolved_by=? WHERE goal_a=? AND goal_b=?",(current.isoformat(),actor,a,b))
             _bump(conn,a,current)
             _bump(conn,b,current)
-            operation(conn,'goal_duplicate_dismiss','goal',goal_id,{'other_id':other_id},actor=actor,stamp=current.isoformat())
+            snapshot_ids = [_record_snapshot(conn,gid,before[gid],actor=actor,action='duplicate_dismiss',reason=reason,current=current) for gid in (a,b)]
+            operation(conn,'goal_duplicate_dismiss','goal',goal_id,{'other_id':other_id,'snapshot_ids':snapshot_ids},actor=actor,stamp=current.isoformat())
+            return _project(conn,_row(conn,goal_id),current=current)
+
+    def clear_basis_annotation(self,goal_id,annotation_id,*,expected_revision,actor='admin',reason=None):
+        reason = _reason(reason,'basis warning cleared by administrator')
+        with self.store.write() as conn:
+            current = _current(self.clock())
+            _check(_row(conn,goal_id),expected_revision)
+            annotation = conn.execute('SELECT * FROM goal_basis_annotations WHERE id=? AND goal_id=?',(annotation_id,goal_id)).fetchone()
+            if annotation is None:
+                raise KeyError(annotation_id)
+            if annotation['status']=='cleared':
+                return _project(conn,_row(conn,goal_id),current=current)
+            if annotation['status']!='active':
+                raise GoalConflict()
+            before = _snapshot(conn,goal_id)
+            conn.execute("UPDATE goal_basis_annotations SET status='cleared',ended_at=?,ended_by=?,end_reason=? WHERE id=?",
+                         (current.isoformat(),actor,reason,annotation_id))
+            sid = _record_snapshot(conn,goal_id,before,actor=actor,action='basis_clear',reason=reason,current=current)
+            operation(conn,'goal_basis_clear','goal',goal_id,{'annotation_id':annotation_id,'snapshot_id':sid},actor=actor,stamp=current.isoformat())
             return _project(conn,_row(conn,goal_id),current=current)
 
     def generate_notifications(self):
