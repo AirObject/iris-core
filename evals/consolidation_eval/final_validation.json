@@ -1,0 +1,241 @@
+{
+  "evaluation": "consolidation_v1 final report_only validation",
+  "freeze_commit": "b4f5eaeede7aa26d086afdb5a61da8c6c91b5d83",
+  "merge_freeze_commit": "3d31c95b3fa4ba9b64f43bcb9b396e63916a5e7a",
+  "model": "glm-5.3-flash",
+  "reasoning_effort": "high",
+  "method": "broad",
+  "resolution": "report_only_v1",
+  "judge_model": "gpt-6-astra max",
+  "independent_fresh_judges": 4,
+  "aggregation": "positive booleans AND; damage OR; worse full run for acceptance",
+  "degraded_runs": 0,
+  "reruns": 0,
+  "runtime_source_changed": false,
+  "acceptance_passed": false,
+  "runs": [
+    {
+      "run": 1,
+      "valid": true,
+      "judge_rounds": 2,
+      "write_audit_rounds": 2,
+      "mismerge": {
+        "numerator": 0,
+        "denominator": 12,
+        "rate": 0.0
+      },
+      "recognition": {
+        "numerator": 12,
+        "denominator": 12,
+        "rate": 1.0
+      },
+      "contradictions": {
+        "numerator": 6,
+        "denominator": 10,
+        "rate": 0.6
+      },
+      "dependencies": {
+        "numerator": 5,
+        "denominator": 8,
+        "rate": 0.625
+      },
+      "conflict_dependency_consistency": {
+        "numerator": 11,
+        "denominator": 18,
+        "rate": 0.6111111111111112
+      },
+      "protection": {
+        "numerator": 4,
+        "denominator": 4,
+        "rate": 1.0
+      },
+      "belief_cap": {
+        "numerator": 12,
+        "denominator": 12,
+        "rate": 1.0
+      },
+      "source_inheritance": {
+        "numerator": 12,
+        "denominator": 12,
+        "rate": 1.0
+      },
+      "safety_rejections": 2,
+      "format_failures": 0,
+      "write_damage": {
+        "numerator": 4,
+        "denominator": 40,
+        "rate": 0.1
+      },
+      "calls": {
+        "count": 52,
+        "prompt_tokens": 58322,
+        "completion_tokens": 16632,
+        "unknown_usage": 0,
+        "p50_ms": 7302.5,
+        "p95_ms": 13032.249999999993
+      },
+      "elapsed_seconds": 384.4435803340748,
+      "case_p95_seconds": 20.54566430686391,
+      "materials_sha256": "011b65b0efe6b5504f35cd550e9a3d95835ca363797789d5e138a3d5aef6e392",
+      "source_sha256": "5f31cd0341df275c4f05ef1f290b572cb343c570ec7438a21353629ff8761494",
+      "corpus_sha256": "6544ae854836a18305fb62c7d5b8965047aba7ea81e062ec2dd63a02f3f9db23",
+      "damage_cases": [
+        "CS028",
+        "CS030",
+        "CS032",
+        "CS039"
+      ],
+      "failed_contradiction_cases": [
+        "CS028",
+        "CS029",
+        "CS030",
+        "CS032"
+      ],
+      "failed_dependency_cases": [
+        "CS035",
+        "CS039"
+      ],
+      "score_disagreement_fields": [
+        "CS029/contradiction_results/0/source_grounded",
+        "CS035/dependency_results/0/source_grounded"
+      ],
+      "write_audit_disagreements": 0,
+      "execution": {
+        "failure_items": [
+          {
+            "case": "CS035",
+            "reason": "unsafe_write",
+            "rejection": "invalid_evidence"
+          },
+          {
+            "case": "CS039",
+            "reason": "unsafe_write",
+            "rejection": "invalid_evidence"
+          }
+        ],
+        "report_only_body_belief_lifecycle_changes": [],
+        "call_results": {
+          "success": 52
+        },
+        "finish_reasons": {
+          "stop": 52
+        },
+        "reasoning_efforts": {
+          "high": 52
+        },
+        "purposes": {
+          "consolidation_merge": 17,
+          "consolidation_conflict": 27,
+          "consolidation_dependency": 8
+        }
+      },
+      "acceptance_passed": false
+    },
+    {
+      "run": 2,
+      "valid": true,
+      "judge_rounds": 2,
+      "write_audit_rounds": 2,
+      "mismerge": {
+        "numerator": 0,
+        "denominator": 12,
+        "rate": 0.0
+      },
+      "recognition": {
+        "numerator": 12,
+        "denominator": 12,
+        "rate": 1.0
+      },
+      "contradictions": {
+        "numerator": 6,
+        "denominator": 10,
+        "rate": 0.6
+      },
+      "dependencies": {
+        "numerator": 7,
+        "denominator": 8,
+        "rate": 0.875
+      },
+      "conflict_dependency_consistency": {
+        "numerator": 13,
+        "denominator": 18,
+        "rate": 0.7222222222222222
+      },
+      "protection": {
+        "numerator": 4,
+        "denominator": 4,
+        "rate": 1.0
+      },
+      "belief_cap": {
+        "numerator": 12,
+        "denominator": 12,
+        "rate": 1.0
+      },
+      "source_inheritance": {
+        "numerator": 12,
+        "denominator": 12,
+        "rate": 1.0
+      },
+      "safety_rejections": 0,
+      "format_failures": 0,
+      "write_damage": {
+        "numerator": 2,
+        "denominator": 40,
+        "rate": 0.05
+      },
+      "calls": {
+        "count": 53,
+        "prompt_tokens": 59615,
+        "completion_tokens": 18741,
+        "unknown_usage": 0,
+        "p50_ms": 8398.0,
+        "p95_ms": 13461.599999999999
+      },
+      "elapsed_seconds": 431.6814654612681,
+      "case_p95_seconds": 22.440262731217075,
+      "materials_sha256": "557990fca60d43aad1819938ffd7ca9b9f0e4f58a4f3892eb571be8e34ac7648",
+      "source_sha256": "5f31cd0341df275c4f05ef1f290b572cb343c570ec7438a21353629ff8761494",
+      "corpus_sha256": "6544ae854836a18305fb62c7d5b8965047aba7ea81e062ec2dd63a02f3f9db23",
+      "damage_cases": [
+        "CS033",
+        "CS034"
+      ],
+      "failed_contradiction_cases": [
+        "CS028",
+        "CS029",
+        "CS033",
+        "CS034"
+      ],
+      "failed_dependency_cases": [
+        "CS040"
+      ],
+      "score_disagreement_fields": [
+        "CS033/contradiction_results/0/must_keep/0",
+        "CS034/contradiction_results/0/must_keep/1"
+      ],
+      "write_audit_disagreements": 0,
+      "execution": {
+        "failure_items": [],
+        "report_only_body_belief_lifecycle_changes": [],
+        "call_results": {
+          "success": 53
+        },
+        "finish_reasons": {
+          "stop": 53
+        },
+        "reasoning_efforts": {
+          "high": 53
+        },
+        "purposes": {
+          "consolidation_merge": 17,
+          "consolidation_merge_repair": 1,
+          "consolidation_conflict": 27,
+          "consolidation_dependency": 8
+        }
+      },
+      "acceptance_passed": false
+    }
+  ],
+  "audit_scope_note": "原始双判保留：第一轮 CS032 仅报告中的性别推断被两名判分员计为损坏；第二轮 CS028/CS040 仅报告错误被计入来源项失败但不计损坏。此边界存在跨轮口径差异，未事后改判。仅记忆标注本身已确认损坏至少为第一轮3例、第二轮2例，零损坏门槛仍明确失败。",
+  "artifact_directory": "/Users/cassia/Local/Code/iris-eval-artifacts/co01-final-validation-b4f5eae-20261010"
+}
