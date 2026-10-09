@@ -148,7 +148,7 @@ def test_v4_promise_and_detail_preserving_summary_pass_through_learning(store):
               "goals": [{"content": "在小林公开前保密入学计划", "evidence": [1, 2]}], "questions": []}
     fake = FakeGateway(output)
     formed, result = batch(store, fake)
-    assert PROMPT_VERSION == "learning_v7"
+    assert PROMPT_VERSION == "learning_v8"
     assert fake.requests[0]["max_tokens"] == 16000
     assert fake.requests[0]["batch_id"] == formed.id
     assert len(result["created"]) == 2

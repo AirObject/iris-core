@@ -11,7 +11,7 @@ def test_current_learning_keeps_original_output_budget(store):
     msg(store, 1, "收到", sender="沈砚")
     gateway = FakeGateway({})
     batch(store, gateway, count=1)
-    assert PROMPT_VERSION == "learning_v7"
+    assert PROMPT_VERSION == "learning_v8"
     assert gateway.requests[0]["messages"][0]["content"] == PROMPT
     assert gateway.requests[0]["max_tokens"] == 16000
 

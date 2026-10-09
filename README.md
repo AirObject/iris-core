@@ -302,7 +302,7 @@ prepare 和 search 为每条最终返回的记忆追加 `subject_annotations`，
 
 列表默认每页 30 条、最多 100；操作记录日期按实例时区解释，结束日期含整天。管理员写操作、宿主每次立即学习／反馈、每个批次结果和每次维护摘要进入操作记录；宿主接收消息不逐条记。记录只含 ID、计数、分数、设置和结果类别，不含消息正文、凭据或 Cookie。
 
-生命周期设置：forget_threshold=20、restore_threshold=35（1≤F<H≤100）；feedback_increment=8、confirmation_increment=5、decay_amount=1、dependency_penalty=10（幅度 0—100）；auto_delete_enabled=true、auto_delete_days=180、upcoming_delete_days=14、message_retention_days=30（天数 1—36500）；maintenance_time="03:00"（严格 HH:MM）、abandoned_retry_enabled=true。学习确认的可复用接口已经提供，learning.py 的接入由学习线完成，当前学习 SQL 尚保持原 +5 行为。
+生命周期设置：forget_threshold=20、restore_threshold=35（1≤F<H≤100）；feedback_increment=8、confirmation_increment=5、decay_amount=1、dependency_penalty=10（幅度 0—100）；auto_delete_enabled=true、auto_delete_days=180、upcoming_delete_days=14、message_retention_days=30（天数 1—36500）；maintenance_time="03:00"（严格 HH:MM）、abandoned_retry_enabled=true。学习再次确认已接入 `memory_ops.confirm_retention`，同一批次每条记忆只增加一次，默认 +5；遗忘记忆达到 H 时恢复有效。
 
 ## 模型故障与状态
 
@@ -334,7 +334,7 @@ uv run iris eval recall --corpus <外部 JSON 或 JSONL> --out <外部目录>
 uv run python evals/benchmark_retrieval.py --default-config
 ```
 
-语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。学习和召回的最终验收仍需规划者运行隐藏集。
+默认公开学习集为 learning_v1—v5，共 116 段；v5 的 12 段手写 dev 在 `905f955` 冻结，覆盖活动协调、游戏过程与关键结果、跨批改述、亲友近况和转达通知。报告按 v1—v5 分组，同时列出 v1＋v3＋v4 和 v1＋v3＋v4＋v5 合计、近似重复与再次确认。语料格式、完整外部明细、标定方法和报告见 [evals/README.md](evals/README.md)。学习和召回的最终验收仍需规划者运行隐藏集。
 
 当前回复检索默认 trigram＋2048 维 float32，向量下限 0.35、相对比例 0.75、向量／全文权重 1:1，查询加“为这个问题检索能回答它的个人记忆：”前缀；全文覆盖率 0.75，长片段最大文档频率 2。无向量时使用独立标定的 jieba 全文降级，覆盖率为 0，长片段文档频率通路关闭。新数据库写入这些默认值，已有设置保留。学习材料保持独立的 PR #4 设置。
 
@@ -350,4 +350,4 @@ trigram 查询中的一字／两字实词会补查已有 jieba 索引；只询�
 
 评测启动子进程时，临时 TOML 只记录端点、模型和 `api_key_env` 变量名，密钥仅通过该子进程环境传递；不会修改调用者环境。评测的配置来源仍为 `test-models.toml`／`IRIS_TEST_MODELS`，serve 的配置优先级见上文。需要时也可在模型配置组中用 `api_key_env` 引用已设置的环境变量，不能与 `api_key` 同时填写；变量缺失会明确报错。
 
-GLM 服务商默认 max 推理可能耗尽 180 秒学习预算；依据 `DECISIONS.md` 2026-10-08「GLM 默认推理档位改为 high」，设置页的方舟预设及开发配置使用 high，未指定档位的外部配置仍由服务商决定。学习仍共享 180 秒预算。学习提示词默认 v7，先筛长期价值，再核对完整证据、人物归属、别名声明和时间一致性；补充转述视角、扮演双方主体、周一周界和跨批更新要求，v6 保留用于对照。学习再次遇到同一命题时确认原记忆，包含遗忘中的记忆；每批仅增加一次保留强度（默认 +5），达到恢复阈值 H 后恢复有效，已删除对象不复活。数值或否定序列不同的命题不作近似重复合并。推理档位和方舟错误码适配已合入；M1 的评测门槛在定稿代码上以公开样本和规划者隐藏集的独立双判达到，M1 已完成（DECISIONS.md 2026-10-08）；公开样本的单判及流程试用仍不能作为门槛结论。
+GLM 服务商默认 max 推理可能耗尽 180 秒学习预算；依据 `DECISIONS.md` 2026-10-08「GLM 默认推理档位改为 high」，设置页的方舟预设及开发配置使用 high，未指定档位的外部配置仍由服务商决定。学习仍共享 180 秒预算。学习提示词默认 v8，先筛跨对话价值，区分临时活动协调与重要约定、游戏过程与关键结果；再核对完整证据、人物归属、别名声明和时间一致性。亲友与宠物的近况按实际主体转述，共同经历保留关系双方；短暂状态不能夹入有效记忆，被反驳的传闻须写清撤回语境，跨批改述优先更新或确认。v5—v7 保留。参与者编号紧接完整已知姓名、带空格或括号时均解析回同一主体；编号与姓名不匹配则弃项，不按拼接后的名字新建主体。正文和标签中的括号显示名只展开一次；未使用的 null 关系字段可省略，实际关系的唯一性与证据要求不变。学习再次遇到同一命题时确认原记忆，包含遗忘中的记忆；每批仅增加一次保留强度（默认 +5），达到恢复阈值 H 后恢复有效，已删除对象不复活。数值或否定序列不同的命题不作近似重复合并。推理档位和方舟错误码适配已合入；M1 的评测门槛在定稿代码上以公开样本和规划者隐藏集的独立双判达到，M1 已完成（DECISIONS.md 2026-10-08）；公开样本的单判及流程试用仍不能作为门槛结论。

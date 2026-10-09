@@ -23,7 +23,7 @@ from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
 
 
-PROMPT_VERSION = "learning_v7"
+PROMPT_VERSION = "learning_v8"
 LEARNING_MAX_TOKENS = 16000
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
@@ -320,6 +320,14 @@ class LearningEngine:
                         if isinstance(value, list) and len(value) == 1 and isinstance(value[0], str):
                             item[field] = value[0]
                             note(field, value, value[0], "single string name unwrapped")
+                    # Ignore unused nullable alternatives only alongside an actual
+                    # relation; malformed items still follow the existing validator.
+                    relations = ("alias", "same_as", "roleplay")
+                    if any(isinstance(item.get(key), str) and item[key].strip() for key in relations):
+                        for field in relations:
+                            if field in item and item[field] is None:
+                                del item[field]
+                                note(field, None, None, "unused null relation omitted")
                 if section == "updates":
                     value = item.get("ref")
                     ref = _memory_ref(value)
@@ -530,7 +538,9 @@ class LearningEngine:
         def readable(text: str) -> str:
             for ref, name in names.items():
                 pattern = r"(?<![A-Za-z0-9_])" + re.escape(ref) + r"(?![A-Za-z0-9_])"
-                text = re.sub(pattern + r"\s*" + re.escape(name), lambda _: name, text)
+                display = re.escape(name)
+                label = r"(?:（" + display + r"）|\(" + display + r"\)|" + display + r")"
+                text = re.sub(pattern + r"\s*" + label, lambda _: name, text)
                 text = re.sub(pattern, lambda _: name, text)
             return text
         for section in ("memories", "updates", "goals", "questions"):
