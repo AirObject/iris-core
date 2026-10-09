@@ -183,7 +183,8 @@ class CurrentState:
                 replacement = method == 'PUT' and fields['activity'] != before.get('activity')
                 if replacement:
                     after = {'activity': fields['activity'], 'activity_updated_at': stamp, 'details': {},
-                             'mood': None, 'mood_updated_at': None, 'started_at': stamp,
+                             'mood': before.get('mood'), 'mood_updated_at': before.get('mood_updated_at'),
+                             'started_at': stamp,
                              'start_time_basis': 'first_report'}
                 else:
                     after = {**before, 'details': dict(before['details'])}

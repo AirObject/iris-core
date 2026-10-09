@@ -51,16 +51,40 @@ def test_S07_S08_heartbeat_same_activity_and_explicit_start(state):
     assert corrected['duration_seconds'] == 4260
 
 
-def test_activity_replacement_resets_start_and_old_details(state):
+def test_activity_replacement_resets_start_and_details_but_preserves_mood(state):
     first = state.put(activity='Game', details={'scene': '森林'}, mood='紧张')
     state.clock.advance(minutes=3)
     changed = state.put(activity='game')  # Case, punctuation and internal spaces are significant.
     assert changed['started_at'] != first['started_at']
     assert changed['duration_seconds'] == 0 and changed['details'] == {}
-    assert changed['mood'] is None and changed['mood_updated_at'] is None
+    assert changed['mood'] == first['mood']
+    assert changed['mood_updated_at'] == first['mood_updated_at']
     state.clock.advance(minutes=1)
     changed = state.put(activity='休息', started_at='2026-10-09T04:02:00Z')
     assert changed['duration_seconds'] == 120 and changed['start_time_basis'] == 'host'
+    assert changed['mood'] == first['mood']
+    assert changed['mood_updated_at'] == first['mood_updated_at']
+
+
+
+@pytest.mark.parametrize('mood', ['平静', '紧张', None])
+def test_activity_replacement_explicit_mood_and_delete_clear_all(state, mood):
+    original = state.put(activity='游戏', details={'scene': '森林'}, mood='紧张')
+    state.clock.advance(minutes=1)
+    changed = state.put(activity='休息', mood=mood)
+    assert changed['details'] == {}
+    assert changed['mood'] == mood
+    assert changed['mood_updated_at'] == changed['updated_at']
+    assert changed['mood_updated_at'] != original['mood_updated_at']
+    state.clock.advance(minutes=1)
+    next_activity = state.put(activity='聊天')
+    assert next_activity['mood'] == mood
+    assert next_activity['mood_updated_at'] == changed['mood_updated_at']
+    assert state.delete() == {}
+    assert state.get() == {}
+    restarted = state.put(activity='游戏')
+    assert restarted['mood'] is None and restarted['mood_updated_at'] is None
+    assert restarted['details'] == {}
 
 
 def test_details_and_mood_have_independent_report_timestamps(state):
