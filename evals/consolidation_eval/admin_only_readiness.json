@@ -1,0 +1,91 @@
+{
+  "baseline": "6be0bb0b5a88701611513cfe1d471b14769cff44",
+  "prior_head": "cf888a9211d01b1323b163d889b494dbd04fab42",
+  "tests": {
+    "python_3_13": {
+      "passed": 1600,
+      "warnings": 4,
+      "seconds": 199.36
+    },
+    "python_3_12_isolated": {
+      "passed": 1600,
+      "warnings": 4,
+      "seconds": 204.59
+    }
+  },
+  "build": "passed",
+  "learning": {
+    "cases": 116,
+    "batches_frozen": 272,
+    "batches_candidate": 272,
+    "differences": [],
+    "cases_sha256": "c334c2b494ff9ebb652a9d5a7a49778638cdca303559a9dae7ace26bd499d280",
+    "source_sha256_frozen": "8ea440c48aeaf3430b64abadf837e81399ff1d13ffcea733aa8e7f3389633722",
+    "source_sha256_candidate": "8c8326878a30fe01a013bd0439f701d18b4b20b39260ca9ce00eef3c4bb37724",
+    "corpora": [
+      "learning_v1.jsonl",
+      "learning_v2.jsonl",
+      "learning_v3.jsonl",
+      "learning_v4.jsonl",
+      "learning_v5.jsonl"
+    ],
+    "worker": "/Users/cassia/Local/Code/iris-core-m3-consolidation/evals/compare_learning_requests.py",
+    "note": "Baseline is main commit 6be0bb0b5a88701611513cfe1d471b14769cff44. Unmodified compare_learning_requests.worker; only its public CORPORA input extended from v1-v4 to v1-v5. No message normalization."
+  },
+  "recall": {
+    "comparisons": 456,
+    "corpora": 7,
+    "modes": [
+      "hybrid",
+      "fts_fallback"
+    ],
+    "judging": false,
+    "consolidation_ran": false,
+    "returned_memories": 2216,
+    "field_normalization": false,
+    "different": 0,
+    "differences": []
+  },
+  "r10": [
+    {
+      "memories": 5000,
+      "query": "unnamed",
+      "samples": 60,
+      "prepare_p95_ms": 20.762547611957373,
+      "http_p95_ms": 29.18217291589825
+    },
+    {
+      "memories": 5000,
+      "query": "named",
+      "samples": 60,
+      "prepare_p95_ms": 36.5999583620578,
+      "http_p95_ms": 38.303606299450614
+    },
+    {
+      "memories": 50000,
+      "query": "unnamed",
+      "samples": 60,
+      "prepare_p95_ms": 114.78311634273267,
+      "http_p95_ms": 145.9955419646576
+    },
+    {
+      "memories": 50000,
+      "query": "named",
+      "samples": 60,
+      "prepare_p95_ms": 143.96484311437234,
+      "http_p95_ms": 167.00261707301252
+    }
+  ],
+  "scope": {
+    "baseline": "6be0bb0b5a88701611513cfe1d471b14769cff44",
+    "consolidation_existing_functions_changed": [
+      "memory_annotations"
+    ],
+    "consolidation_class_unchanged": true,
+    "all_consolidation_prompts_unchanged": true,
+    "people_byte_identical_to_main": true,
+    "real_model_calls_this_turn": 0
+  },
+  "artifacts": "/Users/cassia/Local/Code/iris-eval-artifacts/co01-admin-suggestions-20261010",
+  "generation_eval_repeated": false
+}

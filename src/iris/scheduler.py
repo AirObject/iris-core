@@ -38,7 +38,7 @@ class Scheduler:
         self._goal_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-goal-review")
         self._goal_reviews = {}
         self._vectors = None
-        self.lifecycle = Maintenance(store, clock=clock)
+        self.lifecycle = Maintenance(store, gateway=gateway, clock=clock)
         self._lifecycle_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="iris-lifecycle")
         self._lifecycle_job = None
         self._stop, self._wake = threading.Event(), threading.Event()

@@ -456,6 +456,22 @@ def install_admin(app):
     def memory(memory_id: int):
         return admin_data.memory_detail(app.state.store, memory_id)
 
+    @router.post("/memories/{memory_id}/annotations/{annotation_id}/confirm")
+    def confirm_memory_annotation(memory_id: int, annotation_id: int, payload: Revision):
+        from .api import RevisionConflict
+        from .consolidation import confirm_annotation
+        if not confirm_annotation(app.state.store,memory_id,annotation_id,payload.expected_revision):
+            raise RevisionConflict()
+        return admin_data.memory_detail(app.state.store,memory_id)
+
+    @router.delete("/memories/{memory_id}/annotations/{annotation_id}")
+    def clear_memory_annotation(memory_id: int, annotation_id: int, payload: Revision):
+        from .api import RevisionConflict
+        from .consolidation import clear_annotation
+        if not clear_annotation(app.state.store,memory_id,annotation_id,payload.expected_revision):
+            raise RevisionConflict()
+        return admin_data.memory_detail(app.state.store,memory_id)
+
     def require_editable(memory_id):
         detail = admin_data.memory_detail(app.state.store, memory_id)
         if detail["lifecycle"] == "deleted":

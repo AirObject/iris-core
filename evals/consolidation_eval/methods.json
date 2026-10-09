@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "frozen_order": ["balanced", "strict", "broad"],
+  "candidate_discovery": "Per changed memory: existing jieba FTS top 64, shared about IDs (including both empty), same world, similarity = max(character bigram Dice, SequenceMatcher). True dependency pairs use dependency review only.",
+  "conflicts": "All structurally incompatible related pairs with similarity >= 0.20 are checked for conflicts, identically for all methods. Judgments finish before any merge; unresolved incident pairs block merges.",
+  "merge_exclusions": ["deleted", "pinned", "latest actual body revision is manual", "speaker, stance, about, world mismatch", "both event times known and different", "incompatible normalized quantities with same units", "different negation presence", "ancestor/descendant"],
+  "methods": [
+    {"name": "balanced", "minimum_similarity": 0.40},
+    {"name": "strict", "minimum_similarity": 0.65},
+    {"name": "broad", "minimum_similarity": 0.20}
+  ],
+  "model_decision": "One shared source-grounded pair prompt; never receives labels. Merge keeps the existing semantically fuller memory, earlier on ties; length/time preference is a non-binding suggestion. No synthesized merge body. The model can refuse any candidate.",
+  "selection": "Each method runs the full frozen corpus twice. Worst mismerge rate (zero merges is infeasible), worst recognition, largest calls and worst case P95 are used. Feasible <= 0.05; recognition within < 0.03 of maximum ties; fewer calls, lower P95, then frozen order. Double independent scoring with AND on positive fields. Any degradation invalidates a run."
+}
