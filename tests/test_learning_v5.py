@@ -42,7 +42,7 @@ def test_feedback_inference_about_self_preserves_explicit_self(store):
 
 
 def test_distinct_facts_stay_separate_without_inferred_gender(store):
-    assert PROMPT_VERSION == "learning_v8"
+    assert PROMPT_VERSION == "learning_v7"
     assert "不推断性别" in PROMPT and "不要为避免重复自行加“他”“她”" in PROMPT
     assert "不同命题分开" in PROMPT and "不同人的独立观点" in PROMPT
     msg(store, 1, "我带望远镜，活动在周六下午三点", sender="大鹏")

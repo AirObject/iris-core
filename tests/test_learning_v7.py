@@ -9,11 +9,11 @@ from conftest import FakeGateway, batch, msg
 from test_batches import memory
 
 
-def test_current_prompt_is_selected_without_changing_output_budget(store):
+def test_v7_is_selected_without_changing_output_budget(store):
     msg(store, 1, "收到")
     gateway = FakeGateway({})
     batch(store, gateway, count=1)
-    assert PROMPT_VERSION == "learning_v8"
+    assert PROMPT_VERSION == "learning_v7"
     assert gateway.requests[0]["max_tokens"] == 16000
 
 
