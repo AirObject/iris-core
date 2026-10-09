@@ -106,6 +106,8 @@ def memory_detail(store, memory_id):
         if not rows:
             raise KeyError(memory_id)
         detail = rows[0]
+        from .consolidation import memory_annotations
+        detail['consolidation_annotations'] = memory_annotations(conn,[memory_id],include_reports=True)[memory_id]
         detail["speaker"] = dict(conn.execute("SELECT id,name FROM subjects WHERE id=?", (detail["speaker_subject_id"],)).fetchone())
         detail["sources"] = []
         for row in conn.execute("SELECT * FROM sources WHERE memory_id=? ORDER BY id", (memory_id,)):

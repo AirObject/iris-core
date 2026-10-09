@@ -321,6 +321,8 @@ def _roleplay_annotation(conn, row, folded_ids=None):
 
 def annotate_memories(conn, memories):
     """Append metadata only AFTER selection/budget/judgment. Never expose evidence prose."""
+    from .consolidation import memory_annotations
+    consolidation = memory_annotations(conn, [m['id'] for m in memories])
     involved = [{m['speaker_subject_id'], *(p['id'] for p in m['about'])} for m in memories]
     links = _live_links(conn, set().union(*involved) if involved else set())
     annotations = {}
@@ -339,3 +341,4 @@ def annotate_memories(conn, memories):
                 key, annotation = annotations[row['id']]
                 metadata[key].append(annotation)
         memory['subject_annotations'] = metadata
+        memory['consolidation_annotations'] = consolidation[memory['id']]

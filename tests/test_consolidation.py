@@ -129,7 +129,7 @@ def test_protection_forbids_merge_and_body_or_belief_changes(store, protection):
         before = snapshot(conn,a)
     def conflict(p):
         return {'decision':'conflict','reason':'新说法需要核对','evidence': [s['id'] for m in p['memories'] for s in m['sources']],
-                'updates':[{'id':a,'content':'不教了','belief':30,'annotation':'新旧说法争议，请管理员核对'}]}
+                'updates':[{'id':a,'annotation':'新旧说法争议，请管理员核对'}]}
     _, _, report = run(store, Model(store, conflict))
     with store.read() as conn:
         after = snapshot(conn,a)
@@ -141,7 +141,7 @@ def test_conflict_original_pair_is_never_merged_same_run(store):
     a, b = pair(store)
     def conflict(p):
         return {'decision':'conflict','reason':'旧摘要丢限定','evidence':[s['id'] for m in p['memories'] for s in m['sources']],
-                'updates':[{'id':a,'content':p['memories'][1]['content'],'annotation':'此前摘要范围过宽，按原话修正'}]}
+                'updates':[{'id':a,'annotation':'此前摘要范围过宽，按原话修正'}]}
     model = Model(store, conflict)
     _, _, report = run(store, model)
     assert report['summary']['conflicts']['count'] == 1
@@ -252,7 +252,7 @@ def test_transitive_loss_and_forgetting_preserve_belief_without_model_penalty(st
         conn.execute("UPDATE memories SET lifecycle='forgotten',retention=19,forgotten_at=? WHERE id=?",(Clock()().isoformat(),a))
     def answer(p):
         return {'decision':'weaken','reason':'唯一源头已遗忘，支持不足','evidence':[],
-                'updates':[{'id':p['target_id'],'belief':1,'annotation':'唯一源头已遗忘，支持不足'}]}
+                'updates':[{'id':p['target_id'],'annotation':'唯一源头已遗忘，支持不足'}]}
     model=Model(store,answer)
     run(store,model)
     assert len(model.requests)==2
@@ -308,7 +308,7 @@ def test_source_text_and_quote_share_one_excerpt_budget(store):
     assert source['text'] and source['quote_content']
 
 
-def test_correction_invalidates_committed_vector_and_updates_fts(store):
+def test_report_only_preserves_vector_fts_body_and_belief(store):
     store.set_setting('consolidation',{'resolution':'rewrite_v2'})
     sid=msg(store,1,'旧安排为口琴课，后来改为竹笛课')
     a=put(store,'我每周教口琴课',evidence=[sid],vector=[1.,0.],importance=80)
@@ -317,14 +317,14 @@ def test_correction_invalidates_committed_vector_and_updates_fts(store):
     assert index.contains(a)
     def answer(p):
         return {'decision':'conflict','reason':'按原话保留旧安排的历史范围','evidence':[sid],
-                'updates':[{'id':a,'content':'我过去每周教口琴课，现在改教竹笛课','annotation':'旧安排已被替代'}]}
+                'updates':[{'id':a,'annotation':'旧安排已被替代'}]}
     run(store,Model(store,answer))
     with store.read() as conn:
         row=conn.execute('SELECT content,embedding,embedding_model FROM memories WHERE id=?',(a,)).fetchone()
-        assert row['content']=='我过去每周教口琴课，现在改教竹笛课'
-        assert row['embedding'] is None and row['embedding_model'] is None
-        assert conn.execute("SELECT 1 FROM memory_fts_jieba WHERE rowid=? AND memory_fts_jieba MATCH '竹笛'",(a,)).fetchone()
-    assert not index.contains(a)
+        assert row['content']=='我每周教口琴课'
+        assert row['embedding'] is not None and row['embedding_model']=='fake-vector'
+        assert not conn.execute("SELECT 1 FROM memory_fts_jieba WHERE rowid=? AND memory_fts_jieba MATCH '竹笛'",(a,)).fetchone()
+    assert index.contains(a)
 
 
 def test_decimal_clock_quantity_does_not_interrupt_candidate_planning():

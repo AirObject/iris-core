@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-from run import ROOT, SCORING, SCORING_VERSION, SOURCE_FIELDS
+from run import ROOT, SCORING, SCORING_VERSION, SOURCE_FIELDS, REPORT_ONLY_SCORING
 from iris.evaluation import _json_sha256, _read_json, _write_json, _verified_material_file
 
 
@@ -102,6 +102,8 @@ def load_materials(directory):
     require(manifest['materials_sha256']==_json_sha256({k:v for k,v in manifest.items() if k!='materials_sha256'}),'manifest digest mismatch')
     rows=_read_json(_verified_material_file(directory,'run.json',manifest['run_sha256']))['rows']
     require(_verified_material_file(directory,'scoring.md',manifest['scoring_sha256']).read_text(encoding='utf-8')==SCORING,'scoring rules differ')
+    if manifest['run'].get('resolution')=='report_only_v1':
+        require(_verified_material_file(directory,'report-only-scoring.md',manifest.get('report_only_scoring_sha256','')).read_text(encoding='utf-8')==REPORT_ONLY_SCORING,'report-only scoring policy differs')
     require(len(rows)==len(manifest['cases']),'case count mismatch')
     for i,(row,entry) in enumerate(zip(rows,manifest['cases'],strict=True)):
         exact(entry,('case_id','file','sha256','judgment_file'))

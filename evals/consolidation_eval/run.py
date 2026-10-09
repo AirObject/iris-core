@@ -27,13 +27,14 @@ from iris.model_health import ModelHealth
 SOURCE_FIELDS=('key','entry_id','entry_kind','sender','kind','at','text')
 SCORING_VERSION='consolidation_scoring_v1'
 SCORING=(ROOT/'src/iris/prompts'/f'{SCORING_VERSION}.md').read_text(encoding='utf-8')
+REPORT_ONLY_SCORING=(Path(__file__).parent/'report_only_scoring.md').read_text(encoding='utf-8')
 
 
 def source_hash():
     paths=sorted([*ROOT.joinpath('src/iris').rglob('*.py'),*ROOT.joinpath('src/iris').rglob('*.sql'),
                   *ROOT.joinpath('src/iris').rglob('*.md'),*ROOT.joinpath('src/iris').rglob('*.json'),
                   *Path(__file__).parent.glob('*.py'),*Path(__file__).parent.glob('*.json'),
-                  Path(__file__).parent/'write_audit.md'])
+                  Path(__file__).parent/'write_audit.md',Path(__file__).parent/'report_only_scoring.md'])
     return hashlib.sha256(b''.join(str(p.relative_to(ROOT)).encode()+p.read_bytes() for p in paths)).hexdigest()
 
 
@@ -110,7 +111,7 @@ def export_memory(m,key_map,members):
             'original_keys':[k for k in key_map if k in members.get(m['id'],[reverse[m['id']]])],
             'sources':[{k:s[k] for k in ('key','entry_id','entry_kind','sender','kind','at','text')} for s in m['sources']],
             'derived_from':list(dict.fromkeys(reverse[s['id']] for s in m['derived_from'])),
-            'annotations':[{'text':a['text'],'source_keys':a['source_keys']} for a in m['annotations']],
+            'annotations':[dict(a) for a in m['annotations']],
             'is_placeholder':m['merged_into'] is not None}
 
 
@@ -119,8 +120,8 @@ def capture(store,key_map,members):
         return {'key_map':key_map.copy(),'memories':[export_memory(snapshot(conn,mid),key_map,members) for mid in key_map.values()]}
 
 
-def case_run(case,dbpath,gateway_factory,method,resolution='original_v1'):
-    if resolution not in RESOLUTIONS or (resolution!='original_v1' and method!='broad'):
+def case_run(case,dbpath,gateway_factory,method,resolution='report_only_v1'):
+    if resolution not in RESOLUTIONS or (method!='broad'):
         raise ValueError('resolution comparison fixes the selected merge method to broad')
     started=time.monotonic()
     store=Store(dbpath)
@@ -208,7 +209,9 @@ def case_run(case,dbpath,gateway_factory,method,resolution='original_v1'):
             else:
                 post=[export_memory(m,key_map,members) for m in d['after_memories']]
                 actions.append({'action_id':d['action_id'],'kind':item['outcome'],'keys':[k for k in key_map if key_map[k] in [m['id'] for m in old]],
-                    'status':'committed','before_memories':old,'after_memories':post,'report':d['report']})
+                    'status':'committed','before_memories':old,'after_memories':post,'report':d['report'],
+                    'decision':d['decision'],'evidence':d['evidence'],'source_excerpts':d['source_excerpts'],
+                    'conclusions':d['conclusions']})
             for old_m,new_m in zip(old,post,strict=True):
                 change(old_m['id'],old_m['retention'],new_m['retention'],'model_consolidation',d['report'],item['created_at'],action=d['action_id'])
         with store.read() as conn:
@@ -256,6 +259,9 @@ def export(rows,out,metadata):
     audit=(Path(__file__).parent/'write_audit.md').read_text(encoding='utf-8')
     (out/'write-audit.md').write_text(audit,encoding='utf-8')
     manifest['write_audit_sha256']=hashlib.sha256(audit.encode()).hexdigest()
+    if metadata.get('resolution')=='report_only_v1':
+        (out/'report-only-scoring.md').write_text(REPORT_ONLY_SCORING,encoding='utf-8')
+        manifest['report_only_scoring_sha256']=hashlib.sha256(REPORT_ONLY_SCORING.encode()).hexdigest()
     manifest['materials_sha256']=_json_sha256(manifest)
     _write_json(out/'manifest.json',manifest)
     _write_json(out/'round-template.json',{'materials_sha256':manifest['materials_sha256']})
@@ -269,10 +275,10 @@ def main():
     parser.add_argument('--corpus',type=Path,default=ROOT/'evals/consolidation_v1.json')
     parser.add_argument('--out',type=Path,required=True)
     parser.add_argument('--method',choices=METHODS,required=True)
-    parser.add_argument('--resolution',choices=RESOLUTIONS,default='original_v1')
+    parser.add_argument('--resolution',choices=RESOLUTIONS,default='report_only_v1')
     parser.add_argument('--case',action='append',default=[])
     args=parser.parse_args()
-    if args.resolution!='original_v1' and args.method!='broad':
+    if args.method!='broad':
         parser.error('resolution comparison requires --method broad')
     cases=load_corpus(args.corpus)
     if args.case:

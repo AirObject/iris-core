@@ -32,8 +32,8 @@ def test_prepare_token_budget_includes_serialized_list_overhead(store):
     r = Retrieval(store, clock=lambda: datetime(2026, 9, 29, tzinfo=timezone.utc))
     reply = r.prepare("A", text="天文摄影", participants=[])
     from iris.db import dumps
-    # People annotations are appended after the unchanged selection budget.
-    selected = [{k: v for k, v in m.items() if k != "subject_annotations"} for m in reply["memories"]]
+    # People and consolidation annotations are appended after the unchanged selection budget.
+    selected = [{k: v for k, v in m.items() if k not in ("subject_annotations", "consolidation_annotations")} for m in reply["memories"]]
     budget = estimate_tokens(dumps(selected)) - 1
     bounded = r.prepare("A", text="天文摄影", participants=[], token_budget=budget)
     assert bounded["memories"] == []

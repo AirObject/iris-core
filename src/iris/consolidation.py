@@ -19,9 +19,9 @@ from .search_text import match_query, terms, words
 
 # Candidate order and parameters are frozen before the first real-model probe.
 METHODS = {'balanced': 0.40, 'strict': 0.65, 'broad': 0.20}
-RESOLUTIONS = ('original_v1', 'rewrite_v2', 'conservative_v2')
-DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': 'conservative_v2'}
-PROMPT_VERSION = 'consolidation_write_guard_v2'
+RESOLUTIONS = ('report_only_v1',)
+DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': 'report_only_v1'}
+PROMPT_VERSION = 'consolidation_report_only_v1'
 MAX_ANCESTORS = 64
 
 
@@ -30,7 +30,7 @@ class UnsafeWrite(ValueError):
 
 
 # The learning helpers are read-only imports. Learning does not itself expose a
-# gender guard: consolidation refuses all gendered pronouns in rewritten bodies.
+# gender guard: consolidation refuses gendered pronouns in retained merge bodies.
 GENDERED = re.compile(r"\b(?:he|him|his|she|her|hers)\b", re.I)
 
 
@@ -41,103 +41,99 @@ def gendered_pronoun(text):
 REFERENCE = re.compile(r"(记忆|来源消息|消息|证据)\s*(?:id\s*)?[:：=#]?\s*(\d+)", re.I)
 NUMBERED = re.compile(r"(?<![A-Za-z0-9_])(?:[PMS]\d+|#\d+)|\[\d+\]", re.I)
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
-HISTORICAL = re.compile(r"过去|曾经|曾[在有任去做喜爱教住买订]|当时|去年|前年|原定|原计划|此前|之前|那时")
-SOURCE_ERROR = re.compile(r"笔误|写错|记错|说错|误写|更正|从未|从来.{0,8}(?:不|没)")
-
 
 def visible_sources(payload, evidence):
     return [s for m in payload['memories'] for s in material(m)['sources'] if s['id'] in evidence]
 
 
-def text_identifiers(text, payload, evidence, *, body=False):
-    """References may occur in annotations, but only with their actual namespace."""
-    sources = visible_sources(payload, evidence)
-    subject_ids = {m['speaker'] for m in payload['memories']} | {sid for m in payload['memories'] for sid in m['about']}
-    subject_ids |= {sid for s in sources for sid in (s['sender'], s['quote_author']) if sid}
-    # Consolidation has no batch P labels. Reuse learning's reference parser to
-    # reject rather than silently persisting or inventing a participant mapping.
+def same_write_sequences(left, right):
+    return (_same_claim_sequences(left,right)
+            and re.findall(r"\d+(?:\.\d+)?",left)==re.findall(r"\d+(?:\.\d+)?",right)
+            and re.findall(r"\b(?:no|not|never|without)\b",left.lower())==re.findall(r"\b(?:no|not|never|without)\b",right.lower()))
+
+
+def validate_merge_body(memory, payload, evidence):
+    """Validate the retained existing body, never report prose or protocol words.
+
+    Identity-like tokens must be grounded in visible source text or legal material
+    metadata. Ordinary Latin words are not assumed to be subject IDs.
+    """
+    text=memory['content']
+    sources=visible_sources(payload,evidence)
+    entry_refs={str(source[k]) for source in sources for k in ('entry_id','key') if source.get(k)}
+    reference_text=IDENTIFIER.sub(lambda match: '' if match[0] in entry_refs else match[0],text)
+    if gendered_pronoun(text):
+        raise UnsafeWrite('gendered_pronoun')
     try:
-        LearningEngine._subject_reference(text, {'participant_refs': {}, 'subjects': [], 'aliases': []})
+        LearningEngine._subject_reference(reference_text,{'participant_refs':{},'subjects':[],'aliases':[]})
     except ValueError:
         raise UnsafeWrite('participant_reference') from None
-    if PARTICIPANT_NUMBER.search(text):
-        raise UnsafeWrite('participant_reference')
-    if body and (NUMBERED.search(text) or REFERENCE.search(text)):
+    if PARTICIPANT_NUMBER.search(reference_text) or NUMBERED.search(reference_text) or REFERENCE.search(reference_text):
         raise UnsafeWrite('numbered_reference')
-    if not body:
-        for label, number in REFERENCE.findall(text):
-            allowed = {m['id'] for m in payload['memories']} if label == '记忆' else {s['id'] for s in sources}
-            if int(number) not in allowed:
-                raise UnsafeWrite('invalid_evidence' if label != '记忆' else 'invalid_memory_reference')
-        for prefix, number in re.findall(r"(?<![A-Za-z0-9_])([MS])(\d+)", text):
-            allowed = {m['id'] for m in payload['memories']} if prefix == 'M' else {s['id'] for s in sources}
-            if int(number) not in allowed:
-                raise UnsafeWrite('invalid_memory_reference' if prefix == 'M' else 'invalid_evidence')
-    grounding = ' '.join([m['content'] or '' for m in payload['memories'] if m['lifecycle'] != 'deleted'] +
-                         [s['text'] + ' ' + (s['quote_content'] or '') for s in sources])
-    known = set(IDENTIFIER.findall(grounding)) | subject_ids
-    # Disallow invented subject IDs (including typos), not just unknown P labels.
-    references = set(re.findall(r"[MS]\d+", text)) if not body else set()
-    if set(IDENTIFIER.findall(text)) - known - references - {'id', 'ID'}:
-        raise UnsafeWrite('unsupported_identifier')
-
-
-def same_write_sequences(left, right):
-    # Keep learning's established Chinese boundary and additionally preserve
-    # decimal separators and English negation (normalization removes punctuation).
-    numbers = lambda text: re.findall(r'\d+(?:\.\d+)?', text)
-    negative = lambda text: re.findall(r'\b(?:not|never|no|without)\b', text.casefold())
-    return (_same_claim_sequences(left, right) and numbers(left) == numbers(right)
-            and negative(left) == negative(right))
-
-
-def validate_write(memory, update, payload, evidence, resolution):
-    allowed_subjects = {m['speaker'] for m in payload['memories']} | {sid for m in payload['memories'] for sid in m['about']}
-    allowed_subjects |= {sid for s in visible_sources(payload,evidence) for sid in (s['sender'],s['quote_author']) if sid}
-    refs = update.get('subject_ids', [])
-    if not isinstance(refs, list) or any(not isinstance(sid, str) or sid not in allowed_subjects for sid in refs):
-        raise UnsafeWrite('invalid_subject')
-    annotation = update.get('annotation')
-    if annotation:
-        text_identifiers(annotation, payload, evidence)
-        if gendered_pronoun(annotation):
-            raise UnsafeWrite('gendered_pronoun')
-    content = update.get('content')
-    # Protected content is never applied, so an ignored model suggestion does not
-    # prevent an independently valid dispute annotation from being stored.
-    if content is None or protected(memory) or content == memory['content']:
-        return
-    if resolution == 'conservative_v2':
-        raise UnsafeWrite('conservative_body_write')
-    if gendered_pronoun(content):
-        raise UnsafeWrite('gendered_pronoun')
-    text_identifiers(content, payload, evidence, body=True)
-    referenced=set(refs) | (set(IDENTIFIER.findall(content)) & allowed_subjects)
-    if referenced - {memory['speaker'],*memory['about']}:
-        raise UnsafeWrite('subject_attribution')
-    # Preserve the original claim's number/negation sequence AND match a visible,
-    # cited source. A correction needing different quantities stays an annotation.
-    sources = visible_sources(payload, evidence)
-    source_texts = [text for s in sources for text in (s['text'], s['quote_content']) if text]
-    if not same_write_sequences(content, memory['content']) or not any(
-            same_write_sequences(content, text) for text in source_texts):
+    subjects={m['speaker'] for m in payload['memories']} | {s for m in payload['memories'] for s in m['about']}
+    declared={memory['speaker'],*memory['about']}
+    known=subjects | {str(v) for source in sources for k,v in source.items()
+                      if k in ('sender','quote_author','entry_id','key') and v is not None}
+    grounding=' '.join((source.get('text') or '')+' '+(source.get('quote_content') or '') for source in sources)
+    known |= set(IDENTIFIER.findall(grounding))
+    for identifier in IDENTIFIER.findall(text):
+        if identifier in subjects and identifier not in declared:
+            raise UnsafeWrite('subject_attribution')
+        if ('_' in identifier or '-' in identifier) and identifier not in known:
+            raise UnsafeWrite('unsupported_identifier')
+    # The original broad method selects an existing body; it never rewrites one.
+    # Compare against that exact input, not the whole message (which may contain
+    # unrelated numbers/negations, while the summary can date facts from metadata).
+    original=next((m for m in payload['memories'] if m['id']==memory['id']),None)
+    if original is None or not same_write_sequences(text,original['content']):
         raise UnsafeWrite('claim_sequences')
+    if text!=original['content']:
+        raise UnsafeWrite('merge_body_rewrite')
 
 
-def conservative_belief(memory, update, payload, evidence):
-    """A later state is not evidence that an earlier experience never happened."""
-    belief = min(update['belief'], memory['belief'])
-    if update.get('assessment') == 'superseded' or HISTORICAL.search(memory['content']):
-        return memory['belief']
-    if payload.get('target_id'):
-        losses = payload['losses']
-        if update.get('assessment') == 'unsupported' and any(l['state'] == 'deleted' for l in losses):
-            return belief
-    explicit_error = update.get('assessment') == 'source_error' and any(
-        SOURCE_ERROR.search(s['text']) or SOURCE_ERROR.search(s['quote_content'] or '')
-        for s in visible_sources(payload, evidence)
-        if memory['speaker'] in (s['sender'], s['quote_author']) or memory['stance'] == '推断')
-    return belief if explicit_error else memory['belief']
+def memory_annotations(conn, memory_ids, *, include_reports=False):
+    """One indexed batch read; only active metadata, appended after recall judgment."""
+    result={mid:[] for mid in memory_ids}
+    if not result:
+        return result
+    rows=conn.execute("""SELECT a.*,m.revision AS current_revision FROM consolidation_annotations a
+        JOIN memories m ON m.id=a.memory_id WHERE a.cleared_at IS NULL AND a.memory_id IN
+        (SELECT value FROM json_each(?)) ORDER BY a.id""",(dumps(list(result)),))
+    for row in rows:
+        changed=row['current_revision']!=row['memory_revision']
+        item={'id':row['id'],'kind':row['kind'],'text':row['text'],
+              'related_memory_ids':json.loads(row['related_ids_json']), 'superseded_by':row['superseded_by'],
+              'evidence':json.loads(row['evidence_json']), 'created_at':row['created_at'],
+              'memory_revision':row['memory_revision'],'modified_since_annotation':changed,
+              'status_label':'标注后已修改' if changed else '当前标注',
+              'report':{'run_id':row['run_id'],'work_id':row['work_id'],
+                        'url':f"/admin/api/maintenance/{row['run_id']}"}}
+        if include_reports:
+            report=conn.execute("SELECT details_json FROM maintenance_items WHERE run_id=? AND phase='consolidation' AND item_key=?",
+                                (row['run_id'],str(row['work_id']))).fetchone()
+            details=json.loads(report[0]) if report else {}
+            item['report'].update(conclusion=details.get('decision'),reason=details.get('report',''),
+                                  source_excerpts=details.get('source_excerpts',[]))
+        result[row['memory_id']].append(item)
+    return result
+
+
+def clear_annotation(store, memory_id, annotation_id, expected_revision, *, clock=utc_now):
+    """Clear reversible metadata without changing content, belief or recall revision."""
+    with store.write() as conn:
+        memory=conn.execute('SELECT revision FROM memories WHERE id=? AND purged_at IS NULL',(memory_id,)).fetchone()
+        annotation=conn.execute('SELECT * FROM consolidation_annotations WHERE id=? AND memory_id=?',
+                                (annotation_id,memory_id)).fetchone()
+        if not memory or not annotation:
+            raise KeyError(annotation_id)
+        if memory[0]!=expected_revision:
+            return False
+        if annotation['cleared_at'] is None:
+            stamp=clock().isoformat()
+            conn.execute("UPDATE consolidation_annotations SET cleared_at=?,cleared_by='admin' WHERE id=?",(stamp,annotation_id))
+            operation(conn,'consolidation_annotation_clear','memory',memory_id,{'annotation_id':annotation_id,
+                      'run_id':annotation['run_id'],'expected_revision':expected_revision},actor='admin',stamp=stamp)
+        return True
 
 
 def digest(value):
@@ -168,8 +164,11 @@ def snapshot(conn, mid):
     result['derived_from'] = [dict(r) for r in conn.execute("""SELECT source_memory_id AS id,source_revision AS revision
         FROM sources WHERE memory_id=? AND kind='memory' ORDER BY source_memory_id,id""", (mid,))]
     result['initial_setting'] = bool(conn.execute("SELECT 1 FROM sources WHERE memory_id=? AND kind='initial_setting'", (mid,)).fetchone())
-    result['annotations'] = [dict(text=r['text'], evidence=json.loads(r['evidence_json']), source_keys=[s[0] for s in conn.execute('SELECT dedupe_key FROM messages WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id',(r['evidence_json'],))]) for r in conn.execute(
-        'SELECT * FROM consolidation_annotations WHERE memory_id=? ORDER BY id', (mid,))]
+    result['annotations'] = memory_annotations(conn,[mid])[mid]
+    for annotation in result['annotations']:
+        annotation['source_keys']=[r[0] for r in conn.execute(
+            'SELECT dedupe_key FROM messages WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id',
+            (dumps(annotation['evidence']),))]
     return result
 
 
@@ -336,13 +335,18 @@ class Consolidation:
                 finish_reason=?,error=?,reasoning_effort=?,raw_output=COALESCE(?,raw_output) WHERE id=?''',
                 (result,duration,usage.get('prompt_tokens'),usage.get('completion_tokens'),finish,error,effort,raw,cid))
 
-    def call(self,work,payload):
-        purpose='consolidation_dependency' if work['kind']=='dependency' else ('consolidation_merge' if payload['merge_allowed'] else 'consolidation_conflict')
-        name='dependency' if work['kind']=='dependency' else 'pair'
-        resolution=payload.get('resolution','original_v1')
-        suffix='v1' if resolution=='original_v1' else resolution
-        prompt=files('iris').joinpath(f'prompts/consolidation_{name}_{suffix}.md').read_text(encoding='utf-8')
-        public={**payload,'memories':[material(m) for m in payload['memories']]}
+    def call(self,work,payload,*,report_only=False):
+        purpose='consolidation_dependency' if work['kind']=='dependency' else (
+            'consolidation_conflict' if report_only or not payload['merge_allowed'] else 'consolidation_merge')
+        if work['kind']=='dependency':
+            name='dependency_report_only_v1'
+        elif report_only:
+            name='conflict_report_only_v1'
+        else:
+            name='pair_v1'  # Complete original broad prompt frozen in 3d31c95.
+        prompt=files('iris').joinpath(f'prompts/consolidation_{name}.md').read_text(encoding='utf-8')
+        public={k:v for k,v in payload.items() if k!='resolution'}
+        public['memories']=[material(m) for m in payload['memories']]
         messages=[{'role':'system','content':prompt},{'role':'user','content':dumps(public)}]
         def unique(pairs):
             value={}
@@ -382,7 +386,7 @@ class Consolidation:
                 if reply.finish_reason!='stop':
                     raise ValueError('incomplete_output')
                 result=json.loads(reply.content,object_pairs_hook=unique)
-                self.validate(result,work,payload)
+                self.validate(result,work,payload,report_only=report_only or work['kind']=='dependency')
                 return result
             except UnsafeWrite:
                 raise
@@ -401,7 +405,7 @@ class Consolidation:
         raise AssertionError('unreachable')
 
     @staticmethod
-    def validate(value,work,payload):
+    def validate(value,work,payload,*,report_only=False):
         allowed={'decision','reason','evidence','updates','keep_id'}
         if not isinstance(value,dict) or set(value)-allowed or not {'decision','reason','evidence','updates'}<=set(value):
             raise ValueError('invalid_fields')
@@ -414,17 +418,23 @@ class Consolidation:
             raise UnsafeWrite('invalid_evidence')
         if value['decision'] in ('merge','conflict') and not value['evidence']:
             raise UnsafeWrite('missing_evidence')
-        if value['decision'] not in ('keep','separate','uncertain'):
-            text_identifiers(value['reason'],payload,value['evidence'])
-            if gendered_pronoun(value['reason']):
-                raise UnsafeWrite('gendered_pronoun')
         if not isinstance(value['updates'],list):
             raise ValueError('invalid_updates')
         seen=set()
         for update in value['updates']:
-            if not isinstance(update,dict) or set(update)-{'id','content','belief','annotation','subject_ids','assessment'} or type(update.get('id')) is not int or update['id'] not in ids or update['id'] in seen:
+            if not isinstance(update,dict) or set(update)-{'id','content','belief','annotation','subject_ids','assessment','superseded_by'} or type(update.get('id')) is not int or update['id'] not in ids or update['id'] in seen:
                 raise UnsafeWrite('invalid_update')
             seen.add(update['id'])
+            if report_only and set(update)-{'id','annotation','assessment','superseded_by'}:
+                raise UnsafeWrite('report_only_fields')
+            if 'subject_ids' in update and (not isinstance(update['subject_ids'],list) or
+                any(s not in {m['speaker'] for m in payload['memories']} | {s for m in payload['memories'] for s in m['about']} for s in update['subject_ids'])):
+                raise UnsafeWrite('unknown_subject')
+            if update.get('assessment')=='superseded':
+                if type(update.get('superseded_by')) is not int or update['superseded_by'] not in ids-{update['id']}:
+                    raise UnsafeWrite('invalid_superseded_target')
+            elif update.get('superseded_by') is not None:
+                raise UnsafeWrite('invalid_superseded_target')
             if 'assessment' in update and update['assessment'] not in ('superseded','disputed','unsupported','source_error'):
                 raise UnsafeWrite('invalid_assessment')
             if work['kind']=='dependency' and update['id']!=payload['target_id']:
@@ -434,6 +444,8 @@ class Consolidation:
             for key in ('content','annotation'):
                 if key in update and (not isinstance(update[key],str) or not 0<len(update[key].strip())<=1000):
                     raise UnsafeWrite('invalid_text')
+        if report_only and work['kind']=='pair' and value['decision']!='conflict':
+            raise UnsafeWrite('invalid_report_decision')
         if value['decision']=='merge' and (type(value.get('keep_id')) is not int or value['keep_id'] not in ids or value['updates']):
             raise UnsafeWrite('invalid_merge')
         if value['decision'] in ('keep','separate','uncertain') and value['updates']:
@@ -522,7 +534,7 @@ class Consolidation:
             conn.executemany('INSERT OR REPLACE INTO consolidation_scanned VALUES(?,?)',scanned)
             # A bounded run snapshot; the durable pending queue remains ordered.
             conn.execute('''INSERT OR IGNORE INTO consolidation_run_work(run_id,work_id)
-                SELECT ?,id FROM consolidation_work WHERE state IN ('pending','decided')
+                SELECT ?,id FROM consolidation_work WHERE state IN ('pending','classified','decided')
                 AND COALESCE(json_extract(payload_json,'$.resolution'),'original_v1')=?
                 ORDER BY importance DESC,julianday(changed_at) DESC,id LIMIT 256''',(run['id'],settings['resolution']))
             conn.execute('UPDATE consolidation_runs SET planned=1 WHERE run_id=?',(run['id'],))
@@ -533,13 +545,7 @@ class Consolidation:
             if current is None or digest(semantic(current))!=digest(semantic(old)):
                 return True
             if current['revision'] != old['revision']:
-                # A dependency annotation committed earlier by this run does not
-                # alter support. External learning/admin revisions always conflict.
-                source_only = payload.get('target_id') and old['id'] != payload['target_id']
-                foreign = conn.execute('''SELECT 1 FROM memory_revisions WHERE memory_id=?
-                    AND revision_after>? AND actor!='consolidation' LIMIT 1''', (old['id'],old['revision'])).fetchone()
-                if not source_only or foreign:
-                    return True
+                return True
         return False
 
     def record(self,conn,work,outcome,reason=None,details=None,*,done=True):
@@ -563,7 +569,7 @@ class Consolidation:
     def run(self,run,*,stop=None):
         self.run_id=run['id']
         with self.store.write() as conn:
-            config={**DEFAULTS,**self.store.setting('consolidation',{})}
+            config={**DEFAULTS,**self.store.setting('consolidation',{}),'resolution':'report_only_v1'}
             if config['resolution'] not in RESOLUTIONS or config['method'] not in METHODS or type(config['max_calls']) is not int or not 0<=config['max_calls']<=50:
                 raise ValueError('invalid consolidation settings')
             conn.execute('INSERT OR IGNORE INTO consolidation_runs(run_id,settings_json) VALUES(?,?)',(self.run_id,dumps(config)))
@@ -571,9 +577,7 @@ class Consolidation:
         if state['finished']:
             return True
         config={**DEFAULTS,**json.loads(state['settings_json'])}
-        # Runs created by v1 retain their original policy when resumed.
-        if 'resolution' not in json.loads(state['settings_json']):
-            config['resolution']='original_v1'
+        config['resolution']='report_only_v1'  # Old policies cannot re-enable writes.
         if not config['enabled'] or not self.gateway or not callable(getattr(self.gateway,'chat',None)):
             self.halt('disabled' if not config['enabled'] else 'unconfigured')
             return True
@@ -586,7 +590,7 @@ class Consolidation:
         for work in worklist:
             if stop and stop():
                 return False
-            if work['state']!='pending':
+            if work['state'] not in ('pending','classified'):
                 continue
             payload=json.loads(work['payload_json'])
             with self.store.write() as conn:
@@ -597,7 +601,20 @@ class Consolidation:
             if stale:
                 continue
             try:
-                result=self.call(work,payload)
+                if work['state']=='classified':
+                    classification=json.loads(work['result_json'])
+                else:
+                    classification=self.call(work,payload)
+                    if work['kind']=='pair' and classification['decision']=='conflict':
+                        with self.store.write() as conn:
+                            conn.execute("UPDATE consolidation_work SET state='classified',result_json=? WHERE id=?",
+                                         (dumps(classification),work['id']))
+                        if stop and stop():
+                            return False
+                if work['kind']=='pair' and classification['decision']=='conflict':
+                    result=self.call(work,payload,report_only=True)
+                else:
+                    result=classification
             except ModelError as exc:
                 reason=exc.reason or exc.category
                 with self.store.write() as conn:
@@ -626,7 +643,7 @@ class Consolidation:
         for work in all_work:
             p=json.loads(work['payload_json'])
             r=json.loads(work['result_json']) if work['result_json'] else {}
-            if work['kind']=='pair' and (work['state']=='pending' or work['outcome']=='failed' or r.get('decision')=='conflict'):
+            if work['kind']=='pair' and (work['state'] in ('pending','classified') or work['outcome']=='failed' or r.get('decision')=='conflict'):
                 blocked.add(frozenset(p['pair_ids']))
         all_work.sort(key=lambda w:(json.loads(w['result_json'] or '{}').get('decision')=='merge',w['id']))
         for work in all_work:
@@ -654,6 +671,11 @@ class Consolidation:
                     after={**payload,'memories':[snapshot(conn,m['id']) for m in payload['memories']]}
                     conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work_fingerprint(work['kind'],after,config['method']),))
                     conn.execute('RELEASE consolidation_item')
+                except UnsafeWrite as exc:
+                    conn.execute('ROLLBACK TO consolidation_item')
+                    conn.execute('RELEASE consolidation_item')
+                    self.record(conn,work,'failed','unsafe_write',{'rejection':str(exc)})
+                    conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work['fingerprint'],))
                 except (ValueError,KeyError,TypeError):
                     conn.execute('ROLLBACK TO consolidation_item')
                     conn.execute('RELEASE consolidation_item')
@@ -675,7 +697,9 @@ class Consolidation:
         before=[snapshot(conn,m['id']) for m in payload['memories']]
         decision=result['decision']
         details={'action_id':f'co-{work["id"]}','decision':decision,'before_memories':before,
-                 'report':result['reason'],'evidence':result['evidence']}
+                 'report':result['reason'],'evidence':result['evidence'],
+                 'source_excerpts':[{'memory_id':m['id'],'sources':material(m)['sources']} for m in before],
+                 'conclusions':result['updates']}
         if decision in ('separate','uncertain','keep'):
             return 'checked',{}
         if decision=='merge':
@@ -684,6 +708,7 @@ class Consolidation:
                 raise ValueError('merge_forbidden')
             keep=next(m for m in before if m['id']==result['keep_id'])
             lose=next(m for m in (a,b) if m['id']!=result['keep_id'])
+            validate_merge_body(keep,payload,result['evidence'])
             # Preserve existing fuller wording, never synthesize a third proposition.
             # Incoming dependents keep real support after its duplicate is absorbed.
             inherited=[dict(r) for r in conn.execute('SELECT * FROM sources WHERE memory_id=?',(lose['id'],))]
@@ -702,49 +727,25 @@ class Consolidation:
             details.update(result_id=keep['id'],absorbed_ids=[lose['id']],source_messages=sorted({s['id'] for m in before for s in m['sources']}),redirected_dependencies=redirected)
             outcome='merged'
         else:
+            # Model text / belief updates have no executable path here. Only
+            # typed, reversible annotations are stored; memory revision is unchanged.
             updates={u['id']:u for u in result['updates']}
             targets=[payload['target_id']] if work['kind']=='dependency' else payload['pair_ids']
-            applied=0
-            rejected=[]
-            for mid in targets:
+            inserted=0
+            for mid in (list(updates) or targets):
                 m=next(m for m in before if m['id']==mid)
-                u={**updates.get(mid,{})}
-                u.setdefault('annotation',result['reason'])
-                try:
-                    validate_write(m,u,payload,result['evidence'],payload.get('resolution','original_v1'))
-                except UnsafeWrite as exc:
-                    rejected.append({'memory_id':mid,'rejection':str(exc)})
-                    conn.execute('''INSERT OR IGNORE INTO maintenance_items(run_id,phase,item_key,memory_id,object_id,outcome,reason,details_json,created_at)
-                        VALUES(?,'consolidation',?,?,?,'failed','unsafe_write',?,?)''',
-                        (self.run_id,f'{work["id"]}:reject:{mid}',mid,mid,dumps({'rejection':str(exc),'memory_id':mid}),self.clock().isoformat()))
-                    continue
-                changes={k:u[k] for k in ('content','belief') if k in u and u[k]!=m[k]}
-                if work['kind']=='dependency':
-                    only_forgotten=all(l['state']=='forgotten' and not l['corrected'] for l in payload['losses'])
-                    if only_forgotten:
-                        changes.pop('belief',None)
-                    if decision=='weaken':
-                        changes.pop('content',None)
-                    if 'belief' in changes:
-                        changes['belief']=min(changes['belief'],m['belief'])
-                if 'belief' in changes and payload.get('resolution')=='conservative_v2':
-                    changes['belief']=conservative_belief(m,u,payload,result['evidence'])
-                # Even the rewrite candidate cannot devalue a stated historical fact
-                # merely because a later state supersedes it.
-                if 'belief' in changes and (u.get('assessment')=='superseded' or HISTORICAL.search(m['content'])):
-                    changes.pop('belief')
-                if protected(m):
-                    changes={}
-                annotation=u.get('annotation',result['reason'])
-                inserted=conn.execute('''INSERT OR IGNORE INTO consolidation_annotations(memory_id,work_id,text,evidence_json,created_at)
-                    VALUES(?,?,?,?,?)''',(mid,work['id'],annotation,dumps(result['evidence']),self.clock().isoformat())).rowcount
-                if inserted and not changes:
-                    # Annotation is a judgment change and invalidates in-flight feedback.
-                    changes={'belief':m['belief']}
-                self._revision(conn,m,changes,result['reason'])
-                applied+=1
-            details['rejected_updates']=rejected
-            if not applied:
+                u=updates.get(mid,{})
+                assessment=u.get('assessment','unsupported' if decision=='weaken' else 'disputed')
+                kind={'unsupported':'insufficient_support','source_error':'disputed'}.get(assessment,assessment)
+                related=sorted({m['id'] for m in before})
+                conclusion=digest([work['kind'],targets,kind,u.get('superseded_by'),
+                                   sorted(l['id'] for l in payload.get('losses',[]))])
+                inserted+=conn.execute("""INSERT OR IGNORE INTO consolidation_annotations(
+                    memory_id,work_id,text,evidence_json,created_at,kind,superseded_by,memory_revision,
+                    related_ids_json,run_id,dedupe_key) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                    (mid,work['id'],u.get('annotation',result['reason']),dumps(result['evidence']),self.clock().isoformat(),
+                     kind,u.get('superseded_by'),m['revision'],dumps(related),self.run_id,conclusion)).rowcount
+            if not inserted:
                 return 'checked',{}
             outcome='dependencies_reviewed' if work['kind']=='dependency' else 'conflicts'
         details['after_memories']=[snapshot(conn,m['id']) for m in before]

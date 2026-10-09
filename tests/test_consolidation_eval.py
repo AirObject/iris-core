@@ -21,10 +21,10 @@ def test_frozen_corpus_fake_run_and_material_integrity(tmp_path):
     cases=runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')
     rows=[]
     for c in cases:
-        row=runner.case_run(c,tmp_path/(c['id']+'.db'),lambda store,clock:Model(store), 'balanced')
+        row=runner.case_run(c,tmp_path/(c['id']+'.db'),lambda store,clock:Model(store), 'broad')
         scorer.validate_payload(row['input'])
         rows.append(row)
-    metadata={'source_sha256':runner.source_hash(),'scoring_version':runner.SCORING_VERSION,'method':'balanced',
+    metadata={'source_sha256':runner.source_hash(),'scoring_version':runner.SCORING_VERSION,'method':'broad',
               'corpus':{'sha256':runner._json_sha256(cases)}}
     manifest=runner.export(rows,tmp_path/'materials',metadata)
     loaded,actual=scorer.load_materials(tmp_path/'materials')
@@ -61,7 +61,7 @@ def test_scoring_semantic_failure_counts_as_mismerge_and_belief_cap_separate(tmp
 
 def test_edit_events_sources_actor_and_protection_loaded(tmp_path):
     c=runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')[-1]
-    row=runner.case_run(c,tmp_path/'case.db',lambda store,clock:Model(store),'balanced')
+    row=runner.case_run(c,tmp_path/'case.db',lambda store,clock:Model(store),'broad')
     before=row['input']['before']
     a=before['memories'][0]
     assert a['last_edit']=='admin' and len(a['sources'])==2
@@ -84,7 +84,7 @@ def test_unknown_optional_fields_do_not_break_external_materials(tmp_path):
     case['future_option']={'ignored':True}
     case['memories'][0]['future_memory_option']='unused'
     case['memories'][0]['sources'][0]['future_source_option']='unused'
-    row=runner.case_run(case,tmp_path/'external.db',lambda store,clock:Model(store),'balanced')
+    row=runner.case_run(case,tmp_path/'external.db',lambda store,clock:Model(store),'broad')
     scorer.validate_payload(row['input'])
     assert row['input']['case']['expected']==case['expected']
 
@@ -116,10 +116,10 @@ def test_safety_rejection_is_quality_result_not_invalid_model_run(tmp_path):
     def answer(p):
         return {'decision':'conflict','reason':'摘要范围有争议','evidence':[p['memories'][0]['sources'][0]['id']],
                 'updates':[{'id':p['pair_ids'][0],'content':'她喜欢口琴','annotation':'待核对'}]}
-    row=runner.case_run(case,tmp_path/'reject.db',lambda store,clock:Model(store,answer),'broad','rewrite_v2')
+    row=runner.case_run(case,tmp_path/'reject.db',lambda store,clock:Model(store,answer),'broad','report_only_v1')
     assert row['valid'] and row['safety_rejections'] == 1
     assert any(a['status']=='failed' for a in row['input']['actual_actions'])
-    assert len(row['calls']) == 1
+    assert len(row['calls']) == 2
 
 
 def test_resolution_cannot_change_selected_merge_method(tmp_path):
@@ -178,7 +178,7 @@ def test_resolution_selection_worst_run_fallback_and_damage_gate():
 
 def test_score_exports_safety_audit_without_changing_frozen_judgment_schema(tmp_path):
     case=runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')[0]
-    row=runner.case_run(case,tmp_path/'score.db',lambda store,clock:Model(store),'broad','conservative_v2')
+    row=runner.case_run(case,tmp_path/'score.db',lambda store,clock:Model(store),'broad','report_only_v1')
     metadata={'source_sha256':runner.source_hash(),'scoring_version':runner.SCORING_VERSION,'method':'broad',
         'resolution':'conservative_v2','corpus':{'sha256':runner._json_sha256([case])}}
     materials=tmp_path/'materials'
@@ -198,24 +198,17 @@ def test_score_exports_safety_audit_without_changing_frozen_judgment_schema(tmp_
     assert report['safety_rejections']==0
 
 
-def test_resolution_freeze_binds_runtime_prompts_and_preserves_merge_instructions():
+def test_historical_freeze_preserves_prompts_and_new_policy_disables_old_paths():
     import hashlib
-    from iris.consolidation import DEFAULTS
+    from iris.consolidation import DEFAULTS,RESOLUTIONS
     frozen=runner._read_json(DIR/'resolution_candidates_v2.json')
     assert frozen['frozen_order']==['rewrite_v2','conservative_v2'] and frozen['merge_method']=='broad'
     for name,expected in frozen['files'].items():
-        if name=='evals/consolidation_eval/score.py':
-            # Historical frozen hash remains intact; only offline validity
-            # classification changed after the probe, covered below.
-            continue
-        if name=='src/iris/migrations/013_consolidation.sql':
-            name='src/iris/migrations/015_consolidation.sql'
-        assert hashlib.sha256((runner.ROOT/name).read_bytes()).hexdigest()==expected, name
-    original=(runner.ROOT/'src/iris/prompts/consolidation_pair_v1.md').read_text(encoding='utf-8')
-    common=original[:original.index('如果存在冲突')]
-    for candidate in frozen['frozen_order']:
-        assert (runner.ROOT/f'src/iris/prompts/consolidation_pair_{candidate}.md').read_text(encoding='utf-8').startswith(common)
-    assert DEFAULTS['resolution']=='conservative_v2'
+        # v2 is a historical manifest, not a claim that current runtime is frozen v2.
+        if name.startswith('src/iris/prompts/'):
+            assert hashlib.sha256((runner.ROOT/name).read_bytes()).hexdigest()==expected
+    assert DEFAULTS['method']=='broad' and DEFAULTS['resolution']=='report_only_v1'
+    assert RESOLUTIONS==('report_only_v1',)
 
 
 @pytest.fixture
@@ -227,7 +220,7 @@ def format_failure_row(tmp_path):
             from iris.models import ModelReply
             assert not self.store._writer.in_transaction
             return ModelReply(json.dumps(answer,ensure_ascii=False),'stop',{'prompt_tokens':20,'completion_tokens':10})
-    row=runner.case_run(case,tmp_path/'format.db',lambda store,clock:InvalidFormat(store),'broad','rewrite_v2')
+    row=runner.case_run(case,tmp_path/'format.db',lambda store,clock:InvalidFormat(store),'broad','report_only_v1')
     assert not row['valid'] and len(row['calls'])==2
     assert all(call['result']=='success' for call in row['calls'])
     return row
@@ -278,3 +271,34 @@ def test_format_failure_does_not_hide_degradation_or_incomplete_work(format_fail
         failed['phase']='dependency'
     assessment=scorer.run_validity(row)
     assert not assessment['valid'] and assessment['invalid_reasons']
+
+
+def test_report_only_export_binds_typed_annotations_and_source_excerpts(tmp_path):
+    case=runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')[24]
+    def answer(p):
+        return {'decision':'conflict','reason':'双方来源显示旧安排被后来的新安排替代','evidence':[s['id'] for m in p['memories'] for s in m['sources']],
+                'updates':[{'id':p['pair_ids'][0],'assessment':'superseded','superseded_by':p['pair_ids'][1],
+                            'annotation':'保留历史安排，当前采用后一安排'}]}
+    row=runner.case_run(case,tmp_path/'annotated.db',lambda store,clock:Model(store,answer),'broad')
+    scorer.validate_payload(row['input'])
+    action=next(a for a in row['input']['actual_actions'] if a['status']=='committed')
+    assert action['decision']=='conflict' and action['conclusions'][0]['assessment']=='superseded'
+    assert len(action['source_excerpts'])==2 and all(s['sources'] for s in action['source_excerpts'])
+    annotation=action['after_memories'][0]['annotations'][0]
+    assert annotation['kind']=='superseded' and annotation['source_keys'] and annotation['report']['run_id']
+    assert annotation['superseded_by']==action['after_memories'][1]['id']
+    assert row['input']['after']['report']==action['report']
+
+
+def test_report_only_policy_is_fingerprint_bound_without_changing_frozen_scoring(tmp_path):
+    case=runner.load_corpus(runner.ROOT/'evals/consolidation_v1.json')[0]
+    row=runner.case_run(case,tmp_path/'policy.db',lambda store,clock:Model(store),'broad')
+    metadata={'source_sha256':runner.source_hash(),'scoring_version':runner.SCORING_VERSION,'method':'broad',
+              'resolution':'report_only_v1','corpus':{'sha256':runner._json_sha256([case])}}
+    materials=tmp_path/'materials'
+    runner.export([row],materials,metadata)
+    scorer.load_materials(materials)
+    assert (materials/'scoring.md').read_text(encoding='utf-8')==runner.SCORING
+    (materials/'report-only-scoring.md').write_text('tampered',encoding='utf-8')
+    with pytest.raises(ValueError,match='fingerprint'):
+        scorer.load_materials(materials)
