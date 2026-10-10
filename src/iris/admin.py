@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import json
 import tempfile
 from contextlib import asynccontextmanager
@@ -9,13 +11,14 @@ from datetime import date, datetime, timezone
 from importlib.resources import files
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Path as PathParameter, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, Path as PathParameter, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
 
-from . import admin_data, trial, people, persona, backup
+from . import admin_data, trial, people, persona, backup, media
+from .models import IMAGE_TOTAL_TIMEOUT
 from .auth import audit, error
 from .tokens import NewToken, RateLimits
 from .queue import reset_batch, update_entry_settings, pace_parameters, filter_parameters, FILTER_DEFAULTS, PACE
@@ -79,10 +82,16 @@ class EntrySettings(Input):
         return self
 
 
+class ImageUpload(Input):
+    content_type: Literal['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+    data_base64: str = Field(description='标准 Base64 文件内容；解码后不超过 10 MiB')
+
+
 class TrialMessage(Input):
     speaker_id: str = Field(min_length=1, max_length=100)
-    content: str = Field(min_length=1)
+    content: str
     dedupe_key: str = Field(min_length=1, max_length=200)
+    media_ids: list[Annotated[str, StringConstraints(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=100)
 
     @field_validator("dedupe_key")
     @classmethod
@@ -91,12 +100,13 @@ class TrialMessage(Input):
             raise ValueError("去重键使用了保留前缀")
         return value
 
-    @field_validator("content")
-    @classmethod
-    def nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("消息不能为空")
-        return value
+    @model_validator(mode='after')
+    def message_or_images(self):
+        if not self.content.strip() and not self.media_ids:
+            raise ValueError('消息须包含正文或图片')
+        if len(set(self.media_ids)) != len(self.media_ids):
+            raise ValueError('media_ids 不能重复')
+        return self
 
 
 class Reply(Input):
@@ -394,6 +404,50 @@ def install_admin(app):
         with app.state.store.write() as conn:
             operation(conn, action, object_type, object_id, details)
 
+    @router.post('/media', status_code=201, summary='管理员上传试用图片', openapi_extra={
+        'requestBody': {'required': True, 'content': {'application/json': {'schema': ImageUpload.model_json_schema()}}}})
+    async def upload_image(request: Request):
+        # The administrator middleware authenticates and checks CSRF before this
+        # bounded parser; FastAPI must not buffer an unbounded Base64 JSON body.
+        limit = 14 * 1024 * 1024
+        length = request.headers.get('content-length', '')
+        if length.isdecimal() and (len(length) > 20 or int(length) > limit):
+            return error('media_too_large', '图片上传请求超过 14 MiB', 413)
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > limit:
+                return error('media_too_large', '图片上传请求超过 14 MiB', 413)
+            body.extend(chunk)
+        try:
+            payload = ImageUpload.model_validate_json(body)
+        except ValidationError as exc:
+            return JSONResponse({'error': {'code': 'invalid_request', 'fields': [
+                {'field': '.'.join(('body', *map(str, issue['loc']))), 'message': issue['msg']}
+                for issue in exc.errors()]}}, status_code=400)
+        if len(payload.data_base64) > 4 * ((media.DEFAULT_MAX_BYTES + 2) // 3):
+            return error('media_too_large', '图片超过单文件 10 MiB 上限', 413)
+        try:
+            data = base64.b64decode(payload.data_base64, validate=True)
+        except (ValueError, binascii.Error):
+            return error('invalid_request', 'data_base64 须为标准 Base64 文件内容', 400)
+        try:
+            item = await asyncio.to_thread(media.save_media, app.state.store, data, content_type=payload.content_type)
+        except OSError:
+            return error('media_unavailable', '媒体存储暂时不可用', 503)
+        await asyncio.to_thread(record, 'trial_media_uploaded', 'media', item['id'])
+        return admin_data.media_projection(item)
+
+    @router.get('/media/{media_id}/file', summary='管理员只读查看媒体原文件')
+    def media_file(media_id: str):
+        try:
+            data, content_type = media.read_media(app.state.store, media_id)
+        except media.MediaError:
+            return error('media_unavailable', '媒体不存在或文件不可用', 404)
+        return Response(data, media_type=content_type, headers={
+            'Cache-Control': 'no-store', 'Content-Disposition': 'inline',
+            'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Resource-Policy': 'same-origin',
+            'Content-Security-Policy': "default-src 'none'; sandbox"})
+
     @router.get("/trial")
     def trial_catalog():
         return trial.trial_catalog(app.state.store)
@@ -440,6 +494,8 @@ def install_admin(app):
     @router.post("/trial/entries/{entry_id}/reply")
     def reply(entry_id: str, payload: Reply):
         result = app.state.trial_replies.reply(entry_id, payload.message_id)
+        with app.state.store.read() as conn:
+            admin_data.with_message_media(conn, [result['message']])
         record("trial_reply", "entry", entry_id, {"message_id": result["message"]["id"], "reused": result["reused"]})
         app.state.scheduler.wake()
         return result
@@ -790,6 +846,8 @@ def install_admin(app):
     def status():
         result = service_status(app.state.store, app.state.scheduler, app.state.health)
         admin_data.add_entry_waits(app.state.store, result["entries"])
+        result['usage']['by_purpose'] = {'image_understanding': admin_data.image_usage(app.state.store)}
+        result['timeouts_seconds']['image_understanding'] = IMAGE_TOTAL_TIMEOUT
         return result
 
     @app.exception_handler(persona.PersonaConflict)

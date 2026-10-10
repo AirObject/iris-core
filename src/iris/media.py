@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import stat
 import tempfile
 import time
 import uuid
@@ -95,6 +96,35 @@ def get_media(store, media_id):
     if row is None:
         raise MediaError('invalid_media')
     return _projection(row)
+
+
+def read_media(store, media_id):
+    """Read an existing original without creating directories or following links.
+
+    Pin the media directory and file with descriptors so path replacement cannot
+    redirect the read after validation. Never accept a client-supplied filename.
+    """
+    item = get_media(store, media_id)
+    if (not re.fullmatch(r'[0-9a-f]{64}', item['sha256'])
+            or not 0 < item['size_bytes'] <= DEFAULT_MAX_BYTES):
+        raise MediaError('invalid_media')
+    try:
+        directory = os.open(store.path.parent / 'media', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            descriptor = os.open(item['sha256'], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        finally:
+            os.close(directory)
+        with os.fdopen(descriptor, 'rb') as file:
+            info = os.fstat(file.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size != item['size_bytes']:
+                raise MediaError('invalid_media')
+            data = file.read(item['size_bytes'] + 1)
+    except OSError:
+        raise MediaError('invalid_media') from None
+    if (len(data) != item['size_bytes'] or hashlib.sha256(data).hexdigest() != item['sha256']
+            or not _matches(item['content_type'], data[:512])):
+        raise MediaError('invalid_media')
+    return data, item['content_type']
 
 
 def save_media(store, data, *, content_type, understanding_text=None, max_bytes=DEFAULT_MAX_BYTES, current=None):
