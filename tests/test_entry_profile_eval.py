@@ -145,3 +145,11 @@ def test_frozen_groups_adapter_keeps_entry_scope_quotes_and_labels_out_of_materi
     path.write_text(dumps(value))
     with pytest.raises(ValueError,match='quote'):
         load_corpus(path)
+
+
+def test_call_percentiles_use_percent_not_fraction():
+    rows=[{'complete':True,'result':{'version':None},'attempts':[],'calls':[
+        {'duration_ms':n,'prompt_tokens':0,'completion_tokens':0} for n in (10,20,30)]}]
+    stats=_runner._metrics(rows)['calls']
+    assert stats['duration_ms_p50']==20
+    assert stats['duration_ms_p95']==29
