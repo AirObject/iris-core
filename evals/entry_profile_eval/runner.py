@@ -203,7 +203,8 @@ def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=
             with store.read() as conn:
                 attempts=[dict(r) for r in conn.execute('SELECT * FROM entry_profile_attempts ORDER BY id')]
                 calls=[dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            rows.append({'case':case,'result':result,'attempts':attempts,'calls':calls,'complete':result['status']!='failed' and result.get('reason')!='timeout'})
+            rows.append({'case':case,'result':result,'attempts':attempts,'calls':calls,'complete':result['status']!='failed' and result.get('reason')!='timeout'
+                         and not any(c.get('timed_out') for c in calls)})
         except Exception as error:
             # Never echo exception text from providers, payloads or configuration.
             with store.read() as conn:
@@ -309,7 +310,7 @@ def _metrics(rows, votes=None):
         calls=[{'duration_ms':c['duration_ms'],'prompt_tokens':c['usage'].get('prompt_tokens'),
                 'completion_tokens':c['usage'].get('completion_tokens'),'reasoning_tokens':c['usage'].get('reasoning_tokens'),
                 'timed_out':c.get('reason')=='timeout'} for r in rows for a in r['attempts'] for c in json.loads(a['calls_json'])]
-    metrics={'cases':len(rows),'incomplete_cases':sum(not r['complete'] for r in rows),
+    metrics={'cases':len(rows),'incomplete_cases':sum(not r['complete'] or any(c.get('timed_out') for c in r['calls']) for r in rows),
         'generated_candidates':len(candidates),'rejected_candidates':sum(v['status']=='rejected' for v in candidates),
         'published':sum(v['status']=='published' for v in candidates),'candidate':sum(v['status']=='candidate' for v in candidates),
         'deleted_sentences':sum(len(v['checks'].get('deleted_sentences',[])) for v in candidates),

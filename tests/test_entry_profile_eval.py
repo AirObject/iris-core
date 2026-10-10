@@ -153,3 +153,28 @@ def test_call_percentiles_use_percent_not_fraction():
     stats=_runner._metrics(rows)['calls']
     assert stats['duration_ms_p50']==20
     assert stats['duration_ms_p95']==29
+
+
+def test_recorded_check_timeout_is_incomplete_even_without_timeout_reason(tmp_path):
+    from iris.models import ModelError
+    def gateway(configs,store):
+        model=Model(store)
+        original=model.chat
+        def chat(messages,purpose,*args,**kwargs):
+            if purpose.endswith('check'):
+                with store.write() as conn:
+                    conn.execute("""INSERT INTO model_calls(purpose,model,duration_ms,result_category,created_at,timed_out)
+                        VALUES(?,'fake',120000,'retryable','2026-10-10T12:00:00+00:00',1)""",(purpose,))
+                raise ModelError('retryable','total timeout')
+            return original(messages,purpose,*args,**kwargs)
+        model.chat=chat
+        return model
+    result=run_eval(corpus(tmp_path),tmp_path/'run',configs={},gateway_factory=gateway)
+    assert result['rows'][0]['result']['status']=='rejected'
+    assert result['rows'][0]['result']['reason']=='retryable'
+    assert result['rows'][0]['complete'] is False
+    assert result['metrics']['incomplete_cases']==1
+    assert result['metrics']['calls']['timed_out']==1
+    # Older immutable runs may have set complete=True from the general reason.
+    legacy=copy.deepcopy(result['rows']);legacy[0]['complete']=True
+    assert _runner._metrics(legacy)['incomplete_cases']==1
