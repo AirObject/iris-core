@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
+from threading import RLock
 from contextlib import nullcontext
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -257,6 +259,14 @@ def purge_memory(store, memory_id, expected_revision, *, confirm=False):
         if row is None or row["revision"] != expected_revision:
             return None
         message_ids = [r[0] for r in conn.execute("SELECT DISTINCT message_id FROM sources WHERE memory_id=? AND message_id IS NOT NULL ORDER BY message_id", (memory_id,))]
+        conn.execute("""WITH RECURSIVE ancestry(id) AS (
+            SELECT ? UNION SELECT s.source_memory_id FROM ancestry a JOIN sources s ON s.memory_id=a.id
+            WHERE s.kind='memory' AND s.source_memory_id IS NOT NULL)
+            INSERT OR IGNORE INTO memory_visibility_roots(memory_id,entry_id)
+            SELECT ?,x.entry_id FROM ancestry a JOIN sources s ON s.memory_id=a.id
+                JOIN messages x ON x.id=s.message_id WHERE s.kind='message'
+            UNION SELECT ?,v.entry_id FROM ancestry a JOIN memory_visibility_roots v ON v.memory_id=a.id""",
+            (memory_id,memory_id,memory_id))
         # Set deleted before removing outgoing sources, preserving incoming loss events.
         conn.execute("""UPDATE memories SET lifecycle='deleted',content='',kind='其他',speaker_subject_id='self',
             stance='设定',belief=0,importance=0,retention=0,event_time=NULL,forgotten_at=NULL,pinned=0,
@@ -309,3 +319,146 @@ def recreate_memory(store, memory_id, expected_revision, *, source_revision):
         operation(conn, "memory_recreate", "memory", new_id,
                   {"source_memory_id": memory_id, "source_revision": source_revision, "memory_id": new_id})
         return new_id
+
+
+# Bounded immutable graph snapshots, shared by readers but never mutated after
+# publication. Random transaction tokens prevent rollback/reused-path ABA bugs.
+_VISIBILITY_CACHE = OrderedDict()
+_VISIBILITY_LOCK = RLock()
+
+
+class Visibility:
+    """Current effective entry sets. None means all entries; empty means admin-only.
+
+    The recursive query walks only restricted roots and their dependents, using
+    sources_by_message/sources_by_parent. It never reads memory/message prose.
+    Cache identity belongs to the SQLite snapshot, including uncommitted writers;
+    another reader cannot observe it until that token is committed.
+    """
+    def __init__(self, conn):
+        self.conn = conn
+        self.token = conn.execute('SELECT token FROM visibility_version WHERE id=1').fetchone()[0]
+        with _VISIBILITY_LOCK:
+            cached = _VISIBILITY_CACHE.get(self.token)
+            if cached is not None:
+                _VISIBILITY_CACHE.move_to_end(self.token)
+        if cached is None:
+            cached = self._load(conn)
+            with _VISIBILITY_LOCK:
+                _VISIBILITY_CACHE[self.token] = cached
+                while len(_VISIBILITY_CACHE) > 8:
+                    _VISIBILITY_CACHE.popitem(last=False)
+        self.entries, self.memories, self.goals = cached
+
+    @staticmethod
+    def intersect(*scopes):
+        result = None
+        for scope in scopes:
+            if scope is not None:
+                result = scope if result is None else result & scope
+        return result
+
+    @classmethod
+    def _load(cls, conn):
+        rows = conn.execute('SELECT id,visibility,visible_in_json FROM entries').fetchall()
+        universe = frozenset(r['id'] for r in rows)
+        entries = {}
+        for row in rows:
+            allowed = (universe if row['visibility']=='shared' else frozenset({row['id']}) if
+                       row['visibility']=='entry_only' else frozenset([row['id'], *json.loads(row['visible_in_json'])]) & universe)
+            entries[row['id']] = None if allowed == universe else allowed
+        restricted = [key for key,value in entries.items() if value is not None]
+        memories, goals = {}, {}
+        if restricted:
+            roots = dumps(restricted)
+            for mid,eid in conn.execute("""WITH RECURSIVE bounds(memory_id,entry_id) AS (
+                SELECT s.memory_id,x.entry_id FROM messages x JOIN sources s ON s.message_id=x.id
+                    WHERE s.kind='message' AND x.entry_id IN (SELECT value FROM json_each(?))
+                UNION SELECT memory_id,entry_id FROM memory_visibility_roots
+                    WHERE entry_id IN (SELECT value FROM json_each(?))
+                UNION SELECT s.memory_id,b.entry_id FROM bounds b JOIN sources s ON s.source_memory_id=b.memory_id
+                    WHERE s.kind='memory'
+            ) SELECT memory_id,entry_id FROM bounds""", (roots,roots)):
+                memories[mid] = cls.intersect(memories.get(mid), entries[eid])
+            for gid,eid in conn.execute("""SELECT id,entry_id FROM goals
+                    WHERE entry_id IN (SELECT value FROM json_each(?))
+                UNION SELECT gs.goal_id,x.entry_id FROM goal_sources gs JOIN messages x ON x.id=gs.message_id
+                    JOIN goals g ON g.id=gs.goal_id WHERE g.entry_id IS NOT NULL
+                    AND x.entry_id IN (SELECT value FROM json_each(?))""", (roots,roots)):
+                goals[gid] = cls.intersect(goals.get(gid), entries[eid])
+        return entries, memories, goals
+
+    def entry(self, entry_id):
+        if entry_id is None:
+            return None
+        if entry_id not in self.entries:
+            raise KeyError(entry_id)
+        return self.entries[entry_id]
+
+    def memory(self, memory_id):
+        return self.memories.get(memory_id)
+
+    def goal(self, goal_id):
+        return self.goals.get(goal_id)
+
+    @staticmethod
+    def allows(scope, entry_id):
+        return scope is None or (entry_id is not None and entry_id in scope)
+
+    def memory_visible(self, memory_id, entry_id=None):
+        return self.allows(self.memory(memory_id), entry_id)
+
+    def goal_visible(self, goal_id, entry_id=None):
+        return self.allows(self.goal(goal_id), entry_id)
+
+    def evidence(self, message_ids=(), memory_ids=()):
+        scopes = [self.memory(mid) for mid in memory_ids]
+        for row in self.conn.execute('SELECT entry_id FROM messages WHERE id IN (SELECT value FROM json_each(?))',
+                                     (dumps(list(message_ids)),)):
+            scopes.append(self.entry(row[0]))
+        return self.intersect(*scopes)
+
+    def memory_sql(self, entry_id=None, column='m.id'):
+        self.entry(entry_id)
+        if not self.memories:
+            return '1'
+        self.conn.create_function('iris_memory_visible', 1, lambda mid: self.memory_visible(mid, entry_id), deterministic=True)
+        return f'iris_memory_visible({column})'
+
+    def goal_sql(self, entry_id=None, column='g.id'):
+        self.entry(entry_id)
+        if not self.goals:
+            return '1'
+        self.conn.create_function('iris_goal_visible', 1, lambda gid: self.goal_visible(gid, entry_id), deterministic=True)
+        return f'iris_goal_visible({column})'
+
+    def describe_memory(self, memory_id):
+        scope = self.memory(memory_id)
+        return {'shared': scope is None, 'visible_in': sorted(self.entries if scope is None else scope)}
+
+
+def entry_visibility(row):
+    mode = row['visibility']
+    return {'visibility': mode, 'visible_in': sorted({row['id'], *json.loads(row['visible_in_json'])}) if mode=='entries' else []}
+
+
+def set_entry_visibility(store, entry_id, visibility, *, visible_in=(), actor='admin'):
+    if visibility not in ('shared','entry_only','entries'):
+        raise ValueError('invalid visibility')
+    if not isinstance(visible_in, (list,tuple)) or any(not isinstance(e,str) or not e for e in visible_in):
+        raise ValueError('visible_in must contain entry IDs')
+    if visibility!='entries' and visible_in:
+        raise ValueError('visible_in requires entries visibility')
+    with store.write() as conn:
+        row = conn.execute('SELECT * FROM entries WHERE id=?',(entry_id,)).fetchone()
+        if row is None:
+            raise KeyError(entry_id)
+        allowed = sorted({entry_id, *visible_in}) if visibility=='entries' else []
+        if allowed and conn.execute('SELECT COUNT(*) FROM entries WHERE id IN (SELECT value FROM json_each(?))',
+                                    (dumps(allowed),)).fetchone()[0] != len(allowed):
+            raise ValueError('visible_in contains an unknown entry')
+        before = entry_visibility(row)
+        result = {'visibility': visibility, 'visible_in': allowed}
+        conn.execute('UPDATE entries SET visibility=?,visible_in_json=? WHERE id=?', (visibility,dumps(allowed),entry_id))
+        operation(conn, 'entry_visibility', 'entry', entry_id, {'before':before,'after':result}, actor=actor)
+        return result

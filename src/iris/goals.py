@@ -19,7 +19,7 @@ from datetime import datetime, time, timedelta, timezone
 from .claim_sequences import normalize_claim, same_claim_sequences
 from .db import dumps
 from .tokens import Scope
-from .memory_ops import operation
+from .memory_ops import Visibility, operation
 from .model_health import utc_now
 from .models import ModelError
 from . import goal_dedup_judge as dedup_judge
@@ -492,14 +492,16 @@ def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=No
     # Existing databases may be read before the scheduler normalizes legacy dates.
     # New goals use deadline_at directly, without a Python callback per row.
     conn.create_function('iris_goal_deadline', 1, lambda value: _deadline(value,zone,strict=False), deterministic=True)
+    visibility = Visibility(conn)
+    visible_clause = visibility.goal_sql(entry_id)
     since_epoch = current - datetime(1970,1,1,tzinfo=timezone.utc)
-    rows = [dict(r) for r in conn.execute("""WITH RECURSIVE participant_tree(id) AS (
+    rows = [dict(r) for r in conn.execute(f"""WITH RECURSIVE participant_tree(id) AS (
             SELECT value FROM json_each(:participants)
             UNION SELECT s.id FROM subjects s JOIN participant_tree p ON s.merged_into=p.id
         ), dated AS (
             SELECT g.*, COALESCE(deadline_at,
                 CASE WHEN deadline IS NOT NULL THEN iris_goal_deadline(deadline) END) AS sort_deadline
-            FROM goals g WHERE state='open' AND merged_into IS NULL
+            FROM goals g WHERE state='open' AND merged_into IS NULL AND {visible_clause}
                 AND (entry_id IS NULL OR :scope_kind='all'
                      OR (:scope_kind='entries' AND entry_id IN (SELECT value FROM json_each(:scope_entries)))
                      OR (:scope_kind='prefix' AND substr(entry_id,1,length(:scope_prefix))=:scope_prefix))
@@ -525,7 +527,14 @@ def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=No
     people = _people(conn, [row['id'] for row in rows])
     for row in rows:
         row['people'] = people[row['id']]
-    return [_project(conn,row,current=current,zone=zone,settings=settings,scope=scope) for row in rows]
+    result = [_project(conn,row,current=current,zone=zone,settings=settings,scope=scope) for row in rows]
+    for item in result:
+        item['possible_duplicate_ids'] = [gid for gid in item['possible_duplicate_ids'] if visibility.goal_visible(gid,entry_id)]
+        item['possible_duplicate'] = bool(item['possible_duplicate_ids'])
+        item['basis_annotations'] = [a for a in item['basis_annotations'] if visibility.memory_visible(a['memory_id'],entry_id)
+            and (a['observed_merged_into'] is None or visibility.memory_visible(a['observed_merged_into'],entry_id))]
+        item['basis_needs_review'] = bool(item['basis_annotations'])
+    return result
 
 
 def _notification(row, zone):
@@ -639,6 +648,9 @@ def _bump(conn, goal_id, current):
 
 
 def _possible(conn,a,b,current,*,actor='system',record=True):
+    v = Visibility(conn)
+    if v.goal(a) != v.goal(b):
+        return
     a,b = sorted((a,b))
     if conn.execute('SELECT 1 FROM goal_duplicates WHERE goal_a=? AND goal_b=?',(a,b)).fetchone():
         return
@@ -661,6 +673,9 @@ def _merge(conn,a,b,current,*,actor,semantic=False,reason=None,scope=ALL_ENTRIES
     # All callers must have checked both observed revisions before arriving here.
     scope.require(a['entry_id'])
     scope.require(b['entry_id'])
+    v = Visibility(conn)
+    if v.goal(a['id']) != v.goal(b['id']):
+        raise GoalError('goal_id', '不同可见范围的目标不能合并')
     if a['state']!='open' or b['state']!='open' or not (dedup_judge.compatible(a,b) if semantic else _compatible(a,b)):
         raise GoalError('goal_id','只能合并未结束且类型、人物、截止时间、数字和否定兼容的目标')
     target,source = sorted((a,b),key=lambda r:(r['created_at'],r['id']))
@@ -784,6 +799,8 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
     proposed = _row(conn,gid)
     clause, args = scope.sql('entry_id')
     candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=? AND "+clause,(kind,gid,*args))
+    visibility = Visibility(conn)
+    candidates = [c for c in candidates if visibility.goal(c['id']) == visibility.goal(gid)]
     # Dates in older databases may not yet have been normalized by the scheduler.
     for candidate in candidates:
         candidate['deadline'] = _deadline(candidate['deadline'],role_zone(conn),strict=False) or candidate['deadline']
@@ -949,6 +966,9 @@ class Goals:
             actor = proposed['host'] or actor
             clause, args = scope.sql('entry_id')
             candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=? AND "+clause,(proposed['kind'],goal_id,*args))
+            visibility = Visibility(conn)
+            candidates = [c for c in candidates if visibility.goal(c['id']) == visibility.goal(goal_id)]
+            observed_scope = visibility.goal(goal_id)
             zone = role_zone(conn)
             for row in [proposed,*candidates]:
                 row['deadline'] = _deadline(row['deadline'],zone,strict=False) or row['deadline']
@@ -990,6 +1010,8 @@ class Goals:
             stale = any(latest[row['id']]['revision']!=row['revision'] or latest[row['id']]['state']!='open'
                         or latest[row['id']]['merged_into'] is not None
                         or not scope.allows(latest[row['id']]['entry_id']) for row in observed)
+            visibility = Visibility(conn)
+            stale = stale or any(visibility.goal(row['id']) != observed_scope for row in observed)
             # Subject aliases and source excerpts are not covered by goal revisions.
             if not stale:
                 for row,snapshot in zip(observed,snapshots):

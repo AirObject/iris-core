@@ -18,6 +18,7 @@ from importlib.resources import files
 from zoneinfo import ZoneInfo
 
 from .db import dumps
+from .memory_ops import Visibility
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .queue import estimate_tokens, truncate_material
 
@@ -144,11 +145,12 @@ def _trace(conn, memory_id, zone):
 
 
 def _self_snapshot(conn):
+    visibility = Visibility(conn)
     # Strength/last-confirmation alone are not new knowledge. New source edges are.
     return {str(r['id']): {'revision': r['revision'], 'lifecycle': r['lifecycle'],
             'sources': [s[0] for s in conn.execute('SELECT id FROM sources WHERE memory_id=? ORDER BY id', (r['id'],))]}
         for r in conn.execute('''SELECT m.* FROM memories m JOIN memory_subjects a ON a.memory_id=m.id
-            WHERE a.subject_id='self' AND (m.speaker_subject_id='self' OR m.stance='设定') ORDER BY m.id''')}
+            WHERE a.subject_id='self' AND (m.speaker_subject_id='self' OR m.stance='设定') ORDER BY m.id''') if visibility.memory_visible(r['id'])}
 
 
 def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None):
@@ -159,7 +161,10 @@ def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None):
         WHERE a.subject_id='self' AND m.lifecycle='active'
         AND (m.speaker_subject_id='self' OR m.stance='设定')
         ORDER BY m.pinned DESC,m.importance DESC,m.retention DESC,m.id''')
+    visibility = Visibility(conn)
     for row in rows:
+        if not visibility.memory_visible(row['id']):
+            continue
         record = {key: row[key] for key in ('content', 'stance', 'belief', 'importance', 'retention', 'pinned', 'entry_kind', 'event_time', 'speaker_subject_id', 'lifecycle')}
         record['about'] = [r[0] for r in conn.execute('SELECT subject_id FROM memory_subjects WHERE memory_id=? ORDER BY subject_id', (row['id'],))]
         record.update(ref=f'M{len(selected)+1}', memory_id=row['id'], revision=row['revision'],
@@ -374,6 +379,7 @@ def _stale(conn, version, *, check_sources=False):
     problems = {}
     material = {m['memory_id']: m for m in version.get('material', {}).get('evidence', {}).get('memories', [])}
     refs = {b['memory_id']: b['revision'] for s in version['sentences'] for b in s['basis']}
+    visibility = Visibility(conn)
     for mid, revision in refs.items():
         traced = material.get(mid, {})
         tracked = traced.get('trace_refs', []) or [{'memory_id': mid, 'revision': revision, 'lifecycle':'active'}]
@@ -382,6 +388,8 @@ def _stale(conn, version, *, check_sources=False):
             reason = None
             if row is None or row['lifecycle'] == 'deleted':
                 reason = 'deleted'
+            elif not visibility.memory_visible(ref['memory_id']):
+                reason = 'visibility'
             elif row['lifecycle'] == 'forgotten':
                 reason = 'forgotten'
             elif row['revision'] != ref['revision']:
@@ -414,7 +422,13 @@ def persona_context(conn, *, include_basis=False):
         WHERE is_current=1''').fetchone()
     basis = _stale(conn, {'sentences': json.loads(row['sentences_json']),
                          'material': json.loads(row['material_json'])}) if row else []
-    result = {'version': row['id'] if row else None, 'content': row['content'] if row else '',
+    content = row['content'] if row else ''
+    if row:
+        visibility = Visibility(conn)
+        sentences = json.loads(row['sentences_json'])
+        if any(not visibility.memory_visible(b['memory_id']) for sentence in sentences for b in sentence['basis']):
+            content = ''.join(s['text'] for s in sentences if all(visibility.memory_visible(b['memory_id']) for b in s['basis']))
+    result = {'version': row['id'] if row else None, 'content': content,
               'generated_at': row['created_at'] if row else None,
               'needs_update': bool(basis), 'stale_basis_count': len(basis)}
     if include_basis:

@@ -319,12 +319,20 @@ def _roleplay_annotation(conn, row, folded_ids=None):
             'belief': row['belief'], 'fictional': True}
 
 
-def annotate_memories(conn, memories):
+def annotate_memories(conn, memories, *, entry_id=None):
     """Append metadata only AFTER selection/budget/judgment. Never expose evidence prose."""
     involved = [{m['speaker_subject_id'], *(p['id'] for p in m['about'])} for m in memories]
     links = _live_links(conn, set().union(*involved) if involved else set())
+    from .memory_ops import Visibility
+    visibility = Visibility(conn)
     annotations = {}
     for row in links:
+        link_ids = _tree_ids(conn, 'subject_links', row['id'])
+        marks = ','.join('?' for _ in link_ids)
+        evidence = [r[0] for r in conn.execute(
+            f'SELECT source_message_id FROM subject_links WHERE id IN ({marks})', link_ids) if r[0] is not None]
+        if not visibility.allows(visibility.evidence(evidence), entry_id):
+            continue
         if row['status'] == 'denied':
             continue
         if row['kind'] == 'same_as' and row['status'] == 'possible':

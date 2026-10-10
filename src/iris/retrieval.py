@@ -11,6 +11,7 @@ from importlib.resources import files
 from itertools import islice, zip_longest
 from typing import Any
 
+from .memory_ops import Visibility
 from .state import current_state
 from .persona import persona_context
 from .goals import goal_partition
@@ -177,7 +178,9 @@ class Retrieval:
             return {}
         placeholders = ",".join("?" for _ in ids)
         rows = {r["id"]: dict(r) for r in conn.execute(f"SELECT {MEMORY_COLUMNS} FROM memories m JOIN subjects s ON s.id=m.speaker_subject_id WHERE m.id IN ({placeholders})", ids)}
+        visibility = Visibility(conn)
         for row in rows.values():
+            row["_visibility"] = visibility.memory(row["id"])
             row.update(about=[], tags=[], sources=[], _messages=set(), _other_source=False)
         for r in conn.execute(f"""SELECT ms.memory_id,s.id,s.name FROM memory_subjects ms JOIN subjects s ON s.id=ms.subject_id
             WHERE ms.memory_id IN ({placeholders}) ORDER BY s.id""", ids):
@@ -204,8 +207,10 @@ class Retrieval:
         return rows
 
     def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, entry_kind=None,
-              anchor_text: str | None = None, limit=8, **filters) -> list[dict]:
+              anchor_text: str | None = None, limit=8, entry_id=None, **filters) -> list[dict]:
         where, args = _filters(conn, **filters)
+        visibility = Visibility(conn)
+        where += " AND " + visibility.memory_sql(entry_id)
         scores: dict[int, float] = {}
         lexical_scores: dict[int, float] = {}
         vector_scores = {}
@@ -335,7 +340,7 @@ class Retrieval:
             # The absolute floor defines vector candidates before any prose is
             # read. The relative cutoff still uses the best ANCHORED candidate.
             ranked = sorted(((mid, pair) for mid, pair in vector_scores.items()
-                             if pair[0] >= self.settings['vector_min']), key=lambda p: (-p[1][0], p[0]))
+                             if pair[0] >= self.settings['vector_min'] and visibility.memory_visible(mid, entry_id)), key=lambda p: (-p[1][0], p[0]))
             cutoff = None
             for rank, (mid, pair) in enumerate(islice(anchored(ranked), CANDIDATES), 1):
                 if cutoff is None:
@@ -383,6 +388,8 @@ class Retrieval:
         return ordered
 
     def _duplicate(self, a: dict, b: dict) -> bool:
+        if a.get("_visibility") != b.get("_visibility"):
+            return False
         if any(a[k] != b[k] for k in ("speaker_subject_id", "stance", "world", "event_time")) or a["about"] != b["about"]:
             return False
         # The same conservative number/negation boundary as learning dedupe.
@@ -427,27 +434,27 @@ class Retrieval:
         return recall_id
 
     def search(self, *, text: str = "", people=(), kinds=(), stances=(), time_from=None, time_to=None,
-               include_forgotten=False, limit=8, include_goals=False, include_state=False) -> dict:
+               include_forgotten=False, limit=8, include_goals=False, include_state=False, entry_id=None) -> dict:
         vector, hints = self._query_vector(text, people)
         request = dict(text=text, people=list(people), kinds=list(kinds), stances=list(stances), time_from=time_from,
                        time_to=time_to, include_forgotten=include_forgotten, limit=limit)
         with self.store.read() as conn:
-            candidates = self._rank(conn, text, vector, **{k: v for k, v in request.items() if k != "text"})
+            candidates = self._rank(conn, text, vector, entry_id=entry_id, **{k: v for k, v in request.items() if k != "text"})
             memories = self._select(candidates, limit=limit)
-            annotate_memories(conn, memories)
+            annotate_memories(conn, memories, entry_id=entry_id)
             hints.extend(self._model_hints(conn))
             result = {"memories": memories, "hints": hints}
             if include_goals:
-                result["goals"] = self._goals(conn, None, 10, participants=_people(conn, request["people"]),
+                result["goals"] = self._goals(conn, entry_id, 10, participants=_people(conn, request["people"]),
                                               current=self.clock())
             if include_state:
                 result["state"] = current_state(conn, current=self.clock())
-        result["recall_id"] = self._record(None, request, memories)
+        result["recall_id"] = self._record(entry_id, request, memories)
         return result
 
-    def learning_context(self, text: str, participants: list[str], limit: int = 15) -> list[dict]:
+    def learning_context(self, text: str, participants: list[str], limit: int = 15, *, entry_id=None) -> list[dict]:
         from .learning_retrieval import LearningRetrieval
-        return LearningRetrieval(self.store, self.gateway, clock=self.clock).context(text, participants, limit)
+        return LearningRetrieval(self.store, self.gateway, clock=self.clock).context(text, participants, limit, entry_id=entry_id)
 
     @staticmethod
     def _model_hints(conn) -> list[dict]:
@@ -554,11 +561,12 @@ class Retrieval:
                 canonical_subject(conn, r[0]) for r in conn.execute('SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,))
                 if r[0] not in ('self', 'scene')))
             candidates = self._rank(conn, text, vector, participants=participant_ids, highlights=True,
-                                    entry_kind=entry_kind, anchor_text=anchor_text)
+                                    entry_kind=entry_kind, anchor_text=anchor_text, entry_id=entry_id)
             memories = self._select(candidates, limit=min(memory_limit, 8), token_budget=min(token_budget, 1500),
                                     recent_ids=[m["id"] for m in recent], known_ids=known_memory_ids)
             aliases = self._judge_aliases(conn, memories, participant_ids, recent, text, entry_kind)
             persona = persona_context(conn)
+            visibility_token = Visibility(conn).token
             gaps = [dict(r) for r in conn.execute("SELECT started_at,ended_at,reason FROM memory_gaps WHERE entry_id=? ORDER BY id", (entry_id,))]
             if gaps:
                 hints.append({"code": "memory_gaps", "message": "本入口有尚未记住的消息区间。", "gaps": gaps})
@@ -579,25 +587,29 @@ class Retrieval:
             recent = self._recent(conn, entry_id, recent_limit)
             current = self._hydrate(conn, [m['id'] for m in memories])
             recent_ids = {m['id'] for m in recent}
+            visibility = Visibility(conn)
             final, stale = [], []
             for old in memories:
                 m = current.get(old['id'])
                 if (not m or m['revision'] != old['revision'] or m['lifecycle'] != 'active'
-                        or m['id'] in known_memory_ids
+                        or m['id'] in known_memory_ids or not visibility.memory_visible(m['id'], entry_id)
                         or (m['_messages'] and not m['_other_source'] and m['_messages'] <= recent_ids)):
                     stale.append(old['id'])
                     continue
                 if old['id'] not in diagnostic['removed_memory_ids']:
                     final.append({**old, **self._public(m)})
             if stale:
-                diagnostic['stale_memory_ids'] = stale
+                diagnostic['stale_memory_ids'] = [mid for mid in stale if visibility.memory_visible(mid, entry_id)]
                 diagnostic['removed_memory_ids'] = [mid for mid in diagnostic['removed_memory_ids'] if mid not in stale]
             # A setting switched off while the call was in flight must take effect.
             row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='recall_judge'").fetchone()
             if judge and row and not json.loads(row[0]).get('enabled', True):
                 diagnostic.update(status='disabled', reason='configuration_disabled', removed_memory_ids=[])
                 final = [{**old, **self._public(current[old['id']])} for old in memories if old['id'] not in stale]
-            annotate_memories(conn, final)
+            annotate_memories(conn, final, entry_id=entry_id)
+            if visibility.token != visibility_token:
+                result["goals"] = self._goals(conn, entry_id, min(goal_limit, 10), participants=participant_ids, current=self.clock())
+            result["persona"] = persona_context(conn)
             result["state"] = current_state(conn, current=self.clock())
             result.update(memories=final, recent_messages=recent, judgment=diagnostic)
             result['hints'].append({'code': 'recall_judgment', **diagnostic,

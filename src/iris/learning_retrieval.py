@@ -1,6 +1,7 @@
 """Learning-only PR #4 selection, independent of reply preparation calibration."""
 from datetime import datetime, timezone
 
+from .memory_ops import Visibility
 from .retrieval import Retrieval, _filters, RRF_K, CANDIDATES
 from .search_text import learning_query_terms, match_query
 
@@ -16,14 +17,16 @@ class LearningRetrieval(Retrieval):
     def embedding_text(self, text, participants=(), *, entry_kind=None):
         return text
 
-    def context(self, text, participants, limit):
+    def context(self, text, participants, limit, *, entry_id=None):
         vector, _ = self._query_vector(text)
         with self.store.read() as conn:
-            candidates = self._rank(conn, text, vector, participants=participants, highlights=True)
+            candidates = self._rank(conn, text, vector, participants=participants, highlights=True, entry_id=entry_id)
             return self._select(candidates, limit=limit)
 
-    def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, limit=8, **filters) -> list[dict]:
+    def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, limit=8, entry_id=None, **filters) -> list[dict]:
         where, args = _filters(conn, **filters)
+        visibility = Visibility(conn)
+        where += " AND " + visibility.memory_sql(entry_id)
         scores: dict[int, float] = {}
         lexical_scores: dict[int, float] = {}
         vector_scores = {}
@@ -47,15 +50,15 @@ class LearningRetrieval(Retrieval):
             if any(filters.get(k) for k in ("people", "kinds", "stances", "time_from", "time_to")):
                 allowed = {r[0] for r in conn.execute("SELECT m.id FROM memories m WHERE " + where, args)}
                 vector_scores = {mid: v for mid, v in vector_scores.items() if mid in allowed}
-            ranked = sorted(((mid, pair) for mid, pair in vector_scores.items() if pair[0] >= self.settings["vector_min"]), key=lambda p: (-p[1][0], p[0]))
+            ranked = sorted(((mid, pair) for mid, pair in vector_scores.items() if pair[0] >= self.settings["vector_min"] and visibility.memory_visible(mid, entry_id)), key=lambda p: (-p[1][0], p[0]))
             for rank, (mid, _) in enumerate(ranked[:CANDIDATES], 1):
                 scores[mid] = scores.get(mid, 0) + 1 / (RRF_K + rank)
         highlights_ids = []
         if highlights:
             for sid in participants:
-                highlights_ids.extend(r[0] for r in conn.execute("""SELECT m.id FROM memory_subjects ms
-                    JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND m.lifecycle='active'
-                    ORDER BY m.importance DESC,m.id LIMIT 3""", (sid,)))
+                highlights_ids.extend(r[0] for r in conn.execute(f"""SELECT m.id FROM memory_subjects ms
+                    JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND {where}
+                    ORDER BY m.importance DESC,m.id LIMIT 3""", (sid,*args)))
         if not text.strip() and not highlights:
             for rank, row in enumerate(conn.execute("SELECT m.id FROM memories m WHERE " + where + " ORDER BY m.importance DESC,m.id LIMIT ?", [*args, CANDIDATES]), 1):
                 scores[row[0]] = 1 / (RRF_K + rank)

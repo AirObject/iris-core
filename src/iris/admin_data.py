@@ -106,6 +106,8 @@ def memory_detail(store, memory_id):
         if not rows:
             raise KeyError(memory_id)
         detail = rows[0]
+        from .memory_ops import Visibility
+        detail["visibility"] = Visibility(conn).describe_memory(memory_id)
         from .consolidation import memory_annotations
         detail['consolidation_annotations'] = memory_annotations(conn,[memory_id],include_reports=True)[memory_id]
         detail["speaker"] = dict(conn.execute("SELECT id,name FROM subjects WHERE id=?", (detail["speaker_subject_id"],)).fetchone())
@@ -188,7 +190,8 @@ def entry_learning_settings(store, entry_id):
         entry = conn.execute("SELECT * FROM entries WHERE id=?", (entry_id,)).fetchone()
         if entry is None:
             raise KeyError(entry_id)
-        return entry_settings(entry)
+        from .memory_ops import entry_visibility
+        return {**entry_settings(entry), **entry_visibility(entry)}
 
 
 def entry_queue_wait(conn, entry, current):
@@ -232,6 +235,9 @@ def learning_entries(store):
             entry["filters"] = json.loads(entry["filters_json"])
             entry["queue_wait"] = entry_queue_wait(conn, entry, instant)
             entry.pop("filters_json")
+            from .memory_ops import entry_visibility
+            entry.update(entry_visibility(entry))
+            entry.pop("visible_in_json")
             latest = conn.execute(f"SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=? ORDER BY b.id DESC LIMIT 1", (entry["id"],)).fetchone()
             current = conn.execute(f"""SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=?
                 AND b.state IN ('waiting','running') ORDER BY b.id LIMIT 1""", (entry["id"],)).fetchone()
