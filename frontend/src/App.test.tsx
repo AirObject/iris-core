@@ -722,9 +722,10 @@ test.each(["read", "write", "unavailable"])(
   },
 );
 
-test("从试用右侧进入 persona 页，保留管理员会话且浏览不触发召回", async () => {
+test("试用右侧显示 persona 待确认数量，链接定位候选且浏览不触发召回", async () => {
   render(<App />);
-  const link = await screen.findByRole("link", { name: "查看 persona 与自我" });
+  const link = await screen.findByRole("link", { name: "查看候选与差异" });
+  expect(screen.getByText("1 个 persona 候选等待确认")).toBeVisible();
   expect(await screen.findByText(personaCurrentFixture.content)).toBeVisible();
   await userEvent.click(link);
   expect(
@@ -733,6 +734,12 @@ test("从试用右侧进入 persona 页，保留管理员会话且浏览不触�
   expect(
     await screen.findByRole("heading", { name: "当前 persona · v7" }),
   ).toBeVisible();
+  expect(
+    await screen.findByRole("heading", { name: "待确认候选 · v9" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("region", { name: "待确认候选与差异" }),
+  ).toHaveFocus();
   expect(
     within(screen.getByRole("navigation", { name: "主导航" })).getByRole(
       "link",

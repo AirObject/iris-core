@@ -19,10 +19,12 @@ export function PersonaSummary() {
         </p>
       )}
       {data?.pending && (
-        <p>
-          <Badge tone="warning">待确认</Badge> 候选 v{data.pending.id}{" "}
-          正在等待确认。
-        </p>
+        <Notice>
+          <Badge tone="warning">待确认</Badge>{" "}
+          <strong>1 个 persona 候选等待确认</strong>
+          <p>候选 v{data.pending.id} 尚未生效，当前版本仍在使用。</p>
+          <a href="#/persona?tab=current&focus=pending">查看候选与差异</a>
+        </Notice>
       )}
       <details open>
         <summary>
