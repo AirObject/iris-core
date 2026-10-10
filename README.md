@@ -663,7 +663,7 @@ uv run python -m evals.entry_profile_eval run --corpus <已冻结的显式文件
 uv run python -m evals.entry_profile_eval score --materials <材料目录> --judgments <第一轮> --judgments <第二轮> --judge-model <执行者模型名> --out <外部报告目录>
 ```
 
-导出 PR #7 约定的 `format_version`、`manifest.json`、`round-template.json`、`scoring.md`、`cases/*.json`、`run.json`，指纹绑定源码、提示词、全部输入、模型非敏感配置和输出。判分轮把 round-template 复制为 manifest，按清单文件名保存逐句结果；严格核对数组长度、索引、布尔值及指纹。双判支持取 AND，违规取并集，必须要点取 AND，禁止项取 OR，列全部分歧。已发布／待确认版本计算有依据比例、禁止内容、要点覆盖率；被拒绝版本单列，另报拒绝比例、删句比例、超时、调用量、P50／P95 和 token 用量。门槛是模型句有依据 ≥90%、禁止内容 0，要点覆盖率仅诊断；手写句不占模型依据比例，但仍检查禁止内容。假模型结果只验证流程，不代表质量达标。调用记录出现超时即视为运行不完整，即使上层原因只写作 `retryable`；不把这类结果当作正常拒绝来计算有效成绩。公开 dev 的三轮双判及作废重跑记录见 [评测汇总](evals/reports/entry-profile-dev-20261011.md)。
+导出 PR #7 约定的 `format_version`、`manifest.json`、`round-template.json`、`scoring.md`、`cases/*.json`、`run.json`，指纹绑定源码、提示词、全部输入、模型非敏感配置和输出。判分轮把 round-template 复制为 manifest，按清单文件名保存逐句结果；严格核对数组长度、索引、布尔值及指纹。双判支持取 AND，违规取并集，必须要点取 AND，禁止项取 OR，列全部分歧。已发布／待确认版本计算有依据比例、禁止内容、要点覆盖率；被拒绝版本单列，另报拒绝比例、删句比例、超时、调用量、P50／P95 和 token 用量。门槛是模型句有依据 ≥90%、禁止内容 0，要点覆盖率仅诊断；手写句不占模型依据比例，但仍检查禁止内容。假模型结果只验证流程，不代表质量达标。调用记录出现超时即视为运行不完整，即使上层原因只写作 `retryable`；不把这类结果当作正常拒绝来计算有效成绩。三轮公开 dev 双判尚未达到上述目标；逐轮结果、遗留问题及作废重跑记录见 [评测汇总](evals/reports/entry-profile-dev-20261011.md)。
 
 ## 模型故障与状态
 
