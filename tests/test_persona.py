@@ -68,17 +68,25 @@ class FakeGateway:
             callback()
         if purpose == 'persona_generate':
             value = self.generated
+        elif purpose == 'persona_sentence_repair':
+            value = {'repairs':[{'index':s['index'],'text':None} for s in self.calls[-1][1]['problems']]}
         else:
             value = {'sentences': [{'index': i + 1, 'supported': self.supported,
                        'fabricated': False, 'scene_qualified': self.scene,
                        'violations': [], 'reason': '依据支持，保留场景。'}
-                       for i, _ in enumerate(self.generated['sentences'])],
+                       for i, _ in enumerate(self.calls[-1][1]['candidate'])],
                      'change_degree': self.degree, 'reason': '措辞调整'}
         return ModelReply(dumps(value), 'stop', {})
 
 
 def generate(store, clock, *, degree='small', supported=True, scene=True, text='初始设定中，我来自云城。', basis=None, **kwargs):
-    output = {'sentences': [{'text': text, 'basis': basis or ['M1']}]}
+    from iris.persona import _generation_material, _editable_material, _settings
+    if basis is None and text in ('初始设定中，我来自云城。','设定中，我住在云城。'):
+        output = {'sentences': []}  # Code supplies the exact initial template.
+    else:
+        with store.read() as conn:
+            evidence = _editable_material(_generation_material(conn,_settings(conn),current_persona(store),clock().isoformat()))['evidence']['memories']
+        output = {'sentences': [{'text':text,'basis':basis if basis is not None else [evidence[0]['ref']]}]}
     gateway = FakeGateway(store, output, degree=degree, supported=supported, scene=scene, **kwargs)
     old = current_persona(store)['id']
     return PersonaEngine(store, gateway, clock=clock).regenerate(expected_version=old), gateway
@@ -126,7 +134,7 @@ def test_s02_s03_publication(store, clock, degree, status):
     assert result['version']['status'] == status
     assert current_persona(store)['id'] == (old if status == 'pending' else result['version']['id'])
     assert [p for p, _ in gateway.calls] == ['persona_generate', 'persona_check']
-    assert result['version']['sentences'][0]['basis'] == [{'memory_id': 1, 'revision': 1}]
+    assert result['version']['sentences'][-1]['basis'] == [{'memory_id': 1, 'revision': 1}]
     assert result['version']['checks']['deterministic']['warnings']  # under 300 is advisory
 
 
@@ -167,10 +175,12 @@ def test_s17_deleted_basis_cannot_be_reused(store, clock):
 def test_s18_single_date_requires_scene(store, clock):
     add_self(store, importance=99)
     result, _ = generate(store, clock, text='我一向很耐心。', scene=False)
-    assert result['version']['status'] == 'rejected'
+    assert result['version']['status'] == 'current'
+    assert '一向' not in result['version']['content']
+    assert result['version']['checks']['deleted_sentences'][0]['reasons']
     result, _ = generate(store, clock, text='在这次直播中，我耐心解释了规则。', scene=True)
     assert result['version']['status'] == 'current'
-    assert result['version']['sentences'][0]['date_count'] == 1
+    assert result['version']['sentences'][-1]['date_count'] == 1
 
 
 def test_s19_admin_removal_forces_large_and_pending(store, clock):
@@ -270,7 +280,7 @@ def test_all_sentences_checked_and_strict_boolean_verdicts(store, clock):
                 value['sentences'][0]['supported'] = 'true'
                 reply.content = dumps(value)
             return reply
-    fake = MissingVerdict(store, {'sentences':[{'text':'设定中，我来自云城。','basis':['M1']}]})
+    fake = MissingVerdict(store, {'sentences':[]})
     result = PersonaEngine(store, fake, clock=clock).regenerate(expected_version=1)
     assert result['status'] == 'rejected'
     assert result['version']['checks']['model_errors']
@@ -283,7 +293,7 @@ def test_admin_marker_cannot_be_forged_and_exact_carry_is_protected(store, clock
     fake = FakeGateway(store, {'sentences':[{'text':'我希望表达简洁。','basis':[], 'admin_sentence':'A1'}]})
     kept = PersonaEngine(store, fake, clock=clock).regenerate(expected_version=manual['id'])['version']
     assert kept['status'] == 'current'
-    assert kept['sentences'][0]['origin'] == 'admin'
+    assert kept['sentences'][-1]['origin'] == 'admin'
     next_result, _ = generate(store, clock)
     assert next_result['version']['status'] == 'pending'
 
@@ -462,10 +472,10 @@ def test_model_retry_pause_probe_and_resume(store,clock):
         if len(calls)==4:
             output = {'ok':True}
         elif 'candidate' in json.loads(request_data['messages'][-1]['content']):
-            output = {'sentences':[{'index':1,'supported':True,'fabricated':False,'scene_qualified':False,
-                'violations':[],'reason':'设定'}],'change_degree':'small','reason':'措辞'}
+            output = {'sentences':[{'index':i+1,'supported':True,'fabricated':False,'scene_qualified':False,
+                'violations':[],'reason':'设定'} for i,_ in enumerate(json.loads(request_data['messages'][-1]['content'])['candidate'])],'change_degree':'small','reason':'措辞'}
         else:
-            output = {'sentences':[{'text':'初始设定中，我来自云城。','basis':['M1']}]}
+            output = {'sentences':[]}
         return httpx.Response(200,json={'choices':[{'message':{'content':dumps(output)},'finish_reason':'stop'}]})
     client = httpx.Client(transport=httpx.MockTransport(transport))
     gateway = Gateway(configs,store,client=client,health=health,clock=clock,sleeper=lambda _:None)
@@ -493,7 +503,7 @@ def test_admin_protection_is_byte_exact_including_outer_whitespace(store,clock):
     unchanged = FakeGateway(store,{'sentences':[{'text':'\n我希望表达简洁。 ','basis':[],'admin_sentence':'A1'}]})
     result = PersonaEngine(store,unchanged,clock=clock).regenerate(expected_version=manual['id'])
     assert result['status']=='current'
-    assert result['version']['content'] == manual['content']
+    assert result['version']['content'] == '初始设定：我来自云城。'+manual['content']
 
 
 def test_admin_edit_preserves_unchanged_sentence_provenance(store,clock):

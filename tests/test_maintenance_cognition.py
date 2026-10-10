@@ -27,7 +27,7 @@ def persona_case(store, *, budget=50, degree='small', supported=True, **settings
     add_self(store, '我在阅读时喜欢安静。')
     store.set_setting('consolidation', {'max_calls':budget, 'merge_enabled':False,
         'conflict_enabled':False, 'dependency_enabled':False, **settings})
-    model = FakeGateway(store, {'sentences':[{'text':'初始设定中，我来自云城。','basis':['M1']}]},
+    model = FakeGateway(store, {'sentences':[]},
                         degree=degree, supported=supported)
     return Maintenance(store, gateway=model, clock=clock), model, clock
 
@@ -298,8 +298,9 @@ def test_persona_http_retries_and_json_repairs_use_shared_budget(store,budget,fi
         if len(hits)==2:
             value=model.generated
         else:
-            value={'sentences':[{'index':1,'supported':True,'fabricated':False,'scene_qualified':True,
-                                  'violations':[],'reason':'依据支持'}],'change_degree':'small','reason':'措辞'}
+            payload=json.loads(hits[-1]['messages'][-1]['content'])
+            value={'sentences':[{'index':i+1,'supported':True,'fabricated':False,'scene_qualified':True,
+                                  'violations':[],'reason':'依据支持'} for i,_ in enumerate(payload['candidate'])],'change_degree':'small','reason':'措辞'}
         return httpx.Response(200,json=completion(dumps(value)))
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
         gateway=Gateway({'chat':ModelConfig('https://example.invalid','', 'fake',reasoning_effort='high')},store,
@@ -517,3 +518,20 @@ def test_persona_dream_step_uses_manual_product_default(store, degree):
         assert json.loads(row['material_json'])['settings']['publish_mode'] == 'all_manual'
         assert json.loads(row['checks_json'])['passed']
     assert len(model.calls) == 2
+
+
+@pytest.mark.parametrize('budget,status',[(2,'failed'),(3,'failed'),(4,'published')])
+def test_sentence_recovery_consumes_existing_dream_call_budget(store,budget,status):
+    from test_persona_optimization import Model
+    engine,_,_=persona_case(store,budget=budget)
+    model=Model(store)
+    engine.gateway=model
+    report=complete(engine)
+    assert report['persona']['status']==status
+    assert len(model.calls)==budget
+    assert report['summary']['model_calls']['count']==budget
+    if status=='failed':
+        assert report['persona']['reason']=='call_budget'
+        assert current_persona(store)['id']==1
+    else:
+        assert len(report['persona']['checks']['repaired_sentences'])==1

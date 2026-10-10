@@ -28,7 +28,7 @@ def client(store):
         value.app.state.scheduler.stop()
         login_admin(value)
         value.app.state.persona_jobs.engine.gateway = FakeGateway(store, {
-            'sentences': [{'text': '初始设定中，我来自云城。', 'basis': ['M1']}]})
+            'sentences': []})
         yield value
 
 
@@ -145,7 +145,7 @@ def test_s17_deleted_basis_absent_from_new_generation(client, store):
     payload = gateway(client).calls[0][1]
     assert '我来自云城' not in dumps(payload['evidence'])
     detail = client.get(f"/admin/api/persona/versions/{task['version_id']}").json()
-    assert detail['sentences'][0]['basis'][0]['memory_id'] == mid
+    assert detail['sentences'][-1]['basis'][0]['memory_id'] == mid
     assert '我来自云城' not in detail['content'] and not current(client)['needs_update']
 
 
@@ -387,7 +387,7 @@ def test_persona_shutdown_waits_for_accepted_task_before_closing_store(store):
     from iris.persona import PersonaJobs
     setup_role(store, 'Iris', '我来自云城。')
     entered, release, closed = threading.Event(), threading.Event(), threading.Event()
-    fake = FakeGateway(store, {'sentences': [{'text': '初始设定中，我来自云城。', 'basis': ['M1']}]},
+    fake = FakeGateway(store, {'sentences': []},
                        callback=lambda: (entered.set(), release.wait(10)))
     jobs = PersonaJobs(store, fake)
     jobs.submit(expected_version=1)

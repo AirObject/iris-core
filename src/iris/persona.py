@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 from .db import dumps
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .queue import estimate_tokens, truncate_material
+from .search_text import words
 
 DEFAULT_GOAL = '维持稳定的发言风格，并充分认识自我'
 DEFAULT_RULES = ('只根据现有的自我记忆提炼，不虚构经历、关系或能力；外部设定的背景不写成亲身经历；'
@@ -31,6 +32,10 @@ PUBLISH_MODES = ('small_medium_auto', 'all_auto', 'all_manual')
 DEGREES = ('small', 'medium', 'large')
 BASIS_TOKENS = 6000
 MAX_CHARS = 800
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v2', 'persona_check': 'persona_check_v2',
+                   'persona_sentence_repair': 'persona_generate_v2', 'persona_recheck': 'persona_check_v2'}
+CALL_TIMEOUTS = {'persona_generate': 120, 'persona_check': 180,
+                 'persona_sentence_repair': 120, 'persona_recheck': 180}
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
 
 
@@ -151,14 +156,16 @@ def _self_snapshot(conn):
             WHERE a.subject_id='self' AND (m.speaker_subject_id='self' OR m.stance='设定') ORDER BY m.id''')}
 
 
-def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None):
+def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None, required_ids=()):
     zone = ZoneInfo(timezone_name or _setting(conn, 'timezone', 'Asia/Shanghai'))
     selected = []
-    rows = conn.execute('''SELECT m.*,e.kind AS entry_kind FROM memories m
+    reserved = ",".join("?" for _ in required_ids) or "NULL"
+    rows = conn.execute(f'''SELECT m.*,e.kind AS entry_kind FROM memories m
         JOIN memory_subjects a ON a.memory_id=m.id LEFT JOIN entries e ON e.id=m.entry_id
         WHERE a.subject_id='self' AND m.lifecycle='active'
         AND (m.speaker_subject_id='self' OR m.stance='设定')
-        ORDER BY m.pinned DESC,m.importance DESC,m.retention DESC,m.id''')
+        ORDER BY CASE WHEN m.id IN ({reserved}) THEN 0 ELSE 1 END,
+        m.pinned DESC,m.importance DESC,m.retention DESC,m.id''', tuple(required_ids))
     for row in rows:
         record = {key: row[key] for key in ('content', 'stance', 'belief', 'importance', 'retention', 'pinned', 'entry_kind', 'event_time', 'speaker_subject_id', 'lifecycle')}
         record['about'] = [r[0] for r in conn.execute('SELECT subject_id FROM memory_subjects WHERE memory_id=? ORDER BY subject_id', (row['id'],))]
@@ -199,6 +206,112 @@ def _initial_sentences(conn, content, memory_ids, name, background):
                        'initial_settings': {'role_name': name, 'background': background}})
         offset += len(text)
     return result
+
+
+def _template_snapshot(conn):
+    """Only the latest actual setup is authoritative, never a generated predecessor.
+
+    Keep each complete template sentence verbatim. If any basis has changed,
+    omit that sentence rather than reconstructing obsolete facts from settings.
+    """
+    row = conn.execute("SELECT * FROM persona_versions WHERE source='initial_setting' ORDER BY id DESC LIMIT 1").fetchone()
+    if row is None:
+        return [], []
+    initial = _decode(conn, row)
+    locked, omitted = [], []
+    for sentence in initial['sentences']:
+        if sentence['origin'] != 'initial_template':
+            continue
+        if not sentence['basis']:
+            # Setup's name/header and empty-background placeholder have no memory
+            # binding. Keep them in the initial version and role settings only.
+            continue
+        stale = _stale(conn, {'sentences':[sentence], 'material':{}})
+        if stale:
+            omitted.append({'sentence':sentence, 'reason':'template_evidence_changed', 'basis':stale})
+        else:
+            locked.append(sentence)
+    return locked, omitted
+
+
+def _generation_material(conn, settings, previous, stamp):
+    locked, omitted = _template_snapshot(conn)
+    required = sorted({b['memory_id'] for s in locked for b in s['basis']})
+    evidence = _select(conn, timezone_name=settings['timezone'], required_ids=required)
+    available = {(m['memory_id'],m['revision']):m for m in evidence['memories']}
+    retained = []
+    for sentence in locked:
+        if all((b['memory_id'],b['revision']) in available for b in sentence['basis']):
+            dates = sorted({date for b in sentence['basis']
+                            for date in available[(b['memory_id'],b['revision'])]['dates']})
+            retained.append({**sentence, 'dates':dates, 'date_count':len(dates)})
+        else:
+            omitted.append({'sentence':sentence, 'reason':'template_evidence_over_budget'})
+    return {'evidence':evidence, 'settings':settings, 'as_of':stamp,
+        'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS,
+        'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
+        'omitted_template_sentences':omitted, 'previous':previous['content'],
+        'previous_sentences':previous['sentences'],
+        'admin_sentences':{k:v['text'] for k,v in _admin_sentences(previous).items()}}
+
+
+def _editable_material(material):
+    locked_ids = {b['memory_id'] for s in material.get('locked_sentences',[]) for b in s['basis']}
+    evidence = {**material['evidence'], 'memories':[m for m in material['evidence']['memories']
+                                                 if m['memory_id'] not in locked_ids]}
+    evidence['estimated_tokens'] = estimate_tokens(dumps(evidence['memories']))
+    return {**material, 'evidence':evidence}
+
+
+def _final_deterministic(sentences, material, previous):
+    """Revalidate the assembled text; template attribution cannot be model-forged."""
+    locked = material.get('locked_sentences', [])
+    refs = {(m['memory_id'],m['revision']):m['ref'] for m in material['evidence']['memories']}
+    manual = _admin_sentences(previous)
+    errors = []
+    for index, sentence in enumerate(sentences,1):
+        if sentence['origin'] == 'initial_template':
+            if sentence not in locked:
+                errors.append(f'sentence {index}: invalid locked template')
+            continue
+        basis = [refs.get((b['memory_id'],b['revision'])) for b in sentence['basis']]
+        row = {'text':sentence['text'], 'basis':basis}
+        if sentence['origin'] == 'admin':
+            row['admin_sentence'] = next((k for k,v in manual.items() if v['text']==sentence['text']), 'unknown')
+        _, normalized, checked = _deterministic({'sentences':[row]}, _editable_material(material), previous)
+        errors.extend(f'sentence {index}: {e}' for e in checked['errors'])
+        if normalized != [sentence]:
+            errors.append(f'sentence {index}: evidence metadata changed')
+    content = ''.join(s['text'] for s in sentences)
+    errors.extend(_text_errors(content))
+    return content, {'passed':not errors, 'errors':errors,
+        'warnings':['under 300 characters: concise evidence-bound text is allowed'] if 0<len(content)<300 else []}
+
+
+def _check_payload(material, sentences, *, full_content):
+    # No unbound memories, former proofs, trace graph or self snapshot in the
+    # checker. Every sentence carries only its own currently frozen evidence.
+    memories = {(m['memory_id'],m['revision']):m for m in material['evidence']['memories']}
+    fields = ('ref','memory_id','revision','content','stance','belief','date','event_time',
+              'entry_kind','speaker_subject_id','about','dates','date_count','excerpts','initial_sources')
+    rows, evidence = [], {}
+    for sentence in sentences:
+        refs = []
+        for basis in sentence['basis']:
+            memory = memories[(basis['memory_id'],basis['revision'])]
+            refs.append(memory['ref'])
+            evidence[memory['ref']] = {k:memory[k] for k in fields}
+        row = {**sentence, 'evidence_refs':refs}
+        if sentence['origin'] == 'initial_template':
+            # The whole original background must not become an extra fact source
+            # attached to a name sentence or to a partially omitted template.
+            row['initial_settings'] = {'template_text':sentence['text']}
+            if not sentence['basis']:
+                row['initial_settings']['role_name'] = material['role_name']
+        rows.append(row)
+    return {**material['settings'], 'as_of':material['as_of'], 'candidate':rows,
+            'evidence_by_ref':evidence, 'previous':material['previous'], 'candidate_text':full_content}
+
 
 
 def _decode(conn, row):
@@ -334,8 +447,8 @@ def _deterministic(output, material, previous):
     return content, sentences, {'passed': not errors, 'errors': errors, 'warnings': warnings}
 
 
-def _model_check(output, sentences):
-    errors = []
+def _check_verdicts(output, sentences):
+    errors, problems = [], {}
     degree = output.get('change_degree')
     degree = {'小':'small', '中':'medium', '大':'large'}.get(degree, degree) if isinstance(degree, str) else None
     if degree not in DEGREES:
@@ -343,7 +456,7 @@ def _model_check(output, sentences):
         degree = 'large'
     rows = output.get('sentences')
     if not isinstance(rows, list) or len(rows) != len(sentences):
-        return degree, ['model check must cover every sentence, in order']
+        return degree, ['model check must cover every sentence, in order'], {}
     if not isinstance(output.get('reason'), str) or not output['reason'].strip():
         errors.append('model check reason required')
     for index, (row, sentence) in enumerate(zip(rows, sentences), 1):
@@ -354,12 +467,25 @@ def _model_check(output, sentences):
                 or any(not isinstance(v, str) or not v.strip() for v in row['violations'])):
             errors.append(f'sentence {index}: invalid model verdict')
             continue
+        issues = []
+        # Enforce the generator's neutral-reference style independently of the
+        # semantic judge. Whole tokens avoid matching 其他/他人/吉他. Do not
+        # rewrite pronouns blindly: repair must resolve the referent from evidence.
+        if sentence['origin'] == 'memory' and {'他','她','他们','她们','他俩','她俩'} & set(words(sentence['text'])):
+            issues.append('neutral person reference required: 自动句使用本句依据中的姓名或“对方”，不要用他／她及其复数指称')
         if not row['supported'] or row['fabricated'] or row['violations']:
-            errors.append(f'sentence {index}: {row["reason"]}')
+            issues.append(row['reason'])
         if (sentence['origin'] == 'memory' and not sentence['initial_setting']
                 and sentence['date_count'] < 2 and not row['scene_qualified']):
-            errors.append(f'sentence {index}: single-date/unknown-date evidence needs a scene qualifier')
-    return degree, errors
+            issues.append('single-date/unknown-date evidence needs a scene qualifier')
+        if issues:
+            problems[index] = issues
+    return degree, errors, problems
+
+
+def _model_check(output, sentences):
+    degree, errors, problems = _check_verdicts(output, sentences)
+    return degree, errors + [f'sentence {i}: {reason}' for i, reasons in problems.items() for reason in reasons]
 
 
 def _admin_removed(previous, sentences):
@@ -610,7 +736,7 @@ class PersonaEngine:
         return self._run(expected_version, 'regenerate', only_if_due=False)
 
     def _call(self, purpose, payload, outputs):
-        """One 120s request budget includes HTTP retries and at most one JSON repair."""
+        """Per-purpose total budget includes HTTP retries and at most one JSON repair."""
         gateway, owned = self.gateway, False
         if gateway is None:
             raise ModelError('paused', 'model unconfigured', paused=True, reason='unconfigured')
@@ -622,8 +748,8 @@ class PersonaEngine:
             owned = True
         import time
         monotonic = getattr(gateway, 'monotonic', time.monotonic)
-        deadline = monotonic() + 120
-        prompt = files('iris').joinpath(f'prompts/{purpose}_v1.md').read_text(encoding='utf-8')
+        deadline = monotonic() + CALL_TIMEOUTS[purpose]
+        prompt = files('iris').joinpath(f'prompts/{PROMPT_VERSIONS[purpose]}.md').read_text(encoding='utf-8')
         messages = [{'role':'system','content':prompt}, {'role':'user','content':dumps(payload)}]
         try:
             for repair in (False, True):
@@ -645,9 +771,92 @@ class PersonaEngine:
                         raise ModelError('invalid_output', 'JSON parse failed after repair')
                     messages += [{'role':'assistant','content':reply.content},
                         {'role':'user','content':'上次不是完整的 JSON 对象。只输出修正后的完整 JSON，不要解释。'}]
+        except ModelError as error:
+            # The gateway's late-response path records timed_out but may omit the
+            # reason. Keep the attempt diagnostic consistent with that call record.
+            if error.reason is None and error.summary == 'total timeout':
+                error.reason = 'timeout'
+            raise
         finally:
             if owned:
                 gateway.close()
+
+    def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):
+        payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original))
+        repairable = {i:original[i-1] for i in problems if original[i-1]['origin'] != 'initial_template'}
+        proposed = {}
+        if repairable:
+            request = {**material['settings'], 'task':'repair', 'as_of':material['as_of'],
+                       'problems':[{'index':i, **payload['candidate'][i-1], 'problems':problems[i]}
+                                   for i in repairable]}
+            refs = {ref for row in request['problems'] for ref in row['evidence_refs']}
+            request['evidence_by_ref'] = {ref:record for ref,record in payload['evidence_by_ref'].items() if ref in refs}
+            repaired = self._call('persona_sentence_repair', request, outputs)
+            checks['repair_output'] = repaired
+            rows = repaired.get('repairs')
+            # Invalid batch shape cannot sneak new sentences or evidence into a repair.
+            if (isinstance(rows,list) and len(rows)==len(repairable)
+                    and all(isinstance(r,dict) and type(r.get('index')) is int for r in rows)
+                    and {r['index'] for r in rows}==set(repairable)):
+                proposed = {r['index']:r for r in rows}
+        retained, verdicts, modifications, positions = [], [], [], []
+        refs = {(m['memory_id'],m['revision']):m['ref'] for m in material['evidence']['memories']}
+        def deleted(index, stage, reasons, replacement=None):
+            item = {'index':index, 'sentence':original[index-1], 'stage':stage, 'reasons':reasons}
+            if replacement is not None:
+                item['replacement'] = replacement
+            checks['deleted_sentences'].append(item)
+        for i, sentence in enumerate(original,1):
+            if i not in problems:
+                retained.append(sentence)
+                verdicts.append(initial_model['sentences'][i-1])
+                continue
+            row = proposed.get(i,{})
+            text = row.get('text')
+            if (not isinstance(text,str) or not text.strip() or text==sentence['text']
+                    or set(row) != {'index','text'} or sentence['origin']=='initial_template'):
+                deleted(i,'repair',problems[i]+['no valid changed sentence; immutable templates are never rewritten'])
+                continue
+            raw = {'text':text, 'basis':[refs[(b['memory_id'],b['revision'])] for b in sentence['basis']]}
+            _, normalized, deterministic = _deterministic({'sentences':[raw]},_editable_material(material),previous)
+            if not deterministic['passed']:
+                deleted(i,'repair_deterministic',problems[i]+deterministic['errors'],text)
+                continue
+            positions.append((len(retained),i))
+            modifications.append(normalized[0])
+            retained.append(normalized[0])
+            verdicts.append(None)
+        content = ''.join(s['text'] for s in retained)
+        if not content.strip():
+            return retained, None, 'large', ['all sentences removed']
+        # Recheck only modified facts. Also reassess change degree for the assembled
+        # final draft (an empty candidate array means degree-only after deletion).
+        recheck = self._call('persona_recheck',_check_payload(material,modifications,full_content=content),outputs)
+        checks['recheck'] = recheck
+        degree, structural, bad = _check_verdicts(recheck,modifications)
+        if structural:
+            return retained, recheck, 'large', structural
+        discarded = set()
+        for j,(position,original_index) in enumerate(positions,1):
+            if j in bad:
+                discarded.add(position)
+                deleted(original_index,'recheck',bad[j],retained[position]['text'])
+            else:
+                verdicts[position] = recheck['sentences'][j-1]
+                checks['repaired_sentences'].append({'index':original_index,
+                    'before':original[original_index-1], 'after':retained[position]})
+        retained = [s for i,s in enumerate(retained) if i not in discarded]
+        verdicts = [{**v,'index':i+1} for i,v in enumerate(v for j,v in enumerate(verdicts) if j not in discarded)]
+        if discarded:
+            # No third model pass: its degree described a draft that still contained
+            # rejected repairs. Conservatively require confirmation of this final diff.
+            degree = 'large'
+            checks['degree_override'] = 'sentences_removed_after_recheck'
+        if ''.join(s['text'] for s in retained) == previous['content']:
+            degree = 'small'
+        final = {'sentences':verdicts, 'change_degree':degree,
+                 'reason':recheck['reason'], 'assembled_from':'initial_check_and_recheck'}
+        return retained, final, degree, []
 
     def _finish_attempt(self, attempt, state, reason, outputs, version_id=None):
         with self.store.write() as conn:
@@ -669,10 +878,7 @@ class PersonaEngine:
                     raise PersonaConflict('generation reservation changed')
                 due = _due(conn, previous, self.clock())
                 settings = json.loads(reserved['material_json'])['settings']
-                material = {'evidence':_select(conn, timezone_name=settings['timezone']), 'settings':settings, 'as_of':_stamp(self.clock),
-                            'role_name':_setting(conn, 'role_name', 'Iris'),
-                            'previous':previous['content'], 'previous_sentences':previous['sentences'],
-                            'admin_sentences':{k:v['text'] for k,v in _admin_sentences(previous).items()}}
+                material = _generation_material(conn, settings, previous, _stamp(self.clock))
                 snapshot = _self_snapshot(conn)
             with self.store.write() as conn:
                 _expect(conn, expected_version)
@@ -683,24 +889,42 @@ class PersonaEngine:
             if reason:
                 self._finish_attempt(attempt, 'skipped', reason, outputs)
                 return {'status':'skipped','reason':reason,'attempt_id':attempt,'version':None,'due':due}
-            payload = {**settings, 'evidence':material['evidence'], 'role_name':material['role_name'],
-                       'as_of':material['as_of'],
-                       'previous':material['previous'], 'admin_sentences':material['admin_sentences']}
+            editable = _editable_material(material)
+            payload = {**settings, 'task':'generate', 'evidence':editable['evidence'],
+                       'locked_sentences':[{'text':s['text'],'origin':s['origin']} for s in material['locked_sentences']],
+                       'role_name':material['role_name'],
+                       'as_of':material['as_of'], 'previous':material['previous'],
+                       'admin_sentences':material['admin_sentences'],
+                       'remaining_characters':max(0,MAX_CHARS-sum(len(s['text']) for s in material['locked_sentences']))}
             generated = self._call('persona_generate', payload, outputs)
-            content, sentences, deterministic = _deterministic(generated, material, previous)
+            _, generated_sentences, checked = _deterministic(generated, editable, previous)
+            # An empty extension is valid: the intact template may be the entire candidate.
+            if generated.get('sentences') == []:
+                checked = {'passed':True, 'errors':[], 'warnings':[]}
+            sentences = material['locked_sentences'] + generated_sentences
+            content, deterministic = _final_deterministic(sentences, material, previous)
+            deterministic['errors'] = checked['errors'] + deterministic['errors']
+            deterministic['passed'] = not deterministic['errors']
+            checks = {'original_sentence_count':len(sentences), 'deleted_sentences':[], 'repaired_sentences':[]}
             model, degree, model_errors = None, 'large', []
             if deterministic['passed']:
-                # Also supplies the persisted "checking" progress projection.
                 with self.store.write() as conn:
                     conn.execute('UPDATE persona_attempts SET outputs_json=? WHERE id=?', (dumps(outputs),attempt))
-                model = self._call('persona_check', {**payload,'candidate':sentences}, outputs)
-                degree, model_errors = _model_check(model, sentences)
+                model = self._call('persona_check', _check_payload(material,sentences,full_content=content), outputs)
+                degree, structural, problems = _check_verdicts(model, sentences)
+                _, initial_errors = _model_check(model,sentences)
+                checks.update(initial_model=model, initial_model_errors=initial_errors)
+                model_errors = initial_errors
+                if not structural and problems:
+                    sentences, model, degree, model_errors = self._recover_sentences(
+                        sentences, model, problems, material, previous, checks, outputs)
+                    content, deterministic = _final_deterministic(sentences, material, previous)
             manual_removed = _admin_removed(previous, sentences)
             if manual_removed:
                 degree = 'large'
             passed = deterministic['passed'] and not model_errors
-            checks = {'passed':passed,'deterministic':deterministic,'model':model,
-                      'model_errors':model_errors,'admin_content_removed_or_changed':manual_removed}
+            checks.update(passed=passed, deterministic=deterministic, model=model, model_errors=model_errors,
+                          admin_content_removed_or_changed=manual_removed)
             mode = settings['publish_mode']
             status = 'rejected' if not passed else ('current' if mode == 'all_auto' or (
                 mode == 'small_medium_auto' and degree in ('small','medium')) else 'pending')
