@@ -41,7 +41,12 @@ def read(client, method, path, host):
 
 def assert_rejected(response):
     assert response.status_code == 400
-    assert response.text == "Invalid host header"
+    if response.request.url.path.startswith("/api/v1/"):
+        error = response.json()["error"]
+        assert error["code"] == "invalid_request"
+        assert error["fields"][0]["field"] == "header.host"
+    else:
+        assert response.text == "Invalid host header"
     assert "location" not in response.headers
     assert "access-control-allow-origin" not in response.headers
 

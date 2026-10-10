@@ -360,4 +360,4 @@ media = save_media(store, binary_stream, content_type="image/png",
 
 彻底清除记忆时，将该对象来源链中的入口 ID 保留到 `memory_visibility_roots`，不保留已清除正文或原始消息。这些入口仍按当前设置计算，用于阻止尚存的派生记忆因清除依据而意外公开。管理员设置走 `PATCH /admin/api/entries/{entry_id}/visibility`，使用现有鉴权与操作记录；管理详情展示实时计算结果。
 
-`evals/visibility_eval/` 的隐私脚本每例独立数据库和固定时钟；仅适配语料明确给出的近期窗口，查询组成仍调用产品 adaptive_6。动态案例复用同一实例与缓存，按时间应用设置变更。no_merge 同时调用 `merge_exclusion` 和 `_plan_pair`，无需模型判断。shared 召回对照在主线采集真实判断，在候选上仅复放逐字相同输入对应的结果；新输入、降级或缺失结果不能算一致，模型采样差异不混入代码回归。性能脚本复用既有合成生成器，100 个入口中 50 个私有，为每条记忆附真实来源边，并包含 persona、状态与目标。
+`evals/visibility_eval/` 的隐私脚本每例独立数据库和固定时钟；仅适配语料明确给出的近期窗口，查询组成仍调用产品 adaptive_6。动态案例复用同一数据库与缓存，按时间应用设置变更。`--http-search` 经正式 Host 校验、Bearer 认证、令牌入口权限及路由调用 HostRetrieval；测试适配只固定检索时钟、记录候选与停用无关后台调度，不替换 search 或目标授权。省略入口时由 Retrieval.search 的默认值限制为全局可见，令牌范围不会放宽它。no_merge 同时调用 `merge_exclusion` 和 `_plan_pair`，无需模型判断。shared 召回对照在主线采集真实判断，在候选上仅复放逐字相同输入对应的结果；新输入、降级或缺失结果不能算一致，模型采样差异不混入代码回归。性能脚本复用既有合成生成器，100 个入口中 50 个私有，为每条记忆附真实来源边，并包含 persona、状态与目标。

@@ -134,6 +134,14 @@ uv build
 
 ## 宿主接入
 
+宿主 **v1 契约已冻结**，完整接入说明、15 个操作、错误与重试及状态区分见 [宿主 API v1 接入契约](docs/host-api.md)。新增可选字段和响应字段保持兼容；删除、重命名或改变已有字段类型／含义须使用新版本。完成首次设置并登录管理界面后，可查看 `/docs` 和 `/openapi.json` 中的中文说明与示例。
+
+本轮接通 `POST /api/v1/media`：用 JSON 的 `entry_id`、`content_type`、`data_base64` 上传，可附 `understanding_text`，成功 201 返回 `id`；消息的 `media_ids` 数组按顺序引用媒体。单文件 10 MiB、整个媒体 JSON 14 MiB，超限 413；支持 PNG/JPEG/GIF/WebP、MP3/WAV/Ogg/FLAC、MP4/WebM，须匹配 MIME 与文件头。上传与接收均不等待模型。上传对象绑定入口，引用时同时检查上传入口与接收入口权限；文件按内容哈希共享。本文末尾 MD 后端阶段“尚由 AP 线接入”的说明为历史状态，以本接入节为准。
+
+回复准备只在 `hints` 追加 `other_entries_pending`：其他授权入口中的待学习入口数、UTC 接收时间范围，不含入口标识、正文或人物。`POST /api/v1/memories/search` 可传 `entry_id` 并校验令牌范围；省略时不传递入口上下文。本分支兼容 VS 前后的检索签名，入口隐私过滤须与 VS 一起部署，详见接入契约的过渡说明。
+
+宿主错误统一为 `{"error":{"code":"invalid_request","message":"请求格式或内容不合法","fields":[{"field":"body","message":"字段说明"}],"retry_after_seconds":null,"retry_at":null}}`。状态为 400／401／403／404／409／413／429／503；429 和 503 带 `Retry-After`、建议等待秒数及预计重试时间。状态和目标的超大请求统一返回 413，管理接口行为不变。
+
 宿主与 Iris 在同一台电脑运行，Iris 继续只监听回环地址并校验 Host。所有 `/api/v1` 请求都需要 `Authorization: Bearer <令牌>`；管理员 Cookie 不能代替宿主令牌，宿主令牌也不能登录管理界面。连接器经独立的 AstrBot 插件接入，平台不需要直接连接 Iris。下文及其他小节的宿主请求示例均须携带这个请求头。
 
 停服后可用离线命令创建、列出或撤销令牌（沿用服务的数据库互斥锁，服务运行时命令失败）：
@@ -715,16 +723,16 @@ X-Iris-CSRF: <当前会话的 CSRF 值>
 
 记忆范围是全部来源消息的入口范围与派生依据范围的交集；目标还与所属入口范围取交集。无来源目标按所属入口计算，无所属入口的目标全局可见。计算使用当前设置，收紧、放宽、撤换名单对旧对象和派生链立即生效，不必重新学习。原始消息仍只返回本次入口的近期窗口。
 
-回复准备、人物要点、点名检索、深度召回、目标分区及其附带引用均按查询入口过滤。底层 `Retrieval.search(entry_id=...)` 支持指定入口；省略入口时仅返回全局可见的记忆和目标，不按宿主令牌范围放宽。HTTP search 的入口字段与令牌校验由 AP 配套接线。不同实际范围的对象不做召回去重、学习再次确认、目标去重或整理合并；整理的矛盾与依赖材料也不跨范围。persona 的依据仅限全局可见的自我记忆，已发布句子的依据被改为私有时，该句立即停止进入宿主和学习材料，等待后续更新。
+回复准备、人物要点、点名检索、深度召回、目标分区及其附带引用均按查询入口过滤。底层 `Retrieval.search(entry_id=...)` 支持指定入口；省略入口时仅返回全局可见的记忆和目标，不按宿主令牌范围放宽。HTTP `POST /api/v1/memories/search` 已接通该入口参数，令牌无权访问指定入口时返回 `403 entry_forbidden`。令牌范围另行限制目标分区；本节取代前文接入过渡说明中的待接线状态。不同实际范围的对象不做召回去重、学习再次确认、目标去重或整理合并；整理的矛盾与依赖材料也不跨范围。persona 的依据仅限全局可见的自我记忆，已发布句子的依据被改为私有时，该句立即停止进入宿主和学习材料，等待后续更新。
 
 隐私 dev 检查与回归命令（完整输出放在仓库外）：
 
 ```bash
-uv run python evals/visibility_eval/run.py --out <外部目录> --judge
+uv run python evals/visibility_eval/run.py --out <外部目录> --judge --http-search
 uv run python evals/visibility_eval/run.py --corpus <JSON路径> --out <外部目录> --offline
 uv run python evals/visibility_eval/compare_learning.py --baseline <主线源码目录> --candidate . --out <外部目录>
 uv run python evals/visibility_eval/compare_recall.py --baseline <主线源码目录> --candidate . --out <外部目录>
 uv run python evals/visibility_eval/benchmark.py --out <外部目录>
 ```
 
-隐私运行使用默认召回配置；`--offline` 检查默认全文降级路径，不加载模型配置。`--judge` 开启真实召回判断，判断降级或查询未完成会将整次运行标为无效。门槛只检查 forbidden 和跨范围合并；expected / expected_goals 只作为过度过滤诊断。公开集零泄漏不等于 M4 隐藏验收通过。
+隐私运行使用默认召回配置；`--http-search` 让所有 search 查询经带真实宿主令牌的 ASGI HTTP 接口，prepare 保留语料的精确近期窗口。HTTP 错误会令整次运行无效。`--embedding-cache <已完成的公开向量缓存>` 可复用 embedding，召回判断仍重新调用。`--offline` 检查默认全文降级路径，不加载模型配置。`--judge` 开启真实召回判断，判断降级或查询未完成会将整次运行标为无效。门槛只检查 forbidden 和跨范围合并；expected / expected_goals 只作为过度过滤诊断。公开集零泄漏不等于 M4 隐藏验收通过。

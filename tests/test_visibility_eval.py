@@ -18,13 +18,18 @@ def tmp_path():
         yield Path(directory)
 
 
-def test_frozen_visibility_offline_all_annotations_and_changes(tmp_path):
-    report=runner.run(ROOT/'evals/visibility_v1.json',tmp_path/'run')
+@pytest.mark.parametrize('http_search', [False, True])
+def test_frozen_visibility_offline_all_annotations_and_changes(tmp_path, http_search):
+    report=runner.run(ROOT/'evals/visibility_v1.json',tmp_path/'run',http_search=http_search)
     assert report['valid'] and report['leakage_count']==0
     assert (report['cases'],report['queries_executed'],report['forbidden_count'])==(32,99,74)
     assert (report['merge_pairs'],report['merge_leaks'],report['changes_applied'])==(6,0,4)
     assert (report['expected_hits'],report['expected_goals_hits'])==(94,18)
     assert not report['include_goals_violations']
+    assert report['http_search'] is http_search
+    expected_http=sum(q['mode']=='search' for c in json.loads((ROOT/'evals/visibility_v1.json').read_text())['cases'] for q in c['queries']) if http_search else 0
+    assert report['http_search_queries']==expected_http
+    assert sum(q['transport']=='http' for c in report['details'] for q in c['queries'])==expected_http
 
 
 def test_failed_query_cannot_be_scored_as_zero_leakage_success(tmp_path, monkeypatch):
@@ -52,3 +57,14 @@ def test_only_corpus_recent_window_is_returned(tmp_path):
     row=runner.run_case(case,tmp_path/'case')
     returned=row['queries'][0]['response']['recent_messages']
     assert [m['content'] for m in returned]==[m['text'] for m in case['queries'][0]['recent_messages']]
+
+
+def test_http_error_invalidates_visibility_run(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from iris.api import HostRetrieval
+    def unavailable(*args, **kwargs):
+        raise HTTPException(status_code=503, detail='simulated infrastructure error')
+    monkeypatch.setattr(HostRetrieval, 'search', unavailable)
+    report=runner.run(ROOT/'evals/visibility_v1.json', tmp_path/'run', http_search=True)
+    assert not report['valid'] and report['queries_executed'] < report['queries_expected']
+    assert report['errors']

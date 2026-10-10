@@ -1,5 +1,7 @@
 # M4 VS-01：入口的记忆可见范围
 
+本文件保留首轮结果；合入接口 v1 后的 HTTP 隐私与全部复验结果见 [main / HTTP 集成复验](m4-visibility-integration.md)。
+
 已快进集成 `origin/main` 的 `12b7937d9d37e8384cb6f8f79e2c533e45e2b1d8`（已包含媒体、令牌、导出导入 PR #64 与界面 PR #65）。行为对照基线为 `e727a000d5c1778aeb508d7c5112321242af23b8`；其与集成主线之间的 Python、迁移、tests、pyproject.toml 和 uv.lock 完全相同。分支 `feat/m4-visibility`，迁移 `023_visibility.sql`。本报告仅报告公开 dev 与代码回归，不代表隐藏验收或 M4 阶段门槛通过；没有读取隐藏集。
 
 ## 实现与计算

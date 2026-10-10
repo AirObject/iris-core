@@ -2,18 +2,25 @@
 
 --offline exercises the default full-text fallback without loading credentials.
 Normal runs use configured embeddings; --judge opts into real recall judgments.
-Only the recent-window adapter differs from the product: historical source rows
-stay in the database for provenance, while the supplied window is exact.
+The recent-window adapter keeps historical source rows out of recent messages.
+--http-search sends every search through the real ASGI app and Bearer auth;
+only the retrieval clock and background scheduler are controlled by the fixture.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import shutil
+from contextlib import ExitStack, contextmanager
+from unittest.mock import patch
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+from fastapi.testclient import TestClient
+
+from iris.api import create_app, HostRetrieval
 
 from iris.consolidation import Consolidation, DEFAULTS as CONSOLIDATION_DEFAULTS, merge_exclusion, snapshot
 from iris.db import Store, dumps
@@ -144,11 +151,32 @@ def window(case, query):
             for i,m in enumerate(query.get('recent_messages', []))]
 
 
-def run_case(case, out, *, configs=None, judge=False):
+@contextmanager
+def http_search_client(store, gateway, clock):
+    observed = []
+
+    class ClockedHostRetrieval(HostRetrieval, WindowRetrieval):
+        # Inherit the real host goal authorization and retrieval implementation.
+        # WindowRetrieval only observes rank/select here: search has no window.
+        def __init__(self, store, gateway, scope):
+            super().__init__(store, gateway, scope)
+            self.clock = lambda: clock[0]
+            observed.append(self)
+
+    with patch('iris.api.HostRetrieval', ClockedHostRetrieval), patch('iris.api.Scheduler.start'):
+        with TestClient(create_app(store=store, gateway=gateway, configs={} if gateway is None else None),
+                        base_url='http://127.0.0.1', client=('127.0.0.1', 12345)) as client:
+            credential = client.app.state.tokens.create(host='visibility-eval', scope={'kind': 'all'}, actor='local_cli')
+            client.headers['Authorization'] = 'Bearer ' + credential['token']
+            yield client, observed
+
+
+def run_case(case, out, *, configs=None, judge=False, http_search=False):
     out.mkdir(parents=True, exist_ok=False)
     clock = [datetime.fromisoformat(case['now'])]
     store = Store(out/'case.db')
     gateway = None
+    resources = ExitStack()
     try:
         mids,gids,sources = seed(store,case)
         r = WindowRetrieval(store, clock=lambda: clock[0])
@@ -171,6 +199,7 @@ def run_case(case, out, *, configs=None, judge=False):
                     conn.execute('UPDATE memories SET embedding=?,embedding_model=? WHERE id=?',
                         (np.asarray(cached.vectors[m['content']],dtype=np.float32).tobytes(),config.model,mids[m['key']]))
             r = WindowRetrieval(store,gateway,clock=lambda:clock[0])
+        http = resources.enter_context(http_search_client(store,gateway,clock)) if http_search and any(q['mode']=='search' for q in case['queries']) else None
         reverse_m,reverse_g = {v:k for k,v in mids.items()},{v:k for k,v in gids.items()}
         no_merge = []
         with store.read() as conn:
@@ -190,9 +219,19 @@ def run_case(case, out, *, configs=None, judge=False):
                 set_entry_visibility(store,change['entry_id'],change['visibility'],visible_in=change.get('visible_in',[]))
                 applied.append(change)
             r.window = window(case,q)
+            current_retrieval,transport,http_status = r,'direct',None
             if q['mode']=='search':
-                response = r.search(entry_id=q['entry_id'],text=q['text'],include_goals=q.get('include_goals',False),
-                                    include_forgotten=q.get('include_forgotten',False))
+                payload = dict(entry_id=q['entry_id'],text=q['text'],include_goals=q.get('include_goals',False),
+                               include_forgotten=q.get('include_forgotten',False))
+                if http is None:
+                    response = r.search(**payload)
+                else:
+                    client,observed = http
+                    result = client.post('/api/v1/memories/search',json=payload)
+                    if result.status_code != 200:
+                        raise ValueError(f'HTTP search failed: {result.status_code}')
+                    response = result.json()
+                    current_retrieval,transport,http_status = observed[-1],'http',result.status_code
             else:
                 response = r.prepare(q['entry_id'],text=q.get('text'),participants=q.get('participants',[]),
                                      recent_limit=len(r.window),judge=judge)
@@ -222,9 +261,9 @@ def run_case(case, out, *, configs=None, judge=False):
                 for key in q.get('expected',[])+q.get('expected_goals',[]):
                     if key not in found:
                         visible = v.memory_visible(mids[key],q['entry_id']) if key in mids else v.goal_visible(gids[key],q['entry_id'])
-                        reason = 'visibility' if not visible else r.missing_reason(mids[key],response) if key in mids else 'goal_partition_budget'
+                        reason = 'visibility' if not visible else current_retrieval.missing_reason(mids[key],response) if key in mids else 'goal_partition_budget'
                         missing.append({'key':key,'reason':reason})
-            rows.append({'query':q['key'],'at':clock[0].isoformat(),'valid':valid,'partitions':partitions,'leaks':leaks,
+            rows.append({'query':q['key'],'at':clock[0].isoformat(),'transport':transport,'http_status':http_status,'valid':valid,'partitions':partitions,'leaks':leaks,
                 'forbidden_count':len(q.get('forbidden',[])), 'expected_count':len(q.get('expected',[])),
                 'expected_hits':sum(k in found for k in q.get('expected',[])),
                 'expected_goals_count':len(q.get('expected_goals',[])), 'expected_goals_hits':sum(k in found for k in q.get('expected_goals',[])),
@@ -233,21 +272,24 @@ def run_case(case, out, *, configs=None, judge=False):
         return {'id':case['id'],'queries':rows,'no_merge':no_merge,'changes':applied,
                 'mapping':{'memories':mids,'goals':gids,'sources':sources}}
     finally:
+        resources.close()
         if gateway:
             gateway.close()
         store.close()
 
 
-def run(corpus, out, *, configs=None, judge=False):
+def run(corpus, out, *, configs=None, judge=False, http_search=False, embedding_cache=None):
     if out.resolve().is_relative_to(ROOT):
         raise ValueError('full artifacts must be outside the repository')
     data=json.loads(corpus.read_text(encoding='utf-8'))
     validate(data)
     out.mkdir(parents=True,exist_ok=False)
+    if embedding_cache:
+        shutil.copyfile(embedding_cache,out/'embeddings.db')
     cases=[]
     for i,case in enumerate(data['cases']):
         try:
-            result=run_case(case,out/f'case-{i+1:03}',configs=configs,judge=judge)
+            result=run_case(case,out/f'case-{i+1:03}',configs=configs,judge=judge,http_search=http_search)
         except Exception as exc:
             result={'id':case['id'],'error_type':type(exc).__name__,'queries':[],'no_merge':[],'changes':[]}
         cases.append(result)
@@ -259,6 +301,8 @@ def run(corpus, out, *, configs=None, judge=False):
     report={'corpus_sha256':hashlib.sha256(corpus.read_bytes()).hexdigest(),
         'source_sha256':hashlib.sha256(b''.join(p.relative_to(ROOT).as_posix().encode()+p.read_bytes() for p in sorted((ROOT/'src/iris').rglob('*')) if p.suffix in ('.py','.sql','.md','.json'))).hexdigest(),
         'mode':'default_hybrid' if configs else 'default_fulltext_fallback','judge':judge,
+        'http_search':http_search,'http_search_queries':sum(q['transport']=='http' for q in rows),
+        'embedding_cache_reused':embedding_cache is not None,
         'valid':len(rows)==count and all(q['valid'] for q in rows) and not any('error_type' in c for c in cases),
         'cases':len(cases),'queries_expected':count,'queries_executed':len(rows),
         'leakage_count':sum(len(q['leaks']) for q in rows)+sum(m['leak'] for m in merge),
@@ -282,10 +326,13 @@ def main():
     parser.add_argument('--out',type=Path,required=True)
     parser.add_argument('--offline',action='store_true')
     parser.add_argument('--judge',action='store_true')
+    parser.add_argument('--http-search',action='store_true',help='send search queries through the authenticated HTTP API')
+    parser.add_argument('--embedding-cache',type=Path,help='copy a completed public embedding cache; judgments are always fresh')
     args=parser.parse_args()
     if args.offline and args.judge:
         parser.error('--judge requires configured models')
-    report=run(args.corpus,args.out,configs=None if args.offline else load_test_models(),judge=args.judge)
+    report=run(args.corpus,args.out,configs=None if args.offline else load_test_models(),judge=args.judge,
+               http_search=args.http_search,embedding_cache=args.embedding_cache)
     raise SystemExit(0 if report['valid'] and not report['leakage_count'] and not report['include_goals_violations'] else 1)
 
 

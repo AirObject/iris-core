@@ -327,3 +327,57 @@ def test_goal_semantic_candidates_exclude_other_scope(store, scene):
     first=goals.create(content='帮我准备摄影展的资料',entry_id='A')['goal']['id']
     second=goals.create(content='帮我准备摄影展的资料',entry_id='B')
     assert second['goal']['id'] != first and second['dedup']['status']=='created'
+
+
+def test_http_search_entry_context_and_global_default(store, scene):
+    scope(store, 'A')
+    private = memory(store, [scene['A']])
+    public = memory(store, [scene['B']])
+    forgotten = put(store, '摄影旧器材', evidence=[scene['A']])
+    with store.write() as conn:
+        conn.execute("UPDATE memories SET lifecycle='forgotten' WHERE id=?", (forgotten,))
+    private_goal = Goals(store).create(content='准备摄影', entry_id='A')['goal']['id']
+    public_goal = Goals(store).create(content='全局摄影任务')['goal']['id']
+    with patch('iris.api.Scheduler.start'), TestClient(create_app(store=store, configs={}),
+            base_url='http://127.0.0.1', client=('127.0.0.1', 12345)) as client:
+        from conftest import authorize_host
+        authorize_host(client)
+        for entry, expected_memories, expected_goals in (
+            ('A', {private, public, forgotten}, {private_goal, public_goal}),
+            ('B', {public}, {public_goal}),
+            (None, {public}, {public_goal}),
+        ):
+            payload = {'include_goals': True, 'include_forgotten': True}
+            if entry is not None:
+                payload['entry_id'] = entry
+            response = client.post('/api/v1/memories/search', json=payload)
+            assert response.status_code == 200, response.text
+            assert ids(response.json()) == expected_memories
+            assert {g['id'] for g in response.json()['goals']} == expected_goals
+        prepared = client.post('/api/v1/entries/B/prepare',
+                               json={'text': '天文摄影', 'recent_limit': 0, 'judge': False})
+        assert prepared.status_code == 200, prepared.text
+        assert ids(prepared.json()) == {public}
+        assert {g['id'] for g in prepared.json()['goals']} == {public_goal}
+
+
+def test_http_search_rejects_unauthorized_entry_and_scope_never_widens_default(store, scene):
+    scope(store, 'A')
+    private = memory(store, [scene['A']])
+    public = memory(store, [scene['B']])
+    with patch('iris.api.Scheduler.start'), TestClient(create_app(store=store, configs={}),
+            base_url='http://127.0.0.1', client=('127.0.0.1', 12345)) as client:
+        token = client.app.state.tokens.create(host='visibility-test',
+            scope={'kind': 'entries', 'entries': ['A']}, actor='local_cli')
+        client.headers['Authorization'] = 'Bearer ' + token['token']
+        with patch('iris.api.HostRetrieval.search') as search:
+            denied = client.post('/api/v1/memories/search', json={'entry_id': 'B'})
+            assert denied.status_code == 403
+            assert denied.json()['error']['code'] == 'entry_forbidden'
+            search.assert_not_called()
+        allowed = client.post('/api/v1/memories/search', json={'entry_id': 'A'})
+        assert allowed.status_code == 200, allowed.text
+        assert ids(allowed.json()) == {private, public}
+        omitted = client.post('/api/v1/memories/search', json={})
+        assert omitted.status_code == 200, omitted.text
+        assert ids(omitted.json()) == {public}
