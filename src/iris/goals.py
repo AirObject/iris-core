@@ -155,8 +155,8 @@ def _canonical_id(conn, goal_id):
 
 def _require_goal(conn, goal_id, scope):
     row = _row(conn,goal_id)
-    scope.require(row['entry_id'])
-    scope.require(_row(conn,_canonical_id(conn,goal_id))['entry_id'])
+    scope.require_write(row['entry_id'])
+    scope.require_write(_row(conn,_canonical_id(conn,goal_id))['entry_id'])
     return row
 
 
@@ -165,7 +165,7 @@ def _stored_receipt(conn, row, scope):
     # Recheck redirects as an administrator can merge goals after this receipt.
     _require_goal(conn,row['id'],scope)
     receipt = json.loads(row['receipt_json'])
-    scope.require(receipt['goal']['entry_id'])
+    scope.require_write(receipt['goal']['entry_id'])
     _require_goal(conn,receipt['goal']['id'],scope)
     goal = receipt['goal']
     goal['possible_duplicate_ids'] = [gid for gid in goal['possible_duplicate_ids']
@@ -216,8 +216,8 @@ def decide_dedup(candidates, proposed):
     return {'status': 'possible_duplicate' if possible is not None else 'created', 'target_id': possible}
 
 
-def _duplicate_ids(conn, goal_id, scope=ALL_ENTRIES):
-    clause, args = scope.sql('g.entry_id')
+def _duplicate_ids(conn, goal_id, scope=ALL_ENTRIES, *, write=False):
+    clause, args = scope.sql('g.entry_id', write=write)
     return [r[0] for r in conn.execute('''SELECT g.id FROM goal_duplicates d
         JOIN goals g ON g.id=CASE WHEN d.goal_a=? THEN d.goal_b ELSE d.goal_a END
         WHERE d.status='possible' AND (d.goal_a=? OR d.goal_b=?) AND '''+clause+
@@ -675,8 +675,8 @@ def _cancel_review(conn, goal_id, current, decision):
 
 def _merge(conn,a,b,current,*,actor,semantic=False,reason=None,scope=ALL_ENTRIES):
     # All callers must have checked both observed revisions before arriving here.
-    scope.require(a['entry_id'])
-    scope.require(b['entry_id'])
+    scope.require_write(a['entry_id'])
+    scope.require_write(b['entry_id'])
     v = Visibility(conn)
     if v.goal(a['id']) != v.goal(b['id']):
         raise GoalError('goal_id', '不同可见范围的目标不能合并')
@@ -685,9 +685,9 @@ def _merge(conn,a,b,current,*,actor,semantic=False,reason=None,scope=ALL_ENTRIES
     target,source = sorted((a,b),key=lambda r:(r['created_at'],r['id']))
     tid,sid = target['id'],source['id']
     reason = _reason(reason,'goals merged')
-    clause, args = scope.sql('entry_id')
+    clause, args = scope.sql('entry_id', write=True)
     redirects = [r[0] for r in conn.execute('SELECT id FROM goals WHERE merged_into=? AND '+clause,(sid,*args))]
-    affected = {tid,sid,*_duplicate_ids(conn,sid,scope),*redirects}
+    affected = {tid,sid,*_duplicate_ids(conn,sid,scope,write=True),*redirects}
     snapshots = {gid:_snapshot(conn,gid) for gid in affected}
     deadline = target['deadline'] or source['deadline']
     deadline_at = target['deadline_at'] or source['deadline_at']
@@ -711,7 +711,7 @@ def _merge(conn,a,b,current,*,actor,semantic=False,reason=None,scope=ALL_ENTRIES
     conn.execute("UPDATE notifications SET goal_id=? WHERE goal_id=? AND status='pending'",(tid,sid))
     _cancel(conn,sid,current,notifications=False)
     _cancel(conn,tid,current,notifications=False)
-    for other in _duplicate_ids(conn,sid,scope):
+    for other in _duplicate_ids(conn,sid,scope,write=True):
         if other!=tid:
             _possible(conn,tid,other,current,actor=actor,record=False)
     conn.execute("UPDATE goal_duplicates SET status='merged',resolved_at=?,resolved_by=? "
@@ -767,7 +767,7 @@ def _sequence_conflicts(conn,candidates,proposed,options,*,dismissed=()):
 def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=None, people=(), entry_id=None,
             host_key=None, host=None, origin='host', actor='host', current=None, evidence=(), learning=False, scope=ALL_ENTRIES):
     current = _current(current)
-    scope.require(entry_id)
+    scope.require_write(entry_id)
     if host_key is not None:
         previous = conn.execute("SELECT * FROM goals WHERE host_key=? AND COALESCE(host,'')=COALESCE(?,'')",(host_key,host)).fetchone()
         if previous and previous['receipt_json']:
@@ -801,7 +801,7 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
             AND s.message_id IN ('''+','.join('?' for _ in evidence)+')',(gid,*evidence))
     _record_snapshot(conn,gid,None,actor=actor,action='create',reason='goal created',current=current)
     proposed = _row(conn,gid)
-    clause, args = scope.sql('entry_id')
+    clause, args = scope.sql('entry_id', write=True)
     candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=? AND "+clause,(kind,gid,*args))
     visibility = Visibility(conn)
     candidates = [c for c in candidates if visibility.goal(c['id']) == visibility.goal(gid)]
@@ -966,9 +966,9 @@ class Goals:
         with self.store.read() as conn:
             proposed = _row(conn,goal_id)
             scope = Scope.model_validate_json(proposed['host_scope_json'])
-            scope.require(proposed['entry_id'])
+            scope.require_write(proposed['entry_id'])
             actor = proposed['host'] or actor
-            clause, args = scope.sql('entry_id')
+            clause, args = scope.sql('entry_id', write=True)
             candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=? AND "+clause,(proposed['kind'],goal_id,*args))
             visibility = Visibility(conn)
             candidates = [c for c in candidates if visibility.goal(c['id']) == visibility.goal(goal_id)]
@@ -1013,7 +1013,7 @@ class Goals:
             latest = {row['id']:_row(conn,row['id']) for row in observed}
             stale = any(latest[row['id']]['revision']!=row['revision'] or latest[row['id']]['state']!='open'
                         or latest[row['id']]['merged_into'] is not None
-                        or not scope.allows(latest[row['id']]['entry_id']) for row in observed)
+                        or not scope.allows_write(latest[row['id']]['entry_id']) for row in observed)
             visibility = Visibility(conn)
             stale = stale or any(visibility.goal(row['id']) != observed_scope for row in observed)
             # Subject aliases and source excerpts are not covered by goal revisions.

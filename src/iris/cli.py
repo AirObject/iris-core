@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     evaluation.add_argument("--compare-embeddings", action="store_true", help="Compare 1024/2048 dimensions and query prefix on dev only")
     args = parser.parse_args(argv)
     args.command = args.command or "serve"
-    from .configuration import RuntimeConfig, deployment
+    from .configuration import RuntimeConfig, SecretsUnavailable, deployment
     try:
         deploy = deployment(config=args.config, data_dir=args.data_dir, host=args.host, port=args.port)
         args.db = str(Path(args.db).resolve()) if args.db else str(deploy['data_dir'] / 'iris.db')
@@ -132,6 +132,9 @@ def main(argv: list[str] | None = None) -> int:
                 store.close()
             print("已导入模型配置；密钥仅保存在数据目录的 secrets.json，不显示。")
             return 0
+        except SecretsUnavailable:
+            print("模型配置导入失败：secrets.json 不可读或格式损坏。请检查权限；可启动服务，在设置页重新输入受影响用途的密钥后重试。", file=sys.stderr)
+            return 1
         except (ValueError, OSError):
             print("模型配置导入失败，请检查输入文件及数据目录权限。", file=sys.stderr)
             return 1

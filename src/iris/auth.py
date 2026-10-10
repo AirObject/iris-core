@@ -16,6 +16,7 @@ from .db import dumps, now
 
 COOKIE = 'iris_session'
 SESSION_SECONDS = 12 * 60 * 60
+MAX_ANONYMOUS_SESSIONS = 128
 
 
 def hash_password(password: str) -> str:
@@ -88,6 +89,10 @@ class Sessions:
         with self.store.write() as conn:
             conn.execute('DELETE FROM admin_sessions WHERE expires_at<=? OR token_hash=?',
                          (time.time(), digest(request.cookies.get(COOKIE, ''))))
+            if not authenticated:
+                conn.execute("""DELETE FROM admin_sessions WHERE token_hash IN (
+                    SELECT token_hash FROM admin_sessions WHERE authenticated=0
+                    ORDER BY expires_at DESC, token_hash LIMIT -1 OFFSET ?)""", (MAX_ANONYMOUS_SESSIONS-1,))
             conn.execute('INSERT INTO admin_sessions VALUES(?,?,?)', (digest(token), int(authenticated), time.time()+lifetime))
         response.set_cookie(COOKIE, token, max_age=lifetime, httponly=True, samesite='strict',
                             secure=request.url.scheme == 'https', path='/')
@@ -109,7 +114,7 @@ def install_auth(app):
 
     @app.middleware('http')
     async def administrator_boundary(request, call_next):
-        path = request.url.path
+        path = request.scope['path']
         if path.startswith('/api/v1') or path.startswith('/assets/'):
             return await call_next(request)
         if not app.state.ready:
@@ -145,6 +150,12 @@ def install_auth(app):
     @router.get('/session')
     def session_info(request: Request):
         sessions = app.state.sessions
+        origin = request.headers.get('origin')
+        if (request.headers.get('sec-fetch-site') in ('cross-site', 'same-site')
+                or (origin is not None and origin != f'{request.url.scheme}://{request.headers.get("host", "")}')):
+            return error('csrf_failed', '请求校验失败，请从本机页面访问', 403)
+        with sessions.store.write() as conn:
+            conn.execute('DELETE FROM admin_sessions WHERE expires_at<=?', (time.time(),))
         row = sessions.lookup(request)
         body = {'configured': bool(app.state.store.setting('setup_complete', False)),
                 'admin_exists': sessions.exists(), 'authenticated': bool(row and row['authenticated'])}
