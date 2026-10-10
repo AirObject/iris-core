@@ -111,7 +111,7 @@ def test_image_pause_persists_probe_contains_image_and_chat_unaffected(store):
         seen.append(body)
         return httpx.Response(503) if len(seen) <= 3 else httpx.Response(200, json=response('连接成功'))
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        gateway = Gateway(CONFIGS, store, health=health, client=client, sleeper=lambda _: None)
+        gateway = Gateway(CONFIGS, store, health=health, client=client, clock=lambda: current[0], sleeper=lambda _: None)
         try:
             with pytest.raises(ModelError):
                 gateway.image_understanding(PNG, 'image/png')

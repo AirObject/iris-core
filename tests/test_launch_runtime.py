@@ -377,7 +377,7 @@ def test_default_preimport_archive_preserves_all_old_synthetic_keys(store, tmp_p
 
 def test_budget_cache_expires_after_one_second_without_usage_change(store, monkeypatch):
     tick = [0.]
-    health = ModelHealth(store, CONFIG, monotonic=lambda: tick[0])
+    health = ModelHealth(store, CONFIG, clock=Clock(), monotonic=lambda: tick[0])
     original = store.read
     queries = []
     @contextlib.contextmanager
