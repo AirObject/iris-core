@@ -36,6 +36,7 @@ beforeEach(() => {
     models: {
       chat: { ...model },
       embedding: { ...model },
+      image_understanding: { ...model },
       recall_judge: { ...model, inherited: true },
       goal_dedup_judge: { ...model, inherited: true },
     },

@@ -433,6 +433,7 @@ export type Health = {
   state: string;
   last_error?: string;
   next_probe_at?: string;
+  timeout_seconds?: number;
   consecutive_errors?: number;
   retry_at?: string | null;
 };

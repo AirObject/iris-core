@@ -2868,3 +2868,107 @@ tr:last-child td {
     overflow-wrap: anywhere;
   }
 }
+
+/* M4: token management and local backups. */
+.access-panel {
+  margin-bottom: 24px;
+  overflow-wrap: anywhere;
+}
+.access-panel p,
+.access-dialog p,
+.import-steps {
+  line-height: 1.8;
+  margin: 10px 0;
+}
+.access-panel .panel-heading {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.access-panel .notice {
+  margin-top: 16px;
+}
+.access-data-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.access-records {
+  display: grid;
+  gap: 14px;
+}
+.access-record {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+.access-record .panel-heading {
+  margin-bottom: 8px;
+}
+.access-record h3,
+.access-record h4 {
+  font-size: 14px;
+}
+.access-record p {
+  font-size: 13px;
+}
+.access-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+  font-size: 12px;
+}
+.access-facts dt {
+  color: var(--muted);
+}
+.access-facts dd {
+  margin: 4px 0;
+}
+.access-dialog {
+  padding: 0 24px 24px;
+  overflow-wrap: anywhere;
+}
+.access-dialog input,
+.access-dialog textarea,
+.access-dialog select {
+  width: 100%;
+}
+.token-secret {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+.import-steps {
+  padding-left: 22px;
+}
+.import-steps li {
+  margin-bottom: 14px;
+}
+.import-steps pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  background: #f7f8fb;
+  border-radius: 8px;
+  font-size: 12px;
+}
+@media (max-width: 1000px) {
+  .access-data-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+@media (max-width: 760px) {
+  .app-footer {
+    padding-bottom: calc(240px + env(safe-area-inset-bottom));
+  }
+  .access-panel {
+    padding: 16px;
+  }
+  .access-dialog {
+    padding: 0 16px 20px;
+  }
+  .access-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
