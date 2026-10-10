@@ -277,6 +277,7 @@ def learning_entries(store):
     instant = utc_now()
     with store.read() as conn:
         items = [dict(r) for r in conn.execute("""SELECT e.*,
+            (SELECT COUNT(*) FROM entry_profile_versions p WHERE p.entry_id=e.id AND p.status='candidate') AS entry_profile_pending_count,
             (SELECT COUNT(*) FROM messages m WHERE m.entry_id=e.id
                 AND m.learning_state IN ('pending','batched')) AS pending_count
             FROM entries e ORDER BY e.name,e.id""")]
@@ -653,3 +654,76 @@ def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, includ
             "excluded_pinned_count": len(all_rows) - len(rows),
             "applicable_count": len(rows) - (counts["deleted"] if action != "purge" else 0),
             "examples": examples, "snapshot_token": token, "expires_at": expires}
+
+
+ENTRY_PROFILE_COLUMNS = '''id,entry_id,version,base_version,content,status,source,author,
+    change_degree,generated_at,published_at'''
+ENTRY_PROFILE_ATTEMPT_COLUMNS = '''id,entry_id,base_version,state,reason,version,started_at,finished_at,
+    (SELECT status FROM entry_profile_versions v WHERE v.entry_id=entry_profile_attempts.entry_id
+        AND v.version=entry_profile_attempts.version) AS version_status,
+    CASE WHEN state!='running' THEN 'finished'
+         WHEN json_type(outputs_json,'$.consolidation_entry_profile_generate') IS NOT NULL THEN 'checking'
+         ELSE 'generating' END AS stage'''
+
+
+def _entry_profile_summary(row, current):
+    return dict(row) | {'is_current': row['version'] == current}
+
+
+def entry_profile_snapshot(store, entry_id):
+    from . import entry_profile as profiles
+    with store.read() as conn:
+        entry = profiles._entry(conn, entry_id)
+        settings = profiles._settings(conn, entry_id)
+        current = conn.execute(f'SELECT {ENTRY_PROFILE_COLUMNS} FROM entry_profile_versions WHERE entry_id=? AND version=?',
+                               (entry_id, settings['current_version'])).fetchone()
+        pending = conn.execute(f"SELECT {ENTRY_PROFILE_COLUMNS} FROM entry_profile_versions WHERE entry_id=? AND status='candidate' ORDER BY version DESC",
+                               (entry_id,)).fetchall()
+        latest = conn.execute(f'SELECT {ENTRY_PROFILE_ATTEMPT_COLUMNS} FROM entry_profile_attempts WHERE entry_id=? ORDER BY id DESC LIMIT 1',
+                              (entry_id,)).fetchone()
+        value = profiles._view(conn, profiles._current(conn, entry_id))
+        return {'entry': entry, 'supported': entry['kind'] in ('group', 'live'),
+                'global_enabled': profiles._runtime(conn)['enabled'], 'settings': settings,
+                'current': _entry_profile_summary(current, settings['current_version']) if current else None,
+                'pending': _entry_profile_summary(pending[0], settings['current_version']) if pending else None,
+                'pending_count': len(pending), 'possibly_stale': bool(value and value['possibly_stale']),
+                'stale_basis': value['stale_basis'] if value else [],
+                'latest_attempt': dict(latest) if latest else None}
+
+
+def entry_profile_versions(store, entry_id, *, limit=30, offset=0):
+    from .entry_profile import _settings
+    with store.read() as conn:
+        current = _settings(conn, entry_id)['current_version']
+        total = conn.execute('SELECT COUNT(*) FROM entry_profile_versions WHERE entry_id=?', (entry_id,)).fetchone()[0]
+        items = [_entry_profile_summary(r, current) for r in conn.execute(f'''SELECT {ENTRY_PROFILE_COLUMNS}
+            FROM entry_profile_versions WHERE entry_id=? ORDER BY version DESC LIMIT ? OFFSET ?''', (entry_id, limit, offset))]
+        return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
+
+
+def entry_profile_version(store, entry_id, version):
+    from .entry_profile import _view, _version
+    with store.read() as conn:
+        value = _view(conn, _version(conn, entry_id, version))
+        evidence = value.pop('material').get('evidence', {})
+        # Only cited snippets, never the full sampled conversation or model input.
+        indexed = {item['sha256']: item for kind in ('messages', 'memories') for item in evidence.get(kind, [])}
+        for sentence in value['sentences']:
+            sentence['admin_written'] = sentence['author'] == 'admin'
+            for basis in sentence['basis']:
+                cited = indexed.get(basis['sha256'])
+                basis['evidence'] = ({key: item for key, item in cited.items() if key not in ('sha256', 'ref')}
+                                     if cited else None)
+                if 'memory_id' in basis:
+                    basis['memory'] = _persona_memory(conn, basis['memory_id'])
+        value['checks'].pop('model_input', None)
+        return value
+
+
+def entry_profile_attempt(store, entry_id, attempt_id):
+    with store.read() as conn:
+        row = conn.execute(f'SELECT {ENTRY_PROFILE_ATTEMPT_COLUMNS} FROM entry_profile_attempts WHERE entry_id=? AND id=?',
+                           (entry_id, attempt_id)).fetchone()
+        if row is None:
+            raise KeyError(attempt_id)
+        return dict(row)

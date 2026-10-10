@@ -24,6 +24,7 @@ export type BackupRecord = {
   file_count: number;
   size: number;
   purpose: string;
+  trigger?: "manual" | "pre_import" | "scheduled";
   actor: string;
 };
 export type Backups = {

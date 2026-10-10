@@ -154,15 +154,19 @@ export function Backups() {
                 {record.migration_version ?? "未记录"}
               </p>
               <p>
-                {record.purpose === "pre_import"
-                  ? "导入前自动备份"
-                  : "手动导出"}{" "}
+                {(record.trigger || record.purpose) === "scheduled"
+                  ? "定时"
+                  : (record.trigger || record.purpose) === "pre_import"
+                    ? "导入前自动备份"
+                    : "手动导出"}{" "}
                 ·{" "}
                 {record.actor === "admin"
                   ? "管理员"
                   : record.actor === "local_cli"
                     ? "本机命令行"
-                    : record.actor}
+                    : record.actor === "scheduler"
+                      ? "调度器"
+                      : record.actor}
               </p>
               <p className="muted">
                 备份 ID：<code>{record.backup_id}</code>
@@ -207,8 +211,7 @@ export function Backups() {
           不含模型密钥的备份导入后，需要重新配置密钥，或继续使用原有外部配置；不会沿用目标目录原来的模型密钥。
         </Notice>
         <p>
-          覆盖前的自动备份默认也不含模型密钥。如需保留现有密钥，在导入命令后增加{" "}
-          <code>--backup-include-secrets</code>，并按含密钥备份妥善保存。
+          覆盖前会单独保存目标实例原有的模型密钥，以便人工恢复；请私密保存该归档。它不会自动配给导入后的模型设置。
         </p>
         {history.data?.import_instructions && (
           <p className="muted">

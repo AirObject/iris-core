@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
 
-from . import admin_data, trial, people, persona, backup, media
+from . import admin_data, trial, people, persona, backup, media, entry_profile
 from .models import IMAGE_TOTAL_TIMEOUT
 from .auth import audit, error
 from .tokens import NewToken, RateLimits
@@ -196,6 +196,37 @@ class PersonaVersions(Page):
 class PersonaDiff(Input):
     before_version: int = Field(gt=0, le=9223372036854775807)
     after_version: int = Field(gt=0, le=9223372036854775807)
+
+
+class EntryProfileRevision(Input):
+    expected_version: int = Field(ge=0, le=9223372036854775807, strict=True)
+
+
+class EntryProfileEdit(EntryProfileRevision):
+    content: str = Field(min_length=150, max_length=500)
+
+
+class EntryProfileReject(EntryProfileRevision):
+    reason: str = Field(default='管理员拒绝', min_length=1, max_length=1000)
+
+    @field_validator('reason')
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError('拒绝原因不能为空白')
+        return value.strip()
+
+
+class EntryProfileSettings(EntryProfileRevision):
+    enabled: bool | None = Field(default=None, strict=True)
+    publish_mode: Literal['check_auto', 'all_manual'] | None = None
+
+    @model_validator(mode='after')
+    def changes(self):
+        fields = self.model_fields_set - {'expected_version'}
+        if not fields or any(getattr(self, key) is None for key in fields):
+            raise ValueError('至少修改一项画像设置，值不能为空')
+        return self
 
 
 GoalId = Annotated[int, PathParameter(gt=0, le=9223372036854775807)]
@@ -411,10 +442,13 @@ def install_admin(app):
     async def lifespan(app):
         jobs = persona.PersonaJobs(app.state.store, app.state.gateway)
         app.state.persona_jobs = jobs
+        profile_jobs = entry_profile.EntryProfileJobs(app.state.store, app.state.gateway)
+        app.state.entry_profile_jobs = profile_jobs
         try:
             yield
         finally:
             # Included router lifespans close before create_app's gateway/store.
+            await asyncio.to_thread(profile_jobs.close)
             await asyncio.to_thread(jobs.close)
 
     router = APIRouter(prefix="/admin/api", tags=["本机管理界面"], lifespan=lifespan)
@@ -713,6 +747,57 @@ def install_admin(app):
     def gaps(query: Annotated[LearningQuery, Query()]):
         return admin_data.memory_gaps(app.state.store, **query.model_dump())
 
+    @router.get('/entries/{entry_id}/profile')
+    def current_entry_profile(entry_id: str):
+        return admin_data.entry_profile_snapshot(app.state.store, entry_id)
+
+    @router.get('/entries/{entry_id}/profile/versions')
+    def entry_profile_versions(entry_id: str, query: Annotated[Page, Query()]):
+        return admin_data.entry_profile_versions(app.state.store, entry_id, **query.model_dump())
+
+    @router.get('/entries/{entry_id}/profile/versions/{version}')
+    def entry_profile_version(entry_id: str, version: PersonaId):
+        return admin_data.entry_profile_version(app.state.store, entry_id, version)
+
+    @router.get('/entries/{entry_id}/profile/diff')
+    def entry_profile_diff(entry_id: str, query: Annotated[PersonaDiff, Query()]):
+        return entry_profile.version_diff(app.state.store, entry_id, query.before_version, query.after_version)
+
+    @router.get('/entries/{entry_id}/profile/attempts/{attempt_id}')
+    def entry_profile_attempt(entry_id: str, attempt_id: PersonaId):
+        return admin_data.entry_profile_attempt(app.state.store, entry_id, attempt_id)
+
+    @router.put('/entries/{entry_id}/profile')
+    def edit_entry_profile(entry_id: str, payload: EntryProfileEdit):
+        version = entry_profile.admin_edit(app.state.store, entry_id, **payload.model_dump())
+        return admin_data.entry_profile_version(app.state.store, entry_id, version['version'])
+
+    @router.patch('/entries/{entry_id}/profile/settings')
+    def entry_profile_settings(entry_id: str, payload: EntryProfileSettings):
+        return entry_profile.set_settings(app.state.store, entry_id, **payload.model_dump(exclude_unset=True))
+
+    @router.post('/entries/{entry_id}/profile/versions/{version}/confirm')
+    def confirm_entry_profile(entry_id: str, version: PersonaId, payload: EntryProfileRevision):
+        entry_profile.confirm_candidate(app.state.store, entry_id, version, **payload.model_dump())
+        return admin_data.entry_profile_version(app.state.store, entry_id, version)
+
+    @router.post('/entries/{entry_id}/profile/versions/{version}/reject')
+    def reject_entry_profile(entry_id: str, version: PersonaId, payload: EntryProfileReject):
+        entry_profile.reject_candidate(app.state.store, entry_id, version, **payload.model_dump())
+        return admin_data.entry_profile_version(app.state.store, entry_id, version)
+
+    @router.post('/entries/{entry_id}/profile/versions/{version}/rollback')
+    def rollback_entry_profile(entry_id: str, version: PersonaId, payload: EntryProfileRevision):
+        value = entry_profile.rollback(app.state.store, entry_id, version, **payload.model_dump())
+        return admin_data.entry_profile_version(app.state.store, entry_id, value['version'])
+
+    @router.post('/entries/{entry_id}/profile/regenerate', status_code=202)
+    def regenerate_entry_profile(entry_id: str, payload: EntryProfileRevision):
+        from urllib.parse import quote
+        attempt = app.state.entry_profile_jobs.submit(entry_id, **payload.model_dump())
+        return JSONResponse({'accepted': True, 'attempt': admin_data.entry_profile_attempt(app.state.store, entry_id, attempt)},
+                            status_code=202, headers={'Location': f'/admin/api/entries/{quote(entry_id, safe="")}/profile/attempts/{attempt}'})
+
     @router.get('/persona')
     def current_persona():
         return admin_data.persona_snapshot(app.state.store)
@@ -883,6 +968,14 @@ def install_admin(app):
         result['usage']['by_purpose'] = {'image_understanding': admin_data.image_usage(app.state.store)}
         result['timeouts_seconds']['image_understanding'] = IMAGE_TOTAL_TIMEOUT
         return result
+
+    @app.exception_handler(entry_profile.EntryProfileConflict)
+    async def entry_profile_conflict(request, exc):
+        return error('entry_profile_conflict', '当前画像、候选、设置或依据已变化，请刷新后重试', 409)
+
+    @app.exception_handler(entry_profile.EntryProfileBusy)
+    async def entry_profile_busy(request, exc):
+        return error('entry_profile_generation_in_progress', '已有入口画像生成任务或服务正在停止，请查询任务状态', 409)
 
     @app.exception_handler(persona.PersonaConflict)
     async def persona_conflict(request, exc):

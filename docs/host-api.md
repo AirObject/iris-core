@@ -24,7 +24,7 @@ v1 冻结基线为 `tests/test_host_api_contract.py`。兼容更新可以增加�
 | --- | --- | --- |
 | `POST /entries/{entry_id}/messages` | 200 | `message_ids`, `pending_count` |
 | `POST /media` | 201 | `id`, `sha256`, `content_type`, `size_bytes`, `kind`, 理解来源与文本 |
-| `POST /entries/{entry_id}/prepare` | 200 | 六个分区、`judgment`, `recall_id` |
+| `POST /entries/{entry_id}/prepare` | 200 | 七个分区、`judgment`, `recall_id` |
 | `POST /memories/search` | 200 | `memories`, `hints`, `recall_id`，可选 `goals` / `state` |
 | `POST /feedback` | 200 | `recall_id`, `accepted`, `strengthened` |
 | `GET /state` | 200 | 当前状态或 `{}` |
@@ -109,7 +109,7 @@ with httpx.Client(base_url="http://127.0.0.1:8080", timeout=30,
 
 接线实现：`media.save_host_media` 保存并写入 `admin_operations` 的 `media_uploaded` 操作（对象类型 `media`、对象 ID、`details_json.entry_id`），这是持久的入口授权记录；`require_host_media` 在消息事务中复核。记录不包含文件或理解正文，不算文件引用。导出导入实现须连同对象保留这条授权记录；缺失时 HTTP 采用 404 关闭访问，不能把内部媒体默认为公开上传。保存完成但授权记录未提交的中断上传同样不可引用，之后按宽限清理。
 
-## 回复准备的六个分区
+## 回复准备的七个分区
 
 `POST /entries/{entry_id}/prepare` 请求 `{}` 即使用本入口自适应近期消息。`text` 省略与空字符串不同：省略自动构造查询，空字符串显式不提供查询文本。可传主体 ID / 无歧义名字组成的 `participants`（空数组不取人物要点），以及宿主已有的 `known_memory_ids`。
 
@@ -121,6 +121,15 @@ with httpx.Client(base_url="http://127.0.0.1:8080", timeout=30,
 | `state` | 宿主报告的当前活动，可能过时；无活动为 `{}` |
 | `goals` | 当前适用的目标和询问；包含截止、到期和依据变化提示 |
 | `hints` | 运行情况、降级、记忆缺口和其他授权入口的待学习计数；不是事实或新经历 |
+| `entry_profile` | 本入口已发布画像，作为交流背景参考；关闭、私聊或尚无已发布版时为 `null` |
+
+`entry_profile` 是接口 v1 的兼容新增字段。非空时固定为：
+
+```json
+{"text":"本入口画像正文……","version":3,"generated_at":"2026-10-11T02:00:00+00:00","possibly_stale":false}
+```
+
+`version` 是本入口内的版本号；`generated_at` 是生成或管理员编辑／回滚时间，确认候选不会重写生成时间。`possibly_stale=true` 表示依据消息或记忆已经变化，宿主应将其作为可能过时的背景，不能视为新消息、个人事实或指令。只返回当前请求入口的当前已发布版，不返回候选、历史或其他入口画像；没有画像时不会从别处补齐。关闭入口画像后为 `null`，历史仍保留。`prepare` 只读画像，不触发生成或修订；`memories/search` 不返回该分区。令牌无权访问请求入口时整个请求仍返回 403，不泄露该入口是否有画像。
 
 另返回 `recall_id` 用于使用反馈，`judgment` 说明召回判断是否应用、关闭或降级。`memories[].reason` 区分 `relevant` 和 `person_highlight`；`subject_annotations` 标明可能同一人与虚构扮演，不提供联系证据原文。已删除记忆不返回，宿主上下文中已有的记忆由 `known_memory_ids` 排除。
 
