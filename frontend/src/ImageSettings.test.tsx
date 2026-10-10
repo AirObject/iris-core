@@ -5,6 +5,7 @@ import SettingsPage, { type Settings } from "./Settings";
 import StatusPage from "./Status";
 import { lifecycleFixture } from "./lifecycle-fixtures";
 import { personaSettingsFixture } from "./persona-fixtures";
+import { imageUsageFixture } from "./media-fixtures";
 import { setCSRF } from "./api";
 import type { Status } from "./types";
 
@@ -243,6 +244,17 @@ const status: Status = {
   ],
   scheduler: { running: true, max_concurrent: 2 },
   usage: {
+    by_purpose: {
+      image_understanding: {
+        today: imageUsageFixture,
+        week: {
+          ...imageUsageFixture,
+          calls: 9,
+          tokens: 900,
+          duration_ms: 5000,
+        },
+      },
+    },
     today: {
       calls: 2,
       tokens: 200,
@@ -264,14 +276,27 @@ const status: Status = {
   memory_gap_count: 0,
   missing_vectors: 0,
 };
-test("运行状态显示独立图片健康与调用，明确用量只计入总量", async () => {
+test("运行状态显示图片健康及今日、本周用量，总量不重复累加", async () => {
   render(<StatusPage data={status} openMemory={vi.fn()} />);
   expect(screen.getByText("图片理解模型")).toBeVisible();
   expect(screen.getByText("暂时不可用")).toBeVisible();
   expect(screen.getByText(/整批图片理解预算 120 秒/)).toBeVisible();
+  const usage = within(screen.getByRole("table", { name: "图片理解用量" }));
+  expect(usage.getByRole("row", { name: "调用次数 5 9" })).toBeVisible();
   expect(
-    screen.getByText(/图片用量已计入今日模型总量，暂不单列图片 token 数/),
+    usage.getByRole("row", { name: "token（输入＋输出） 120 900" }),
   ).toBeVisible();
+  expect(
+    usage.getByRole("row", { name: "累计耗时 2.5 秒 5.0 秒" }),
+  ).toBeVisible();
+  expect(usage.getByRole("row", { name: "失败调用 3 3" })).toBeVisible();
+  expect(usage.getByRole("row", { name: "其中被拒绝 1 1" })).toBeVisible();
+  expect(usage.getByRole("row", { name: "超时调用 2 2" })).toBeVisible();
+  expect(
+    usage.getByRole("row", { name: "未返回 token 用量的调用 1 1" }),
+  ).toBeVisible();
+  expect(screen.getByText("200", { selector: ".metric strong" })).toBeVisible();
+  expect(screen.queryByText(/暂不单列图片 token 数/)).not.toBeInTheDocument();
   expect(screen.getByText(/最近调用：vision-example.*未成功/)).toBeVisible();
   expect(
     screen.getByRole("link", { name: "管理图片理解设置" }),
@@ -287,5 +312,45 @@ test("未启用图片理解时运行页不误报用途故障", async () => {
   );
   expect(await screen.findByText(/图片理解未启用/)).toBeVisible();
   expect(screen.queryByText("配置错误")).not.toBeInTheDocument();
-  expect(screen.queryByText("图片理解调用与用量")).not.toBeInTheDocument();
+  expect(screen.getByRole("table", { name: "图片理解用量" })).toBeVisible();
+});
+
+test("图片没有调用时显示零计数，缺少分用途投影时不伪造零", () => {
+  const zero = {
+    ...imageUsageFixture,
+    calls: 0,
+    tokens: 0,
+    failures: 0,
+    refusals: 0,
+    timeouts: 0,
+    calls_without_usage: 0,
+    duration_ms: 0,
+    failure_rate: null,
+    p50_ms: null,
+    p95_ms: null,
+    max_ms: null,
+  };
+  const { rerender } = render(
+    <StatusPage
+      data={{
+        ...status,
+        usage: {
+          ...status.usage,
+          by_purpose: { image_understanding: { today: zero, week: zero } },
+        },
+      }}
+      openMemory={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("row", { name: "调用次数 0 0" })).toBeVisible();
+  rerender(
+    <StatusPage
+      data={{ ...status, usage: { today: status.usage.today } }}
+      openMemory={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("暂时无法读取图片用量。")).toBeVisible();
+  expect(
+    screen.queryByRole("table", { name: "图片理解用量" }),
+  ).not.toBeInTheDocument();
 });

@@ -1,3 +1,4 @@
+import { MessageMedia } from "./Media";
 import { useState } from "react";
 import { entryVisibilityLabel } from "./Visibility";
 import { api, errorText, json, useData } from "./api";
@@ -669,6 +670,7 @@ function BatchDetail({
                           ) : (
                             <p className="message-body">{message.content}</p>
                           )}
+                          <MessageMedia media={message.media} />
                           {message.quote_content && (
                             <blockquote>
                               {message.quote_author_name || "引用"}：

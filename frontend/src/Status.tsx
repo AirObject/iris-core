@@ -1,3 +1,4 @@
+import { ImageUsage } from "./ImageUsage";
 import {
   Badge,
   Empty,
@@ -204,10 +205,12 @@ export default function Status({
             settings.data?.models?.image_understanding?.enabled === false && (
               <p>图片理解未启用，没有宿主说明的图片以“未理解”占位继续学习。</p>
             )}
-          {(data.model_health.image_understanding || imageCall) && (
+          {(data.model_health.image_understanding ||
+            imageCall ||
+            data.usage.by_purpose?.image_understanding) && (
             <div className="model-row">
               <h3>图片理解调用与用量</h3>
-              <p>图片用量已计入今日模型总量，暂不单列图片 token 数。</p>
+              <ImageUsage value={data.usage.by_purpose?.image_understanding} />
               {imageCall ? (
                 <>
                   <p>

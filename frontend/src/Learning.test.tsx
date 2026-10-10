@@ -1,6 +1,7 @@
 import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { mediaFixture } from "./media-fixtures";
 import LearningPage from "./Learning";
 import { setCSRF } from "./api";
 
@@ -125,6 +126,7 @@ beforeEach(() => {
                 content: "历史正文",
                 learning_state: "learned",
               },
+              { id: 99, missing: true },
             ],
             target: [
               {
@@ -132,6 +134,7 @@ beforeEach(() => {
                 kind: "self_output",
                 sender_name: "Iris",
                 content: "目标正文",
+                media: [mediaFixture],
                 learning_state: state === "waiting" ? "batched" : "abandoned",
               },
             ],
@@ -338,4 +341,16 @@ test("gap list sends entry/date filters and reads do not post", async () => {
   expect(
     requests.every((r) => !r.init?.method || r.init.method === "GET"),
   ).toBe(true);
+});
+
+test("批次详情显示媒体缩略图与理解状态，已清理占位保持原样", async () => {
+  render(<LearningPage openMemory={openMemory} />);
+  await openBatch();
+  expect(screen.getByRole("link", { name: "查看图片 1 原图" })).toHaveAttribute(
+    "href",
+    mediaFixture.file_url,
+  );
+  expect(screen.getByText("等待理解／理解中")).toBeVisible();
+  expect(screen.getByText("[图片，未理解]")).toBeVisible();
+  expect(screen.getByText("消息 #99 已不可用")).toBeVisible();
 });

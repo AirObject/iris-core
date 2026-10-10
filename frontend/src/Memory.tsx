@@ -1,3 +1,4 @@
+import { MessageMedia } from "./Media";
 import { MemorySuggestions } from "./MemorySuggestions";
 import { memoryVisibilityLabel } from "./Visibility";
 import { useEffect, useState, type FormEvent } from "react";
@@ -715,6 +716,7 @@ export function SourceView({
             {time(s.message.occurred_at)}
           </p>
           <blockquote>{s.message.content}</blockquote>
+          <MessageMedia media={s.message.media} />
           <details className="source-context">
             <summary>查看前后文</summary>
             {s.context?.map((m) => (
@@ -726,6 +728,7 @@ export function SourceView({
                   {m.sender_name} · {time(m.occurred_at)}
                 </small>
                 <p>{m.content}</p>
+                <MessageMedia media={m.media} />
               </div>
             ))}
           </details>
