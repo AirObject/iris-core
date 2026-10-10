@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
+import secrets
+from weakref import WeakKeyDictionary
 from collections import OrderedDict
 from threading import RLock
 from contextlib import nullcontext
@@ -79,8 +83,8 @@ def lifecycle_settings(conn):
 
 def operation(conn, action, object_type, object_id, details=None, *, actor="admin", stamp=None):
     """Record only caller-selected IDs, counts and settings; never prose or requests."""
-    conn.execute("""INSERT INTO admin_operations(actor,action,object_type,object_id,details_json,created_at)
-        VALUES(?,?,?,?,?,?)""", (actor, action, object_type, str(object_id), dumps(details or {}), stamp or now()))
+    return conn.execute("""INSERT INTO admin_operations(actor,action,object_type,object_id,details_json,created_at)
+        VALUES(?,?,?,?,?,?)""", (actor, action, object_type, str(object_id), dumps(details or {}), stamp or now())).lastrowid
 
 
 def adjust_retention(store: Store, memory_id: int, delta: int = 0, *, value=None, floor=None,
@@ -194,7 +198,7 @@ def update_role(store, name, background, timezone_name, *, _conn=None):
 
 
 def manage_memory(store, memory_id, expected_revision, *, action=None, pinned=None,
-                  importance=None, retention=None):
+                  importance=None, retention=None, _conn=None, _record=True):
     """Pin/forget/restore/scores; only importance is a judgment revision."""
     if action not in (None, "forget", "restore"):
         raise ValueError("invalid memory action")
@@ -203,7 +207,7 @@ def manage_memory(store, memory_id, expected_revision, *, action=None, pinned=No
             raise ValueError("score must be an integer in 0..100")
     if pinned is not None and type(pinned) is not bool:
         raise ValueError("pinned must be a boolean")
-    with store.write() as conn:
+    with (store.write() if _conn is None else nullcontext(_conn)) as conn:
         row = conn.execute("SELECT * FROM memories WHERE id=? AND lifecycle!='deleted'", (memory_id,)).fetchone()
         if row is None or row["revision"] != expected_revision:
             return False
@@ -225,8 +229,9 @@ def manage_memory(store, memory_id, expected_revision, *, action=None, pinned=No
         if retention is not None:
             adjust_retention(store, memory_id, value=retention, settings=config, _conn=conn)
         latest = conn.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone()
-        operation(conn, "memory_" + (action or "adjust"), "memory", memory_id,
-                  {"before": before, "after": {k: latest[k] for k in before}, "revision": latest["revision"]})
+        if _record:
+            operation(conn, "memory_" + (action or "adjust"), "memory", memory_id,
+                      {"before": before, "after": {k: latest[k] for k in before}, "revision": latest["revision"]})
         return True
 
 
@@ -251,10 +256,10 @@ def missing_batch_targets(conn, batch_id):
         LEFT JOIN messages m ON m.id=j.value WHERE b.id=? AND m.id IS NULL ORDER BY j.key""", (batch_id,))]
 
 
-def purge_memory(store, memory_id, expected_revision, *, confirm=False):
+def purge_memory(store, memory_id, expected_revision, *, confirm=False, _conn=None, _record=True):
     if confirm is not True:
         raise ValueError("explicit confirmation required")
-    with store.write() as conn:
+    with (store.write() if _conn is None else nullcontext(_conn)) as conn:
         row = conn.execute("SELECT * FROM memories WHERE id=? AND purged_at IS NULL", (memory_id,)).fetchone()
         if row is None or row["revision"] != expected_revision:
             return None
@@ -283,7 +288,8 @@ def purge_memory(store, memory_id, expected_revision, *, confirm=False):
                 conn.execute("DELETE FROM messages WHERE id=?", (mid,))
                 deleted.append(mid)
         result = {"memory_id": memory_id, "deleted_message_ids": deleted, "retained_messages": retained}
-        operation(conn, "memory_purge", "memory", memory_id, result)
+        if _record:
+            operation(conn, "memory_purge", "memory", memory_id, result)
         return result
 
 
@@ -462,3 +468,167 @@ def set_entry_visibility(store, entry_id, visibility, *, visible_in=(), actor='a
         conn.execute('UPDATE entries SET visibility=?,visible_in_json=? WHERE id=?', (visibility,dumps(allowed),entry_id))
         operation(conn, 'entry_visibility', 'entry', entry_id, {'before':before,'after':result}, actor=actor)
         return result
+
+
+# Previews are short-lived capabilities in this Store's process, not settings or
+# persisted copies of private prose. A restart/eviction requires a new preview.
+# Durable progress belongs in the single admin_operations row, committed with
+# each chunk. Never hold the cache lock while taking the Store's write lock.
+BULK_PREVIEW_SECONDS = 15 * 60
+BULK_BATCH_SIZE = 50
+_BULK_PREVIEWS = WeakKeyDictionary()
+_BULK_LOCK = RLock()
+
+
+class BulkMemoryConflict(Exception):
+    def __init__(self, message="记忆范围或内容已变化，请重新预览。", result=None):
+        super().__init__(message)
+        self.result = deepcopy(result)
+
+
+def bulk_memory_rows(conn, scope, include_pinned, memory_ids=None):
+    """Indexed scope membership; never use ownership or indirect entry ancestry.
+
+    Snapshot relation IDs as well as revisions: about/evidence, pinning and
+    strength can change without a judgment revision. Embedding/use counters do
+    not affect the operation and deliberately do not invalidate the preview.
+    """
+    if "subject_id" in scope:
+        condition = """(m.speaker_subject_id=? OR EXISTS (
+            SELECT 1 FROM memory_subjects ms WHERE ms.memory_id=m.id AND ms.subject_id=?))"""
+        args = [scope["subject_id"], scope["subject_id"]]
+    else:
+        condition = """EXISTS (SELECT 1 FROM sources s JOIN messages x ON x.id=s.message_id
+            WHERE s.memory_id=m.id AND x.entry_id=?)"""
+        args = [scope["entry_id"]]
+    if memory_ids is not None:
+        condition += " AND m.id IN (SELECT value FROM json_each(?))"
+        args.append(dumps(memory_ids))
+    if not include_pinned:
+        condition += " AND m.pinned=0"
+    return {r["id"]: dict(r) for r in conn.execute(f"""SELECT m.id,m.revision,m.lifecycle,m.pinned,
+        m.retention,m.speaker_subject_id,
+        (SELECT json_group_array(subject_id) FROM (SELECT subject_id FROM memory_subjects
+            WHERE memory_id=m.id ORDER BY subject_id)) AS about,
+        (SELECT json_group_array(json_array(id,kind,message_id,source_memory_id,source_revision))
+            FROM (SELECT id,kind,message_id,source_memory_id,source_revision FROM sources
+            WHERE memory_id=m.id ORDER BY id)) AS evidence
+        FROM memories m WHERE m.purged_at IS NULL AND {condition} ORDER BY m.id""", args)}
+
+
+def remember_bulk_preview(store, *, scope, action, include_pinned, rows, settings):
+    token = secrets.token_urlsafe(32)
+    current = datetime.now(timezone.utc)
+    expires = current + timedelta(seconds=BULK_PREVIEW_SECONDS)
+    result = {"scope": scope, "action": action, "include_pinned": include_pinned,
+              "count": 0, "memory_ids": [], "status": "preview",
+              "skipped_count": sum(r["lifecycle"] == "deleted" and action != "purge" for r in rows.values()),
+              "deleted_message_ids": [], "retained_messages": []}
+    with _BULK_LOCK:
+        cache = _BULK_PREVIEWS.setdefault(store, OrderedDict())
+        for key in list(cache):
+            if cache[key]["expires"] <= current and cache[key]["status"] != "running":
+                del cache[key]
+        # Bound idle previews; active operations retain their local snapshot.
+        while len(cache) >= 32:
+            key = next((k for k, v in cache.items() if v["status"] != "running"), None)
+            if key is None:
+                raise ValueError("批量操作繁忙，请稍后再预览")
+            del cache[key]
+        cache[token] = {"scope": scope, "action": action, "include_pinned": include_pinned,
+                        "rows": rows, "settings": settings, "expires": expires,
+                        "status": "preview", "result": result}
+    return token, expires.isoformat()
+
+
+def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
+    """Preflight the whole selection; recheck each chunk under its write lock.
+
+    A conflict before the first commit changes no memories. Conflicts after a
+    commit return the exact completed IDs, never an all-or-nothing fiction.
+    Replays of completed tokens return the same result without another write.
+    """
+    if action not in ("forget", "delete", "purge"):
+        raise ValueError("无效的批量操作")
+    if action == "purge" and confirm is not True:
+        raise ValueError("彻底清除需要明确的二次确认")
+    with _BULK_LOCK:
+        snapshot = _BULK_PREVIEWS.get(store, {}).get(snapshot_token)
+        if snapshot is None or snapshot["expires"] <= datetime.now(timezone.utc):
+            raise BulkMemoryConflict("预览已过期或服务已重启，请查看操作记录并重新预览。",
+                                     snapshot["result"] if snapshot else None)
+        if snapshot["action"] != action:
+            raise ValueError("操作与预览不一致，请重新预览")
+        if snapshot["status"] == "completed":
+            return deepcopy(snapshot["result"])
+        if snapshot["status"] != "preview":
+            raise BulkMemoryConflict("此预览正在执行或已失效，请查看操作记录后重新预览。", snapshot["result"])
+        snapshot["status"] = "running"
+        snapshot["result"]["status"] = "running"
+        result = deepcopy(snapshot["result"])
+    expected = snapshot["rows"].copy()
+    ids = [mid for mid, row in expected.items() if action == "purge" or row["lifecycle"] != "deleted"]
+    scope, include_pinned = snapshot["scope"], snapshot["include_pinned"]
+    audit_id = None
+    try:
+        # Even an empty/no-op selection is checked and recorded exactly once.
+        for start in range(0, max(1, len(ids)), BULK_BATCH_SIZE):
+            chunk = ids[start:start + BULK_BATCH_SIZE]
+            last = start + BULK_BATCH_SIZE >= len(ids)
+            pending = deepcopy(result)
+            next_expected = expected.copy()
+            with store.write() as conn:
+                if lifecycle_settings(conn) != snapshot["settings"]:
+                    raise BulkMemoryConflict()
+                current = bulk_memory_rows(conn, scope, include_pinned, None if start == 0 else chunk)
+                wanted = expected if start == 0 else {mid: expected[mid] for mid in chunk}
+                if current != wanted:
+                    raise BulkMemoryConflict()
+                for mid in chunk:
+                    revision = expected[mid]["revision"]
+                    if action == "forget":
+                        ok = manage_memory(store, mid, revision, action="forget", _conn=conn, _record=False)
+                    elif action == "delete":
+                        ok = delete_memory(store, mid, revision, _conn=conn)
+                    else:
+                        ok = purge_memory(store, mid, revision, confirm=True, _conn=conn, _record=False)
+                        if ok:
+                            pending["deleted_message_ids"] = sorted(set(pending["deleted_message_ids"] + ok["deleted_message_ids"]))
+                            retained = {r["message_id"]: r for r in pending["retained_messages"] + ok["retained_messages"]}
+                            pending["retained_messages"] = [retained[k] for k in sorted(retained) if k not in pending["deleted_message_ids"]]
+                    if not ok:
+                        raise BulkMemoryConflict()
+                for mid in chunk:
+                    next_expected.pop(mid)
+                next_expected.update(bulk_memory_rows(conn, scope, include_pinned, chunk))
+                # Catch new matches and changes to already processed/skipped
+                # objects. The current chunk rolls back on a late conflict.
+                if last and bulk_memory_rows(conn, scope, include_pinned) != next_expected:
+                    raise BulkMemoryConflict()
+                pending["memory_ids"] += chunk
+                pending["count"] = len(pending["memory_ids"])
+                pending["status"] = "completed" if last else "running"
+                if audit_id is None:
+                    next_audit_id = operation(conn, "memory_bulk_" + action, "memory_bulk", secrets.token_hex(8), pending)
+                else:
+                    next_audit_id = audit_id
+                    conn.execute("UPDATE admin_operations SET details_json=? WHERE id=?", (dumps(pending), audit_id))
+            audit_id, expected, result = next_audit_id, next_expected, pending
+            with _BULK_LOCK:
+                snapshot["result"] = deepcopy(result)
+        with _BULK_LOCK:
+            snapshot["status"] = "completed"
+            snapshot["rows"] = {}  # Completed retries only need the result.
+        return result
+    except Exception as exc:
+        result["status"] = "conflict" if isinstance(exc, BulkMemoryConflict) else "interrupted"
+        with _BULK_LOCK:
+            snapshot["status"] = result["status"]
+            snapshot["result"] = deepcopy(result)
+            snapshot["rows"] = {}
+        if audit_id is not None:
+            with store.write() as conn:
+                conn.execute("UPDATE admin_operations SET details_json=? WHERE id=?", (dumps(result), audit_id))
+        if isinstance(exc, BulkMemoryConflict):
+            raise BulkMemoryConflict(result=result) from exc
+        raise

@@ -10,6 +10,7 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public status: number,
+    public result?: unknown,
   ) {
     super(message);
   }
@@ -38,6 +39,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
           ? `请检查输入：${error.fields.map((f: { field: string; message: string }) => `${f.field.split(".").pop()}：${f.message}`).join("；")}`
           : "请求失败，请重试"),
       response.status,
+      body.result,
     );
   }
   return response;

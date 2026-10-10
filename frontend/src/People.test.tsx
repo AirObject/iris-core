@@ -300,3 +300,14 @@ test("更换合并方向须再次勾选，取消后不发送写请求", async ()
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(requests.every((r) => r.method === "GET")).toBe(true);
 });
+
+test("人物详情提供按人物的批量操作入口", async () => {
+  render(<People initialQuery="id=A" onChange={changed} />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "批量遗忘／删除" }),
+  );
+  expect(
+    screen.getByRole("dialog", { name: "批量遗忘／删除" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/说话人或涉及人物/)).toBeInTheDocument();
+});
