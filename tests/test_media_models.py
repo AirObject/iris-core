@@ -47,9 +47,7 @@ def test_multimodal_payload_usage_and_no_image_content_in_logs(store):
         assert 'data:image' not in json.dumps(row) and '窗边有猫' not in json.dumps(row)
 
 
-@pytest.mark.parametrize('bad', [httpx.Response(503), httpx.Response(200, json=response('')),
-                                httpx.Response(200, json={'choices': []}),
-                                httpx.Response(200, json=response('截断', finish_reason='length'))])
+@pytest.mark.parametrize('bad', [httpx.Response(503)])
 def test_image_failure_retries_twice_at_two_and_eight_seconds(store, bad):
     sequence = [bad, bad, httpx.Response(200, json=response('有效描述'))]
     delays = []
@@ -62,6 +60,27 @@ def test_image_failure_retries_twice_at_two_and_eight_seconds(store, bad):
     assert delays == [2, 8]
     with store.read() as conn:
         assert [r[0] for r in conn.execute('SELECT result_category FROM model_calls')] == ['retryable', 'retryable', 'success']
+
+
+@pytest.mark.parametrize('bad', [httpx.Response(200, json=response('')),
+                                httpx.Response(200, json={'choices': []}),
+                                httpx.Response(200, json=response('截断', finish_reason='length'))])
+def test_image_invalid_output_is_one_failed_item(store, bad):
+    seen, delays = [], []
+    def handler(request):
+        seen.append(request)
+        return bad
+    health = ModelHealth(store, CONFIGS)
+    gateway = Gateway(CONFIGS, store, health=health,
+        client=httpx.Client(transport=httpx.MockTransport(handler)), sleeper=delays.append)
+    try:
+        with pytest.raises(ModelError) as caught:
+            gateway.image_understanding(PNG, 'image/png')
+        assert caught.value.category == 'invalid_output' and not caught.value.paused
+        assert len(seen) == 1 and not delays
+        assert health.snapshot()[KIND]['state'] == 'normal'
+    finally:
+        gateway.close()
 
 
 @pytest.mark.parametrize('code', ['InputImageSensitiveContentDetected', 'InputImageRiskDetection',

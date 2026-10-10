@@ -108,6 +108,8 @@ def _media_inventory(directory):
     def visit(parent):
         with os.scandir(parent) as entries:
             for entry in entries:
+                if entry.name.startswith('.upload-'):
+                    continue  # In-flight uploads are not registered snapshot media.
                 if entry.is_symlink():
                     raise BackupError('media_changed', '媒体目录不能包含符号链接或特殊文件。')
                 if entry.is_dir(follow_symlinks=False):
@@ -193,11 +195,11 @@ def _metadata(manifest, size, *, purpose='manual'):
 
 
 def export_archive(store, output, *, include_secrets=False, actor='local_cli', runtime=None,
-                   purpose='manual', _configuration_locked=False, _audit_store=None):
+                   purpose='manual', _configuration_locked=False, _audit_store=None, _preserve_all_secrets=False):
     """Publish a complete 0600 ZIP without replacing an existing output file.
 
-    A pinned WAL read transaction defines the database instant. Media must stay
-    unchanged across that instant and copying; a changed inventory aborts export.
+    A pinned WAL read transaction defines the database instant. Registered media
+    must remain intact; concurrent uploads and new unregistered files are ignored.
     The configuration lease spans only snapshot pinning and optional key capture.
     """
     output = Path(output).absolute()
@@ -212,13 +214,14 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
         output.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='.iris-export-', dir=output.parent) as work:
             stage = Path(work)
-            inventory = _media_inventory(directory / 'media')
             with store.read() as source:
                 lock = contextlib.nullcontext() if _configuration_locked else runtime.locked(timeout=CONFIG_LOCK_WAIT_SECONDS)
                 with lock:
                     # BEGIN alone does not pin a SQLite snapshot; this SELECT does.
                     versions = _versions(source)
                     _check_versions(versions)
+                    has_media = source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='media_files'").fetchone()
+                    registered = {'media/' + row[0] for row in source.execute('SELECT sha256 FROM media_files')} if has_media else set()
                     stamp = now()
                     if include_secrets:
                         keys = runtime._secrets()
@@ -226,15 +229,30 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
                         if not references <= keys.keys():
                             raise BackupError('missing_model_secrets', '模型密钥引用缺失，无法导出含密钥的完整备份。')
                         with _private_file(stage / 'secrets.json') as file:
-                            file.write(dumps({'format_version': 1, 'keys': {key: keys[key] for key in sorted(references)}}).encode())
+                            file.write(dumps({'format_version': 1, 'keys': {key: keys[key] for key in sorted(keys if _preserve_all_secrets else references)}}).encode())
+                inventory = _media_inventory(directory / 'media')
+                if inventory is not None:
+                    # Retain legacy non-addressed attachments when stable. New
+                    # content-addressed files outside the snapshot are not needed.
+                    inventory = {name: identity for name, identity in inventory.items()
+                                 if name in registered or not re.fullmatch(r'media/[0-9a-f]{64}', name)}
                 _copy_database(source, stage / 'iris.db')
             if not include_secrets:
                 _without_secret_references(stage / 'iris.db')
             _check_database(stage / 'iris.db', versions)
-            for name, identity in (inventory or {}).items():
-                _copy_media(directory / name, stage / name, identity)
-            if inventory != _media_inventory(directory / 'media'):
-                raise BackupError('media_changed', '导出期间媒体发生变化，请重试。')
+            for name, identity in list((inventory or {}).items()):
+                try:
+                    _copy_media(directory / name, stage / name, identity)
+                except (OSError, BackupError):
+                    if name in registered:
+                        raise
+                    (stage / name).unlink(missing_ok=True)
+                    del inventory[name]
+            for name in registered:
+                if inventory is None or name not in inventory:
+                    raise BackupError('media_integrity', '数据库快照登记的媒体文件缺失，请检查文件后重试。')
+                if _identity((directory / name).stat(follow_symlinks=False)) != inventory[name]:
+                    raise BackupError('media_changed', '导出期间媒体发生变化，请重试。')
             manifest = {'format': 'iris-backup', 'format_version': FORMAT_VERSION, 'backup_id': uuid.uuid4().hex,
                         'created_at': stamp, 'migration_version': versions[-1], 'migrations': versions,
                         'includes_model_secrets': include_secrets, 'media_included': inventory is not None, 'files': {}}
@@ -428,8 +446,8 @@ class _OfflineDatabase:
 def import_archive(archive, database, *, confirm_overwrite=False, backup_include_secrets=False):
     """Offline restore; validation/migration failures never publish staged data.
 
-    Pre-import archives live beside the data directory, survive replacement, and
-    exclude model secrets unless the operator explicitly opts in.
+    Pre-import archives live beside the data directory and survive replacement.
+    They preserve all existing model secrets by default in the private 0600 ZIP.
     """
     database = Path(database).resolve()
     directory = database.parent
@@ -458,15 +476,19 @@ def import_archive(archive, database, *, confirm_overwrite=False, backup_include
                 raise BackupError('confirmation_required', '覆盖已有数据须显式传入 --confirm-overwrite；覆盖前会自动备份。')
             previous = None
             previous_id = None
+            previous_has_secrets = False
             staged_store = Store(staged_database)
             try:
                 if existing:
                     if not database.is_file():
                         raise BackupError('incomplete_destination', '现有目录没有可备份的数据库，请改用全新的数据目录。')
                     previous = directory.with_name(directory.name + '.pre-import-' + uuid.uuid4().hex + '.zip')
-                    info = export_archive(_OfflineDatabase(database), previous, include_secrets=backup_include_secrets,
-                                          purpose='pre_import', _configuration_locked=True, _audit_store=staged_store)
+                    info = export_archive(_OfflineDatabase(database), previous,
+                                          include_secrets=backup_include_secrets or (directory / 'secrets.json').is_file(),
+                                          purpose='pre_import', _configuration_locked=True, _audit_store=staged_store,
+                                          _preserve_all_secrets=True)
                     previous_id = info['backup_id']
+                    previous_has_secrets = info['includes_model_secrets']
                 result = {'backup_id': manifest['backup_id'], 'migration_version': migration_versions()[-1],
                           'includes_model_secrets': manifest['includes_model_secrets'], 'previous_backup_id': previous_id}
                 with staged_store.write() as conn:
@@ -480,7 +502,8 @@ def import_archive(archive, database, *, confirm_overwrite=False, backup_include
             _exchange_directories(stage, directory)
             committed = True
             _sync_directory(directory.parent)
-            return {**result, 'previous_backup': str(previous) if previous else None}
+            return {**result, 'previous_backup': str(previous) if previous else None,
+                    'previous_secrets_archive': str(previous) if previous_has_secrets else None}
     except BackupError:
         raise
     except LeaseBusyError:

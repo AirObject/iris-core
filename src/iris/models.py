@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import math
 import os
@@ -167,7 +168,7 @@ def _http_error_category(status: int, data: Any) -> str:
         return "account"
     if status in (408, 429) or status >= 500:
         return "retryable"
-    return "configuration"
+    return "item_error" if status == 400 else "configuration"
 
 
 def _reasoning_diagnostics(message: dict[str, Any]) -> tuple[bool, int | None]:
@@ -420,6 +421,8 @@ class Gateway:
                     except ValueError:
                         error_data = {}
                     category = _http_error_category(status_code, error_data)
+                    if probe and category == 'item_error':
+                        category = 'configuration'
                     error = error_data.get('error', {}) if isinstance(error_data, dict) else {}
                     code = str(error.get('code') or error.get('type') or '') if isinstance(error, dict) else ''
                     rate_limited = category == 'retryable' and (status_code == 429 or any(
@@ -469,8 +472,7 @@ class Gateway:
                 category = "retryable"
                 summary = "total timeout" if isinstance(exc, FutureTimeout) else type(exc).__name__
             except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
-                category = ("retryable" if kind == "image_understanding" else
-                            "invalid_output" if kind in JUDGMENT_KINDS else "configuration")
+                category = "configuration" if probe else "invalid_output"
                 summary = f"invalid provider response: {type(exc).__name__}"
             duration = round((self.monotonic() - started) * 1000)
             # Even an HTTP client that returns just after the deadline cannot commit a late result.
@@ -479,8 +481,13 @@ class Gateway:
             self._record(purpose, config.model, duration, category, summary, usage, flags, status_code,
                          finish_reason=finish_reason, batch_id=batch_id, kind=kind, timed_out=timed_out,
                          reasoning_effort=reasoning_effort, reasoning_present=reasoning_present, reasoning_chars=reasoning_chars)
+            item_key = None
+            if category in ('item_error', 'invalid_output'):
+                identity = ('batch:' + str(batch_id) if kind == 'chat' and batch_id is not None
+                            else json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
+                item_key = hashlib.sha256(identity.encode('utf-8')).hexdigest()
             paused = self.health.observe(kind, token, category, summary, probe=probe,
-                rate_limited=rate_limited, retry_after=retry_after) if self.health else False
+                rate_limited=rate_limited, retry_after=retry_after, item_key=item_key) if self.health else False
             if category == "content_rejection":
                 paused = False  # Explicit safety refusal is a terminal batch result even during another outage.
             if category == "success":
