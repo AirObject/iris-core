@@ -19,6 +19,8 @@ from test_persona import FakeGateway, add_self
 @pytest.fixture
 def client(store):
     setup_role(store, 'Iris', '我来自云城。')
+    # Keep the automatic-mode behavior coverage; fresh defaults have a separate suite.
+    store.set_setting('persona_publish_mode', 'small_medium_auto')
     with TestClient(create_app(store=store, configs={}), base_url='http://127.0.0.1',
                     client=('127.0.0.1', 1234)) as value:
         value.app.state.scheduler.stop()
@@ -395,10 +397,12 @@ def test_persona_shutdown_waits_for_accepted_task_before_closing_store(store):
         release.set()
         closer.join(3)
     assert closed.is_set()
-    assert current_persona(store)['id'] == 2
+    assert current_persona(store)['id'] == 1
+    with store.read() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM persona_versions WHERE status='pending'").fetchone()[0] == 1
 
 
-def test_persona_settings_partial_updates_are_audited_without_republishing(client, store):
+def test_persona_settings_partial_updates_preserve_selected_mode_without_republishing(client, store):
     from iris.persona import DEFAULT_GOAL, DEFAULT_RULES
     defaults = {'goal': DEFAULT_GOAL, 'rules': DEFAULT_RULES, 'publish_mode': 'small_medium_auto'}
     assert client.get('/admin/api/settings').json()['persona'] == defaults

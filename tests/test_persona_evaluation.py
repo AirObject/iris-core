@@ -390,3 +390,62 @@ def test_call_metrics_report_missing_reasoning_usage_separately():
     metric=_call_metrics(calls)
     assert metric['reasoning_usage_missing_calls']==1
     assert metric['timings_by_purpose']['persona_generate']=={'count':2,'p50_ms':20.0,'p95_ms':29.0}
+
+
+@pytest.mark.parametrize('frozen', [False, True])
+@pytest.mark.parametrize('mode,status', [(None,'current'), ('all_manual','pending'), ('all_auto','current')])
+def test_evaluation_pins_publication_independently_of_product_default(tmp_path, frozen, mode, status):
+    from iris.persona_evaluation import load_corpus
+    if frozen:
+        document = copy.deepcopy(FROZEN_FORMAT)
+        case = document['timelines'][0]
+        case['days'] = case['days'][:1]
+    else:
+        document = copy.deepcopy(TIMELINE)
+        case = document
+        case['events'] = case['events'][:2]
+    if mode is not None:
+        case['persona_publish_mode'] = mode
+    corpus = tmp_path / 'publication.json'
+    corpus.write_text(dumps(document)+'\n', encoding='utf-8')
+    normalized = load_corpus(corpus)
+    expected = mode or 'small_medium_auto'
+    assert normalized[0]['persona_publish_mode'] == expected
+    materials, report = run_persona_eval({},tmp_path,corpus=corpus,out=tmp_path/'out',judge_mode='external',
+        gateway_factory=FakeGateway,runner_identity='publication-fixture')
+    candidate = report['rows'][0]['observations'][-1]['candidate']
+    assert candidate['status'] == status and candidate['material']['settings']['publish_mode'] == expected
+    manifest = json.loads(materials.read_text())
+    exported = json.loads((materials.parent / manifest['cases'][0]['file']).read_text())
+    assert exported['input']['settings']['publish_mode'] == expected
+
+
+@pytest.mark.parametrize('mode', ['automatic', None, True, 1])
+def test_invalid_evaluation_publication_mode_is_rejected_before_calls(tmp_path, mode):
+    from iris.persona_evaluation import load_corpus
+    case = copy.deepcopy(TIMELINE)
+    case['persona_publish_mode'] = mode
+    path = tmp_path / 'invalid-mode.jsonl'
+    path.write_text(dumps(case)+'\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='publication mode'):
+        load_corpus(path)
+
+
+def test_frozen_corpus_mode_can_be_set_globally_and_overridden_per_timeline(tmp_path):
+    from iris.persona_evaluation import load_corpus
+    document = copy.deepcopy(FROZEN_FORMAT)
+    document['persona_publish_mode'] = 'all_manual'
+    path = tmp_path / 'mode.json'
+    path.write_text(dumps(document), encoding='utf-8')
+    assert load_corpus(path)[0]['persona_publish_mode'] == 'all_manual'
+    document['timelines'][0]['persona_publish_mode'] = 'small_medium_auto'
+    path.write_text(dumps(document), encoding='utf-8')
+    assert load_corpus(path)[0]['persona_publish_mode'] == 'small_medium_auto'
+
+
+def test_frozen_public_persona_contract_keeps_small_medium_auto():
+    from iris.persona_evaluation import load_corpus
+    public = Path(__file__).parents[1] / 'evals/persona_v1.json'
+    cases = load_corpus(public)
+    assert len(cases) == 5
+    assert all(case['persona_publish_mode'] == 'small_medium_auto' for case in cases)

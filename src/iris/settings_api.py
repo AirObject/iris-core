@@ -15,7 +15,7 @@ from .db import dumps
 from .memory_ops import update_role, lifecycle_settings, operation
 from .models import JUDGMENT_KINDS, MODEL_KINDS, Gateway, ModelConfig, ModelError
 from .recall_judge import settings as judge_settings
-from .persona import DEFAULT_GOAL, DEFAULT_RULES, persona_settings
+from .persona import DEFAULT_GOAL, DEFAULT_RULES, DEFAULT_PUBLISH_MODE, persona_settings
 from .state import state_settings
 from .consolidation import consolidation_settings
 from .goals import goal_settings
@@ -104,7 +104,7 @@ class GoalDedupJudge(RecallJudge):
 class PersonaSettings(Input):
     goal: str = Field(default=DEFAULT_GOAL, min_length=1, max_length=4000, strict=True)
     rules: str = Field(default=DEFAULT_RULES, min_length=1, max_length=16000, strict=True)
-    publish_mode: Literal['small_medium_auto', 'all_auto', 'all_manual'] = 'small_medium_auto'
+    publish_mode: Literal['small_medium_auto', 'all_auto', 'all_manual'] = DEFAULT_PUBLISH_MODE
 
     @field_validator('goal', 'rules')
     @classmethod
