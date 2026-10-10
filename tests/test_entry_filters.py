@@ -245,6 +245,8 @@ def test_settings_api_projection_audit_and_limit_wait_status(client, store, cloc
     configure(store)
     url = "/admin/api/entries/A/settings"
     before = client.get(url).json()
+    assert before.pop("visibility") == "shared"
+    assert before.pop("visible_in") == []
     assert before["pace"] == "standard" and not before["filters"]["mention_only"]
     payload = {"pace": {"count": 1, "idle_seconds": 2, "max_wait_seconds": 3},
                "filters": {"min_chars": 2, "mention_only": False, "context_messages": 1, "max_batches_per_hour": 1}}
@@ -460,7 +462,8 @@ def test_migration_009_defaults_and_existing_frozen_admission(tmp_path, clock):
     upgraded = Store(path)
     try:
         from iris.admin_data import entry_learning_settings, batch_detail
-        assert entry_learning_settings(upgraded, 'A') == {"pace": "standard", "filters": queue.FILTER_DEFAULTS}
+        assert entry_learning_settings(upgraded, 'A') == {"pace": "standard", "filters": queue.FILTER_DEFAULTS,
+                                                           "visibility": "shared", "visible_in": []}
         assert batch_detail(upgraded, 1)["entry_settings"] is None
         configure(upgraded, min_chars=10)
         assert states(upgraded) == {1: "learned", 2: "pending", 3: "filtered"}

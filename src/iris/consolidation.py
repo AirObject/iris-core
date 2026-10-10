@@ -12,7 +12,7 @@ from importlib.resources import files
 
 from .db import dumps
 from .learning import LearningEngine, PARTICIPANT_NUMBER, _same_claim_sequences
-from .memory_ops import lifecycle_settings, operation
+from .memory_ops import Visibility, lifecycle_settings, operation
 from .model_health import utc_now
 from .models import Gateway, ModelError
 from .search_text import match_query, terms, words
@@ -210,6 +210,9 @@ def snapshot(conn, mid):
               'pinned','event_time','created_at','updated_at','world','merged_into')}
     result.update(type=row['kind'], speaker=row['speaker_subject_id'], stance=row['stance'],
                   pinned=bool(row['pinned']), last_edit=last_edit(conn, mid))
+    scope = Visibility(conn).memory(mid)
+    if scope is not None:
+        result['_visibility'] = sorted(scope)
     result['about'] = [r[0] for r in conn.execute('SELECT subject_id FROM memory_subjects WHERE memory_id=? ORDER BY subject_id',(mid,))]
     result['sources'] = [dict(r) for r in conn.execute("""SELECT DISTINCT m.id,m.dedupe_key AS key,m.entry_id,
         e.kind AS entry_kind,m.sender_subject_id AS sender,m.kind,m.occurred_at AS at,m.content AS text,
@@ -274,6 +277,8 @@ def same_event_time(left, right):
 
 
 def merge_exclusion(a,b):
+    if a.get('_visibility') != b.get('_visibility'):
+        return 'visibility'
     if any(m['lifecycle']=='deleted' or m['merged_into'] for m in (a,b)):
         return 'deleted'
     if protected(a) or protected(b):
@@ -314,7 +319,7 @@ def source_excerpt(source):
 
 
 def material(m):
-    result = {k:v for k,v in m.items() if k not in ('updated_at','annotations','last_edit')}
+    result = {k:v for k,v in m.items() if k not in ('updated_at','annotations','last_edit','_visibility')}
     result['protected'] = protected(m)
     sources = m['sources']
     selected = sources if len(sources)<=4 else [sources[0],*sources[-3:]]
@@ -337,6 +342,8 @@ def dependency_material(conn, target):
         m=snapshot(conn,mid)
         if m is None:
             continue
+        if m.get('_visibility') != target.get('_visibility'):
+            return None
         memories.append(m)
         changed = bool(conn.execute("""SELECT 1 FROM memory_revisions WHERE memory_id=? AND revision_after>?
             AND json_extract(before_json,'$.content') IS NOT json_extract(after_json,'$.content') LIMIT 1""",
@@ -526,6 +533,8 @@ class Consolidation:
             raise UnsafeWrite('weakening_cannot_rewrite')
 
     def _plan_pair(self, get, m, n, settings):
+        if m.get('_visibility') != n.get('_visibility'):
+            return None
         # A proposition and its supporting chain belong to dependency review.
         def ancestors(value):
             found=set()
@@ -542,6 +551,8 @@ class Consolidation:
                 stack.extend(s['id'] for s in base['derived_from'])
             return found
         ma,na=ancestors(m),ancestors(n)
+        if any(get(i).get('_visibility') != m.get('_visibility') for i in ma | na):
+            return None
         if m['id'] in na or n['id'] in ma:
             return None
         related=(bool(set(m['about']) & set(n['about'])) or m['about']==n['about']) and m['world']==n['world']
@@ -858,6 +869,10 @@ class Consolidation:
 
     def apply(self,conn,work,payload,result):
         before=[snapshot(conn,m['id']) for m in payload['memories']]
+        if any(m is None or m['revision'] != old['revision'] for m,old in zip(before,payload['memories'])):
+            raise UnsafeWrite('revision_conflict')
+        if len({dumps(m.get('_visibility')) for m in before}) > 1:
+            raise UnsafeWrite('visibility')
         decision=result['decision']
         details={'action_id':f'co-{work["id"]}','decision':decision,'before_memories':before,
                  'report':result['reason'],'evidence':result['evidence'],

@@ -47,6 +47,11 @@ class NewEntry(Name):
     kind: Literal["group", "private"] = "group"
 
 
+class EntryVisibility(Input):
+    visibility: Literal['shared', 'entry_only', 'entries']
+    visible_in: list[str] = Field(default_factory=list, max_length=1000)
+
+
 class EntrySettings(Input):
     pace: str | dict | None = None
     filters: dict | None = None
@@ -584,6 +589,11 @@ def install_admin(app):
         result = update_entry_settings(app.state.store, entry_id, **payload.model_dump(exclude_unset=True))
         app.state.scheduler.wake()
         return result
+
+    @router.patch('/entries/{entry_id}/visibility')
+    def change_entry_visibility(entry_id: str, payload: EntryVisibility):
+        from .memory_ops import set_entry_visibility
+        return set_entry_visibility(app.state.store, entry_id, **payload.model_dump())
 
     @router.get("/batches")
     def batches(query: Annotated[LearningQuery, Query()]):

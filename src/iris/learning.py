@@ -18,11 +18,12 @@ from .db import Store, dumps, now
 from .goals import write_learning_goal
 from .claim_sequences import normalize_claim as _normalize, same_claim_sequences as _same_claim_sequences
 from .people import canonical_subject
-from .memory_ops import confirm_retention
+from .memory_ops import Visibility, confirm_retention
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .media import material_content, message_media, prepare_media
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
+from .persona import persona_context
 
 
 PROMPT_VERSION = "learning_v7"
@@ -159,7 +160,7 @@ class LearningEngine:
             subjects = conn.execute("SELECT id,name,parent_id FROM subjects WHERE merged_into IS NULL").fetchall()
             aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE folded_into IS NULL ORDER BY subject_id,alias").fetchall()
             identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities").fetchall()
-            persona = conn.execute("SELECT content FROM persona_versions WHERE is_current=1 ORDER BY id DESC LIMIT 1").fetchone()
+            persona = persona_context(conn)['content']
             messages = {r["id"]: _row_dict(r) for r in rows}
             for message_id, media in message_media(conn, ids).items():
                 messages[message_id]["media"] = media
@@ -174,12 +175,12 @@ class LearningEngine:
                         message[field], message[label] = sid, names[sid]
         return {"messages": messages, "subjects": [_row_dict(r) for r in subjects],
                 "aliases": [_row_dict(r) for r in aliases], "identities": [_row_dict(r) for r in identities],
-                "persona": persona[0] if persona else "", "role_name": str(self.store.setting("role_name", "Iris"))}
+                "persona": persona, "role_name": str(self.store.setting("role_name", "Iris"))}
 
     def _related(self, batch: Batch, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         target = [snapshot["messages"][i] for i in batch.target_ids]
         participants = list(dict.fromkeys(m["sender_subject_id"] for m in target))
-        return self.retrieval.learning_context("\n".join(m["content"] for m in target), participants)
+        return self.retrieval.learning_context("\n".join(m["content"] for m in target), participants, entry_id=batch.entry_id)
 
     def _material(self, batch: Batch, snapshot: dict[str, Any], related: list[dict[str, Any]]) -> tuple[str, dict[int, int], dict[str, dict[str, Any]]]:
         messages = snapshot["messages"]
@@ -654,6 +655,7 @@ class LearningEngine:
                     confirmed_once.add(memory_id)
                     confirmed.append(memory_id)
 
+            visibility = Visibility(conn)
             row = conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()
             if not row or row[0] != "running":
                 raise RuntimeError("batch state changed before commit")
@@ -675,6 +677,11 @@ class LearningEngine:
                 if (not current or current["revision"] != original["revision"] or current["lifecycle"] == "deleted"
                         or (item["action"] != "确认" and current["lifecycle"] != "active")):
                     dropped.append({"section": "updates", "item": item, "reason": "memory revision changed"})
+                    continue
+                incoming_scope = visibility.evidence(item['evidence'])
+                if (not visibility.memory_visible(current['id'], batch.entry_id)
+                        or visibility.memory(current['id']) != incoming_scope):
+                    dropped.append({'section':'updates','item':item,'reason':'memory visibility changed or differs'})
                     continue
                 if item["action"] == "确认":
                     confirm_once(current["id"])
@@ -708,6 +715,17 @@ class LearningEngine:
                     if message_id in target:
                         self._source(conn, current["id"], message_id)
             for item in accepted["memories"]:
+                # Recheck every derived reference before any write, including
+                # scope changes while the learning model was in flight.
+                visibility = Visibility(conn)
+                derived = [refs[ref] for ref in item['derived_from']]
+                stale = any(not visibility.memory_visible(m['id'], batch.entry_id) or not conn.execute(
+                    "SELECT 1 FROM memories WHERE id=? AND revision=? AND lifecycle='active'", (m['id'],m['revision'] + (m['id'] in updated))).fetchone()
+                    for m in derived)
+                if stale:
+                    dropped.append({'section':'memories','item':item,'reason':'derived memory changed or invisible'})
+                    continue
+                incoming_scope = visibility.evidence(item['evidence'], [m['id'] for m in derived])
                 speaker_id = canonical_subject(conn, item["speaker_id"])
                 about_ids = {self._resolve_subject(conn, name, snapshot) for name in item["about"]}
                 # Composite index narrows by the same speaker/claim before fetching prose or vectors.
@@ -735,7 +753,7 @@ class LearningEngine:
                         return False
                     denominator = float(np.linalg.norm(prior) * np.linalg.norm(current_vector))
                     return bool(denominator and float(np.dot(prior, current_vector) / denominator) >= dedupe_threshold)
-                duplicate = next((m for m in existing if m["speaker_subject_id"] == speaker_id and
+                duplicate = next((m for m in existing if visibility.memory(m["id"]) == incoming_scope and m["speaker_subject_id"] == speaker_id and
                                   m["stance"] == item["stance"] and
                                   m["event_time"] == item["event_time"] and
                                   existing_about.get(m["id"], set()) == about_ids and same_meaning(m)), None)
@@ -745,6 +763,10 @@ class LearningEngine:
                     for message_id in item["evidence"]:
                         if message_id in target:
                             self._source(conn, duplicate["id"], message_id)
+                    for source_memory in derived:
+                        if source_memory['id'] != duplicate['id']:
+                            conn.execute("""INSERT OR IGNORE INTO sources(memory_id,kind,source_memory_id,source_revision,created_at)
+                                VALUES(?,'memory',?,?,?)""", (duplicate['id'],source_memory['id'],source_memory['revision'],now()))
                     continue
                 stamp = now()
                 result = conn.execute("""INSERT INTO memories

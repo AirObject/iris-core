@@ -698,3 +698,33 @@ uv run iris --data-dir /path/to/iris-data backup import /path/to/backup.zip --co
 消息清理继续遵守来源引用保护；最后一条消息引用消失后才开始 1 天宽限，文件在后续每日维护中删除。仍被任一消息引用的共享文件不删；操作记录不算引用。未绑定消息的上传也有 1 天引用窗口，崩溃遗留的临时／未登记文件在一天后清理。删除文件同时移除其无引用媒体对象；正在理解的迟到结果不能重建它们。
 
 上传路由 `POST /api/v1/media` 和宿主消息 JSON 的 `media_ids` 字段尚由 AP 线接入，本线不修改 `api.py`。保存函数和接口接线约定见 [ARCHITECTURE.md 的媒体一节](ARCHITECTURE.md#m4-媒体保存与接线契约)。
+
+## M4 入口的记忆可见范围（VS）
+
+入口默认 `shared`（全部共享），可改为 `entry_only`（本入口）或 `entries`（指定入口列表，始终包含本入口）。管理员通过已有会话与 CSRF 调用：
+
+```http
+PATCH /admin/api/entries/入口ID/visibility
+Content-Type: application/json
+X-Iris-CSRF: <当前会话的 CSRF 值>
+
+{"visibility":"entries","visible_in":["另一个入口ID"]}
+```
+
+入口必须已经存在；名单完整替换，不能引用未知入口。改动写入管理操作记录。`GET /admin/api/entries` 和入口 `/settings` 返回 `visibility`、`visible_in`；记忆详情返回 `visibility.shared` 与计算后的 `visibility.visible_in`，空列表且 `shared=false` 表示仅管理员可见。
+
+记忆范围是全部来源消息的入口范围与派生依据范围的交集；目标还与所属入口范围取交集。无来源目标按所属入口计算，无所属入口的目标全局可见。计算使用当前设置，收紧、放宽、撤换名单对旧对象和派生链立即生效，不必重新学习。原始消息仍只返回本次入口的近期窗口。
+
+回复准备、人物要点、点名检索、深度召回、目标分区及其附带引用均按查询入口过滤。底层 `Retrieval.search(entry_id=...)` 支持指定入口；省略入口时仅返回全局可见的记忆和目标，不按宿主令牌范围放宽。HTTP search 的入口字段与令牌校验由 AP 配套接线。不同实际范围的对象不做召回去重、学习再次确认、目标去重或整理合并；整理的矛盾与依赖材料也不跨范围。persona 的依据仅限全局可见的自我记忆，已发布句子的依据被改为私有时，该句立即停止进入宿主和学习材料，等待后续更新。
+
+隐私 dev 检查与回归命令（完整输出放在仓库外）：
+
+```bash
+uv run python evals/visibility_eval/run.py --out <外部目录> --judge
+uv run python evals/visibility_eval/run.py --corpus <JSON路径> --out <外部目录> --offline
+uv run python evals/visibility_eval/compare_learning.py --baseline <主线源码目录> --candidate . --out <外部目录>
+uv run python evals/visibility_eval/compare_recall.py --baseline <主线源码目录> --candidate . --out <外部目录>
+uv run python evals/visibility_eval/benchmark.py --out <外部目录>
+```
+
+隐私运行使用默认召回配置；`--offline` 检查默认全文降级路径，不加载模型配置。`--judge` 开启真实召回判断，判断降级或查询未完成会将整次运行标为无效。门槛只检查 forbidden 和跨范围合并；expected / expected_goals 只作为过度过滤诊断。公开集零泄漏不等于 M4 隐藏验收通过。
