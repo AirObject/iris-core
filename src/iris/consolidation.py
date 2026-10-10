@@ -27,6 +27,10 @@ PROMPT_VERSION = 'consolidation_report_only_v1'
 MAX_ANCESTORS = 64
 
 
+class InvalidOutput(ValueError):
+    """The model's decision remained malformed after its one JSON repair."""
+
+
 class UnsafeWrite(ValueError):
     """A semantic safety rejection is final for these inputs, never a JSON retry."""
 
@@ -260,6 +264,15 @@ def numeric(text):
     return values
 
 
+def same_event_time(left, right):
+    # Learning deliberately preserves unresolved dates/ranges. Only normalize
+    # when both sides parse; otherwise require the original text to match.
+    try:
+        return datetime.fromisoformat(left) == datetime.fromisoformat(right)
+    except (TypeError, ValueError):
+        return left == right
+
+
 def merge_exclusion(a,b):
     if any(m['lifecycle']=='deleted' or m['merged_into'] for m in (a,b)):
         return 'deleted'
@@ -267,7 +280,7 @@ def merge_exclusion(a,b):
         return 'protected'
     if any(a[k]!=b[k] for k in ('speaker','stance','about','world')):
         return 'attribution'
-    if a['event_time'] and b['event_time'] and datetime.fromisoformat(a['event_time']) != datetime.fromisoformat(b['event_time']):
+    if a['event_time'] and b['event_time'] and not same_event_time(a['event_time'],b['event_time']):
         return 'event_time'
     na,nb=numeric(a['content']),numeric(b['content'])
     if any(not (na[k] <= nb[k] or nb[k] <= na[k]) for k in na.keys() & nb.keys()):
@@ -451,7 +464,7 @@ class Consolidation:
                 raise
             except (ValueError,TypeError,KeyError) as error:
                 if repair:
-                    raise ValueError('invalid_output') from None
+                    raise InvalidOutput('invalid_output') from None
                 # Explain the mechanical rejection, not a preferred semantic answer.
                 visible=sorted({s['id'] for m in payload['memories'] for s in material(m)['sources']})
                 category=str(error) if type(error) is ValueError and str(error) in {
@@ -512,92 +525,137 @@ class Consolidation:
         if value['decision']=='weaken' and any('content' in u for u in value['updates']):
             raise UnsafeWrite('weakening_cannot_rewrite')
 
+    def _plan_pair(self, get, m, n, settings):
+        # A proposition and its supporting chain belong to dependency review.
+        def ancestors(value):
+            found=set()
+            stack=[s['id'] for s in value['derived_from']]
+            while stack and len(found)<MAX_ANCESTORS:
+                parent=stack.pop()
+                if parent in found:
+                    continue
+                found.add(parent)
+                base=get(parent)
+                if base is None:
+                    # Missing/corrupt supporting material cannot license a merge.
+                    raise ValueError('unavailable_ancestor')
+                stack.extend(s['id'] for s in base['derived_from'])
+            return found
+        ma,na=ancestors(m),ancestors(n)
+        if m['id'] in na or n['id'] in ma:
+            return None
+        related=(bool(set(m['about']) & set(n['about'])) or m['about']==n['about']) and m['world']==n['world']
+        sim=similarity(m['content'],n['content'])
+        if not related or sim<0.20:
+            return None
+        a,b=sorted((m,n),key=lambda x:x['id'])
+        exclusion=merge_exclusion(a,b)
+        eligible=settings['merge_enabled'] and not exclusion and sim>=METHODS[settings['method']]
+        if not settings['conflict_enabled'] and not eligible:
+            return None
+        if settings['merge_enabled'] and not eligible and not exclusion:
+            return None
+        preferred=sorted((a,b),key=lambda x:(-len(x['content']),x['created_at'],x['id']))[0]['id']
+        pair=(a['id'],b['id'])
+        return {'pair_ids':list(pair),'memories':[a,b,*[get(i) for i in sorted(ma | na) if i not in pair]],
+            'merge_allowed':eligible,'merge_exclusion':exclusion or (
+                'disabled' if not settings['merge_enabled'] else 'similarity' if not eligible else None),
+            'preferred_keep_id':preferred}
+
     def plan(self,run,settings):
-        candidates=[]
+        candidates,scanned=[],[]
+        with self.store.read() as conn:
+            failures={r['item_key']:json.loads(r['details_json'])['memory_ids'] for r in conn.execute(
+                "SELECT item_key,details_json FROM maintenance_items WHERE run_id=? AND phase='consolidation' AND item_key LIKE 'plan:%'",
+                (run['id'],))}
+
+        def attempt(key, ids, action):
+            # Checkpoints precede the planned bit. A restarted scan skips failed
+            # items even if interrupted before the final queue snapshot commits.
+            if key in failures:
+                return None
+            try:
+                return action()
+            except Exception as exc:
+                details={'memory_ids':ids,'error_type':type(exc).__name__}
+                with self.store.write() as writer:
+                    writer.execute("""INSERT OR IGNORE INTO maintenance_items
+                        (run_id,phase,item_key,memory_id,object_id,outcome,reason,details_json,created_at)
+                        VALUES(?,'consolidation',?,?,?,'failed','planning_error',?,?)""",
+                        (run['id'],key,ids[0],ids[0],dumps(details),self.clock().isoformat()))
+                failures[key]=ids
+                return None
+
         with self.store.read() as conn:
             rows=conn.execute("""SELECT id FROM memories WHERE lifecycle!='deleted' AND id<=?
                 ORDER BY importance DESC,julianday(updated_at) DESC,id""",(run['memory_through'],)).fetchall()
-            seen_pairs=set()
-            scanned=[]
-            cache={}
+            seen_pairs,cache=set(),{}
             def get(mid):
                 if mid not in cache:
-                    cache[mid]=snapshot(conn,mid)
+                    cache[mid]=attempt(f'plan:memory:{mid}',[mid],lambda:snapshot(conn,mid))
                 return cache[mid]
-            new_seeds=0
-            for row in rows:
-                m=get(row[0])
-                # Dependencies are selected independently of text similarity.
-                if settings['dependency_enabled'] and m['derived_from']:
-                    dep=dependency_material(conn,m)
-                    if dep:
-                        candidates.append(('dependency',dep))
+            def peers(m):
                 scan_key=[PROMPT_VERSION,settings['method'],settings['resolution'],semantic(m)]
                 if pair_policy(settings) != pair_policy(DEFAULTS):
                     scan_key.append(pair_policy(settings))
                 fp=digest(scan_key)
-                if not settings['merge_enabled'] and not settings['conflict_enabled']:
-                    continue
                 old=conn.execute('SELECT fingerprint FROM consolidation_scanned WHERE memory_id=?',(m['id'],)).fetchone()
                 if old and old[0]==fp:
-                    continue
-                if new_seeds>=128:
-                    continue
-                new_seeds+=1
+                    return None
                 query=match_query(terms(m['content'])[:32])
-                peers=conn.execute('SELECT rowid FROM memory_fts_jieba WHERE memory_fts_jieba MATCH ? ORDER BY rank LIMIT 64',(query,)).fetchall() if query else []
-                for peer in peers:
-                    n=get(peer[0])
-                    pair=tuple(sorted((m['id'],n['id'])))
-                    if m['id']==n['id'] or n['id']>run['memory_through'] or pair in seen_pairs:
+                rows=conn.execute('SELECT rowid FROM memory_fts_jieba WHERE memory_fts_jieba MATCH ? ORDER BY rank LIMIT 64',
+                                  (query,)).fetchall() if query else []
+                return fp,rows
+            new_seeds=0
+            for row in rows:
+                mid=row[0]
+                m=get(mid)
+                if m is None:
+                    continue
+                if settings['dependency_enabled'] and m['derived_from']:
+                    dep=attempt(f'plan:dependency:{mid}',[mid],lambda:dependency_material(conn,m))
+                    if dep:
+                        candidates.append(('dependency',dep))
+                if not settings['merge_enabled'] and not settings['conflict_enabled'] or new_seeds>=128:
+                    continue
+                selected=attempt(f'plan:seed:{mid}',[mid],lambda:peers(m))
+                if selected is None:
+                    continue
+                fp,neighbors=selected
+                new_seeds+=1
+                for peer in neighbors:
+                    other=peer[0]
+                    pair=tuple(sorted((mid,other)))
+                    if mid==other or other>run['memory_through'] or pair in seen_pairs:
                         continue
                     seen_pairs.add(pair)
-                    # A proposition and its own supporting chain are reviewed by
-                    # the dependency phase, never merged with one another.
-                    def ancestors(value):
-                        found=set()
-                        stack=[s['id'] for s in value['derived_from']]
-                        while stack and len(found)<MAX_ANCESTORS:
-                            parent=stack.pop()
-                            if parent in found:
-                                continue
-                            found.add(parent)
-                            base=get(parent)
-                            if base:
-                                stack.extend(s['id'] for s in base['derived_from'])
-                        return found
-                    ma,na=ancestors(m),ancestors(n)
-                    if m['id'] in na or n['id'] in ma:
+                    n=get(other)
+                    if n is None:
                         continue
-                    # Broad conflict discovery is shared by every merge candidate.
-                    related=(bool(set(m['about']) & set(n['about'])) or m['about']==n['about']) and m['world']==n['world']
-                    sim=similarity(m['content'],n['content'])
-                    if not related or sim<0.20:
-                        continue
-                    a,b=sorted((m,n),key=lambda x:x['id'])
-                    exclusion=merge_exclusion(a,b)
-                    eligible=settings['merge_enabled'] and not exclusion and sim>=METHODS[settings['method']]
-                    if not settings['conflict_enabled'] and not eligible:
-                        continue
-                    # Below the method threshold, still inspect genuinely incompatible
-                    # facts; compatible low-similarity pairs wait for other evidence.
-                    if settings['merge_enabled'] and not eligible and not exclusion:
-                        continue
-                    preferred=sorted((a,b),key=lambda x:(-len(x['content']),x['created_at'],x['id']))[0]['id']
-                    candidates.append(('pair',{'pair_ids':[a['id'],b['id']],'memories':[a,b,*[get(i) for i in sorted(ma | na) if i not in pair]],'merge_allowed':eligible,
-                        'merge_exclusion':exclusion or ('disabled' if not settings['merge_enabled'] else 'similarity' if not eligible else None),'preferred_keep_id':preferred}))
-                scanned.append((m['id'],fp))
-        for kind,payload in candidates:
+                    payload=attempt(f'plan:pair:{pair[0]}:{pair[1]}',list(pair),lambda:self._plan_pair(get,m,n,settings))
+                    if payload:
+                        candidates.append(('pair',payload))
+                scanned.append((mid,fp))
+
+        def enqueue(kind,payload):
             payload['resolution']=settings['resolution']
             if kind=='pair':
                 payload['policy']=pair_policy(settings)
             with self.store.write() as conn:
                 fp=work_fingerprint(kind,payload,settings['method'])
                 if conn.execute('SELECT 1 FROM consolidation_receipts WHERE fingerprint=?',(fp,)).fetchone():
-                    continue
-                conn.execute('''INSERT OR IGNORE INTO consolidation_work(fingerprint,kind,payload_json,importance,changed_at,created_at)
-                    VALUES(?,?,?,?,?,?) ON CONFLICT(fingerprint) DO UPDATE SET payload_json=excluded.payload_json,state='pending',result_json=NULL WHERE consolidation_work.state='obsolete' ''',(fp,kind,dumps(payload),max(m['importance'] for m in payload['memories']),
-                    max(m['updated_at'] for m in payload['memories']),self.clock().isoformat()))
+                    return
+                conn.execute("""INSERT OR IGNORE INTO consolidation_work(fingerprint,kind,payload_json,importance,changed_at,created_at)
+                    VALUES(?,?,?,?,?,?) ON CONFLICT(fingerprint) DO UPDATE SET payload_json=excluded.payload_json,state='pending',result_json=NULL WHERE consolidation_work.state='obsolete' """,
+                    (fp,kind,dumps(payload),max(m['importance'] for m in payload['memories']),
+                     max(m['updated_at'] for m in payload['memories']),self.clock().isoformat()))
+        for kind,payload in candidates:
+            ids=payload.get('pair_ids',[payload.get('target_id')])
+            attempt('plan:work:'+kind+':'.join(map(str,ids)),ids,lambda:enqueue(kind,payload))
+        # A later daily run may retry a planning failure once. Do not certify its
+        # scan as complete forever; completed work receipts still prevent repeats.
+        failed_ids={mid for ids in failures.values() for mid in ids}
+        scanned=[(mid,fp) for mid,fp in scanned if mid not in failed_ids]
         with self.store.write() as conn:
             conn.executemany('INSERT OR REPLACE INTO consolidation_scanned VALUES(?,?)',scanned)
             # A bounded run snapshot; the durable pending queue remains ordered.
@@ -630,11 +688,14 @@ class Consolidation:
             conn.execute("UPDATE consolidation_work SET state=? WHERE id=?",('obsolete' if reason=='revision_conflict' else 'done',work['id']))
         # No audit row for unchanged successful checks. Skips are aggregate only.
         if outcome not in ('checked','skipped'):
-            payload=json.loads(work['payload_json'])
-            mid=payload.get('target_id',payload['memories'][0]['id'])
+            try:
+                payload=json.loads(work['payload_json'])
+                mid=payload.get('target_id',payload['memories'][0]['id'])
+            except (ValueError,TypeError,KeyError,IndexError,AttributeError):
+                mid=None
             conn.execute('''INSERT OR IGNORE INTO maintenance_items(run_id,phase,item_key,memory_id,object_id,outcome,reason,details_json,created_at)
                 VALUES(?,'consolidation',?,?,?,?,?,?,?)''',
-                (self.run_id,str(work['id']),mid,mid,outcome,reason,dumps(details),self.clock().isoformat()))
+                (self.run_id,str(work['id']),mid,mid if mid is not None else work['id'],outcome,reason,dumps(details),self.clock().isoformat()))
 
     def halt(self,reason):
         with self.store.write() as conn:
@@ -668,99 +729,122 @@ class Consolidation:
                 return False
             if work['state'] not in ('pending','classified'):
                 continue
-            payload=json.loads(work['payload_json'])
-            with self.store.write() as conn:
-                stale=self._stale(conn,payload)
-                if stale:
-                    self.record(conn,work,'skipped','revision_conflict')
-                    conn.executemany('DELETE FROM consolidation_scanned WHERE memory_id=?',[(m['id'],) for m in payload['memories']])
-            if stale:
-                continue
             try:
-                if work['state']=='classified':
-                    classification=json.loads(work['result_json'])
-                else:
-                    classification=self.call(work,payload)
-                    if work['kind']=='pair' and classification['decision']=='conflict':
-                        with self.store.write() as conn:
-                            conn.execute("UPDATE consolidation_work SET state='classified',result_json=? WHERE id=?",
-                                         (dumps(classification),work['id']))
-                        if stop and stop():
-                            return False
-                if work['kind']=='pair' and classification['decision']=='conflict' and config['conflict_enabled']:
-                    result=self.call(work,payload,report_only=True)
-                else:
-                    result=classification
+                if not self._decide(work,config,stop):
+                    return False
             except ModelError as exc:
                 reason=exc.reason or exc.category
-                with self.store.write() as conn:
-                    self.record(conn,work,'skipped' if reason in ('call_budget','usage_limit','paused','temporary_unavailable') or exc.paused else 'failed',reason,done=False)
-                budget_reason=reason
-                break
-            except UnsafeWrite as exc:
-                with self.store.write() as conn:
-                    self.record(conn,work,'failed','unsafe_write',{'rejection':str(exc)})
-                    conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work['fingerprint'],))
-                continue
-            except (ValueError,TypeError,KeyError) as exc:
-                with self.store.write() as conn:
-                    self.record(conn,work,'failed','invalid_output',done=False)
-                continue
-            with self.store.write() as conn:
-                conn.execute("UPDATE consolidation_work SET state='decided',result_json=? WHERE id=?",(dumps(result),work['id']))
+                if reason in ('call_budget','usage_limit','paused','temporary_unavailable') or exc.paused:
+                    with self.store.write() as conn:
+                        self.record(conn,work,'skipped',reason,done=False)
+                    budget_reason=reason
+                    break
+                self.fail_work(work,exc,'model_error')
+            except InvalidOutput as exc:
+                # Preserve the existing deferred-output contract, but bound it:
+                # one further daily attempt, never another try in this run.
+                with self.store.read() as conn:
+                    retried=conn.execute("""SELECT 1 FROM consolidation_run_work WHERE work_id=?
+                        AND outcome='failed' AND reason='invalid_output' LIMIT 1""",(work['id'],)).fetchone()
+                self.fail_work(work,exc,'invalid_output',retry=not retried)
+            except Exception as exc:
+                self.fail_work(work,exc,'unexpected_error')
         if stop and stop():
             return False
-        # Freeze every contradiction before applying any merge; unresolved incident
-        # candidates conservatively block a merge until a later run finishes them.
+        # Freeze every contradiction before any merge. Failed incident items,
+        # including candidate planning failures, cannot license another merge.
         with self.store.read() as conn:
-            all_work=[dict(r) for r in conn.execute('''SELECT w.*,rw.outcome FROM consolidation_work w JOIN consolidation_run_work rw ON rw.work_id=w.id
-                WHERE rw.run_id=? ORDER BY w.id''',(self.run_id,))]
-        blocked=set()
+            all_work=[dict(r) for r in conn.execute("""SELECT w.*,rw.outcome FROM consolidation_work w JOIN consolidation_run_work rw ON rw.work_id=w.id
+                WHERE rw.run_id=? ORDER BY w.id""",(self.run_id,))]
+            blocked={frozenset(json.loads(r[0])['memory_ids']) for r in conn.execute(
+                "SELECT details_json FROM maintenance_items WHERE run_id=? AND phase='consolidation' AND item_key LIKE 'plan:%'",
+                (self.run_id,))}
+        decisions=[]
         for work in all_work:
-            p=json.loads(work['payload_json'])
-            r=json.loads(work['result_json']) if work['result_json'] else {}
-            if work['kind']=='pair' and (work['state'] in ('pending','classified') or work['outcome']=='failed' or r.get('decision')=='conflict'):
-                blocked.add(frozenset(p['pair_ids']))
-        all_work.sort(key=lambda w:(json.loads(w['result_json'] or '{}').get('decision')=='merge',w['id']))
-        for work in all_work:
+            payload=None
+            try:
+                payload=json.loads(work['payload_json'])
+                result=json.loads(work['result_json']) if work['result_json'] else {}
+                if not isinstance(result,dict):
+                    raise ValueError('invalid_result')
+                if work['kind']=='pair' and (work['state'] in ('pending','classified') or work['outcome']=='failed' or result.get('decision')=='conflict'):
+                    blocked.add(frozenset(payload['pair_ids']))
+                if work['state']=='decided' and work['outcome'] is None:
+                    decisions.append((work,payload,result))
+            except Exception as exc:
+                self.fail_work(work,exc,'invalid_action')
+                # Payloads are internally generated; a bad decision must still
+                # block other merges touching this unresolved pair.
+                if work['kind']=='pair' and isinstance(payload,dict) and 'pair_ids' in payload:
+                    blocked.add(frozenset(payload['pair_ids']))
+        decisions.sort(key=lambda item:(item[2].get('decision')=='merge',item[0]['id']))
+        for work,payload,result in decisions:
             if stop and stop():
                 return False
-            if work['state']!='decided' or work['outcome'] is not None:
-                continue
-            payload=json.loads(work['payload_json'])
-            result=json.loads(work['result_json'])
-            ids=set(payload.get('pair_ids',[payload.get('target_id')]))
-            if result['decision']=='merge' and any(ids & pair for pair in blocked):
-                with self.store.write() as conn:
-                    self.record(conn,work,'skipped','unresolved_conflict',done=False)
-                continue
-            with self.store.write() as conn:
-                if self._stale(conn,payload):
-                    self.record(conn,work,'skipped','revision_conflict')
-                    conn.executemany('DELETE FROM consolidation_scanned WHERE memory_id=?',[(m['id'],) for m in payload['memories']])
-                    continue
-                try:
-                    conn.execute('SAVEPOINT consolidation_item')
-                    if work['kind']=='pair' and result['decision']=='conflict' and not config['conflict_enabled']:
-                        outcome,details='checked',{}
-                    else:
-                        outcome,details=self.apply(conn,work,payload,result)
-                    self.record(conn,work,outcome,details=details)
-                    conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work['fingerprint'],))
-                    after={**payload,'memories':[snapshot(conn,m['id']) for m in payload['memories']]}
-                    conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work_fingerprint(work['kind'],after,config['method']),))
-                    conn.execute('RELEASE consolidation_item')
-                except UnsafeWrite as exc:
-                    conn.execute('ROLLBACK TO consolidation_item')
-                    conn.execute('RELEASE consolidation_item')
-                    self.record(conn,work,'failed','unsafe_write',{'rejection':str(exc)})
-                    conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work['fingerprint'],))
-                except (ValueError,KeyError,TypeError):
-                    conn.execute('ROLLBACK TO consolidation_item')
-                    conn.execute('RELEASE consolidation_item')
-                    self.record(conn,work,'failed','invalid_action',done=False)
+            try:
+                self._apply_work(work,payload,result,config,blocked)
+            except Exception as exc:
+                # Store.write rolled back every mutation and its audit record.
+                # The failure receipt is a new short transaction.
+                self.fail_work(work,exc,'invalid_action')
+                blocked.add(frozenset(payload.get('pair_ids',[payload.get('target_id')])))
         self.halt(budget_reason)
         return True
+
+    def fail_work(self,work,error,reason,*,retry=False):
+        details={'error_type':type(error).__name__,'terminal':not retry}
+        if isinstance(error,UnsafeWrite):
+            reason='unsafe_write'
+            details['rejection']=str(error)  # Internal validation codes only.
+        with self.store.write() as conn:
+            self.record(conn,work,'failed',reason,details,done=not retry)
+            if not retry:
+                conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work['fingerprint'],))
+
+    def _decide(self,work,config,stop):
+        payload=json.loads(work['payload_json'])
+        with self.store.write() as conn:
+            if self._stale(conn,payload):
+                self.record(conn,work,'skipped','revision_conflict')
+                conn.executemany('DELETE FROM consolidation_scanned WHERE memory_id=?',[(m['id'],) for m in payload['memories']])
+                return True
+        if work['state']=='classified':
+            classification=json.loads(work['result_json'])
+        else:
+            classification=self.call(work,payload)
+            if work['kind']=='pair' and classification['decision']=='conflict':
+                with self.store.write() as conn:
+                    conn.execute("UPDATE consolidation_work SET state='classified',result_json=? WHERE id=?",
+                                 (dumps(classification),work['id']))
+                if stop and stop():
+                    return False
+        if work['kind']=='pair' and classification['decision']=='conflict' and config['conflict_enabled']:
+            result=self.call(work,payload,report_only=True)
+        else:
+            result=classification
+        with self.store.write() as conn:
+            conn.execute("UPDATE consolidation_work SET state='decided',result_json=? WHERE id=?",(dumps(result),work['id']))
+        return True
+
+    def _apply_work(self,work,payload,result,config,blocked):
+        ids=set(payload.get('pair_ids',[payload.get('target_id')]))
+        if result['decision']=='merge' and any(ids & pair for pair in blocked):
+            with self.store.write() as conn:
+                self.record(conn,work,'skipped','unresolved_conflict',done=False)
+            return
+        with self.store.write() as conn:
+            if self._stale(conn,payload):
+                self.record(conn,work,'skipped','revision_conflict')
+                conn.executemany('DELETE FROM consolidation_scanned WHERE memory_id=?',[(m['id'],) for m in payload['memories']])
+                return
+            if work['kind']=='pair' and result['decision']=='conflict' and not config['conflict_enabled']:
+                outcome,details='checked',{}
+            else:
+                outcome,details=self.apply(conn,work,payload,result)
+            self.record(conn,work,outcome,details=details)
+            conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work['fingerprint'],))
+            after={**payload,'memories':[snapshot(conn,m['id']) for m in payload['memories']]}
+            conn.execute('INSERT OR IGNORE INTO consolidation_receipts VALUES(?)',(work_fingerprint(work['kind'],after,config['method']),))
 
     def _revision(self,conn,old,changes,reason):
         if not changes:

@@ -109,7 +109,10 @@ class Maintenance:
                         if not Consolidation(self.store, self.gateway, clock=self.clock).run(run, stop=stop):
                             return
                     else:
-                        update_persona_for_run(self.store, self.gateway, run, clock=self.clock, stop=stop)
+                        try:
+                            update_persona_for_run(self.store, self.gateway, run, clock=self.clock, stop=stop)
+                        except Exception as exc:
+                            self._persona_failure(run, exc)
                         if stop and stop():
                             return
                     with self.store.write() as conn:
@@ -124,6 +127,26 @@ class Maintenance:
                     if stop and stop():
                         return
                     self._process_item(run, phase, candidate)
+
+    def _persona_failure(self, run, error):
+        # Persona is one atomic generation/check item. Even failure during due
+        # selection must leave a terminal checkpoint before moving on to goals.
+        details={'error_type':type(error).__name__, 'status':'failed'}
+        with self.store.write() as conn:
+            row=conn.execute('SELECT * FROM maintenance_persona WHERE run_id=?',(run['id'],)).fetchone()
+            if row and row['status']!='running':
+                return
+            attempt_id=row['attempt_id'] if row else None
+            if attempt_id:
+                conn.execute("""UPDATE persona_attempts SET state='failed',reason='unexpected_error',finished_at=?
+                    WHERE id=? AND state IN ('queued','running')""",(self.clock().isoformat(),attempt_id))
+            conn.execute("""INSERT INTO maintenance_persona(run_id,status,reason,details_json)
+                VALUES(?,'failed','unexpected_error',?) ON CONFLICT(run_id) DO UPDATE SET
+                status=excluded.status,reason=excluded.reason,details_json=excluded.details_json""",(run['id'],dumps(details)))
+            conn.execute("""INSERT OR IGNORE INTO maintenance_items
+                (run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+                VALUES(?,'persona','update',?,'failed','unexpected_error',?,?)""",
+                (run['id'],attempt_id or run['id'],dumps(details),self.clock().isoformat()))
 
     def _candidates(self, run, phase):
         config = json.loads(run["settings_json"])
@@ -356,7 +379,7 @@ class Maintenance:
             report["summary"] = self._summary(items, progress)
             model = conn.execute("SELECT * FROM consolidation_runs WHERE run_id=?", (run_id,)).fetchone()
             if model:
-                rows = conn.execute("SELECT outcome,reason FROM consolidation_run_work WHERE run_id=?", (run_id,)).fetchall()
+                rows = conn.execute("SELECT outcome,reason,details_json FROM consolidation_run_work WHERE run_id=?", (run_id,)).fetchall()
                 reasons = report["summary"]["skipped"]["reasons"]
                 for result in rows:
                     if result['outcome'] == 'skipped':
@@ -370,7 +393,8 @@ class Maintenance:
                     FROM consolidation_calls WHERE run_id=?""", (run_id,)).fetchone()
                 report['summary']['model_calls'] = dict(calls)
                 report['consolidation'] = {'settings': json.loads(model['settings_json']),
-                    'deferred': sum((r['outcome'] is None or r['outcome'] in ('failed','skipped')) and r['reason']!='unsafe_write' for r in rows),
+                    'deferred': sum((r['outcome'] is None or r['outcome'] in ('failed','skipped'))
+                        and r['reason']!='unsafe_write' and not json.loads(r['details_json']).get('terminal',False) for r in rows),
                     'skip_reason': model['skip_reason']}
             persona = conn.execute('SELECT * FROM maintenance_persona WHERE run_id=?', (run_id,)).fetchone()
             if persona:
