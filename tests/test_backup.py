@@ -558,3 +558,60 @@ backup.import_archive(Path(sys.argv[1]), Path(sys.argv[2]), confirm_overwrite=Tr
         assert (target.parent / 'media/图片/one.bin').read_bytes() == b'synthetic-media\x00\xff'
     with StoreLease(target):
         pass
+
+
+def registered_media(store):
+    import base64
+    from iris.media import save_media
+    from iris.queue import add_message
+    content = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC')
+    first = save_media(store, content, content_type='image/png', understanding_text='窗边有猫。')
+    second = save_media(store, content, content_type='image/png', understanding_text='共享图片的另一段说明。')
+    add_message(store, entry_id='A', entry_name='A', platform='test', entry_kind='group',
+                kind='message', sender='读者', content='请看图片', occurred_at='2026-10-10T10:00:00+08:00',
+                dedupe_key='registered-image', media_ids=[first['id'], second['id']])
+    return first, content
+
+
+def test_registered_media_objects_references_and_shared_bytes_round_trip(store, tmp_path):
+    item, content = registered_media(store)
+    path = export(store, tmp_path)
+    target = tmp_path / 'restored/iris.db'
+    backup.import_archive(path, target)
+    for table in ('media_files', 'media_objects', 'message_media', 'messages'):
+        assert rows(target, table) == rows(store.path, table)
+    assert len(rows(target, 'media_files')) == 1 and len(rows(target, 'media_objects')) == 2
+    assert (target.parent / 'media' / item['sha256']).read_bytes() == content
+
+
+@pytest.mark.parametrize('damage', ['missing', 'changed'])
+def test_export_rejects_missing_or_corrupt_registered_media(store, tmp_path, damage):
+    item, _ = registered_media(store)
+    media = store.path.parent / 'media' / item['sha256']
+    if damage == 'missing':
+        media.unlink()
+    else:
+        media.write_bytes(b'corrupt registered media')
+    with pytest.raises(backup.BackupError, match='媒体'):
+        export(store, tmp_path)
+    assert not (tmp_path / 'snapshot.zip').exists()
+    assert backup.recent_exports(store) == []
+
+
+@pytest.mark.parametrize('damage', ['missing', 'changed'])
+def test_import_checks_registered_media_beyond_archive_checksums(store, tmp_path, damage):
+    item, _ = registered_media(store)
+    path = export(store, tmp_path)
+    name = 'media/' + item['sha256']
+    def corrupt(data, metadata):
+        if damage == 'missing':
+            del data[name]
+            del metadata['files'][name]
+        else:
+            data[name] = b'corrupt registered media'
+            metadata['files'][name] = {'size': len(data[name]), 'sha256': hashlib.sha256(data[name]).hexdigest()}
+    rewrite(path, entries=corrupt)
+    target = tmp_path / 'restored/iris.db'
+    with pytest.raises(backup.BackupError, match='媒体'):
+        backup.import_archive(path, target)
+    assert not target.exists()

@@ -174,6 +174,18 @@ def _check_database(path, versions):
         conn.close()
 
 
+def _check_media_files(database, members):
+    # Media files are immutable and named by hash. A pinned database snapshot
+    # must never point to bytes missed by inventory or concurrent file cleanup.
+    with contextlib.closing(sqlite3.connect(database.as_uri() + '?mode=ro&immutable=1', uri=True)) as conn:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='media_files'").fetchone():
+            return  # Backups from before migration 022 have no media registry.
+        for digest, size in conn.execute('SELECT sha256,size_bytes FROM media_files'):
+            detail = members.get('media/' + digest)
+            if detail is None or detail['sha256'] != digest or detail['size'] != size:
+                raise BackupError('media_integrity', '媒体文件与数据库登记的哈希或大小不一致，请检查文件后重试。')
+
+
 def _metadata(manifest, size, *, purpose='manual'):
     return {key: manifest[key] for key in ('backup_id', 'format_version', 'migration_version', 'created_at',
                                           'includes_model_secrets', 'media_included')} | {
@@ -238,6 +250,7 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
                             digest.update(data)
                             size += len(data)
                     manifest['files'][name] = {'sha256': digest.hexdigest(), 'size': size}
+                _check_media_files(stage / 'iris.db', manifest['files'])
                 raw_manifest = dumps(manifest).encode('utf-8')
                 if len(raw_manifest) > MANIFEST_LIMIT:
                     raise BackupError('manifest_too_large', '备份清单超过 8 MiB，请减少媒体文件数后重试。')
@@ -335,6 +348,7 @@ def _unpack(archive_path, stage):
             if size != detail['size'] or digest.hexdigest() != detail['sha256']:
                 raise _invalid()
     _check_database(stage / 'iris.db', manifest['migrations'])
+    _check_media_files(stage / 'iris.db', manifest['files'])
     if manifest['includes_model_secrets']:
         # Validate the optional file without returning or logging its contents.
         with contextlib.closing(sqlite3.connect(stage / 'iris.db')) as conn:
@@ -435,6 +449,7 @@ def import_archive(archive, database, *, confirm_overwrite=False, backup_include
         # Migrate the private copy, never the live destination before validation.
         staged_store = Store(staged_database)
         staged_store.close()
+        _check_database(staged_database, migration_versions())
         with StoreLease(database), StoreLease(directory / '.configuration', timeout=CONFIG_LOCK_WAIT_SECONDS):
             if database.is_symlink() or (directory / 'media').is_symlink() or (directory / 'secrets.json').is_symlink():
                 raise BackupError('unsafe_data_directory', '数据文件与媒体目录不能是符号链接。')
