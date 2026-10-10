@@ -3,6 +3,7 @@ import { api, json, useData } from "./api";
 import { Notice, healthLabel } from "./ui";
 import Access from "./Access";
 import SettingsPage from "./Settings";
+import Connections from "./Connections";
 import Trial from "./Trial";
 import { MemoryPage, MemoryDetail } from "./Memory";
 import Operations from "./Operations";
@@ -22,6 +23,7 @@ const routes = [
   { id: "state", name: "状态与目标", icon: "state" },
   { id: "status", name: "运行状态", icon: "status" },
   { id: "operations", name: "操作记录", icon: "memory" },
+  { id: "connections", name: "接入与数据", icon: "learning" },
   { id: "settings", name: "设置", icon: "settings" },
 ];
 function Icon({ name }: { name: string }) {
@@ -207,6 +209,8 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
               initialQuery={route.split("?")[1]}
               openMemory={openMemory}
             />
+          ) : routePath === "connections" ? (
+            <Connections />
           ) : routePath === "status" ? (
             <StatusPage
               key={route}

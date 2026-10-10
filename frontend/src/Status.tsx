@@ -19,6 +19,7 @@ const purposes: Record<string, string> = {
   trial_reply: "试用回复",
   trial_reply_repair: "回复 JSON 修正",
   embedding: "向量生成",
+  image_understanding: "图片理解",
   retrieval_query: "召回查询",
   health_probe: "健康探测",
   recall_judge: "召回判断",
@@ -43,13 +44,15 @@ export default function Status({
   initialQuery?: string;
 }) {
   const catalog = useData<{ entries: Entry[] }>("/catalog");
-  const settings = useData<Pick<Settings, "recall_judge" | "goal_dedup_judge">>(
-    "/settings",
-    5000,
-  );
+  const settings = useData<
+    Pick<Settings, "recall_judge" | "goal_dedup_judge" | "models">
+  >("/settings", 5000);
   if (!data) return <Empty title="正在读取运行状态" />;
   const requestedRun = Number(new URLSearchParams(initialQuery).get("run"));
   const latency = data.learning_latency_24h;
+  const imageCall = data.models.find(
+    (call) => call.purpose === "image_understanding",
+  );
   const errors = data.models.filter((m) => m.result_category !== "success");
   const names = new Map(catalog.data?.entries.map((e) => [e.id, e.name]));
   return (
@@ -123,7 +126,9 @@ export default function Status({
                     ? "判断相关候选能否回答当前请求"
                     : kind === "goal_dedup_judge"
                       ? "跨入口判断目标是否为同一件事"
-                      : "用于记忆向量与语义检索"}
+                      : kind === "image_understanding"
+                        ? "为没有宿主说明的图片补充理解；失败时使用占位继续学习"
+                        : "用于记忆向量与语义检索"}
               </p>
               {kind === "recall_judge" && (
                 <>
@@ -176,6 +181,17 @@ export default function Status({
                   <a href="#/settings">管理目标去重判断设置</a>
                 </>
               )}
+              {kind === "image_understanding" && (
+                <>
+                  {h.timeout_seconds != null && (
+                    <p>
+                      整批图片理解预算 {h.timeout_seconds} 秒（含排队与重试）
+                    </p>
+                  )}
+                  {h.retry_at && <p>退避截止：{time(h.retry_at)}</p>}
+                  <a href="#/settings">管理图片理解设置</a>
+                </>
+              )}
               {h.last_error && (
                 <p className="error-summary">最近错误：{h.last_error}</p>
               )}
@@ -184,6 +200,30 @@ export default function Status({
               )}
             </div>
           ))}
+          {!data.model_health.image_understanding &&
+            settings.data?.models?.image_understanding?.enabled === false && (
+              <p>图片理解未启用，没有宿主说明的图片以“未理解”占位继续学习。</p>
+            )}
+          {(data.model_health.image_understanding || imageCall) && (
+            <div className="model-row">
+              <h3>图片理解调用与用量</h3>
+              <p>图片用量已计入今日模型总量，暂不单列图片 token 数。</p>
+              {imageCall ? (
+                <>
+                  <p>
+                    最近调用：{imageCall.model} ·{" "}
+                    {seconds(imageCall.duration_ms)} ·{" "}
+                    {imageCall.result_category === "success"
+                      ? "成功"
+                      : "未成功"}
+                  </p>
+                  <p className="muted">{time(imageCall.created_at)}</p>
+                </>
+              ) : (
+                <p>暂无图片理解调用记录。</p>
+              )}
+            </div>
+          )}
         </section>
         <section className="panel">
           <h2>用量与学习</h2>

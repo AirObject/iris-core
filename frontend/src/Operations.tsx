@@ -4,6 +4,11 @@ import { Empty, Notice, Pagination, fullTime } from "./ui";
 import type { Operation, Page } from "./types";
 
 export const operationNames: Record<string, string> = {
+  token_create: "创建宿主令牌",
+  token_revoke: "撤销宿主令牌",
+  token_limits_saved: "更新宿主令牌限流",
+  backup_export: "导出备份",
+  backup_import: "从备份导入",
   consolidation_settings_saved: "更新梦境整理设置",
   goal_dedup_judge_saved: "更新目标去重判断设置",
   consolidation_merge: "整理合并记忆",
@@ -75,6 +80,7 @@ export const operationNames: Record<string, string> = {
   logout: "退出登录",
 };
 export const actorNames: Record<string, string> = {
+  local_cli: "本机命令行",
   persona: "persona 更新",
   consolidation: "梦境整理",
   goal_dedup: "目标去重判断",
@@ -87,6 +93,8 @@ export const actorNames: Record<string, string> = {
   local_import: "本机导入",
 };
 const objectNames: Record<string, string> = {
+  host_token: "宿主令牌",
+  backup: "备份",
   persona: "persona 版本",
   persona_attempt: "persona 生成任务",
   goal: "目标",
