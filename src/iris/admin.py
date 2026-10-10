@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from importlib.resources import files
@@ -11,9 +12,10 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Path as PathParameter, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
-from . import admin_data, trial, people, persona
+from . import admin_data, trial, people, persona, backup
 from .auth import audit, error
 from .tokens import NewToken, RateLimits
 from .queue import reset_batch, update_entry_settings, pace_parameters, filter_parameters, FILTER_DEFAULTS, PACE
@@ -24,6 +26,10 @@ from .service_status import service_status, add_health_hints
 
 class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class BackupExport(Input):
+    include_secrets: bool = Field(default=False, strict=True, description="包含数据目录的模型密钥；下载文件将明确标记含密钥，请私密保存")
 
 
 class Name(Input):
@@ -712,6 +718,33 @@ def install_admin(app):
     @router.get("/notifications")
     def notifications(query: Annotated[NotificationQuery, Query()]):
         return admin_data.notifications(app.state.store, **query.model_dump())
+
+    @router.get("/backups", summary="最近的导出记录与离线导入方式")
+    def backups(limit: int = Query(default=30, ge=1, le=100)):
+        return {"items": backup.recent_exports(app.state.store, limit=limit), "import_mode": "offline",
+                "import_instructions": "停止服务后执行 iris --data-dir <目录> backup import <备份>；覆盖须加 --confirm-overwrite。"}
+
+    @router.post("/backups/export", summary="在线导出一致快照，默认不含模型密钥", response_class=FileResponse)
+    def export_backup(payload: BackupExport):
+        temporary = tempfile.TemporaryDirectory(prefix="iris-download-")
+        from pathlib import Path
+        path = Path(temporary.name) / "backup.zip"
+        try:
+            result = backup.export_archive(app.state.store, path, include_secrets=payload.include_secrets,
+                                           actor="admin", runtime=app.state.runtime_config)
+            suffix = "-with-secrets" if result["includes_model_secrets"] else ""
+            return FileResponse(path, media_type="application/zip",
+                                filename=f"iris-backup-{result['backup_id']}{suffix}.zip",
+                                headers={"X-Iris-Backup-Includes-Secrets": str(result["includes_model_secrets"]).lower(),
+                                         "X-Iris-Backup-Id": result["backup_id"], "Cache-Control": "no-store"},
+                                background=BackgroundTask(temporary.cleanup))
+        except BaseException:
+            temporary.cleanup()
+            raise
+
+    @app.exception_handler(backup.BackupError)
+    async def backup_failed(request, exc):
+        return error(exc.code, str(exc), 409 if exc.code == "media_changed" else 400)
 
     @router.get("/tokens")
     def host_tokens():

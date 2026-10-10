@@ -50,6 +50,15 @@ def main(argv: list[str] | None = None) -> int:
     token_commands.add_parser("list", help="List metadata without credentials")
     token_revoke = token_commands.add_parser("revoke")
     token_revoke.add_argument("token_id")
+    backups = commands.add_parser("backup", help="Offline backup export/import; online export uses the admin API")
+    backup_commands = backups.add_subparsers(dest="backup_action", required=True)
+    backup_export = backup_commands.add_parser("export", help="Export a private archive while the service is stopped")
+    backup_export.add_argument("--out", type=Path, required=True)
+    backup_export.add_argument("--include-secrets", action="store_true", help="Include local model keys (default: excluded)")
+    backup_import = backup_commands.add_parser("import", help="Validate and restore a complete archive while the service is stopped")
+    backup_import.add_argument("archive", type=Path)
+    backup_import.add_argument("--confirm-overwrite", action="store_true", help="Confirm replacement after automatic backup")
+    backup_import.add_argument("--backup-include-secrets", action="store_true", help="Include current local model keys in the automatic pre-import backup")
     ingest = commands.add_parser("ingest", help="Add UTF-8 JSONL messages")
     ingest.add_argument("file", type=Path)
     learn = commands.add_parser("learn", help="Process an entry's pending messages")
@@ -83,6 +92,31 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, OSError):
         print("部署配置无效，请检查数据目录、监听地址和端口。", file=sys.stderr)
         return 1
+    if args.command == "backup":
+        from .backup import BackupError, export_archive, import_archive
+        from .process_lock import StoreLease, LeaseBusyError
+        import sqlite3
+        try:
+            if args.backup_action == "import":
+                result = import_archive(args.archive, args.db, confirm_overwrite=args.confirm_overwrite,
+                                        backup_include_secrets=args.backup_include_secrets)
+            else:
+                with StoreLease(args.db):
+                    if not Path(args.db).is_file():
+                        raise BackupError("missing_database", "没有可导出的数据库。")
+                    store = Store(args.db)
+                    try:
+                        result = export_archive(store, args.out, include_secrets=args.include_secrets)
+                    finally:
+                        store.close()
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        except (BackupError, LeaseBusyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        except (OSError, ValueError, sqlite3.Error):
+            print("备份操作失败，请检查文件、数据目录及可用空间。", file=sys.stderr)
+            return 1
     if args.command == "models" and args.action == "import":
         path = args.import_path or os.environ.get('IRIS_TEST_MODELS')
         if not path:
