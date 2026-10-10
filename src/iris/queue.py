@@ -360,3 +360,18 @@ def reset_batch(store: Store, batch_id: int, *, _conn: sqlite3.Connection | None
         conn.execute("UPDATE batches SET state='waiting',attempt_count=0,next_retry_at=NULL,last_error=NULL WHERE id=?", (batch_id,))
         # Design 7.6/17.7: the successful learning transaction resolves the gap.
         conn.executemany("UPDATE messages SET learning_state='batched' WHERE id=?", ((i,) for i in json.loads(row["target_ids"])))
+
+
+def other_entry_pending(store: Store, entry_id: str, *, scope) -> dict | None:
+    """R02: aggregate authorized queues without reading any message content.
+
+    Pending includes frozen/in-flight batches; terminal gaps and filtered inputs
+    are separate states. Receipt timestamps are generated in UTC by intake.
+    """
+    clause, args = scope.sql('m.entry_id')
+    with store.read() as conn:
+        row = conn.execute("""SELECT COUNT(DISTINCT m.entry_id) AS entry_count,
+            MIN(m.received_at) AS time_from, MAX(m.received_at) AS time_to
+            FROM messages m WHERE m.entry_id!=? AND m.learning_state IN ('pending','batched')
+            AND """ + clause, (entry_id, *args)).fetchone()
+    return dict(row) if row['entry_count'] else None

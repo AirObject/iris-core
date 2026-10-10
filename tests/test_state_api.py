@@ -113,7 +113,7 @@ def test_missing_activity_invalid_json_body_size_host_and_timezone(client, store
     assert client.put('/api/v1/state', content='{', headers={'Content-Type': 'application/json'}).status_code == 400
     oversized = client.put('/api/v1/state', content=json.dumps({'activity': '游戏'}) + ' ' * 32768,
                            headers={'Content-Type': 'application/json'})
-    assert oversized.status_code == 400 and oversized.json()['error']['fields'][0]['field'] == 'body'
+    assert oversized.status_code == 413 and oversized.json()['error']['fields'][0]['field'] == 'body'
     client.app.state.ready = False
     assert client.put('/api/v1/state', json={'activity': '游戏'}, headers={'Host': 'evil.example'}).status_code == 400
     client.app.state.ready = True
@@ -135,7 +135,7 @@ def test_details_limits_apply_after_merging_and_values_keep_json_types(client):
     login_admin(client)
     changes = client.get('/admin/api/state/reports?limit=1').json()['items'][0]['changes']
     assert changes['details']['new']['before'] is False and type(changes['details']['new']['after']) is int
-    assert client.put('/api/v1/state', json={'activity': '游戏', 'details': {f'k{i}': '中' * 1000 for i in range(12)}}).status_code == 400
+    assert client.put('/api/v1/state', json={'activity': '游戏', 'details': {f'k{i}': '中' * 1000 for i in range(12)}}).status_code == 413
 
 
 def test_settings_origin_and_content_type_checks(client):

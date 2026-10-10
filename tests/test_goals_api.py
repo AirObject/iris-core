@@ -189,7 +189,7 @@ def test_request_size_json_host_and_notification_query_errors(client):
     assert client.post('/api/v1/goals', content='{', headers={'Content-Type': 'application/json'}).status_code == 400
     oversized = client.post('/api/v1/goals', content='{"content":"x"}' + ' ' * 32768,
                             headers={'Content-Type': 'application/json'})
-    assert oversized.status_code == 400 and oversized.json()['error']['fields'][0]['field'] == 'body'
+    assert oversized.status_code == 413 and oversized.json()['error']['fields'][0]['field'] == 'body'
     client.app.state.ready = False
     assert client.post('/api/v1/goals', json={'content': 'x'}, headers={'Host': 'evil.example'}).status_code == 400
     client.app.state.ready = True
