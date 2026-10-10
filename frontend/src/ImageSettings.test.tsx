@@ -313,6 +313,7 @@ test("未启用图片理解时运行页不误报用途故障", async () => {
   expect(await screen.findByText(/图片理解未启用/)).toBeVisible();
   expect(screen.queryByText("配置错误")).not.toBeInTheDocument();
   expect(screen.getByRole("table", { name: "图片理解用量" })).toBeVisible();
+  expect(screen.queryByText("暂无图片理解调用记录。")).not.toBeInTheDocument();
 });
 
 test("图片没有调用时显示零计数，缺少分用途投影时不伪造零", () => {

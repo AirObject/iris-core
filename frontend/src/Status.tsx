@@ -211,7 +211,7 @@ export default function Status({
             <div className="model-row">
               <h3>图片理解调用与用量</h3>
               <ImageUsage value={data.usage.by_purpose?.image_understanding} />
-              {imageCall ? (
+              {imageCall && (
                 <>
                   <p>
                     最近调用：{imageCall.model} ·{" "}
@@ -222,8 +222,6 @@ export default function Status({
                   </p>
                   <p className="muted">{time(imageCall.created_at)}</p>
                 </>
-              ) : (
-                <p>暂无图片理解调用记录。</p>
               )}
             </div>
           )}
