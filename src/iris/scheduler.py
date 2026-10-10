@@ -186,6 +186,7 @@ class Scheduler:
                     self._loaded_configs = dict(configs)
                 except (OSError, ValueError):
                     log.warning("model configuration could not be reloaded")
+            self.lifecycle.observe_schedule()
             self.goals.generate_notifications()
             self._schedule_goal_reviews()
             if self.health:

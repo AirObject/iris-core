@@ -621,6 +621,63 @@ embedding 暂停时网关直接返回可降级错误，回复准备和查询使�
 
 运行日志同时输出控制台和数据库所在目录的 `logs/iris.log`，每 2 MB 滚动，保留 3 份旧文件；只记录状态、标识和错误类别，默认不记录消息正文或 API key。
 
+## 运行记录
+
+上线后的只读检查使用迁移 `024_runtime_journal.sql` 的两张元数据表。服务每次启动分配随机 `instance_id`；正常退出前等待已接受的后台工作结束，留下最终积压快照和停止记录。启动后每 **300 秒**由独立线程记录心跳，调度器卡住也不会阻止该线程采样。没有正常停止记录的退出，可结合心跳中断、下一次启动和进程监管日志推断。心跳表示进程记录线程活跃，不等于外部 HTTP 探测成功；启动记录对应服务生命周期开始，不是端口已经绑定的证明。
+
+`runtime_events` 是追加表，无正文或自由格式 JSON：
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` | 单调递增事件 ID；同一时刻按 ID 排序 |
+| `instance_id` | 32 位随机十六进制 ID；离线操作为 NULL，不能当作在线运行证据 |
+| `occurred_at` | UTC、带偏移的 ISO 8601 记录时刻 |
+| `event` | 下表的固定事件名 |
+| `entry_id` | prepare 的入口 ID；鉴权／路由前被拒绝时可能为 NULL |
+| `model_kind`, `configured` | 健康用途及是否已有非空端点和模型（0／1）；不记录端点、模型名称或配置摘要 |
+| `previous_state`, `state`, `reason` | 固定状态与固定原因，不保存异常原文 |
+| `run_id`, `phase`, `scheduled_at` | 维护运行 ID、阶段及预定 UTC 时间；`phase` 为 `maintenance`／`consolidation`／`persona` |
+| `duration_ms`, `result` | 单次执行的总耗时（单调时钟、毫秒）及 prepare 分类 |
+| `plan_id`, `notification_id` | 被取消／跳过的提醒计划 ID，以及替代它的通知 ID（如有） |
+
+除 `id`、`occurred_at`、`event` 外，列只在对应事件有意义时填写，其余为 NULL。
+
+| `event` | 取值和解释 |
+| --- | --- |
+| `process_started`／`process_stopped` | 生命周期开始／正常停止；不补造历史启动、崩溃或停止时间 |
+| `heartbeat` | 启动、每 5 分钟和正常停止前各一次；与其所有入口快照同一短写事务提交 |
+| `model_state` | `model_kind` 为 `chat`、`embedding`、`recall_judge`、`goal_dedup_judge`、`image_understanding`；整理、persona 等沿用它们实际使用的 chat 健康状态。状态为 `normal`、`configuration_error`、`invalid_key`、`account_problem`、`temporarily_unavailable`、`rate_limited`、`usage_limit`。可选用途 `configured=0` 表示尚未配置，不应当成等待自动恢复的故障。 |
+| `maintenance_scheduled` | 提前记录下一个每日时刻；运行繁忙时仍观察计划。按角色时区计算后存 UTC。重启可能重复观察同一时刻，按 `scheduled_at` 合并计划，不把它们当多次执行。 |
+| `maintenance_started`／`maintenance_completed` | 一次维护调用或整理／persona 阶段的开始与完成；`run_id` 对应 `maintenance_runs.id`。重启续跑会产生新的开始，耗时按各次调用单列；persona 阶段完成表示计算结束，是否仍待人工确认看既有 `maintenance_persona.status`。 |
+| `maintenance_skipped`／`maintenance_failed` | 跳过／中断或失败及固定原因。`shutdown`／`interrupted` 表示可继续的工作，本次结束不代表整日完成；`schedule_changed` 只撤销原先尚未到时的计划。 |
+| `reminder_resolved` | 只补计划 `cancelled`／`skipped` 的变化时间。`plan_id` 关联 `goal_reminder_plans.id`；合并过期阶段时 `notification_id` 指向实际替代通知。 |
+| `prepare` | 每次宿主 POST prepare 的服务端 HTTP 总处理时间，含鉴权、排队、校验、召回、判断、提示和 JSON 序列化；不含网络传输和记录写入本身。分类 `normal`／`judge_degraded`／`fulltext_degraded`／`error`。错误含校验、鉴权、限流和未捕获异常，不保存错误详情。全文降级与判断降级同时发生时，分类优先 `fulltext_degraded`。 |
+
+健康原因：`startup`（本实例初始观察）、`network`（网络／超时／可重试服务端故障）、`rate_limit`、`invalid_key`、`configuration`、`account`、`daily_limit`、`daily_reset`、`limit_changed`、`manual_retry`、`configuration_change`、`probe_success`、`response_received`、`cooldown_elapsed`。冷却到期和每日额度是计算状态，记录的是下一次观察到转换的时刻（调度轮询或调用时），不是虚构的精确服务商恢复时刻。配置变化即使仍为 normal 也留记录；跨实例使用 startup 作为初始状态，不将它误配为一次自动恢复。
+
+维护原因白名单：`schedule_changed`、`shutdown`、`interrupted`、`internal_error`、`disabled`、`unconfigured`、`model_items_disabled`、`call_budget`、`usage_limit`、`paused`、`not_due`、`no_changes`、`already_running`、`revision_conflict`、`invalid_output`、`other`。提醒原因：`goal_changed`、`goal_closed`、`configuration_change`、`superseded`、`overdue_disabled`、`already_reminded`。无法映射的已有维护诊断只记 `other`。
+
+`runtime_backlog` 用 `(heartbeat_id, entry_id)` 作主键，外键 `heartbeat_id → runtime_events.id`；包括空入口，删除心跳时级联清理：
+
+| 字段 | 含义 |
+| --- | --- |
+| `pending_messages` | `messages.learning_state IN ('pending','batched')` 的未学消息总数 |
+| `waiting_batches`, `running_batches` | 对应 `batches.state` 的批次数 |
+| `oldest_wait_seconds` | 最老未学消息的 **received_at** 到采样时的秒数（非 occurred_at）；没有未学消息时为 NULL，无法解析接收时间时亦可能为 NULL |
+| `memory_gaps` | 此时 `memory_gaps` 中该入口的缺口数 |
+
+积压在一个只读快照中按索引汇总，采样时间写入心跳 `occurred_at`；随后单独提交事件与快照，不持有业务写锁扫描消息，不读取正文。记录使用现有单写连接，锁等待和 SQLite busy 等待各最多 50 ms；记录失败只写固定日志 `runtime journal write failed`，清理失败为 `runtime journal cleanup failed`，继续业务。新记录保留 **30 天**，每日维护完成时每批最多删除 1000 条过期事件及其积压快照；停服、维护中断或清理失败会延迟清理。既有业务表的保留策略不变。
+
+提醒已有证据不重复记：`goal_reminder_plans.created_at/scheduled_at` 是计划建立／预定时间；已发布计划的通知可按 `goal_id + scheduled_at` 与 `notifications` 对应，目标合并另按现有目标合并关系追溯。`notifications.published_at/taken_at/cancelled_at` 是发布、首次取走及取消时间；取走不代表平台送达。新表只补过去无法确定时间的计划取消／跳过，早期没有记录的终态仍是未知。判断降级的独立明细继续读取 `recalls.request_json.judgment`，不以其判断耗时冒充 prepare 总耗时。
+
+连接器 `tools/live_review/` 可据此补充判定（需连接器线适配本 schema）：
+
+- 服务连续性：按实例读取开始、心跳、停止，检查窗口覆盖与心跳缺口，并结合监管／宿主成功记录。缺失、记录失败或超过保留期不能计为正常。
+- 入口卡住／积压清空：逐入口比较 5 分钟快照、最老等待时间以及既有 `admin_operations.batch_result`／`batch_attempts` 的成功进度；持续一小时无进展需标出。最终清空须有窗口末附近的零积压快照或该时刻一致读证据，不能拿当前状态代替历史结束时刻。
+- 自动恢复：同一实例、同一模型用途配对暂停到 normal，区分 `probe_success`／`cooldown_elapsed`／`daily_reset` 与 `manual_retry`／`configuration_change`／`limit_changed`；再核对恢复后的积压。未配对、跨实例、缺日志不判通过。
+- 每日整理：将事先记录的每日时刻与 `maintenance_started` 和完成事件、既有冻结 `maintenance_runs` 关联；300 秒延迟、缺开始／完成、阶段跳过和失败各自列出。手动／catchup 不能替代缺失的 scheduled 运行，缺未来计划也不能凭无错误宣称未漏跑。
+- 提醒：结合计划、补充取消／跳过事件和既有通知时间，检查 300 秒发布／取走延迟及到期未发布；及时取消与合并通知单列，不能把被取走当作送达。
+
 ## 评测
 
 ```bash

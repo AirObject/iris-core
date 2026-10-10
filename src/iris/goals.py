@@ -16,6 +16,7 @@ from uuid import uuid4
 from contextlib import nullcontext
 from datetime import datetime, time, timedelta, timezone
 
+from .runtime_journal import record as runtime_record
 from .claim_sequences import normalize_claim, same_claim_sequences
 from .db import dumps
 from .tokens import Scope
@@ -590,8 +591,11 @@ def goal_detail(conn, goal_id, *, current=None):
     return result
 
 
-def _cancel(conn, goal_id, current, *, notifications=True):
+def _cancel(conn, goal_id, current, *, notifications=True, journal_reason="goal_changed"):
+    plans = conn.execute("SELECT id FROM goal_reminder_plans WHERE goal_id=? AND status='scheduled'", (goal_id,)).fetchall()
     conn.execute("UPDATE goal_reminder_plans SET status='cancelled' WHERE goal_id=? AND status='scheduled'",(goal_id,))
+    for plan in plans:
+        runtime_record(conn, 'reminder_resolved', current=current, plan_id=plan['id'], state='cancelled', reason=journal_reason)
     if notifications:
         conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE goal_id=? AND kind='goal_reminder' AND status='pending'",(current.isoformat(),goal_id))
 
@@ -1172,7 +1176,7 @@ class Goals:
                 row = _row(conn,gid)
                 plans = conn.execute("SELECT * FROM goal_reminder_plans WHERE goal_id=? AND status='scheduled' AND scheduled_at<=? ORDER BY scheduled_at,id",(gid,current.isoformat())).fetchall()
                 if row['state']!='open' or row['merged_into'] is not None:
-                    _cancel(conn,gid,current)
+                    _cancel(conn,gid,current,journal_reason="goal_closed")
                     continue
                 latest = plans[-1]
                 missed_on_start = (self._first_generation and latest['reminder_kind']!='overdue'
@@ -1180,9 +1184,15 @@ class Goals:
                 kind = latest['reminder_kind'] if len(plans)==1 and not missed_on_start else 'immediate'
                 local_date = current.astimezone(role_zone(conn)).date().isoformat()
                 allowed = kind!='overdue' or (goal_settings(conn)['overdue_reminders'] and row['last_overdue_date']!=local_date)
+                notification_id = None
                 if allowed:
-                    _publish(conn,row,kind,latest['scheduled_at'],current)
+                    notification_id = _publish(conn,row,kind,latest['scheduled_at'],current)
                 conn.executemany("UPDATE goal_reminder_plans SET status=? WHERE id=?",(('published' if p['id']==latest['id'] and allowed else 'skipped',p['id']) for p in plans))
+                for plan in plans:
+                    if plan['id'] != latest['id'] or not allowed:
+                        reason = ('superseded' if allowed else 'overdue_disabled' if not goal_settings(conn)['overdue_reminders'] else 'already_reminded')
+                        runtime_record(conn, 'reminder_resolved', current=current, plan_id=plan['id'],
+                                       state='skipped', reason=reason, notification_id=notification_id)
                 if row['deadline_at'] and datetime.fromisoformat(row['deadline_at'])<=current:
                     _next_overdue(conn,row,current)
             after = conn.execute('SELECT COALESCE(MAX(id),0) FROM notifications').fetchone()[0]
@@ -1223,7 +1233,11 @@ class Goals:
                         _cancel(conn,row['id'],current)
                         _schedule(conn,row,current)
             if 'overdue_reminders' in changes:
+                plans = conn.execute("SELECT id FROM goal_reminder_plans WHERE reminder_kind='overdue' AND status='scheduled'").fetchall()
                 conn.execute("UPDATE goal_reminder_plans SET status='cancelled' WHERE reminder_kind='overdue' AND status='scheduled'")
+                for plan in plans:
+                    runtime_record(conn, 'reminder_resolved', current=current, plan_id=plan['id'],
+                                   state='cancelled', reason='configuration_change')
                 if not settings['overdue_reminders']:
                     conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE reminder_kind='overdue' AND status='pending'",(current.isoformat(),))
                 else:
