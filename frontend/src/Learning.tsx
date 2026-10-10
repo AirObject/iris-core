@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { entryVisibilityLabel } from "./Visibility";
 import { api, errorText, json, useData } from "./api";
 import {
   Badge,
@@ -23,6 +24,7 @@ import type {
   EntryFilters,
   QueueWait,
   EntrySettings,
+  EntryVisibility,
 } from "./types";
 
 type Summary = Batch & {
@@ -34,14 +36,15 @@ type Summary = Batch & {
   can_relearn: boolean;
   relearning: boolean;
 };
-type LearningEntry = Entry & {
-  platform: string;
-  pending_count: number;
-  latest_batch?: Summary;
-  current_batch?: Summary;
-  filters?: EntryFilters;
-  queue_wait?: QueueWait;
-};
+type LearningEntry = Entry &
+  EntryVisibility & {
+    platform: string;
+    pending_count: number;
+    latest_batch?: Summary;
+    current_batch?: Summary;
+    filters?: EntryFilters;
+    queue_wait?: QueueWait;
+  };
 type Call = {
   id: number;
   purpose: string;
@@ -212,6 +215,7 @@ export default function LearningPage({
       {editingEntry && (
         <EntrySettingsDialog
           entry={editingEntry}
+          entries={entries.data?.items || []}
           onClose={() => setEditingEntry(null)}
           onSaved={() => {
             setEditingEntry(null);
@@ -256,6 +260,10 @@ export default function LearningPage({
                     <Badge>{paceLabel(entry.pace)}</Badge>
                     <strong>待学习 {entry.pending_count} 条</strong>
                   </div>
+                  <p className="entry-filter-summary">
+                    记忆可见范围：
+                    {entryVisibilityLabel(entry, entries.data?.items || [])}
+                  </p>
                   <FilterSummary value={entry.filters} />
                   <EntryQueueWait value={entry.queue_wait} />
                   <p>
@@ -278,7 +286,7 @@ export default function LearningPage({
                       setEditingEntry(entry);
                     }}
                   >
-                    修改节奏与过滤
+                    修改入口设置
                   </button>
                   <button
                     className="text-button"

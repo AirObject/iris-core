@@ -55,6 +55,10 @@ export type CustomPace = {
   idle_seconds: number;
   max_wait_seconds: number;
 };
+export type EntryVisibility = {
+  visibility: "shared" | "entry_only" | "entries";
+  visible_in: string[];
+};
 export type EntrySettings = {
   pace: string | CustomPace;
   filters: EntryFilters;
@@ -284,6 +288,7 @@ export type Revision = {
   created_at: string;
 };
 export type MemoryDetail = Memory & {
+  visibility: { shared: boolean; visible_in: string[] };
   consolidation_annotations?: MemorySuggestion[];
   speaker: Person;
   sources: Source[];

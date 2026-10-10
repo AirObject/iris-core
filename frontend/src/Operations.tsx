@@ -70,6 +70,7 @@ export const operationNames: Record<string, string> = {
   model_retry: "请求模型重试",
   model_test: "测试模型连接",
   recall_judge_saved: "更新召回判断设置",
+  entry_visibility: "更新入口记忆可见范围",
   entry_settings_updated: "更新入口节奏与过滤",
   subject_alias_added: "添加人物别名",
   subject_alias_removed: "删除人物别名",

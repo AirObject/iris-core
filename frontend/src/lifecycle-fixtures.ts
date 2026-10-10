@@ -16,6 +16,7 @@ export const lifecycleFixture = {
 };
 
 export const memoryFixture: MemoryDetail = {
+  visibility: { shared: true, visible_in: [] },
   id: 8,
   content: "周三去上海出差",
   kind: "计划",
