@@ -325,7 +325,7 @@ def test_prepare_errors_validation_and_failed_recording_do_not_change_response(s
     msg(store, 1, 'private')
     with TestClient(create_app(store=store, gateway=FakeGateway()), base_url='http://127.0.0.1', raise_server_exceptions=False) as client:
         assert client.post('/api/v1/entries/A/prepare', json={}).status_code == 401
-        assert events(store, 'prepare')[-1]['result'] == 'error'
+        assert not events(store, 'prepare')
         authorize_host(client)
         assert client.post('/api/v1/entries/A/prepare', json={'judge': 42}).status_code == 400
         assert events(store, 'prepare')[-1]['result'] == 'error'

@@ -307,7 +307,9 @@ def test_secret_errors_logs_and_responses_never_echo_credentials(client, store, 
         assert response.status_code == 400 and key not in response.text
     (store.path.parent / 'secrets.json').write_text('{"key":"fake-opaque-credential", invalid')
     response = client.get('/admin/api/settings')
-    assert response.status_code == 400 and 'fake-opaque-credential' not in response.text
+    assert response.status_code == 200 and 'fake-opaque-credential' not in response.text
+    assert response.json()['health']['chat']['state'] == 'configuration_error'
+    assert response.json()['models']['chat']['key_missing']
 
 
 def test_embedding_connection_uses_fixed_input_and_dimension(client):

@@ -271,7 +271,7 @@ def maintenance_span(store, run_id, phase, *, clock=utc_now, stop=None, schedule
 
 
 class PrepareJournalMiddleware:
-    """ASGI timing without adding HTTP middleware tasks to unrelated routes."""
+    """Time authorized prepare work; installed inside Host and token boundaries."""
     def __init__(self, app, *, state):
         self.app, self.state = app, state
 
@@ -279,7 +279,7 @@ class PrepareJournalMiddleware:
         path = scope.get('path', '')
         if not (scope['type'] == 'http' and scope['method'] == 'POST'
                 and path.startswith('/api/v1/entries/') and path.endswith('/prepare')
-                and len(path.split('/')) == 6):
+                and len(path.split('/')) == 6 and scope.get('state', {}).get('principal') is not None):
             return await self.app(scope, receive, send)
         started = time.perf_counter()
         status, finished = 500, False

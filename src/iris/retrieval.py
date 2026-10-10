@@ -90,6 +90,16 @@ def backlog(conn) -> list[dict]:
         FROM entries e LEFT JOIN messages m ON m.entry_id=e.id GROUP BY e.id ORDER BY e.id""")]
 
 
+def project_host_sources(memories, scope):
+    """Redact only the final host response, after selection, budgeting and judging."""
+    if scope.kind == 'all':
+        return memories
+    return [{**memory, 'sources': [
+        source if scope.allows(source.get('entry_id')) else
+        {**source, 'entry_id': None, 'entry_name': None, 'occurred_at': None}
+        for source in memory['sources']]} for memory in memories]
+
+
 class Retrieval:
     def __init__(self, store: Store, gateway: Gateway | None = None, *, tokenizer: str | None = None,
                  vector_min: float | None = None, dtype: str | None = None,

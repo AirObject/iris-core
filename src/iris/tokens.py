@@ -13,6 +13,7 @@ import re
 import secrets
 import sqlite3
 import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
@@ -27,6 +28,11 @@ DEFAULT_LIMITS = {'rate_per_second': 20, 'burst': 60}
 CREDENTIAL = re.compile(r'iris_ht_([0-9a-f]{32})\.([A-Za-z0-9_-]{43})', re.ASCII)
 
 
+def valid_entry_id(value):
+    return (isinstance(value, str) and 1 <= len(value) <= 200 and bool(value.strip())
+            and not any(c in '?#' or unicodedata.category(c) == 'Cc' for c in value))
+
+
 class Scope(BaseModel):
     model_config = ConfigDict(extra='forbid', frozen=True)
     kind: Literal['all', 'entries', 'prefix']
@@ -38,12 +44,12 @@ class Scope(BaseModel):
         if self.kind == 'entries':
             if not self.entries or self.prefix is not None or len(set(self.entries)) != len(self.entries):
                 raise ValueError('入口列表须非空、不重复，且不能同时指定前缀')
-            if any(not value.strip() or len(value) > 200 or "\x00" in value for value in self.entries):
-                raise ValueError('入口 ID 须为 1—200 个字符且不能为空白')
+            if any(not valid_entry_id(value) for value in self.entries):
+                raise ValueError('入口 ID 须为 1—200 个字符，不能为空白或含 ?、#、控制字符')
         elif self.entries or (self.kind == 'prefix') != (self.prefix is not None):
             raise ValueError('范围字段须与 kind 一致')
-        if self.prefix is not None and (not self.prefix.strip() or "\x00" in self.prefix):
-            raise ValueError('前缀不能为空白或含 NUL')
+        if self.prefix is not None and not valid_entry_id(self.prefix):
+            raise ValueError('前缀不能为空白或含 ?、#、控制字符')
         return self
 
     def allows(self, entry_id):
@@ -52,16 +58,27 @@ class Scope(BaseModel):
             entry_id in self.entries if self.kind == 'entries' else entry_id.startswith(self.prefix))
 
     def require(self, entry_id):
+        if entry_id is not None and not valid_entry_id(entry_id):
+            raise TokenError(400, 'invalid_request', '入口 ID 须为 1—200 个字符，不能为空白或含 ?、#、控制字符')
         if not self.allows(entry_id):
             raise TokenError(403, 'entry_forbidden', '令牌无权访问该入口')
 
-    def sql(self, column):
+    def allows_write(self, entry_id):
+        return self.allows(entry_id) and (entry_id is not None or self.kind == 'all')
+
+    def require_write(self, entry_id):
+        self.require(entry_id)
+        if not self.allows_write(entry_id):
+            raise TokenError(403, 'entry_forbidden', '创建或修改全局目标需要 all 范围令牌')
+
+    def sql(self, column, *, write=False):
         """column is an internal SQL identifier, never supplied by a host."""
         if self.kind == 'all':
             return '1', []
+        global_clause = '' if write else f'{column} IS NULL OR '
         if self.kind == 'entries':
-            return f'({column} IS NULL OR {column} IN (SELECT value FROM json_each(?)))', [dumps(self.entries)]
-        return f'({column} IS NULL OR substr({column},1,length(?))=?)', [self.prefix, self.prefix]
+            return f'({global_clause}{column} IN (SELECT value FROM json_each(?)))', [dumps(self.entries)]
+        return f'({global_clause}substr({column},1,length(?))=?)', [self.prefix, self.prefix]
 
 
 class NewToken(BaseModel):
@@ -161,6 +178,12 @@ class Tokens:
             row = conn.execute('SELECT * FROM host_tokens WHERE id=? AND revoked_at IS NULL', (match[1],)).fetchone()
             if row is None or not hmac.compare_digest(row['token_hash'], _digest(row['salt'], parts[1])):
                 raise TokenError()
+            try:
+                scope = Scope.model_validate_json(row['scope_json'])
+            except ValueError:
+                # Legacy ranges can contain entry characters now forbidden.
+                # Treat them as invalid credentials, never as an HTTP 500.
+                raise TokenError() from None
             setting = conn.execute("SELECT value_json FROM runtime_settings WHERE key='host_tokens'").fetchone()
             limits = RateLimits.model_validate(json.loads(setting[0]) if setting else DEFAULT_LIMITS)
             current = self.clock()
@@ -172,7 +195,7 @@ class Tokens:
                                  max(1, math.ceil((1-remaining)/limits.rate_per_second)))
             self._buckets[row['id']] = (remaining-1, current)
             conn.execute('UPDATE host_tokens SET last_used_at=? WHERE id=?', (now(), row['id']))
-            return Principal(row['id'], row['host'], Scope.model_validate_json(row['scope_json']))
+            return Principal(row['id'], row['host'], scope)
 
     def bind_recall(self, recall_id, principal):
         with self.store.write() as conn:
@@ -196,7 +219,7 @@ def install_tokens(app):
 
     @app.middleware('http')
     async def host_boundary(request, call_next):
-        path = request.url.path
+        path = request.scope['path']
         if not (path == '/api/v1' or path.startswith('/api/v1/')) or not app.state.ready:
             return await call_next(request)
         try:
