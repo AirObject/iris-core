@@ -77,7 +77,8 @@ def test_U05_real_serve_subprocess_http_learning_kill_restart_prepare(tmp_path, 
                 assert material["messages"][0]["message_id"] == 1
                 result = {"facts": [{"covered": True, "memory_ids": [1], "reason": "覆盖"}], "forbidden": []}
             else:
-                result = {"memories": [{"content": "小林喜欢天文摄影", "type": "偏好", "about": ["P1"], "speaker": "P1", "stance": "亲历", "evidence": [1]}]}
+                result = {"updates": [], "people": [], "goals": [], "questions": [],
+                          "memories": [{"content": "小林喜欢天文摄影", "type": "偏好", "about": ["P1"], "speaker": "P1", "stance": "亲历", "evidence": [1]}]}
             return 200, completion(json.dumps(result, ensure_ascii=False)), {}, 0
         server.handler = handler
         path, report = run_e2e_eval({"chat": server.configs["chat"]}, tmp_path / "repo", "dev", corpus=corpus,

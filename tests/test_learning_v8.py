@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from conftest import FakeGateway, batch, msg
+from conftest import FakeGateway, batch, learning_output, msg
 
 
 @pytest.mark.parametrize(('relation', 'value'), [
@@ -25,7 +25,7 @@ def test_null_unused_relations_do_not_discard_a_valid_relation(store, relation, 
         else:
             assert [r[0] for r in conn.execute('SELECT kind FROM subject_links')] == [relation]
         assert json.loads(conn.execute('SELECT raw_output FROM batch_attempts WHERE batch_id=?',
-                                       (formed.id,)).fetchone()[0]) == original
+                                       (formed.id,)).fetchone()[0]) == learning_output(original)
     omitted = [n['field'] for n in result['normalizations']
                if n['reason'] == 'unused null relation omitted']
     assert set(omitted) == {'alias', 'same_as', 'roleplay'} - {relation}

@@ -26,7 +26,7 @@ from test_scheduler import intake, wait_for
 def test_B13_real_process_exit_mid_learning_transaction_rolls_back(tmp_path):
     path = tmp_path / "crash.db"
     child = """
-import os,sys
+import json,os,sys
 from iris.db import Store
 from iris.learning import LearningEngine
 from iris.models import ModelConfig
@@ -34,7 +34,9 @@ from iris.queue import add_message,form_batch
 class Fake:
     configs={"chat":ModelConfig("fake","","fake")}
     def json_chat(self,*args,**kw):
-        return {"memories":[{"content":"小林喜欢猫","type":"偏好","about":["P1"],"speaker":"P1","stance":"亲历","evidence":[1]}]},"{}",None,"direct"
+        result={"updates":[],"people":[],"goals":[],"questions":[],
+                "memories":[{"content":"小林喜欢猫","type":"偏好","about":["P1"],"speaker":"P1","stance":"亲历","evidence":[1]}]}
+        return result,json.dumps(result),None,"direct"
 class Crash(LearningEngine):
     def _source(self,conn,memory_id,message_id):
         assert conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0] == 1
