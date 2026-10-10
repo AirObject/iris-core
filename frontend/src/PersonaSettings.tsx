@@ -64,13 +64,17 @@ export function PersonaSettingsEditor({
               });
             }}
           >
-            <option value="small_medium_auto">小或中自动发布（默认）</option>
+            <option value="small_medium_auto">小或中自动发布</option>
             <option value="all_auto">全部自动</option>
-            <option value="all_manual">全部人工确认</option>
+            <option value="all_manual">全部人工确认（默认）</option>
           </select>
         </label>
         <p className="lifecycle-help">
-          所有候选都要经过检查。默认方式自动发布小、中变化，大变化等待确认；全部人工确认会保留所有检查通过的候选等待决定。
+          M3 的 persona
+          门槛尚未达到，默认采用“全部人工确认”：检查通过的候选也先由管理员确认，确认后才生效。可以改回“小或中自动发布”或“全部自动”。
+        </p>
+        <p className="lifecycle-help">
+          所有候选都要经过检查。“小或中自动发布”会自动发布检查通过的小、中变化，大变化等待确认。
         </p>
         <Notice>
           自动候选删去或改动手写内容时按“大变化”处理。选择“全部自动”后，检查通过的大变化也会直接发布，包括删改手写内容；不会等待确认。

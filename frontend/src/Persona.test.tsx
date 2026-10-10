@@ -590,7 +590,12 @@ test("试用 persona 可折叠，分别提示待更新和待确认；轮询只�
   render(<PersonaSummary />);
   await act(async () => {});
   expect(screen.getByText(/1 条依据.*失效/)).toBeVisible();
-  expect(screen.getByText(/候选 v9.*等待确认/)).toBeVisible();
+  expect(screen.getByText("1 个 persona 候选等待确认")).toBeVisible();
+  expect(screen.getByText(/候选 v9 尚未生效/)).toBeVisible();
+  expect(screen.getByRole("link", { name: "查看候选与差异" })).toHaveAttribute(
+    "href",
+    "#/persona?tab=current&focus=pending",
+  );
   expect(
     screen.getByRole("link", { name: "查看 persona 与自我" }),
   ).toHaveAttribute("href", "#/persona");
@@ -599,6 +604,17 @@ test("试用 persona 可折叠，分别提示待更新和待确认；轮询只�
   await act(async () => {
     await vi.advanceTimersByTimeAsync(4000);
   });
+  snapshot.pending = null;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(
+    screen.queryByText("1 个 persona 候选等待确认"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: "查看候选与差异" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("待更新")).toBeVisible();
   expect(
     requests.every((r) => r.url === "/admin/api/persona" && !r.init?.method),
   ).toBe(true);
@@ -847,4 +863,37 @@ test("整理报告链接自动打开指定两个 persona 版本的差异", async
   expect(screen.getByLabelText("对比前版本 ID")).toHaveValue(3);
   expect(screen.getByLabelText("对比后版本 ID")).toHaveValue(8);
   expect(requests.every((r) => !r.init?.method)).toBe(true);
+});
+
+test("候选已处理时，待确认直达链接说明当前没有候选", async () => {
+  snapshot.pending = null;
+  mount({ initialQuery: "tab=current&focus=pending" });
+  expect(
+    await screen.findByText("当前没有待确认的 persona 候选。"),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("region", { name: "待确认候选与差异" }),
+  ).not.toBeInTheDocument();
+  expect(requests.every((r) => !r.init?.method)).toBe(true);
+});
+
+test("从版本历史查看候选与差异会切回当前页签并定位候选，轮询不抢焦点", async () => {
+  vi.useFakeTimers();
+  mount({ initialQuery: "tab=history" });
+  await act(async () => {});
+  fireEvent.click(screen.getByRole("button", { name: "查看候选与差异" }));
+  await act(async () => {});
+  expect(screen.getByRole("tab", { name: "当前与候选" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  expect(
+    screen.getByRole("region", { name: "待确认候选与差异" }),
+  ).toHaveFocus();
+  const confirm = pendingRegion().getByRole("button", { name: "确认发布候选" });
+  confirm.focus();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(6000);
+  });
+  expect(confirm).toHaveFocus();
 });

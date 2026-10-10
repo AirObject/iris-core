@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, apiResponse, ApiError, errorText, json, useData } from "./api";
 import { Badge, Dialog, Empty, Notice } from "./ui";
 import { PersonaGuide } from "./PersonaGuide";
@@ -54,6 +54,10 @@ export default function PersonaPage({
 }) {
   const initial = new URLSearchParams(initialQuery);
   const initialVersion = Number(initial.get("version"));
+  const [focusPending, setFocusPending] = useState(
+    initial.get("focus") === "pending",
+  );
+  const pendingTarget = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState(
     Object.hasOwn(tabs, initial.get("tab") || "")
       ? initial.get("tab")!
@@ -76,6 +80,13 @@ export default function PersonaPage({
   const data = snapshot.data,
     current = data?.current,
     pending = data?.pending;
+  useEffect(() => {
+    if (focusPending && tab === "current" && pending && pendingTarget.current) {
+      pendingTarget.current.focus();
+      pendingTarget.current.scrollIntoView?.({ block: "start" });
+      setFocusPending(false);
+    }
+  }, [focusPending, tab, pending]);
   const latest = data?.latest_attempt;
   // A terminal snapshot is newer than the original 202 receipt. Once either
   // read has reached a terminal state, an older in-flight snapshot cannot undo it.
@@ -279,10 +290,19 @@ export default function PersonaPage({
         <Notice>
           <Badge tone="warning">待确认</Badge> 候选 v{pending.id}{" "}
           等待决定，当前版本仍在使用。
-          <button className="text-button" onClick={() => setTab("current")}>
+          <button
+            className="text-button"
+            onClick={() => {
+              setTab("current");
+              setFocusPending(true);
+            }}
+          >
             查看候选与差异
           </button>
         </Notice>
+      )}
+      {data && !pending && initial.get("focus") === "pending" && (
+        <Notice>当前没有待确认的 persona 候选。</Notice>
       )}
       {tracked && (
         <PersonaTask
@@ -358,7 +378,12 @@ export default function PersonaPage({
               />
             )}
             {pending && (
-              <>
+              <div
+                ref={pendingTarget}
+                role="region"
+                aria-label="待确认候选与差异"
+                tabIndex={-1}
+              >
                 <PersonaVersionView
                   key={`pending-${pending.id}-${epoch}`}
                   id={pending.id}
@@ -378,7 +403,7 @@ export default function PersonaPage({
                     />
                   </div>
                 )}
-              </>
+              </div>
             )}
           </>
         )}
