@@ -443,3 +443,61 @@ def test_update_counts_all_new_messages_since_version_not_only_window(store,cloc
     assert due['new_messages']==50 and due['due']
     result=EntryProfileEngine(store,Model(store),clock=clock).update('group',expected_version=first['version']['version'])
     assert result['status']=='skipped' and result['reason']=='no_evidence'
+
+
+def test_check_input_groups_only_current_bound_evidence_per_sentence(store,clock):
+    own=messages(store,clock)
+    memory(store,clock,own[2:4])
+    model=Model(store)
+    original=model.chat
+    def chat(messages,purpose,*args,**kwargs):
+        reply=original(messages,purpose,*args,**kwargs)
+        if purpose.endswith('generate'):
+            value=json.loads(reply.content)
+            for row,refs in zip(value['sentences'],[['S1'],['M1'],['S2'],['S1','M1'],['S2']],strict=True):
+                row['basis']=refs
+            return ModelReply(dumps(value),'stop',{})
+        return reply
+    model.chat=chat
+    result=EntryProfileEngine(store,model,clock=clock).regenerate('group',expected_version=0)
+    payload=model.calls[1][1]
+    assert 'evidence' not in payload
+    assert result['version']['checks']['model_input']==payload
+    assert [s['index'] for s in payload['candidate']]==[1,2,3,4,5]
+    assert [s['ref'] for s in payload['candidate'][0]['evidence']['messages']]==['S1']
+    assert payload['candidate'][0]['evidence']['memories']==[]
+    assert payload['candidate'][1]['evidence']['messages']==[]
+    sources=payload['candidate'][1]['evidence']['memories'][0]['source_messages']
+    assert [s['message_id'] for s in sources]==own[2:4]
+    assert sources[0]['speaker']=='self' and sources[0]['content']
+    assert 'sha256' not in dumps(payload)
+    assert all(s['ref'] in sentence['refs'] for sentence in payload['candidate']
+               for kind in ('messages','memories') for s in sentence['evidence'][kind])
+
+
+def test_unqualified_scene_is_deleted_even_with_multiple_message_references(store,clock):
+    messages(store,clock)
+    model=Model(store,refs=['S1','S2'])
+    original=model.chat
+    def chat(messages,purpose,*args,**kwargs):
+        reply=original(messages,purpose,*args,**kwargs)
+        if purpose.endswith('check'):
+            value=json.loads(reply.content)
+            value['sentences'][0]['scene_qualified']=False
+            return ModelReply(dumps(value),'stop',{})
+        return reply
+    model.chat=chat
+    result=EntryProfileEngine(store,model,clock=clock).regenerate('group',expected_version=0)
+    deleted=result['version']['checks']['deleted_sentences']
+    assert len(deleted)==1 and deleted[0]['sentence']['text']==TEXTS[0]
+
+
+def test_check_input_keeps_admin_sentences_without_borrowing_evidence(store,clock):
+    messages(store,clock)
+    first=admin_edit(store,'group',''.join(TEXTS),expected_version=0,clock=clock)
+    model=Model(store,texts=[])
+    result=EntryProfileEngine(store,model,clock=clock).regenerate('group',expected_version=first['version'])
+    payload=model.calls[1][1]
+    assert [s['text'] for s in payload['candidate']]==TEXTS
+    assert all(s['author']=='admin' and s['evidence']=={'messages':[],'memories':[]} for s in payload['candidate'])
+    assert result['version']['content']==first['content']

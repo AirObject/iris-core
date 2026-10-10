@@ -497,6 +497,28 @@ def _resolve(generated, evidence, previous):
     return [*sentences,*manual],deleted,errors,original_count
 
 
+
+def _check_input(material, sentences):
+    """Pair each sentence with its actual evidence; hashes are for CAS, not judging."""
+    evidence=material['evidence']
+    references={item['ref']:item for kind in ('messages','memories') for item in evidence[kind]}
+    def message(item):
+        return {key:item[key] for key in ('ref','message_id','entry_id','kind','date','occurred_at',
+                                          'speaker','content','quote') if key in item}
+    def memory(item):
+        return {**{key:item[key] for key in ('ref','memory_id','revision','content','stance')},
+                'source_messages':[message(source) for source in item['source_messages']]}
+    candidate=[]
+    for index,sentence in enumerate(sentences,1):
+        refs=sentence.get('refs',[]) if sentence['author']=='model' else []
+        linked=[references[ref] for ref in refs]
+        candidate.append({'index':index,'text':sentence['text'],'author':sentence['author'],'refs':refs,
+            'evidence':{'messages':[message(item) for item in linked if 'memory_id' not in item],
+                        'memories':[memory(item) for item in linked if 'memory_id' in item]}})
+    return {'entry':evidence['entry'],'as_of':evidence['as_of'],'previous':material['previous'],
+            'candidate':candidate}
+
+
 def _check(output, sentences):
     if not isinstance(output,dict) or output.get('change_degree') not in DEGREES or not isinstance(output.get('reason'),str):
         raise ValueError('invalid_check')
@@ -511,7 +533,7 @@ def _check(output, sentences):
                 or any(v not in VIOLATIONS for v in row['violations'])):
             raise ValueError('invalid_check_sentence')
         bad=(not row['supported'] or bool(row['violations']) or
-             (sentence['message_count']<=1 and not row['scene_qualified']))
+             not row['scene_qualified'])
         if sentence['author']=='admin':
             retained.append(sentence)
             if row['violations']:
@@ -675,7 +697,8 @@ class EntryProfileEngine:
                     with self.store.write() as conn:
                         conn.execute('UPDATE entry_profile_attempts SET outputs_json=?,calls_json=? WHERE id=?',
                                      (dumps(outputs),dumps(calls),attempt))
-                    output=self._call(gateway,'check',{**material,'candidate':sentences},outputs,calls,config)
+                    checks['model_input']=_check_input(material,sentences)
+                    output=self._call(gateway,'check',checks['model_input'],outputs,calls,config)
                     checks['model']=output
                     sentences,removed,warnings,degree=_check(output,sentences)
                     checks['deleted_sentences']+=removed
