@@ -19,6 +19,8 @@ from test_consolidation import Model, pair, merge_answer
 
 def persona_case(store, *, budget=50, degree='small', supported=True, **settings):
     setup_role(store, 'Iris', '我来自云城。')
+    # Existing publication/recovery cases opt in to automatic small/medium changes.
+    store.set_setting('persona_publish_mode', 'small_medium_auto')
     clock = Clock('2026-10-10T12:00:00+08:00')
     with store.write() as conn:
         conn.execute('UPDATE persona_versions SET created_at=?', ((clock()-timedelta(days=8)).isoformat(),))
@@ -497,3 +499,21 @@ def test_skip_checkpoint_survives_stop_without_persona_attempt(store):
     Maintenance(store,gateway=model,clock=engine.clock).run(rid)
     assert engine.report(rid)['state']=='completed' and not model.calls
     assert engine.report(rid)['persona']['reason']=='call_budget'
+
+
+@pytest.mark.parametrize('degree', ['small', 'medium', 'large'])
+def test_persona_dream_step_uses_manual_product_default(store, degree):
+    # The shared fixture opts in to auto-publication for older recovery tests;
+    # remove that override to exercise the product fallback in the real dream step.
+    engine, model, _ = persona_case(store, degree=degree)
+    with store.write() as conn:
+        conn.execute("DELETE FROM runtime_settings WHERE key='persona_publish_mode'")
+    before = current_persona(store)['id']
+    report = complete(engine)
+    assert report['persona']['status'] == 'pending'
+    assert current_persona(store)['id'] == before
+    with store.read() as conn:
+        row = conn.execute("SELECT material_json,checks_json FROM persona_versions WHERE status='pending'").fetchone()
+        assert json.loads(row['material_json'])['settings']['publish_mode'] == 'all_manual'
+        assert json.loads(row['checks_json'])['passed']
+    assert len(model.calls) == 2

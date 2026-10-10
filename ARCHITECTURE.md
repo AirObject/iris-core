@@ -211,6 +211,12 @@ Scheduler 的独立单工作线程执行 Maintenance，不占学习、模型探�
 
 ## M3 persona
 
+2026-10-10 的产品默认改为 `all_manual`。M3 persona 的整版有依据门槛未达到，先让管理员查看逐句依据与检查结果后确认；检查通过不再默认自动发布，检查失败仍拒绝。初始模板、管理员直接编辑和回滚仍是明确的发布操作。`DEFAULT_PUBLISH_MODE` 同时用于数据层缺省值和设置请求模型；`PUBLISH_MODES` 继续接受三种方式，不靠枚举顺序定义默认。
+
+迁移 020 先补齐缺失的旧隐式发布方式，再只把 `small_medium_auto` 且从无管理员 `persona_settings_saved` 操作记录的值改为 `all_manual`。记录只要求 `actor=admin` 与动作匹配，任何字段的保存都保护管理员原选择；正文编辑、自动生成和其他设置操作不算 persona 设置修改。迁移不修改版本、已接受尝试或其检查／设置快照。待确认数量复用版本列表的 `status=pending` 过滤计数 `total`，唯一索引限制最多一个；没有新增宿主通知路径。
+
+`persona_evaluation.py` 使用独立的 `EVAL_PUBLISH_MODE=small_medium_auto` 固定冻结语料的默认约定，规范化后写入每条时间线的 `persona_publish_mode` 并验证枚举；JSON 顶层默认可被时间线覆盖。初始化评测库后显式保存实际模式，避免产品迁移改变原有发布与变化统计；该值随输入指纹、材料和候选设置一起保存。
+
 `persona.py` 管理依据选取、检查、发布与版本；`persona_evaluation.py` 提供隔离时间线、可注入时钟及外部判分材料。迁移 013 扩充 `persona_versions`，增加 `persona_attempts`，并只把仍等于旧截短默认值的监管要求升级为设计全文。初始设定通过 `memory_ops.setup_role` 创建原模板正文与设定依据，不调用模型，不改变学习材料中的 persona 文本。
 
 `persona_versions` 保存正文、逐句依据、检查结果、变化程度、状态、来源、生成／发布时间、基准版本、回滚来源、生成材料与自我记忆快照。逐句 `basis` 是 `{memory_id, revision}` 数组，`origin` 区分记忆、管理员和模板来源；`dates/date_count` 是来源追溯结果。材料保留来源摘录及追溯指纹，使检查、确认与历史展示可核对当时依据。管理详情额外投影 `admin_written`、该修订正文与当前记忆，不把当前修订冒充历史证据。版本列表不加载完整材料。

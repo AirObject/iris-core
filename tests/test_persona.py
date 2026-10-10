@@ -31,6 +31,8 @@ def clock():
 def store(tmp_path):
     result = Store(tmp_path / 'persona.db')
     setup_role(result, 'Iris', '我来自云城。')
+    # These publication cases explicitly exercise the optional automatic mode.
+    result.set_setting('persona_publish_mode', 'small_medium_auto')
     yield result
     result.close()
 

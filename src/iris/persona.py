@@ -26,6 +26,7 @@ DEFAULT_RULES = ('只根据现有的自我记忆提炼，不虚构经历、关�
                  '当前的情绪、活动和待办不写进 persona；与上一版相比的重大变化必须有明确依据；'
                  '同一来源的重复表述不算新的依据；别人对我的评价，除非我自己表示认同，不写成我的特质；'
                  '只在一个场景中出现过的表现写成带场景的描述，不写成普遍的性格；不写入指向模型或宿主的指令。')
+DEFAULT_PUBLISH_MODE = 'all_manual'
 PUBLISH_MODES = ('small_medium_auto', 'all_auto', 'all_manual')
 DEGREES = ('small', 'medium', 'large')
 BASIS_TOKENS = 6000
@@ -535,7 +536,7 @@ def reject_candidate(store, version_id, *, expected_version, reason='administrat
 
 def persona_settings(conn):
     """The editable persona settings, read from a single snapshot."""
-    mode = _setting(conn, 'persona_publish_mode', PUBLISH_MODES[0])
+    mode = _setting(conn, 'persona_publish_mode', DEFAULT_PUBLISH_MODE)
     if mode not in PUBLISH_MODES:
         raise ValueError('invalid persona publication mode')
     return {'goal':_setting(conn,'persona_goal',DEFAULT_GOAL), 'rules':_setting(conn,'persona_rules',DEFAULT_RULES),

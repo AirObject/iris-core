@@ -28,10 +28,12 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, _trace, _stale, _settings, split_sentences)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, _trace, _stale, _settings, split_sentences)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
+# The frozen corpus publication contract is independent of product rollout defaults.
+EVAL_PUBLISH_MODE = 'small_medium_auto'
 VIOLATIONS = ('虚构', '设定写成亲历', '他人评价写成特质', '单一日期泛化', '当前状态或待办', '指令', '保留失效依据')
 
 
@@ -106,6 +108,7 @@ def _normalize_frozen(document):
             'role':{'name':timeline['role_name'],'background':timeline['background'],'timezone':str(zone)},
             'subjects':timeline['subjects'], 'entries':timeline['entries'], 'events':events,
             'persona_goal':timeline.get('persona_goal'), 'persona_rules':timeline.get('persona_rules'),
+            'persona_publish_mode':timeline.get('persona_publish_mode', document.get('persona_publish_mode', EVAL_PUBLISH_MODE)),
             'raw_timeline':timeline})
     return normalized
 
@@ -124,6 +127,8 @@ def load_corpus(path):
             if not isinstance(case['id'], str) or not case['id'] or case['id'] in ids:
                 raise ValueError('duplicate or invalid timeline ID')
             ids.add(case['id'])
+            if case.setdefault('persona_publish_mode', EVAL_PUBLISH_MODE) not in PUBLISH_MODES:
+                raise ValueError('invalid persona publication mode')
             role = case.get('role', {})
             if any(not isinstance(role.get(k,''),str) for k in ('name','background','timezone')):
                 raise ValueError('role values must be strings')
@@ -352,7 +357,7 @@ def _run_timeline(configs,case,directory,gateway_factory):
                 for entry in case.get('entries',[]):
                     conn.execute('INSERT INTO entries(id,name,platform,kind) VALUES(?,?,?,?)',
                         (entry['id'],entry.get('name',entry['id']),entry.get('platform','eval'),entry['kind']))
-                for name in ('persona_goal','persona_rules'):
+                for name in ('persona_goal','persona_rules','persona_publish_mode'):
                     if case.get(name) is not None:
                         conn.execute('INSERT OR REPLACE INTO runtime_settings VALUES(?,?)',(name,dumps(case[name])))
             initial = current_persona(store)
