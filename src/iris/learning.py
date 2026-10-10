@@ -20,6 +20,7 @@ from .claim_sequences import normalize_claim as _normalize, same_claim_sequences
 from .people import canonical_subject
 from .memory_ops import confirm_retention
 from .models import Gateway, ModelError, parse_json_object_with_status
+from .media import material_content, message_media, prepare_media
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
 
@@ -160,6 +161,8 @@ class LearningEngine:
             identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities").fetchall()
             persona = conn.execute("SELECT content FROM persona_versions WHERE is_current=1 ORDER BY id DESC LIMIT 1").fetchone()
             messages = {r["id"]: _row_dict(r) for r in rows}
+            for message_id, media in message_media(conn, ids).items():
+                messages[message_id]["media"] = media
             names = {r["id"]: r["name"] for r in subjects}
             # Preserve stored provenance; use final identities consistently in
             # this snapshot's participant labels and evidence validation.
@@ -242,10 +245,11 @@ class LearningEngine:
                              f"；正文作者 {subject_label(m['sender_subject_id'], m['sender_name'])}")
                 scene = f"（{m['scene_identity']}）" if m["scene_identity"] else ""
                 prefix = f"#{number} [{dt.strftime('%Y-%m-%d 周')}{'一二三四五六日'[dt.weekday()]} {dt.strftime('%H:%M')}] "
+                body = truncate_material(material_content(m["content"], m.get("media", [])))
                 if m["kind"] == "event":
-                    lines.append(f"{prefix}[场景事件] {truncate_material(m['content'])}")
+                    lines.append(f"{prefix}[场景事件] {body}")
                 else:
-                    lines.append(f"{prefix}[{label_type}] {subject_label(m['sender_subject_id'], m['sender_name'])}{scene}{quote}：数据：{truncate_material(m['content'])}")
+                    lines.append(f"{prefix}[{label_type}] {subject_label(m['sender_subject_id'], m['sender_name'])}{scene}{quote}：数据：{body}")
         material = "\n".join(lines)
         # Drop context from the beginning/end if the material exceeds its budget; target IDs stay fixed.
         if estimate_tokens(material) > 10000:
@@ -868,6 +872,8 @@ class LearningEngine:
         attempt = {"number": attempt_number, "started_at": now(), "raw_output": None,
                    "repair_output": None, "parse_status": "failed", "duration_ms": 0}
         try:
+            prepare_media(self.store, self.gateway, batch.target_ids + batch.history_ids + batch.future_ids,
+                          batch_id=batch.id, clock=self.clock)
             snapshot = self._snapshot(batch)
             related = self._related(batch, snapshot)
             material, numbers, refs = self._material(batch, snapshot, related)

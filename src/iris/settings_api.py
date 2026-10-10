@@ -239,7 +239,7 @@ def install_settings(app):
         return snapshot()
 
     @router.put('/settings/models/{kind}')
-    def model(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge'], payload: Model):
+    def model(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge', 'image_understanding'], payload: Model):
         runtime = app.state.runtime_config
         if runtime.external_loader:
             return error('external_config', '模型配置来自外部文件，只读', 409)
@@ -303,14 +303,14 @@ def install_settings(app):
         return snapshot()
 
     @router.post('/settings/models/{kind}/retry')
-    def retry(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge']):
+    def retry(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge', 'image_understanding']):
         app.state.gateway.retry_now(kind)
         with app.state.store.write() as conn:
             audit(conn, 'model_retry', {'purpose': kind})
         return snapshot()
 
     @router.post('/settings/models/{kind}/test')
-    def connection(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge'], payload: dict):
+    def connection(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge', 'image_understanding'], payload: dict):
         runtime = app.state.runtime_config
         current = app.state.gateway.configs.get(kind)
         if payload and runtime.external_loader:
@@ -333,7 +333,10 @@ def install_settings(app):
             body = ({'messages': [{'role': 'user', 'content': '只输出 JSON：{"ok":true}'}],
                      'max_tokens': 3000, 'response_format': {'type': 'json_object'}} if kind != 'embedding'
                     else gateway._embedding_payload('Iris 测试连接'))
-            result = gateway._call(kind, 'connection_check', body, probe=True, deadline=gateway.monotonic()+CONNECTION_TIMEOUT)
+            if kind == 'image_understanding':
+                body = gateway.image_probe_payload()
+            result = gateway._call(kind, 'connection_check', body, probe=True, deadline=gateway.monotonic()+CONNECTION_TIMEOUT,
+                                   **({'validator': gateway._validate_image_text} if kind == 'image_understanding' else {}))
             valid = (bool((result.get('choices') or [{}])[0].get('message', {}).get('content')) if kind != 'embedding'
                      else bool(result.get('data') and result['data'][0].get('embedding')))
             if not valid:

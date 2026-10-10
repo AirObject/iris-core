@@ -307,3 +307,31 @@ API 在当前状态和目标写入前用令牌名称覆盖兼容 host 字段，�
 范围不改变设计 11.4 的已形成记忆共享；当前状态、persona 和模型健康为角色全局数据。后续记忆可见范围由 VS 工作线实现。本节取代早期实现记录中“宿主 API 无令牌”和“R03 未实施”的状态说明。
 
 端到端 ServeProcess 在首次启动前通过离线 CLI 获取令牌，stdout 只捕获进内存，不拼进异常或服务输出。创建同样经过互斥锁，重启复用令牌而不复制任何密钥配置。公开学习请求与召回对照仍使用冻结输入；鉴权不进入学习材料。
+
+## M4 媒体保存与接线契约
+
+迁移 `022_media.sql` 新增 `media_files`（SHA-256 唯一、类型、大小、无引用起点、安全拒绝时间）、`media_objects`（随机 ID、文件外键、逐对象理解状态／文本／尝试租约）及 `message_media`（消息外键、顺序、媒体外键）。文件路径只能由后端生成，为 `<Store.path.parent>/media/<sha256>`。保存流时有大小上限、MIME 白名单和文件头检查，写临时文件并 fsync 后，在数据库写锁内原子改名并登记；同哈希仅保存一份。拒绝符号链接目录／文件，不接受 URL、客户端路径或文件名。
+
+AP 线的 `POST /api/v1/media` 在验证宿主令牌和请求限制后调用：
+
+```python
+from iris.media import save_media
+
+media = save_media(store, binary_stream, content_type="image/png",
+                   understanding_text=None)  # bytes 或二进制流；宿主说明可选
+# media["id"] 用于后续 add_message(..., media_ids=[media["id"], ...])
+```
+
+`save_media` 返回 `id`、`sha256`、`content_type`、`size_bytes`、`kind`、`understanding_source`、`understanding_text`、`completed_at`、`last_error`。`get_media(store, media_id)` 读取同一投影。`kind=image/audio/video`；理解来源为 `host/system/refused/unprocessed`，拒绝文本由代码固定。每次保存创建一个媒体对象，因此同字节的不同宿主说明独立存在；同一对象也可被多个消息引用。保存成功表示文件与对象已经落地，尚未绑定消息的文件从上传时间起享有一天宽限。原子改名和数据库提交之间崩溃留下的无记录文件由维护回收。
+
+上传时 AP 还须在接收 HTTP body 时限制总量；保存函数以默认 10 MiB 上限分块读取（最多多读一个字节）。不返回文件系统路径，不公开静态文件目录。`MediaError.code` 为稳定接线分类：`media_too_large`（建议 HTTP 413）、`unsupported_media_type`（415）、`invalid_understanding`／`invalid_media_list`（400）、`invalid_media`（无此对象或文件不可用，接线时按上下文返回 400/404）、`unsafe_media_path`（服务端文件不可用，建议 500）。错误不带宿主正文、模型输出或密钥；具体 v1 错误信封由 AP 统一。
+
+`queue.add_message(..., media_ids=None, _conn=None)` 在原消息事务内验证全部 ID 和文件存在、按顺序插入引用；任一失败回滚整条消息。重复宿主去重键直接返回旧消息，不能借重发改变其媒体引用。新增引用清空文件的无引用起点。冻结时每条含媒体消息按 1500 token 预留，其他消息 cost 逐字沿用；媒体本身不改变正文、过滤判断和学习检索。
+
+`LearningEngine.run_batch` 领取为 `running` 后，在 `_snapshot`／`_material` 之前调用 `prepare_media`；网络在事务之外。先目标，再历史和后续，去重同一媒体 ID。整批总预算 120 秒；领取媒体只用短事务，结果凭随机尝试 token 和来源状态写回，过期租约在重启后可重新领取，旧调用不能覆盖新结果。其他批次已经在理解的对象立即使用当前占位，不另加等待；已完成对象不重做。一般失败终结本次对象尝试，模型暂停／排队失败保留后续重试可能。超过图片预算直接学习占位；不会切换模型或改提示绕过内容拒绝。文件级拒绝标记避免共享字节重复请求，宿主已有说明仍优先保留。
+
+图片使用独立 `image_understanding` config/health/线程池和 admission（2 并发、8 排队）；调用记入 `model_calls`，记录 batch_id、结束原因、用量、超时和推理档位，仅保留推理字段出现标志与长度。`MODEL_KINDS` 自动接通 RuntimeConfig 导入／持久化／热重载和 ModelHealth 持久状态；不继承 chat。连续三次可重试失败仅暂停图片用途，原调度器按 60／120／240／480／600 秒探测，探测用固定图片；更换图片配置解除认证／配置暂停。每日总 token 限额也约束图片用途。未配置／停用图片时不在公开健康快照中制造暂停告警（设置投影仍有 enabled=false）；启用后返回独立状态及 timeout_seconds=120。图片 admission 超时后仍在运行的 HTTP 线程保留槽位到退出，迟到正文不写回。
+
+学习快照只给有媒体的消息加 `media`；`material_content` 将有序 JSON 数据行并入该消息，随后沿用 `truncate_material`。没有媒体返回原字符串，因此系统／用户学习请求内容不变；不修改学习提示词、证据校验、记忆写入或召回选材。
+
+维护最后追加 `media` 阶段，保留原阶段编号及游标。运行创建时冻结 `media_through`；消息删除事务中的引用触发器负责标记失去最后引用，维护使用实际执行时间覆盖该起点。文件清理在写锁下再次检查引用和一天宽限，文件 unlink 与对象删除串行于上传和消息接收；中断时幂等重试，缺失文件不能再被消息绑定。额外扫描一天前的 `.upload-*` 和无数据库记录的哈希文件，重新核对数据库与时间后回收，忽略符号链接和其他文件。操作记录与已结束批次不算媒体引用，记忆等仍按原规则保护来源消息。
