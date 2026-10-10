@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 from .db import dumps
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .queue import estimate_tokens, truncate_material
+from .search_text import words
 
 DEFAULT_GOAL = '维持稳定的发言风格，并充分认识自我'
 DEFAULT_RULES = ('只根据现有的自我记忆提炼，不虚构经历、关系或能力；外部设定的背景不写成亲身经历；'
@@ -217,15 +218,14 @@ def _template_snapshot(conn):
     if row is None:
         return [], []
     initial = _decode(conn, row)
-    name = _setting(conn, 'role_name', 'Iris')
     locked, omitted = [], []
     for sentence in initial['sentences']:
         if sentence['origin'] != 'initial_template':
             continue
         if not sentence['basis']:
-            if sentence['text'] == f'我是{name}。':
-                locked.append(sentence)
-            continue  # The empty-background placeholder is not a permanent trait.
+            # Setup's name/header and empty-background placeholder have no memory
+            # binding. Keep them in the initial version and role settings only.
+            continue
         stale = _stale(conn, {'sentences':[sentence], 'material':{}})
         if stale:
             omitted.append({'sentence':sentence, 'reason':'template_evidence_changed', 'basis':stale})
@@ -468,6 +468,11 @@ def _check_verdicts(output, sentences):
             errors.append(f'sentence {index}: invalid model verdict')
             continue
         issues = []
+        # Enforce the generator's neutral-reference style independently of the
+        # semantic judge. Whole tokens avoid matching 其他/他人/吉他. Do not
+        # rewrite pronouns blindly: repair must resolve the referent from evidence.
+        if sentence['origin'] == 'memory' and {'他','她','他们','她们','他俩','她俩'} & set(words(sentence['text'])):
+            issues.append('neutral person reference required: 自动句使用本句依据中的姓名或“对方”，不要用他／她及其复数指称')
         if not row['supported'] or row['fabricated'] or row['violations']:
             issues.append(row['reason'])
         if (sentence['origin'] == 'memory' and not sentence['initial_setting']

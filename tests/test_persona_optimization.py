@@ -65,15 +65,18 @@ def test_template_is_byte_exact_and_never_sent_to_generator_as_editable_evidence
     initial = current_persona(prepared)
     result, model = run(prepared)
     version = result['version']
-    assert version['content'].startswith(initial['content'])
-    assert version['sentences'][:len(initial['sentences'])] == initial['sentences']
+    locked = [s for s in initial['sentences'] if s['basis']]
+    assert initial['content'].startswith('我是Iris。')
+    assert not version['content'].startswith('我是Iris。')
+    assert version['content'].startswith(''.join(s['text'] for s in locked))
+    assert version['sentences'][:len(locked)] == locked
     generation = model.calls[0][1]
-    assert generation['locked_sentences'] == [{'text':s['text'],'origin':s['origin']} for s in initial['sentences']]
+    assert generation['locked_sentences'] == [{'text':s['text'],'origin':s['origin']} for s in locked]
     assert all(m['stance'] != '设定' for m in generation['evidence']['memories'])
     check = model.calls[1][1]
-    assert check['candidate'][0]['initial_settings']['role_name'] == 'Iris'
-    assert check['candidate'][1]['text'].startswith('初始设定：')
-    assert len(check['candidate'][1]['evidence_refs']) == 3
+    assert check['candidate'][0]['text'].startswith('初始设定：')
+    assert len(check['candidate'][0]['evidence_refs']) == 3
+    assert all(s['basis'] or s['origin']=='admin' for s in version['sentences'])
     assert version['checks']['passed'] and result['status'] == 'current'
 
 
@@ -127,7 +130,7 @@ def test_template_evidence_is_reserved_inside_6000_token_budget(prepared):
         add_self(prepared, f'另一段实际自评 {i}。'+('材料'*100), importance=99)
     result, _ = run(prepared)
     material = result['version']['material']
-    assert len(material['locked_sentences']) == 2
+    assert len(material['locked_sentences']) == 1
     assert material['evidence']['estimated_tokens'] <= 6000
     assert {1,2,3} <= {m['memory_id'] for m in material['evidence']['memories']}
 
@@ -289,7 +292,7 @@ def test_json_correction_does_not_reset_check_budget(prepared):
 
 
 def test_repaired_sentence_must_still_pass_whole_persona_length_limit(prepared):
-    result,_=run(prepared,repair='在十月一日的直播中，'+('浅灰'*370)+'。')
+    result,_=run(prepared,repair='在十月一日的直播中，'+('浅灰'*380)+'。')
     assert result['status']=='rejected'
     assert 'persona exceeds 800 characters' in result['version']['checks']['deterministic']['errors']
     assert current_persona(prepared)['id']==1
@@ -326,3 +329,48 @@ def test_model_cannot_rewrite_locked_template_or_invent_its_attribution(prepared
     assert result['status']=='rejected'
     assert result['version']['checks']['model'] is None
     assert '初始设定：' in current_persona(prepared)['content']
+
+
+@pytest.mark.parametrize('text,blocked', [
+    ('我把她的答复记下。', True), ('我等他讲完。', True),
+    ('我等他们选好。', True), ('我等她们选好。', True),
+    ('我记下其他人的选择。', False), ('我在游戏中弹了吉他。', False),
+])
+def test_automatic_person_references_require_neutral_wording(text,blocked):
+    from iris.persona import _check_verdicts
+    verdict={'sentences':[{'index':1,'supported':True,'fabricated':False,
+        'scene_qualified':True,'violations':[],'reason':'模型漏检时仍检查中性指称。'}],
+        'change_degree':'small','reason':'有界经历。'}
+    sentence={'text':text,'origin':'memory','initial_setting':False,'date_count':1}
+    _,errors,problems=_check_verdicts(verdict,[sentence])
+    assert not errors and bool(problems)==blocked
+    for origin in ('admin','initial_template'):
+        assert not _check_verdicts(verdict,[{**sentence,'origin':origin}])[2]
+
+
+@pytest.mark.parametrize('replacement,removed', [
+    ('在十月一日的直播中，我向对方解释了规则。',False),
+    ('在十月一日的直播中，我向他解释了规则。',True),
+])
+def test_neutral_reference_repair_and_recheck_override_model_approval(prepared,replacement,removed):
+    class MissedPronoun(Model):
+        def chat(self,messages,purpose,**kwargs):
+            reply=super().chat(messages,purpose,**kwargs)
+            value=json.loads(reply.content)
+            if purpose=='persona_generate':
+                value['sentences']=value['sentences'][:1]
+                value['sentences'][0]['text']='在十月一日的直播中，我向她解释了规则。'
+            if purpose in ('persona_check','persona_recheck'):
+                for row in value['sentences']:
+                    row.update(supported=True,fabricated=False,scene_qualified=True,violations=[])
+            reply.content=dumps(value)
+            return reply
+    model=MissedPronoun(prepared,repair=replacement)
+    result=PersonaEngine(prepared,model).regenerate(expected_version=1)
+    version=result['version']
+    assert version['checks']['passed']
+    assert [c[0] for c in model.calls]==['persona_generate','persona_check','persona_sentence_repair','persona_recheck']
+    assert bool(version['checks']['deleted_sentences'])==removed
+    assert bool(version['checks']['repaired_sentences']) == (not removed)
+    assert 'neutral person reference' in ' '.join(version['checks']['initial_model_errors'])
+    assert '她' not in version['content'] and '他' not in version['content']

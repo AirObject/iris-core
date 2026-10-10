@@ -503,7 +503,7 @@ def test_admin_protection_is_byte_exact_including_outer_whitespace(store,clock):
     unchanged = FakeGateway(store,{'sentences':[{'text':'\n我希望表达简洁。 ','basis':[],'admin_sentence':'A1'}]})
     result = PersonaEngine(store,unchanged,clock=clock).regenerate(expected_version=manual['id'])
     assert result['status']=='current'
-    assert result['version']['content'] == '我是Iris。初始设定：我来自云城。'+manual['content']
+    assert result['version']['content'] == '初始设定：我来自云城。'+manual['content']
 
 
 def test_admin_edit_preserves_unchanged_sentence_provenance(store,clock):
