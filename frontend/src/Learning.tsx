@@ -1,3 +1,4 @@
+import { BulkMemoryDialog } from "./BulkMemory";
 import { MessageMedia } from "./Media";
 import { useState } from "react";
 import { entryVisibilityLabel } from "./Visibility";
@@ -141,6 +142,7 @@ export default function LearningPage({
 }) {
   const [tab, setTab] = useState<"entries" | "batches" | "gaps">("entries");
   const [selected, setSelected] = useState<number | null>(null);
+  const [bulkEntry, setBulkEntry] = useState<LearningEntry | null>(null);
   const [editingEntry, setEditingEntry] = useState<LearningEntry | null>(null);
   const [notice, setNotice] = useState("");
   const [filter, setFilter] = useState({
@@ -213,6 +215,14 @@ export default function LearningPage({
         </Notice>
       )}
       {notice && <Notice>{notice}</Notice>}
+      {bulkEntry && (
+        <BulkMemoryDialog
+          scope={{ entry_id: bulkEntry.id }}
+          name={bulkEntry.name}
+          onClose={() => setBulkEntry(null)}
+          onChanged={refresh}
+        />
+      )}
       {editingEntry && (
         <EntrySettingsDialog
           entry={editingEntry}
@@ -288,6 +298,13 @@ export default function LearningPage({
                     }}
                   >
                     修改入口设置
+                  </button>
+                  <button
+                    className="secondary"
+                    aria-label={`批量遗忘／删除 · ${entry.name}`}
+                    onClick={() => setBulkEntry(entry)}
+                  >
+                    批量遗忘／删除
                   </button>
                   <button
                     className="text-button"

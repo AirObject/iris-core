@@ -620,3 +620,36 @@ def host_tokens(store):
     with store.read() as conn:
         items = list_tokens(conn)
     return {'items': items, 'rate_limits': store.setting('host_tokens', DEFAULT_LIMITS)}
+
+
+def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, include_pinned=False):
+    """An explicit privacy scope, independent of management/recall filters."""
+    from .memory_ops import bulk_memory_rows, remember_bulk_preview
+    if bool(subject_id) == bool(entry_id) or action not in ("forget", "delete", "purge") or type(include_pinned) is not bool:
+        raise ValueError("请选择一个人物或入口及有效的操作")
+    scope = {"subject_id": subject_id} if subject_id else {"entry_id": entry_id}
+    with store.read() as conn:
+        if subject_id:
+            person = conn.execute("SELECT merged_into FROM subjects WHERE id=?", (subject_id,)).fetchone()
+            if person is None:
+                raise KeyError(subject_id)
+            if person["merged_into"]:
+                raise ValueError("人物已合并，请打开合并后的人物重新预览")
+        elif conn.execute("SELECT 1 FROM entries WHERE id=?", (entry_id,)).fetchone() is None:
+            raise KeyError(entry_id)
+        all_rows = bulk_memory_rows(conn, scope, True)
+        rows = {mid: row for mid, row in all_rows.items() if include_pinned or not row["pinned"]}
+        counts = {state: sum(r["lifecycle"] == state for r in rows.values()) for state in ("active", "forgotten", "deleted")}
+        examples = []
+        for mid in list(rows)[:5]:
+            content = conn.execute("SELECT content FROM memories WHERE id=?", (mid,)).fetchone()[0]
+            examples.append({"id": mid, "revision": rows[mid]["revision"], "lifecycle": rows[mid]["lifecycle"],
+                             "pinned": bool(rows[mid]["pinned"]), "content": content[:160] + ("…" if len(content) > 160 else ""),
+                             "truncated": len(content) > 160})
+        token, expires = remember_bulk_preview(store, scope=scope, action=action, include_pinned=include_pinned,
+                                               rows=rows, settings=lifecycle_settings(conn))
+    return {"scope": scope, "action": action, "include_pinned": include_pinned, "total": len(rows),
+            "counts": counts, "pinned_count": sum(r["pinned"] for r in rows.values()),
+            "excluded_pinned_count": len(all_rows) - len(rows),
+            "applicable_count": len(rows) - (counts["deleted"] if action != "purge" else 0),
+            "examples": examples, "snapshot_token": token, "expires_at": expires}

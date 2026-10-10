@@ -354,3 +354,14 @@ test("批次详情显示媒体缩略图与理解状态，已清理占位保持�
   expect(screen.getByText("[图片，未理解]")).toBeVisible();
   expect(screen.getByText("消息 #99 已不可用")).toBeVisible();
 });
+
+test("入口卡片提供按直接来源的批量操作入口", async () => {
+  render(<LearningPage openMemory={openMemory} />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "批量遗忘／删除 · 试用群聊 A" }),
+  );
+  expect(
+    screen.getByRole("dialog", { name: "批量遗忘／删除" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/至少一条直接来源消息/)).toBeInTheDocument();
+});

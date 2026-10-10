@@ -138,6 +138,25 @@ class Purge(Revision):
     confirm: bool = Field(strict=True)
 
 
+class BulkPreview(Input):
+    subject_id: str | None = Field(default=None, min_length=1, max_length=200)
+    entry_id: str | None = Field(default=None, min_length=1, max_length=200)
+    include_pinned: bool = Field(default=False, strict=True)
+    action: Literal["forget", "delete", "purge"]
+
+    @model_validator(mode="after")
+    def one_scope(self):
+        if (self.subject_id is None) == (self.entry_id is None):
+            raise ValueError("请选择一个人物或入口")
+        return self
+
+
+class BulkApply(Input):
+    snapshot_token: str = Field(min_length=1, max_length=100)
+    action: Literal["forget", "delete", "purge"]
+    confirm: bool = Field(default=False, strict=True)
+
+
 class Recreate(Revision):
     source_revision: int = Field(gt=0, strict=True)
 
@@ -535,6 +554,21 @@ def install_admin(app):
     @router.get("/memories/upcoming-deletion")
     def upcoming(query: Annotated[Page, Query()]):
         return admin_data.upcoming_deletion(app.state.store, **query.model_dump())
+
+    @router.post("/memories/bulk/preview")
+    def bulk_preview(payload: BulkPreview):
+        result = admin_data.bulk_memory_preview(app.state.store, **payload.model_dump())
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+    @router.post("/memories/bulk/apply")
+    def bulk_apply(payload: BulkApply):
+        from .memory_ops import apply_bulk_memories, BulkMemoryConflict
+        try:
+            result = apply_bulk_memories(app.state.store, **payload.model_dump())
+        except BulkMemoryConflict as exc:
+            return JSONResponse({"error": {"code": "bulk_preview_stale", "message": str(exc)},
+                                 "result": exc.result}, status_code=409, headers={"Cache-Control": "no-store"})
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
     @router.get("/memories/{memory_id}")
     def memory(memory_id: int):
