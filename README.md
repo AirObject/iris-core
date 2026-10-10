@@ -689,7 +689,7 @@ uv run iris --data-dir /path/to/iris-data backup import /path/to/backup.zip --co
 
 在 `test-models.toml` 中由用户新增 `[image_understanding]`，填写 `base_url`、`model`、`api_key`（或省略 `api_key`，填写 `api_key_env` 所指的环境变量名）；可选 `reasoning_effort`，只在所选模型支持时设置。不需要 `dimensions`。该组使用方舟视觉模型，端点和模型 ID 以用户控制台为准，不自动沿用对话模型。请求使用 OpenAI 兼容 `/chat/completions` 的 `image_url` data URL，见[方舟图片输入契约](https://docs.volcengine.com/docs/ark/chat-api?lang=zh&redirect=1)。本线仅以假模型验证，未读取测试密钥，真实视觉模型冒烟需用户配置后另行运行。
 
-本地模型配置、导入、热重载和脱敏设置投影自动包含 `image_understanding`。管理接口 `PUT /admin/api/settings/models/image_understanding`、同路径的 `POST /test`、`POST /retry` 沿用管理员会话和 CSRF；`enabled=false` 停用。测试连接使用固定 64×64 PNG、总预算 10 秒；探测图片满足[方舟输入尺寸下限](https://docs.volcengine.com/docs/ark/image-understanding?lang=zh)。设置界面由后续 UX 线接入。
+本地模型配置、导入、热重载和脱敏设置投影自动包含 `image_understanding`。管理接口 `PUT /admin/api/settings/models/image_understanding`、同路径的 `POST /test`、`POST /retry` 沿用管理员会话和 CSRF；`enabled=false` 停用。测试连接使用固定 64×64 PNG、总预算 10 秒；探测图片满足[方舟输入尺寸下限](https://docs.volcengine.com/docs/ark/image-understanding?lang=zh)。设置页已提供独立的图片理解模型组。
 
 处理顺序是：保存媒体 → 消息引用 `media_ids` → 按原节奏冻结批次 → 领取批次为 `running` → 补充图片理解 → 读取学习快照、组成材料 → 学习。上传和接收消息不等待模型。整批图片（目标优先，再历史、后续）共享最多 120 秒，包含排队、网络和调用内重试；随后学习仍有独立的 180 秒预算。含媒体消息在冻结时预留原有的每消息 1500 token 上限。图片理解并发最多 2、排队最多 8，独立线程池和健康状态；不等待其他批次已在理解的同一对象，本次使用其已有占位。图片较慢时端到端延迟可能超过实时入口的一分钟目标。
 
@@ -705,7 +705,27 @@ uv run iris --data-dir /path/to/iris-data backup import /path/to/backup.zip --co
 
 消息清理继续遵守来源引用保护；最后一条消息引用消失后才开始 1 天宽限，文件在后续每日维护中删除。仍被任一消息引用的共享文件不删；操作记录不算引用。未绑定消息的上传也有 1 天引用窗口，崩溃遗留的临时／未登记文件在一天后清理。删除文件同时移除其无引用媒体对象；正在理解的迟到结果不能重建它们。
 
-上传路由 `POST /api/v1/media` 和宿主消息 JSON 的 `media_ids` 字段尚由 AP 线接入，本线不修改 `api.py`。保存函数和接口接线约定见 [ARCHITECTURE.md 的媒体一节](ARCHITECTURE.md#m4-媒体保存与接线契约)。
+宿主上传 `POST /api/v1/media` 和消息 `media_ids` 已接通，见[宿主接入文档](docs/host-api.md)。保存函数约定见 [ARCHITECTURE.md 的媒体一节](ARCHITECTURE.md#m4-媒体保存与接线契约)。
+
+管理员媒体接口（管理员会话；写请求同时带 `X-Iris-CSRF`，遵守现有 Origin 与 JSON Content-Type 检查）：
+
+| 接口 | 返回与用途 |
+| --- | --- |
+| `POST /admin/api/media` | 201，上传试用图片，JSON 为 `{"content_type":"image/png","data_base64":"标准 Base64"}`；返回下面的媒体投影 |
+| `GET /admin/api/media/{media_id}/file` | 200，原文件字节；管理员可读取所有入口及内部媒体，宿主 Bearer 令牌不能替代管理员会话 |
+| `POST /admin/api/trial/entries/{entry_id}/messages` | 既有 201 回执；增加可选 `media_ids`，最多 100 个、不重复，按数组顺序引用图片 |
+| `GET /admin/api/trial/entries/{entry_id}` | 每条 `messages[]` 增加 `media[]`，轮询可读取最新理解结果 |
+| `GET /admin/api/batches/{batch_id}` | 三段现存消息均增加 `media[]`；已清理的消息沿用 `missing` 占位对象 |
+| `GET /admin/api/memories/{memory_id}` | 来源消息和前后文均增加 `media[]`；目标来源前后文沿用同一媒体投影 |
+| `GET /admin/api/status` | 新增 `usage.by_purpose.image_understanding.today/week`，以及 `timeouts_seconds.image_understanding=120` |
+
+先上传每张图片，再把返回的 `id` 放进试用消息的 `media_ids`。`content` 可以为 `""`，但正文和图片不能同时为空；保留原 `speaker_id`、`dedupe_key`。新消息的媒体无效时整条消息回滚；重复去重键返回原消息，不覆盖原正文或图片。管理员上传只接受 PNG/JPEG/GIF/WebP，解码后最多 10 MiB，完整 JSON 最多 14 MiB（也限制实际接收的分块正文）；超限 413，非法类型、文件头、Base64 或字段为 400。上传不接受文件路径、URL、客户端文件名或伪造理解文本；新对象以未理解状态进入原有学习流程。未发送的上传沿用一天清理宽限。独立管理员上传不会向宿主令牌授予媒体引用权限。
+
+`media[]` 包含 `id`、`kind`、`content_type`、`size_bytes`、`understanding_text`、`understanding_source`、`understanding_source_label`、`completed_at`、`file_url`。来源代码为 `host/system/refused/unprocessed`，中文标签为“宿主提供／本系统理解／被拒绝／未理解”。`completed_at` 是宿主说明接收或本系统理解尝试完成的时间，未完成为 null；一般失败也可有完成时间，须结合来源代码区分成功。读取不触发理解、学习、召回或保留强度变化。无媒体消息返回空数组。管理投影展示所有入口媒体，不受宿主可见范围筛选；文件系统路径和处理租约不返回。
+
+`file_url` 可用于同源图片预览；提供原图，由界面缩放。响应使用登记的图片/音频/视频 MIME，`Cache-Control: no-store`、`X-Content-Type-Options: nosniff`、`Cross-Origin-Resource-Policy: same-origin`，不公开缓存。读取只接受媒体对象 ID，从数据库解析内容哈希，固定目录和文件描述符，拒绝符号链接，复核大小、哈希与文件头；不存在、已清理或文件不可用均为 404，不回显磁盘路径，也不重建目录。
+
+图片用量按角色时区统计今日和本周（周一开始），结束于查询时刻。每个分桶包含 `calls`、`prompt_tokens`、`completion_tokens`、`reasoning_tokens`、`tokens`（输入＋输出）、`calls_without_usage`、`failures`、`refusals`、`failure_rate`、`duration_ms`（总耗时）、`p50_ms`、`p95_ms`、`max_ms`、`timeouts`。统计图片用途的实际调用记录，包含调用内重试、设置连接测试和恢复探测；旧记录按图片 purpose 兼容归类。失败包含全部非成功调用，拒绝是其中 `content_rejection` 的子集；无调用时延迟和失败率为 null，缺失 token 不作推算。图片调用已计入原有总用量，界面不要再次相加。
 
 ## M4 入口的记忆可见范围（VS）
 

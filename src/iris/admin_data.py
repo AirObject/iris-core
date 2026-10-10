@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from .retrieval import Retrieval
@@ -10,7 +11,9 @@ from .state import report_history
 from .goals import goal_list, goal_detail, notification_list
 from .people import list_people, person_detail, canonical_subject
 from .memory_ops import lifecycle_settings, missing_batch_targets
-from .model_health import utc_now
+from .model_health import utc_now, usage_window
+from .media import message_media, SOURCES
+from .service_status import percentile
 from .queue import entry_settings, batch_rate_status
 from .search_text import segmented
 
@@ -90,14 +93,59 @@ def list_memories(store, *, text="", person_id=None, kind=None, entry_id=None,
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
+def media_projection(item):
+    """Administrator-only projection; no filesystem or provider internals."""
+    return {key: item[key] for key in ('id', 'kind', 'content_type', 'size_bytes',
+            'understanding_text', 'understanding_source', 'completed_at')} | {
+        'understanding_source_label': SOURCES[item['understanding_source']],
+        'file_url': f"/admin/api/media/{quote(item['id'], safe='')}/file"}
+
+
+def with_message_media(conn, rows):
+    attached = message_media(conn, list(dict.fromkeys(row['id'] for row in rows if not row.get('missing'))))
+    for row in rows:
+        if not row.get('missing'):
+            row['media'] = [media_projection(item) for item in attached.get(row['id'], [])]
+    return rows
+
+
+def image_usage(store, *, current=None):
+    """Image-purpose accounting, including retries, connection tests and probes."""
+    current = current or utc_now()
+    start, _ = usage_window(store, current)
+    local = current.astimezone(ZoneInfo(str(store.setting('timezone', 'Asia/Shanghai'))))
+    week = (local.replace(hour=0, minute=0, second=0, microsecond=0)
+            - timedelta(days=local.weekday())).astimezone(timezone.utc)
+    with store.read() as conn:
+        rows = conn.execute("""SELECT duration_ms,prompt_tokens,completion_tokens,reasoning_tokens,
+            result_category,timed_out,created_at FROM model_calls
+            WHERE (model_kind='image_understanding' OR purpose='image_understanding')
+            AND julianday(created_at)>=julianday(?) AND julianday(created_at)<=julianday(?)""",
+            (week.isoformat(), current.isoformat())).fetchall()
+    def summarize(since):
+        calls = [row for row in rows if datetime.fromisoformat(row['created_at']) >= since]
+        durations = [row['duration_ms'] for row in calls]
+        result = {key: sum(row[key] or 0 for row in calls)
+                  for key in ('prompt_tokens', 'completion_tokens', 'reasoning_tokens')}
+        result.update(calls=len(calls), tokens=result['prompt_tokens'] + result['completion_tokens'],
+            failures=sum(row['result_category'] != 'success' for row in calls),
+            refusals=sum(row['result_category'] == 'content_rejection' for row in calls),
+            calls_without_usage=sum(row['prompt_tokens'] is None and row['completion_tokens'] is None for row in calls),
+            duration_ms=sum(durations), p50_ms=percentile(durations, 50), p95_ms=percentile(durations, 95),
+            max_ms=max(durations, default=None), timeouts=sum(bool(row['timed_out']) for row in calls))
+        result['failure_rate'] = result['failures'] / len(calls) if calls else None
+        return result
+    return {'today': summarize(start), 'week': summarize(week)}
+
+
 def messages(conn, entry_id, *, before=None, limit=100):
     where, args = "m.entry_id=?", [entry_id]
     if before is not None:
         where += " AND m.id<?"
         args.append(before)
-    return [dict(r) for r in reversed(conn.execute(f"""SELECT m.*,s.name AS sender_name
+    return with_message_media(conn, [dict(r) for r in reversed(conn.execute(f"""SELECT m.*,s.name AS sender_name
         FROM messages m JOIN subjects s ON s.id=m.sender_subject_id
-        WHERE {where} ORDER BY m.id DESC LIMIT ?""", [*args, limit]).fetchall())]
+        WHERE {where} ORDER BY m.id DESC LIMIT ?""", [*args, limit]).fetchall())])
 
 
 def memory_detail(store, memory_id):
@@ -123,7 +171,8 @@ def memory_detail(store, memory_id):
                     after = [dict(r) for r in conn.execute("""SELECT m.*,s.name AS sender_name FROM messages m
                         JOIN subjects s ON s.id=m.sender_subject_id WHERE m.entry_id=? AND m.id>? ORDER BY m.id LIMIT 2""",
                         (message["entry_id"], message["id"]))]
-                    source["context"] = [*before, dict(message), *after]
+                    source["context"] = with_message_media(conn, [*before, dict(message), *after])
+                    source["message"] = source["context"][len(before)]
             if source["source_memory_id"]:
                 parent = conn.execute("SELECT id,content,lifecycle,revision FROM memories WHERE id=?", (source["source_memory_id"],)).fetchone()
                 source["memory"] = dict(parent) if parent else None
@@ -308,7 +357,7 @@ def batch_detail(store, batch_id):
                 JOIN subjects s ON s.id=m.sender_subject_id LEFT JOIN subjects q ON q.id=m.quote_author_subject_id
                 WHERE m.id IN ({','.join('?' for _ in ids)})""", ids).fetchall() if ids else []
             by_id = {r["id"]: dict(r) for r in rows}
-            detail["segments"][segment] = [by_id.get(i, {"id": i, "missing": True, "content": "已清理"}) for i in ids]
+            detail["segments"][segment] = with_message_media(conn, [by_id.get(i, {"id": i, "missing": True, "content": "已清理"}) for i in ids])
         attempts = [dict(r) for r in conn.execute("SELECT * FROM batch_attempts WHERE batch_id=? ORDER BY number", (batch_id,))]
         # The gateway stores only message.content in raw/repair_output. Project a
         # whitelist of call diagnostics, never provider envelopes or reasoning.
@@ -412,7 +461,8 @@ def _goal_source_context(conn, message_id):
         after = [dict(r) for r in conn.execute("""SELECT m.*,s.name AS sender_name FROM messages m
             JOIN subjects s ON s.id=m.sender_subject_id WHERE m.entry_id=? AND m.id>? ORDER BY m.id LIMIT 2""",
             (message['entry_id'],message_id))]
-        result['context'] = [*before,dict(message),*after]
+        result['context'] = with_message_media(conn, [*before,dict(message),*after])
+        result['message'] = result['context'][len(before)]
     return result
 
 
