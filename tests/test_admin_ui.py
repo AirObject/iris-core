@@ -1,4 +1,5 @@
 """Management UI contracts; no real model calls or schema changes."""
+from conftest import authorize_host
 import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
@@ -20,6 +21,7 @@ from test_batches import memory
 @pytest.fixture
 def client(store):
     with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as client:
+        authorize_host(client)
         login_admin(client)
         yield client
 
@@ -76,6 +78,7 @@ def test_trial_reply_uses_prepare_and_persona_publishes_once_and_learns_self_out
     setup_role(store, "Iris", "表达温和")
     gateway = FakeGateway({"reply": "好，祝你上海之行顺利。"}, hook=lambda _: assert_outside_transaction(store))
     with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        authorize_host(c)
         login_admin(c)
         c.app.state.scheduler.stop()  # Explicit deterministic learning below.
         a = trial(c)
@@ -116,6 +119,7 @@ def assert_outside_transaction(store):
 def test_failed_reply_never_publishes_model_material_or_loses_input(store, reply):
     gateway = FakeGateway(reply)
     with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        authorize_host(c)
         login_admin(c)
         c.app.state.scheduler.stop()
         a = trial(c)
@@ -134,6 +138,7 @@ def test_parallel_reply_is_rejected_and_retry_is_idempotent(store):
         assert release.wait(5)
     gateway = FakeGateway({"reply": "好的"}, hook=block)
     with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c, ThreadPoolExecutor() as pool:
+        authorize_host(c)
         login_admin(c)
         c.app.state.scheduler.stop()
         a = trial(c)
@@ -242,6 +247,7 @@ def test_trial_snapshot_includes_memories_updated_from_another_entry(client, sto
 def test_reply_to_message_outside_prepared_window_is_rejected_without_generation(store):
     gateway = FakeGateway({"reply": "不该生成"})
     with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        authorize_host(c)
         login_admin(c)
         c.app.state.scheduler.stop()
         a = trial(c)
@@ -266,6 +272,7 @@ def test_admin_strict_revision_fields_utf8_and_reserved_reply_key(client, store)
 def test_reply_dedupe_survives_service_restart(store):
     first_gateway = FakeGateway({"reply": "已经发出的话"})
     with TestClient(create_app(store=store, gateway=first_gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        authorize_host(c)
         login_admin(c)
         c.app.state.scheduler.stop()
         a = trial(c)
@@ -273,6 +280,7 @@ def test_reply_dedupe_survives_service_restart(store):
         first = c.post(f"/admin/api/trial/entries/{a['id']}/reply", json={"message_id": mid}).json()
     next_gateway = FakeGateway(RuntimeError("must not call model again"))
     with TestClient(create_app(store=store, gateway=next_gateway), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        authorize_host(c)
         login_admin(c)
         c.app.state.scheduler.stop()
         second = c.post(f"/admin/api/trial/entries/{a['id']}/reply", json={"message_id": mid}).json()

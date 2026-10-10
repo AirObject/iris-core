@@ -9,12 +9,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Body, FastAPI, Query, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, Query, Request
+from fastapi.security import HTTPBearer
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .tokens import Tokens, install_tokens
 from .db import Store
 from .models import Gateway
 from .model_health import ModelHealth
@@ -29,7 +31,7 @@ from .auth import Sessions, install_auth
 from .configuration import RuntimeConfig
 from .settings_api import install_settings
 from .memory_ops import operation
-from .goals import Goals, GoalError, GoalConflict, GoalMerged, goal_list
+from .goals import Goals, GoalError, GoalConflict, GoalMerged, goal_list, goal_partition
 from .state import CurrentState, PutReport, PatchReport, SourceReport, StateError, MAX_REPORT_BYTES
 
 
@@ -127,6 +129,7 @@ class Feedback(Input):
 
 
 class HostGoal(NewGoal):
+    host: str | None = Field(default=None, min_length=1, max_length=100, description="兼容字段；来源以令牌绑定名称为准")
     host_key: str | None = Field(default=None, min_length=1, max_length=200)
 
     @field_validator("host_key")
@@ -137,6 +140,25 @@ class HostGoal(NewGoal):
             if not value:
                 raise ValueError("宿主去重键不能为空白")
         return value
+
+
+class HostGoalQuery(GoalQuery):
+    entry_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class HostRetrieval(Retrieval):
+    """Apply entry authorization to the existing goal projection hook.
+
+    Memory retrieval and participant resolution retain their original path and
+    snapshot; formed memories remain shared character knowledge (design 11.4).
+    """
+    def __init__(self, store, gateway, scope):
+        super().__init__(store, gateway)
+        self.scope = scope
+
+    def _goals(self, conn, entry_id, limit, *, participants=(), current=None):
+        return goal_partition(conn, entry_id=entry_id, participants=participants,
+                              limit=limit, current=current, scope=self.scope)
 
 
 class NotificationPull(Input):
@@ -175,6 +197,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             app.state.goals = Goals(active_store, gateway=active_gateway)
             app.state.runtime_config = runtime
             app.state.sessions = Sessions(active_store)
+            app.state.tokens = Tokens(active_store)
             app.state.gateway = active_gateway
             app.state.health = health
             app.state.scheduler = scheduler
@@ -224,6 +247,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
 
     install_auth(app)
     install_settings(app)
+    install_tokens(app)
 
     # Registered last so Host is checked before readiness and every API/static route.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
@@ -237,7 +261,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         action = "feedback_rejected" if path == "/api/v1/feedback" else "learn_rejected"
         # Do not read or log the unvalidated body, URL identifiers, or exception text.
         with app.state.store.write() as conn:
-            operation(conn, action, "request", "host", {"status": status}, actor="host")
+            operation(conn, action, "request", "host", {"status": status}, actor=request.state.principal.host)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, error):
@@ -286,7 +310,9 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         return JSONResponse({"error": {"code": "unavailable", "message": "数据库暂时不可用", "retry_after_seconds": 1}},
                             status_code=503, headers={"Retry-After": "1"})
 
-    @app.post("/api/v1/entries/{entry_id}/messages", summary="接收单条或批量消息")
+    host_router = APIRouter(dependencies=[Depends(HTTPBearer(auto_error=False))])
+
+    @host_router.post("/api/v1/entries/{entry_id}/messages", summary="接收单条或批量消息")
     def messages(entry_id: str, payload: Annotated[Message | list[Message], Body(openapi_examples={
         "single": {"summary": "单条消息", "value": {"sender": "小林", "content": "我周末参加观星", "occurred_at": "2026-09-29T10:00:00+08:00", "dedupe_key": "host-1"}}})]):
         items = payload if isinstance(payload, list) else [payload]
@@ -303,64 +329,83 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             pending = conn.execute("SELECT COUNT(*) FROM messages WHERE entry_id=? AND learning_state IN ('pending','batched')", (entry_id,)).fetchone()[0]
         return {"message_ids": ids, "pending_count": pending}
 
-    @app.post("/api/v1/entries/{entry_id}/learn", summary="请求尽快学习；模型暂停时接受并说明原因")
-    def learn(entry_id: str):
-        return app.state.scheduler.request_learning(entry_id)
+    @host_router.post("/api/v1/entries/{entry_id}/learn", summary="请求尽快学习；模型暂停时接受并说明原因")
+    def learn(entry_id: str, request: Request):
+        return app.state.scheduler.request_learning(entry_id, actor=request.state.principal.host)
 
-    @app.post("/api/v1/entries/{entry_id}/prepare", summary="准备回复材料，不生成回复正文",
+    @host_router.post("/api/v1/entries/{entry_id}/prepare", summary="准备回复材料，不生成回复正文",
               description="memories[].subject_annotations 附带 possible_same_as（联系双方、belief）与 roleplay（actor、character、worlds、fictional）。标注在选取和判断之后追加，不包含联系证据原文。")
-    def prepare(entry_id: str, payload: Prepare):
-        return add_health_hints(Retrieval(app.state.store, app.state.gateway).prepare(entry_id, **payload.model_dump()), app.state.health)
+    def prepare(entry_id: str, payload: Prepare, request: Request):
+        result = add_health_hints(HostRetrieval(app.state.store, app.state.gateway, request.state.principal.scope).prepare(entry_id, **payload.model_dump()), app.state.health)
+        app.state.tokens.bind_recall(result["recall_id"], request.state.principal)
+        return result
 
-    @app.post("/api/v1/memories/search", summary="筛选并查询记忆；深度读取不恢复遗忘记忆",
+    @host_router.post("/api/v1/memories/search", summary="筛选并查询记忆；深度读取不恢复遗忘记忆",
               description="memories[].subject_annotations 同 prepare：标明可能是同一人和虚构扮演关系；不改变选取顺序，不返回否认的联系。")
-    def search(payload: Search):
-        return add_health_hints(Retrieval(app.state.store, app.state.gateway).search(**payload.model_dump()), app.state.health)
+    def search(payload: Search, request: Request):
+        result = add_health_hints(HostRetrieval(app.state.store, app.state.gateway, request.state.principal.scope).search(**payload.model_dump()), app.state.health)
+        app.state.tokens.bind_recall(result["recall_id"], request.state.principal)
+        return result
 
-    @app.post("/api/v1/feedback", summary="反馈实际使用的记忆，24 小时内同条只强化一次")
-    def feedback(payload: Feedback):
+    @host_router.post("/api/v1/feedback", summary="反馈实际使用的记忆，24 小时内同条只强化一次")
+    def feedback(payload: Feedback, request: Request):
+        app.state.tokens.require_recall(payload.recall_id, request.state.principal)
         return app.state.retrieval.feedback(payload.recall_id, payload.memory_ids)
 
-    @app.get("/api/v1/goals", summary="读取角色共享的目标与询问")
-    def goals(query: Annotated[GoalQuery, Query()]):
+    @host_router.get("/api/v1/goals", summary="读取角色共享的目标与询问")
+    def goals(query: Annotated[HostGoalQuery, Query()], request: Request):
         with app.state.store.read() as conn:
-            return goal_list(conn, current=app.state.goals.clock(), **query.model_dump())
+            return goal_list(conn, current=app.state.goals.clock(), scope=request.state.principal.scope, **query.model_dump())
 
-    @app.post("/api/v1/goals", status_code=201, summary="注入目标并返回去重结果")
-    def create_goal(payload: HostGoal):
-        result = app.state.goals.create(**payload.model_dump(), origin="host", actor="host")
+    @host_router.post("/api/v1/goals", status_code=201, summary="注入目标并返回去重结果")
+    def create_goal(payload: HostGoal, request: Request):
+        principal = request.state.principal
+        principal.scope.require(payload.entry_id)
+        result = app.state.goals.create(**{**payload.model_dump(), "host": principal.host}, origin="host", actor=principal.host, scope=principal.scope)
         app.state.scheduler.wake()
         return result
 
-    @app.patch("/api/v1/goals/{goal_id}", summary="完成、放弃目标，或修改截止时间与提醒提前量")
-    def update_goal(goal_id: GoalId, payload: GoalPatch):
-        result = app.state.goals.update(goal_id, **payload.model_dump(exclude_unset=True), actor="host")
+    @host_router.patch("/api/v1/goals/{goal_id}", summary="完成、放弃目标，或修改截止时间与提醒提前量")
+    def update_goal(goal_id: GoalId, payload: GoalPatch, request: Request):
+        result = app.state.goals.update(goal_id, **payload.model_dump(exclude_unset=True), actor=request.state.principal.host, scope=request.state.principal.scope)
         app.state.scheduler.wake()
         return result
 
-    @app.get("/api/v1/notifications", summary="取走已发布提醒；取走不代表送达或目标完成")
-    def notifications(query: Annotated[NotificationPull, Query()]):
-        return app.state.goals.pull(**query.model_dump())
+    @host_router.get("/api/v1/notifications", summary="取走已发布提醒；取走不代表送达或目标完成")
+    def notifications(query: Annotated[NotificationPull, Query()], request: Request):
+        return app.state.goals.pull(**query.model_dump(), scope=request.state.principal.scope)
 
-    @app.get("/api/v1/state", summary="读取宿主报告的当前状态")
+    @host_router.get("/api/v1/state", summary="读取宿主报告的当前状态")
     def get_state():
         return app.state.current_state.get()
 
-    @app.put("/api/v1/state", summary="开始或替换活动；相同活动保留开始时间")
-    def put_state(payload: PutReport):
-        return app.state.current_state.put(**payload.model_dump(exclude_unset=True))
+    @host_router.put("/api/v1/state", summary="开始或替换活动；相同活动保留开始时间")
+    def put_state(payload: PutReport, request: Request):
+        request.state.principal.scope.require(payload.entry_id)
+        return app.state.current_state.put(**{**payload.model_dump(exclude_unset=True), "host": request.state.principal.host})
 
-    @app.patch("/api/v1/state", summary="更新细节、情绪或心跳")
-    def patch_state(payload: PatchReport):
-        return app.state.current_state.patch(**payload.model_dump(exclude_unset=True))
+    @host_router.patch("/api/v1/state", summary="更新细节、情绪或心跳")
+    def patch_state(payload: PatchReport, request: Request):
+        request.state.principal.scope.require(payload.entry_id)
+        return app.state.current_state.patch(**{**payload.model_dump(exclude_unset=True), "host": request.state.principal.host})
 
-    @app.delete("/api/v1/state", summary="结束活动，保留宿主报告历史")
-    def delete_state(payload: SourceReport = Body(default=SourceReport())):
-        return app.state.current_state.delete(**payload.model_dump(exclude_unset=True))
+    @host_router.delete("/api/v1/state", summary="结束活动，保留宿主报告历史")
+    def delete_state(request: Request, payload: SourceReport = Body(default=SourceReport())):
+        request.state.principal.scope.require(payload.entry_id)
+        return app.state.current_state.delete(**{**payload.model_dump(exclude_unset=True), "host": request.state.principal.host})
 
-    @app.get("/api/v1/status", summary="服务状态、最近模型调用和入口积压")
-    def status():
-        return service_status(app.state.store, app.state.scheduler, app.state.health)
+    @host_router.get("/api/v1/status", summary="服务状态、最近模型调用和入口积压")
+    def status(request: Request):
+        result = service_status(app.state.store, app.state.scheduler, app.state.health)
+        scope = request.state.principal.scope
+        if scope.kind != "all":
+            result["entries"] = [r for r in result["entries"] if scope.allows(r["entry_id"])]
+            result["backlog"] = result["entries"]
+            result["batches"] = [r for r in result["batches"] if scope.allows(r["entry_id"])]
+            allowed = {r["id"] for r in result["batches"]}
+            result["learning_calls_24h"] = [r for r in result["learning_calls_24h"] if r["batch_id"] in allowed]
+        return result
 
+    app.include_router(host_router)
     install_admin(app)
     return app

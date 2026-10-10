@@ -1,4 +1,5 @@
 """Durable review scheduling; every model here is local and deterministic."""
+from conftest import authorize_host
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -188,6 +189,7 @@ def test_http_uses_service_gateway_and_admin_exposes_review_without_lease(store,
     # The fake has an explicit gateway; no model configuration is loaded here.
     with TestClient(create_app(store=store,gateway=judge),base_url='http://127.0.0.1',
                     client=('127.0.0.1',12345)) as client:
+        authorize_host(client)
         client.app.state.scheduler.stop()
         login_admin(client)
         first=client.post('/api/v1/goals',json={'content':'整理操作手册'}).json()

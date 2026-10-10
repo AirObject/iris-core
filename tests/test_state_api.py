@@ -1,3 +1,4 @@
+from conftest import authorize_host
 import json
 
 import pytest
@@ -13,6 +14,7 @@ from test_state import Clock
 def client(store):
     with TestClient(create_app(store=store, configs={}), base_url='http://127.0.0.1',
                     client=('127.0.0.1', 1000)) as value:
+        authorize_host(value)
         value.app.state.current_state = CurrentState(store, clock=Clock())
         yield value
 
@@ -44,11 +46,11 @@ def test_admin_history_pagination_settings_csrf_and_read_only(client, store):
     page = client.get('/admin/api/state/reports?limit=1&offset=0').json()
     assert page['total'] == 2 and page['limit'] == 1 and page['offset'] == 0
     report = page['items'][0]
-    assert report['host'] == 'stream' and report['method'] == 'PATCH'
+    assert report['host'] == 'test-host' and report['method'] == 'PATCH'
     assert report['reported'] == {'details': {'scene': '海岸'}}
     assert report['changes']['details']['scene'] == {'before': '森林', 'after': '海岸'}
     assert report['reported_at'].endswith('+08:00')
-    assert client.get('/admin/api/state/reports?limit=1&offset=1').json()['items'][0]['host'] == 'game'
+    assert client.get('/admin/api/state/reports?limit=1&offset=1').json()['items'][0]['host'] == 'test-host'
     assert client.get('/admin/api/state/reports?limit=0').status_code == 400
     assert client.get('/admin/api/state/reports?extra=true').status_code == 400
     assert client.get('/admin/api/settings').json()['state'] == {'stale_after_minutes': 30}

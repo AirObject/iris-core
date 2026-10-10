@@ -153,8 +153,19 @@ class ServeProcess:
         self.process = None
         self.log = None
         self.client = None
+        self._token = None
 
     def start(self):
+        if self._token is None:
+            # Acquire the normal offline lease before the service starts. Capture
+            # the one-time stdout in memory only, never in serve-output.log/files.
+            issued = subprocess.run([sys.executable, "-m", "iris.cli", "--db", str(self.directory / "iris.db"),
+                "tokens", "create", "--host", "e2e", "--all"], env=self.env, cwd=self.directory,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=45, check=False)
+            if issued.returncode:
+                raise RuntimeError("e2e host token creation failed")
+            self._token = json.loads(issued.stdout)["token"]
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
@@ -163,7 +174,8 @@ class ServeProcess:
             "serve", "--port", str(port)], env=self.env, cwd=self.directory, stdin=subprocess.DEVNULL,
             stdout=self.log, stderr=subprocess.STDOUT,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-        self.client = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10, trust_env=False)
+        self.client = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10, trust_env=False,
+                                   headers={"Authorization": "Bearer " + self._token})
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
             if self.process.poll() is not None:

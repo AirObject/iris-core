@@ -1,4 +1,5 @@
 """Host goal commands and the authenticated management projection share one core."""
+from conftest import authorize_host
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -26,6 +27,7 @@ def client(store):
     store.set_setting('goal_dedup_judge', {'enabled': False})
     with TestClient(create_app(store=store, configs={}), base_url='http://127.0.0.1',
                     client=('127.0.0.1', 1000)) as client:
+        authorize_host(client)
         client.app.state.scheduler.stop()
         client.app.state.goals = Goals(store, clock=Clock())
         yield client

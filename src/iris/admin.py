@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from importlib.resources import files
@@ -14,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 
 from . import admin_data, trial, people, persona
 from .auth import audit, error
+from .tokens import NewToken, RateLimits
 from .queue import reset_batch, update_entry_settings, pace_parameters, filter_parameters, FILTER_DEFAULTS, PACE
 from .memory_ops import edit_memory, delete_memory, manage_memory, purge_memory, recreate_memory, operation, missing_batch_targets
 from .retrieval import Retrieval
@@ -710,6 +712,28 @@ def install_admin(app):
     @router.get("/notifications")
     def notifications(query: Annotated[NotificationQuery, Query()]):
         return admin_data.notifications(app.state.store, **query.model_dump())
+
+    @router.get("/tokens")
+    def host_tokens():
+        return admin_data.host_tokens(app.state.store)
+
+    @router.post("/tokens", status_code=201)
+    def create_host_token(payload: NewToken):
+        return app.state.tokens.create(**payload.model_dump())
+
+    @router.post("/tokens/{token_id}/revoke")
+    def revoke_host_token(token_id: str, payload: Input):
+        return app.state.tokens.revoke(token_id)
+
+    @router.patch("/settings/host-tokens")
+    def host_token_limits(payload: RateLimits):
+        with app.state.store.write() as conn:
+            from .db import dumps
+            row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='host_tokens'").fetchone()
+            values = {**json.loads(row[0]), **payload.model_dump(exclude_unset=True)}
+            conn.execute("UPDATE runtime_settings SET value_json=? WHERE key='host_tokens'", (dumps(values),))
+            operation(conn, "token_limits_saved", "settings", "host_tokens", values, actor="admin")
+        return values
 
     @router.get("/state")
     def current_state():

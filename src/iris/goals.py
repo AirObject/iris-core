@@ -18,6 +18,7 @@ from datetime import datetime, time, timedelta, timezone
 
 from .claim_sequences import normalize_claim, same_claim_sequences
 from .db import dumps
+from .tokens import Scope
 from .memory_ops import operation
 from .model_health import utc_now
 from .models import ModelError
@@ -27,6 +28,7 @@ from .query_analysis import SubjectNames
 from .state import local_time, role_zone
 
 DEFAULTS = {'default_reminder_minutes': 60, 'overdue_reminders': True}
+ALL_ENTRIES = Scope(kind='all')
 
 
 class GoalError(ValueError):
@@ -150,6 +152,31 @@ def _canonical_id(conn, goal_id):
     raise GoalError('goal_id', '目标合并关系成环')
 
 
+def _require_goal(conn, goal_id, scope):
+    row = _row(conn,goal_id)
+    scope.require(row['entry_id'])
+    scope.require(_row(conn,_canonical_id(conn,goal_id))['entry_id'])
+    return row
+
+
+def _stored_receipt(conn, row, scope):
+    # A shared host name does not grant the scope of its other credentials.
+    # Recheck redirects as an administrator can merge goals after this receipt.
+    _require_goal(conn,row['id'],scope)
+    receipt = json.loads(row['receipt_json'])
+    scope.require(receipt['goal']['entry_id'])
+    _require_goal(conn,receipt['goal']['id'],scope)
+    goal = receipt['goal']
+    goal['possible_duplicate_ids'] = [gid for gid in goal['possible_duplicate_ids']
+                                     if scope.allows(_row(conn,gid)['entry_id'])]
+    goal['possible_duplicate'] = bool(goal['possible_duplicate_ids'])
+    decision = receipt['dedup']
+    for gid in [decision.get('target_id'), *decision.get('target_ids',[])]:
+        if gid is not None:
+            _require_goal(conn,gid,scope)
+    return receipt
+
+
 def _check(row, revision=None):
     if row['merged_into'] is not None:
         raise GoalMerged(row['merged_into'])
@@ -188,15 +215,17 @@ def decide_dedup(candidates, proposed):
     return {'status': 'possible_duplicate' if possible is not None else 'created', 'target_id': possible}
 
 
-def _duplicate_ids(conn, goal_id):
-    return [r[0] for r in conn.execute('''SELECT CASE WHEN goal_a=? THEN goal_b ELSE goal_a END
-        FROM goal_duplicates WHERE status='possible' AND (goal_a=? OR goal_b=?) ORDER BY goal_a,goal_b''',
-        (goal_id, goal_id, goal_id))]
+def _duplicate_ids(conn, goal_id, scope=ALL_ENTRIES):
+    clause, args = scope.sql('g.entry_id')
+    return [r[0] for r in conn.execute('''SELECT g.id FROM goal_duplicates d
+        JOIN goals g ON g.id=CASE WHEN d.goal_a=? THEN d.goal_b ELSE d.goal_a END
+        WHERE d.status='possible' AND (d.goal_a=? OR d.goal_b=?) AND '''+clause+
+        ' ORDER BY d.goal_a,d.goal_b', (goal_id,goal_id,goal_id,*args))]
 
 
 # Only domain values enter snapshots, never receipts, job leases or source text.
 _SNAPSHOT_FIELDS = ('content','kind','origin','state','deadline','reminder_minutes',
-                    'entry_id','closed_at','closed_by','merged_into','people')
+                    'entry_id','host','closed_at','closed_by','merged_into','people')
 _BASIS_LABELS = {'revision_changed':'修订已变化','forgotten':'已遗忘','deleted':'已删除',
                  'purged':'已彻底清除','missing':'已不存在'}
 
@@ -401,10 +430,10 @@ def review_goal_basis_items(store, current, *, after_id=0, limit=100):
     return result
 
 
-def _project(conn, row, *, current, zone=None, settings=None):
+def _project(conn, row, *, current, zone=None, settings=None, scope=ALL_ENTRIES):
     zone, settings = zone or role_zone(conn), settings or goal_settings(conn)
     result = {k: row[k] for k in ('id','content','kind','origin','state','deadline','reminder_minutes',
-              'entry_id','host_key','revision','created_at','updated_at','closed_at','closed_by','merged_into','people')}
+              'entry_id','host','host_key','revision','created_at','updated_at','closed_at','closed_by','merged_into','people')}
     deadline = row['deadline_at'] or _deadline(row['deadline'], zone, strict=False)
     result['deadline_unresolved'] = bool(row['deadline'] and not deadline)
     lead = row['reminder_minutes'] if row['reminder_minutes'] is not None else settings['default_reminder_minutes']
@@ -413,7 +442,7 @@ def _project(conn, row, *, current, zone=None, settings=None):
     due = datetime.fromisoformat(deadline) if deadline else None
     result['overdue'] = bool(active and due and current > due)
     result['due_soon'] = bool(active and due and current >= _soon(due,lead))
-    result['possible_duplicate_ids'] = _duplicate_ids(conn, row['id'])
+    result['possible_duplicate_ids'] = _duplicate_ids(conn, row['id'], scope)
     result['possible_duplicate'] = bool(result['possible_duplicate_ids'])
     result['basis_annotations'] = _basis_annotations(conn,row['id'],zone=zone)
     result['basis_needs_review'] = bool(result['basis_annotations'])
@@ -425,14 +454,16 @@ def _project(conn, row, *, current, zone=None, settings=None):
 
 
 def goal_list(conn, *, state=None, kind=None, overdue=None, due_soon=None, entry_id=None,
-              possible_duplicate=None, deadline_from=None, deadline_to=None, limit=30, offset=0, current=None):
+              possible_duplicate=None, deadline_from=None, deadline_to=None, limit=30, offset=0, current=None, scope=ALL_ENTRIES):
     current, zone, settings = _current(current), role_zone(conn), goal_settings(conn)
-    where, args = ['merged_into IS NULL'], []
+    scope.require(entry_id)
+    clause, args = scope.sql('entry_id')
+    where = ['merged_into IS NULL', clause]
     for key, value in (('state',state),('kind',kind),('entry_id',entry_id)):
         if value is not None:
             where.append(key+'=?')
             args.append(value)
-    rows = [_project(conn, row, current=current,zone=zone,settings=settings) for row in _rows(conn,' AND '.join(where),args)]
+    rows = [_project(conn, row, current=current,zone=zone,settings=settings,scope=scope) for row in _rows(conn,' AND '.join(where),args)]
     for key, value in (('overdue',overdue),('due_soon',due_soon),('possible_duplicate',possible_duplicate)):
         if value is not None:
             rows = [r for r in rows if r[key] == value]
@@ -451,7 +482,7 @@ def goal_list(conn, *, state=None, kind=None, overdue=None, due_soon=None, entry
     return {'items':rows[offset:offset+limit], 'total':len(rows), 'limit':limit, 'offset':offset}
 
 
-def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=None):
+def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=None, scope=ALL_ENTRIES):
     limit = max(0, min(limit, 10))
     if not limit:
         return []
@@ -469,6 +500,9 @@ def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=No
             SELECT g.*, COALESCE(deadline_at,
                 CASE WHEN deadline IS NOT NULL THEN iris_goal_deadline(deadline) END) AS sort_deadline
             FROM goals g WHERE state='open' AND merged_into IS NULL
+                AND (entry_id IS NULL OR :scope_kind='all'
+                     OR (:scope_kind='entries' AND entry_id IN (SELECT value FROM json_each(:scope_entries)))
+                     OR (:scope_kind='prefix' AND substr(entry_id,1,length(:scope_prefix))=:scope_prefix))
         ), timed AS (
             SELECT dated.*, unixepoch(substr(sort_deadline,1,19))
                 - COALESCE(reminder_minutes,:default_lead)*60 AS soon_seconds FROM dated
@@ -481,6 +515,7 @@ def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=No
                 AND gp.subject_id IN (SELECT id FROM participant_tree)) THEN 0 ELSE 1 END,
             COALESCE(sort_deadline,'9999'), created_at, id LIMIT :limit""", {
                 'participants':dumps(sorted(participants)), 'entry_id':entry_id, 'limit':limit,
+                'scope_kind':scope.kind, 'scope_entries':dumps(scope.entries), 'scope_prefix':scope.prefix,
                 'default_lead':settings['default_reminder_minutes'],
                 'now_seconds':since_epoch.days*86400+since_epoch.seconds,
                 'now_fraction':f'{current.microsecond:06d}',
@@ -490,7 +525,7 @@ def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=No
     people = _people(conn, [row['id'] for row in rows])
     for row in rows:
         row['people'] = people[row['id']]
-    return [_project(conn,row,current=current,zone=zone,settings=settings) for row in rows]
+    return [_project(conn,row,current=current,zone=zone,settings=settings,scope=scope) for row in rows]
 
 
 def _notification(row, zone):
@@ -622,14 +657,18 @@ def _cancel_review(conn, goal_id, current, decision):
         (dumps(decision),current.isoformat(),goal_id))
 
 
-def _merge(conn,a,b,current,*,actor,semantic=False,reason=None):
+def _merge(conn,a,b,current,*,actor,semantic=False,reason=None,scope=ALL_ENTRIES):
     # All callers must have checked both observed revisions before arriving here.
+    scope.require(a['entry_id'])
+    scope.require(b['entry_id'])
     if a['state']!='open' or b['state']!='open' or not (dedup_judge.compatible(a,b) if semantic else _compatible(a,b)):
         raise GoalError('goal_id','只能合并未结束且类型、人物、截止时间、数字和否定兼容的目标')
     target,source = sorted((a,b),key=lambda r:(r['created_at'],r['id']))
     tid,sid = target['id'],source['id']
     reason = _reason(reason,'goals merged')
-    affected = {tid,sid,*_duplicate_ids(conn,sid),*[r[0] for r in conn.execute('SELECT id FROM goals WHERE merged_into=?',(sid,))]}
+    clause, args = scope.sql('entry_id')
+    redirects = [r[0] for r in conn.execute('SELECT id FROM goals WHERE merged_into=? AND '+clause,(sid,*args))]
+    affected = {tid,sid,*_duplicate_ids(conn,sid,scope),*redirects}
     snapshots = {gid:_snapshot(conn,gid) for gid in affected}
     deadline = target['deadline'] or source['deadline']
     deadline_at = target['deadline_at'] or source['deadline_at']
@@ -649,14 +688,18 @@ def _merge(conn,a,b,current,*,actor,semantic=False,reason=None):
     conn.execute('UPDATE goals SET merged_into=? WHERE id=?',(tid,sid))
     _cancel_review(conn,sid,current,{'status':'merged','target_id':tid})
     # Flatten existing redirects; a published receipt itself stays immutable.
-    conn.execute('UPDATE goals SET merged_into=? WHERE merged_into=?',(tid,sid))
+    conn.execute('UPDATE goals SET merged_into=? WHERE merged_into=? AND '+clause,(tid,sid,*args))
     conn.execute("UPDATE notifications SET goal_id=? WHERE goal_id=? AND status='pending'",(tid,sid))
     _cancel(conn,sid,current,notifications=False)
     _cancel(conn,tid,current,notifications=False)
-    for other in _duplicate_ids(conn,sid):
+    for other in _duplicate_ids(conn,sid,scope):
         if other!=tid:
             _possible(conn,tid,other,current,actor=actor,record=False)
-    conn.execute("UPDATE goal_duplicates SET status='merged',resolved_at=?,resolved_by=? WHERE (goal_a=? OR goal_b=?) AND status='possible'",(current.isoformat(),actor,sid,sid))
+    conn.execute("UPDATE goal_duplicates SET status='merged',resolved_at=?,resolved_by=? "
+                 "WHERE (goal_a=? OR goal_b=?) AND status='possible' "
+                 "AND goal_a IN (SELECT id FROM goals WHERE "+clause+") "
+                 "AND goal_b IN (SELECT id FROM goals WHERE "+clause+")",
+                 (current.isoformat(),actor,sid,sid,*args,*args))
     row = _row(conn,tid)
     # Keep one unclaimed notification per stage when both targets already emitted it.
     seen = set()
@@ -703,12 +746,13 @@ def _sequence_conflicts(conn,candidates,proposed,options,*,dismissed=()):
 
 
 def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=None, people=(), entry_id=None,
-            host_key=None, origin='host', actor='host', current=None, evidence=(), learning=False):
+            host_key=None, host=None, origin='host', actor='host', current=None, evidence=(), learning=False, scope=ALL_ENTRIES):
     current = _current(current)
+    scope.require(entry_id)
     if host_key is not None:
-        previous = conn.execute('SELECT receipt_json FROM goals WHERE host_key=?',(host_key,)).fetchone()
-        if previous and previous[0]:
-            return json.loads(previous[0])
+        previous = conn.execute("SELECT * FROM goals WHERE host_key=? AND COALESCE(host,'')=COALESCE(?,'')",(host_key,host)).fetchone()
+        if previous and previous['receipt_json']:
+            return _stored_receipt(conn,previous,scope)
     content, lead = (str(content).strip() if learning else _content(content)), _lead(reminder_minutes)
     if kind not in ('normal','question'):
         raise GoalError('kind','目标类型须为 normal 或 question')
@@ -725,8 +769,8 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
     deadline_at = _deadline(deadline,role_zone(conn),strict=not learning)
     raw_deadline = deadline_at or (str(deadline) if deadline else None)
     stamp = current.isoformat()
-    gid = conn.execute('''INSERT INTO goals(content,kind,origin,deadline,deadline_at,reminder_minutes,entry_id,host_key,created_at,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?)''',(content,kind,origin,raw_deadline,deadline_at,lead,entry_id,host_key,stamp,stamp)).lastrowid
+    gid = conn.execute('''INSERT INTO goals(content,kind,origin,deadline,deadline_at,reminder_minutes,entry_id,host_key,host,host_scope_json,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',(content,kind,origin,raw_deadline,deadline_at,lead,entry_id,host_key,host,scope.model_dump_json(),stamp,stamp)).lastrowid
     conn.executemany('INSERT INTO goal_people(goal_id,subject_id) VALUES(?,?)',((gid,p) for p in people))
     conn.executemany('INSERT OR IGNORE INTO goal_sources(goal_id,message_id) VALUES(?,?)',((gid,m) for m in evidence))
     if evidence:
@@ -738,7 +782,8 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
             AND s.message_id IN ('''+','.join('?' for _ in evidence)+')',(gid,*evidence))
     _record_snapshot(conn,gid,None,actor=actor,action='create',reason='goal created',current=current)
     proposed = _row(conn,gid)
-    candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=?",(kind,gid))
+    clause, args = scope.sql('entry_id')
+    candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=? AND "+clause,(kind,gid,*args))
     # Dates in older databases may not yet have been normalized by the scheduler.
     for candidate in candidates:
         candidate['deadline'] = _deadline(candidate['deadline'],role_zone(conn),strict=False) or candidate['deadline']
@@ -764,7 +809,7 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         # Use normalized legacy values for compatibility and adopt the actual time.
         latest['deadline'] = observed['deadline']
         latest['deadline_at'] = latest['deadline_at'] or _deadline(latest['deadline'],role_zone(conn),strict=False)
-        target = _merge(conn,latest,proposed,current,actor=actor)
+        target = _merge(conn,latest,proposed,current,actor=actor,scope=scope)
         decision['target_id'] = target
     else:
         for row in conflicts:
@@ -781,7 +826,7 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
             result_json,created_at,updated_at) VALUES(?,'pending',?,?,?,?,?,?)''',
             (gid,dedup_judge.candidate_method(options),_row(conn,gid)['revision'],available.isoformat(),dumps(decision),stamp,stamp))
     operation(conn,'goal_create','goal',gid,{'origin':origin,'dedup':decision},actor=actor,stamp=stamp)
-    receipt = {'goal':_project(conn,_row(conn,target),current=current),'submitted_id':gid,'dedup':decision}
+    receipt = {'goal':_project(conn,_row(conn,target),current=current,scope=scope),'submitted_id':gid,'dedup':decision}
     if host_key is not None:
         conn.execute('UPDATE goals SET receipt_json=? WHERE id=?',(dumps(receipt),gid))
     return receipt
@@ -808,19 +853,21 @@ class Goals:
 
     def create(self,**fields):
         key = fields.get('host_key')
+        host = fields.get('host')
+        lock_key = dumps([host, key])
         with self._key_guard:
-            lock = self._host_locks.get(key) if key is not None else None
+            lock = self._host_locks.get(lock_key) if key is not None else None
             if key is not None and lock is None:
                 lock = threading.RLock()
-                self._host_locks[key] = lock
+                self._host_locks[lock_key] = lock
         # Serialize only identical host keys through the first response. No DB
         # lock spans the network; different keys use purpose-local admission.
         with lock if lock is not None else nullcontext():
             with self.store.write() as conn:
                 if key is not None:
-                    old = conn.execute('SELECT receipt_json FROM goals WHERE host_key=?',(key,)).fetchone()
-                    if old and old[0]:
-                        return json.loads(old[0])
+                    old = conn.execute("SELECT * FROM goals WHERE host_key=? AND COALESCE(host,'')=COALESCE(?,'')",(key,host)).fetchone()
+                    if old and old['receipt_json']:
+                        return _stored_receipt(conn,old,fields.get('scope',ALL_ENTRIES))
                 result = _create(conn,current=self.clock(),**fields)
             if result['dedup']['status']=='pending' and fields.get('origin','host')!='internal':
                 result = self.review(result['submitted_id'],actor=fields.get('actor','host'))
@@ -840,8 +887,10 @@ class Goals:
         return json.loads(row[0])['dedup'] if row else {'status':'created','target_id':None}
 
     def _receipt(self,conn,goal_id,decision):
+        scope = Scope.model_validate_json(_row(conn,goal_id)['host_scope_json'])
+        _require_goal(conn,goal_id,scope)
         target = _canonical_id(conn,goal_id)
-        return {'goal':_project(conn,_row(conn,target),current=_current(self.clock())),
+        return {'goal':_project(conn,_row(conn,target),current=_current(self.clock()),scope=scope),
                 'submitted_id':goal_id,'dedup':decision}
 
     def pending_reviews(self, *, limit=8):
@@ -886,6 +935,7 @@ class Goals:
 
     def review(self,goal_id,*,actor='scheduler'):
         started = timer.monotonic()
+        background = actor=='scheduler'
         claimed,receipt = self._claim_review(goal_id)
         if claimed is None:
             return receipt
@@ -894,7 +944,11 @@ class Goals:
         # remove the ambiguity that prevented a merge, or introduce a new one.
         with self.store.read() as conn:
             proposed = _row(conn,goal_id)
-            candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=?",(proposed['kind'],goal_id))
+            scope = Scope.model_validate_json(proposed['host_scope_json'])
+            scope.require(proposed['entry_id'])
+            actor = proposed['host'] or actor
+            clause, args = scope.sql('entry_id')
+            candidates = _rows(conn,"state='open' AND merged_into IS NULL AND kind=? AND id!=? AND "+clause,(proposed['kind'],goal_id,*args))
             zone = role_zone(conn)
             for row in [proposed,*candidates]:
                 row['deadline'] = _deadline(row['deadline'],zone,strict=False) or row['deadline']
@@ -934,7 +988,8 @@ class Goals:
             active_options = dedup_judge.connection_settings(conn)
             latest = {row['id']:_row(conn,row['id']) for row in observed}
             stale = any(latest[row['id']]['revision']!=row['revision'] or latest[row['id']]['state']!='open'
-                        or latest[row['id']]['merged_into'] is not None for row in observed)
+                        or latest[row['id']]['merged_into'] is not None
+                        or not scope.allows(latest[row['id']]['entry_id']) for row in observed)
             # Subject aliases and source excerpts are not covered by goal revisions.
             if not stale:
                 for row,snapshot in zip(observed,snapshots):
@@ -953,7 +1008,7 @@ class Goals:
                 decision = {'status':'pending','target_id':None,'reason':'configuration_changed'}
             elif decision['status']=='merged':
                 target = next(row for row in selected if row['id']==decision['target_id'])
-                decision['target_id'] = _merge(conn,target,proposed,current,actor=actor,semantic=True)
+                decision['target_id'] = _merge(conn,target,proposed,current,actor=actor,semantic=True,scope=scope)
             elif decision['status']=='possible_duplicate':
                 for target_id in decision['target_ids']:
                     _possible(conn,goal_id,target_id,current,actor=actor)
@@ -967,7 +1022,7 @@ class Goals:
             operation(conn,'goal_dedup_judged','goal',goal_id,{'dedup':decision,
                 'method':dedup_judge.candidate_method(options),'revision':proposed['revision'],
                 'candidate_revisions':revisions},actor=actor,stamp=current.isoformat())
-            if actor=='scheduler' and not pending:
+            if background and not pending:
                 target = _canonical_id(conn,goal_id)
                 labels={'merged':'目标已合并','possible_duplicate':'目标可能重复，请复核','created':'目标复核完成，保留独立目标'}
                 conn.execute("""INSERT INTO notifications(kind,goal_id,scheduled_at,published_at,content)
@@ -983,7 +1038,7 @@ class Goals:
         with self.store.read() as conn:
             return goal_detail(conn,goal_id,current=self.clock())
 
-    def update(self,goal_id,*,expected_revision=None,actor='host',reason=None,**changes):
+    def update(self,goal_id,*,expected_revision=None,actor='host',reason=None,scope=ALL_ENTRIES,**changes):
         reason = _reason(reason,'goal updated')
         if set(changes)-{'state','content','deadline','reminder_minutes'}:
             raise GoalError('body','存在未知字段')
@@ -991,7 +1046,7 @@ class Goals:
             raise GoalError('body','至少提供一个修改字段')
         with self.store.write() as conn:
             current = _current(self.clock())
-            row = _row(conn,goal_id)
+            row = _require_goal(conn,goal_id,scope)
             if row['merged_into'] is not None:
                 raise GoalMerged(_canonical_id(conn,goal_id))
             _check(row,expected_revision)
@@ -1025,7 +1080,7 @@ class Goals:
                         conn.execute('UPDATE notifications SET content=? WHERE id=?',(prefix+'：'+changed['content'],note['id']))
                 sid = _record_snapshot(conn,goal_id,before,actor=actor,action='update',reason=reason,current=current)
                 operation(conn,'goal_update','goal',goal_id,{'fields':sorted(changed),'revision_before':row['revision'],'snapshot_id':sid},actor=actor,stamp=current.isoformat())
-            return _project(conn,_row(conn,goal_id),current=current)
+            return _project(conn,_row(conn,goal_id),current=current,scope=scope)
 
     def merge(self,goal_id,other_id,*,expected_revision,other_revision,actor='admin',reason=None):
         reason = _reason(reason,'goals merged')
@@ -1112,13 +1167,16 @@ class Goals:
             self._first_generation = False
             return after-before
 
-    def pull(self,*,after=0,limit=30):
+    def pull(self,*,after=0,limit=30,scope=ALL_ENTRIES):
         if type(after) is not int or after<0:
             raise GoalError('after','游标须为非负整数')
         if type(limit) is not int or not 1<=limit<=100:
             raise GoalError('limit','每页数量须为 1—100')
         with self.store.write() as conn:
-            rows = conn.execute("SELECT * FROM notifications WHERE id>? AND status!='cancelled' ORDER BY id LIMIT ?",(after,limit+1)).fetchall()
+            clause, args = scope.sql('g.entry_id')
+            rows = conn.execute("SELECT n.* FROM notifications n LEFT JOIN goals g ON g.id=n.goal_id "
+                                "WHERE n.id>? AND n.status!='cancelled' AND "+clause+" ORDER BY n.id LIMIT ?",
+                                (after,*args,limit+1)).fetchall()
             ids=[r['id'] for r in rows[:limit]]
             stamp=_current(self.clock()).isoformat()
             conn.executemany("UPDATE notifications SET status='taken',taken_at=? WHERE id=? AND status='pending'",((stamp,n) for n in ids))
