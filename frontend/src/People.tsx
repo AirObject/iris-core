@@ -1,3 +1,4 @@
+import { BulkMemoryDialog } from "./BulkMemory";
 import { useState, type FormEvent } from "react";
 import { api, ApiError, errorText, json, useData } from "./api";
 import {
@@ -217,6 +218,7 @@ function PersonDetail({
   onMerged: (target: string) => void;
 }) {
   const snapshot = useData<Detail>(`/people/${encodeURIComponent(id)}`);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [alias, setAlias] = useState("");
   const [action, setAction] = useState<Action | null>(null);
   const [error, setError] = useState("");
@@ -318,8 +320,28 @@ function PersonDetail({
         <p role="status">正在读取人物资料…</p>
       ) : (
         <>
+          {bulkOpen && (
+            <BulkMemoryDialog
+              scope={{ subject_id: person.id }}
+              name={person.name}
+              onClose={() => setBulkOpen(false)}
+              onChanged={() => {
+                snapshot.refresh();
+                onChange();
+              }}
+            />
+          )}
           <section className="panel">
             <h2>{person.name}</h2>
+            {!person.merged_into && (
+              <button
+                className="secondary"
+                disabled={locked}
+                onClick={() => setBulkOpen(true)}
+              >
+                批量遗忘／删除
+              </button>
+            )}
             <p className="muted">
               人物标识：{person.id} · 资料修订 {person.revision}
             </p>
