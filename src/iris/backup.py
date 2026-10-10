@@ -7,6 +7,8 @@ and configuration leases. No archive content or credential is logged.
 from __future__ import annotations
 
 import contextlib
+import errno
+import logging
 import ctypes
 import hashlib
 import json
@@ -17,11 +19,13 @@ import sqlite3
 import stat
 import sys
 import tempfile
+import time
 import uuid
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from importlib.resources import files
 from pathlib import Path, PurePosixPath
+from zoneinfo import ZoneInfo
 
 from .configuration import CONFIG_LOCK_WAIT_SECONDS, RuntimeConfig
 from .db import Store, dumps, now
@@ -191,17 +195,20 @@ def _check_media_files(database, members):
 def _metadata(manifest, size, *, purpose='manual'):
     return {key: manifest[key] for key in ('backup_id', 'format_version', 'migration_version', 'created_at',
                                           'includes_model_secrets', 'media_included')} | {
-        'file_count': len(manifest['files']), 'size': size, 'purpose': purpose}
+        'file_count': len(manifest['files']), 'size': size, 'purpose': purpose,
+        'trigger': purpose if purpose in ('scheduled', 'pre_import') else 'manual',
+        'status': 'succeeded', 'reason': None}
 
 
 def export_archive(store, output, *, include_secrets=False, actor='local_cli', runtime=None,
-                   purpose='manual', _configuration_locked=False, _audit_store=None, _preserve_all_secrets=False):
+                   purpose='manual', _configuration_locked=False, _audit_store=None, _preserve_all_secrets=False, _scheduled=None):
     """Publish a complete 0600 ZIP without replacing an existing output file.
 
     A pinned WAL read transaction defines the database instant. Registered media
     must remain intact; concurrent uploads and new unregistered files are ignored.
     The configuration lease spans only snapshot pinning and optional key capture.
     """
+    started, started_at = time.monotonic(), now()
     output = Path(output).absolute()
     runtime = runtime or RuntimeConfig(store)
     directory = store.path.parent
@@ -256,6 +263,9 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
             manifest = {'format': 'iris-backup', 'format_version': FORMAT_VERSION, 'backup_id': uuid.uuid4().hex,
                         'created_at': stamp, 'migration_version': versions[-1], 'migrations': versions,
                         'includes_model_secrets': include_secrets, 'media_included': inventory is not None, 'files': {}}
+            if _scheduled is not None:
+                manifest['backup_id'] = _scheduled['backup_id']
+                manifest['scheduled_backup'] = {key: _scheduled[key] for key in ('owner', 'day')}
             names = ['iris.db', *sorted(inventory or {})] + (['secrets.json'] if include_secrets else [])
             archive_path = stage / 'archive.zip'
             with _private_file(archive_path) as file, zipfile.ZipFile(file, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
@@ -279,16 +289,20 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
             os.link(archive_path, output)
             published = True
             _sync_directory(output.parent)
-            with (_audit_store or store).write() as conn:
-                operation(conn, 'backup_export', 'backup', manifest['backup_id'], result, actor=actor)
+            result.update(started_at=started_at, finished_at=now(), duration_ms=round((time.monotonic()-started)*1000))
+            if _scheduled is None:
+                with (_audit_store or store).write() as conn:
+                    operation(conn, 'backup_export', 'backup', manifest['backup_id'], result, actor=actor)
             return result
     except BackupError:
         if published:
             output.unlink(missing_ok=True)
         raise
-    except (OSError, sqlite3.Error, ValueError, TypeError, KeyError, AttributeError):
+    except (OSError, sqlite3.Error, ValueError, TypeError, KeyError, AttributeError) as exc:
         if published:
             output.unlink(missing_ok=True)
+        if _scheduled is not None and isinstance(exc, OSError) and exc.errno == errno.ENOSPC:
+            raise BackupError('insufficient_space', '备份空间不足。') from None
         raise BackupError('export_failed', '备份导出失败，请检查可用空间、数据完整性、媒体变化或配置锁后重试。') from None
 
 
@@ -297,9 +311,154 @@ def recent_exports(store, *, limit=30):
         rows = conn.execute("""SELECT actor,details_json FROM admin_operations WHERE action='backup_export'
             ORDER BY id DESC LIMIT ?""", (max(1, min(limit, 100)),)).fetchall()
     fields = ('backup_id', 'format_version', 'migration_version', 'created_at', 'includes_model_secrets',
-              'media_included', 'file_count', 'size', 'purpose')
-    return [{'actor': row['actor'], **{key: value for key, value in _json(row['details_json']).items() if key in fields}}
-            for row in rows]
+              'media_included', 'file_count', 'size', 'purpose', 'trigger', 'status', 'reason',
+              'started_at', 'finished_at', 'duration_ms', 'retention_reason')
+    result = []
+    for row in rows:
+        detail = {key: value for key, value in _json(row['details_json']).items() if key in fields}
+        detail.setdefault('trigger', detail.get('purpose') if detail.get('purpose') in ('scheduled', 'pre_import') else 'manual')
+        detail.setdefault('status', 'succeeded')
+        detail.setdefault('reason', None)
+        result.append({'actor': row['actor'], **detail})
+    return result
+
+
+# These are fixed, public metadata codes. Never persist exception strings or paths.
+_SCHEDULED_REASONS = frozenset(('invalid_settings', 'insufficient_space', 'invalid_output',
+    'output_exists', 'media_changed', 'media_integrity', 'unsupported_migration',
+    'manifest_too_large', 'export_failed'))
+
+
+def _scheduled_result(store, record_id, detail):
+    with store.write() as conn:
+        conn.execute("""UPDATE admin_operations SET details_json=?
+            WHERE id=? AND action='backup_export' AND object_id=?""",
+            (dumps(detail), record_id, detail['backup_id']))
+
+
+def _backup_space(store, directory):
+    # The exporter stages an uncompressed snapshot plus the ZIP on this volume.
+    # Reserve extra for archive overhead and writes arriving during the snapshot.
+    with store.read() as conn:
+        size = conn.execute('PRAGMA page_count').fetchone()[0] * conn.execute('PRAGMA page_size').fetchone()[0]
+    size += sum(identity[2] for identity in (_media_inventory(store.path.parent / 'media') or {}).values())
+    required = 2 * size + max(64 * 1024 * 1024, size // 20)
+    if shutil.disk_usage(directory).free < required:
+        raise BackupError('insufficient_space', '备份空间不足。')
+
+
+def _prune_scheduled(directory, owner, keep):
+    # Both a private producer ID and the manifest must agree with the name.
+    # Do not follow links, inspect arbitrary ZIPs, or delete before a new success.
+    pattern = re.compile(r'iris-scheduled-' + re.escape(owner) + r'-(\d{4}-\d{2}-\d{2})-([0-9a-f]{32})\.zip')
+    candidates = []
+    for path in directory.iterdir():
+        match = pattern.fullmatch(path.name)
+        if not match or path.is_symlink() or not path.is_file():
+            continue
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(descriptor, 'rb') as file, zipfile.ZipFile(file) as archive:
+                identity = _identity(os.fstat(file.fileno()))
+                value = _read_manifest(archive)
+                if (value.get('scheduled_backup') != {'owner': owner, 'day': match[1]}
+                        or value['backup_id'] != match[2] or value['includes_model_secrets']):
+                    continue
+                datetime.fromisoformat(match[1])
+            candidates.append((match[1], path.name, path, identity))
+        except (OSError, ValueError, zipfile.BadZipFile, KeyError, TypeError):
+            continue
+    for _, _, path, identity in sorted(candidates, reverse=True)[keep:]:
+        try:
+            if _identity(path.stat(follow_symlinks=False)) == identity:
+                path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def run_scheduled_backup(store, *, current=None):
+    """One durable attempt per local day, after maintenance; no failure escapes.
+
+    An OS lease isolates workers and lets a later invocation identify an
+    interrupted attempt. The claim and export record use short transactions;
+    the existing online exporter does all snapshot, media and ZIP work outside.
+    """
+    try:
+        current = current or datetime.now(timezone.utc)
+        # This is a separate lease, not the running service's database lease.
+        with StoreLease(store.path.with_name(store.path.name + '.scheduled-backup')):
+            return _run_scheduled_backup(store, current)
+    except LeaseBusyError:
+        return None
+    except Exception:
+        # If the DB itself cannot record the failure, do not damage maintenance.
+        logging.getLogger(__name__).warning('scheduled backup recording failed')
+        return None
+
+
+def _run_scheduled_backup(store, current):
+    day = current.astimezone(ZoneInfo(store.setting('timezone', 'Asia/Shanghai'))).date().isoformat()
+    stamp = current.astimezone(timezone.utc).isoformat()
+    raw = store.setting('scheduled_backup', {})
+    settings = {'enabled': True, 'keep': 7, 'directory': None, **raw} if isinstance(raw, dict) else None
+    with store.write() as conn:
+        row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='scheduled_backup_state'").fetchone()
+        state = _json(row[0]) if row else {}
+        previous = conn.execute("""SELECT details_json FROM admin_operations
+            WHERE id=? AND action='backup_export' AND object_id=?""",
+            (state.get('record_id'), state.get('backup_id'))).fetchone()
+        if previous:
+            detail = _json(previous[0])
+            if detail.get('status') == 'running':
+                detail.update(status='failed', reason='interrupted', finished_at=stamp, duration_ms=None)
+                conn.execute('UPDATE admin_operations SET details_json=? WHERE id=?', (dumps(detail), state['record_id']))
+        # Going backwards in time cannot produce a second archive for an old day.
+        if state.get('day', '') >= day or (settings and settings['enabled'] is False):
+            return None
+        owner_row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='scheduled_backup_owner'").fetchone()
+        owner = _json(owner_row[0]) if owner_row else uuid.uuid4().hex
+        conn.execute("INSERT OR IGNORE INTO runtime_settings VALUES('scheduled_backup_owner',?)", (dumps(owner),))
+        backup_id = uuid.uuid4().hex
+        detail = dict(backup_id=backup_id, format_version=FORMAT_VERSION, migration_version=migration_versions()[-1],
+            created_at=stamp, includes_model_secrets=False, media_included=False, file_count=0, size=0,
+            purpose='scheduled', trigger='scheduled', status='running', reason=None,
+            started_at=stamp, finished_at=None, duration_ms=None, retention_reason=None)
+        operation(conn, 'backup_export', 'backup', backup_id, detail, actor='system', stamp=stamp)
+        record_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        state = dict(day=day, backup_id=backup_id, record_id=record_id)
+        conn.execute("INSERT INTO runtime_settings VALUES('scheduled_backup_state',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json", (dumps(state),))
+    started = time.monotonic()
+    try:
+        if (settings is None or type(settings['enabled']) is not bool
+                or type(settings['keep']) is not int or settings['keep'] < 1
+                or (settings['directory'] is not None and (not isinstance(settings['directory'], str) or not settings['directory'].strip()))):
+            raise BackupError('invalid_settings', '定时备份设置无效。')
+        directory = Path(settings['directory']) if settings['directory'] is not None else Path('backups')
+        if not directory.is_absolute():
+            directory = store.path.parent / directory
+        directory = directory.resolve()
+        if directory.is_relative_to((store.path.parent / 'media').resolve()):
+            raise BackupError('invalid_output', '备份文件不能写入媒体目录。')
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        _backup_space(store, directory)
+        output = directory / f'iris-scheduled-{owner}-{day}-{backup_id}.zip'
+        info = export_archive(store, output, include_secrets=False, actor='system', purpose='scheduled',
+                              _scheduled={'owner': owner, 'day': day, 'backup_id': backup_id})
+        detail.update(info)
+        try:
+            _prune_scheduled(directory, owner, settings['keep'])
+        except Exception:
+            detail['retention_reason'] = 'cleanup_failed'
+    except Exception as exc:
+        reason = exc.code if isinstance(exc, BackupError) and exc.code in _SCHEDULED_REASONS else 'export_failed'
+        if isinstance(exc, OSError) and exc.errno == errno.ENOSPC:
+            reason = 'insufficient_space'
+        detail.update(status='skipped' if reason == 'insufficient_space' else 'failed', reason=reason)
+    duration = round((time.monotonic()-started)*1000)
+    detail.update(created_at=stamp, started_at=stamp,
+                  finished_at=(current+timedelta(milliseconds=duration)).astimezone(timezone.utc).isoformat(), duration_ms=duration)
+    _scheduled_result(store, record_id, detail)
+    return detail
 
 
 def _read_manifest(archive):

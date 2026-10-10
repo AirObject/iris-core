@@ -8,6 +8,7 @@ import threading
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from . import backup
 from .db import dumps
 from .memory_ops import adjust_retention, delete_memory, lifecycle_settings, message_references, missing_batch_targets, operation
 from .model_health import utc_now
@@ -133,6 +134,7 @@ class Maintenance:
             if row is None:
                 raise KeyError(run_id)
             if row['state'] == 'completed':
+                backup.run_scheduled_backup(self.store, current=self.clock())
                 return
             scheduled = None
             try:
@@ -142,6 +144,10 @@ class Maintenance:
                 logging.getLogger('iris.runtime_journal').warning('runtime journal write failed')
             with maintenance_span(self.store, run_id, 'maintenance', clock=self.clock, stop=stop, scheduled_at=scheduled):
                 self._run(run_id, stop=stop)
+            with self.store.read() as conn:
+                completed = conn.execute("SELECT state FROM maintenance_runs WHERE id=?", (run_id,)).fetchone()[0] == 'completed'
+            if completed:
+                backup.run_scheduled_backup(self.store, current=self.clock())
 
     def _run(self, run_id, *, stop=None):
         # Progress is committed with each item, even when it needs no audit row.

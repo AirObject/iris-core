@@ -135,7 +135,7 @@ def test_image_budget_and_config_independent_and_late_result_discarded(store):
         clock[0] = 121.0
         return httpx.Response(200, json=response('迟到的描述'))
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        gateway = Gateway(CONFIGS, store, health=health, client=client, monotonic=lambda: clock[0])
+        gateway = Gateway(CONFIGS, store, health=health, client=client, clock=lambda: STAMP, monotonic=lambda: clock[0])
         try:
             assert Gateway.timeout_for(KIND, KIND) == 120
             with pytest.raises(ModelError) as caught:

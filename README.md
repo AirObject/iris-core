@@ -722,6 +722,20 @@ GLM 服务商默认 max 推理可能耗尽 180 秒学习预算；依据 `DECISIO
 
 服务运行时，管理员可通过 `POST /admin/api/backups/export` 下载备份，JSON 体默认为 `{}`；显式传入 `{"include_secrets":true}` 才包含数据目录内的模型密钥。请求沿用管理员会话、JSON Content-Type 和 `X-Iris-CSRF`，宿主令牌不能代替管理员会话。响应为 ZIP 下载，`Cache-Control: no-store`；含密钥时文件名带 `-with-secrets`，`X-Iris-Backup-Includes-Secrets` 为 `true`，清单和导出记录也明确标记。`GET /admin/api/backups?limit=30` 返回最近导出记录（最多 100 条）、是否含密钥及离线导入说明。前端入口由 M4 界面线接入。
 
+每日维护完成后自动执行一次定时备份，默认开启、写入 `<数据目录>/backups/`、保留最近 7 份且不含模型密钥。补跑、正常维护和手动维护共用按角色时区计算的每日名额；同日重复调用或重启不会重复导出。失败、空间不足也占用当天尝试，下一天维护后再试；关闭时不占名额。维护中断时不导出，完成状态提交后才开始在线快照，备份失败不撤销或阻止其他维护阶段。
+
+通过 `runtime_settings` 的 `scheduled_backup` JSON 设置（缺省字段使用默认值；本条没有设置页开关）：
+
+```json
+{"enabled":true,"keep":7,"directory":null}
+```
+
+`enabled` 必须为布尔值，`keep` 必须为正整数；`directory=null` 使用默认目录，也可填绝对路径或相对于数据目录的路径，不能位于媒体目录中。设置无效会留下固定失败原因。定时备份复用手动在线导出的快照、媒体校验、0600 文件权限和不覆盖发布机制。文件名为 `iris-scheduled-<实例标识>-<本地日期>-<备份ID>.zip`，清单附 `scheduled_backup` 的 `owner`、`day`。仅在新备份成功后，清理当前配置目录中同时匹配本实例命名规则、备份 ID 和清单标记的旧定时备份；不跟随符号链接，不清理手动导出、其他实例文件、迁移前 `.bak` 或以前配置的其他目录。
+
+导出前估算目标卷所需空间：数据库与媒体总量的两倍，加上至少 64 MiB（或总量 5%，取较大值）的余量，用于未压缩暂存、ZIP 和并发变化；不足时跳过并记录 `insufficient_space`，保留旧备份。实际导出仍可能因后续磁盘变化失败，按同一记录返回固定原因。
+
+`GET /admin/api/backups` 的最近导出记录同时返回定时尝试；沿用 `purpose` 并新增明确的 `trigger`：`manual`（手动）、`pre_import`（导入前）、`scheduled`（定时），旧记录按原用途补齐。界面线可据此显示“定时”。新增元数据为 `status`（`running / succeeded / failed / skipped`）、`reason`、`started_at`、`finished_at`、`duration_ms`；原有 `created_at`、`size`、`file_count` 等保留。定时备份每次尝试一条记录，完成后更新结果；失败时大小为 0，成功时为实际 ZIP 字节数。中断后再次检查会标记 `failed / interrupted`，耗时未知为 null，不补造成功。定时失败原因只使用 `invalid_settings`、`insufficient_space`、`invalid_output`、`output_exists`、`media_changed`、`media_integrity`、`unsupported_migration`、`manifest_too_large`、`export_failed`、`interrupted`；不写异常原文、路径或密钥。若导出成功但旧备份清理失败，保留新文件，`status` 仍为 `succeeded`，另记 `retention_reason=cleanup_failed`；正常时该字段为 null。不增加运行记录事件。
+
 停服后也可使用命令行；这些命令不加载测试模型配置、不调用模型：
 
 ```bash
