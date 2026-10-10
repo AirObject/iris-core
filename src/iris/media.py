@@ -164,6 +164,33 @@ def save_media(store, data, *, content_type, understanding_text=None, max_bytes=
     return get_media(store, media_id)
 
 
+def save_host_media(store, data, *, entry_id, scope, actor, **fields):
+    """Upload adapter: bind the new object to an authorized origin entry.
+
+    The durable upload operation is the authorization grant, not a message
+    reference. It must accompany this object when exporting/importing host media.
+    It does not prevent ordinary orphan cleanup. An interrupted upload without
+    its grant is inaccessible through HTTP and is collected after the grace day.
+    """
+    from .memory_ops import operation
+    scope.require(entry_id)
+    result = save_media(store, data, **fields)
+    with store.write() as conn:
+        operation(conn, 'media_uploaded', 'media', result['id'], {'entry_id': entry_id}, actor=actor)
+    return result
+
+
+def require_host_media(conn, media_ids, *, scope):
+    """Check origin grants in the same transaction that attaches new messages."""
+    for media_id in media_ids:
+        row = conn.execute("""SELECT a.details_json FROM media_objects o
+            JOIN admin_operations a ON a.object_type='media' AND a.object_id=o.id
+            AND a.action='media_uploaded' WHERE o.id=? ORDER BY a.id LIMIT 1""", (media_id,)).fetchone()
+        if row is None:
+            raise MediaError('invalid_media')
+        scope.require(json.loads(row[0])['entry_id'])
+
+
 def attach_media(store, conn, message_id, media_ids):
     """Run inside the message insert transaction, including availability checks."""
     if not isinstance(media_ids, (list, tuple)) or any(not isinstance(mid, str) for mid in media_ids) or len(set(media_ids)) != len(media_ids):
