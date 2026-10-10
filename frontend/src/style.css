@@ -3086,3 +3086,33 @@ tr:last-child td {
 .bulk-memory details {
   margin: 10px 0;
 }
+
+/* Entry profiles keep evidence and controls readable inside narrow dialogs. */
+.entry-profile { display: grid; gap: 18px; min-width: 0; }
+.entry-profile p, .entry-profile li, .entry-profile blockquote { overflow-wrap: anywhere; }
+.entry-profile-section { border-top: 1px solid var(--line); padding-top: 18px; min-width: 0; }
+.entry-profile-section h3 { margin: 0 0 10px; }
+.entry-profile label { display: grid; gap: 6px; margin: 12px 0; }
+.entry-profile label.check-label { display: flex; align-items: center; gap: 10px; }
+.entry-profile textarea, .entry-profile input:not([type=checkbox]), .entry-profile select { width: 100%; min-width: 0; }
+.entry-profile-content { white-space: pre-wrap; line-height: 1.85; }
+.entry-profile-task { margin-top: 14px; padding: 12px; background: #f7f8fb; border-radius: 8px; }
+.entry-profile-history { list-style: none; padding: 0; }
+.entry-profile-history li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.entry-profile-history p { margin: 4px 0; }
+.entry-profile-compare { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+.entry-profile-compare label { flex: 1; min-width: 120px; }
+.entry-profile-compare button { margin-bottom: 12px; }
+.entry-profile-sentences { padding-left: 24px; }
+.entry-profile-sentences > li { padding: 8px 0 16px; }
+.entry-profile-evidence { padding: 10px 14px; margin-top: 10px; border-left: 3px solid var(--line); background: #f7f8fb; }
+.entry-profile-evidence p { margin: 6px 0; }
+.entry-profile-evidence blockquote { margin: 10px 0; }
+.entry-profile-evidence footer { font-size: 12px; opacity: .7; }
+.entry-profile-diff { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.entry-profile-diff-columns { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+@media (max-width: 560px) {
+  .entry-profile .button-row { align-items: stretch; }
+  .entry-profile .button-row > button { flex: 1 1 130px; }
+  .entry-profile-diff-columns { grid-template-columns: minmax(0,1fr); }
+}

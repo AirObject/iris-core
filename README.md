@@ -624,7 +624,7 @@ persona 在记忆整理后调用既有到期判断：自上一版至少五条自
 
 数据库启动时拒绝比当前代码更新或不兼容的迁移历史，须升级代码或恢复迁移前 `.bak`。写连接启用检查点刷盘 `checkpoint_fullfsync`，日志尺寸目标为 64 MiB；不启用每次提交的 `fullfsync`。
 
-## 入口画像（后端第一阶段）
+## 入口画像
 
 入口画像是 group／live 单个入口的 150—500 字中文摘要，可包含话题、氛围与说话方式、群内说法的含义、明确说过的群规。private 不生成。每个模型句都有自己的消息／记忆依据；禁止成员个人信息与隐私、个人评价、性别推断、其他入口内容及给模型或宿主的指令。只出现一次的现象须限定具体场景。上一版只帮助保持措辞和比较变化，不能作为事实依据。提示词为 `entry_profile_generate_v1`、`entry_profile_check_v1`；公开 dev 使用单独冻结的 `entry_profile_v1`，外部判分与机制测试分开报告。
 
@@ -634,11 +634,15 @@ persona 在记忆整理后调用既有到期判断：自上一版至少五条自
 
 生成和逐句检查各共享 120 秒总预算（含该调用内重试），在数据库事务外执行；开始前为检查预留一次调用。代码先核对引用，模型再检查每句的支持、场景限定及禁止内容。检查输入按句附上该句绑定的依据，不附未引用消息或用于并发校验的散列元数据；每句的事实支持、场景限定与禁止内容分别判断。场景限定不合格不会因引用条数多而放行。不合格的模型句删去并保存原句、依据、原因；累计删去超过原候选句数的 30% 时整版拒绝，恰好 30% 可以通过。删句后重查 150—500 字，不补写、不再次模型检查。管理员手写句由代码原样保留；检查指出手写句有禁止内容时保留原文但待管理员确认。手写句删改的确定性判断覆盖模型变化判断，视为大变化并待确认。
 
-默认 `check_auto`：检查通过即发布，包括大变化；可按入口改为 `all_manual`。检查失败保留当前已发布版。新的候选或管理员编辑使旧候选成为 rejected，检查结果记 `superseded`。生成写回的短事务复核当前版本、设置修订、消息指纹、记忆修订和可见性；冲突不覆盖。失败和中断保存尝试记录；恢复不会重跑已完成或中断的模型调用，缺失的整理报告项可从记录补回。
+根据 2026-10-11 的上线决定，入口画像默认开启，默认 `check_auto`：检查通过即发布，包括大变化；质量继续迭代，管理员可按入口改为 `all_manual`（全部人工确认）或关闭。检查失败保留当前已发布版。新的候选或管理员编辑使旧候选成为 rejected，检查结果记 `superseded`。生成写回的短事务复核当前版本、设置修订、消息指纹、记忆修订和可见性；冲突不覆盖。失败和中断保存尝试记录；恢复不会重跑已完成或中断的模型调用，缺失的整理报告项可从记录补回。
 
 三张表分别保存 `entry_profile_settings`（入口开关、发布方式、设置修订及当前版本指针）、`entry_profile_versions`（入口内递增版本、父版本、正文、逐句依据、完整检查、变化程度、生成／发布时间、作者、来源和材料快照）、`entry_profile_attempts`（整理运行、日期、状态、原始输出和调用记录）。版本状态只有 `candidate / published / rejected`，作者为 `model / admin`；旧的已发布版仍是 published，`is_current` 区分当前版。回滚只针对曾经发布的版本，复制为新的版本，不改写历史；过时依据仍会标出。依据 ID 不用外键保留原始消息，清理不会被画像阻塞。
 
-第二阶段可直接使用以下数据层函数；本阶段尚未接管理路由、页面或 prepare：
+入口与学习页的每个入口都有“入口画像”面板（群聊／直播可用，私聊显示不适用）。面板支持当前正文、生成时间、待确认计数、历史版本、逐句依据与原话、检查和删句记录、任意两版对比，以及编辑、回滚、重新生成、确认／拒绝和画像设置。新增或改写的管理员句子标记为手写并受保护；未改句保留原依据。编辑发生 409 冲突时保留草稿，核对最新版本后再处理。窄屏使用单列对比。
+
+`prepare.entry_profile` 只返回本入口启用且已发布的 `{text, version, generated_at, possibly_stale}`，否则为 null；search 不返回。令牌范围外的入口不允许 prepare；新增分区不改变 memories、近期消息、状态或目标，不在回复准备时生成。宿主使用约定见 [接口 v1](docs/host-api.md#回复准备的七个分区)。
+
+数据层函数：
 
 | 函数 | 行为 |
 | --- | --- |
@@ -651,9 +655,25 @@ persona 在记忆整理后调用既有到期判断：自上一版至少五条自
 | `confirm_candidate` / `reject_candidate` | 接收候选 version 和 expected_version；确认前复核依据 |
 | `EntryProfileEngine.update` / `.regenerate` | 参数 entry_id、expected_version；返回 status、reason、version、attempt_id、due |
 | `profile_due` / `select_material` | 可注入 clock 的到期判断／材料快照 |
-| `profile_context(conn, entry_id)` | 为第二阶段预留的只读 `{text, version, generated_at, possibly_stale}`；关闭或无画像时 null |
+| `profile_context(conn, entry_id)` | 回复准备的只读 `{text, version, generated_at, possibly_stale}`；关闭或无画像时 null |
 
-所有写函数要求 `expected_version` 为当前已发布版本号，无版本为 0；冲突抛 `EntryProfileConflict`，在途竞争可抛 `EntryProfileBusy`。所有操作写 `admin_operations`，不在操作记录里重复存正文。每个模型检查结果的 index 对应 `checks.checked_sentences`，被删句见 `checks.deleted_sentences`，实际模型检查输入见 `checks.model_input`。运行设置 `runtime_settings.entry_profile` 存默认值；整理快照开关为 `consolidation.entry_profile_enabled`，设置路由待第二阶段接入。
+所有写函数要求 `expected_version` 为当前已发布版本号，无版本为 0；冲突抛 `EntryProfileConflict`，在途竞争可抛 `EntryProfileBusy`。所有操作写 `admin_operations`，不在操作记录里重复存正文。每个模型检查结果的 index 对应 `checks.checked_sentences`，被删句见 `checks.deleted_sentences`，实际模型检查输入见 `checks.model_input`。运行设置 `runtime_settings.entry_profile` 存默认值；整理快照开关为 `consolidation.entry_profile_enabled`。
+
+管理接口统一位于 `/admin/api/entries/{entry_id}/profile`，沿用管理员会话、CSRF、JSON Content-Type 和操作记录；版本号只在本入口有效，路径里的 `version` 不用全局行 ID。
+
+| 方法和相对路径 | 请求／返回 |
+| --- | --- |
+| `GET /` | 当前和待确认版本摘要、`pending_count`、入口设置、`possibly_stale`、`stale_basis`、`latest_attempt`；无当前版为 null |
+| `GET /versions?limit=30&offset=0` | `{items,total,limit,offset}`，倒序历史；`is_current` 区分当前与历史已发布版 |
+| `GET /versions/{version}` | 正文、逐句 `basis`／`admin_written`、依据摘录和当前记忆状态、检查及删句记录；不返回整份聊天材料和原始模型输出 |
+| `GET /diff?before_version=N&after_version=M` | 任意两版的逐句差异，附前后正文和依据 |
+| `PUT /` | `{expected_version,content}`，150—500 字；直接发布管理员编辑 |
+| `PATCH /settings` | `{expected_version,enabled?,publish_mode?}`；至少一个设置字段。开关立即生效，发布方式只影响之后的候选 |
+| `POST /versions/{version}/confirm`、`/reject`、`/rollback` | `{expected_version}`；reject 可附 `reason`。确认前再次核对依据，回滚新建当前版本 |
+| `POST /regenerate` | `{expected_version}`；202，`{accepted:true,attempt}` 和任务 `Location` |
+| `GET /attempts/{attempt_id}` | 持久任务状态、阶段 generating／checking／finished、结果版本与安全原因码；不能跨入口查询 |
+
+所有写请求中的 `expected_version` 指当前已发布版本号，无当前版为 0。版本、候选、设置或依据冲突返回 409；参数错误 400，不存在 404。重新生成在短事务中预约后立即返回，模型在线程池执行，不占请求线程、不持数据库事务。服务同时最多接收一个管理员生成任务，重复提交返回 409；与整理通过同入口的持久预约和每日上限互斥。任务失败、暂停、每日上限或消息不足会留下可查询的结果，`accepted` 不等于已发布。页面轮询不会重新提交；服务正常关闭等待在途任务，重启将无主任务标为 `failed/interrupted`，不会暗中重跑。
 
 评测运行器只读显式 `--corpus`，每案例用隔离数据库和 `as_of` 时钟，直接载入消息与记忆，不经过学习。输入 JSON 为 `format_version: 1` 和 `cases` 数组；每案例含 `id`、`entry: {id, kind, name?}`、带时区的 `as_of`、`messages: [{id, at, text, sender?, kind?, entry_id?}]`，可选 `timezone`、`other_entries`、`memories: [{content, sources: [消息id], importance?, stance?, lifecycle?}]`、`initial_profile`（管理员手写）、`must_cover`、`forbidden`。也直接支持已冻结的 `groups` 格式（`entry_kind`、`now`、`quote`）：每个目标入口的独立数据库都先装入所有入口，消息 ID 加入口前缀、引用保留原作者，共享账号不合并入口；只取目标入口材料。标注不进入生成或检查请求。运行器不搜索语料、不复用其他运行，全部材料放仓库外：
 

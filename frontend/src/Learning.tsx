@@ -1,3 +1,4 @@
+import { EntryProfileDialog } from "./EntryProfile";
 import { BulkMemoryDialog } from "./BulkMemory";
 import { MessageMedia } from "./Media";
 import { useState } from "react";
@@ -41,6 +42,7 @@ type Summary = Batch & {
 type LearningEntry = Entry &
   EntryVisibility & {
     platform: string;
+    entry_profile_pending_count?: number;
     pending_count: number;
     latest_batch?: Summary;
     current_batch?: Summary;
@@ -118,7 +120,7 @@ type Gap = {
 };
 type Page<T> = { items: T[]; total: number; offset: number; limit: number };
 const kindLabel = (value: string) =>
-  ({ group: "群聊", private: "私聊" })[value] || value;
+  ({ group: "群聊", private: "私聊", live: "直播" })[value] || value;
 const messageKind = (value: string) =>
   ({
     message: "消息",
@@ -144,6 +146,7 @@ export default function LearningPage({
   const [selected, setSelected] = useState<number | null>(null);
   const [bulkEntry, setBulkEntry] = useState<LearningEntry | null>(null);
   const [editingEntry, setEditingEntry] = useState<LearningEntry | null>(null);
+  const [profileEntry, setProfileEntry] = useState<LearningEntry | null>(null);
   const [notice, setNotice] = useState("");
   const [filter, setFilter] = useState({
     entry_id: "",
@@ -223,6 +226,14 @@ export default function LearningPage({
           onChanged={refresh}
         />
       )}
+      {profileEntry && (
+        <EntryProfileDialog
+          key={profileEntry.id}
+          entry={profileEntry}
+          onClose={() => setProfileEntry(null)}
+          openMemory={openMemory}
+        />
+      )}
       {editingEntry && (
         <EntrySettingsDialog
           entry={editingEntry}
@@ -298,6 +309,16 @@ export default function LearningPage({
                     }}
                   >
                     修改入口设置
+                  </button>
+                  <button
+                    className="secondary"
+                    aria-label={`入口画像 · ${entry.name}`}
+                    onClick={() => setProfileEntry(entry)}
+                  >
+                    入口画像
+                    {entry.entry_profile_pending_count
+                      ? ` · 待确认 ${entry.entry_profile_pending_count}`
+                      : ""}
                   </button>
                   <button
                     className="secondary"

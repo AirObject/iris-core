@@ -365,3 +365,33 @@ test("入口卡片提供按直接来源的批量操作入口", async () => {
   ).toBeInTheDocument();
   expect(screen.getByText(/至少一条直接来源消息/)).toBeInTheDocument();
 });
+
+test("每入口可打开画像面板，打开列表不触发画像生成", async () => {
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/entries/A/profile"))
+      return new Response(
+        JSON.stringify({
+          supported: false,
+          settings: { current_version: 0 },
+          pending: null,
+          latest_attempt: null,
+        }),
+      );
+    if (url.includes("/profile/versions?"))
+      return new Response(JSON.stringify({ items: [], total: 0 }));
+    return original(input, init);
+  });
+  render(<LearningPage openMemory={openMemory} />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "入口画像 · 试用群聊 A" }),
+  );
+  expect(
+    await screen.findByRole("dialog", { name: "入口画像 · 试用群聊 A" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "入口画像 · 宿主私聊" }),
+  ).toBeInTheDocument();
+  expect(requests.every((r) => !r.init?.method)).toBe(true);
+});

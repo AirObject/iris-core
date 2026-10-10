@@ -14,6 +14,7 @@ from typing import Any
 from .memory_ops import Visibility
 from .state import current_state
 from .persona import persona_context
+from .entry_profile import profile_context
 from .goals import goal_partition
 from .db import Store, dumps, now
 from .claim_sequences import normalize_claim, same_claim_sequences
@@ -620,6 +621,7 @@ class Retrieval:
             if visibility.token != visibility_token:
                 result["goals"] = self._goals(conn, entry_id, min(goal_limit, 10), participants=participant_ids, current=self.clock())
             result["persona"] = persona_context(conn)
+            result["entry_profile"] = profile_context(conn, entry_id)
             result["state"] = current_state(conn, current=self.clock())
             result.update(memories=final, recent_messages=recent, judgment=diagnostic)
             result['hints'].append({'code': 'recall_judgment', **diagnostic,

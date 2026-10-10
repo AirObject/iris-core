@@ -213,3 +213,22 @@ test("后续导出清理旧下载链接，记录轮询不触发导出", async ()
   expect(revokeURL).toHaveBeenCalledWith("blob:backup-test");
   expect(createURL).toHaveBeenCalledTimes(2);
 });
+
+test("scheduled 导出记录显示定时，优先使用 trigger", async () => {
+  vi.mocked(fetch).mockResolvedValue(
+    response({
+      ...backupsFixture,
+      items: [
+        {
+          ...backupsFixture.items[0],
+          trigger: "scheduled",
+          purpose: "export",
+          actor: "scheduler",
+        },
+      ],
+    }),
+  );
+  render(<Backups />);
+  expect(await screen.findByText(/定时.*调度器/)).toBeVisible();
+  expect(screen.queryByText(/手动导出.*调度器/)).not.toBeInTheDocument();
+});

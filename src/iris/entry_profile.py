@@ -1,6 +1,6 @@
 """Entry-local profiles derived from original evidence; bounded IO and version CAS.
 
-No reply/learning integration lives here. Reading a profile never regenerates it.
+Reading a profile never regenerates it. The service owns background admin jobs.
 Evidence IDs are snapshots, not foreign keys that pin cleaned source messages.
 """
 from __future__ import annotations
@@ -10,6 +10,7 @@ import hashlib
 import json
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from importlib.resources import files
@@ -298,7 +299,7 @@ def current_profile(store, entry_id):
 
 
 def profile_context(conn, entry_id):
-    """For phase two's optional prepare partition; no writes, calls or cross-entry reads."""
+    """Optional prepare partition; no writes, calls or cross-entry reads."""
     if (_entry(conn,entry_id)['kind'] not in ('group','live')
             or not _settings(conn,entry_id)['enabled'] or not _runtime(conn)['enabled']):
         return None
@@ -414,7 +415,7 @@ def admin_edit(store, entry_id, content, *, expected_version, clock=utc_now):
         through=conn.execute('SELECT COALESCE(MAX(id),0) FROM messages WHERE entry_id=?',(entry_id,)).fetchone()[0]
         return _insert(conn,entry_id,previous=expected_version,content=content,sentences=sentences,
             checks={'passed':True,'deterministic':{'passed':True},'model':None,'admin_edit':True},degree='large',status='published',
-            stamp=stamp,author='admin',source='edit',material={},message_through=through,settings_revision=settings['revision'])
+            stamp=stamp,author='admin',source='edit',material=previous['material'] if previous else {},message_through=through,settings_revision=settings['revision'])
 
 
 def version_diff(store, entry_id, before, after):
@@ -627,19 +628,25 @@ class EntryProfileEngine:
         with self.store.write() as conn:
             _expect(conn,entry_id,expected)
             _audit(conn,'generation_skipped',entry_id,stamp,base_version=expected,reason=reason,source=source)
-            attempt=None
-            if run_id is not None:
-                attempt=conn.execute('''INSERT OR IGNORE INTO entry_profile_attempts(entry_id,run_id,base_version,state,
+            attempt=conn.execute('''INSERT OR IGNORE INTO entry_profile_attempts(entry_id,run_id,base_version,state,
                     reason,local_day,started_at,finished_at) VALUES(?,?,?,'skipped',?,?,?,?)''',
                     (entry_id,run_id,expected,reason,due['local_day'],stamp,stamp))
-                attempt=conn.execute('SELECT id FROM entry_profile_attempts WHERE entry_id=? AND run_id=?',(entry_id,run_id)).fetchone()[0]
+            attempt=(conn.execute('SELECT id FROM entry_profile_attempts WHERE entry_id=? AND run_id=?',
+                                  (entry_id,run_id)).fetchone()[0] if run_id is not None else attempt.lastrowid)
         return {'status':'skipped','reason':reason,'version':None,'attempt_id':attempt,'due':due}
 
     def _run(self, entry_id, expected, source, *, run_id=None):
+        reservation=self._reserve(entry_id,expected,source,run_id=run_id)
+        return self._execute(**reservation['context']) if 'context' in reservation else reservation
+
+    def _reserve(self, entry_id, expected, source, *, run_id=None, fail_if_running=False):
+        """Persist admission and take an evidence snapshot; never call a model here."""
         current=_instant(self.clock()); stamp=current.isoformat()
         with self.store.write() as conn:
             _expect(conn,entry_id,expected)
             _recover_interrupted(conn,self.store,entry_id,stamp)
+            if fail_if_running and conn.execute("SELECT 1 FROM entry_profile_attempts WHERE entry_id=? AND state='running'",(entry_id,)).fetchone():
+                raise EntryProfileBusy('generation_in_progress')
         with self.store.read() as conn:
             previous=_expect(conn,entry_id,expected); due=_due(conn,entry_id,current)
             config=_runtime(conn); settings=_settings(conn,entry_id)
@@ -675,9 +682,16 @@ class EntryProfileEngine:
             attempt=conn.execute('''INSERT INTO entry_profile_attempts(entry_id,run_id,base_version,state,local_day,
                 started_at,material_json) VALUES(?,?,?,'running',?,?,?)''',
                 (entry_id,run_id,expected,due['local_day'],stamp,dumps(material))).lastrowid
-            _audit(conn,'generation_requested',entry_id,stamp,attempt_id=attempt,base_version=expected,source=source)
+            _audit(conn,'regenerate_requested' if source=='regenerate' else 'generation_requested',
+                   entry_id,stamp,attempt_id=attempt,base_version=expected,source=source)
             with _ACTIVE_LOCK:
                 _ACTIVE_ATTEMPTS.add((self.store.path,attempt))
+        return {'status':'running','attempt_id':attempt,'context':dict(entry_id=entry_id,expected=expected,
+            source=source,stamp=stamp,previous=previous,due=due,config=config,settings=settings,
+            gateway=gateway,evidence=evidence,material=material,attempt=attempt)}
+
+    def _execute(self, *, entry_id, expected, source, stamp, previous, due, config, settings,
+                 gateway, evidence, material, attempt):
         outputs={}; calls=[]; sentences=None
         try:
             checks={'passed':False,'errors':[],'deleted_sentences':[],'model':None}
@@ -763,6 +777,45 @@ def _recover_interrupted(conn, store, entry_id, stamp):
         if not active:
             conn.execute("UPDATE entry_profile_attempts SET state='failed',reason='interrupted',finished_at=? WHERE id=?",(stamp,row['id']))
             _audit(conn,'generation_interrupted',entry_id,stamp,attempt_id=row['id'])
+
+
+class EntryProfileJobs:
+    """One admitted admin job per service; persistent receipts survive page/restart.
+
+    Reservation and CAS happen before HTTP 202, all network IO in the worker.
+    The pool drains before the app closes its gateway and database.
+    """
+    def __init__(self, store, gateway, *, clock=utc_now):
+        self.engine=EntryProfileEngine(store,gateway,clock=clock)
+        self._lock=Lock()
+        self._closed=False
+        self._future=None
+        self._pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='entry-profile')
+        with store.write() as conn:
+            entries=[r[0] for r in conn.execute("SELECT DISTINCT entry_id FROM entry_profile_attempts WHERE state='running'")]
+            for entry_id in entries:
+                _recover_interrupted(conn,store,entry_id,_instant(clock()).isoformat())
+
+    def submit(self, entry_id, *, expected_version):
+        with self._lock:
+            if self._closed or self._future is not None and not self._future.done():
+                raise EntryProfileBusy('generation_in_progress')
+            reservation=self.engine._reserve(entry_id,expected_version,'regenerate',fail_if_running=True)
+            if 'context' in reservation:
+                self._future=self._pool.submit(self._work,reservation['context'])
+            return reservation['attempt_id']
+
+    def _work(self, context):
+        try:
+            self.engine._execute(**context)
+        except Exception:
+            # _execute persists only safe reason codes. Never expose exception text.
+            pass
+
+    def close(self):
+        with self._lock:
+            self._closed=True
+        self._pool.shutdown(wait=True)
 
 
 def update_profiles_for_run(store, gateway, run, config, *, clock=utc_now, stop=None):
