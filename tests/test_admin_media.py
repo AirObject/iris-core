@@ -254,7 +254,7 @@ def test_no_media_empty_arrays_and_cleared_batch_message(client, store):
     with store.write() as conn:
         conn.execute('DELETE FROM messages WHERE id=?', (mid,))
     missing = client.get(f'/admin/api/batches/{formed.id}').json()['segments']['target'][0]
-    assert missing['missing'] and missing['media'] == []
+    assert missing == {'id': mid, 'missing': True, 'content': '已清理'}
 
 
 def call(store, stamp, *, purpose='image_understanding', kind='image_understanding', outcome='success',

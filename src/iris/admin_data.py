@@ -104,7 +104,8 @@ def media_projection(item):
 def with_message_media(conn, rows):
     attached = message_media(conn, list(dict.fromkeys(row['id'] for row in rows if not row.get('missing'))))
     for row in rows:
-        row['media'] = [media_projection(item) for item in attached.get(row['id'], [])]
+        if not row.get('missing'):
+            row['media'] = [media_projection(item) for item in attached.get(row['id'], [])]
     return rows
 
 

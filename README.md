@@ -715,7 +715,7 @@ uv run iris --data-dir /path/to/iris-data backup import /path/to/backup.zip --co
 | `GET /admin/api/media/{media_id}/file` | 200，原文件字节；管理员可读取所有入口及内部媒体，宿主 Bearer 令牌不能替代管理员会话 |
 | `POST /admin/api/trial/entries/{entry_id}/messages` | 既有 201 回执；增加可选 `media_ids`，最多 100 个、不重复，按数组顺序引用图片 |
 | `GET /admin/api/trial/entries/{entry_id}` | 每条 `messages[]` 增加 `media[]`，轮询可读取最新理解结果 |
-| `GET /admin/api/batches/{batch_id}` | 三段消息均增加 `media[]`，已清理的消息返回空数组 |
+| `GET /admin/api/batches/{batch_id}` | 三段现存消息均增加 `media[]`；已清理的消息沿用 `missing` 占位对象 |
 | `GET /admin/api/memories/{memory_id}` | 来源消息和前后文均增加 `media[]`；目标来源前后文沿用同一媒体投影 |
 | `GET /admin/api/status` | 新增 `usage.by_purpose.image_understanding.today/week`，以及 `timeouts_seconds.image_understanding=120` |
 
