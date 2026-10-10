@@ -2099,6 +2099,9 @@ tr:last-child td {
   color: var(--purple);
   font-weight: 600;
 }
+.entry-visibility-form {
+  overflow-wrap: anywhere;
+}
 .entry-settings-form label {
   display: grid;
   gap: 8px;

@@ -11,6 +11,8 @@ const entry = {
   kind: "group",
   pace: "realtime",
   pending_count: 2,
+  visibility: "shared",
+  visible_in: [],
   filters: {
     min_chars: 3,
     mention_only: true,
@@ -100,7 +102,12 @@ beforeEach(() => {
           body = { accepted: true, state };
         }
       } else if (url.endsWith("/entries/A/settings"))
-        body = { pace: entry.pace, filters: entry.filters };
+        body = {
+          pace: entry.pace,
+          filters: entry.filters,
+          visibility: entry.visibility,
+          visible_in: entry.visible_in,
+        };
       else if (url === "/admin/api/batches/8")
         body = {
           ...current,
@@ -241,7 +248,7 @@ test("入口页能编辑过滤，保存后刷新列表，批次显示当前等�
     await screen.findByRole("button", { name: "修改入口设置 · 试用群聊 A" }),
   );
   expect(await screen.findByLabelText("最短字数")).toHaveValue(3);
-  await userEvent.click(screen.getByRole("button", { name: "保存入口设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存节奏与过滤" }));
   expect(await screen.findByText("入口设置已保存")).toBeVisible();
   await userEvent.click(
     screen.getByRole("button", { name: "查看批次 · 试用群聊 A" }),

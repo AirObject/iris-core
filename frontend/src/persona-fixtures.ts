@@ -13,6 +13,7 @@ export const personaSettingsFixture: PersonaSettings = {
   publish_mode: "small_medium_auto",
 };
 export const personaMemoryFixture: MemoryDetail = {
+  visibility: { shared: true, visible_in: [] },
   id: 11,
   content: "我现在在读书会上愿意主动发言",
   kind: "自我",
