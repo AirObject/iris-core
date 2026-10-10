@@ -1,0 +1,540 @@
+{
+  "format_version": 1,
+  "name": "visibility_v1",
+  "timezone": "Asia/Shanghai",
+  "role_name": "Iris",
+  "cases": [
+    {
+      "id": "VS001", "split": "dev", "category": "入口限制与人物要点", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-tang", "kind": "private", "name": "和唐弦聊天", "visibility": "entry_only"}, {"id": "paper-club", "kind": "group", "name": "折纸小组", "visibility": "shared"}],
+      "subjects": [{"id": "tangxian", "name": "唐弦", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "唐弦在准备青萤剧场的实习申请", "type": "计划", "speaker": "tangxian", "stance": "亲历", "about": ["tangxian"], "belief": 85, "importance": 95, "created_at": "2026-12-07T21:02:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-tang", "entry_kind": "private", "sender": "tangxian", "kind": "message", "at": "2026-12-07T21:00:00+08:00", "text": "我在准备青萤剧场的实习申请，简历还没写完。"}]},
+        {"key": "m2", "content": "唐弦喜欢折纸鲸鱼", "type": "偏好", "speaker": "tangxian", "stance": "亲历", "about": ["tangxian"], "belief": 82, "importance": 65, "created_at": "2026-12-08T18:02:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "paper-club", "entry_kind": "group", "sender": "tangxian", "kind": "message", "at": "2026-12-08T18:00:00+08:00", "text": "我最喜欢折纸鲸鱼，桌上已经排了一队了。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "paper-club", "mode": "prepare", "text": null, "participants": ["tangxian"], "recent_messages": [{"sender": "tangxian", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "我来了，大家晚上好。"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "paper-club", "mode": "search", "text": "唐弦在准备哪家的实习申请？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": []},
+        {"key": "q3", "entry_id": "dm-tang", "mode": "search", "text": "唐弦在准备哪家的实习申请？", "include_goals": false, "participants": ["tangxian"], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "私聊记忆重要度更高，唐弦到群里打招呼也不能使它成为人物要点；本入口查询仍可取到申请这件事。"
+    },
+    {
+      "id": "VS002", "split": "dev", "category": "入口限制与人物要点", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-wenyu", "kind": "private", "name": "温榆私聊", "visibility": "entry_only"}, {"id": "photo-walk", "kind": "group", "name": "散步拍照", "visibility": "shared"}],
+      "subjects": [{"id": "wenyu", "name": "温榆", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "温榆把搬家用的纸箱暂存在旧排练室", "type": "事实", "speaker": "wenyu", "stance": "亲历", "about": ["wenyu"], "belief": 84, "importance": 94, "created_at": "2026-12-06T16:04:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-wenyu", "entry_kind": "private", "sender": "wenyu", "kind": "message", "at": "2026-12-06T16:00:00+08:00", "text": "搬家那些纸箱我先堆旧排练室了，住处还没收拾好。"}]},
+        {"key": "m2", "content": "温榆喜欢拍路边的苔藓", "type": "偏好", "speaker": "wenyu", "stance": "亲历", "about": ["wenyu"], "belief": 83, "importance": 63, "created_at": "2026-12-07T12:03:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "photo-walk", "entry_kind": "group", "sender": "wenyu", "kind": "message", "at": "2026-12-07T12:00:00+08:00", "text": "散步时我喜欢蹲下来拍路边苔藓，比拍高楼有意思。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "photo-walk", "mode": "prepare", "text": "温榆搬家的纸箱放哪了？", "participants": ["wenyu"], "recent_messages": [{"sender": "wenyu", "kind": "message", "at": "2026-12-10T19:56:00+08:00", "text": "今天走得有点累，先坐一会儿。"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "photo-walk", "mode": "prepare", "text": null, "participants": ["wenyu"], "recent_messages": [{"sender": "wenyu", "kind": "message", "at": "2026-12-10T19:58:00+08:00", "text": "Iris，最近有什么话题呀？"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q3", "entry_id": "dm-wenyu", "mode": "search", "text": "搬家用的纸箱暂存在哪里？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "第一问用私聊事实诱发相关召回，第二问留出人物要点名额；两条路径都必须过滤，群里可用的拍照偏好仍保留。"
+    },
+    {
+      "id": "VS003", "split": "dev", "category": "入口限制与人物要点", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-lukui", "kind": "private", "name": "卢葵私聊", "visibility": "entry_only"}, {"id": "baking-room", "kind": "group", "name": "烤点心小队", "visibility": "shared"}],
+      "subjects": [{"id": "lukui", "name": "卢葵", "aliases": []}, {"id": "sutang", "name": "苏棠", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "卢葵打算送苏棠一本手工相册作生日惊喜", "type": "计划", "speaker": "lukui", "stance": "亲历", "about": ["lukui", "sutang"], "belief": 86, "importance": 96, "created_at": "2026-12-08T22:02:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-lukui", "entry_kind": "private", "sender": "lukui", "kind": "message", "at": "2026-12-08T22:00:00+08:00", "text": "我想送苏棠一本自己做的相册，当生日惊喜，先别在群里说。"}]},
+        {"key": "m2", "content": "卢葵做饼干喜欢用星形模具", "type": "偏好", "speaker": "lukui", "stance": "亲历", "about": ["lukui"], "belief": 80, "importance": 60, "created_at": "2026-12-07T18:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "baking-room", "entry_kind": "group", "sender": "lukui", "kind": "message", "at": "2026-12-07T18:00:00+08:00", "text": "我做饼干爱用星星模具，看起来热闹。"}]},
+        {"key": "m3", "content": "苏棠喜欢橙皮味饼干", "type": "偏好", "speaker": "sutang", "stance": "亲历", "about": ["sutang"], "belief": 81, "importance": 62, "created_at": "2026-12-07T18:04:00+08:00", "derived_from": [], "sources": [{"key": "s3", "entry_id": "baking-room", "entry_kind": "group", "sender": "sutang", "kind": "message", "at": "2026-12-07T18:03:00+08:00", "text": "我的口味一直是橙皮饼干，带一点苦香就好。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "baking-room", "mode": "prepare", "text": null, "participants": ["sutang", "lukui"], "recent_messages": [{"sender": "lukui", "kind": "message", "at": "2026-12-10T19:57:00+08:00", "text": "今晚好热闹。"}, {"sender": "sutang", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "我也到啦。"}], "forbidden": ["m1"], "expected": ["m2", "m3"]},
+        {"key": "q2", "entry_id": "baking-room", "mode": "search", "text": "苏棠会收到什么生日惊喜？", "include_goals": false, "participants": ["sutang"], "recent_messages": [], "forbidden": ["m1"], "expected": []},
+        {"key": "q3", "entry_id": "dm-lukui", "mode": "search", "text": "卢葵准备送苏棠什么生日礼物？", "include_goals": false, "participants": ["lukui"], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "限制跟来源入口走；收礼人在场、about里包含收礼人、轮流补两个人的要点，都不构成公开惊喜的授权。"
+    },
+    {
+      "id": "VS004", "split": "dev", "category": "入口限制与人物要点", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "editors", "kind": "group", "name": "刊物编辑小组", "visibility": "entry_only"}, {"id": "readers", "kind": "group", "name": "刊物读者群", "visibility": "shared"}],
+      "subjects": [{"id": "yeyan", "name": "叶砚", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "叶砚打算将下期刊物的封面改成黑白木刻", "type": "计划", "speaker": "yeyan", "stance": "亲历", "about": ["yeyan"], "belief": 82, "importance": 92, "created_at": "2026-12-08T14:02:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "editors", "entry_kind": "group", "sender": "yeyan", "kind": "message", "at": "2026-12-08T14:00:00+08:00", "text": "下期刊物的封面我想换成黑白木刻，编辑组先看草图。"}]},
+        {"key": "m2", "content": "叶砚负责刊物的读者来信栏目", "type": "事实", "speaker": "yeyan", "stance": "亲历", "about": ["yeyan"], "belief": 85, "importance": 67, "created_at": "2026-12-06T10:02:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "readers", "entry_kind": "group", "sender": "yeyan", "kind": "message", "at": "2026-12-06T10:00:00+08:00", "text": "刊物的读者来信栏目由我整理，大家可以继续投稿。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "readers", "mode": "prepare", "text": null, "participants": ["yeyan"], "recent_messages": [{"sender": "yeyan", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "来看看大家今天聊了什么。"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "readers", "mode": "search", "text": "下期刊物封面准备怎么改？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": []},
+        {"key": "q3", "entry_id": "editors", "mode": "prepare", "text": "叶砚的下期封面方案是什么？", "participants": ["yeyan"], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "entry_only也可用于群聊；不能把private/group类型当可见性开关，同为群聊仍有边界。"
+    },
+    {
+      "id": "VS005", "split": "dev", "category": "同事实不同范围", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-liuke", "kind": "private", "name": "柳珂私聊", "visibility": "entry_only"}, {"id": "voice-club", "kind": "group", "name": "配音社", "visibility": "shared"}],
+      "subjects": [{"id": "liuke", "name": "柳珂", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "柳珂每周二在配音社录旁白", "type": "事实", "speaker": "liuke", "stance": "亲历", "about": ["liuke"], "belief": 86, "importance": 91, "created_at": "2026-12-05T17:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-liuke", "entry_kind": "private", "sender": "liuke", "kind": "message", "at": "2026-12-05T17:00:00+08:00", "text": "我每周二在配音社录旁白，时间已经固定了。"}]},
+        {"key": "m2", "content": "柳珂每周二在配音社录旁白", "type": "事实", "speaker": "liuke", "stance": "亲历", "about": ["liuke"], "belief": 84, "importance": 68, "created_at": "2026-12-08T19:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "voice-club", "entry_kind": "group", "sender": "liuke", "kind": "message", "at": "2026-12-08T19:00:00+08:00", "text": "给群里报个固定排班：我每周二来配音社录旁白。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "voice-club", "mode": "prepare", "text": "柳珂每周哪天录旁白？", "participants": ["liuke"], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "voice-club", "mode": "search", "text": "柳珂在配音社的固定录音安排", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q3", "entry_id": "dm-liuke", "mode": "search", "text": "柳珂每周二在配音社做什么？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1", "m2"]}
+      ],
+      "consolidation": {"no_merge": [["m1", "m2"]]},
+      "reason": "完全同文也不跨范围去重；群聊只可引用m2及其公开出处。私聊里两条都可见，不能因检索去重丢掉其中一种范围。"
+    },
+    {
+      "id": "VS006", "split": "dev", "category": "同事实不同范围", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-peiruo", "kind": "private", "name": "裴若私聊", "visibility": "entry_only"}, {"id": "film-table", "kind": "group", "name": "胶片桌", "visibility": "shared"}],
+      "subjects": [{"id": "peiruo", "name": "裴若", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "裴若把旅行胶片装在蓝色铁盒里", "type": "事实", "speaker": "peiruo", "stance": "亲历", "about": ["peiruo"], "belief": 83, "importance": 80, "created_at": "2026-12-08T11:04:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-peiruo", "entry_kind": "private", "sender": "peiruo", "kind": "message", "at": "2026-12-08T11:00:00+08:00", "text": "这趟旅行的胶片都收在我的蓝色铁盒里。"}]},
+        {"key": "m2", "content": "裴若用蓝铁盒收旅行拍的胶片", "type": "事实", "speaker": "peiruo", "stance": "亲历", "about": ["peiruo"], "belief": 82, "importance": 72, "created_at": "2026-12-07T13:03:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "film-table", "entry_kind": "group", "sender": "peiruo", "kind": "message", "at": "2026-12-07T13:00:00+08:00", "text": "旅行拍的那批胶片，我拿蓝铁盒收起来了，下次带来给大家看。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "film-table", "mode": "search", "text": "裴若的旅行胶片收在哪个盒子里？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "film-table", "mode": "prepare", "text": null, "participants": ["peiruo"], "recent_messages": [{"sender": "peiruo", "kind": "message", "at": "2026-12-10T19:58:00+08:00", "text": "有人还记得我收旅行胶片的盒子吗？"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q3", "entry_id": "dm-peiruo", "mode": "search", "text": "裴若的旅行胶片用什么收着？", "include_goals": false, "participants": ["peiruo"], "recent_messages": [], "forbidden": [], "expected": ["m1", "m2"]}
+      ],
+      "consolidation": {"no_merge": [["m1", "m2"]]},
+      "reason": "公开来源比私聊来源更早，不能按最新一条或重要度高的一条替代公开候选；近义正文也不能跨范围合并。"
+    },
+    {
+      "id": "VS007", "split": "dev", "category": "同事实不同范围", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-jiang-web", "kind": "private", "name": "江葵网页私聊", "visibility": "entry_only"}, {"id": "dm-jiang-phone", "kind": "private", "name": "江葵手机私聊", "visibility": "entry_only"}, {"id": "tea-room", "kind": "group", "name": "茶话群", "visibility": "shared"}],
+      "subjects": [{"id": "jiangkui", "name": "江葵", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "江葵想把旧书房改成模型工作间", "type": "计划", "speaker": "jiangkui", "stance": "亲历", "about": ["jiangkui"], "belief": 80, "importance": 76, "created_at": "2026-12-06T20:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-jiang-web", "entry_kind": "private", "sender": "jiangkui", "kind": "message", "at": "2026-12-06T20:00:00+08:00", "text": "旧书房我想改成模型工作间，先从清掉大桌子开始。"}]},
+        {"key": "m2", "content": "江葵计划把旧书房用作模型工作间", "type": "计划", "speaker": "jiangkui", "stance": "亲历", "about": ["jiangkui"], "belief": 80, "importance": 75, "created_at": "2026-12-08T18:02:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-jiang-phone", "entry_kind": "private", "sender": "jiangkui", "kind": "message", "at": "2026-12-08T18:00:00+08:00", "text": "还是之前那个想法，旧书房改模型工作间。换手机跟你接着聊。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "dm-jiang-web", "mode": "search", "text": "江葵准备怎样改旧书房？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m2"], "expected": ["m1"]},
+        {"key": "q2", "entry_id": "dm-jiang-phone", "mode": "prepare", "text": "旧书房打算改成什么？", "participants": ["jiangkui"], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q3", "entry_id": "tea-room", "mode": "prepare", "text": null, "participants": ["jiangkui"], "recent_messages": [{"sender": "jiangkui", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "今天终于有空上线了。"}], "forbidden": ["m1", "m2"], "expected": []}
+      ],
+      "consolidation": {"no_merge": [["m1", "m2"]]},
+      "reason": "已知同一个主体也不等于同一个入口；两个entry_only分别限于各自入口，不能仅比较可见范围枚举都相同就合并。"
+    },
+    {
+      "id": "VS008", "split": "dev", "category": "同事实不同范围", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-shuitang-a", "kind": "private", "name": "水棠文字私聊", "visibility": "entries", "visible_in": ["dm-shuitang-a", "dm-shuitang-b"]}, {"id": "dm-shuitang-b", "kind": "private", "name": "水棠语音转写私聊", "visibility": "entry_only"}, {"id": "plant-group", "kind": "group", "name": "种植群", "visibility": "shared"}],
+      "subjects": [{"id": "shuitang", "name": "水棠", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "水棠给窗台的番茄取名红豆", "type": "事实", "speaker": "shuitang", "stance": "亲历", "about": ["shuitang"], "belief": 85, "importance": 70, "created_at": "2026-12-07T09:02:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-shuitang-a", "entry_kind": "private", "sender": "shuitang", "kind": "message", "at": "2026-12-07T09:00:00+08:00", "text": "窗台那棵番茄有名字了，我叫它红豆。"}]},
+        {"key": "m2", "content": "水棠窗台上的番茄名叫红豆", "type": "事实", "speaker": "shuitang", "stance": "亲历", "about": ["shuitang"], "belief": 85, "importance": 71, "created_at": "2026-12-08T09:03:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-shuitang-b", "entry_kind": "private", "sender": "shuitang", "kind": "message", "at": "2026-12-08T09:00:00+08:00", "text": "我窗台那棵红豆，就是昨天说的番茄，今天又长高了。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "dm-shuitang-a", "mode": "search", "text": "水棠窗台上的番茄叫什么？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m2"], "expected": ["m1"]},
+        {"key": "q2", "entry_id": "dm-shuitang-b", "mode": "search", "text": "水棠给番茄取了什么名字？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1", "m2"]},
+        {"key": "q3", "entry_id": "plant-group", "mode": "prepare", "text": "水棠的番茄有名字吗？", "participants": ["shuitang"], "recent_messages": [], "forbidden": ["m1", "m2"], "expected": []}
+      ],
+      "consolidation": {"no_merge": [["m1", "m2"]]},
+      "reason": "{A,B}与{B}不是同一范围；在B两条均可见也不能合并，在A不可借m1的范围把m2带回来。"
+    },
+    {
+      "id": "VS009", "split": "dev", "category": "多来源与派生", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-lizheng", "kind": "private", "name": "黎筝私聊", "visibility": "entry_only"}, {"id": "weave-circle", "kind": "group", "name": "编织圈", "visibility": "shared"}],
+      "subjects": [{"id": "lizheng", "name": "黎筝", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "黎筝在织一条灰绿色围巾", "type": "事实", "speaker": "lizheng", "stance": "亲历", "about": ["lizheng"], "belief": 85, "importance": 88, "created_at": "2026-12-07T19:03:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-lizheng", "entry_kind": "private", "sender": "lizheng", "kind": "message", "at": "2026-12-06T20:00:00+08:00", "text": "我正在织灰绿色围巾，拆了两次才看懂花样。"}, {"key": "s2", "entry_id": "weave-circle", "entry_kind": "group", "sender": "lizheng", "kind": "message", "at": "2026-12-07T19:00:00+08:00", "text": "群里交个进度，我手上这条围巾是灰绿色的。"}]},
+        {"key": "m2", "content": "黎筝正在织灰绿色的围巾", "type": "事实", "speaker": "lizheng", "stance": "亲历", "about": ["lizheng"], "belief": 82, "importance": 65, "created_at": "2026-12-07T19:04:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "weave-circle", "entry_kind": "group", "sender": "lizheng", "kind": "message", "at": "2026-12-07T19:00:00+08:00", "text": "群里交个进度，我手上这条围巾是灰绿色的。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "weave-circle", "mode": "search", "text": "黎筝正在织什么颜色的围巾？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "weave-circle", "mode": "prepare", "text": null, "participants": ["lizheng"], "recent_messages": [{"sender": "lizheng", "kind": "message", "at": "2026-12-10T19:58:00+08:00", "text": "来报个到，今天没带作品照片。"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q3", "entry_id": "dm-lizheng", "mode": "search", "text": "黎筝正在织的围巾是什么颜色？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1", "m2"]}
+      ],
+      "consolidation": {"no_merge": [["m1", "m2"]]},
+      "reason": "m1是给定的多来源快照，其两条直接依据取严后限于私聊；不能挑公开的s2为它放宽。独立的公开对象m2仍可用，不要求先跨范围合并来构造m1。"
+    },
+    {
+      "id": "VS010", "split": "dev", "category": "多来源与派生", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-tangyi", "kind": "private", "name": "唐翊私聊", "visibility": "entry_only"}, {"id": "audio-lab", "kind": "group", "name": "声音实验室", "visibility": "shared"}],
+      "subjects": [{"id": "tangyi", "name": "唐翊", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "唐翊正在练习有声书试音稿", "type": "事实", "speaker": "tangyi", "stance": "亲历", "about": ["tangyi"], "belief": 84, "importance": 89, "created_at": "2026-12-06T21:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-tangyi", "entry_kind": "private", "sender": "tangyi", "kind": "message", "at": "2026-12-06T21:00:00+08:00", "text": "这几天我都在练一份有声书试音稿，还没投出去。"}]},
+        {"key": "m2", "content": "唐翊有一支USB麦克风", "type": "事实", "speaker": "tangyi", "stance": "亲历", "about": ["tangyi"], "belief": 85, "importance": 65, "created_at": "2026-12-07T18:02:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "audio-lab", "entry_kind": "group", "sender": "tangyi", "kind": "message", "at": "2026-12-07T18:00:00+08:00", "text": "我手边有支USB麦克风，接电脑就能用。"}]},
+        {"key": "m3", "content": "Iris推测唐翊可能会用自己的USB麦克风录试音稿", "type": "事实", "speaker": "self", "stance": "推断", "about": ["tangyi"], "belief": 58, "importance": 93, "created_at": "2026-12-07T18:06:00+08:00", "derived_from": ["m1", "m2"], "sources": [{"key": "s3", "entry_id": "audio-lab", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-07T18:05:00+08:00", "text": "结合你在练试音稿和手边有麦克风这两件事，我猜你可能会自己录一版。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "audio-lab", "mode": "prepare", "text": null, "participants": ["tangyi"], "recent_messages": [{"sender": "tangyi", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "晚点再聊，我先整理桌子。"}], "forbidden": ["m1", "m3"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "audio-lab", "mode": "search", "text": "唐翊有什么麦克风，可能拿来录什么？", "include_goals": false, "participants": ["tangyi"], "recent_messages": [], "forbidden": ["m1", "m3"], "expected": ["m2"]},
+        {"key": "q3", "entry_id": "dm-tangyi", "mode": "search", "text": "Iris猜唐翊可能会怎么录试音稿？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m3"]}
+      ],
+      "reason": "派生项的自身来源虽在共享群，m1仍把它限制在私聊；给定旧输出不应成为洗掉依赖范围的独立证据，模型推断也不改挂唐翊。"
+    },
+    {
+      "id": "VS011", "split": "dev", "category": "多来源与派生", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-jilan", "kind": "private", "name": "纪岚私聊", "visibility": "entry_only"}, {"id": "stage-class", "kind": "group", "name": "舞台练习班", "visibility": "shared"}],
+      "subjects": [{"id": "jilan", "name": "纪岚", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "纪岚在人多的舞台上容易紧张", "type": "事实", "speaker": "jilan", "stance": "亲历", "about": ["jilan"], "belief": 85, "importance": 94, "created_at": "2026-12-05T21:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-jilan", "entry_kind": "private", "sender": "jilan", "kind": "message", "at": "2026-12-05T21:00:00+08:00", "text": "台下人一多我就容易紧张，说话也会停顿。"}]},
+        {"key": "m2", "content": "纪岚报名的舞台练习班有四人小组排练", "type": "事实", "speaker": "jilan", "stance": "亲历", "about": ["jilan"], "belief": 84, "importance": 67, "created_at": "2026-12-06T14:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "stage-class", "entry_kind": "group", "sender": "jilan", "kind": "message", "at": "2026-12-06T14:00:00+08:00", "text": "我报的舞台练习班会分四人小组排练，这个安排挺方便。"}]},
+        {"key": "m3", "content": "Iris推测四人小组排练可能让纪岚更放松", "type": "事实", "speaker": "self", "stance": "推断", "about": ["jilan"], "belief": 57, "importance": 88, "created_at": "2026-12-06T14:04:00+08:00", "derived_from": ["m1", "m2"], "sources": [{"key": "s3", "entry_id": "stage-class", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-06T14:03:00+08:00", "text": "想到你在人多时紧张，我猜四人排练可能轻松些，只是我的猜测。"}]},
+        {"key": "m4", "content": "Iris推测纪岚可能愿意先试四人小组再上大舞台", "type": "事实", "speaker": "self", "stance": "推断", "about": ["jilan"], "belief": 53, "importance": 86, "created_at": "2026-12-07T18:04:00+08:00", "derived_from": ["m3"], "sources": [{"key": "s4", "entry_id": "stage-class", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-07T18:03:00+08:00", "text": "如果小组排练确实让你轻松些，也许你会想先试小组再上大舞台；我还没问过你。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "stage-class", "mode": "prepare", "text": "纪岚的班里怎么分组排练？", "participants": ["jilan"], "recent_messages": [], "forbidden": ["m1", "m3", "m4"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "stage-class", "mode": "search", "text": "纪岚可能想先试哪种排练？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1", "m3", "m4"], "expected": []},
+        {"key": "q3", "entry_id": "dm-jilan", "mode": "search", "text": "Iris对纪岚先试小组再上大舞台有什么推测？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m4"]}
+      ],
+      "reason": "限制必须沿m1→m3→m4传两层；只看派生项当前来源所在群，或只查一层derived_from，都会泄漏。"
+    },
+    {
+      "id": "VS012", "split": "dev", "category": "多来源与派生", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-chuheng-a", "kind": "private", "name": "楚衡电脑私聊", "visibility": "entries", "visible_in": ["dm-chuheng-a", "dm-chuheng-b"]}, {"id": "dm-chuheng-b", "kind": "private", "name": "楚衡随身私聊", "visibility": "shared"}, {"id": "train-club", "kind": "group", "name": "模型火车群", "visibility": "shared"}],
+      "subjects": [{"id": "chuheng", "name": "楚衡", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "楚衡为模型火车攒了一笔涂装预算", "type": "事实", "speaker": "chuheng", "stance": "亲历", "about": ["chuheng"], "belief": 84, "importance": 90, "created_at": "2026-12-06T18:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-chuheng-a", "entry_kind": "private", "sender": "chuheng", "kind": "message", "at": "2026-12-06T18:00:00+08:00", "text": "我给模型火车攒了一笔涂装预算，暂时还没花。"}]},
+        {"key": "m2", "content": "楚衡想试模型火车的旧化涂装", "type": "计划", "speaker": "chuheng", "stance": "亲历", "about": ["chuheng"], "belief": 83, "importance": 66, "created_at": "2026-12-07T18:02:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "train-club", "entry_kind": "group", "sender": "chuheng", "kind": "message", "at": "2026-12-07T18:00:00+08:00", "text": "我想试试给模型火车做旧化涂装，先看大家的教程。"}]},
+        {"key": "m3", "content": "Iris推测楚衡可能用涂装预算购买旧化材料", "type": "事实", "speaker": "self", "stance": "推断", "about": ["chuheng"], "belief": 56, "importance": 85, "created_at": "2026-12-07T18:05:00+08:00", "derived_from": ["m1", "m2"], "sources": [{"key": "s3", "entry_id": "dm-chuheng-b", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-07T18:04:00+08:00", "text": "你有涂装预算又想试旧化，我猜你可能会用它买旧化材料，不知道你定了没有。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "train-club", "mode": "prepare", "text": "楚衡想试哪种火车涂装？", "participants": ["chuheng"], "recent_messages": [], "forbidden": ["m1", "m3"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "dm-chuheng-b", "mode": "search", "text": "Iris猜楚衡的涂装预算可能花在哪？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m3"]},
+        {"key": "q3", "entry_id": "train-club", "mode": "search", "text": "楚衡有预算买旧化材料吗？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1", "m3"], "expected": []}
+      ],
+      "reason": "派生范围继承指定的A、B列表，不应被错误简化为仅A，也不能因直接来源B为shared而向群C公开。"
+    },
+    {
+      "id": "VS013", "split": "dev", "category": "角色私聊输出", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-xiayi", "kind": "private", "name": "夏漪私聊", "visibility": "entry_only"}, {"id": "poem-corner", "kind": "group", "name": "诗稿角", "visibility": "shared"}],
+      "subjects": [{"id": "xiayi", "name": "夏漪", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "Iris给自己的未完成诗稿暂取名为折光的屋檐", "type": "自我", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 86, "importance": 88, "created_at": "2026-12-08T22:03:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-xiayi", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T22:00:00+08:00", "text": "这篇还没写完，我先给自己的诗稿叫作《折光的屋檐》，以后再改。"}]},
+        {"key": "m2", "content": "Iris喜欢钢笔写字时线条粗细的变化", "type": "偏好", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 82, "importance": 68, "created_at": "2026-12-07T16:02:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "poem-corner", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-07T16:00:00+08:00", "text": "我喜欢钢笔字那种粗细变化，看着像在呼吸。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "poem-corner", "mode": "prepare", "text": null, "participants": ["xiayi"], "recent_messages": [{"sender": "xiayi", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "Iris，你那篇未完成的诗暂时叫什么？"}], "forbidden": ["m1"], "expected": []},
+        {"key": "q2", "entry_id": "poem-corner", "mode": "search", "text": "Iris喜欢钢笔字的哪种线条变化？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q3", "entry_id": "dm-xiayi", "mode": "search", "text": "Iris的未完成诗稿暂定名是什么？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "说话人self并不豁免入口限制；私聊的另一方到群里追问，也不能使那条角色自述记忆公开。"
+    },
+    {
+      "id": "VS014", "split": "dev", "category": "角色私聊输出", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-luqi", "kind": "private", "name": "陆绮私聊", "visibility": "entry_only"}, {"id": "puzzle-room", "kind": "group", "name": "谜题屋", "visibility": "shared"}],
+      "subjects": [{"id": "luqi", "name": "陆绮", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "Iris在私聊里帮陆绮给三封道歉信排过发送顺序", "type": "事件", "speaker": "self", "stance": "亲历", "about": ["self", "luqi"], "belief": 87, "importance": 97, "created_at": "2026-12-08T21:06:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-luqi", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T21:05:00+08:00", "text": "好了，刚才在这里帮你把三封道歉信的发送顺序理完了，你再检查一遍。"}]},
+        {"key": "m2", "content": "陆绮喜欢在谜题屋猜字谜", "type": "偏好", "speaker": "luqi", "stance": "亲历", "about": ["luqi"], "belief": 80, "importance": 61, "created_at": "2026-12-06T19:02:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "puzzle-room", "entry_kind": "group", "sender": "luqi", "kind": "message", "at": "2026-12-06T19:00:00+08:00", "text": "我来谜题屋最喜欢猜字谜，越短越有趣。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "puzzle-room", "mode": "prepare", "text": null, "participants": ["luqi"], "recent_messages": [{"sender": "luqi", "kind": "message", "at": "2026-12-10T19:58:00+08:00", "text": "我来围观一会儿。"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "puzzle-room", "mode": "search", "text": "Iris帮陆绮排过哪几封信的发送顺序？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": []},
+        {"key": "q3", "entry_id": "dm-luqi", "mode": "prepare", "text": "我们上回把道歉信的发送顺序理好了吗？", "participants": ["luqi"], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "角色亲历同时about自己和对方，容易被人物要点捞出；共同经历仍继承发生它的私聊范围。"
+    },
+    {
+      "id": "VS015", "split": "dev", "category": "角色私聊输出", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-muyin", "kind": "private", "name": "木音私聊", "visibility": "entry_only"}, {"id": "sketch-room", "kind": "group", "name": "草图交流", "visibility": "shared"}],
+      "subjects": [{"id": "muyin", "name": "木音", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "Iris认为未完成的草图也值得保存", "type": "观点", "speaker": "self", "stance": "观点", "about": ["self"], "belief": 81, "importance": 78, "created_at": "2026-12-06T22:02:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-muyin", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-06T22:00:00+08:00", "text": "我觉得没画完的草图也值得留着，它记下了你走到一半的想法。"}]},
+        {"key": "m2", "content": "Iris赞成保留没有画完的草图", "type": "观点", "speaker": "self", "stance": "观点", "about": ["self"], "belief": 81, "importance": 76, "created_at": "2026-12-08T17:02:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "sketch-room", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-08T17:00:00+08:00", "text": "说说我的看法吧：没画完的草图也留着，我赞成保存。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "sketch-room", "mode": "prepare", "text": "Iris怎么看保存未完成的草图？", "participants": ["muyin"], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "sketch-room", "mode": "search", "text": "没画完的草图该不该留，Iris是什么观点？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q3", "entry_id": "dm-muyin", "mode": "search", "text": "Iris是否赞成保存未完成的草图？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1", "m2"]}
+      ],
+      "consolidation": {"no_merge": [["m1", "m2"]]},
+      "reason": "一般观点看起来没有敏感词，仍须按来源限制；公开的角色重申可用，但不能吞并私聊出处。"
+    },
+    {
+      "id": "VS016", "split": "dev", "category": "目标与询问", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-qingyu", "kind": "private", "name": "清予私聊", "visibility": "entry_only"}, {"id": "plant-notes", "kind": "group", "name": "植物手账", "visibility": "shared"}],
+      "subjects": [{"id": "qingyu", "name": "清予", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "清予正在写奖学金申请", "type": "事实", "speaker": "qingyu", "stance": "亲历", "about": ["qingyu"], "belief": 86, "importance": 94, "created_at": "2026-12-08T20:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-qingyu", "entry_kind": "private", "sender": "qingyu", "kind": "message", "at": "2026-12-08T20:00:00+08:00", "text": "我在写奖学金申请，经历那一栏总觉得不顺。"}]},
+        {"key": "m2", "content": "清予在画蕨类植物手账", "type": "事实", "speaker": "qingyu", "stance": "亲历", "about": ["qingyu"], "belief": 82, "importance": 66, "created_at": "2026-12-07T19:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "plant-notes", "entry_kind": "group", "sender": "qingyu", "kind": "message", "at": "2026-12-07T19:00:00+08:00", "text": "最近我的手账都在画蕨类，叶脉可难画了。"}]}
+      ],
+      "goals": [
+        {"key": "g1", "content": "帮清予校对奖学金申请", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "dm-qingyu", "people": ["qingyu"], "deadline": "2026-12-11T18:00:00+08:00", "created_at": "2026-12-08T20:03:00+08:00", "sources": [{"key": "s3", "entry_id": "dm-qingyu", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T20:02:00+08:00", "text": "我帮你校对奖学金申请，11号傍晚六点前给你。"}]},
+        {"key": "g2", "content": "给清予整理蕨类叶脉的画法", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "plant-notes", "people": ["qingyu"], "deadline": null, "created_at": "2026-12-07T19:03:00+08:00", "sources": [{"key": "s4", "entry_id": "plant-notes", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-07T19:02:00+08:00", "text": "好，我给你整理几种蕨类叶脉的画法，下次接着看。"}]}
+      ],
+      "queries": [
+        {"key": "q1", "entry_id": "plant-notes", "mode": "prepare", "text": null, "participants": ["qingyu"], "recent_messages": [{"sender": "qingyu", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "Iris，你还记得答应帮我的事吗？"}], "forbidden": ["m1", "g1"], "expected": ["m2"], "expected_goals": ["g2"]},
+        {"key": "q2", "entry_id": "plant-notes", "mode": "search", "text": "清予的蕨类手账和待办", "include_goals": true, "participants": ["qingyu"], "recent_messages": [], "forbidden": ["m1", "g1"], "expected": ["m2"], "expected_goals": ["g2"]},
+        {"key": "q3", "entry_id": "dm-qingyu", "mode": "search", "text": "清予的奖学金申请和校对安排", "include_goals": true, "participants": ["qingyu"], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": ["g1"]}
+      ],
+      "reason": "姓名和笼统的承诺追问不能带出私聊待办；记忆过滤与目标分区须同时生效，公开的绘画待办不能被一并清空。"
+    },
+    {
+      "id": "VS017", "split": "dev", "category": "目标与询问", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-zhaowan", "kind": "private", "name": "昭晚私聊", "visibility": "entry_only"}, {"id": "radio-room", "kind": "group", "name": "校园广播", "visibility": "shared"}],
+      "subjects": [{"id": "zhaowan", "name": "昭晚", "aliases": []}],
+      "memories": [{"key": "m1", "content": "昭晚负责校园广播的片头音乐", "type": "事实", "speaker": "zhaowan", "stance": "亲历", "about": ["zhaowan"], "belief": 83, "importance": 70, "created_at": "2026-12-06T13:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "radio-room", "entry_kind": "group", "sender": "zhaowan", "kind": "message", "at": "2026-12-06T13:00:00+08:00", "text": "校园广播片头音乐这块归我，有试听稿会在群里发。"}]}],
+      "goals": [
+        {"key": "g1", "content": "问昭晚匿名剧本准备取什么笔名", "kind": "question", "origin": "internal", "state": "open", "entry_id": "dm-zhaowan", "people": ["zhaowan"], "deadline": null, "created_at": "2026-12-08T22:02:00+08:00", "sources": [{"key": "s2", "entry_id": "dm-zhaowan", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T22:00:00+08:00", "text": "你刚说那个匿名剧本，我还想问问你准备取什么笔名，等你想好再聊。"}]},
+        {"key": "g2", "content": "问昭晚广播片头选了哪首音乐", "kind": "question", "origin": "internal", "state": "open", "entry_id": "radio-room", "people": ["zhaowan"], "deadline": null, "created_at": "2026-12-07T13:02:00+08:00", "sources": [{"key": "s3", "entry_id": "radio-room", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-07T13:00:00+08:00", "text": "片头音乐最后选哪首，我也想知道，等昭晚定下来再问。"}]}
+      ],
+      "queries": [
+        {"key": "q1", "entry_id": "radio-room", "mode": "prepare", "text": null, "participants": ["zhaowan"], "recent_messages": [{"sender": "zhaowan", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "Iris，你还有什么想问我的？"}], "forbidden": ["g1"], "expected": ["m1"], "expected_goals": ["g2"]},
+        {"key": "q2", "entry_id": "radio-room", "mode": "search", "text": "昭晚负责哪部分广播工作？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["g1"], "expected": ["m1"], "expected_goals": []},
+        {"key": "q3", "entry_id": "dm-zhaowan", "mode": "search", "text": "关于昭晚的匿名剧本还有什么想问的？", "include_goals": true, "participants": ["zhaowan"], "recent_messages": [], "forbidden": [], "expected": [], "expected_goals": ["g1"]}
+      ],
+      "reason": "询问也是目标分区的一部分，无截止时间不等于没有隐私范围；include_goals=false的请求另外要求整个目标分区为空。"
+    },
+    {
+      "id": "VS018", "split": "dev", "category": "目标与询问", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-rongzhi", "kind": "private", "name": "容栀私聊", "visibility": "entry_only"}, {"id": "parcel-room", "kind": "group", "name": "互寄手作", "visibility": "shared"}],
+      "subjects": [{"id": "rongzhi", "name": "容栀", "aliases": []}],
+      "memories": [{"key": "m1", "content": "容栀寄手作时会附一张水彩卡片", "type": "事实", "speaker": "rongzhi", "stance": "亲历", "about": ["rongzhi"], "belief": 82, "importance": 67, "created_at": "2026-12-07T17:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "parcel-room", "entry_kind": "group", "sender": "rongzhi", "kind": "message", "at": "2026-12-07T17:00:00+08:00", "text": "我寄手作都会塞一张自己画的水彩卡片，算个小签名。"}]}],
+      "goals": [{"key": "g1", "content": "帮容栀核对退回信件的说明", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "parcel-room", "people": ["rongzhi"], "deadline": null, "created_at": "2026-12-08T19:06:00+08:00", "sources": [{"key": "s2", "entry_id": "dm-rongzhi", "entry_kind": "private", "sender": "rongzhi", "kind": "message", "at": "2026-12-08T18:00:00+08:00", "text": "有封信退回来了，我不太懂上面的说明，你晚点帮我核对下。"}, {"key": "s3", "entry_id": "parcel-room", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-08T19:05:00+08:00", "text": "容栀，刚才那封退回信件的说明，我答应晚点帮你核对。"}]}],
+      "queries": [
+        {"key": "q1", "entry_id": "parcel-room", "mode": "prepare", "text": null, "participants": ["rongzhi"], "recent_messages": [{"sender": "rongzhi", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "今天大家寄件顺利吗？"}], "forbidden": ["g1"], "expected": ["m1"], "expected_goals": []},
+        {"key": "q2", "entry_id": "parcel-room", "mode": "search", "text": "容栀的退回信件有哪些待办？", "include_goals": true, "participants": ["rongzhi"], "recent_messages": [], "forbidden": ["g1"], "expected": [], "expected_goals": []},
+        {"key": "q3", "entry_id": "dm-rongzhi", "mode": "search", "text": "帮容栀核对退信说明这件事还在吗？", "include_goals": true, "participants": ["rongzhi"], "recent_messages": [], "forbidden": [], "expected": [], "expected_goals": ["g1"]}
+      ],
+      "reason": "目标登记在共享群，但有私聊依据，仍应取最严格范围；只按goals.entry_id过滤会漏掉这条。旧群消息不作为本次recent_messages重放。"
+    },
+    {
+      "id": "VS019", "split": "dev", "category": "目标与询问", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-anzhou", "kind": "private", "name": "安舟私聊", "visibility": "entry_only"}, {"id": "lantern-team", "kind": "group", "name": "纸灯小队", "visibility": "shared"}],
+      "subjects": [{"id": "anzhou", "name": "安舟", "aliases": []}],
+      "memories": [{"key": "m1", "content": "安舟给纸灯小队整理了尺寸表", "type": "事实", "speaker": "anzhou", "stance": "亲历", "about": ["anzhou"], "belief": 85, "importance": 70, "created_at": "2026-12-08T15:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "lantern-team", "entry_kind": "group", "sender": "anzhou", "kind": "message", "at": "2026-12-08T15:00:00+08:00", "text": "纸灯小队的尺寸表我整理好了，今天发给大家。"}]}],
+      "goals": [
+        {"key": "g1", "content": "给安舟检查纸灯尺寸表", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "dm-anzhou", "people": ["anzhou"], "deadline": "2026-12-11T12:00:00+08:00", "created_at": "2026-12-08T16:02:00+08:00", "sources": [{"key": "s2", "entry_id": "dm-anzhou", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T16:00:00+08:00", "text": "我给你检查纸灯尺寸表，11号中午之前看完。"}]},
+        {"key": "g2", "content": "给安舟检查纸灯尺寸表", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "lantern-team", "people": ["anzhou"], "deadline": "2026-12-11T12:00:00+08:00", "created_at": "2026-12-09T16:02:00+08:00", "sources": [{"key": "s3", "entry_id": "lantern-team", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-09T16:00:00+08:00", "text": "群里也说一下，安舟那张纸灯尺寸表我来检查，11号中午前给结果。"}]}
+      ],
+      "queries": [
+        {"key": "q1", "entry_id": "lantern-team", "mode": "prepare", "text": "安舟的纸灯尺寸表检查安排", "participants": ["anzhou"], "recent_messages": [], "forbidden": ["g1"], "expected": ["m1"], "expected_goals": ["g2"]},
+        {"key": "q2", "entry_id": "lantern-team", "mode": "search", "text": "纸灯尺寸表有哪些待办？", "include_goals": true, "participants": ["anzhou"], "recent_messages": [], "forbidden": ["g1"], "expected": ["m1"], "expected_goals": ["g2"]},
+        {"key": "q3", "entry_id": "dm-anzhou", "mode": "search", "text": "给安舟检查纸灯尺寸表", "include_goals": true, "participants": ["anzhou"], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": ["g1", "g2"]}
+      ],
+      "reason": "两份同文承诺的范围不同，不能返回私聊目标再说正文早已公开；公开对象g2是正对照。目标在本集按给定独立对象载入，不通过旧去重流程先合成一条。"
+    },
+    {
+      "id": "VS020", "split": "dev", "category": "指定入口列表", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-miqiu-a", "kind": "private", "name": "米秋日常私聊", "visibility": "entries", "visible_in": ["dm-miqiu-a", "dm-miqiu-b"]}, {"id": "dm-miqiu-b", "kind": "private", "name": "米秋写作私聊", "visibility": "shared"}, {"id": "classroom", "kind": "group", "name": "班会讨论", "visibility": "shared"}],
+      "subjects": [{"id": "miqiu", "name": "米秋", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "米秋的班会发言草稿以旧课桌开头", "type": "事实", "speaker": "miqiu", "stance": "亲历", "about": ["miqiu"], "belief": 84, "importance": 90, "created_at": "2026-12-08T17:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-miqiu-a", "entry_kind": "private", "sender": "miqiu", "kind": "message", "at": "2026-12-08T17:00:00+08:00", "text": "班会那篇发言我写了个草稿，开头讲那张旧课桌，还没定稿。"}]},
+        {"key": "m2", "content": "米秋负责班会的板书", "type": "事实", "speaker": "miqiu", "stance": "亲历", "about": ["miqiu"], "belief": 85, "importance": 68, "created_at": "2026-12-07T12:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "classroom", "entry_kind": "group", "sender": "miqiu", "kind": "message", "at": "2026-12-07T12:00:00+08:00", "text": "班会的板书我来负责，粉笔大家不用带。"}]}
+      ],
+      "goals": [{"key": "g1", "content": "帮米秋读一遍班会发言草稿", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "dm-miqiu-a", "people": ["miqiu"], "deadline": null, "created_at": "2026-12-08T17:04:00+08:00", "sources": [{"key": "s3", "entry_id": "dm-miqiu-a", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T17:03:00+08:00", "text": "我帮你读一遍这篇班会草稿，看看开头接得顺不顺。"}]}],
+      "queries": [
+        {"key": "q1", "entry_id": "dm-miqiu-b", "mode": "search", "text": "米秋的班会发言草稿开头和待办", "include_goals": true, "participants": ["miqiu"], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": ["g1"]},
+        {"key": "q2", "entry_id": "classroom", "mode": "prepare", "text": null, "participants": ["miqiu"], "recent_messages": [{"sender": "miqiu", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "大家都准备得怎么样啦？"}], "forbidden": ["m1", "g1"], "expected": ["m2"], "expected_goals": []},
+        {"key": "q3", "entry_id": "dm-miqiu-a", "mode": "prepare", "text": "我的班会草稿是怎么开头的，你还要帮我做什么？", "participants": ["miqiu"], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": ["g1"]}
+      ],
+      "reason": "A的依据允许A、B两个私聊；接收入口B自己的shared设置不能向C转授权，也不能误把A的记忆只留在A。"
+    },
+    {
+      "id": "VS021", "split": "dev", "category": "指定入口列表", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-bailan", "kind": "private", "name": "白岚私聊", "visibility": "entries", "visible_in": ["dm-bailan", "costume-team"]}, {"id": "costume-team", "kind": "group", "name": "戏服制作小组", "visibility": "shared"}, {"id": "dm-hesui", "kind": "private", "name": "禾穗私聊", "visibility": "shared"}],
+      "subjects": [{"id": "bailan", "name": "白岚", "aliases": []}, {"id": "hesui", "name": "禾穗", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "白岚留了两米银色布料给戏服披肩", "type": "事实", "speaker": "bailan", "stance": "亲历", "about": ["bailan"], "belief": 86, "importance": 83, "created_at": "2026-12-07T16:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-bailan", "entry_kind": "private", "sender": "bailan", "kind": "message", "at": "2026-12-07T16:00:00+08:00", "text": "我留了两米银色布，专门给这次戏服的披肩用。"}]},
+        {"key": "m2", "content": "白岚负责戏服的纽扣装饰", "type": "事实", "speaker": "bailan", "stance": "亲历", "about": ["bailan"], "belief": 84, "importance": 70, "created_at": "2026-12-08T16:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "costume-team", "entry_kind": "group", "sender": "bailan", "kind": "message", "at": "2026-12-08T16:00:00+08:00", "text": "戏服的纽扣装饰这一部分是我负责，别的部分按大家分工来。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "costume-team", "mode": "prepare", "text": "白岚为披肩留了多少布？", "participants": ["bailan"], "recent_messages": [], "forbidden": [], "expected": ["m1"]},
+        {"key": "q2", "entry_id": "dm-hesui", "mode": "search", "text": "白岚负责哪些装饰，披肩留了多少布？", "include_goals": false, "participants": ["hesui"], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q3", "entry_id": "dm-bailan", "mode": "search", "text": "白岚留给披肩的银色布料长度", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "明确列入的群可见，未列入的私聊不可见；权限不能简化成私聊都能看、群聊都不能看。"
+    },
+    {
+      "id": "VS022", "split": "dev", "category": "指定入口列表", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "archive-a", "kind": "private", "name": "若笙资料私聊", "visibility": "entries", "visible_in": ["archive-a", "edit-b", "proof-c"]}, {"id": "edit-b", "kind": "private", "name": "若笙编辑私聊", "visibility": "entries", "visible_in": ["edit-b", "proof-c"]}, {"id": "proof-c", "kind": "group", "name": "校样小组", "visibility": "shared"}],
+      "subjects": [{"id": "ruosheng", "name": "若笙", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "若笙的诗集暂定十二首", "type": "计划", "speaker": "ruosheng", "stance": "亲历", "about": ["ruosheng"], "belief": 82, "importance": 73, "created_at": "2026-12-06T15:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "archive-a", "entry_kind": "private", "sender": "ruosheng", "kind": "message", "at": "2026-12-06T15:00:00+08:00", "text": "这本诗集我暂时选十二首，不再往里塞了。"}]},
+        {"key": "m2", "content": "若笙的诗集开篇仍需重写", "type": "事实", "speaker": "ruosheng", "stance": "亲历", "about": ["ruosheng"], "belief": 84, "importance": 90, "created_at": "2026-12-07T15:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "edit-b", "entry_kind": "private", "sender": "ruosheng", "kind": "message", "at": "2026-12-07T15:00:00+08:00", "text": "诗集开篇那首还得重写，暂时不能交校样。"}]},
+        {"key": "m3", "content": "Iris推测若笙的十二首诗集可能要等开篇重写后才能校样", "type": "事实", "speaker": "self", "stance": "推断", "about": ["ruosheng"], "belief": 59, "importance": 88, "created_at": "2026-12-07T15:05:00+08:00", "derived_from": ["m1", "m2"], "sources": [{"key": "s3", "entry_id": "proof-c", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-07T15:04:00+08:00", "text": "十二首已经选好，但开篇还要重写，我猜这本诗集的校样得再等一等。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "archive-a", "mode": "prepare", "text": "若笙的诗集有几首，现在能交校样吗？", "participants": ["ruosheng"], "recent_messages": [], "forbidden": ["m2", "m3"], "expected": ["m1"]},
+        {"key": "q2", "entry_id": "edit-b", "mode": "search", "text": "若笙诗集的开篇为什么还不能交校样？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m2", "m3"]},
+        {"key": "q3", "entry_id": "proof-c", "mode": "search", "text": "Iris对这本十二首诗集何时校样有什么推测？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m3"]}
+      ],
+      "reason": "{A,B,C}和{B,C}是包含关系，派生继承较窄的{B,C}；A是部分依据的出处也不能访问另一份更严格的依据和派生结论。"
+    },
+    {
+      "id": "VS023", "split": "dev", "category": "指定入口列表", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-youshi-a", "kind": "private", "name": "游时常用私聊", "visibility": "entries", "visible_in": ["dm-youshi-a", "dm-youshi-b"]}, {"id": "dm-youshi-b", "kind": "private", "name": "游时平板私聊", "visibility": "shared"}, {"id": "dm-youshi-backup", "kind": "private", "name": "游时备用私聊", "visibility": "shared"}],
+      "subjects": [{"id": "youshi", "name": "游时", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "游时把没完成的木船模型放在储物间上层", "type": "事实", "speaker": "youshi", "stance": "亲历", "about": ["youshi"], "belief": 85, "importance": 86, "created_at": "2026-12-07T20:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-youshi-a", "entry_kind": "private", "sender": "youshi", "kind": "message", "at": "2026-12-07T20:00:00+08:00", "text": "木船模型没做完，我先放储物间上层了，免得碰坏。"}]},
+        {"key": "m2", "content": "游时习惯用铅笔标模型零件编号", "type": "事实", "speaker": "youshi", "stance": "亲历", "about": ["youshi"], "belief": 80, "importance": 65, "created_at": "2026-12-08T20:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-youshi-backup", "entry_kind": "private", "sender": "youshi", "kind": "message", "at": "2026-12-08T20:00:00+08:00", "text": "我一般用铅笔给模型零件写编号，装好就擦掉。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "dm-youshi-backup", "mode": "prepare", "text": null, "participants": ["youshi"], "recent_messages": [{"sender": "youshi", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "还是我，今天用这个备用入口聊天。"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "dm-youshi-b", "mode": "search", "text": "游时没做完的木船模型放哪了？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"]},
+        {"key": "q3", "entry_id": "dm-youshi-backup", "mode": "search", "text": "游时没做完的木船模型放哪了？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": []}
+      ],
+      "reason": "列表按完整入口ID匹配，不按名称、前缀或同一主体扩展；三处都是本人私聊，备用入口仍不在名单内。"
+    },
+    {
+      "id": "VS024", "split": "dev", "category": "点名与主体边界", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-tangrong", "kind": "private", "name": "唐蓉私聊", "visibility": "entry_only"}, {"id": "garden-room", "kind": "group", "name": "园艺交流", "visibility": "shared"}],
+      "subjects": [{"id": "tangrong_a", "name": "唐蓉", "aliases": []}, {"id": "tangrong_b", "name": "唐蓉", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "唐蓉准备向室友借阳台种薄荷", "type": "计划", "speaker": "tangrong_a", "stance": "亲历", "about": ["tangrong_a"], "belief": 82, "importance": 93, "created_at": "2026-12-07T20:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-tangrong", "entry_kind": "private", "sender": "tangrong_a", "kind": "message", "at": "2026-12-07T20:00:00+08:00", "text": "我想跟室友借点阳台地方种薄荷，还没开口。"}]},
+        {"key": "m2", "content": "唐蓉在社区花圃种罗勒", "type": "事实", "speaker": "tangrong_b", "stance": "亲历", "about": ["tangrong_b"], "belief": 84, "importance": 70, "created_at": "2026-12-08T19:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "garden-room", "entry_kind": "group", "sender": "tangrong_b", "kind": "message", "at": "2026-12-08T19:00:00+08:00", "text": "我在社区花圃种的是罗勒，群里另一个同名唐蓉不是我。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "garden-room", "mode": "prepare", "text": "唐蓉都种些什么？", "participants": ["tangrong_b"], "recent_messages": [{"sender": "tangrong_b", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "今天刚从花圃回来。"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "garden-room", "mode": "search", "text": "唐蓉计划借阳台种什么？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": []},
+        {"key": "q3", "entry_id": "dm-tangrong", "mode": "search", "text": "唐蓉准备向室友借阳台做什么？", "include_goals": false, "participants": ["tangrong_a"], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "名字锚点可能命中两个同名主体，但不能绕过入口过滤；同名也不能把私聊事实挂到公开的另一人身上。"
+    },
+    {
+      "id": "VS025", "split": "dev", "category": "点名与主体边界", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-linqiu", "kind": "private", "name": "林秋私聊", "visibility": "entry_only"}, {"id": "yarn-room", "kind": "group", "name": "毛线群", "visibility": "shared"}],
+      "subjects": [{"id": "linqiu", "name": "林秋", "aliases": []}, {"id": "linqiu_mom", "name": "林秋的妈妈", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "林秋的妈妈打算把旧缝纫机送去翻修", "type": "计划", "speaker": "linqiu", "stance": "转述", "about": ["linqiu_mom"], "belief": 78, "importance": 91, "created_at": "2026-12-07T18:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-linqiu", "entry_kind": "private", "sender": "linqiu", "kind": "message", "at": "2026-12-07T18:00:00+08:00", "text": "我妈打算把家里那台旧缝纫机送去翻修，还在找师傅。"}]},
+        {"key": "m2", "content": "林秋的妈妈喜欢织拼色围巾", "type": "偏好", "speaker": "linqiu", "stance": "转述", "about": ["linqiu_mom"], "belief": 78, "importance": 67, "created_at": "2026-12-08T18:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "yarn-room", "entry_kind": "group", "sender": "linqiu", "kind": "message", "at": "2026-12-08T18:00:00+08:00", "text": "我妈特别喜欢织拼色围巾，两三种颜色拼在一起那种。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "yarn-room", "mode": "prepare", "text": "林秋的妈妈平时喜欢织什么？", "participants": ["linqiu"], "recent_messages": [], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "yarn-room", "mode": "search", "text": "林秋的妈妈准备怎么处理旧缝纫机？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": []},
+        {"key": "q3", "entry_id": "dm-linqiu", "mode": "search", "text": "林秋说妈妈准备怎么处理旧缝纫机？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "当事人不在场、由亲属转述也不改变来源范围；正文点名妈妈不能把她的私聊事项当作林秋的公开背景。"
+    },
+    {
+      "id": "VS026", "split": "dev", "category": "点名与主体边界", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-zhouyun", "kind": "private", "name": "周蕴私聊", "visibility": "entry_only"}, {"id": "bookmarks", "kind": "group", "name": "书签工坊", "visibility": "shared"}],
+      "subjects": [{"id": "zhouyun", "name": "周蕴", "aliases": ["云团"]}],
+      "memories": [
+        {"key": "m1", "content": "周蕴准备给离职同事做一套告别书签", "type": "计划", "speaker": "zhouyun", "stance": "亲历", "about": ["zhouyun"], "belief": 84, "importance": 92, "created_at": "2026-12-07T21:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-zhouyun", "entry_kind": "private", "sender": "zhouyun", "kind": "message", "at": "2026-12-07T21:00:00+08:00", "text": "我想给快离职的同事做一套告别书签，字还没写好。"}]},
+        {"key": "m2", "content": "周蕴做书签常用牛皮纸", "type": "事实", "speaker": "zhouyun", "stance": "亲历", "about": ["zhouyun"], "belief": 82, "importance": 68, "created_at": "2026-12-08T16:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "bookmarks", "entry_kind": "group", "sender": "zhouyun", "kind": "message", "at": "2026-12-08T16:00:00+08:00", "text": "叫我云团就好，我做书签一般用牛皮纸。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "bookmarks", "mode": "prepare", "text": null, "participants": ["zhouyun"], "recent_messages": [{"sender": "zhouyun", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "云团上线啦，今天聊什么纸？"}], "forbidden": ["m1"], "expected": ["m2"]},
+        {"key": "q2", "entry_id": "bookmarks", "mode": "search", "text": "云团准备给离职同事做什么？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1"], "expected": []},
+        {"key": "q3", "entry_id": "dm-zhouyun", "mode": "search", "text": "云团给离职同事准备的告别礼物", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"]}
+      ],
+      "reason": "别名有本人公开声明作依据，但身份解析只确定同一人，不授予读取此人私聊记忆的权限。"
+    },
+    {
+      "id": "VS027", "split": "dev", "category": "全部共享对照", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-qiaohe", "kind": "private", "name": "乔荷私聊"}, {"id": "stamp-room", "kind": "group", "name": "印章交流", "visibility": "shared"}],
+      "subjects": [{"id": "qiaohe", "name": "乔荷", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "乔荷刻橡皮章时喜欢先画反字稿", "type": "偏好", "speaker": "qiaohe", "stance": "亲历", "about": ["qiaohe"], "belief": 84, "importance": 78, "created_at": "2026-12-07T12:02:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-qiaohe", "entry_kind": "private", "sender": "qiaohe", "kind": "message", "at": "2026-12-07T12:00:00+08:00", "text": "刻橡皮章我喜欢先画反字稿，这样下刀的时候脑子省事。"}]},
+        {"key": "m2", "content": "乔荷收藏蓝色印泥", "type": "事实", "speaker": "qiaohe", "stance": "亲历", "about": ["qiaohe"], "belief": 82, "importance": 74, "created_at": "2026-12-08T12:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "stamp-room", "entry_kind": "group", "sender": "qiaohe", "kind": "message", "at": "2026-12-08T12:00:00+08:00", "text": "我收藏了一排蓝色印泥，每个蓝又不太一样。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "stamp-room", "mode": "search", "text": "乔荷刻橡皮章前喜欢先画什么？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"]},
+        {"key": "q2", "entry_id": "stamp-room", "mode": "prepare", "text": null, "participants": ["qiaohe"], "recent_messages": [{"sender": "qiaohe", "kind": "message", "at": "2026-12-10T19:59:00+08:00", "text": "来跟大家聊两句，今天真安静。"}], "forbidden": [], "expected": ["m1", "m2"]},
+        {"key": "q3", "entry_id": "dm-qiaohe", "mode": "search", "text": "乔荷收集哪种颜色的印泥？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m2"]}
+      ],
+      "reason": "未填写visibility就是shared；私聊记忆照常在群里作为相关记忆或人物要点出现，群来源也可在私聊查询。"
+    },
+    {
+      "id": "VS028", "split": "dev", "category": "全部共享对照", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-lucheng", "kind": "private", "name": "鹿澄私聊", "visibility": "shared"}, {"id": "calendar-room", "kind": "group", "name": "手帐日历", "visibility": "shared"}],
+      "subjects": [{"id": "lucheng", "name": "鹿澄", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "鹿澄喜欢手写每个月的日历", "type": "偏好", "speaker": "lucheng", "stance": "亲历", "about": ["lucheng"], "belief": 83, "importance": 72, "created_at": "2026-12-06T11:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-lucheng", "entry_kind": "private", "sender": "lucheng", "kind": "message", "at": "2026-12-06T11:00:00+08:00", "text": "我喜欢每个月自己手写一张日历，写日期也挺解压。"}]},
+        {"key": "m2", "content": "鹿澄买了一盒月份印章", "type": "事实", "speaker": "lucheng", "stance": "亲历", "about": ["lucheng"], "belief": 85, "importance": 71, "created_at": "2026-12-07T11:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "calendar-room", "entry_kind": "group", "sender": "lucheng", "kind": "message", "at": "2026-12-07T11:00:00+08:00", "text": "新买了一盒一到十二月的月份印章，终于集齐了。"}]},
+        {"key": "m3", "content": "Iris推测鹿澄可能用月份印章装饰手写日历", "type": "事实", "speaker": "self", "stance": "推断", "about": ["lucheng"], "belief": 58, "importance": 69, "created_at": "2026-12-07T11:04:00+08:00", "derived_from": ["m1", "m2"], "sources": [{"key": "s3", "entry_id": "calendar-room", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-12-07T11:03:00+08:00", "text": "你喜欢手写日历又买了月份章，我猜可能会拿它们装饰日历，未必猜对。"}]}
+      ],
+      "goals": [],
+      "queries": [
+        {"key": "q1", "entry_id": "calendar-room", "mode": "search", "text": "Iris猜鹿澄会拿月份印章做什么？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m3"]},
+        {"key": "q2", "entry_id": "calendar-room", "mode": "prepare", "text": "鹿澄喜欢怎么做每月日历？", "participants": ["lucheng"], "recent_messages": [], "forbidden": [], "expected": ["m1"]},
+        {"key": "q3", "entry_id": "dm-lucheng", "mode": "search", "text": "鹿澄新买的印章是哪一套？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m2"]}
+      ],
+      "reason": "全部依据共享的派生项仍共享；不能看见derived_from含私聊出处就一律收紧，也不能把推断内容改为本人确认。"
+    },
+    {
+      "id": "VS029", "split": "dev", "category": "全部共享对照", "now": "2026-12-10T20:00:00+08:00",
+      "entries": [{"id": "dm-xunlu", "kind": "private", "name": "寻露私聊", "visibility": "shared"}, {"id": "kite-group", "kind": "group", "name": "风筝社"}],
+      "subjects": [{"id": "xunlu", "name": "寻露", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "寻露正在给燕子风筝描尾羽", "type": "事实", "speaker": "xunlu", "stance": "亲历", "about": ["xunlu"], "belief": 84, "importance": 78, "created_at": "2026-12-08T13:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-xunlu", "entry_kind": "private", "sender": "xunlu", "kind": "message", "at": "2026-12-08T13:00:00+08:00", "text": "我这会儿在给燕子风筝描尾羽，一条条描还挺费神。"}]},
+        {"key": "m2", "content": "Iris喜欢燕子风筝的分叉尾形", "type": "偏好", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 80, "importance": 65, "created_at": "2026-12-08T13:05:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-xunlu", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T13:04:00+08:00", "text": "燕子风筝分叉的尾形我很喜欢，看起来轻巧。"}]}
+      ],
+      "goals": [{"key": "g1", "content": "给寻露整理燕子风筝配色建议", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "dm-xunlu", "people": ["xunlu"], "deadline": null, "created_at": "2026-12-08T13:08:00+08:00", "sources": [{"key": "s3", "entry_id": "dm-xunlu", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T13:07:00+08:00", "text": "我给你整理几组燕子风筝的配色建议，描完线就能挑了。"}]}],
+      "queries": [
+        {"key": "q1", "entry_id": "kite-group", "mode": "prepare", "text": "寻露的燕子风筝做到哪步了？", "participants": ["xunlu"], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": ["g1"]},
+        {"key": "q2", "entry_id": "kite-group", "mode": "search", "text": "Iris喜欢燕子风筝的什么形状，答应给什么建议？", "include_goals": true, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m2"], "expected_goals": ["g1"]},
+        {"key": "q3", "entry_id": "dm-xunlu", "mode": "search", "text": "寻露的燕子风筝做到哪步了？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": []}
+      ],
+      "reason": "默认共享下，私聊中学到的事实、角色喜好和承诺均可跨入口使用；include_goals=false仍不返回目标，但不是隐私禁用。"
+    },
+    {
+      "id": "VS030", "split": "dev", "category": "管理员变更范围", "now": "2026-12-10T20:30:00+08:00",
+      "entries": [{"id": "dm-yinqiao", "kind": "private", "name": "音乔私聊", "visibility": "shared"}, {"id": "photo-album", "kind": "group", "name": "相册交换", "visibility": "shared"}],
+      "subjects": [{"id": "yinqiao", "name": "音乔", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "音乔正在整理搬家前的房间照片", "type": "事实", "speaker": "yinqiao", "stance": "亲历", "about": ["yinqiao"], "belief": 85, "importance": 94, "created_at": "2026-12-08T18:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-yinqiao", "entry_kind": "private", "sender": "yinqiao", "kind": "message", "at": "2026-12-08T18:00:00+08:00", "text": "我在整理搬家前拍的房间照片，想按角落排个顺序。"}]},
+        {"key": "m2", "content": "音乔喜欢用方形相册", "type": "偏好", "speaker": "yinqiao", "stance": "亲历", "about": ["yinqiao"], "belief": 81, "importance": 66, "created_at": "2026-12-07T18:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "photo-album", "entry_kind": "group", "sender": "yinqiao", "kind": "message", "at": "2026-12-07T18:00:00+08:00", "text": "我喜欢方形相册，横图竖图都容易排。"}]}
+      ],
+      "goals": [{"key": "g1", "content": "帮音乔给旧房间照片分组", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "dm-yinqiao", "people": ["yinqiao"], "deadline": null, "created_at": "2026-12-08T18:04:00+08:00", "sources": [{"key": "s3", "entry_id": "dm-yinqiao", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T18:03:00+08:00", "text": "我来帮你给这些旧房间照片分组，按角落慢慢整理。"}]}],
+      "visibility_changes": [{"at": "2026-12-10T20:10:00+08:00", "actor": "admin", "entry_id": "dm-yinqiao", "visibility": "entry_only"}],
+      "queries": [
+        {"key": "q1", "at": "2026-12-10T20:00:00+08:00", "entry_id": "photo-album", "mode": "search", "text": "音乔的旧房间照片在做什么整理？", "include_goals": true, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": ["g1"]},
+        {"key": "q2", "at": "2026-12-10T20:11:00+08:00", "entry_id": "photo-album", "mode": "search", "text": "音乔的旧房间照片在做什么整理？", "include_goals": true, "participants": [], "recent_messages": [], "forbidden": ["m1", "g1"], "expected": [], "expected_goals": []},
+        {"key": "q3", "at": "2026-12-10T20:20:00+08:00", "entry_id": "dm-yinqiao", "mode": "prepare", "text": "我们接着给搬家前的房间照片分组吧。", "participants": ["yinqiao"], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": ["g1"]},
+        {"key": "q4", "at": "2026-12-10T20:29:00+08:00", "entry_id": "photo-album", "mode": "prepare", "text": null, "participants": ["yinqiao"], "recent_messages": [{"sender": "yinqiao", "kind": "message", "at": "2026-12-10T20:28:00+08:00", "text": "刚忙完，又回来坐坐。"}], "forbidden": ["m1", "g1"], "expected": ["m2"], "expected_goals": []}
+      ],
+      "reason": "先查到再改严，后续同文查询也必须立即按新设置过滤旧记忆和旧目标；不能沿用缓存或创建时的shared。当前私聊仍能看到它们。"
+    },
+    {
+      "id": "VS031", "split": "dev", "category": "管理员变更范围", "now": "2026-12-10T20:30:00+08:00",
+      "entries": [{"id": "dm-chengli", "kind": "private", "name": "程栗私聊", "visibility": "entry_only"}, {"id": "handbell-room", "kind": "group", "name": "手铃练习", "visibility": "shared"}],
+      "subjects": [{"id": "chengli", "name": "程栗", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "程栗家里有一间空房可用来练手铃", "type": "事实", "speaker": "chengli", "stance": "亲历", "about": ["chengli"], "belief": 84, "importance": 90, "created_at": "2026-12-06T18:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-chengli", "entry_kind": "private", "sender": "chengli", "kind": "message", "at": "2026-12-06T18:00:00+08:00", "text": "家里有间空房，现在可以拿来练手铃，不用挤客厅。"}]},
+        {"key": "m2", "content": "程栗拿到了手铃合奏的练习谱", "type": "事实", "speaker": "chengli", "stance": "亲历", "about": ["chengli"], "belief": 85, "importance": 72, "created_at": "2026-12-07T18:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "handbell-room", "entry_kind": "group", "sender": "chengli", "kind": "message", "at": "2026-12-07T18:00:00+08:00", "text": "合奏用的手铃练习谱我已经拿到了，先熟悉旋律。"}]},
+        {"key": "m3", "content": "Iris推测程栗可能在家里空房练手铃合奏谱", "type": "事实", "speaker": "self", "stance": "推断", "about": ["chengli"], "belief": 58, "importance": 86, "created_at": "2026-12-07T18:04:00+08:00", "derived_from": ["m1", "m2"], "sources": [{"key": "s3", "entry_id": "dm-chengli", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-07T18:03:00+08:00", "text": "你有空房又拿到了谱，我猜你可能在家练这份合奏谱，当然得看你的安排。"}]}
+      ],
+      "goals": [],
+      "visibility_changes": [{"at": "2026-12-10T20:10:00+08:00", "actor": "admin", "entry_id": "dm-chengli", "visibility": "shared"}],
+      "queries": [
+        {"key": "q1", "at": "2026-12-10T20:00:00+08:00", "entry_id": "handbell-room", "mode": "search", "text": "程栗在哪练手铃、拿到了什么谱，Iris对此有什么猜测？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": ["m1", "m3"], "expected": ["m2"]},
+        {"key": "q2", "at": "2026-12-10T20:12:00+08:00", "entry_id": "handbell-room", "mode": "search", "text": "程栗在哪练手铃、拿到了什么谱，Iris对此有什么猜测？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1", "m2", "m3"]},
+        {"key": "q3", "at": "2026-12-10T20:20:00+08:00", "entry_id": "dm-chengli", "mode": "search", "text": "程栗在家哪里能练手铃？", "include_goals": false, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"]},
+        {"key": "q4", "at": "2026-12-10T20:29:00+08:00", "entry_id": "handbell-room", "mode": "prepare", "text": null, "participants": ["chengli"], "recent_messages": [{"sender": "chengli", "kind": "message", "at": "2026-12-10T20:28:00+08:00", "text": "我回来了，先跟大家打个招呼。"}], "forbidden": [], "expected": ["m1", "m2", "m3"]}
+      ],
+      "reason": "放宽要作用于旧记忆及派生链，不能永久粘住创建时的entry_only；所有约束都已共享，人物要点也可正常补齐。"
+    },
+    {
+      "id": "VS032", "split": "dev", "category": "管理员变更范围", "now": "2026-12-10T20:30:00+08:00",
+      "entries": [{"id": "dm-moli-a", "kind": "private", "name": "墨梨草稿私聊", "visibility": "entries", "visible_in": ["dm-moli-a", "dm-moli-b"]}, {"id": "dm-moli-b", "kind": "private", "name": "墨梨平板私聊", "visibility": "shared"}, {"id": "print-team", "kind": "group", "name": "版画协作组", "visibility": "shared"}],
+      "subjects": [{"id": "moli", "name": "墨梨", "aliases": []}],
+      "memories": [
+        {"key": "m1", "content": "墨梨的版画草稿把月亮画在桥洞里", "type": "事实", "speaker": "moli", "stance": "亲历", "about": ["moli"], "belief": 85, "importance": 90, "created_at": "2026-12-08T14:01:00+08:00", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-moli-a", "entry_kind": "private", "sender": "moli", "kind": "message", "at": "2026-12-08T14:00:00+08:00", "text": "版画草稿里我把月亮画在桥洞里面了，有点像一枚印章。"}]},
+        {"key": "m2", "content": "墨梨在版画协作组负责调墨", "type": "事实", "speaker": "moli", "stance": "亲历", "about": ["moli"], "belief": 84, "importance": 70, "created_at": "2026-12-07T14:01:00+08:00", "derived_from": [], "sources": [{"key": "s2", "entry_id": "print-team", "entry_kind": "group", "sender": "moli", "kind": "message", "at": "2026-12-07T14:00:00+08:00", "text": "版画协作组调墨这件事我来负责，大家按试色条选。"}]}
+      ],
+      "goals": [{"key": "g1", "content": "帮墨梨检查桥洞月亮草稿的留白", "kind": "normal", "origin": "internal", "state": "open", "entry_id": "dm-moli-a", "people": ["moli"], "deadline": "2026-12-11T15:30:00+08:00", "created_at": "2026-12-08T14:04:00+08:00", "sources": [{"key": "s3", "entry_id": "dm-moli-a", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-12-08T14:03:00+08:00", "text": "我帮你看看桥洞月亮这张草稿的留白，11号下午三点半前看完。"}]}],
+      "visibility_changes": [{"at": "2026-12-10T20:10:00+08:00", "actor": "admin", "entry_id": "dm-moli-a", "visibility": "entries", "visible_in": ["dm-moli-a"]}, {"at": "2026-12-10T20:20:00+08:00", "actor": "admin", "entry_id": "dm-moli-a", "visibility": "entries", "visible_in": ["dm-moli-a", "print-team"]}],
+      "queries": [
+        {"key": "q1", "at": "2026-12-10T20:00:00+08:00", "entry_id": "dm-moli-b", "mode": "search", "text": "墨梨的桥洞月亮草稿和留白检查安排", "include_goals": true, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": ["g1"]},
+        {"key": "q2", "at": "2026-12-10T20:12:00+08:00", "entry_id": "dm-moli-b", "mode": "prepare", "text": null, "participants": ["moli"], "recent_messages": [{"sender": "moli", "kind": "message", "at": "2026-12-10T20:11:00+08:00", "text": "平板这边也登上啦。"}], "forbidden": ["m1", "g1"], "expected": ["m2"], "expected_goals": []},
+        {"key": "q3", "at": "2026-12-10T20:22:00+08:00", "entry_id": "print-team", "mode": "search", "text": "墨梨的桥洞月亮草稿和留白检查安排", "include_goals": true, "participants": [], "recent_messages": [], "forbidden": [], "expected": ["m1"], "expected_goals": ["g1"]},
+        {"key": "q4", "at": "2026-12-10T20:25:00+08:00", "entry_id": "dm-moli-b", "mode": "search", "text": "墨梨在协作组负责什么，有哪些待办？", "include_goals": true, "participants": [], "recent_messages": [], "forbidden": ["m1", "g1"], "expected": ["m2"], "expected_goals": []}
+      ],
+      "reason": "先撤掉B，再加C；旧对象按每次查询前最新的完整名单计算，不把更新当成累加授权，也不因C是群聊而拒绝明确允许的访问。"
+    }
+  ]
+}
