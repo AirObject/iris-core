@@ -302,7 +302,7 @@ def prepare_media(store, gateway, message_ids, *, batch_id=None, budget_seconds=
             if monotonic() > deadline:
                 raise ModelError('retryable', 'total timeout', reason='timeout')
             if not isinstance(result, str) or not result.strip():
-                raise ModelError('retryable', 'invalid image description')
+                raise ModelError('invalid_output', 'invalid image description')
             source, text = 'system', result
         except ModelError as exc:
             if exc.category == 'content_rejection':

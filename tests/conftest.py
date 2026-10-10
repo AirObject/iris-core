@@ -42,6 +42,13 @@ class FakeGateway:
         return [1.0, 0.0]
 
 
+@pytest.fixture(autouse=True)
+def isolate_deployment_environment(monkeypatch):
+    """Deployment settings must come from each test, not the caller's shell."""
+    for name in ("IRIS_DATA_DIR", "IRIS_HOST", "IRIS_PORT"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def store(tmp_path):
     value = Store(tmp_path / "iris.db")

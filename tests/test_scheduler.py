@@ -176,7 +176,7 @@ def test_embedding_pause_fallback_backfill_and_revision_check(store):
     mid = put(store, "我喜欢天文摄影")
     with FakeOpenAI().serve() as server:
         health = ModelHealth(store, server.configs, clock=clock)
-        gateway = Gateway(server.configs, store, health=health, sleeper=lambda _: None)
+        gateway = Gateway(server.configs, store, health=health, clock=clock, sleeper=lambda _: None)
         scheduler = Scheduler(store, gateway, clock=clock)
         settings = store.setting("retrieval")
         store.set_setting("retrieval", {**settings, "embedding_model": "stub-embedding"})
