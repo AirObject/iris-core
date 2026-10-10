@@ -2,7 +2,7 @@
 
 ## M4 计划（2026-10-10）
 
-M4（接入）的范围、用户决定和门槛口径见 DECISIONS.md 2026-10-10「M4 计划」。M3 已完成（DECISIONS.md「M3 完成」）；persona 与记忆合并的优化线与 M4 并行。
+M4（接入）的范围、用户决定和门槛口径见 DECISIONS.md 2026-10-10「M4 计划」。M3 已完成（DECISIONS.md「M3 完成」）；persona 与记忆合并的优化线与 M4 并行。M4 已于 2026-10-10 完成（DECISIONS.md「M4 完成」）；“不需要人工干预”改为上线测试后分析运行日志。
 
 ### 起点
 
@@ -21,17 +21,18 @@ M4（接入）的范围、用户决定和门槛口径见 DECISIONS.md 2026-10-10
 
 | 阶段 | 工作线 | 内容 | 主要文件 | 前置 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 一 | 令牌（TK） | 宿主令牌：创建（只显示一次、只存摘要）、撤销、绑定宿主名称和入口范围（全部／列表／前缀）；/api/v1 的 Bearer 鉴权、401／403；基本频率限制（429）；当前状态与目标注入的宿主名称取自令牌；离线命令 `iris tokens`；端到端评测改用令牌；R03 | 新 tokens.py、api.py、admin.py、admin_data.py、cli.py、state.py、goals.py（只为宿主名称）、e2e_evaluation.py、迁移 | — | 待开始 |
-| 一 | 媒体（MD） | 媒体存储与上限、消息引用、宿主理解文本复用、图片理解用途（独立用途、超时、内容拒绝固定为“敏感信息无法访问”）、学习材料中的理解文本、清理宽限 1 天；P01—P05；上传接口等 TK 合并后再接到 api.py | 新 media.py、queue.py、learning.py（只改材料中的媒体文本）、models.py、model_health.py、configuration.py、maintenance.py（只加文件清理）、迁移、test-models.example.toml | 学习输出形状修复合并 | 待开始 |
-| 一 | 评测集·隐私（GD） | 手写可见范围的隐私 dev 集 visibility_v1：私聊与群聊、派生、整理、人物要点、目标分区的泄漏诱因，标注每个入口不应出现的内容 | evals/visibility_v1* | — | 待开始 |
-| 一 | 规划者 | 隐藏隐私集；连接器仓库的创建（需用户同意） | 仓库外 | dev 格式确定 | 待开始 |
-| 一 | persona 优化（PE） | 初始设定句由代码保留、句子级修复或删去、放宽检查超时；在 persona_v1、persona_v2 上迭代；之后规划者在新写的隐藏 persona 集上重新判定 | persona.py、persona_evaluation.py、prompts/persona_*_v2.md | persona_v2 冻结 | 待开始 |
-| 二 | 可见范围（VS） | 入口的记忆可见范围（默认全部共享；可设为仅本入口或指定入口）；记忆继承依据中最严格的范围；不同范围不去重、不合并；派生继承；召回、查询、人物要点、目标分区按请求入口过滤；R14 | learning.py、retrieval.py、consolidation.py、memory_ops.py、people.py、goals.py、迁移 | MD 合并（learning.py）；visibility_v1 冻结 | — |
-| 二 | 接口（AP） | R02 其他入口的提示；19.4 错误码统一；媒体上传接口；OpenAPI 中文说明和示例；全部宿主接口的契约测试；冻结 v1 | api.py、retrieval.py（只加提示）、media.py（只接路由） | TK、MD 合并 | — |
-| 二 | 导出导入（BK） | 在线导出（数据库一致快照＋媒体，可选是否包含密钥）、从备份导入（需确认、校验）、离线命令 | 新 backup.py、admin.py、cli.py | TK 合并 | — |
-| 三 | 连接器（CN） | 连接器 monorepo：Python 客户端、TypeScript 客户端、AstrBot 插件；最小接入示例（Python、TypeScript 各约 50 行）；用假服务和 AstrBot 测试替身测试 | 另一仓库 | AP 冻结 v1 | — |
-| 三 | 界面（UX） | 接入页（令牌、入口范围、接口文档链接）、媒体显示、入口可见范围设置、图片理解模型设置、导出导入 | frontend/、src/iris/web/ | 对应后端合并 | — |
-| 四 | 门槛 | 24 小时模拟运行（经连接器客户端）；隐私（公开＋隐藏，零泄漏）；契约测试；回归（学习请求、召回返回、端到端、R10） | 未参与修改的会话＋规划者 | 以上全部合并 | — |
+| 一 | 令牌（TK） | 宿主令牌：创建（只显示一次、只存摘要）、撤销、绑定宿主名称和入口范围（全部／列表／前缀）；/api/v1 的 Bearer 鉴权、401／403；基本频率限制（429）；当前状态与目标注入的宿主名称取自令牌；离线命令 `iris tokens`；端到端评测改用令牌；R03 | 新 tokens.py、api.py、admin.py、admin_data.py、cli.py、state.py、goals.py（只为宿主名称）、e2e_evaluation.py、迁移 | — | 已完成（#62） |
+| 一 | 媒体（MD） | 媒体存储与上限、消息引用、宿主理解文本复用、图片理解用途（独立用途、超时、内容拒绝固定为“敏感信息无法访问”）、学习材料中的理解文本、清理宽限 1 天；P01—P05；上传接口等 TK 合并后再接到 api.py | 新 media.py、queue.py、learning.py（只改材料中的媒体文本）、models.py、model_health.py、configuration.py、maintenance.py（只加文件清理）、迁移、test-models.example.toml | 学习输出形状修复合并 | 已完成（#63；管理端与试用页上传 #69） |
+| 一 | 评测集·隐私（GD） | 手写可见范围的隐私 dev 集 visibility_v1：私聊与群聊、派生、整理、人物要点、目标分区的泄漏诱因，标注每个入口不应出现的内容 | evals/visibility_v1* | — | 已冻结（#60） |
+| 一 | 规划者 | 隐藏隐私集；连接器仓库的创建（需用户同意） | 仓库外 | dev 格式确定 | 已完成（隐藏隐私集；连接器仓库 AirObject/iris-connectors） |
+| 一 | persona 优化（PE） | 初始设定句由代码保留、句子级修复或删去、放宽检查超时；在 persona_v1、persona_v2 上迭代；之后规划者在新写的隐藏 persona 集上重新判定 | persona.py、persona_evaluation.py、prompts/persona_*_v2.md | persona_v2 冻结 | 暂停（#61 未合并，见 DECISIONS「M3 完成」已知问题） |
+| 二 | 可见范围（VS） | 入口的记忆可见范围（默认全部共享；可设为仅本入口或指定入口）；记忆继承依据中最严格的范围；不同范围不去重、不合并；派生继承；召回、查询、人物要点、目标分区按请求入口过滤；R14 | learning.py、retrieval.py、consolidation.py、memory_ops.py、people.py、goals.py、迁移 | MD 合并（learning.py）；visibility_v1 冻结 | 已完成（#67） |
+| 二 | 接口（AP） | R02 其他入口的提示；19.4 错误码统一；媒体上传接口；OpenAPI 中文说明和示例；全部宿主接口的契约测试；冻结 v1 | api.py、retrieval.py（只加提示）、media.py（只接路由） | TK、MD 合并 | 已完成（#66，v1 冻结） |
+| 二 | 导出导入（BK） | 在线导出（数据库一致快照＋媒体，可选是否包含密钥）、从备份导入（需确认、校验）、离线命令 | 新 backup.py、admin.py、cli.py | TK 合并 | 已完成（#64） |
+| 三 | 连接器（CN） | 连接器 monorepo：Python 客户端、TypeScript 客户端、AstrBot 插件；最小接入示例（Python、TypeScript 各约 50 行）；用假服务和 AstrBot 测试替身测试 | 另一仓库 | AP 冻结 v1 | 已完成（iris-connectors #1、#2；日志检查 #3、#4） |
+| 三 | 界面（UX） | 接入页（令牌、入口范围、接口文档链接）、媒体显示、入口可见范围设置、图片理解模型设置、导出导入 | frontend/、src/iris/web/ | 对应后端合并 | 已完成（#65、#68、#71） |
+| 四 | 门槛 | 24 小时模拟运行改为上线后分析运行日志（用户决定，见 DECISIONS 2026-10-10）；隐私（公开＋隐藏，零泄漏）；契约测试；回归（学习请求、召回返回、端到端、R10） | 未参与修改的会话＋规划者 | 以上全部合并 | 已完成（#70；隐藏隐私集由规划者运行） |
+| 四 | 运行记录（RJ） | 服务启停与心跳、各入口积压快照、模型健康转换、维护与整理事件、回复准备耗时与结果分类；只存元数据，供上线后日志检查 | 新 runtime_journal.py、model_health.py、maintenance.py、api.py、迁移 024 | 用户取消 24 小时模拟运行 | 已完成（#72） |
 
 ### 对照规则（在看到结果之前确定）
 
@@ -46,7 +47,7 @@ M4（接入）的范围、用户决定和门槛口径见 DECISIONS.md 2026-10-10
 - 隐私评测中 `expected` 只用于诊断是否过度过滤（部分项还依赖检索效果），不作门槛；门槛只看 `forbidden`。
 - 图片理解：P01—P05 用确定性测试和假模型覆盖；真实视觉模型只做小规模冒烟（用户填好配置后），不作质量门槛。
 - 接口冻结后，任何不兼容的修改都要先在 DECISIONS.md 记录并经规划者批准。
-- 24 小时模拟运行：消息节奏、入口数量和内容在运行前写定；运行中出现需要人工操作的情况即为未达到，记录原因。
+- 24 小时模拟运行：消息节奏、入口数量和内容在运行前写定；运行中出现需要人工操作的情况即为未达到，记录原因。（2026-10-10 用户决定本次不做，改为上线测试后用 iris-connectors 的 `tools/live_review/` 分析实际运行日志，见 DECISIONS.md 同日条目。）
 
 ## M3 计划（2026-10-09）
 

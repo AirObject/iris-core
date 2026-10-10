@@ -1,6 +1,6 @@
 # Iris 后续实现说明
 
-产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。M1 已于 2026-10-08 完成（DECISIONS.md「M1 完成」），M2 已于 2026-10-09 完成（DECISIONS.md「M2 完成」，含已知问题）；M3 已于 2026-10-10 完成（DECISIONS.md「M3 完成」，persona 与记忆合并的隐藏集门槛列为已知问题，persona 默认全部人工确认）；当前阶段为 M4（接入），计划、门槛口径、分工和对照规则见 DECISIONS.md 2026-10-10「M4 计划」及 `evals/README.md`「M4 计划」。M3 的计划见 DECISIONS.md 2026-10-09「M3 计划」及 `evals/README.md`「M3 计划」。M2 的计划见 DECISIONS.md 2026-10-08「M2 计划」及 `evals/README.md`「M2 计划」。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；本机试用对话、记忆管理和运行状态界面，首次设置、管理员会话、设置页和 secrets.json 已实现；M2 的生命周期与每日维护、回复准备的召回判断、人物联系的确认／否认／合并、高流量入口过滤及其界面已实现；宿主令牌仍在 M4。不要复制 `dev-0`、`dev-1` 分支的代码。
+产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。M1 已于 2026-10-08 完成（DECISIONS.md「M1 完成」），M2 已于 2026-10-09 完成（DECISIONS.md「M2 完成」，含已知问题）；M3 已于 2026-10-10 完成（DECISIONS.md「M3 完成」，persona 与记忆合并的隐藏集门槛列为已知问题，persona 默认全部人工确认）；M4 已于 2026-10-10 完成（DECISIONS.md「M4 完成」，“不需要人工干预”按用户决定改为上线测试后分析运行日志，persona 优化线暂停）；设计 22 的阶段全部完成，当前为上线测试：用户以 AstrBot 插件接入真实聊天平台，测试结束后用 iris-connectors 的 `tools/live_review/` 读取运行记录（README「运行记录」）分析。M4 的计划、门槛口径和对照规则见 DECISIONS.md 2026-10-10「M4 计划」及 `evals/README.md`「M4 计划」。M3 的计划见 DECISIONS.md 2026-10-09「M3 计划」及 `evals/README.md`「M3 计划」。M2 的计划见 DECISIONS.md 2026-10-08「M2 计划」及 `evals/README.md`「M2 计划」。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；本机试用对话、记忆管理和运行状态界面，首次设置、管理员会话、设置页和 secrets.json 已实现；M2 的生命周期与每日维护、回复准备的召回判断、人物联系的确认／否认／合并、高流量入口过滤及其界面已实现；宿主令牌、入口可见范围、媒体与图片理解、导出导入、接口 v1 冻结和运行记录已在 M4 实现，接入示例与 AstrBot 插件在 iris-connectors 仓库。不要复制 `dev-0`、`dev-1` 分支的代码。
 
 2026-10-05 起，开发与评测的对话模型改为 glm-5.3-flash，开发设备改为 macOS。MiniMax-M3 时期的评测结果全部作废；GLM 重测计划及新设备召回复现见 `evals/README.md`。
 
@@ -95,7 +95,7 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 不能在运行评测时切换或重建同一虚拟环境，也不要在模型评测运行期间修改源码或迁移。完整学习案例按源码／语料／模型端点、ID、维度／判分次数指纹保存在忽略的 `data/lc/<16位指纹>`，meta.json 校验完整 SHA-256；外部 --out 的检查点在 `<out>/.lc/<16位指纹>`，完整明细也留在外部。只复用相同输入的完成案例，不按分数选择或改写结果。
 
-本分支覆盖召回验收 R01、R04—R13；R02、R03、R14 经用户确认留到 M4。M4 的宿主令牌、媒体与图片理解、可见范围、接口冻结、导出导入和连接器按 `evals/README.md`「M4 计划」的分工实现，只改分配给本会话的文件；M3 的模型整理、persona、当前状态和目标的现行规则见 DECISIONS.md 2026-10-09 至 2026-10-10 各条。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料；加 `--default-config` 测量当前默认的 5 千／5 万条、点名／不点名四组 prepare。
+召回验收 R01—R14 均已实现（R02、R03、R14 在 M4）。宿主接口 v1 已冻结，不兼容的修改须先在 DECISIONS.md 记录并经规划者批准；M3 的模型整理、persona、当前状态和目标的现行规则见 DECISIONS.md 2026-10-09 至 2026-10-10 各条。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料；加 `--default-config` 测量当前默认的 5 千／5 万条、点名／不点名四组 prepare。
 
 ## 调度与端到端（M1-6）
 
