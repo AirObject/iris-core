@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .db import Store
-from .models import JUDGMENT_KINDS, MODEL_KINDS, effective_configs
+from .models import IMAGE_TOTAL_TIMEOUT, JUDGMENT_KINDS, MODEL_KINDS, effective_configs
 
 
 def utc_now():
@@ -87,9 +87,16 @@ class ModelHealth:
         for state in result.values():
             if state['state'] == 'rate_limited' and not self._cooling(state):
                 state.update(state='normal', retry_at=None)
+        # Image understanding is opt-in. An absent/disabled image model is an
+        # ordinary placeholder path, not an outage hint on every host request.
+        image = self.configs.get('image_understanding')
+        if not image or not image.base_url or not image.model:
+            result.pop('image_understanding', None)
+        else:
+            result['image_understanding']['timeout_seconds'] = IMAGE_TOTAL_TIMEOUT
         budget = self.budget()
-        for kind in ('chat', *JUDGMENT_KINDS):
-            if budget['exhausted'] and result[kind]['state'] == 'normal':
+        for kind in ('chat', *JUDGMENT_KINDS, 'image_understanding'):
+            if kind in result and budget['exhausted'] and result[kind]['state'] == 'normal':
                 result[kind].update(state='usage_limit', last_error='达到每日 token 上限', next_probe_at=budget['reset_at'])
         return result
 
@@ -107,7 +114,7 @@ class ModelHealth:
             if not probe and not self._available(state):
                 raise ModelError("paused", state["last_error"] or state["state"], paused=True, reason=state["state"])
             token = state["fingerprint"]
-        if ((not probe and purpose in ("learning", "learning_repair")) or kind in JUDGMENT_KINDS) and self.budget()["exhausted"]:
+        if ((not probe and purpose in ("learning", "learning_repair")) or kind in (*JUDGMENT_KINDS, "image_understanding")) and self.budget()["exhausted"]:
             raise ModelError("paused", "达到每日 token 上限", paused=True, reason="usage_limit")
         return token
 
@@ -181,6 +188,7 @@ class ModelHealth:
         with self._lock:
             return [kind for kind, state in self._states.items()
                     if (kind not in JUDGMENT_KINDS or judge_available[kind])
+                    and (kind != 'image_understanding' or not exhausted)
                     and state["state"] in ("temporarily_unavailable", "account_problem")
                     and state["next_probe_at"] and datetime.fromisoformat(state["next_probe_at"]) <= self.clock()]
 

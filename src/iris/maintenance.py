@@ -9,9 +9,10 @@ from zoneinfo import ZoneInfo
 from .db import dumps
 from .memory_ops import adjust_retention, delete_memory, lifecycle_settings, message_references, missing_batch_targets, operation
 from .model_health import utc_now
+from .media import GRACE_PERIOD, cleanup_upload_orphans, delete_unreferenced_file, files_for_message, mark_unreferenced
 from .queue import reset_batch
 
-PHASES = ("decay", "expiry", "dependency", "messages", "retry", "consolidation", "persona", "goals")
+PHASES = ("decay", "expiry", "dependency", "messages", "retry", "consolidation", "persona", "goals", "media")
 
 
 class Maintenance:
@@ -80,6 +81,7 @@ class Maintenance:
                     memory_through,message_through,batch_through,created_at,goal_through) VALUES(?,?,?,?,?,?,?,?,?)""",
                     (trigger, schedule_key, dumps(config), json.loads(zone_row[0]) if zone_row else "Asia/Shanghai",
                      *bounds, self.clock().isoformat(), conn.execute("SELECT COALESCE(MAX(id),0) FROM goals").fetchone()[0])).lastrowid
+                conn.execute('UPDATE maintenance_runs SET media_through=(SELECT COALESCE(MAX(id),0) FROM media_files) WHERE id=?', (rid,))
                 conn.execute('INSERT INTO consolidation_runs(run_id,settings_json) VALUES(?,?)', (rid,dumps(model_config)))
             if actor:
                 operation(conn, "maintenance_requested", "maintenance", rid, actor=actor, stamp=self.clock().isoformat())
@@ -120,6 +122,12 @@ class Maintenance:
                     continue
                 candidates = self._candidates(run, phase)
                 if not candidates:
+                    if phase == "media":
+                        orphans = cleanup_upload_orphans(self.store, self.clock())
+                        if any(orphans.values()):
+                            with self.store.write() as conn:
+                                operation(conn, "media_upload_cleanup", "maintenance", run_id, orphans,
+                                          actor="system", stamp=self.clock().isoformat())
                     with self.store.write() as conn:
                         conn.execute("UPDATE maintenance_runs SET phase=phase+1,cursor_id=0 WHERE id=? AND phase=?", (run_id, run["phase"]))
                     continue
@@ -151,6 +159,12 @@ class Maintenance:
     def _candidates(self, run, phase):
         config = json.loads(run["settings_json"])
         current = datetime.fromisoformat(run["created_at"])
+        if phase == "media":
+            with self.store.read() as conn:
+                return [dict(r) for r in conn.execute("""SELECT id,id AS cursor_id,CAST(id AS TEXT) AS item_key
+                    FROM media_files WHERE id>? AND id<=? AND unreferenced_at IS NOT NULL
+                    AND julianday(unreferenced_at)<=julianday(?) ORDER BY id LIMIT 128""",
+                    (run['cursor_id'], run['media_through'], (current-GRACE_PERIOD).isoformat()))]
         if phase == "goals":
             from .consolidation import run_settings
             with self.store.read() as conn:
@@ -240,6 +254,9 @@ class Maintenance:
         # transition starts its retention period at the actual execution time.
         executed_at = self.clock()
         mid = candidate["id"]
+        if phase == "media":
+            deleted = delete_unreferenced_file(self.store, conn, mid, current)
+            return ("media_deleted", None, {}) if deleted else ("skipped", "media_referenced_or_not_due", {})
         if phase == "goals":
             from .goals import review_goal_basis, GoalConflict
             try:
@@ -310,7 +327,9 @@ class Maintenance:
             references = message_references(conn, mid)
             if references:
                 return "skipped", "referenced", {"references": references}
+            media_files = files_for_message(conn, mid)
             conn.execute("DELETE FROM messages WHERE id=?", (mid,))
+            mark_unreferenced(conn, media_files, executed_at)
             return "messages_deleted", None, {}
         batch = conn.execute("SELECT state,finished_at FROM batches WHERE id=?", (mid,)).fetchone()
         if batch is None or batch["state"] != "abandoned":
