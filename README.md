@@ -624,6 +624,47 @@ persona 在记忆整理后调用既有到期判断：自上一版至少五条自
 
 数据库启动时拒绝比当前代码更新或不兼容的迁移历史，须升级代码或恢复迁移前 `.bak`。写连接启用检查点刷盘 `checkpoint_fullfsync`，日志尺寸目标为 64 MiB；不启用每次提交的 `fullfsync`。
 
+## 入口画像（后端第一阶段）
+
+入口画像是 group／live 单个入口的 150—500 字中文摘要，可包含话题、氛围与说话方式、群内说法的含义、明确说过的群规。private 不生成。每个模型句都有自己的消息／记忆依据；禁止成员个人信息与隐私、个人评价、性别推断、其他入口内容及给模型或宿主的指令。只出现一次的现象须限定具体场景。上一版只帮助保持措辞和比较变化，不能作为事实依据。提示词为 `entry_profile_generate_v1`、`entry_profile_check_v1`；公开 dev 使用单独冻结的 `entry_profile_v1`，外部判分与机制测试分开报告。
+
+`entry_profile.py` 确定性选择本入口最近 14 天的实际发言（message／self_output，不含行动结果、事件、未来消息），按角色时区分天，各天平分 6000 token 预算；每一天依次取最早、最晚和区间中点，摘录最多约 300 token，连同元数据计入预算。有效、在本入口可见且有本入口直接来源的记忆按重要度降序、ID 升序选取，合计 2000 token；每条最多附最早一条及最近三条本入口原话。材料使用 S／M 编号，入库换为消息 ID 与指纹，或记忆 ID、修订号、来源指纹。
+
+梦境整理的记忆模型阶段增加入口画像步骤，与其他整理共用 `max_calls`（默认 50，含 HTTP 重试）及每日 token 限额。首版要求窗口内至少 50 条消息；更新要求自上一版以来至少 50 条新消息，或自生成时间经过至少 168 小时且有新消息。依据被清理、修改、删除、遗忘或可见范围变化时只读计算 `possibly_stale` 和 `stale_basis`，下一次整理重新生成；全部生成路径每入口每个角色本地日期最多一次。手动重新生成可跳过更新数量／七天条件，首版门槛、每日上限、开关和用途暂停仍有效。停用不删除历史。
+
+生成和逐句检查各共享 120 秒总预算（含该调用内重试），在数据库事务外执行；开始前为检查预留一次调用。代码先核对引用，模型再检查每句的支持、场景限定及禁止内容。检查输入按句附上该句绑定的依据，不附未引用消息或用于并发校验的散列元数据；每句的事实支持、场景限定与禁止内容分别判断。场景限定不合格不会因引用条数多而放行。不合格的模型句删去并保存原句、依据、原因；累计删去超过原候选句数的 30% 时整版拒绝，恰好 30% 可以通过。删句后重查 150—500 字，不补写、不再次模型检查。管理员手写句由代码原样保留；检查指出手写句有禁止内容时保留原文但待管理员确认。手写句删改的确定性判断覆盖模型变化判断，视为大变化并待确认。
+
+默认 `check_auto`：检查通过即发布，包括大变化；可按入口改为 `all_manual`。检查失败保留当前已发布版。新的候选或管理员编辑使旧候选成为 rejected，检查结果记 `superseded`。生成写回的短事务复核当前版本、设置修订、消息指纹、记忆修订和可见性；冲突不覆盖。失败和中断保存尝试记录；恢复不会重跑已完成或中断的模型调用，缺失的整理报告项可从记录补回。
+
+三张表分别保存 `entry_profile_settings`（入口开关、发布方式、设置修订及当前版本指针）、`entry_profile_versions`（入口内递增版本、父版本、正文、逐句依据、完整检查、变化程度、生成／发布时间、作者、来源和材料快照）、`entry_profile_attempts`（整理运行、日期、状态、原始输出和调用记录）。版本状态只有 `candidate / published / rejected`，作者为 `model / admin`；旧的已发布版仍是 published，`is_current` 区分当前版。回滚只针对曾经发布的版本，复制为新的版本，不改写历史；过时依据仍会标出。依据 ID 不用外键保留原始消息，清理不会被画像阻塞。
+
+第二阶段可直接使用以下数据层函数；本阶段尚未接管理路由、页面或 prepare：
+
+| 函数 | 行为 |
+| --- | --- |
+| `current_profile(store, entry_id)` | 当前已发布版、`possibly_stale`、`stale_basis`；没有时为 null |
+| `list_versions(store, entry_id, limit=50, offset=0)` / `get_version(store, entry_id, version)` | 分页版本列表／完整详情（含逐句 basis、author、checks） |
+| `version_diff(store, entry_id, before, after)` | 按句比较 insert／delete／replace／equal，附前后句及依据 |
+| `profile_settings` / `set_settings(..., expected_version, enabled, publish_mode)` | 读／写单入口设置；未给出的字段保持原值 |
+| `admin_edit(..., content, expected_version)` | 长度检查后直接发布；未变句保留依据，新增／改写句标 admin |
+| `rollback(..., version, expected_version)` | 复制已发布版并发布新版本 |
+| `confirm_candidate` / `reject_candidate` | 接收候选 version 和 expected_version；确认前复核依据 |
+| `EntryProfileEngine.update` / `.regenerate` | 参数 entry_id、expected_version；返回 status、reason、version、attempt_id、due |
+| `profile_due` / `select_material` | 可注入 clock 的到期判断／材料快照 |
+| `profile_context(conn, entry_id)` | 为第二阶段预留的只读 `{text, version, generated_at, possibly_stale}`；关闭或无画像时 null |
+
+所有写函数要求 `expected_version` 为当前已发布版本号，无版本为 0；冲突抛 `EntryProfileConflict`，在途竞争可抛 `EntryProfileBusy`。所有操作写 `admin_operations`，不在操作记录里重复存正文。每个模型检查结果的 index 对应 `checks.checked_sentences`，被删句见 `checks.deleted_sentences`，实际模型检查输入见 `checks.model_input`。运行设置 `runtime_settings.entry_profile` 存默认值；整理快照开关为 `consolidation.entry_profile_enabled`，设置路由待第二阶段接入。
+
+评测运行器只读显式 `--corpus`，每案例用隔离数据库和 `as_of` 时钟，直接载入消息与记忆，不经过学习。输入 JSON 为 `format_version: 1` 和 `cases` 数组；每案例含 `id`、`entry: {id, kind, name?}`、带时区的 `as_of`、`messages: [{id, at, text, sender?, kind?, entry_id?}]`，可选 `timezone`、`other_entries`、`memories: [{content, sources: [消息id], importance?, stance?, lifecycle?}]`、`initial_profile`（管理员手写）、`must_cover`、`forbidden`。也直接支持已冻结的 `groups` 格式（`entry_kind`、`now`、`quote`）：每个目标入口的独立数据库都先装入所有入口，消息 ID 加入口前缀、引用保留原作者，共享账号不合并入口；只取目标入口材料。标注不进入生成或检查请求。运行器不搜索语料、不复用其他运行，全部材料放仓库外：
+
+```bash
+uv run python -m evals.entry_profile_eval run --corpus <已冻结的显式文件> --out <外部运行目录>
+# 机制试跑可加 --fake-responses <JSON响应数组>，不读取模型配置、不访问模型
+uv run python -m evals.entry_profile_eval score --materials <材料目录> --judgments <第一轮> --judgments <第二轮> --judge-model <执行者模型名> --out <外部报告目录>
+```
+
+导出 PR #7 约定的 `format_version`、`manifest.json`、`round-template.json`、`scoring.md`、`cases/*.json`、`run.json`，指纹绑定源码、提示词、全部输入、模型非敏感配置和输出。判分轮把 round-template 复制为 manifest，按清单文件名保存逐句结果；严格核对数组长度、索引、布尔值及指纹。双判支持取 AND，违规取并集，必须要点取 AND，禁止项取 OR，列全部分歧。已发布／待确认版本计算有依据比例、禁止内容、要点覆盖率；被拒绝版本单列，另报拒绝比例、删句比例、超时、调用量、P50／P95 和 token 用量。门槛是模型句有依据 ≥90%、禁止内容 0，要点覆盖率仅诊断；手写句不占模型依据比例，但仍检查禁止内容。假模型结果只验证流程，不代表质量达标。调用记录出现超时即视为运行不完整，即使上层原因只写作 `retryable`；不把这类结果当作正常拒绝来计算有效成绩。三轮公开 dev 双判尚未达到上述目标；逐轮结果、遗留问题及作废重跑记录见 [评测汇总](evals/reports/entry-profile-dev-20261011.md)。
+
 ## 模型故障与状态
 
 学习首次请求、调用内重试和 JSON 修正共享 180 秒总预算；其他生成请求为 120 秒，embedding 为 30 秒，召回查询 embedding 仍限 2 秒且不重试，评测判分为 240 秒。召回判断另有包含排队的 10 秒总预算、仅一次尝试。其他调用内最多再试两次；有有效 `Retry-After` 时按秒数或 HTTP 日期等待，否则分别以 2、4 秒为基数，加上 0 到基数之间的均匀随机抖动。等待和后续请求不得超过同一个总预算。批次重试间隔为 1／5／15 分钟，共四次尝试。
