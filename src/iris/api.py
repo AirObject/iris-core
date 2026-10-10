@@ -28,6 +28,7 @@ from .queue import add_message, other_entry_pending
 from .media import DEFAULT_MAX_BYTES, MediaError, save_host_media, require_host_media
 from .retrieval import Retrieval
 from .scheduler import Scheduler
+from .runtime_journal import Journal, PrepareJournalMiddleware, prepare_result
 from .service_status import service_status, add_health_hints
 from .process_lock import StoreLease
 from .admin import install_admin, NewGoal, GoalPatch, GoalQuery, GoalId
@@ -215,18 +216,24 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     @asynccontextmanager
     async def lifespan(app):
         resources = ExitStack()
+        normal_exit = False
         try:
             if store is None:
                 resources.enter_context(StoreLease(db_path))
             active_store = store or Store(db_path)
             if store is None:
                 resources.callback(active_store.close)
+            journal = Journal(active_store)
+            resources.push(lambda exc_type, exc, tb: journal.stop(normal=normal_exit and exc_type is None))
+            journal.start()
             external_loader = config_loader
             if external_loader is None and (configs is not None or gateway is not None):
                 external_loader = lambda: configs if configs is not None else gateway.configs
             runtime = RuntimeConfig(active_store, external_loader=external_loader)
             loaded = runtime.load()
             health = getattr(gateway, "health", None) or ModelHealth(active_store, loaded)
+            if getattr(gateway, 'health', None) is health:
+                health._journal_sync('startup', force=True)
             active_gateway = gateway or Gateway(loaded, active_store, health=health)
             if gateway is None:
                 resources.callback(active_gateway.close)
@@ -254,6 +261,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
                 opener.start()
                 resources.callback(opener.cancel)
             yield
+            normal_exit = True
         finally:
             app.state.ready = False
             await asyncio.to_thread(resources.close)
@@ -340,6 +348,8 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             headers["retry-after"] = str(seconds)
         headers["cache-control"] = "no-store"
         return JSONResponse({"error": error}, status_code=status, headers=headers, background=response.background)
+
+    app.add_middleware(PrepareJournalMiddleware, state=app.state)
 
     @app.exception_handler(HostRequestError)
     async def host_request_error(request, error):
@@ -463,6 +473,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             result["hints"].append({"code": "other_entries_pending", **pending, "time_basis": "received_at",
                 "message": f"另有 {pending['entry_count']} 个入口有尚未学习的新消息（{pending['time_from']}—{pending['time_to']}）"})
         app.state.tokens.bind_recall(result["recall_id"], request.state.principal)
+        request.state.prepare_result = prepare_result(result)
         return result
 
     @host_router.post("/api/v1/memories/search", summary="筛选并查询记忆；深度读取不恢复遗忘记忆",

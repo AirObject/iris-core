@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -11,6 +12,7 @@ from .memory_ops import adjust_retention, delete_memory, lifecycle_settings, mes
 from .model_health import utc_now
 from .media import GRACE_PERIOD, cleanup_upload_orphans, delete_unreferenced_file, files_for_message, mark_unreferenced
 from .queue import reset_batch
+from .runtime_journal import cleanup, maintenance_span, record
 
 PHASES = ("decay", "expiry", "dependency", "messages", "retry", "consolidation", "persona", "goals", "media")
 
@@ -24,6 +26,28 @@ class Maintenance:
                 ORDER BY julianday(finished_at) DESC LIMIT 1""").fetchone()
         self._startup_catchup_done = bool(completed and self.started_at-datetime.fromisoformat(completed[0]) <= timedelta(hours=24))
         self._lock = threading.Lock()
+        self._journal_schedule = None
+
+    def observe_schedule(self):
+        """Record the next daily slot even while another maintenance is running."""
+        try:
+            current = self.clock()
+            with self.store.read() as conn:
+                config = lifecycle_settings(conn)
+                zone_row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='timezone'").fetchone()
+            zone = ZoneInfo(json.loads(zone_row[0]) if zone_row else 'Asia/Shanghai')
+            hour, minute = map(int, config['maintenance_time'].split(':'))
+            scheduled = current.astimezone(zone).replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if scheduled <= current:
+                scheduled += timedelta(days=1)
+            if scheduled != self._journal_schedule:
+                if self._journal_schedule and self._journal_schedule > current:
+                    record(self.store, 'maintenance_skipped', current=current, phase='maintenance',
+                           scheduled_at=self._journal_schedule, reason='schedule_changed')
+                record(self.store, 'maintenance_scheduled', current=current, phase='maintenance', scheduled_at=scheduled)
+                self._journal_schedule = scheduled
+        except Exception:
+            logging.getLogger('iris.runtime_journal').warning('runtime journal write failed')
 
     def due(self):
         """One most-recent crossed schedule slot, or the startup idle catchup."""
@@ -90,23 +114,40 @@ class Maintenance:
         return rid
 
     def run(self, run_id, *, stop=None):
+        with self._lock:
+            with self.store.read() as conn:
+                row = conn.execute('SELECT * FROM maintenance_runs WHERE id=?', (run_id,)).fetchone()
+            if row is None:
+                raise KeyError(run_id)
+            if row['state'] == 'completed':
+                return
+            scheduled = None
+            try:
+                if row['schedule_key']:
+                    scheduled = datetime.fromisoformat(row['schedule_key']+'T'+json.loads(row['settings_json'])['maintenance_time']).replace(tzinfo=ZoneInfo(row['timezone']))
+            except Exception:
+                logging.getLogger('iris.runtime_journal').warning('runtime journal write failed')
+            with maintenance_span(self.store, run_id, 'maintenance', clock=self.clock, stop=stop, scheduled_at=scheduled):
+                self._run(run_id, stop=stop)
+
+    def _run(self, run_id, *, stop=None):
         # Progress is committed with each item, even when it needs no audit row.
         # The persisted cursor also rejects duplicate/stale worker invocations.
-        with self._lock:
-            while not (stop and stop()):
-                with self.store.read() as conn:
-                    row = conn.execute("SELECT * FROM maintenance_runs WHERE id=?", (run_id,)).fetchone()
-                if row is None:
-                    raise KeyError(run_id)
-                run = dict(row)
-                if run["state"] == "completed":
-                    return
-                if run["phase"] == len(PHASES):
-                    self._finish(run_id)
-                    return
-                phase = PHASES[run["phase"]]
-                if phase in ("consolidation", "persona"):
-                    from .consolidation import Consolidation, update_persona_for_run
+        while not (stop and stop()):
+            with self.store.read() as conn:
+                row = conn.execute("SELECT * FROM maintenance_runs WHERE id=?", (run_id,)).fetchone()
+            if row is None:
+                raise KeyError(run_id)
+            run = dict(row)
+            if run["state"] == "completed":
+                return
+            if run["phase"] == len(PHASES):
+                self._finish(run_id)
+                return
+            phase = PHASES[run["phase"]]
+            if phase in ("consolidation", "persona"):
+                from .consolidation import Consolidation, update_persona_for_run
+                with maintenance_span(self.store, run_id, phase, clock=self.clock, stop=stop):
                     if phase == "consolidation":
                         if not Consolidation(self.store, self.gateway, clock=self.clock).run(run, stop=stop):
                             return
@@ -117,24 +158,24 @@ class Maintenance:
                             self._persona_failure(run, exc)
                         if stop and stop():
                             return
-                    with self.store.write() as conn:
-                        conn.execute("UPDATE maintenance_runs SET phase=phase+1,cursor_id=0 WHERE id=? AND phase=?", (run_id, run["phase"]))
-                    continue
-                candidates = self._candidates(run, phase)
-                if not candidates:
-                    if phase == "media":
-                        orphans = cleanup_upload_orphans(self.store, self.clock())
-                        if any(orphans.values()):
-                            with self.store.write() as conn:
-                                operation(conn, "media_upload_cleanup", "maintenance", run_id, orphans,
-                                          actor="system", stamp=self.clock().isoformat())
-                    with self.store.write() as conn:
-                        conn.execute("UPDATE maintenance_runs SET phase=phase+1,cursor_id=0 WHERE id=? AND phase=?", (run_id, run["phase"]))
-                    continue
-                for candidate in candidates:
-                    if stop and stop():
-                        return
-                    self._process_item(run, phase, candidate)
+                with self.store.write() as conn:
+                    conn.execute("UPDATE maintenance_runs SET phase=phase+1,cursor_id=0 WHERE id=? AND phase=?", (run_id, run["phase"]))
+                continue
+            candidates = self._candidates(run, phase)
+            if not candidates:
+                if phase == "media":
+                    orphans = cleanup_upload_orphans(self.store, self.clock())
+                    if any(orphans.values()):
+                        with self.store.write() as conn:
+                            operation(conn, "media_upload_cleanup", "maintenance", run_id, orphans,
+                                      actor="system", stamp=self.clock().isoformat())
+                with self.store.write() as conn:
+                    conn.execute("UPDATE maintenance_runs SET phase=phase+1,cursor_id=0 WHERE id=? AND phase=?", (run_id, run["phase"]))
+                continue
+            for candidate in candidates:
+                if stop and stop():
+                    return
+                self._process_item(run, phase, candidate)
 
     def _persona_failure(self, run, error):
         # Persona is one atomic generation/check item. Even failure during due
@@ -442,3 +483,4 @@ class Maintenance:
                 operation(conn, "maintenance_completed", "maintenance", run_id,
                           {name: value["count"] for name, value in report["summary"].items()},
                           actor="system", stamp=self.clock().isoformat())
+        cleanup(self.store, current=self.clock())
