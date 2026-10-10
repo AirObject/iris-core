@@ -1,3 +1,4 @@
+from conftest import authorize_host
 import json
 
 import pytest
@@ -12,6 +13,7 @@ from test_retrieval import put
 @pytest.fixture
 def client(store):
     with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as c:
+        authorize_host(c)
         login_admin(c)
         yield c
 

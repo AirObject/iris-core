@@ -1,4 +1,5 @@
 """Setup, sessions and hot configuration use only local fake model servers."""
+from conftest import authorize_host
 import json
 import stat
 
@@ -36,6 +37,7 @@ def finish_setup(client):
 @pytest.fixture
 def client(store):
     with TestClient(create_app(store=store), base_url='http://127.0.0.1', client=('127.0.0.1', 12345)) as c:
+        authorize_host(c)
         yield c
 
 
@@ -88,6 +90,7 @@ def test_csrf_protects_setup_login_and_mutations(client, headers):
 
 def test_remote_initial_setup_is_denied_even_with_loopback_host(store):
     with TestClient(create_app(store=store), base_url='http://localhost', client=('192.0.2.10', 1000)) as c:
+        authorize_host(c)
         assert c.get('/setup').status_code == 403
         assert c.get('/admin/api/session').status_code == 403
         assert c.post('/admin/api/setup/password', json={'password': PASSWORD}).status_code == 403
@@ -187,6 +190,7 @@ def test_connection_check_timeout_is_bounded_and_has_no_raw_response(client, mon
 def test_external_config_is_read_only_but_still_needs_admin(store):
     config = ModelConfig('http://127.0.0.1:9999/v1', 'fake-external', 'external-chat')
     with TestClient(create_app(store=store, configs={'chat': config}), base_url='http://127.0.0.1', client=('127.0.0.1', 1)) as c:
+        authorize_host(c)
         assert c.get('/admin/api/settings').status_code == 409
         start_setup(c)
         settings = c.get('/admin/api/settings').json()
@@ -221,10 +225,12 @@ def test_import_updates_db_and_secret_without_printing_and_reloads(client, store
 def test_session_survives_restart_but_logout_revokes_copied_cookie(store):
     kwargs = {'base_url': 'http://127.0.0.1', 'client': ('127.0.0.1', 1)}
     with TestClient(create_app(store=store), **kwargs) as first:
+        authorize_host(first)
         start_setup(first)
         finish_setup(first)
         saved = dict(first.cookies)
     with TestClient(create_app(store=store), **kwargs) as second:
+        authorize_host(second)
         second.cookies.update(saved)
         assert csrf(second)['authenticated']
         assert second.get('/admin/api/settings').status_code == 200
@@ -332,6 +338,7 @@ def test_browser_opens_setup_once_and_never_after_completed(store, monkeypatch):
     monkeypatch.setattr(threading, 'Timer', ImmediateTimer)
     with TestClient(create_app(store=store, open_browser_url='http://127.0.0.1:9999'),
                     base_url='http://127.0.0.1', client=('127.0.0.1', 1)) as c:
+        authorize_host(c)
         assert opened == ['http://127.0.0.1:9999/setup']
         start_setup(c)
         finish_setup(c)

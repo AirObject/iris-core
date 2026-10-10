@@ -1,4 +1,5 @@
 """The local HTTP boundary must reject DNS rebinding before any route runs."""
+from conftest import authorize_host
 import asyncio
 from importlib.resources import files
 
@@ -27,6 +28,7 @@ READ_ROUTES = [
 @pytest.fixture
 def client(store):
     with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as client:
+        authorize_host(client)
         login_admin(client)
         client.app.state.scheduler.stop()
         yield client

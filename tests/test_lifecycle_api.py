@@ -1,3 +1,4 @@
+from conftest import authorize_host
 import json
 from datetime import timedelta
 
@@ -15,6 +16,7 @@ from test_scheduler import wait_for
 @pytest.fixture
 def client(store):
     with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1",1000)) as client:
+        authorize_host(client)
         login_admin(client)
         yield client
 
@@ -97,7 +99,7 @@ def test_operations_type_object_time_pagination_and_safe_payloads(client, store)
     result = client.get("/admin/api/operations",params={"object_type":"memory","object_id":str(mid),"limit":1}).json()
     assert result["total"] >= 1 and len(result["items"]) == 1
     result = client.get("/admin/api/operations",params={"action":"learn_requested"}).json()
-    assert result["total"] == 2 and all(i["actor"] == "host" for i in result["items"])
+    assert result["total"] == 2 and all(i["actor"] == "test-host" for i in result["items"])
     assert client.get("/admin/api/operations?time_from=2100-01-01").json()["total"] == 0
     assert client.get("/admin/api/operations?time_from=2026-10-08&time_to=2026-10-07").status_code == 400
     assert client.get("/admin/api/operations?limit=0").status_code == 400

@@ -1,4 +1,5 @@
 """Recall judgment uses fake transport; no real model or corpus labels."""
+from conftest import authorize_host
 import json
 import threading
 import time
@@ -233,6 +234,7 @@ def test_host_api_and_management_settings(store):
     entry(store)
     mid = put(store, '我喜欢天文摄影')
     with TestClient(create_app(store=store), base_url='http://127.0.0.1', client=('127.0.0.1', 12345)) as client:
+        authorize_host(client)
         login_admin(client)
         response = client.post('/api/v1/entries/A/prepare', json={'text': '天文摄影', 'judge': False})
         assert response.status_code == 200
@@ -364,6 +366,7 @@ def test_api_reports_recall_pause_and_per_request_degradation(store, failure):
         return httpx.Response(200, json=response('{}'))
     with gateway(store, handler, health=health) as g:
         with TestClient(create_app(store=store, gateway=g), base_url='http://127.0.0.1') as client:
+            authorize_host(client)
             reply = client.post('/api/v1/entries/A/prepare', json={'text': '摄影器材', 'participants': []})
             assert reply.status_code == 200
             result = reply.json()

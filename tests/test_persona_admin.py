@@ -1,4 +1,5 @@
 """Persona HTTP publication, background execution and read-only projections."""
+from conftest import authorize_host
 import json
 import threading
 import time
@@ -23,6 +24,7 @@ def client(store):
     store.set_setting('persona_publish_mode', 'small_medium_auto')
     with TestClient(create_app(store=store, configs={}), base_url='http://127.0.0.1',
                     client=('127.0.0.1', 1234)) as value:
+        authorize_host(value)
         value.app.state.scheduler.stop()
         login_admin(value)
         value.app.state.persona_jobs.engine.gateway = FakeGateway(store, {
@@ -274,6 +276,7 @@ def test_startup_marks_interrupted_attempt_failed_and_keeps_old_version(store):
         conn.execute("""INSERT INTO persona_attempts(source,base_version_id,state,material_json,created_at)
             VALUES('regenerate',1,'running','{}','2026-10-01T00:00:00Z')""")
     with TestClient(create_app(store=store, configs={}), base_url='http://127.0.0.1', client=('127.0.0.1', 1234)) as client:
+        authorize_host(client)
         client.app.state.scheduler.stop()
         login_admin(client)
         result = client.get('/admin/api/persona/attempts/1').json()

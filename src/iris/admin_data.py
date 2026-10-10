@@ -556,3 +556,11 @@ def persona_self_memories(store, *, limit=30, offset=0):
         items = memory_rows(conn, f'''SELECT {MEMORY_COLUMNS} FROM memories m WHERE {where}
             ORDER BY m.pinned DESC,m.importance DESC,m.retention DESC,m.id LIMIT ? OFFSET ?''', (limit, offset))
     return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
+
+
+def host_tokens(store):
+    """Never project credential hashes or salts into management responses."""
+    from .tokens import list_tokens, DEFAULT_LIMITS
+    with store.read() as conn:
+        items = list_tokens(conn)
+    return {'items': items, 'rate_limits': store.setting('host_tokens', DEFAULT_LIMITS)}

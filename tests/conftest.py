@@ -79,3 +79,10 @@ def login_admin(client):
         role['timezone'] = role['timezone'] or 'Asia/Shanghai'
         response = client.post('/admin/api/setup/complete', json=role)
         assert response.status_code == 200, response.text
+
+
+def authorize_host(client, host='test-host'):
+    """Issue a normal credential using the same core as offline provisioning."""
+    value = client.app.state.tokens.create(host=host, scope={'kind': 'all'}, actor='local_cli')
+    client.headers['Authorization'] = 'Bearer ' + value['token']
+    return value

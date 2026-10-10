@@ -1,4 +1,5 @@
 """Entry/batch browsing and design 7.6/17.7 relearning; no real models."""
+from conftest import authorize_host
 import json
 from concurrent.futures import ThreadPoolExecutor
 
@@ -79,6 +80,7 @@ def test_relearning_keeps_gap_and_hints_until_success(store, state):
 @pytest.fixture
 def client(store):
     with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1", 1234)) as value:
+        authorize_host(value)
         login_admin(value)
         value.app.state.scheduler.stop()
         yield value

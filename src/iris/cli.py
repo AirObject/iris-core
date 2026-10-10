@@ -39,6 +39,17 @@ def main(argv: list[str] | None = None) -> int:
     models = commands.add_parser("models", help="Model connection commands")
     models.add_argument("action", choices=["check", "import"])
     models.add_argument("--from", dest="import_path", type=Path, help="Import model TOML; defaults to IRIS_TEST_MODELS")
+    tokens = commands.add_parser("tokens", help="Manage host credentials while the service is stopped")
+    token_commands = tokens.add_subparsers(dest="token_action", required=True)
+    token_create = token_commands.add_parser("create", help="Print a new credential once as JSON")
+    token_create.add_argument("--host", dest="token_host", required=True)
+    scope = token_create.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--all", dest="all_entries", action="store_true")
+    scope.add_argument("--entry", dest="token_entries", action="append")
+    scope.add_argument("--prefix", dest="token_prefix")
+    token_commands.add_parser("list", help="List metadata without credentials")
+    token_revoke = token_commands.add_parser("revoke")
+    token_revoke.add_argument("token_id")
     ingest = commands.add_parser("ingest", help="Add UTF-8 JSONL messages")
     ingest.add_argument("file", type=Path)
     learn = commands.add_parser("learn", help="Process an entry's pending messages")
@@ -219,6 +230,25 @@ def main(argv: list[str] | None = None) -> int:
         print(str(error), file=sys.stderr)
         return 1
     try:
+        if args.command == "tokens":
+            from .tokens import Tokens, list_tokens
+            manager = Tokens(store)
+            try:
+                if args.token_action == "create":
+                    scope = ({"kind": "all"} if args.all_entries else
+                             {"kind": "entries", "entries": args.token_entries} if args.token_entries else
+                             {"kind": "prefix", "prefix": args.token_prefix})
+                    result = manager.create(host=args.token_host, scope=scope, actor="local_cli")
+                elif args.token_action == "revoke":
+                    result = manager.revoke(args.token_id, actor="local_cli")
+                else:
+                    with store.read() as conn:
+                        result = {"items": list_tokens(conn)}
+                print(json.dumps(result, ensure_ascii=False))
+                return 0
+            except (ValueError, KeyError):
+                print("令牌操作失败：请检查宿主名称、入口范围和令牌 ID。", file=sys.stderr)
+                return 1
         if args.command == "setup":
             print(setup_role(store, args.name, args.background, args.timezone))
             return 0

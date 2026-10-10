@@ -134,12 +134,49 @@ uv build
 
 ## 宿主接入
 
+宿主与 Iris 在同一台电脑运行，Iris 继续只监听回环地址并校验 Host。所有 `/api/v1` 请求都需要 `Authorization: Bearer <令牌>`；管理员 Cookie 不能代替宿主令牌，宿主令牌也不能登录管理界面。连接器经独立的 AstrBot 插件接入，平台不需要直接连接 Iris。下文及其他小节的宿主请求示例均须携带这个请求头。
+
+停服后可用离线命令创建、列出或撤销令牌（沿用服务的数据库互斥锁，服务运行时命令失败）：
+
+```bash
+uv run iris tokens create --host astrbot --prefix 'astrbot:'
+uv run iris tokens create --host local-tool --entry group-a --entry private-a
+uv run iris tokens create --host trusted-host --all
+uv run iris tokens list
+uv run iris tokens revoke <令牌ID>
+```
+
+`--data-dir`／`--db` 等全局参数放在 `tokens` 前。创建输出一份 JSON，含 `id`、`host`、`scope` 和仅此一次返回的 `token`；妥善交给宿主保存，不把终端输出重定向到日志。后续列表只显示 ID、宿主名称、范围、创建／最近使用／撤销时间。凭据由随机 256 位秘密值构成；数据库只保存独立随机盐和 SHA-256 摘要。它不是用户口令，不需要使用耗时的口令派生算法。撤销提交后，后续请求立即失效。
+
+在线管理接口使用现有管理员会话；写入还须 JSON Content-Type 和 `X-Iris-CSRF`：
+
+| 接口 | 请求或返回 |
+| --- | --- |
+| `POST /admin/api/tokens` | `{"host":"astrbot","scope":{"kind":"prefix","prefix":"astrbot:"}}`；201，一次性返回令牌 |
+| `GET /admin/api/tokens` | `items` 为元数据列表，另附 `rate_limits`；不返回盐、摘要或凭据 |
+| `POST /admin/api/tokens/{id}/revoke` | 正文 `{}`；重复撤销仍成功，仅首次写撤销记录 |
+| `PATCH /admin/api/settings/host-tokens` | `{"rate_per_second":20,"burst":60}`；保存限流设置并记录操作 |
+
+范围为 `{"kind":"all"}`、`{"kind":"entries","entries":["group-a","private-a"]}` 或 `{"kind":"prefix","prefix":"astrbot:"}`。列表与前缀均按入口 ID 原字符、区分大小写匹配；`%`、`_` 不解释为通配符，可以授权尚未创建的入口。接收消息、回复准备（含近期消息）和立即学习在正文解析及业务执行前检查入口权限；服务状态中的入口、批次和关联学习调用按范围筛选。无效／缺失令牌返回 401 和 `WWW-Authenticate: Bearer`，越界入口返回 403。
+
+目标以自己的 `entry_id` 判定归属；没有 `entry_id` 的全局目标对所有令牌可见。列表计数、分页以及 prepare/search 的目标分区都先按范围过滤；去重候选与可能重复 ID 同样过滤，后台复核持久保存注入时的范围，重启后继续遵守，写回前复核修订号和范围。范围外的目标不能被宿主修改或合并，提醒在分页和标记“已取走”之前按所属目标过滤。同名宿主换用更窄范围的令牌，也不能通过旧 `host_key` 回执或合并跳转取得范围外目标。
+
+按设计 11.4，已形成的记忆仍是跨入口共享的角色知识，prepare/search 的记忆项、排序和出处不因令牌范围而改写；当前状态与 persona 也是角色全局信息。令牌范围保护入口原始消息和目标，不代替后续可见范围工作线的记忆隐私规则。状态中的入口明细按范围筛选，模型健康、用量等全局统计保留。
+
+每令牌默认持续 **20 次/秒、突发 60 次**，所有宿主路由共用该令牌的桶，不影响其他令牌或管理员会话。超过返回 429 和整数秒 `Retry-After`。配置保存在 `runtime_settings.host_tokens`，运行中立即读取；桶在单进程内维护，重启后补满。最近使用时间记录通过认证及限流的请求，包括随后被入口权限拒绝的请求。创建、撤销和修改限流均写入操作记录。
+
+当前状态报告和宿主目标注入的 `host` 兼容字段仍接受校验，但来源一律取令牌绑定名称；冲突时忽略请求自报名称。目标的可选 `host_key` 按绑定宿主名称隔离；同名宿主的不同令牌共用这个命名空间。使用反馈只接受本令牌发起的召回；换令牌后需重新准备／查询。状态报告历史、目标来源及宿主操作记录保留绑定名称。
+
+端到端评测在首次启动服务前调用同一个离线创建命令，仅在内存捕获一次性标准输出；所有 HTTP 请求携带该令牌，强制重启继续使用它。令牌不进入临时模型配置、服务日志或评测报告。本接入节覆盖前面历史实现说明中“宿主令牌仍在 M4”的旧状态；下文状态报告中的宿主名称也以令牌为准。
+
 下面的 Python 示例依次调用接收消息、回复准备和使用反馈；请求与响应均使用 UTF-8 JSON：
 
 ```python
+import os
 import httpx
 
-with httpx.Client(base_url="http://127.0.0.1:8080", timeout=10) as client:
+with httpx.Client(base_url="http://127.0.0.1:8080", timeout=10,
+                  headers={"Authorization": "Bearer " + os.environ["IRIS_HOST_TOKEN"]}) as client:
     received = client.post("/api/v1/entries/group-a/messages", json={
         "platform": "chat", "sender": "小林", "account_id": "lin-001",
         "content": "我喜欢桂花乌龙茶", "occurred_at": "2026-09-29T20:00:00+08:00",
