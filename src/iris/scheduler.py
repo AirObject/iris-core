@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
@@ -250,25 +250,48 @@ class Scheduler:
         if dimensions is None and settings.get("embedding_model") == config.model:
             dimensions = settings.get("embedding_dimensions", 2048)
         vector_bytes = dimensions * 4 if dimensions is not None else None
-        needs_vector = """(embedding IS NULL OR embedding_model IS NULL OR embedding_model!=?
+        needs_vector = """(length(embedding) IS NULL OR embedding_model IS NULL OR embedding_model!=?
                            OR (? IS NOT NULL AND length(embedding)!=?))"""
+        eligible = """lifecycle!='deleted'
+            AND (embedding_blocked_revision IS NULL OR embedding_blocked_revision!=revision)"""
         with self.store.read() as conn:
-            rows = conn.execute(f"""SELECT id,content,revision FROM memories WHERE lifecycle!='deleted'
-                AND {needs_vector} ORDER BY id LIMIT ?""",
-                (config.model, vector_bytes, vector_bytes, limit)).fetchall()
+            rows = conn.execute(f"""SELECT id,content,revision,embedding_failures,embedding_retry_revision
+                FROM memories INDEXED BY memories_vector_candidates WHERE {eligible}
+                AND {needs_vector} AND (embedding_retry_revision IS NULL OR embedding_retry_revision!=revision
+                    OR embedding_retry_at IS NULL OR embedding_retry_at<=?) ORDER BY id LIMIT ?""",
+                (config.model, vector_bytes, vector_bytes, self.clock().astimezone(timezone.utc).isoformat(), limit)).fetchall()
         count = 0
         for row in rows:
             if self._stop.is_set():
                 break
             try:
                 vector = np.asarray(self.gateway.embedding(row["content"], "memory_embedding"), dtype=np.float32)
-            except ModelError:
-                break
+            except ModelError as exc:
+                if self.gateway.configs.get("embedding") != config:
+                    break
+                if exc.category == 'paused':
+                    break
+                with self.store.write() as conn:
+                    if exc.category == 'content_rejection':
+                        conn.execute("""UPDATE memories SET embedding_blocked_revision=?
+                            WHERE id=? AND revision=? AND lifecycle!='deleted'""",
+                            (row['revision'], row['id'], row['revision']))
+                    else:
+                        failures = (row['embedding_failures'] if row['embedding_retry_revision'] == row['revision'] else 0) + 1
+                        delay = min(3600, 60 * 2 ** min(failures - 1, 6))
+                        conn.execute("""UPDATE memories SET embedding_retry_revision=?,embedding_retry_at=?,embedding_failures=?
+                            WHERE id=? AND revision=? AND lifecycle!='deleted'""",
+                            (row['revision'], (self.clock()+timedelta(seconds=delay)).astimezone(timezone.utc).isoformat(), failures,
+                             row['id'], row['revision']))
+                if exc.paused:
+                    break
+                continue
             if self.gateway.configs.get("embedding") != config:
                 break
             with self.store.write() as conn:
-                count += conn.execute(f"""UPDATE memories SET embedding=?,embedding_model=? WHERE id=? AND revision=?
-                    AND lifecycle!='deleted' AND {needs_vector}""",
+                count += conn.execute(f"""UPDATE memories SET embedding=?,embedding_model=?,
+                    embedding_blocked_revision=NULL,embedding_retry_revision=NULL,embedding_retry_at=NULL,embedding_failures=0
+                    WHERE id=? AND revision=? AND lifecycle!='deleted' AND {needs_vector}""",
                     (vector.tobytes(), config.model, row["id"], row["revision"], config.model,
                      vector_bytes, vector_bytes)).rowcount
         return count

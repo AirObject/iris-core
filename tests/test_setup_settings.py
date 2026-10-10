@@ -203,10 +203,15 @@ def test_external_config_is_read_only_but_still_needs_admin(store):
 def test_deployment_precedence_and_config_relative_data_dir(tmp_path, monkeypatch):
     config = tmp_path / 'iris.toml'
     config.write_text('data_dir="files"\nhost="localhost"\nport=8090\n')
+    assert deployment(config=config) == {
+        'data_dir': tmp_path / 'files', 'host': 'localhost', 'port': 8090}
+    monkeypatch.setenv('IRIS_DATA_DIR', str(tmp_path / 'environment'))
+    monkeypatch.setenv('IRIS_HOST', '127.0.0.1')
     monkeypatch.setenv('IRIS_PORT', '8091')
-    d = deployment(config=config, port=8092)
-    assert d['port'] == 8092 and d['host'] == 'localhost'
-    assert d['data_dir'] == tmp_path / 'files'
+    assert deployment(config=config) == {
+        'data_dir': tmp_path / 'environment', 'host': '127.0.0.1', 'port': 8091}
+    assert deployment(config=config, data_dir=tmp_path / 'command', host='::1', port=8092) == {
+        'data_dir': tmp_path / 'command', 'host': '::1', 'port': 8092}
 
 
 def test_import_updates_db_and_secret_without_printing_and_reloads(client, store, monkeypatch, capsys, tmp_path):
@@ -302,7 +307,9 @@ def test_secret_errors_logs_and_responses_never_echo_credentials(client, store, 
         assert response.status_code == 400 and key not in response.text
     (store.path.parent / 'secrets.json').write_text('{"key":"fake-opaque-credential", invalid')
     response = client.get('/admin/api/settings')
-    assert response.status_code == 400 and 'fake-opaque-credential' not in response.text
+    assert response.status_code == 200 and 'fake-opaque-credential' not in response.text
+    assert response.json()['health']['chat']['state'] == 'configuration_error'
+    assert response.json()['models']['chat']['key_missing']
 
 
 def test_embedding_connection_uses_fixed_input_and_dimension(client):

@@ -23,7 +23,8 @@ from test_retrieval import entry, put
 
 def gateway(store, handler, *, health=None):
     config = {'chat': ModelConfig('https://example.invalid/v1', '', 'stub', reasoning_effort='low')}
-    return closing(Gateway(config, store, health=health, client=httpx.Client(transport=httpx.MockTransport(handler))))
+    return closing(Gateway(config, store, health=health, clock=health.clock if health else None,
+                           client=httpx.Client(transport=httpx.MockTransport(handler))))
 
 
 def scores(ids, values=None):
@@ -194,8 +195,9 @@ def test_queue_bound_budget_and_account_code_precedence(store):
 
 
 def test_daily_limit_and_chat_pause_are_independent(store):
+    from fake_openai import Clock
     configs = {'chat': ModelConfig('https://example.invalid/v1', '', 'stub', reasoning_effort='low')}
-    health = ModelHealth(store, configs)
+    health = ModelHealth(store, configs, clock=Clock())
     token = health.check('chat', 'learning')
     health.observe('chat', token, 'account', 'HTTP 429')
     with gateway(store, lambda request: httpx.Response(200, json=response(scores([1]), usage={'prompt_tokens': 5, 'completion_tokens': 1})), health=health) as g:
@@ -304,8 +306,9 @@ def test_actual_limit_can_be_two_without_affecting_chat_pool(store):
 
 
 def test_network_error_pause_and_daily_limit_skip_probe(store):
-    stamp = [utc_now()]
-    health = ModelHealth(store, {'chat': ModelConfig('https://example.invalid/v1', '', 'stub')}, clock=lambda: stamp[0])
+    from fake_openai import Clock
+    clock = Clock()
+    health = ModelHealth(store, {'chat': ModelConfig('https://example.invalid/v1', '', 'stub')}, clock=clock)
     def handler(request):
         raise httpx.ConnectError('network')
     with gateway(store, handler, health=health) as g:
@@ -314,7 +317,7 @@ def test_network_error_pause_and_daily_limit_skip_probe(store):
                 g.recall_judge([], ['1'])
         assert health.snapshot()['recall_judge']['state'] == 'temporarily_unavailable'
         assert health.learning_allowed()
-        stamp[0] += timedelta(seconds=61)
+        clock.advance(61)  # Cross role midnight before recording the usage.
         assert 'recall_judge' in health.due_probes()
         g._record('test', 'stub', 1, 'success', None, {'prompt_tokens': 5})
         health.set_daily_token_limit(1)

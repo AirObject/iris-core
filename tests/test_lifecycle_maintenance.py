@@ -29,7 +29,7 @@ def test_D04_catchup_waits_for_all_entries_quiet_after_start_and_only_once(store
     assert maintenance.due() is None
     clock.advance(minutes=8)
     due = maintenance.due()
-    assert due == ("catchup", None)
+    assert due == ("catchup", "2026-10-08")
     rid = maintenance.request(trigger=due[0])
     maintenance.run(rid)
     clock.advance(hours=25)

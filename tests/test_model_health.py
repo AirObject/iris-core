@@ -40,7 +40,7 @@ def test_three_transport_errors_pause_probe_backoff_restart_and_recover(store):
     clock = Clock()
     with FakeOpenAI().serve() as server:
         health = ModelHealth(store, server.configs, clock=clock)
-        gateway = Gateway(server.configs, store, health=health, sleeper=clock.advance)
+        gateway = Gateway(server.configs, store, health=health, clock=clock, sleeper=clock.advance)
         try:
             for status in (429, 503, 500):
                 server.enqueue(status, headers={"Retry-After": "3"})
@@ -208,7 +208,7 @@ def test_embedding_health_probe_keeps_requested_dimensions(store):
     with FakeOpenAI().serve() as server:
         configs = {**server.configs, "embedding": replace(server.configs["embedding"], dimensions=3)}
         health = ModelHealth(store, configs, clock=clock)
-        gateway = Gateway(configs, store, health=health)
+        gateway = Gateway(configs, store, health=health, clock=clock)
         try:
             token = health.check("embedding", "embedding")
             for _ in range(3):

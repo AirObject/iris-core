@@ -17,6 +17,7 @@ from .models import JUDGMENT_KINDS, MODEL_KINDS, Gateway, ModelConfig, ModelErro
 from .recall_judge import settings as judge_settings
 from .persona import DEFAULT_GOAL, DEFAULT_RULES, DEFAULT_PUBLISH_MODE, persona_settings
 from .state import state_settings
+from .service_status import model_health_snapshot
 from .consolidation import consolidation_settings
 from .goals import goal_settings
 from .goal_dedup_judge import DEFAULTS as GOAL_JUDGE_DEFAULTS, settings as goal_judge_settings
@@ -55,6 +56,16 @@ class Role(Input):
         return value
 
 
+class ModelKeyRequired(ValueError):
+    """A fixed, safe field error; never carries endpoint or credential text."""
+
+
+def endpoint_origin(url):
+    parsed = urlsplit(url)
+    return (parsed.scheme.lower(), (parsed.hostname or '').encode('idna').decode('ascii').lower(),
+            parsed.port if parsed.port is not None else (443 if parsed.scheme == 'https' else 80))
+
+
 class Model(Input):
     enabled: bool = True
     base_url: str = Field(default='', max_length=1000)
@@ -78,9 +89,13 @@ class Model(Input):
             raise ValueError('推理档位不能为空字符串')
         return self
 
-    def config(self, saved, kind):
+    def config(self, saved, kind, *, key_missing=False):
         if not self.enabled:
             return None
+        if key_missing and self.api_key is None:
+            raise ModelKeyRequired('已保存的模型密钥不可用，请重新输入 API key（无密钥服务须显式传空字符串）')
+        if saved and self.api_key is None and endpoint_origin(self.base_url) != endpoint_origin(saved.base_url):
+            raise ModelKeyRequired('模型接口 origin 已改变，请重新输入 API key（无密钥服务须显式传空字符串）')
         key = self.api_key.get_secret_value() if self.api_key is not None else (saved.api_key if saved else '')
         effort = self.reasoning_effort
         if kind in JUDGMENT_KINDS and effort is None:
@@ -162,6 +177,10 @@ class ConsolidationSettings(Input):
 def install_settings(app):
     router = APIRouter(prefix='/admin/api')
 
+    @app.exception_handler(ModelKeyRequired)
+    async def key_required(request, exc):
+        return error('invalid_request', str(exc), fields=[{'field': 'body.api_key', 'message': str(exc)}])
+
     def snapshot():
         store = app.state.store
         with store.read() as conn:
@@ -181,7 +200,7 @@ def install_settings(app):
                 'learning_concurrency': store.setting('learning_concurrency', 2),
                 'consolidation': consolidation, 'persona': persona, 'lifecycle': lifecycle, 'recall_judge': judge_settings(store), 'state': state, 'goals': goals,
                 'goal_dedup_judge': goal_judge_settings(store),
-                'health': app.state.health.snapshot(), 'presets': PRESETS, 'operations': operations}
+                'health': model_health_snapshot(app.state.health), 'presets': PRESETS, 'operations': operations}
 
     def sync_models():
         configs = app.state.runtime_config.load()
@@ -190,6 +209,8 @@ def install_settings(app):
 
     @router.get('/settings')
     def settings():
+        if not app.state.runtime_config.external_loader:
+            sync_models()
         return snapshot()
 
     @router.post('/setup/complete')
@@ -243,8 +264,9 @@ def install_settings(app):
         runtime = app.state.runtime_config
         if runtime.external_loader:
             return error('external_config', '模型配置来自外部文件，只读', 409)
-        config = payload.config(app.state.gateway.configs.get(kind), kind)
-        runtime.save({kind: config})
+        saved, key_missing = runtime.editable(kind)
+        config = payload.config(saved, kind, key_missing=key_missing)
+        runtime.save({kind: config}, repair_secrets=payload.api_key is not None)
         sync_models()
         return snapshot()
 
@@ -312,19 +334,22 @@ def install_settings(app):
     @router.post('/settings/models/{kind}/test')
     def connection(kind: Literal['chat', 'embedding', 'recall_judge', 'goal_dedup_judge', 'image_understanding'], payload: dict):
         runtime = app.state.runtime_config
-        current = app.state.gateway.configs.get(kind)
+        current, key_missing = runtime.editable(kind)
         if payload and runtime.external_loader:
             return error('external_config', '外部模型配置只能测试已保存的值', 409)
         if payload:
             # Preserve FastAPI's safe validation envelope (never serialize input).
             from pydantic import ValidationError
             try:
-                current = Model.model_validate(payload).config(current, kind)
+                current = Model.model_validate(payload).config(current, kind, key_missing=key_missing)
             except ValidationError:
                 return error('invalid_request', '模型配置无效，请检查输入')
         with app.state.store.write() as conn:
             operation(conn, 'model_test', 'model', kind)
-        if not current:
+        if not payload and key_missing:
+            sync_models()
+            return {'ok': False, 'message': '模型密钥不可用，请在设置页重新输入', 'category': 'configuration', 'duration_ms': 0}
+        if not current or not current.base_url or not current.model:
             return {'ok': False, 'message': '未配置模型', 'category': 'configuration', 'duration_ms': 0}
         active = app.state.gateway.configs.get(kind) == current
         gateway = app.state.gateway if active else Gateway({kind: current}, app.state.store)

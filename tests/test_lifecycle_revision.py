@@ -73,6 +73,8 @@ def test_automatic_retry_skips_batch_whose_targets_were_cleared(store):
     with store.write() as conn:
         conn.execute("UPDATE messages SET received_at=?", ((clock()-timedelta(days=31)).isoformat(),))
         conn.execute("UPDATE batches SET finished_at=?", ((clock()-timedelta(days=1)).isoformat(),))
+        # Already cleared before this run (e.g. while automatic retry was disabled).
+        conn.execute("DELETE FROM messages")
     report = run(store, clock)
     with store.read() as conn:
         assert conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()[0] == "abandoned"

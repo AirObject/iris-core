@@ -20,13 +20,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .tokens import Tokens, install_tokens
+from .tokens import Tokens, install_tokens, valid_entry_id
 from .db import Store
 from .models import Gateway
 from .model_health import ModelHealth
 from .queue import add_message, other_entry_pending
 from .media import DEFAULT_MAX_BYTES, MediaError, save_host_media, require_host_media
-from .retrieval import Retrieval
+from .retrieval import Retrieval, project_host_sources
 from .scheduler import Scheduler
 from .runtime_journal import Journal, PrepareJournalMiddleware, prepare_result
 from .service_status import service_status, add_health_hints
@@ -65,17 +65,17 @@ class CustomPace(Input):
 class Message(Input):
     sender: str = Field(min_length=1, max_length=200)
     content: str
-    occurred_at: str
+    occurred_at: str = Field(max_length=100)
     dedupe_key: str = Field(min_length=1, max_length=300)
     platform: str = Field(default="host", min_length=1, max_length=100)
-    entry_name: str | None = None
-    entry_kind: str = "group"
+    entry_name: str | None = Field(default=None, max_length=200)
+    entry_kind: str = Field(default="group", max_length=100)
     kind: Literal["message", "self_output", "action_result", "event"] = "message"
-    account_id: str | None = None
-    scene_identity: str | None = None
-    quote_author: str | None = None
-    quote_author_account_id: str | None = None
-    quote_content: str | None = None
+    account_id: str | None = Field(default=None, max_length=200)
+    scene_identity: str | None = Field(default=None, max_length=200)
+    quote_author: str | None = Field(default=None, max_length=200)
+    quote_author_account_id: str | None = Field(default=None, max_length=200)
+    quote_content: str | None = Field(default=None, max_length=32768)
     media_ids: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=100, description="上传接口返回的媒体对象 ID，按消息展示顺序排列")
 
     @field_validator("media_ids")
@@ -115,8 +115,8 @@ class Search(Input):
     @field_validator("entry_id")
     @classmethod
     def valid_entry(cls, value):
-        if value is not None and (not value.strip() or "\x00" in value):
-            raise ValueError("入口 ID 不能为空白或含 NUL")
+        if value is not None and not valid_entry_id(value):
+            raise ValueError("入口 ID 不能为空白或含 ?、#、控制字符")
         return value
 
     text: str = Field(default="", max_length=8000)
@@ -279,21 +279,24 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
 
     @app.middleware("http")
     async def structured_body_limit(request, call_next):
-        path = request.url.path
+        path = request.scope['path']
         host = path == "/api/v1" or path.startswith("/api/v1/")
         bounded = path == "/admin/api/settings/goals" or path == "/admin/api/goals" or path.startswith("/admin/api/goals/")
+        prelogin = path in ("/admin/api/login", "/admin/api/setup/password", "/admin/api/setup/complete")
         if host and not app.state.ready:
             return await call_next(request)
-        if (host or bounded) and request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            limit = MAX_REPORT_BYTES
+        if (host or bounded or prelogin) and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            limit = 16 * 1024 if prelogin else MAX_REPORT_BYTES
             if host and path not in ("/api/v1/state", "/api/v1/goals") and not path.startswith("/api/v1/goals/"):
                 limit = (14 * 1024 * 1024 if path == "/api/v1/media" else
                          64 * 1024 * 1024 if path.endswith("/messages") else 256 * 1024)
             def too_large():
-                return JSONResponse({"error": {"code": "payload_too_large" if host else "invalid_request", "fields": [
-                    {"field": "body", "message": (f"请求正文超过 {limit} 字节 UTF-8 上限" if host else "请求正文超过 32KB UTF-8 上限")}]}}, status_code=413 if host else 400)
+                message = f"请求正文超过 {limit} 字节 UTF-8 上限"
+                return JSONResponse({"error": {"code": "payload_too_large" if host or prelogin else "invalid_request",
+                    "message": message, "fields": [{"field": "body", "message": message}]}},
+                    status_code=413 if host or prelogin else 400)
             length = request.headers.get("content-length", "")
-            if host and length.isdecimal() and (len(length) > 20 or int(length) > limit):
+            if length.isdecimal() and (len(length) > 20 or int(length) > limit):
                 return too_large()
             body = bytearray()
             async for chunk in request.stream():
@@ -309,6 +312,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
 
     install_auth(app)
     install_settings(app)
+    app.add_middleware(PrepareJournalMiddleware, state=app.state)
     install_tokens(app)
 
     # Registered last so Host is checked before readiness and every API/static route.
@@ -319,7 +323,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     async def host_error_envelope(request, call_next):
         # Outer formatting only: Host still gates all readiness/auth/body work.
         response = await call_next(request)
-        if not (request.url.path == "/api/v1" or request.url.path.startswith("/api/v1/")) or response.status_code < 400:
+        if not (request.scope["path"] == "/api/v1" or request.scope["path"].startswith("/api/v1/")) or response.status_code < 400:
             return response
         body = b"".join([chunk async for chunk in response.body_iterator])
         try:
@@ -349,8 +353,6 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         headers["cache-control"] = "no-store"
         return JSONResponse({"error": error}, status_code=status, headers=headers, background=response.background)
 
-    app.add_middleware(PrepareJournalMiddleware, state=app.state)
-
     @app.exception_handler(HostRequestError)
     async def host_request_error(request, error):
         return JSONResponse({"error": {"code": error.code, "message": error.message,
@@ -365,7 +367,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             "fields": [{"field": field, "message": str(error)}]}}, status_code=status)
 
     def rejected_host_write(request, status):
-        path = request.url.path
+        path = request.scope['path']
         if request.method != "POST" or not (path == "/api/v1/feedback" or (
                 path.startswith("/api/v1/entries/") and path.endswith("/learn"))):
             return
@@ -431,6 +433,8 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             raise ValueError("messages must contain 1..1000 items")
         if any(len(m.content.encode("utf-8")) > 32768 for m in items):
             return JSONResponse({"error": {"code": "message_too_large", "field": "content", "message": "正文超过 32KB UTF-8 上限"}}, status_code=413)
+        if any(len((m.quote_content or '').encode("utf-8")) > 32768 for m in items):
+            raise HostRequestError(413, "message_too_large", "引用正文超过 32KB UTF-8 上限", "body.quote_content")
         with app.state.store.write() as conn:
             ids = []
             for item in items:
@@ -472,6 +476,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         if pending:
             result["hints"].append({"code": "other_entries_pending", **pending, "time_basis": "received_at",
                 "message": f"另有 {pending['entry_count']} 个入口有尚未学习的新消息（{pending['time_from']}—{pending['time_to']}）"})
+        result["memories"] = project_host_sources(result["memories"], request.state.principal.scope)
         app.state.tokens.bind_recall(result["recall_id"], request.state.principal)
         request.state.prepare_result = prepare_result(result)
         return result
@@ -487,6 +492,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         if payload.entry_id is not None and "entry_id" in inspect.signature(retrieval.search).parameters:
             fields["entry_id"] = payload.entry_id
         result = add_health_hints(retrieval.search(**fields), app.state.health)
+        result["memories"] = project_host_sources(result["memories"], request.state.principal.scope)
         app.state.tokens.bind_recall(result["recall_id"], request.state.principal)
         return result
 
@@ -500,15 +506,15 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         with app.state.store.read() as conn:
             return goal_list(conn, current=app.state.goals.clock(), scope=request.state.principal.scope, **query.model_dump())
 
-    @host_router.post("/api/v1/goals", status_code=201, summary="注入目标并返回去重结果")
+    @host_router.post("/api/v1/goals", status_code=201, summary="注入目标并返回去重结果", description="无 entry_id 的全局目标只允许 all 范围令牌创建；受限令牌返回 403。")
     def create_goal(payload: HostGoal, request: Request):
         principal = request.state.principal
-        principal.scope.require(payload.entry_id)
+        principal.scope.require_write(payload.entry_id)
         result = app.state.goals.create(**{**payload.model_dump(), "host": principal.host}, origin="host", actor=principal.host, scope=principal.scope)
         app.state.scheduler.wake()
         return result
 
-    @host_router.patch("/api/v1/goals/{goal_id}", summary="完成、放弃目标，或修改截止时间与提醒提前量")
+    @host_router.patch("/api/v1/goals/{goal_id}", summary="完成、放弃目标，或修改截止时间与提醒提前量", description="全局目标（含合并跳转后的目标）只允许 all 范围令牌修改；受限令牌返回 403。")
     def update_goal(goal_id: GoalId, payload: GoalPatch, request: Request):
         result = app.state.goals.update(goal_id, **payload.model_dump(exclude_unset=True), actor=request.state.principal.host, scope=request.state.principal.scope)
         app.state.scheduler.wake()
@@ -537,7 +543,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         request.state.principal.scope.require(payload.entry_id)
         return app.state.current_state.delete(**{**payload.model_dump(exclude_unset=True), "host": request.state.principal.host})
 
-    @host_router.get("/api/v1/status", summary="服务状态、最近模型调用和入口积压")
+    @host_router.get("/api/v1/status", summary="服务状态、最近模型调用和入口积压", description="batches 包含进行中批次及每入口最近 20 个已结束批次；近 24 小时调用统计保持完整。")
     def status(request: Request):
         result = service_status(app.state.store, app.state.scheduler, app.state.health)
         scope = request.state.principal.scope
@@ -545,7 +551,13 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             result["entries"] = [r for r in result["entries"] if scope.allows(r["entry_id"])]
             result["backlog"] = result["entries"]
             result["batches"] = [r for r in result["batches"] if scope.allows(r["entry_id"])]
-            allowed = {r["id"] for r in result["batches"]}
+            # The bounded batch list must not truncate otherwise authorized
+            # 24-hour call history for older completed batches.
+            clause, args = scope.sql('entry_id')
+            call_batches = [r['batch_id'] for r in result['learning_calls_24h'] if r['batch_id'] is not None]
+            with app.state.store.read() as conn:
+                allowed = {r[0] for r in conn.execute('SELECT id FROM batches WHERE '+clause+
+                    ' AND id IN (SELECT value FROM json_each(?))', (*args, json.dumps(call_batches)))}
             result["learning_calls_24h"] = [r for r in result["learning_calls_24h"] if r["batch_id"] in allowed]
         return result
 
@@ -630,7 +642,7 @@ def _install_host_openapi(app):
         ("post", entry + "/messages", {"sender": "小林", "content": "今晚看星星", "occurred_at": stamp,
             "dedupe_key": "host-message-1", "media_ids": []},
          obj({"message_ids": array(integer), "pending_count": integer}), {"message_ids": [1], "pending_count": 1},
-         "接收单条对象或 1—1000 条对象数组；同入口 dedupe_key 重试返回原消息，不覆盖正文或媒体引用。整批原子提交；接收不等于学习。正文最多 32768 UTF-8 字节，JSON 请求体最多 64 MiB。media_ids 引用上传对象，须同时有权访问上传入口和接收入口。"),
+         "接收单条对象或 1—1000 条对象数组；同入口 dedupe_key 重试返回原消息，不覆盖正文或媒体引用。整批原子提交；接收不等于学习。正文与引用正文各最多 32768 UTF-8 字节，JSON 请求体最多 64 MiB；名称／账号等字段最多 200 字符，entry_kind／occurred_at 最多 100 字符，详见请求 schema。media_ids 引用上传对象，须同时有权访问上传入口和接收入口。"),
         ("post", base + "/media", {"entry_id": "group-a", "content_type": "image/gif",
             "data_base64": "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "understanding_text": "星空照片"},
          media, {"id": "media-object-id", "sha256": "0" * 64, "content_type": "image/gif", "size_bytes": 34,
@@ -643,11 +655,11 @@ def _install_host_openapi(app):
          prepare, {"persona": {"version": None, "content": "", "generated_at": None, "needs_update": False, "stale_basis_count": 0},
                    "memories": [], "recent_messages": [], "state": {}, "goals": [],
                    "hints": [], "judgment": {"status": "disabled"}, "recall_id": "recall-id"},
-         "返回 persona、memories、recent_messages、state、goals、hints 六个分区，以及 judgment 和 recall_id，不生成回复。仅本入口近期消息；其他授权入口的待学习情况仅以数量和接收时间范围加入 hints。text 省略时自适应近期消息，空字符串表示显式空查询。known_memory_ids 排除已在宿主上下文中的记忆。subject_annotations 标注可能同一人与虚构扮演，不附联系证据原文。模型故障时正常返回并提示降级。"),
+         "返回 persona、memories、recent_messages、state、goals、hints 六个分区，以及 judgment 和 recall_id，不生成回复。仅本入口近期消息；sources 的范围外 entry_id、entry_name、occurred_at 为 null；其他授权入口的待学习情况仅以数量和接收时间范围加入 hints。text 省略时自适应近期消息，空字符串表示显式空查询。known_memory_ids 排除已在宿主上下文中的记忆。subject_annotations 标注可能同一人与虚构扮演，不附联系证据原文。模型故障时正常返回并提示降级。"),
         ("post", base + "/memories/search", {"text": "观星", "entry_id": "group-a", "include_forgotten": False,
                                             "include_state": False, "include_goals": False},
          search, {"memories": [], "hints": [], "recall_id": "recall-id"},
-         "按文本、人物、类型、立场与时间范围筛选。entry_id 可选，给出时检查令牌权限；不传则省略入口上下文。可见范围由检索层实现；AP 兼容尚无 entry_id 参数的旧检索层，部署入口隐私规则须同时包含 VS 实现。include_forgotten 深度读取不恢复遗忘记忆；不返回已删除记忆。include_goals/include_state 仅在开启时加入对应分区。返回 subject_annotations，不运行召回判断。"),
+         "按文本、人物、类型、立场与时间范围筛选。entry_id 可选，给出时检查令牌权限；不传则省略入口上下文。可见范围由检索层实现；AP 兼容尚无 entry_id 参数的旧检索层，部署入口隐私规则须同时包含 VS 实现。include_forgotten 深度读取不恢复遗忘记忆；不返回已删除记忆。include_goals/include_state 仅在开启时加入对应分区。返回 subject_annotations，不运行召回判断。sources 的范围外 entry_id、entry_name、occurred_at 为 null。"),
         ("post", base + "/feedback", {"recall_id": "recall-id", "memory_ids": [1]},
          obj({"recall_id": string, "accepted": array(integer), "strengthened": array(integer)}),
          {"recall_id": "recall-id", "accepted": [1], "strengthened": [1]},
@@ -667,10 +679,10 @@ def _install_host_openapi(app):
         ("post", base + "/goals", {"content": "整理观星照片", "entry_id": "group-a", "host_key": "goal-1"},
          obj({"goal": goal, "submitted_id": integer, "dedup": mapping}),
          {"goal": goal_example, "submitted_id": 1, "dedup": {"status": "created", "target_id": None}},
-         "注入普通目标或 question；返回去重回执，goal 是保留对象，submitted_id 是本次提交对象。可选 host_key 在绑定宿主名称内去重；重试返回原回执，不更新内容。dedup 可能为 created、merged、possible_duplicate，并可附后台判断状态。JSON 最多 32768 字节。"),
+         "注入普通目标或 question；无 entry_id 的全局目标只允许 all 范围令牌创建，否则返回 403。返回去重回执，goal 是保留对象，submitted_id 是本次提交对象。可选 host_key 在绑定宿主名称内去重；重试返回原回执，不更新内容。dedup 可能为 created、merged、possible_duplicate，并可附后台判断状态。JSON 最多 32768 字节。"),
         ("patch", base + "/goals/{goal_id}", {"state": "completed", "expected_revision": 1}, goal,
          {**goal_example, "state": "completed", "revision": 2, "closed_at": stamp, "closed_by": "astrbot"},
-         "完成或放弃目标，修改截止时间和提醒提前量。建议携带读取到的 expected_revision，冲突返回 409；已合并目标返回 409 和 canonical_id，重新读取后明确修改保留对象。不能通过此接口编辑目标正文。"),
+         "完成或放弃目标，修改截止时间和提醒提前量。全局目标（含合并跳转后的目标）只允许 all 范围令牌修改，否则返回 403。建议携带读取到的 expected_revision，冲突返回 409；已合并目标返回 409 和 canonical_id，重新读取后明确修改保留对象。不能通过此接口编辑目标正文。"),
         ("get", base + "/notifications", {"after": 0, "limit": 30},
          obj({"items": array(mapping), "next_cursor": integer, "has_more": boolean}),
          {"items": [], "next_cursor": 0, "has_more": False},
@@ -686,7 +698,7 @@ def _install_host_openapi(app):
           "learning_latency_24h": {"count": 0, "p95_ms": None}, "chat_reasoning_effort": None,
           "model_health": {}, "budget": {}, "scheduler": {"running": True, "max_concurrent": 2, "last_error": None},
           "timeouts_seconds": {"learning": 180, "chat": 120, "embedding": 30, "retrieval_query": 2, "recall_judge": 10}},
-         "服务状态、用途健康、用量、超时预算与学习积压。entries/backlog、batches 和关联学习调用按令牌范围过滤；模型用量是角色全局统计。批次 succeeded 不保证形成新记忆，应读取 result；abandoned/refused 是记忆缺口。"),
+         "服务状态、用途健康、用量、超时预算与学习积压。entries/backlog、batches 和关联学习调用按令牌范围过滤；模型用量是角色全局统计。batches 只含全部 waiting/running 及每入口最近 20 个已结束批次，按 ID 升序返回；近 24 小时调用与耗时统计不被截断。批次 succeeded 不保证形成新记忆，应读取 result；abandoned/refused 是记忆缺口。"),
     ]
 
     def openapi():
@@ -709,6 +721,9 @@ def _install_host_openapi(app):
             for parameter in operation.get("parameters", []):
                 if parameter["in"] == "path":
                     parameter["example"] = "group-a" if parameter["name"] == "entry_id" else 1
+                    if parameter['name'] == 'entry_id':
+                        parameter['schema'].update(minLength=1, maxLength=200)
+                        parameter['description'] = '按路由解码后的入口 ID；不能全空白或含 ?、#、控制字符，冒号等合法字符不变。'
                 elif request_example and parameter["name"] in request_example:
                     parameter["example"] = request_example[parameter["name"]]
             operation["responses"].pop("422", None)
