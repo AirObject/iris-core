@@ -341,8 +341,9 @@ def test_unattached_admin_upload_keeps_cleanup_grace(client, store):
     assert client.get(item['file_url']).status_code == 404
 
 
-def test_image_usage_legacy_purpose_and_partial_usage(client, store):
-    current = datetime.now(timezone.utc)
+def test_image_usage_legacy_purpose_and_partial_usage(client, store, monkeypatch):
+    current = datetime(2026, 10, 14, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(admin_data, 'utc_now', lambda: current)
     call(store, current, kind=None, prompt=12, completion=None, reasoning=None)
     call(store, current, kind='chat', purpose='health_probe', prompt=999)
     value = client.get('/admin/api/status').json()['usage']['by_purpose']['image_understanding']['today']

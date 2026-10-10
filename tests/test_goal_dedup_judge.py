@@ -104,7 +104,8 @@ def test_goal_rate_limits_back_off_twice_then_pause_only_own_purpose(store):
 
 
 def test_goal_judgment_obeys_daily_limit_before_any_request(store):
-    model=gateway(store,lambda request:pytest.fail('should not call exhausted endpoint'))
+    model=gateway(store,lambda request:pytest.fail('should not call exhausted endpoint'),
+                  clock=lambda:datetime(2026,10,9,tzinfo=timezone.utc))
     try:
         model.health.set_daily_token_limit(1)
         model._record('test','unit',1,'success',None,usage={'prompt_tokens':1})

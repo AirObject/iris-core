@@ -217,9 +217,18 @@ def test_delete_tombstone_shared_sources_survive_and_id_never_revives(client, st
         assert conn.execute("SELECT COUNT(*) FROM sources WHERE message_id=?", (source,)).fetchone()[0] == 2
 
 
-def test_admin_status_reuses_service_status_without_credentials(client, store):
+def test_admin_status_reuses_service_status_without_credentials(client, store, monkeypatch):
+    from functools import partial
+    from fake_openai import Clock
+    from iris import admin, api
+    from iris.service_status import service_status
+
+    clock = Clock()
+    monkeypatch.setattr(client.app.state.health, 'clock', clock)
+    for module in (admin, api):
+        monkeypatch.setattr(module, 'service_status', partial(service_status, clock=clock))
     with store.write() as conn:
-        conn.execute("INSERT INTO model_calls(purpose,model,duration_ms,result_category,error_summary,timed_out,created_at) VALUES('learning','fake',180000,'retryable','timeout',1,?)", (now(),))
+        conn.execute("INSERT INTO model_calls(purpose,model,duration_ms,result_category,error_summary,timed_out,created_at) VALUES('learning','fake',180000,'retryable','timeout',1,?)", (clock().isoformat(),))
     status = client.get("/admin/api/status").json()
     host = client.get("/api/v1/status").json()
     assert status["usage"].pop("by_purpose")["image_understanding"]["today"]["calls"] == 0

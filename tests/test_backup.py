@@ -301,11 +301,13 @@ def test_old_migration_is_validated_then_upgraded_offline(store, tmp_path):
 
 
 def test_media_mutation_during_snapshot_fails_without_publishing(store, tmp_path, monkeypatch):
-    seed(store)
+    from iris.media import save_media
+    from test_media import PNG
+    item = save_media(store, PNG, content_type='image/png')
     copy = backup._copy_database
     def change(source, target):
         copy(source, target)
-        (store.path.parent / 'media/图片/one.bin').write_bytes(b'changed')
+        (store.path.parent / 'media' / item['sha256']).write_bytes(b'changed')
     monkeypatch.setattr(backup, '_copy_database', change)
     with pytest.raises(backup.BackupError, match='媒体'):
         export(store, tmp_path)
