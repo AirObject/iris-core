@@ -19,7 +19,7 @@ from .goals import write_learning_goal
 from .claim_sequences import normalize_claim as _normalize, same_claim_sequences as _same_claim_sequences
 from .people import canonical_subject
 from .memory_ops import confirm_retention
-from .models import Gateway, ModelError
+from .models import Gateway, ModelError, parse_json_object_with_status
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
 
@@ -31,6 +31,26 @@ MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自
 STANCES = {"亲历", "转述", "推断", "观点"}
 RETRY_DELAYS = (60, 300, 900)
 PARTICIPANT_NUMBER = re.compile(r"(?<![A-Za-z0-9_])P[0-9]+(?![A-Za-z0-9_])")
+
+
+def _validate_output_shape(output: Any, raw: str) -> None:
+    """All five sections are required, even when empty; never infer an empty result.
+
+    Keep the gateway's think/fence handling, but do not accept an object extracted
+    from a top-level array or chat prose. Extra keys alongside all five arrays
+    remain compatible; item-level evidence validation still happens separately.
+    """
+    stripped = re.sub(r"<think\b[^>]*>.*?</think>", "", raw, flags=re.I | re.S)
+    stripped = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", stripped.strip(), flags=re.I)
+    if not isinstance(output, dict) or not stripped.startswith("{"):
+        raise ValueError("learning output must be a top-level JSON object")
+    sections = ("memories", "updates", "people", "goals", "questions")
+    missing = [key for key in sections if key not in output]
+    wrong = [key for key in sections if key in output and not isinstance(output[key], list)]
+    errors = (["missing arrays: " + ", ".join(missing)] if missing else [])
+    errors += ["not arrays: " + ", ".join(wrong)] if wrong else []
+    if errors:
+        raise ValueError("invalid learning output shape (" + "; ".join(errors) + ")")
 
 
 def _score(value: Any, default: int) -> int:
@@ -293,6 +313,42 @@ class LearningEngine:
         if len(matches) > 1:
             raise ValueError("subject is ambiguous; use participant number")
         return next(iter(matches)) if matches else None
+
+    def _learning_output(self, messages: list[dict[str, str]], batch_id: int):
+        # json_chat already repairs syntax once. Shape errors may use that same
+        # allowance only if no model repair has happened, and share its budget.
+        monotonic = getattr(self.gateway, "monotonic", time.monotonic)
+        deadline = monotonic() + Gateway.timeout_for("chat", "learning")
+        result = self.gateway.json_chat(messages, "learning", max_tokens=LEARNING_MAX_TOKENS, batch_id=batch_id)
+        output, raw, repair, status, *details = result
+        try:
+            _validate_output_shape(output, repair if repair is not None else raw)
+            return result
+        except ValueError as first_error:
+            if status == "repaired" or repair is not None:
+                prior = details[0] if details else "JSON parse error"
+                raise ModelError("retryable", f"learning output invalid after repair (first: {prior}; second: {first_error})",
+                                 repair, first_raw=raw) from first_error
+            repair_messages = messages + [
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content": f"上一个回答无法解析：{first_error}。只输出修正后的完整 JSON 对象，不要解释。"},
+            ]
+            try:
+                second = self.gateway.chat(repair_messages, "learning_repair", LEARNING_MAX_TOKENS,
+                                           batch_id=batch_id, _deadline=deadline)
+            except ModelError as error:
+                error.first_raw = raw
+                error.summary = f"learning output repair failed ({first_error}): {error.summary}"
+                raise
+            try:
+                if second.finish_reason == "length":
+                    raise ValueError("finish_reason=length")
+                corrected, _ = parse_json_object_with_status(second.content)
+                _validate_output_shape(corrected, second.content)
+                return corrected, raw, second.content, "repaired", str(first_error)
+            except ValueError as second_error:
+                raise ModelError("retryable", f"learning output invalid after repair (first: {first_error}; second: {second_error})",
+                                 second.content, first_raw=raw) from second_error
 
     @staticmethod
     def _normalize_output(output: dict[str, Any], refs: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -815,9 +871,8 @@ class LearningEngine:
             snapshot = self._snapshot(batch)
             related = self._related(batch, snapshot)
             material, numbers, refs = self._material(batch, snapshot, related)
-            output, raw, repair, parse_status, *details = self.gateway.json_chat(
-                [{"role": "system", "content": PROMPT}, {"role": "user", "content": material}], "learning",
-                max_tokens=LEARNING_MAX_TOKENS, batch_id=batch.id)
+            output, raw, repair, parse_status, *details = self._learning_output(
+                [{"role": "system", "content": PROMPT}, {"role": "user", "content": material}], batch.id)
             attempt.update(raw_output=raw, repair_output=repair, parse_status=parse_status,
                            error=details[0] if details else None)
             output, snapshot["normalizations"] = self._normalize_output(output, refs)
@@ -832,8 +887,9 @@ class LearningEngine:
             attempt["duration_ms"] = round((time.monotonic() - started) * 1000)
             return self._apply(batch, accepted, dropped, snapshot, refs, attempt)
         except ModelError as error:
-            attempt["raw_output"] = attempt["raw_output"] or error.first_raw or error.raw_output
-            if error.first_raw:
+            if attempt["raw_output"] is None:
+                attempt["raw_output"] = error.first_raw if error.first_raw is not None else error.raw_output
+            if error.first_raw is not None:
                 attempt["repair_output"] = error.raw_output
             attempt["duration_ms"] = round((time.monotonic() - started) * 1000)
             state = self._fail(batch, attempt, error)

@@ -68,7 +68,7 @@ def worker(source: Path, target: Path, corpora_root: Path):
                 memories.append({'content': content[:500], 'type': '事实', 'speaker': speaker,
                                  'about': [speaker], 'stance': '亲历', 'evidence': [int(number)],
                                  'importance': 60, 'belief': 75})
-            output = {'memories': memories}
+            output = {'memories': memories, 'updates': [], 'people': [], 'goals': [], 'questions': []}
             records.append({'case': current_case, 'batch': self.batch_number,
                             'messages': messages, 'purpose': purpose, 'max_tokens': max_tokens,
                             'related_nonempty': bool(re.search(r'^\[M\d+\]', related, re.M)),

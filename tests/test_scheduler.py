@@ -6,8 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import FakeGateway, msg
-from fake_openai import Clock, FakeOpenAI
+from conftest import FakeGateway, learning_output, msg
+from fake_openai import Clock, FakeOpenAI, completion
 from iris.api import create_app
 from iris.learning import LearningEngine
 from iris.memory_ops import edit_memory
@@ -144,6 +144,8 @@ def test_retry_due_and_pausing_failure_does_not_consume_attempt(store):
     with FakeOpenAI().serve() as server:
         for _ in range(3):
             server.enqueue(503)
+        server.enqueue()  # Recovery probe.
+        server.enqueue(body=completion(json.dumps(learning_output({}))))
         configs = {"chat": server.configs["chat"]}
         health = ModelHealth(store, configs, clock=clock)
         gateway = Gateway(configs, store, health=health, clock=clock, sleeper=lambda _: None)
