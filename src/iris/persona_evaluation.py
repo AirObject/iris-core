@@ -28,7 +28,7 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, _trace, _stale, _settings, split_sentences)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, CALL_TIMEOUTS, _trace, _stale, _settings, split_sentences)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
@@ -304,6 +304,8 @@ def _mutate(store, event, keys, clock):
 
 def _observation(store, case_id, checkpoint, previous, candidate):
     ids = {r['memory_id'] for v in (previous,candidate) if v for sentence in v['sentences'] for r in sentence['basis']}
+    ids.update(b['memory_id'] for d in candidate['checks'].get('deleted_sentences',[])
+               for b in d['sentence']['basis'])
     with store.read() as conn:
         zone = ZoneInfo(json.loads(conn.execute("SELECT value_json FROM runtime_settings WHERE key='timezone'").fetchone()[0]))
         memory_state = []
@@ -460,7 +462,16 @@ def _metrics(rows, judgments=None):
     calls = [c for row in rows for c in row['calls']]
     outcomes = [item['result'] for row in rows for item in row['checkpoints']]
     all_versions = [o for row in rows for o in row['observations']]
-    result = {'checkpoint_outcomes':dict(Counter(item['status'] for item in outcomes)),
+    sentence_counts = [o['candidate']['checks'].get('original_sentence_count',len(o['candidate']['sentences']))
+                       for o in observations]
+    deletions = [len(o['candidate']['checks'].get('deleted_sentences',[])) for o in observations]
+    repairs = [len(o['candidate']['checks'].get('repaired_sentences',[])) for o in observations]
+    result = {'proposed_sentences':sum(sentence_counts), 'deleted_sentences':sum(deletions),
+              'deleted_sentence_ratio':sum(deletions)/sum(sentence_counts) if sum(sentence_counts) else None,
+              'candidates_with_deletions':sum(bool(n) for n in deletions),
+              'candidate_deletion_ratio':sum(bool(n) for n in deletions)/len(observations) if observations else None,
+              'repaired_sentences':sum(repairs),
+              'checkpoint_outcomes':dict(Counter(item['status'] for item in outcomes)),
               'skip_reasons':dict(Counter(item['reason'] for item in outcomes if item['status']=='skipped')),
               'changes':len(changes), 'changes_by_source':dict(Counter(observations[i]['candidate']['source'] for i in changes)),
               'change_degree_distribution':dict(Counter(observations[i]['candidate']['change_degree'] for i in changes)),
@@ -574,6 +585,7 @@ def _report(report,directory):
         'Public/dev diagnostics only; this report does not establish the M3 hidden gate.', '',
         '| Metric | Value |','| --- | --- |']
     for key in ('changes','grounded_change_ratio','generated_candidates','check_rejected_ratio',
+                'deleted_sentences','deleted_sentence_ratio','candidate_deletion_ratio','repaired_sentences',
                 'must_reflect_coverage','must_not_occurrences','incomplete_timelines'):
         lines.append(f'| {key} | {metrics[key]} |')
     lines += ['', 'Call metrics: '+dumps(metrics['calls']), '', 'Violation distribution: '+dumps(metrics['violations']),
@@ -636,8 +648,9 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
     metadata = {'source_sha256':source_hash, 'corpus_sha256':_json_sha256(cases),
                 'corpus_file_sha256':identity['corpus_file_sha256'], 'checkpoint_signature':signature,
                 'scoring_version':SCORING_VERSION,'scoring_sha256':identity['scoring_sha256'],
-                'models':identity['models'],'prompt_versions':['persona_generate_v1','persona_check_v1'],
-                'timeouts_seconds':{'persona_generate':120,'persona_check':120,'judge':240},
+                'models':identity['models'],'prompt_versions':sorted(set(PROMPT_VERSIONS.values())),
+                'prompt_by_purpose':PROMPT_VERSIONS,
+                'timeouts_seconds':{**CALL_TIMEOUTS,'judge':240},
                 'resumed_cases':resumed,'elapsed_seconds':round(time.monotonic()-started,3)}
     directory = out/('judging-materials-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+uuid4().hex[:8])
     materials,manifest = _export(rows,metadata,scoring,directory)
