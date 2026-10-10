@@ -1,8 +1,50 @@
 # 学习、召回与端到端评测
 
+## M4 计划（2026-10-10）
+
+M4（接入）的范围、用户决定和门槛口径见 DECISIONS.md 2026-10-10「M4 计划」。M3 已完成（DECISIONS.md「M3 完成」）；persona 与记忆合并的优化线与 M4 并行。
+
+### 起点
+
+| 部分 | 现状 |
+| --- | --- |
+| 宿主接口 | /api/v1 没有鉴权，只靠回环地址和 Host 校验；当前状态的宿主名称由请求体自报 |
+| 媒体 | 没有上传接口、文件存储、理解文本和清理 |
+| 可见范围 | 记忆在所有入口共享，没有按入口限制 |
+| 其他入口的提示 | 回复准备没有其他入口的待学习提示（R02） |
+| 导出导入 | 没有；备份只能停服复制数据目录 |
+| 接入 | OpenAPI 自动生成，中文说明与示例不全；没有接入示例和连接器 |
+
+### 分工与顺序
+
+同时修改产品代码的会话，改动的文件不能重叠；“主要文件”是各会话的范围，需要越界时先报告规划者。新语料一律手写，在相关修改之前单独冻结。迁移编号按合并顺序分配。
+
+| 阶段 | 工作线 | 内容 | 主要文件 | 前置 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 一 | 令牌（TK） | 宿主令牌：创建（只显示一次、只存摘要）、撤销、绑定宿主名称和入口范围（全部／列表／前缀）；/api/v1 的 Bearer 鉴权、401／403；基本频率限制（429）；当前状态与目标注入的宿主名称取自令牌；离线命令 `iris tokens`；端到端评测改用令牌；R03 | 新 tokens.py、api.py、admin.py、admin_data.py、cli.py、state.py、goals.py（只为宿主名称）、e2e_evaluation.py、迁移 | — | 待开始 |
+| 一 | 媒体（MD） | 媒体存储与上限、消息引用、宿主理解文本复用、图片理解用途（独立用途、超时、内容拒绝固定为“敏感信息无法访问”）、学习材料中的理解文本、清理宽限 1 天；P01—P05；上传接口等 TK 合并后再接到 api.py | 新 media.py、queue.py、learning.py（只改材料中的媒体文本）、models.py、model_health.py、configuration.py、maintenance.py（只加文件清理）、迁移、test-models.example.toml | 学习输出形状修复合并 | 待开始 |
+| 一 | 评测集·隐私（GD） | 手写可见范围的隐私 dev 集 visibility_v1：私聊与群聊、派生、整理、人物要点、目标分区的泄漏诱因，标注每个入口不应出现的内容 | evals/visibility_v1* | — | 待开始 |
+| 一 | 规划者 | 隐藏隐私集；连接器仓库的创建（需用户同意） | 仓库外 | dev 格式确定 | 待开始 |
+| 一 | persona 优化（PE） | 初始设定句由代码保留、句子级修复或删去、放宽检查超时；在 persona_v1、persona_v2 上迭代；之后规划者在新写的隐藏 persona 集上重新判定 | persona.py、persona_evaluation.py、prompts/persona_*_v2.md | persona_v2 冻结 | 待开始 |
+| 二 | 可见范围（VS） | 入口的记忆可见范围（默认全部共享；可设为仅本入口或指定入口）；记忆继承依据中最严格的范围；不同范围不去重、不合并；派生继承；召回、查询、人物要点、目标分区按请求入口过滤；R14 | learning.py、retrieval.py、consolidation.py、memory_ops.py、people.py、goals.py、迁移 | MD 合并（learning.py）；visibility_v1 冻结 | — |
+| 二 | 接口（AP） | R02 其他入口的提示；19.4 错误码统一；媒体上传接口；OpenAPI 中文说明和示例；全部宿主接口的契约测试；冻结 v1 | api.py、retrieval.py（只加提示）、media.py（只接路由） | TK、MD 合并 | — |
+| 二 | 导出导入（BK） | 在线导出（数据库一致快照＋媒体，可选是否包含密钥）、从备份导入（需确认、校验）、离线命令 | 新 backup.py、admin.py、cli.py | TK 合并 | — |
+| 三 | 连接器（CN） | 连接器 monorepo：Python 客户端、TypeScript 客户端、AstrBot 插件；最小接入示例（Python、TypeScript 各约 50 行）；用假服务和 AstrBot 测试替身测试 | 另一仓库 | AP 冻结 v1 | — |
+| 三 | 界面（UX） | 接入页（令牌、入口范围、接口文档链接）、媒体显示、入口可见范围设置、图片理解模型设置、导出导入 | frontend/、src/iris/web/ | 对应后端合并 | — |
+| 四 | 门槛 | 24 小时模拟运行（经连接器客户端）；隐私（公开＋隐藏，零泄漏）；契约测试；回归（学习请求、召回返回、端到端、R10） | 未参与修改的会话＋规划者 | 以上全部合并 | — |
+
+### 对照规则（在看到结果之前确定）
+
+- 门槛按 DECISIONS.md「M4 计划」判定；运行由未参与该轮修改的会话完成；只报告结果。
+- 可见范围默认全部共享时，学习请求、召回返回、整理和 persona 的行为与 M3 定稿逐条一致（compare_learning_requests.py、召回对照）。
+- 隐私以零泄漏为准：任一入口的回复准备、查询、人物要点、目标分区中出现不可见的记忆，或整理把不同范围的记忆合并，都算泄漏。
+- 图片理解：P01—P05 用确定性测试和假模型覆盖；真实视觉模型只做小规模冒烟（用户填好配置后），不作质量门槛。
+- 接口冻结后，任何不兼容的修改都要先在 DECISIONS.md 记录并经规划者批准。
+- 24 小时模拟运行：消息节奏、入口数量和内容在运行前写定；运行中出现需要人工操作的情况即为未达到，记录原因。
+
 ## M3 计划（2026-10-09）
 
-M3（自我与未来）的范围、门槛口径和保守默认见 DECISIONS.md 2026-10-09「M3 计划」。
+M3（自我与未来）的范围、门槛口径和保守默认见 DECISIONS.md 2026-10-09「M3 计划」。M3 已于 2026-10-10 完成（用户决定，DECISIONS.md「M3 完成」）：persona 和隐藏集上的记忆合并未达到门槛，列为已知问题。
 
 ### 起点
 
@@ -22,15 +64,15 @@ M3（自我与未来）的范围、门槛口径和保守默认见 DECISIONS.md 2
 | --- | --- | --- | --- | --- | --- |
 | 一 | 评测集·目标与整理（GD） | 手写目标去重 dev 集 goal_dedup_v1；手写整理 dev 集 consolidation_v1（记忆合并、矛盾、依赖复核）及其评分说明。两份各自单独冻结 | evals/goal_dedup_v1*、evals/consolidation_v1*、prompts/consolidation_scoring_v1.md | — | 完成：goal_dedup_v1（PR #38，`f919d65` 冻结，67 例：合并 28／不合并 29／不确定 10）；consolidation_v1 与评分说明（PR #41，`7c8c555` 冻结，40 例：应合并 12 对、不应合并 47 对、矛盾 10、依赖 8）。冻结前均经规划者子代理独立审核并修改 |
 | 一 | 评测集·persona（PS） | 手写 persona 时间线 dev 集 persona_v1 和逐句评分说明 persona_scoring_v1，单独冻结 | evals/persona_v1*、prompts/persona_scoring_v1.md | — | 完成：PR #40，`1f724f7` 冻结（5 条时间线、30 个检查点、预期 23 次变化） |
-| 一 | 状态与目标（GO） | 第一步：当前状态（14、S06—S09），宿主 state 接口、报告历史，回复准备和查询的状态分区。第二步：目标与询问的状态管理、注入及去重结果、跨入口共享、提醒与拉取接口、回复准备的目标分区、学习产生的目标改由目标模块写入、管理接口（S10—S16）；去重方法在 goal_dedup_v1 上先探测再按规则选 | 新 state.py、goals.py、迁移、api.py、retrieval.py（只改状态和目标分区）、scheduler.py（提醒）、learning.py（只改目标写入）、admin.py、admin_data.py、settings_api.py、evals/goal_dedup_probe/、README.md、ARCHITECTURE.md | 去重方法的选择等 goal_dedup_v1 冻结 | 第一步完成（PR #39）；第二步完成（PR #43：确定性去重、跨入口共享、提醒与拉取、管理员创建只标可能重复）；第三步去重判断与探测进行中 |
+| 一 | 状态与目标（GO） | 第一步：当前状态（14、S06—S09），宿主 state 接口、报告历史，回复准备和查询的状态分区。第二步：目标与询问的状态管理、注入及去重结果、跨入口共享、提醒与拉取接口、回复准备的目标分区、学习产生的目标改由目标模块写入、管理接口（S10—S16）；去重方法在 goal_dedup_v1 上先探测再按规则选 | 新 state.py、goals.py、迁移、api.py、retrieval.py（只改状态和目标分区）、scheduler.py（提醒）、learning.py（只改目标写入）、admin.py、admin_data.py、settings_api.py、evals/goal_dedup_probe/、README.md、ARCHITECTURE.md | 去重方法的选择等 goal_dedup_v1 冻结 | 完成：当前状态（PR #39）；目标核心（PR #43）；去重判断 C（PR #47）与可能重复识别 C2（PR #49）；目标复核、来源前后文与修订快照（PR #51）；学习输出形状校验修复 |
 | 一 | persona 核心（PE） | 依据选取、生成与逐句依据、确定性检查与模型检查、变化程度、发布／待确认／拒绝、版本与差异、回滚、手动编辑发布、重新生成、“待更新”的计算、更新条件；persona 评测命令与外部判分材料（S01—S05、S17—S19） | 新 persona.py、persona_evaluation.py、prompts/persona_generate_v1.md、prompts/persona_check_v1.md、cli.py、迁移、memory_ops.py（只改初始 persona） | 提示词迭代等 persona_v1 冻结 | 完成（PR #42）：公开 persona_v1 双判 21 次变化全部有依据（19 发布、2 待确认），七类违规 0，拒绝候选 2/23；默认监管要求改为设计 13.3 全文 |
 | 一 | 规划者 | M3 隐藏目标去重集、隐藏 persona 集、隐藏整理集 | 仓库外 | dev 格式确定 | 完成：隐藏目标去重集 50 例、隐藏整理集 36 例、隐藏 persona 集 5 条时间线（预期 25 次变化），均经独立审核修改后冻结 |
-| 二 | persona 接入（PE） | 管理接口；persona 设置（发布方式、生成目标与监管要求）；回复准备的 persona 分区标注“待更新”；文档 | admin.py、admin_data.py、settings_api.py、retrieval.py（只改 persona 分区）、README.md、ARCHITECTURE.md | GO 第二步、PE 核心合并 | 进行中 |
-| 二 | 模型整理（CO） | 合并（D05）、矛盾（D06）、依赖复核（16.4，M11 的模型部分）、目标复核、persona 定期更新步骤、调用预算、整理报告；记忆合并方法在 consolidation_v1 上先探测再按规则选；整理评测命令 | 新 consolidation.py、maintenance.py、memory_ops.py、goals.py（只为目标复核）、迁移、prompts/consolidation_*.md、cli.py | PE 核心、GO 第二步合并；consolidation_v1 冻结 | 进行中（提前开始；persona 接入与目标复核留到后续步骤） |
-| 三 | 界面（UX） | persona 与自我页（18.5、18.10 图示）；当前状态与目标页（18.7，含提醒）；整理报告；相关设置；试用页右侧的 persona、状态、目标和提醒 | frontend/、src/iris/web/ | 对应后端合并 | 当前状态界面完成（PR #44），目标与提醒界面完成（PR #45）；persona 页面等 persona 接入 |
-| 四 | 门槛 | 公开 persona、目标去重、整理评测；回归（学习请求、召回返回、端到端、R10） | 未参与该轮修改的会话 | 以上全部合并 | — |
-| 四 | 门槛 | 隐藏 persona、目标去重、整理集 | 规划者 | 同上 | — |
-| 四 | 预演与演示 | 设计 22 的 M3 演示、S01—S19、D01—D06；页面部分、隐藏集 persona 变化的过目和演示由用户完成 | 执行者＋用户 | 门槛结果 | — |
+| 二 | persona 接入（PE） | 管理接口；persona 设置（发布方式、生成目标与监管要求）；回复准备的 persona 分区标注“待更新”；文档 | admin.py、admin_data.py、settings_api.py、retrieval.py（只改 persona 分区）、README.md、ARCHITECTURE.md | GO 第二步、PE 核心合并 | 完成（PR #48）；默认改为全部人工确认（PR #56，用户决定） |
+| 二 | 模型整理（CO） | 合并（D05）、矛盾（D06）、依赖复核（16.4，M11 的模型部分）、目标复核、persona 定期更新步骤、调用预算、整理报告；记忆合并方法在 consolidation_v1 上先探测再按规则选；整理评测命令 | 新 consolidation.py、maintenance.py、memory_ops.py、goals.py（只为目标复核）、迁移、prompts/consolidation_*.md、cli.py | PE 核心、GO 第二步合并；consolidation_v1 冻结 | 完成（PR #46、#52、#55）：合并 broad；矛盾与依赖只写报告和管理员建议（用户决定）；persona 更新与目标复核接入每日整理；非 ISO 事件时间容错 |
+| 三 | 界面（UX） | persona 与自我页（18.5、18.10 图示）；当前状态与目标页（18.7，含提醒）；整理报告；相关设置；试用页右侧的 persona、状态、目标和提醒 | frontend/、src/iris/web/ | 对应后端合并 | 完成（PR #44、#45、#50、#53、#57） |
+| 四 | 门槛 | 公开 persona、目标去重、整理评测；回归（学习请求、召回返回、端到端、R10） | 未参与该轮修改的会话 | 以上全部合并 | 完成（PR #54，候选 7de4b1c）：目标去重 0/13、记忆合并 0/11、persona 19/21 未达到、回归全部达到、端到端 11/11 |
+| 四 | 门槛 | 隐藏 persona、目标去重、整理集 | 规划者 | 同上 | 完成：目标去重 0/3；记忆合并 1/14 未达到；persona 4 次变化（2 次有依据）未达到。见 DECISIONS 2026-10-10 |
+| 四 | 预演与演示 | 设计 22 的 M3 演示、S01—S19、D01—D06；页面部分、隐藏集 persona 变化的过目和演示由用户完成 | 执行者＋用户 | 门槛结果 | 宿主接口与离线部分完成（发现学习输出形状缺陷，已修复）；页面核验清单与演示数据交给用户 |
 
 整理的设置字段（预算、开关）在 persona 接入合并后由 CO 追加到设置接口，之前只写默认值。
 
