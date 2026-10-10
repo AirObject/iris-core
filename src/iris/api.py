@@ -274,7 +274,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
         path = request.url.path
         host = path == "/api/v1" or path.startswith("/api/v1/")
         bounded = path == "/admin/api/settings/goals" or path == "/admin/api/goals" or path.startswith("/admin/api/goals/")
-        if not app.state.ready:
+        if host and not app.state.ready:
             return await call_next(request)
         if (host or bounded) and request.method in ("POST", "PUT", "PATCH", "DELETE"):
             limit = MAX_REPORT_BYTES
@@ -283,9 +283,9 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
                          64 * 1024 * 1024 if path.endswith("/messages") else 256 * 1024)
             def too_large():
                 return JSONResponse({"error": {"code": "payload_too_large" if host else "invalid_request", "fields": [
-                    {"field": "body", "message": f"请求正文超过 {limit} 字节 UTF-8 上限"}]}}, status_code=413 if host else 400)
+                    {"field": "body", "message": (f"请求正文超过 {limit} 字节 UTF-8 上限" if host else "请求正文超过 32KB UTF-8 上限")}]}}, status_code=413 if host else 400)
             length = request.headers.get("content-length", "")
-            if length.isdecimal() and (len(length) > 20 or int(length) > limit):
+            if host and length.isdecimal() and (len(length) > 20 or int(length) > limit):
                 return too_large()
             body = bytearray()
             async for chunk in request.stream():
