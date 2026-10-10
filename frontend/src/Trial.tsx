@@ -1,3 +1,5 @@
+import { MessageMedia } from "./Media";
+import { TrialImagePicker, useTrialImages } from "./TrialImages";
 import { PersonaSummary } from "./PersonaSummary";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, json, useData, errorText } from "./api";
@@ -198,8 +200,21 @@ function Conversation({
   const [pendingSend, setPendingSend] = useState<{
     content: string;
     speaker: string;
+    imageKeys: string;
     key: string;
   } | null>(null);
+  const images = useTrialImages();
+  const sendController = useRef<AbortController | null>(null);
+  useEffect(() => () => sendController.current?.abort(), []);
+  function addImages(files: File[]) {
+    if (busy) return;
+    setError("");
+    try {
+      images.add(files);
+    } catch (error) {
+      setError(errorText(error));
+    }
+  }
   const data = snapshot.data;
   const state = status?.entries.find((e) => e.entry_id === entryId);
   const allMessages = [
@@ -261,7 +276,9 @@ function Conversation({
   }
   async function send(e: FormEvent) {
     e.preventDefault();
-    if (!draft.trim() || busy) return;
+    if ((!draft.trim() && !images.images.length) || busy || !speaker) return;
+    const controller = new AbortController();
+    sendController.current = controller;
     setBusy(true);
     setError("");
     setNotice("");
@@ -270,33 +287,47 @@ function Conversation({
     setRetry(null);
     setPhase("正在发送…");
     // Reuse the same dedupe key if transport failed before a receipt arrived.
+    const imageKeys = images.images.map((image) => image.key).join(",");
     const pending =
-      pendingSend?.content === draft && pendingSend.speaker === speaker
+      pendingSend?.content === draft &&
+      pendingSend.speaker === speaker &&
+      pendingSend.imageKeys === imageKeys
         ? pendingSend
-        : { content: draft, speaker, key: crypto.randomUUID() };
+        : { content: draft, speaker, imageKeys, key: crypto.randomUUID() };
     setPendingSend(pending);
     try {
+      const media_ids = await images.upload(controller.signal, setPhase);
+      controller.signal.throwIfAborted();
+      setPhase("正在发送…");
       const receipt = await api<{ message_id: number }>(
         `/trial/entries/${entryId}/messages`,
-        json("POST", {
-          speaker_id: speaker,
-          content: draft,
-          dedupe_key: pending.key,
-        }),
+        {
+          ...json("POST", {
+            speaker_id: speaker,
+            content: draft,
+            dedupe_key: pending.key,
+            media_ids,
+          }),
+          signal: controller.signal,
+        },
       );
+      controller.signal.throwIfAborted();
       setDraft("");
+      images.clear();
       setPendingSend(null);
       setNotice("消息已接收，学习结果请看右侧批次。");
       snapshot.refresh();
       refreshStatus();
       await prepareOrReply(receipt.message_id, replies);
     } catch (e) {
-      setError(errorText(e));
+      if (!controller.signal.aborted) setError(errorText(e));
     } finally {
-      setBusy(false);
-      setPhase("");
-      snapshot.refresh();
-      refreshStatus();
+      if (!controller.signal.aborted) {
+        setBusy(false);
+        setPhase("");
+        snapshot.refresh();
+        refreshStatus();
+      }
     }
   }
   async function retryReply() {
@@ -352,7 +383,7 @@ function Conversation({
           <div>
             <h2>{data?.entry.name || "正在读取对话…"}</h2>
             <span className="muted">
-              {data?.entry.kind === "private" ? "私聊" : "群聊"} · 文字试用
+              {data?.entry.kind === "private" ? "私聊" : "群聊"} · 图文试用
             </span>
           </div>
           <span className="live-label">
@@ -395,7 +426,10 @@ function Conversation({
                 </strong>
                 <time>{time(m.received_at)}</time>
               </div>
-              <div className="bubble">{m.content}</div>
+              <div className="bubble">
+                {m.content}
+                <MessageMedia media={m.media} />
+              </div>
               <div
                 className={`message-state ${["abandoned", "refused"].includes(m.learning_state) ? "danger-text" : ""}`}
               >
@@ -479,14 +513,29 @@ function Conversation({
               placeholder="说说正在发生的事…"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onPaste={(event) => {
+                const files = Array.from(event.clipboardData.files);
+                if (files.length) {
+                  event.preventDefault();
+                  addImages(files);
+                }
+              }}
               rows={3}
               disabled={busy}
+            />
+            <TrialImagePicker
+              images={images.images}
+              busy={busy}
+              add={addImages}
+              remove={images.remove}
             />
             <div className="composer-bottom">
               <span className="muted">{phase || "接收后自动排队学习"}</span>
               <button
                 className="primary"
-                disabled={busy || !draft.trim() || !speaker}
+                disabled={
+                  busy || (!draft.trim() && !images.images.length) || !speaker
+                }
                 aria-label="发送消息"
               >
                 {busy ? "处理中…" : "发送"} <span aria-hidden>↑</span>

@@ -57,6 +57,7 @@ export const operationNames: Record<string, string> = {
   feedback: "使用反馈",
   feedback_rejected: "使用反馈被拒绝",
   learn_rejected: "立即学习请求被拒绝",
+  trial_media_uploaded: "上传试用图片",
   trial_entry_created: "创建试用入口",
   trial_speaker_created: "创建发言人",
   trial_message_received: "试用消息接收",
