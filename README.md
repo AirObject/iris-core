@@ -970,3 +970,7 @@ uv run python evals/visibility_eval/benchmark.py --out <外部目录>
 ```
 
 隐私运行使用默认召回配置；`--http-search` 让所有 search 查询经带真实宿主令牌的 ASGI HTTP 接口，prepare 保留语料的精确近期窗口。HTTP 错误会令整次运行无效。`--embedding-cache <已完成的公开向量缓存>` 可复用 embedding，召回判断仍重新调用。`--offline` 检查默认全文降级路径，不加载模型配置。`--judge` 开启真实召回判断，判断降级或查询未完成会将整次运行标为无效。门槛只检查 forbidden 和跨范围合并；expected / expected_goals 只作为过度过滤诊断。公开集零泄漏不等于 M4 隐藏验收通过。
+
+## 许可证
+
+iris-core 使用 [GNU Affero General Public License v3.0 only（AGPL-3.0-only）](LICENSE)，与 iris-connectors 及 AstrBot 插件一致。项目仅选择第 3 版；LICENSE 中的通用应用示例不表示本项目选择 “or later”。第三方依赖仍遵循各自的许可证，分发时须保留其版权与许可声明。

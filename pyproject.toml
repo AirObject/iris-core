@@ -3,6 +3,8 @@ name = "iris-core"
 version = "0.0.1"
 description = "Iris learning core"
 readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1",
