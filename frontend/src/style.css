@@ -3116,3 +3116,160 @@ tr:last-child td {
   .entry-profile .button-row > button { flex: 1 1 130px; }
   .entry-profile-diff-columns { grid-template-columns: minmax(0,1fr); }
 }
+
+/* People graph: the SVG and text lists share the same bounded projection. */
+.graph-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: end;
+}
+.graph-filters label {
+  min-width: 0;
+}
+.graph-filters select,
+.graph-filters input {
+  width: 100%;
+  min-width: 0;
+}
+.graph-explanation {
+  margin-top: 16px;
+}
+.graph-explanation summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.graph-panel {
+  padding-bottom: 12px;
+}
+.graph-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  border-radius: 12px;
+  background: #f8faf7;
+}
+.people-graph-svg {
+  display: block;
+  width: 100%;
+  min-width: 680px;
+  height: auto;
+}
+.graph-edge {
+  cursor: pointer;
+}
+.graph-edge line {
+  stroke: #8b9e95;
+}
+.graph-edge.relationship line {
+  stroke: #9d72b5;
+}
+.graph-edge.possible line {
+  stroke: #9872b3;
+  stroke-dasharray: 7 5;
+}
+.graph-edge.roleplay line {
+  stroke: #3e947c;
+}
+.graph-edge line.graph-edge-hit {
+  stroke: transparent;
+  stroke-width: 22;
+  stroke-dasharray: none;
+}
+.graph-edge text {
+  font-size: 12px;
+  fill: #526359;
+  paint-order: stroke;
+  stroke: #f8faf7;
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+.graph-edge:hover text,
+.graph-edge:focus text {
+  fill: #392745;
+  font-weight: 700;
+}
+.graph-edge:focus {
+  outline: none;
+}
+.graph-edge:focus line:not(.graph-edge-hit) {
+  stroke: #543775;
+  stroke-width: 6;
+}
+.graph-node circle {
+  fill: #e2eee4;
+  stroke: #6d987d;
+  stroke-width: 2;
+}
+.graph-node.self circle {
+  fill: #ece2f4;
+  stroke: #9674af;
+}
+.graph-node text {
+  fill: #263e31;
+  font-size: 14px;
+  font-weight: 600;
+}
+.graph-node text.graph-node-mark {
+  font-size: 16px;
+}
+.graph-node text.graph-node-count {
+  fill: #64766b;
+  font-size: 12px;
+  font-weight: 400;
+}
+.graph-node:hover circle,
+.graph-node:focus circle {
+  stroke: #513265;
+  stroke-width: 4;
+}
+.graph-node:focus {
+  outline: none;
+}
+.graph-legend,
+.graph-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.graph-legend {
+  font-size: 13px;
+  margin-bottom: 12px;
+  color: #64766b;
+}
+.graph-node-list,
+.graph-edge-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+}
+.graph-node-list article,
+.graph-edge-list article,
+.graph-link-record {
+  overflow-wrap: anywhere;
+}
+.graph-node-list h3,
+.graph-edge-list h3 {
+  margin-top: 0;
+}
+.graph-edge-list article button {
+  margin-top: 8px;
+}
+.graph-evidence-list article,
+.graph-link-record {
+  border-top: 1px solid #e0e6df;
+  padding: 16px 0;
+}
+@media (max-width: 700px) {
+  .graph-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .graph-panel {
+    padding: 12px;
+  }
+}
+@media (max-width: 420px) {
+  .graph-filters {
+    grid-template-columns: 1fr;
+  }
+}
