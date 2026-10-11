@@ -1,7 +1,14 @@
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { act, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import PeopleGraph, { graphLayout, type GraphData } from "./PeopleGraph";
+import PeopleGraph, { type GraphData } from "./PeopleGraph";
+import {
+  edgeKey,
+  edgeLabel,
+  graphFrame,
+  graphLabels,
+  graphLayout,
+} from "./peopleGraphLayout";
 
 const data: GraphData = {
   nodes: [
@@ -125,7 +132,10 @@ beforeEach(() => {
     }),
   );
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 const mount = (initialQuery = "") =>
   render(<PeopleGraph openMemory={openMemory} initialQuery={initialQuery} />);
@@ -312,19 +322,129 @@ test("plain text summaries and names are never interpreted as HTML", async () =>
   expect(screen.getAllByText(/<script>danger/).length).toBeGreaterThan(0);
 });
 
-test("layout is deterministic, bounded and handles an isolated or empty graph", () => {
-  expect(graphLayout([], [])).toEqual({});
-  expect(graphLayout(data.nodes, data.edges)).toEqual(
-    graphLayout(data.nodes, data.edges),
+const sevenNodes = [
+  ...data.nodes,
+  { ...data.nodes[1], id: "yue", name: "小月" },
+  { ...data.nodes[1], id: "captain", name: "船长" },
+  { ...data.nodes[1], id: "old_lin", name: "林同学" },
+  { ...data.nodes[1], id: "qing", name: "小青" },
+];
+
+test("summaries appear on hover or keyboard focus, never as permanent SVG text", async () => {
+  const user = userEvent.setup();
+  mount();
+  const svg = await screen.findByRole("group", { name: "人物关系图" });
+  const edge = within(svg).getByRole("button", {
+    name: "查看小林与小周的连线依据",
+  });
+  expect(within(svg).getByText("可能同一人 · 2")).toBeInTheDocument();
+  expect(within(svg).queryByText("小林与小周是同事。")).not.toBeInTheDocument();
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  await user.hover(edge);
+  expect(
+    within(screen.getByRole("tooltip")).getByText("小林与小周是同事。"),
+  ).toBeInTheDocument();
+  expect(edge).toHaveAttribute(
+    "aria-describedby",
+    screen.getByRole("tooltip").id,
   );
-  for (const point of Object.values(graphLayout(data.nodes, data.edges))) {
-    expect(point.x).toBeGreaterThanOrEqual(70);
-    expect(point.x).toBeLessThanOrEqual(830);
-    expect(point.y).toBeGreaterThanOrEqual(55);
-    expect(point.y).toBeLessThanOrEqual(480);
+  expect(within(svg).queryByText("小林与小周是同事。")).not.toBeInTheDocument();
+  await user.unhover(edge);
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  act(() => edge.focus());
+  expect(
+    within(screen.getByRole("tooltip")).getByText("小林与小周是同事。"),
+  ).toBeInTheDocument();
+  await user.tab();
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+test("edge labels contain only the short kind and shared memory count", () => {
+  expect(edgeLabel({ ...data.edges[0], links: [] })).toBe("关系 · 2");
+  expect(
+    edgeLabel({ ...data.edges[0], links: [], relationship_count: 0 }),
+  ).toBe("共现 · 2");
+  expect(
+    edgeLabel({
+      ...data.edges[0],
+      memory_count: 0,
+      links: [{ ...data.edges[0].links[0], kind: "roleplay" }],
+    }),
+  ).toBe("扮演 · 0");
+});
+
+test("seven nodes fit the initial 315px canvas inside a 375px phone without horizontal scrolling", async () => {
+  const original = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      return this.classList.contains("graph-scroll")
+        ? new DOMRect(0, 0, 315, 330)
+        : original.call(this);
+    },
+  );
+  graph.nodes = sevenNodes;
+  graph.total_nodes = 7;
+  mount();
+  const svg = await screen.findByRole("group", { name: "人物关系图" });
+  await waitFor(() => expect(svg).toHaveAttribute("viewBox", "0 0 315 330"));
+  expect(svg).toHaveStyle({ minWidth: "315px" });
+  const circles = [...svg.querySelectorAll("a circle")];
+  expect(circles).toHaveLength(7);
+  for (const circle of circles) {
+    expect(Number(circle.getAttribute("cx"))).toBeGreaterThanOrEqual(48);
+    expect(Number(circle.getAttribute("cx"))).toBeLessThanOrEqual(267);
+    expect(Number(circle.getAttribute("cy"))).toBeGreaterThanOrEqual(24);
+    expect(Number(circle.getAttribute("cy"))).toBeLessThanOrEqual(266);
+  }
+});
+
+test("layout fills the available surface, keeps minimum spacing and is deterministic", () => {
+  expect(graphLayout([], [])).toEqual({});
+  for (const width of [315, 900]) {
+    const points = graphLayout(sevenNodes, data.edges, width);
+    expect(points).toEqual(graphLayout(sevenNodes, data.edges, width));
+    const frame = graphFrame(7, width);
+    const values = Object.values(points);
+    const xs = values.map((p) => p.x),
+      ys = values.map((p) => p.y);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(
+      frame.width * 0.65,
+    );
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(
+      frame.height * 0.65,
+    );
+    for (let i = 0; i < values.length; i++) {
+      expect(values[i].x).toBeGreaterThanOrEqual(frame.marginX);
+      expect(values[i].x).toBeLessThanOrEqual(frame.width - frame.marginX);
+      expect(values[i].y).toBeGreaterThanOrEqual(frame.top);
+      expect(values[i].y).toBeLessThanOrEqual(frame.height - frame.bottom);
+      for (let j = 0; j < i; j++) {
+        expect(
+          Math.hypot(values[i].x - values[j].x, values[i].y - values[j].y),
+        ).toBeGreaterThanOrEqual(width < 560 ? 104 : 135);
+      }
+    }
   }
   expect(graphLayout([data.nodes[0]], [])[data.nodes[0].id]).toEqual({
     x: 450,
-    y: 270,
+    y: 88,
   });
+});
+
+// A third person's name sits under the midpoint of this connection. The label
+// must move rather than cover that person (the regression from the screenshots).
+test("short edge labels avoid an intervening node and its name", () => {
+  const points = {
+    "a /林": { x: 88, y: 150 },
+    b: { x: 812, y: 150 },
+    self: { x: 450, y: 134 },
+  };
+  const label = graphLabels(data.nodes, data.edges, points, graphFrame(7))[
+    edgeKey(data.edges[0])
+  ];
+  expect(label).toBeDefined();
+  // The visible '可能同一人 · 2' label needs roughly 50px either side.
+  expect(
+    Math.abs(label.x - points.self.x) > 134 || label.y < 85 || label.y > 220,
+  ).toBe(true);
 });

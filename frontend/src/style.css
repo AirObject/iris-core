@@ -3151,7 +3151,6 @@ tr:last-child td {
 .people-graph-svg {
   display: block;
   width: 100%;
-  min-width: 680px;
   height: auto;
 }
 .graph-edge {
@@ -3273,3 +3272,11 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 }
+
+.graph-node-label-background { fill: #f8faf7; }
+.people-graph-svg.compact .graph-edge text { font-size: 11px; }
+.people-graph-svg.compact .graph-node text { font-size: 12px; }
+.people-graph-svg.compact .graph-node text.graph-node-mark { font-size: 13px; }
+.people-graph-svg.compact .graph-node text.graph-node-count { font-size: 10px; }
+.graph-preview { color: #526359; font-size: 13px; line-height: 1.6; margin-top: 12px; }
+.graph-preview p { margin: 4px 0; }

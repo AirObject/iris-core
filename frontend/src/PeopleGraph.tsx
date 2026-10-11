@@ -1,4 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  edgeKey,
+  edgeLabel,
+  graphFrame,
+  graphLabels,
+  graphLayout,
+} from "./peopleGraphLayout";
 import { useData } from "./api";
 import { Badge, Dialog, Empty, Notice, Pagination } from "./ui";
 import type { Entry, Person } from "./types";
@@ -37,7 +44,6 @@ export type GraphData = {
   node_limit: number;
   edge_limit: number;
 };
-type Point = { x: number; y: number };
 type Filters = {
   entry_id: string;
   person_id: string;
@@ -69,67 +75,6 @@ const params = (values: Record<string, string>) =>
     Object.entries(values).filter(([, value]) => value),
   ).toString();
 
-// Bounded, deterministic layout; no dependency, animation loop or background work.
-// Position and distance are only a drawing aid, not relationship confidence.
-export function graphLayout(
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-): Record<string, Point> {
-  if (!nodes.length) return {};
-  if (nodes.length === 1)
-    return Object.fromEntries([[nodes[0].id, { x: 450, y: 270 }]]);
-  const radius = Math.min(210, 85 + 18 * Math.sqrt(nodes.length));
-  const points = nodes.map((_, i) => ({
-    x: 450 + radius * Math.cos((i * 2 * Math.PI) / nodes.length),
-    y: 270 + radius * Math.sin((i * 2 * Math.PI) / nodes.length),
-  }));
-  const indices = new Map(nodes.map((node, i) => [node.id, i]));
-  for (let step = 0; step < 90; step++) {
-    const forces = points.map((p) => ({
-      x: (450 - p.x) * 0.009,
-      y: (270 - p.y) * 0.009,
-    }));
-    for (let i = 0; i < points.length; i++)
-      for (let j = i + 1; j < points.length; j++) {
-        const dx = points[i].x - points[j].x,
-          dy = points[i].y - points[j].y;
-        const distance = Math.max(1, Math.hypot(dx, dy));
-        const force = Math.min(12, 6500 / (distance * distance));
-        const fx = (dx / distance) * force,
-          fy = (dy / distance) * force;
-        forces[i].x += fx;
-        forces[i].y += fy;
-        forces[j].x -= fx;
-        forces[j].y -= fy;
-      }
-    for (const edge of edges) {
-      const a = indices.get(edge.source),
-        b = indices.get(edge.target);
-      if (a === undefined || b === undefined) continue;
-      const dx = points[b].x - points[a].x,
-        dy = points[b].y - points[a].y;
-      const distance = Math.max(1, Math.hypot(dx, dy));
-      const force = (distance - 165) * 0.025;
-      forces[a].x += (dx / distance) * force;
-      forces[a].y += (dy / distance) * force;
-      forces[b].x -= (dx / distance) * force;
-      forces[b].y -= (dy / distance) * force;
-    }
-    const speed = 5 * (1 - step / 100);
-    points.forEach((point, i) => {
-      point.x = Math.max(
-        70,
-        Math.min(830, point.x + Math.max(-speed, Math.min(speed, forces[i].x))),
-      );
-      point.y = Math.max(
-        55,
-        Math.min(480, point.y + Math.max(-speed, Math.min(speed, forces[i].y))),
-      );
-    });
-  }
-  return Object.fromEntries(nodes.map((node, i) => [node.id, points[i]]));
-}
-
 function EdgeKinds({ edge }: { edge: GraphEdge }) {
   return (
     <span className="graph-kinds">
@@ -154,131 +99,201 @@ function Drawing({
   data: GraphData;
   onEdge: (edge: GraphEdge) => void;
 }) {
-  const positions = useMemo(() => graphLayout(data.nodes, data.edges), [data]);
+  const scroll = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState(900);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
+  const tooltipId = useId();
+  useEffect(() => {
+    const element = scroll.current;
+    if (!element) return;
+    const resize = () => {
+      const width = Math.floor(element.getBoundingClientRect().width);
+      if (width > 0) setAvailableWidth(width);
+    };
+    resize();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(resize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const frame = useMemo(
+    () => graphFrame(data.nodes.length, availableWidth),
+    [data.nodes.length, availableWidth],
+  );
+  const positions = useMemo(
+    () => graphLayout(data.nodes, data.edges, availableWidth),
+    [data, availableWidth],
+  );
+  const labels = useMemo(
+    () => graphLabels(data.nodes, data.edges, positions, frame),
+    [data, positions, frame],
+  );
   const names = new Map(data.nodes.map((node) => [node.id, node.name]));
+  const preview = data.edges.find(
+    (edge) => edgeKey(edge) === (focused || hovered),
+  );
   return (
-    <div
-      className="graph-scroll"
-      tabIndex={0}
-      aria-label="关系图画布，可横向滚动"
-    >
-      <svg
-        viewBox="0 0 900 550"
-        role="group"
-        aria-label="人物关系图"
-        className="people-graph-svg"
+    <>
+      <div
+        ref={scroll}
+        className="graph-scroll"
+        tabIndex={0}
+        aria-label="关系图画布，可横向滚动"
       >
-        <title>人物关系图</title>
-        <desc>
-          点击节点打开人物的全部有效记忆，点击连线查看依据。也可使用画布下方的人物和连线列表。
-        </desc>
-        {data.edges.map((edge) => {
-          const a = positions[edge.source],
-            b = positions[edge.target];
-          const label = `查看${names.get(edge.source)}与${names.get(edge.target)}的连线依据`;
-          const text =
-            edge.relationship_summaries[0]?.summary ||
-            (edge.links.some((l) => l.kind === "same_as")
-              ? "可能同一人"
+        <svg
+          viewBox={`0 0 ${frame.width} ${frame.height}`}
+          style={{ minWidth: frame.width }}
+          role="group"
+          aria-label="人物关系图"
+          className={`people-graph-svg${frame.compact ? " compact" : ""}`}
+        >
+          <title>人物关系图</title>
+          <desc>
+            点击节点打开人物的全部有效记忆，点击连线查看依据。悬停或聚焦连线查看摘要，也可使用画布下方的人物和连线列表。
+          </desc>
+          {data.edges.map((edge) => {
+            const a = positions[edge.source],
+              b = positions[edge.target];
+            const label = `查看${names.get(edge.source)}与${names.get(edge.target)}的连线依据`;
+            const key = edgeKey(edge);
+            const textPoint = labels[key];
+            const style = edge.links.some((l) => l.kind === "same_as")
+              ? "possible"
               : edge.links.length
-                ? "扮演"
-                : `${edge.memory_count} 条记忆`);
-          const style = edge.links.some((l) => l.kind === "same_as")
-            ? "possible"
-            : edge.links.length
-              ? "roleplay"
-              : edge.relationship_count
-                ? "relationship"
-                : "cooccurrence";
-          return (
-            <g
-              key={JSON.stringify([edge.source, edge.target])}
-              className={`graph-edge ${style}`}
-              role="button"
-              tabIndex={0}
-              aria-label={label}
-              onClick={() => onEdge(edge)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onEdge(edge);
-                }
-              }}
+                ? "roleplay"
+                : edge.relationship_count
+                  ? "relationship"
+                  : "cooccurrence";
+            return (
+              <g
+                key={key}
+                className={`graph-edge ${style}`}
+                role="button"
+                tabIndex={0}
+                aria-label={label}
+                aria-describedby={preview === edge ? tooltipId : undefined}
+                onMouseEnter={() => setHovered(key)}
+                onMouseLeave={() => setHovered(null)}
+                onFocus={() => setFocused(key)}
+                onBlur={() => setFocused(null)}
+                onClick={() => onEdge(edge)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onEdge(edge);
+                  }
+                }}
+              >
+                <title>
+                  {label}；{edge.memory_count} 条共同涉及记忆
+                </title>
+                <line
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                  className="graph-edge-hit"
+                />
+                <line
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                  strokeWidth={Math.min(
+                    7,
+                    1.5 + Math.log2(1 + edge.memory_count),
+                  )}
+                />
+                {textPoint && (
+                  <text
+                    x={textPoint.x}
+                    y={textPoint.y}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                  >
+                    {edgeLabel(edge)}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+          {data.nodes.map((node) => (
+            <a
+              key={node.id}
+              href={memoryUrl(node.id)}
+              aria-label={`查看${node.name}的有效记忆`}
+              className={`graph-node ${node.kind === "self" ? "self" : ""}`}
             >
               <title>
-                {label}；{edge.memory_count} 条共同涉及记忆
+                {node.name}；别名：{node.aliases.join("、") || "暂无"}；
+                {node.account_count} 个账号；{node.memory_count} 条有效记忆
               </title>
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                className="graph-edge-hit"
-              />
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                strokeWidth={Math.min(
-                  7,
-                  1.5 + Math.log2(1 + edge.memory_count),
-                )}
+              <circle
+                cx={positions[node.id].x}
+                cy={positions[node.id].y}
+                r={
+                  frame.compact
+                    ? 14
+                    : Math.min(27, 18 + Math.log2(1 + node.memory_count))
+                }
               />
               <text
-                x={(a.x + b.x) / 2}
-                y={(a.y + b.y) / 2 - 9}
+                x={positions[node.id].x}
+                y={positions[node.id].y + 5}
+                textAnchor="middle"
+                className="graph-node-mark"
+              >
+                {node.kind === "self" ? "我" : Array.from(node.name)[0]}
+              </text>
+              <rect
+                className="graph-node-label-background"
+                x={positions[node.id].x - (frame.compact ? 44 : 78)}
+                y={positions[node.id].y + (frame.compact ? 20 : 30)}
+                width={frame.compact ? 88 : 156}
+                height={frame.compact ? 33 : 38}
+                rx="4"
+              />
+              <text
+                x={positions[node.id].x}
+                y={positions[node.id].y + (frame.compact ? 32 : 44)}
                 textAnchor="middle"
               >
-                {short(text, 22)}
+                {short(node.name, frame.compact ? 6 : 10)}
               </text>
-            </g>
-          );
-        })}
-        {data.nodes.map((node) => (
-          <a
-            key={node.id}
-            href={memoryUrl(node.id)}
-            aria-label={`查看${node.name}的有效记忆`}
-            className={`graph-node ${node.kind === "self" ? "self" : ""}`}
-          >
-            <title>
-              {node.name}；别名：{node.aliases.join("、") || "暂无"}；
-              {node.account_count} 个账号；{node.memory_count} 条有效记忆
-            </title>
-            <circle
-              cx={positions[node.id].x}
-              cy={positions[node.id].y}
-              r={Math.min(27, 18 + Math.log2(1 + node.memory_count))}
-            />
-            <text
-              x={positions[node.id].x}
-              y={positions[node.id].y + 5}
-              textAnchor="middle"
-              className="graph-node-mark"
-            >
-              {node.kind === "self" ? "我" : Array.from(node.name)[0]}
-            </text>
-            <text
-              x={positions[node.id].x}
-              y={positions[node.id].y + 44}
-              textAnchor="middle"
-            >
-              {short(node.name, 14)}
-              {node.kind === "self" ? "（角色）" : ""}
-            </text>
-            <text
-              x={positions[node.id].x}
-              y={positions[node.id].y + 63}
-              textAnchor="middle"
-              className="graph-node-count"
-            >
-              {node.memory_count} 条记忆
-            </text>
-          </a>
-        ))}
-      </svg>
-    </div>
+              <text
+                x={positions[node.id].x}
+                y={positions[node.id].y + (frame.compact ? 48 : 63)}
+                textAnchor="middle"
+                className="graph-node-count"
+              >
+                {node.memory_count} 条记忆
+              </text>
+            </a>
+          ))}
+        </svg>
+      </div>
+      <div className="graph-preview">
+        {preview ? (
+          <div id={tooltipId} role="tooltip">
+            <strong>
+              {names.get(preview.source)} · {names.get(preview.target)}
+            </strong>
+            <p>{edgeLabel(preview)}（数字为共同涉及的有效记忆数）</p>
+            {preview.relationship_summaries.map((summary) => (
+              <p key={summary.id}>{summary.summary}</p>
+            ))}
+            {!preview.relationship_summaries.length && (
+              <p>点击连线查看联系记录与支撑记忆。</p>
+            )}
+          </div>
+        ) : (
+          <p>
+            悬停或用键盘聚焦连线可查看摘要；数字为共同涉及的有效记忆数。拥挤处省略标签，完整内容见下方列表。
+          </p>
+        )}
+      </div>
+    </>
   );
 }
 
